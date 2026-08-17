@@ -1,0 +1,38 @@
+{
+    email admin@example.com
+}
+
+:80 {
+    redir https://{host}{uri} permanent
+}
+
+{$DOMAIN:localhost} {
+    # Frontend
+    handle /api/auth/* {
+        reverse_proxy frontend:3000
+    }
+
+    handle /_next/* {
+        reverse_proxy frontend:3000
+    }
+
+    handle /static/* {
+        reverse_proxy frontend:3000
+    }
+
+    # Backend API
+    handle /api/v1/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    # Everything else to frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    tls internal
+}
