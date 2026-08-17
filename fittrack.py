@@ -849,43 +849,50 @@ def cmd_restore(backup_path: str, force: bool = False) -> None:
             print(C.colourise(C.DIM, result.stderr[:500]))
         return
 
-    # Step 2: Restore from backup
+    # Step 2: Copy backup into container and restore from inside
+    # (piping through stdin is very slow on Windows; docker cp is much faster)
     print(C.colourise(C.YELLOW, "  2/2  Loading backup..."))
+    container_path = "/tmp/fittrack_restore"
     try:
+        container_result = _compose("ps", "-q", "db", capture=True)
+        container_id = container_result.stdout.strip()
+        if not container_id:
+            print(C.colourise(C.RED, "  Could not find db container."))
+            return
+
+        cp_result = subprocess.run(
+            ["docker", "cp", str(path), f"{container_id}:{container_path}"],
+            cwd=_project_root(),
+            capture_output=True,
+            text=True,
+        )
+        if cp_result.returncode != 0:
+            print(C.colourise(C.RED, "  Failed to copy backup into container."))
+            if cp_result.stderr:
+                print(C.colourise(C.DIM, cp_result.stderr[:500]))
+            return
+
         if use_gzip:
-            data = path.read_bytes()
-            proc = subprocess.Popen(
-                ["docker", "compose", "exec", "-T", "db", "sh", "-c",
-                 "gunzip | psql -U ${POSTGRES_USER:-fittrack} ${POSTGRES_DB:-fittrack}"],
-                cwd=_project_root(),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            _, stderr = proc.communicate(input=data)
-            if proc.returncode != 0:
-                print(C.colourise(C.RED, "  âœ— Restore failed."))
-                if stderr:
-                    print(C.colourise(C.DIM, stderr.decode(errors="replace")[:500]))
-                return
+            restore_cmd = f"gunzip -c {container_path} | psql -U ${{POSTGRES_USER:-fittrack}} ${{POSTGRES_DB:-fittrack}} && rm -f {container_path}"
         else:
-            data = path.read_text()
-            proc = subprocess.Popen(
-                ["docker", "compose", "exec", "-T", "db", "sh", "-c",
-                 "psql -U ${POSTGRES_USER:-fittrack} ${POSTGRES_DB:-fittrack}"],
-                cwd=_project_root(),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            _, stderr = proc.communicate(input=data.encode())
-            if proc.returncode != 0:
-                print(C.colourise(C.RED, "  âœ— Restore failed."))
-                if stderr:
-                    print(C.colourise(C.DIM, stderr.decode(errors="replace")[:500]))
-                return
+            restore_cmd = f"psql -U ${{POSTGRES_USER:-fittrack}} ${{POSTGRES_DB:-fittrack}} < {container_path} && rm -f {container_path}"
+
+        result = _compose(
+            "exec", "-T", "db",
+            "sh", "-c", restore_cmd,
+        )
+        if result.returncode != 0:
+            print(C.colourise(C.RED, "  Restore failed."))
+            if result.stderr:
+                print(C.colourise(C.DIM, result.stderr[:500]))
+            _compose("exec", "-T", "db", "rm", "-f", container_path)
+            return
     except Exception as e:
-        print(C.colourise(C.RED, f"  âœ— Restore failed: {e}"))
+        print(C.colourise(C.RED, f"  Restore failed: {e}"))
+        try:
+            _compose("exec", "-T", "db", "rm", "-f", container_path)
+        except Exception:
+            pass
         return
 
     print(C.colourise(C.GREEN, "  [OK] Database restored successfully.\n"))
