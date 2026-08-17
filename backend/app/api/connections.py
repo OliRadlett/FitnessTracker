@@ -1,6 +1,7 @@
 """Connections API — list connections, trigger sync."""
 
 import uuid
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -11,6 +12,8 @@ from app.models.user import OAuthConnection, User
 from app.schemas.auth import OAuthConnectionRead
 from app.services.auth import get_current_user
 from app.services.strava import sync_activities
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,11 +73,12 @@ async def trigger_sync(
         try:
             activities = await sync_activities(db, current_user.id, limit=100)
             # Also sync routes
+            route_count = 0
             try:
                 from app.services.strava import sync_strava_routes
                 route_count, route_merged = await sync_strava_routes(db, current_user.id)
-            except Exception:
-                route_count = 0
+            except Exception as e:
+                logger.error(f"Strava route sync failed for user {current_user.id}: {e}", exc_info=True)
             return {
                 "detail": f"Synced {len(activities)} activities and {route_count} routes from Strava",
                 "synced_count": len(activities),

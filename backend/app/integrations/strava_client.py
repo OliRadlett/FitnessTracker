@@ -24,7 +24,7 @@ class StravaClient:
         return (
             f"{STRAVA_AUTH_URL}?"
             f"client_id={self.client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope=read,activity:read_all"
+            f"&response_type=code&scope=read,activity:read_all,profile:read_all"
         )
 
     async def exchange_code(self, code: str) -> dict:

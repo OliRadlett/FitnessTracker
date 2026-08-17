@@ -27,8 +27,7 @@ const integrations = [
     description: 'Sync planned routes and completed tours with GPS data and elevation profiles',
     icon: '🗺️',
     color: 'bg-green-600',
-    available: false,
-    comingSoon: true,
+    available: true,
   },
   {
     id: 'wahoo',

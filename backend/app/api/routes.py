@@ -1,6 +1,7 @@
 """Routes API — CRUD, filtering, GPX download/upload, sync, merge."""
 
 import uuid
+import logging
 from datetime import datetime
 from io import BytesIO
 
@@ -28,6 +29,8 @@ from app.services.auth import get_current_user
 from app.services import route_service
 from app.services.gpx import route_to_gpx, parse_gpx
 from app.services.polyline_utils import encode_polyline
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -346,6 +349,7 @@ async def sync_routes(
                 provider="strava", synced_count=count, merged_count=merged, new_count=count - merged,
             ))
         except Exception as e:
+            logger.error(f"Strava route sync failed for user {current_user.id}: {e}", exc_info=True)
             sync_results.append(RouteSyncResult(
                 provider="strava", synced_count=0, merged_count=0, new_count=0,
             ))
@@ -359,6 +363,7 @@ async def sync_routes(
                 provider="komoot", synced_count=count, merged_count=merged, new_count=count - merged,
             ))
         except Exception as e:
+            logger.error(f"Komoot route sync failed for user {current_user.id}: {e}", exc_info=True)
             sync_results.append(RouteSyncResult(
                 provider="komoot", synced_count=0, merged_count=0, new_count=0,
             ))
@@ -372,6 +377,7 @@ async def sync_routes(
                 provider="wahoo", synced_count=count, merged_count=merged, new_count=count - merged,
             ))
         except Exception as e:
+            logger.error(f"Wahoo route sync failed for user {current_user.id}: {e}", exc_info=True)
             sync_results.append(RouteSyncResult(
                 provider="wahoo", synced_count=0, merged_count=0, new_count=0,
             ))

@@ -273,7 +273,17 @@ async def sync_wahoo_routes(
         if not routes:
             break
 
+        # Handle case where API returns a dict with routes nested inside
+        if isinstance(routes, dict):
+            routes = routes.get("routes", routes.get("data", []))
+        if not isinstance(routes, list):
+            logger.warning(f"Wahoo routes response is not a list: {type(routes)}")
+            break
+
         for route_data in routes:
+            if not isinstance(route_data, dict):
+                logger.warning(f"Skipping non-dict route: {type(route_data)}")
+                continue
             route_id = str(route_data.get("id", ""))
             if not route_id:
                 continue

@@ -67,7 +67,7 @@ export default function RoutesPage() {
         }
       });
       const query = params.toString();
-      return authFetch<RouteSummary[]>(`/api/v1/routes${query ? `?${query}` : ''}`);
+      return authFetch<RouteSummary[]>(`/api/v1/routes/${query ? `?${query}` : ''}`);
     },
   });
 

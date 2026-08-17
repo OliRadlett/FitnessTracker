@@ -98,15 +98,15 @@ async def oauth_authorize(
     redirect_uri: str = Query(default=None, description="Callback URL"),
 ):
     """Redirect the user to the OAuth provider's authorize page."""
+    from app.config import get_settings
+    settings = get_settings()
+
     if provider not in OAUTH_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
-    # For fitness integrations, use the backend callback URL
-    if not redirect_uri and provider in ("strava", "whoop", "wahoo"):
-        from app.config import get_settings
-        settings = get_settings()
-        # In production this would be the deployed URL
-        redirect_uri = f"http://localhost:8000/api/v1/auth/oauth/{provider}/callback"
+    # For fitness integrations, use the backend callback URL via public_url
+    if not redirect_uri and provider in ("strava", "whoop", "wahoo", "komoot"):
+        redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
 
     url = get_authorize_url(provider, redirect_uri)
     return RedirectResponse(url=url)
@@ -126,21 +126,19 @@ async def oauth_callback(
     saves connection to the current user, redirects to frontend.
     For app auth (google, github): exchanges code, creates/finds user, returns JSON.
     """
+    from app.config import get_settings
+    _settings = get_settings()
+    _frontend_url = _settings.public_url  # Frontend and backend share the same Caddy origin
+
     if provider not in OAUTH_PROVIDERS:
         if provider in ("strava", "whoop", "wahoo"):
-            return RedirectResponse(url=f"http://localhost:3000/settings?error=Unsupported+provider:+{provider}")
+            return RedirectResponse(url=f"{_frontend_url}/settings?error=Unsupported+provider:+{provider}")
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
     # For token exchange, we need the same redirect_uri that was used during authorization.
-    # For Wahoo/Komoot, the frontend sends HTTPS_PUBLIC_URL-based callback, so we must match it.
     token_exchange_redirect_uri = redirect_uri
     if not token_exchange_redirect_uri:
-        from app.config import get_settings
-        _settings = get_settings()
-        if provider in ("wahoo", "komoot"):
-            token_exchange_redirect_uri = f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
-        else:
-            token_exchange_redirect_uri = f"http://localhost:8000/api/v1/auth/oauth/{provider}/callback"
+        token_exchange_redirect_uri = f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
 
     # For fitness integrations, save connection to existing user instead of creating new one
     if provider in ("strava", "whoop", "wahoo"):
@@ -164,7 +162,7 @@ async def oauth_callback(
 
             access_token = token_data.get("access_token")
             if not access_token:
-                return RedirectResponse(url=f"http://localhost:3000/settings?error=Failed+to+get+access+token")
+                return RedirectResponse(url=f"{_frontend_url}/settings?error=Failed+to+get+access+token")
 
             refresh_token = token_data.get("refresh_token")
             from datetime import datetime as _dt, timedelta, timezone as _tz
@@ -217,7 +215,7 @@ async def oauth_callback(
                 )
                 target_user = user_result.scalar_one_or_none()
                 if not target_user:
-                    return RedirectResponse(url="http://localhost:3000/settings?error=No+user+found.+Please+log+in+first.")
+                    return RedirectResponse(url=f"{_frontend_url}/settings?error=No+user+found.+Please+log+in+first.")
 
                 connection = OAuthConnection(
                     user_id=target_user.id,
@@ -230,14 +228,14 @@ async def oauth_callback(
                 db.add(connection)
 
             await db.commit()
-            return RedirectResponse(url="http://localhost:3000/settings?connected=" + provider)
+            return RedirectResponse(url=f"{_frontend_url}/settings?connected={provider}")
 
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"OAuth callback error for {provider}: {e}")
             import urllib.parse
             error_msg = urllib.parse.quote(str(e))
-            return RedirectResponse(url=f"http://localhost:3000/settings?error={error_msg}")
+            return RedirectResponse(url=f"{_frontend_url}/settings?error={error_msg}")
 
     # For app auth providers (google, github), use the original flow
     try:

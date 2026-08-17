@@ -144,6 +144,17 @@ async def sync_komoot_routes(
             if not tour_id:
                 continue
 
+            # The list endpoint returns tour summaries without coordinate data.
+            # Fetch the full tour detail to get the polyline/coordinates.
+            try:
+                tour_detail = await komoot_client.get_tour_detail(
+                    connection.access_token, tour_id,
+                )
+                # Merge detail data into tour for richer metadata
+                tour.update(tour_detail)
+            except Exception as e:
+                logger.warning(f"Failed to fetch Komoot tour detail {tour_id}: {e}")
+
             try:
                 polyline = _extract_polyline_from_komoot_tour(tour)
             except ValueError:
@@ -209,6 +220,16 @@ async def sync_komoot_routes(
             route_id = str(route_data.get("id", ""))
             if not route_id:
                 continue
+
+            # The list endpoint returns route summaries without coordinate data.
+            # Fetch the full route detail to get the polyline/coordinates.
+            try:
+                route_detail = await komoot_client.get_route_detail(
+                    connection.access_token, route_id,
+                )
+                route_data.update(route_detail)
+            except Exception as e:
+                logger.warning(f"Failed to fetch Komoot route detail {route_id}: {e}")
 
             try:
                 polyline = _extract_polyline_from_komoot_tour(route_data)
