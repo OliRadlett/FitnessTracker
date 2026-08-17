@@ -109,6 +109,7 @@ export interface ActivityCalendarEntry {
   duration_seconds?: number;
   distance_meters?: number;
   tss?: number;
+  focus?: string;
 }
 
 export interface ActivityDetail extends Activity {

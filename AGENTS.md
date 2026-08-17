@@ -119,4 +119,24 @@ python fittrack.py exec backend alembic revision --autogenerate -m "desc"
 python fittrack.py migrate         # Apply migrations
 ```
 
+## Platform Notes
+
+- **Windows**: Commands use `cmd.exe` syntax (`&&` for chaining, `\` path separators). PowerShell is the default shell in VSCode but `fittrack.py` uses `subprocess` with `cmd.exe`-compatible commands
+- **Shell scripts**: `start.ps1` (PowerShell) and `start.sh` (bash) are thin wrappers around `fittrack.py`
+- **Docker Compose**: Use `docker compose run --rm <service>` instead of `docker compose exec` (exec has TTY issues in some environments)
+
+## Database Backup & Restore
+
+```bash
+# Backup
+python fittrack.py backup                       # → backups/fittrack_YYYYMMDD_HHMMSS.sql.gz
+python fittrack.py backup --output my_backup.sql # Custom path (plain SQL)
+
+# Restore
+python fittrack.py restore backups/fittrack_20260101_120000.sql.gz
+python fittrack.py restore my_backup.sql --force # Skip confirmation prompt
+```
+
+Backups are `pg_dump` compressed with gzip. Restore drops and recreates the database before loading.
+
 Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.

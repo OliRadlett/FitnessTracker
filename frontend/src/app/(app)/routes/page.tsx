@@ -32,11 +32,19 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const PROVIDER_ICONS: Record<string, string> = {
-  strava: '🚴',
-  komoot: '🗺️',
-  wahoo: '📊',
-  manual: '✏️',
+  strava: '/icons/strava.svg',
+  komoot: '/icons/komoot.svg',
+  wahoo: '/icons/wahoo.svg',
+  manual: '',
 };
+
+function ProviderIcon({ provider, size = 14 }: { provider: string; size?: number }) {
+  const src = PROVIDER_ICONS[provider];
+  if (src) {
+    return <img src={src} alt={provider} className="inline-block" style={{ width: size, height: size }} />;
+  }
+  return <span>✏️</span>;
+}
 
 const SORT_OPTIONS = [
   { value: '', label: 'Default (Newest)' },
@@ -69,6 +77,7 @@ export default function RoutesPage() {
       const query = params.toString();
       return authFetch<RouteSummary[]>(`/api/v1/routes/${query ? `?${query}` : ''}`);
     },
+    staleTime: 120_000,  // 2 min
   });
 
   // Fetch selected route detail
@@ -76,6 +85,7 @@ export default function RoutesPage() {
     queryKey: ['route', selectedRouteId],
     queryFn: () => authFetch<RouteData>(`/api/v1/routes/${selectedRouteId}`),
     enabled: !!selectedRouteId,
+    staleTime: 300_000,  // 5 min — route details rarely change
   });
 
   // Sync mutation
@@ -396,12 +406,15 @@ export default function RoutesPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate">{route.name}</h3>
                       <div className="flex items-center gap-2 mt-1">
-                        {route.sources.map((s) => (
+                        {/* Deduplicate sources by provider for display */}
+                        {Array.from(
+                          new Map(route.sources.map((s) => [s.provider, s])).values()
+                        ).map((s) => (
                           <span
-                            key={s.id}
+                            key={s.provider}
                             className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
                           >
-                            {PROVIDER_ICONS[s.provider] || '🔗'} {s.provider}
+                            <ProviderIcon provider={s.provider} size={12} /> {s.provider}
                           </span>
                         ))}
                         {route.is_loop && (
@@ -518,7 +531,7 @@ export default function RoutesPage() {
                           key={s.id}
                           className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
                         >
-                          {PROVIDER_ICONS[s.provider] || '🔗'} {s.provider_name}
+                          <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}
                           <span className="text-white/60 text-[10px]">({s.provider})</span>
                         </span>
                       ))}

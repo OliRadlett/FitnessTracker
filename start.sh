@@ -17,6 +17,9 @@
 #   ./start.sh build                 Rebuild images
 #   ./start.sh migrate               Run database migrations
 #   ./start.sh reset                 Full teardown, rebuild, and restart with migrations
+#   ./start.sh backup                Backup database to backups/
+#   ./start.sh backup -o my.sql.gz   Backup to custom path
+#   ./start.sh restore backups/fittrack_20260101_120000.sql.gz  # Restore from backup
 
 set -euo pipefail
 

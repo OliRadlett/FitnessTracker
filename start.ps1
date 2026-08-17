@@ -16,6 +16,9 @@
     .\start.ps1 build                 # Rebuild images
     .\start.ps1 migrate               # Run database migrations
     .\start.ps1 reset                 # Full teardown, rebuild, and restart with migrations
+    .\start.ps1 backup                # Backup database to backups/
+    .\start.ps1 backup -o my.sql.gz   # Backup to custom path
+    .\start.ps1 restore backups\fittrack_20260101_120000.sql.gz  # Restore from backup
 #>
 
 param(

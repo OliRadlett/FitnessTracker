@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
@@ -17,7 +18,8 @@ const integrations = [
     id: 'strava',
     name: 'Strava',
     description: 'Sync cycling, running, and swimming activities with routes, power, HR, and GPS data',
-    icon: '🚴',
+    icon: '/icons/strava.svg',
+    emoji: '🚴',
     color: 'bg-orange-500',
     available: true,
   },
@@ -25,7 +27,8 @@ const integrations = [
     id: 'komoot',
     name: 'Komoot',
     description: 'Sync planned routes and completed tours with GPS data and elevation profiles',
-    icon: '🗺️',
+    icon: '/icons/komoot.svg',
+    emoji: '🗺️',
     color: 'bg-green-600',
     available: true,
   },
@@ -33,7 +36,8 @@ const integrations = [
     id: 'wahoo',
     name: 'Wahoo',
     description: 'Sync routes and workouts from Wahoo trainers and ELEMNT head units',
-    icon: '📊',
+    icon: '/icons/wahoo.svg',
+    emoji: '📊',
     color: 'bg-blue-500',
     available: true,
   },
@@ -41,7 +45,8 @@ const integrations = [
     id: 'whoop',
     name: 'Whoop',
     description: 'Recovery scores, sleep tracking, HRV, and daily strain data',
-    icon: '💤',
+    icon: '/icons/whoop.svg',
+    emoji: '💤',
     color: 'bg-purple-500',
     available: false,
     comingSoon: true,
@@ -51,6 +56,7 @@ const integrations = [
 export default function SettingsPage() {
   const { data: session } = useSession();
   const { authFetch } = useAuthFetch();
+  const queryClient = useQueryClient();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -99,6 +105,8 @@ export default function SettingsPage() {
 
   const [syncing, setSyncing] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<string | null>(null);
 
   async function handleDisconnect(connectionId: string) {
     try {
@@ -174,8 +182,8 @@ export default function SettingsPage() {
                 className="flex items-center justify-between p-4 rounded-lg bg-background border border-surface-light/30"
               >
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-lg ${integration.color} flex items-center justify-center text-2xl`}>
-                    {integration.icon}
+                  <div className={`w-12 h-12 rounded-lg ${integration.color} flex items-center justify-center`}>
+                    <img src={integration.icon} alt={integration.name} className="w-7 h-7" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -267,6 +275,48 @@ export default function SettingsPage() {
               🏆 Personal Records CSV
             </button>
           </div>
+        </div>
+      </Card>
+
+      {/* Data Management */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Management</CardTitle>
+        </CardHeader>
+        <div className="px-6 pb-6">
+          <p className="text-sm text-muted mb-4">
+            Backfill historical data from connected services. This fetches your complete
+            activity history from Strava — useful after initial setup.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={async () => {
+                setBackfilling(true);
+                setBackfillResult(null);
+                try {
+                  const result = await authFetch<{ synced: number; skipped: number; pages: number; detail: string }>(
+                    '/api/v1/activities/backfill',
+                    { method: 'POST' }
+                  );
+                  setBackfillResult(result.detail);
+                  queryClient.invalidateQueries({ queryKey: ['activities'] });
+                  queryClient.invalidateQueries({ queryKey: ['activities-calendar'] });
+                  queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+                } catch (err) {
+                  setBackfillResult(`Error: ${err instanceof Error ? err.message : 'Backfill failed'}`);
+                } finally {
+                  setBackfilling(false);
+                }
+              }}
+              disabled={backfilling || !getConnection('strava')}
+              className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {backfilling ? '⏳ Backfilling...' : '📥 Backfill All Activities'}
+            </button>
+          </div>
+          {backfillResult && (
+            <p className="mt-3 text-sm text-muted">{backfillResult}</p>
+          )}
         </div>
       </Card>
 

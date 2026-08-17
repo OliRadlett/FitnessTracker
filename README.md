@@ -38,7 +38,10 @@ fitness-tracker/
 │   └── Caddyfile
 ├── plans/                # Architecture & planning docs
 │   ├── fitness-tracker-architecture.md
-│   └── phase-2.md        # Phase 2 enhancement plan
+│   ├── phase-1.md        # Phase 1 foundation plan
+│   ├── phase-2.md        # Phase 2 enhancement plan
+│   ├── phase-3.md        # Phase 3 advanced features
+│   └── phase-4.md        # Phase 4 future roadmap
 ├── docker-compose.yml
 └── .env.example
 ```

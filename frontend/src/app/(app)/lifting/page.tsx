@@ -123,6 +123,7 @@ export default function LiftingPage() {
   const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
+    staleTime: 60_000,  // 1 min
   });
 
   const { data: sessionDetail } = useQuery<LiftingSession>({
@@ -134,11 +135,13 @@ export default function LiftingPage() {
   const { data: personalRecords, isLoading: prLoading } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs'),
+    staleTime: 300_000,  // 5 min — PRs change rarely
   });
 
   const { data: volumeResponse, isLoading: volumeLoading } = useQuery<VolumeTrendResponse>({
     queryKey: ['lifting-volume'],
     queryFn: () => authFetch<VolumeTrendResponse>('/api/v1/lifting/volume-trends?weeks=12'),
+    staleTime: 300_000,  // 5 min — volume trends are expensive
   });
   const volumeData = volumeResponse?.data;
 

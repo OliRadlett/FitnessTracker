@@ -15,3 +15,20 @@ export async function getActivities(filters: ActivityFilters = {}): Promise<Acti
 export async function getActivity(id: string): Promise<ActivityDetail> {
   return apiFetch<ActivityDetail>(`/api/v1/activities/${id}`);
 }
+
+export async function backfillActivities(maxPages: number = 50): Promise<{
+  synced: number;
+  skipped: number;
+  pages: number;
+  detail: string;
+}> {
+  return apiFetch(`/api/v1/activities/backfill?max_pages=${maxPages}`, {
+    method: 'POST',
+  });
+}
+
+export async function backfillRouteLinks(): Promise<{ detail: string; linked_count: number }> {
+  return apiFetch('/api/v1/activities/backfill-route-links', {
+    method: 'POST',
+  });
+}

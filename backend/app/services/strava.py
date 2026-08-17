@@ -578,6 +578,136 @@ async def _handle_activity_delete(db: AsyncSession, strava_athlete_id: int, acti
 STRENGTH_SPORT_TYPES = ("strength", "powerlifting", "weighttraining", "workout", "crossfit")
 
 
+async def backfill_all_activities(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    max_pages: int = 50,
+) -> dict:
+    """Backfill ALL historical Strava activities for a user.
+
+    Pages through the Strava API repeatedly until no more activities are
+    returned or ``max_pages`` is reached.  Uses the same merge/dedup
+    logic as :func:`sync_activities`.
+
+    Returns a dict with counts: ``{"synced": N, "skipped": N, "pages": N}``.
+    """
+    from app.services.merge_service import find_duplicate_activity, merge_activity, link_activity_to_route
+
+    connection = await get_strava_connection(db, user_id)
+    if not connection:
+        raise ValueError("No Strava connection found")
+
+    connection = await refresh_if_needed(db, connection)
+
+    synced_total = 0
+    skipped_total = 0
+    page = 1
+
+    while page <= max_pages:
+        strava_activities = await strava_client.get_activities(
+            access_token=connection.access_token,
+            page=page,
+            per_page=100,
+        )
+
+        if not strava_activities:
+            break
+
+        for sa in strava_activities:
+            provider_id = str(sa["id"])
+
+            # Check if already synced via ActivitySource
+            existing_source = await _find_activity_source(db, provider_id)
+            if existing_source:
+                skipped_total += 1
+                continue
+
+            # Legacy check
+            legacy = await db.execute(
+                select(Activity).where(
+                    Activity.source == "strava",
+                    Activity.provider_activity_id == provider_id,
+                )
+            )
+            existing_activity = legacy.scalar_one_or_none()
+            if existing_activity:
+                source = ActivitySource(
+                    activity_id=existing_activity.id,
+                    provider="strava",
+                    provider_activity_id=provider_id,
+                    provider_name=existing_activity.name,
+                    raw_data=sa,
+                )
+                db.add(source)
+                skipped_total += 1
+                continue
+
+            # Parse and create
+            start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
+            sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+            duration_seconds = int(sa.get("moving_time", 0))
+            distance_meters = sa.get("distance")
+
+            duplicate = await find_duplicate_activity(
+                db, user_id, sport_type, start_date, duration_seconds, distance_meters,
+            )
+
+            if duplicate:
+                new_data = {
+                    "name": sa.get("name"),
+                    "duration_seconds": duration_seconds,
+                    "distance_meters": distance_meters,
+                    "elevation_gain_meters": sa.get("total_elevation_gain"),
+                    "average_heartrate": sa.get("average_heartrate"),
+                    "max_heartrate": sa.get("max_heartrate"),
+                    "average_power": sa.get("average_watts"),
+                    "normalized_power": sa.get("weighted_average_watts"),
+                    "average_speed": sa.get("average_speed"),
+                    "average_cadence": sa.get("average_cadence"),
+                    "calories": sa.get("calories"),
+                }
+                await merge_activity(db, duplicate, new_data, "strava", provider_id, raw_data=sa)
+            else:
+                await _create_activity_from_strava(db, sa, user_id, connection)
+
+            synced_total += 1
+
+        await db.flush()
+        page += 1
+
+        # If fewer than 100 results, we've reached the end
+        if len(strava_activities) < 100:
+            break
+
+    # Auto-link newly synced activities to lifting sessions and routes
+    # Fetch all strava activities for this user (link functions check internally)
+    from app.models.lifting import LiftingSession
+    linked_ids_result = await db.execute(
+        select(LiftingSession.activity_id).where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.activity_id.isnot(None),
+        )
+    )
+    linked_activity_ids = set(linked_ids_result.scalars().all())
+
+    result = await db.execute(
+        select(Activity)
+        .options(selectinload(Activity.lifting_session))
+        .where(
+            Activity.user_id == user_id,
+            Activity.source == "strava",
+        )
+    )
+    all_activities = list(result.scalars().unique().all())
+    activities = [a for a in all_activities if a.id not in linked_activity_ids]
+    for activity in activities:
+        await link_activity_to_lifting_sessions(db, activity)
+        await link_activity_to_route(db, activity)
+
+    await db.flush()
+    return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1}
+
+
 def _map_strava_type(strava_type: str) -> str:
     """Map Strava sport types to our internal sport types."""
     mapping = {

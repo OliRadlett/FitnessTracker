@@ -281,6 +281,9 @@ export default function ActivitiesPage() {
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
+  const [allActivities, setAllActivities] = useState<Activity[] | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 50;
 
   const activitiesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -289,6 +292,8 @@ export default function ActivitiesPage() {
         params.append(key, String(value));
       }
     });
+    params.set('limit', String(PAGE_SIZE));
+    params.set('offset', '0');
     const query = params.toString();
     return `/api/v1/activities${query ? `?${query}` : ''}`;
   }, [filters]);
@@ -298,6 +303,42 @@ export default function ActivitiesPage() {
     queryFn: () => authFetch<Activity[]>(activitiesUrl),
   });
 
+  // Sync query data to local state for append behaviour
+  React.useEffect(() => {
+    if (activities) {
+      setAllActivities(activities);
+    }
+  }, [activities]);
+
+  // Reset when filters change
+  React.useEffect(() => {
+    setAllActivities(null);
+  }, [filters]);
+
+  async function loadMore() {
+    if (!allActivities || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          params.append(key, String(value));
+        }
+      });
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String(allActivities.length));
+      const query = params.toString();
+      const more = await authFetch<Activity[]>(`/api/v1/activities${query ? `?${query}` : ''}`);
+      setAllActivities((prev) => [...(prev || []), ...more]);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const displayActivities = allActivities ?? activities ?? [];
+
   const { data: activityDetail } = useQuery<ActivityDetail>({
     queryKey: ['activity', selectedActivityId],
     queryFn: () => authFetch<ActivityDetail>(`/api/v1/activities/${selectedActivityId}`),
@@ -306,9 +347,9 @@ export default function ActivitiesPage() {
 
   // Group activities by ISO week for week view
   const weekGroups = useMemo(() => {
-    if (!activities || viewMode !== 'week') return [];
+    if (displayActivities.length === 0 || viewMode !== 'week') return [];
     const groups = new Map<string, Activity[]>();
-    for (const a of activities) {
+    for (const a of displayActivities) {
       const key = getISOWeek(new Date(a.start_date));
       const existing = groups.get(key);
       if (existing) {
@@ -318,7 +359,7 @@ export default function ActivitiesPage() {
       }
     }
     return Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [activities, viewMode]);
+  }, [displayActivities, viewMode]);
 
   function renderWeekGroup(weekKey: string, weekActivities: Activity[]) {
     const totalDist = weekActivities.reduce((s, a) => s + (STRENGTH_TYPES.includes(a.sport_type) ? 0 : (a.distance_meters || 0)), 0);
@@ -437,8 +478,8 @@ export default function ActivitiesPage() {
       </Card>
 
       {/* Summary Stats */}
-      {activities && activities.length > 0 && (
-        <SummaryStatsBar activities={activities} />
+      {displayActivities.length > 0 && (
+        <SummaryStatsBar activities={displayActivities} />
       )}
 
       {/* Activity List */}
@@ -448,14 +489,14 @@ export default function ActivitiesPage() {
             <div key={i} className="animate-pulse h-20 bg-surface rounded-xl"></div>
           ))}
         </div>
-      ) : activities && activities.length > 0 ? (
+      ) : displayActivities.length > 0 ? (
         viewMode === 'week' ? (
           <div className="space-y-6">
             {weekGroups.map(([weekKey, weekActivities]) => renderWeekGroup(weekKey, weekActivities))}
           </div>
         ) : (
           <div className="space-y-3">
-            {activities.map((activity) => (
+            {displayActivities.map((activity) => (
               <React.Fragment key={activity.id}>
                 <ActivityCard
                   activity={activity}
@@ -473,6 +514,19 @@ export default function ActivitiesPage() {
         <Card>
           <p className="text-muted text-center py-8">No activities found</p>
         </Card>
+      )}
+
+      {/* Load More */}
+      {!isLoading && displayActivities.length > 0 && displayActivities.length % PAGE_SIZE === 0 && (
+        <div className="text-center">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading...' : 'Load More Activities'}
+          </button>
+        </div>
       )}
     </div>
   );

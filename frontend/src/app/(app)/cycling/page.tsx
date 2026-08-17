@@ -35,68 +35,81 @@ export default function CyclingPage() {
   const { data: profile, isLoading: profileLoading } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    staleTime: 300_000,  // 5 min — profile changes rarely
   });
 
   const { data: metrics } = useQuery<CyclingMetricsSummary>({
     queryKey: ['cycling-metrics'],
     queryFn: () => authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary'),
+    staleTime: 120_000,  // 2 min
   });
 
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
     queryKey: ['training-load', loadDays],
     queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${loadDays}`),
+    staleTime: 300_000,  // 5 min — expensive computation
   });
 
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
     queryKey: ['power-zones'],
     queryFn: () => authFetch<PowerZonesResponse>('/api/v1/cycling/power-zones?days=30'),
     enabled: !!profile?.ftp_watts,
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
     queryKey: ['power-vs-hr'],
     queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: chartTrainingLoad } = useQuery<ChartData>({
     queryKey: ['chart-training-load', loadDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${loadDays}`),
+    staleTime: 300_000,  // 5 min — charts are expensive
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
     queryKey: ['chart-stream-power-curve'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: chartPowerZones } = useQuery<ChartData>({
     queryKey: ['chart-power-zones'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
     enabled: !!profile?.ftp_watts,
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: chartDailyTss } = useQuery<ChartData>({
     queryKey: ['chart-daily-tss'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
+    staleTime: 120_000,  // 2 min
   });
 
   const { data: lifetimePBs } = useQuery<LifetimePBsResponse>({
     queryKey: ['lifetime-pbs'],
     queryFn: () => authFetch<LifetimePBsResponse>('/api/v1/cycling/lifetime-pbs'),
+    staleTime: 300_000,  // 5 min — PBs change rarely
   });
 
   const { data: ftpHistory } = useQuery<FtpHistoryEntry[]>({
     queryKey: ['ftp-history'],
     queryFn: () => authFetch<FtpHistoryEntry[]>('/api/v1/cycling/ftp-history'),
+    staleTime: 300_000,  // 5 min
   });
 
   const { data: chartFtpHistory } = useQuery<ChartData>({
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
+    staleTime: 300_000,  // 5 min
   });
 
   // ── FTP Estimate state ──────────────────────────────────────────────────

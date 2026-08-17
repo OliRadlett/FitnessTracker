@@ -104,5 +104,6 @@ class ActivityCalendarEntry(BaseModel):
     duration_seconds: int | None = None
     distance_meters: float | None = None
     tss: float | None = None
+    focus: str | None = None
 
     model_config = {"from_attributes": True}

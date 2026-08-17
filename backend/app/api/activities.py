@@ -74,7 +74,7 @@ async def list_activities(
             selectinload(Activity.route),
         )
         .where(Activity.user_id == current_user.id)
-        .where(Activity.source != "wahoo")
+        .where(Activity.source != "wahoo")  # noqa: E501
     )
 
     if sport_type:
@@ -104,7 +104,9 @@ async def get_activities_calendar(
 
     Only returns the fields needed to render calendar dots/badges,
     avoiding full activity objects including raw_data.
+    For strength activities, also returns the linked lifting session focus.
     """
+    # Fetch activities with optional linked lifting session focus
     result = await db.execute(
         select(
             Activity.id,
@@ -114,6 +116,11 @@ async def get_activities_calendar(
             Activity.duration_seconds,
             Activity.distance_meters,
             Activity.tss,
+            LiftingSession.focus,
+        )
+        .outerjoin(
+            LiftingSession,
+            LiftingSession.activity_id == Activity.id,
         )
         .where(
             Activity.user_id == current_user.id,
@@ -134,6 +141,7 @@ async def get_activities_calendar(
             duration_seconds=r.duration_seconds,
             distance_meters=r.distance_meters,
             tss=r.tss,
+            focus=r.focus,
         )
         for r in rows
     ]
@@ -187,6 +195,28 @@ async def get_activity_streams(
     )
     streams = list(result.scalars().all())
     return [ActivityStreamRead.model_validate(s) for s in streams]
+
+
+@router.post("/backfill")
+async def backfill_activities(
+    max_pages: int = Query(50, ge=1, le=200, description="Max Strava API pages to fetch"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Backfill ALL historical Strava activities for the current user.
+
+    Pages through the Strava API to fetch the complete activity history,
+    not just the most recent 100.  Uses merge/dedup to avoid duplicates.
+    This may take a while for accounts with many activities.
+    """
+    from app.services.strava import backfill_all_activities
+
+    result = await backfill_all_activities(db, current_user.id, max_pages=max_pages)
+    await db.commit()
+    return {
+        "detail": f"Backfill complete: {result['synced']} synced, {result['skipped']} skipped across {result['pages']} pages",
+        **result,
+    }
 
 
 @router.post("/backfill-route-links")

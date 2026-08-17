@@ -123,6 +123,10 @@ function formatDistance(meters: number): string {
 
 function formatStat(activity: ActivityCalendarEntry): string {
   if (isStrengthType(activity.sport_type)) {
+    // Show focus if available, otherwise fall back to activity name
+    if (activity.focus) {
+      return activity.focus;
+    }
     return activity.name;
   }
   const parts: string[] = [];

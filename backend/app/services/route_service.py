@@ -210,7 +210,23 @@ async def add_route_source(
     encoded_polyline: str,
     raw_data: dict | None = None,
 ) -> RouteSource:
-    """Add a provider source to an existing route."""
+    """Add a provider source to an existing route.
+
+    Skips if a source with the same provider already exists on this route
+    to avoid duplicate provider badges in the UI (e.g. Strava Routes API
+    and activity-derived polyline both mapping to provider="strava").
+    """
+    # Check if a source from this provider already exists on this route
+    existing = await db.execute(
+        select(RouteSource).where(
+            RouteSource.route_id == route_id,
+            RouteSource.provider == provider,
+        )
+    )
+    if existing.scalar_one_or_none():
+        logger.info(f"Route {route_id} already has a source from {provider}, skipping duplicate")
+        return existing.scalar_one_or_none()
+
     source = RouteSource(
         route_id=route_id,
         provider=provider,

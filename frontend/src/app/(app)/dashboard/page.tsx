@@ -41,21 +41,25 @@ export default function DashboardPage() {
   const { data: summary, isLoading: summaryLoading } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: () => authFetch<DashboardSummary>('/api/v1/dashboard/summary'),
+    staleTime: 60_000,  // 1 min
   });
 
   const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
     queryKey: ['chart-weekly-tss'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_tss?weeks=12'),
+    staleTime: 300_000,  // 5 min — chart data is expensive
   });
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
     queryKey: ['activities-recent'],
     queryFn: () => authFetch<Activity[]>('/api/v1/activities?limit=5'),
+    staleTime: 60_000,  // 1 min
   });
 
   const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions-recent'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=5'),
+    staleTime: 60_000,  // 1 min
   });
 
   const recentSessions = sessions?.slice(0, 5) ?? [];
