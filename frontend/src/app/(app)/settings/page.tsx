@@ -11,7 +11,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const PUBLIC_URL = process.env.NEXT_PUBLIC_PUBLIC_URL || 'https://localhost';
 
 // Providers that require HTTPS for OAuth callbacks
-const HTTPS_PROVIDERS = ['wahoo', 'komoot'];
+const HTTPS_PROVIDERS = ['wahoo', 'komoot', 'whoop'];
 
 const integrations = [
   {
@@ -44,12 +44,11 @@ const integrations = [
   {
     id: 'whoop',
     name: 'Whoop',
-    description: 'Recovery scores, sleep tracking, HRV, and daily strain data',
+    description: 'Recovery scores, sleep tracking, HRV, daily strain, and heart rate data',
     icon: '/icons/whoop.svg',
     emoji: '💤',
     color: 'bg-purple-500',
-    available: false,
-    comingSoon: true,
+    available: true,
   },
 ];
 
@@ -59,7 +58,6 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     loadConnections();
   }, []);
@@ -76,7 +74,7 @@ export default function SettingsPage() {
   }
 
   function handleConnect(provider: string) {
-    // Wahoo/Komoot require HTTPS callback URLs
+    // Providers that require HTTPS for OAuth callbacks
     const baseUrl = HTTPS_PROVIDERS.includes(provider) ? PUBLIC_URL : API_BASE_URL;
     const callbackUrl = `${baseUrl}/api/v1/auth/oauth/${provider}/callback`;
     window.location.href = `${API_BASE_URL}/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}`;
@@ -190,9 +188,6 @@ export default function SettingsPage() {
                       <p className="text-white font-medium">{integration.name}</p>
                       {isConnected && (
                         <Badge variant="positive">Connected</Badge>
-                      )}
-                      {integration.comingSoon && (
-                        <Badge variant="default">Coming Soon</Badge>
                       )}
                     </div>
                     <p className="text-sm text-muted mt-1">{integration.description}</p>

@@ -27,6 +27,7 @@ settings = get_settings()
 PROVIDER_PRIORITY: dict[str, int] = {
     "strava": 3,
     "wahoo": 2,
+    "whoop": 1,
     "komoot": 1,
     "manual": 0,
 }

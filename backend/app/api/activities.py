@@ -10,9 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.activity import Activity, ActivityStream
+from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet
 from app.models.user import User
-from app.schemas.activity import ActivityRead, ActivityStreamRead, ActivityCalendarEntry, LinkedLiftingSessionSummary
+from app.schemas.activity import (
+    ActivityRead, ActivityStreamRead, ActivityCalendarEntry,
+    LinkedLiftingSessionSummary, DailyMetricSummary, CalendarDayData,
+)
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -93,18 +97,17 @@ async def list_activities(
     return [_enrich_activity_read(a) for a in activities]
 
 
-@router.get("/calendar", response_model=list[ActivityCalendarEntry])
+@router.get("/calendar")
 async def get_activities_calendar(
     start_date: date = Query(..., description="Start of month (YYYY-MM-DD)"),
     end_date: date = Query(..., description="End of month (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return lightweight activity data for calendar display.
+    """Return lightweight activity data + daily health metrics for calendar display.
 
-    Only returns the fields needed to render calendar dots/badges,
-    avoiding full activity objects including raw_data.
-    For strength activities, also returns the linked lifting session focus.
+    Returns both activities and daily metrics for the date range so the
+    calendar can show recovery/sleep/strain badges alongside activity dots.
     """
     # Fetch activities with optional linked lifting session focus
     result = await db.execute(
@@ -132,7 +135,7 @@ async def get_activities_calendar(
     )
     rows = result.all()
 
-    return [
+    activity_entries = [
         ActivityCalendarEntry(
             id=r.id,
             date=r.date,
@@ -145,6 +148,42 @@ async def get_activities_calendar(
         )
         for r in rows
     ]
+
+    # Fetch daily metrics for the date range (recovery, sleep, strain)
+    dm_result = await db.execute(
+        select(DailyMetric)
+        .where(
+            DailyMetric.user_id == current_user.id,
+            DailyMetric.metric_date >= start_date,
+            DailyMetric.metric_date <= end_date,
+        )
+        .order_by(DailyMetric.metric_date)
+    )
+    daily_metrics_raw = list(dm_result.scalars().all())
+
+    # Deduplicate by date (prefer whoop source which has the most data)
+    metrics_by_date: dict = {}
+    for dm in daily_metrics_raw:
+        d = dm.metric_date
+        if d not in metrics_by_date or dm.source == "whoop":
+            metrics_by_date[d] = dm
+
+    daily_metric_entries = [
+        DailyMetricSummary(
+            date=d,
+            recovery_score=dm.recovery_score,
+            hrv_ms=dm.hrv_ms,
+            strain=dm.strain,
+            sleep_duration_minutes=dm.sleep_duration_minutes,
+            sleep_efficiency=dm.sleep_efficiency,
+        )
+        for d, dm in metrics_by_date.items()
+    ]
+
+    return CalendarDayData(
+        activities=activity_entries,
+        daily_metrics=daily_metric_entries,
+    )
 
 
 @router.get("/{activity_id}", response_model=ActivityRead)

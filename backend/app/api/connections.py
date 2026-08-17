@@ -1,9 +1,10 @@
-"""Connections API — list connections, trigger sync."""
+"""Connections API — list connections, trigger sync, Whoop token paste."""
 
 import uuid
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,11 @@ from app.models.user import OAuthConnection, User
 from app.schemas.auth import OAuthConnectionRead
 from app.services.auth import get_current_user
 from app.services.strava import sync_activities
+
+
+class WhoopTokenRequest(BaseModel):
+    """Request body for Whoop token paste."""
+    token: str
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +119,45 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    elif connection.provider == "whoop":
+        try:
+            from app.services.whoop import sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts
+            metrics = await sync_whoop_cycles(db, current_user.id)
+            sleep_logs = await sync_whoop_sleep(db, current_user.id)
+            enriched = await sync_whoop_workouts(db, current_user.id)
+            await db.commit()
+            return {
+                "detail": f"Synced {len(metrics)} metrics, {len(sleep_logs)} sleep records, {len(enriched)} enriched activities from Whoop",
+                "synced_count": len(metrics) + len(sleep_logs) + len(enriched),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     else:
         raise HTTPException(
             status_code=400,
             detail=f"Sync not yet implemented for {connection.provider}",
         )
+
+
+@router.post("/whoop/token")
+async def connect_whoop_token(
+    body: WhoopTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Connect Whoop by pasting a bearer token from the web app.
+
+    The token is validated against the Whoop profile endpoint,
+    then stored as an OAuthConnection with provider='whoop'.
+    """
+    try:
+        from app.services.whoop import validate_and_store_token
+        connection = await validate_and_store_token(db, current_user.id, body.token)
+        await db.commit()
+        return {
+            "detail": "Whoop connected successfully",
+            "provider_user_id": connection.provider_user_id,
+            "token_expires_at": connection.token_expires_at.isoformat() if connection.token_expires_at else None,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

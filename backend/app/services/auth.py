@@ -78,6 +78,14 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "client_secret": lambda: settings.wahoo_client_secret,
         "scopes": "user_read workouts_read routes_read",
     },
+    "whoop": {
+        "authorize_url": "https://api.prod.whoop.com/oauth/oauth2/auth",
+        "token_url": "https://api.prod.whoop.com/oauth/oauth2/token",
+        "userinfo_url": "https://api.prod.whoop.com/developer/v2/user/profile/basic",
+        "client_id": lambda: settings.whoop_client_id,
+        "client_secret": lambda: settings.whoop_client_secret,
+        "scopes": "offline read:recovery read:cycles read:sleep read:workout read:profile read:body_measurement",
+    },
 }
 
 
@@ -117,6 +125,15 @@ def get_authorize_url(provider: str, redirect_uri: str) -> str:
             f"client_id={client_id}&redirect_uri={redirect_uri}"
             f"&response_type=code&scope={scopes.replace(' ', '+')}"
         )
+    elif provider == "whoop":
+        import secrets
+        state = secrets.token_hex(8)  # 16 chars, meets Whoop's 8-char minimum
+        return (
+            f"{cfg['authorize_url']}?"
+            f"client_id={client_id}&redirect_uri={redirect_uri}"
+            f"&response_type=code&scope={scopes.replace(' ', '+')}"
+            f"&state={state}"
+        )
     raise ValueError(f"Unsupported provider: {provider}")
 
 
@@ -147,8 +164,12 @@ async def exchange_code_for_user(
             },
             headers={"Accept": "application/json"},
         )
-        token_data = token_resp.json()
-        logger.info(f"Token exchange response from {provider}: status={token_resp.status_code}, data={token_data}")
+        logger.info(f"Token exchange response from {provider}: status={token_resp.status_code}, headers={dict(token_resp.headers)}, body={token_resp.text[:500]}")
+        try:
+            token_data = token_resp.json()
+        except Exception:
+            logger.error(f"Failed to parse token response as JSON from {provider}: status={token_resp.status_code}, body={token_resp.text[:500]}")
+            raise ValueError(f"Token exchange failed for {provider}: HTTP {token_resp.status_code}, body={token_resp.text[:200]}")
 
     access_token = token_data.get("access_token")
     if not access_token:
@@ -197,6 +218,13 @@ async def exchange_code_for_user(
         provider_user_id = str(userinfo.get("id", ""))
         name = userinfo.get("name", "") or f"{userinfo.get('first', '')} {userinfo.get('last', '')}".strip() or "Wahoo User"
         email = userinfo.get("email") or f"wahoo_{provider_user_id}@wahoo.local"
+        avatar_url = None
+    elif provider == "whoop":
+        provider_user_id = str(userinfo.get("user_id", ""))
+        first = userinfo.get("first_name", "")
+        last = userinfo.get("last_name", "")
+        name = f"{first} {last}".strip() or "Whoop User"
+        email = userinfo.get("email") or f"whoop_{provider_user_id}@whoop.local"
         avatar_url = None
     else:
         raise ValueError(f"Unsupported provider: {provider}")

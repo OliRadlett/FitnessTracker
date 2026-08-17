@@ -261,6 +261,59 @@ class ChartService:
             y_label="Score",
         )
 
+    # ── Whoop strain trend ─────────────────────────────────────────────────────
+
+    async def whoop_strain_trend(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+        """Daily strain score over time from Whoop cycles.
+
+        Bar chart with strain values, colored by intensity:
+        - Low (< 10): green
+        - Moderate (10-14): yellow
+        - High (14-18): orange
+        - Very High (> 18): red
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await db_execute(
+            self.db,
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.strain.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        # Color bars by intensity
+        colors = []
+        for m in metrics:
+            s = m.strain or 0
+            if s >= 18:
+                colors.append("#ef4444")  # red
+            elif s >= 14:
+                colors.append("#f97316")  # orange
+            elif s >= 10:
+                colors.append("#eab308")  # yellow
+            else:
+                colors.append("#22c55e")  # green
+
+        return ChartData(
+            chart_type="bar",
+            title="Whoop Strain Trend",
+            labels=[m.metric_date.isoformat() for m in metrics],
+            series=[
+                ChartSeries(
+                    name="Strain",
+                    data=[m.strain for m in metrics],
+                    color="#f97316",
+                )
+            ],
+            x_label="Date",
+            y_label="Strain (0-21)",
+        )
+
     # ── Sleep quality trend ───────────────────────────────────────────────────
 
     async def sleep_quality_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:

@@ -107,3 +107,21 @@ class ActivityCalendarEntry(BaseModel):
     focus: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class DailyMetricSummary(BaseModel):
+    """Lightweight daily metric data for calendar day cells."""
+    date: date
+    recovery_score: float | None = None
+    hrv_ms: float | None = None
+    strain: float | None = None
+    sleep_duration_minutes: float | None = None
+    sleep_efficiency: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CalendarDayData(BaseModel):
+    """Combined activity + health data for a calendar day."""
+    activities: list[ActivityCalendarEntry]
+    daily_metrics: list[DailyMetricSummary]

@@ -55,6 +55,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
         "schedule": crontab(hour=4, minute=0, day_of_week=0),
     },
+    # Sync Whoop data every 30 minutes (cycles, recovery, sleep, workouts)
+    "sync-whoop-data": {
+        "task": "app.tasks.scheduler.sync_all_whoop_data",
+        "schedule": crontab(minute="*/30"),
+    },
 }
 
 
@@ -395,6 +400,83 @@ def auto_estimate_ftp_weekly() -> dict:
             return {
                 "users_checked": len(profiles),
                 "ftp_estimated": estimated_count,
+            }
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.sync_all_whoop_data")
+def sync_all_whoop_data() -> dict:
+    """Sync all Whoop data for connected users: cycles, recovery, sleep, workouts.
+
+    This task is enqueued by Celery Beat every 30 minutes.
+    It fetches Whoop cycles (with recovery), sleep data, and workout data.
+    Workout enrichment matches to existing Strava activities.
+    Handles expired tokens gracefully (skips users with expired tokens).
+    """
+    import asyncio
+    from sqlalchemy import select
+    from app.database import async_session_factory
+    from app.models.user import OAuthConnection
+    from app.services.whoop import (
+        sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts, is_token_expired,
+    )
+
+    async def _run():
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(OAuthConnection).where(OAuthConnection.provider == "whoop")
+            )
+            connections = list(result.scalars().all())
+            synced_cycles = 0
+            synced_sleep = 0
+            synced_workouts = 0
+            skipped_expired = 0
+
+            for conn in connections:
+                # Skip if token is expired
+                if is_token_expired(conn.access_token, conn.token_expires_at):
+                    skipped_expired += 1
+                    print(f"Skipping Whoop sync for user {conn.user_id}: token expired")
+                    continue
+
+                try:
+                    metrics = await sync_whoop_cycles(db, conn.user_id)
+                    synced_cycles += len(metrics)
+                except ValueError as e:
+                    if "expired" in str(e).lower():
+                        skipped_expired += 1
+                    print(f"Whoop cycle sync failed for user {conn.user_id}: {e}")
+                except Exception as e:
+                    print(f"Whoop cycle sync error for user {conn.user_id}: {e}")
+
+                try:
+                    sleep_logs = await sync_whoop_sleep(db, conn.user_id)
+                    synced_sleep += len(sleep_logs)
+                except ValueError as e:
+                    if "expired" in str(e).lower():
+                        skipped_expired += 1
+                    print(f"Whoop sleep sync failed for user {conn.user_id}: {e}")
+                except Exception as e:
+                    print(f"Whoop sleep sync error for user {conn.user_id}: {e}")
+
+                try:
+                    enriched = await sync_whoop_workouts(db, conn.user_id)
+                    synced_workouts += len(enriched)
+                except ValueError as e:
+                    if "expired" in str(e).lower():
+                        skipped_expired += 1
+                    print(f"Whoop workout sync failed for user {conn.user_id}: {e}")
+                except Exception as e:
+                    print(f"Whoop workout sync error for user {conn.user_id}: {e}")
+
+            await db.commit()
+            return {
+                "synced_cycles": synced_cycles,
+                "synced_sleep": synced_sleep,
+                "synced_workouts": synced_workouts,
+                "skipped_expired_tokens": skipped_expired,
+                "users_processed": len(connections),
             }
 
     return asyncio.run(_run())

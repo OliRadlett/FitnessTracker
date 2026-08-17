@@ -23,6 +23,7 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "hrv_trend": {"method": "hrv_trend", "params": ["days"]},
     "recovery_vs_strain": {"method": "recovery_vs_strain", "params": ["days"]},
     "sleep_quality_trend": {"method": "sleep_quality_trend", "params": ["days"]},
+    "whoop_strain_trend": {"method": "whoop_strain_trend", "params": ["days"]},
     # Cycling charts
     "training_load": {"method": "training_load", "params": ["days"]},
     "ftp_history": {"method": "ftp_history", "params": []},

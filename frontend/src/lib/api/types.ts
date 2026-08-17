@@ -42,6 +42,7 @@ export interface DashboardSummary {
   weekly_distance_meters: number;
   latest_recovery?: number;
   latest_hrv_ms?: number;
+  latest_strain?: number;
   active_alerts_count: number;
   current_week_start: string;
   current_week_end: string;
@@ -110,6 +111,20 @@ export interface ActivityCalendarEntry {
   distance_meters?: number;
   tss?: number;
   focus?: string;
+}
+
+export interface DailyMetricSummary {
+  date: string;
+  recovery_score?: number;
+  hrv_ms?: number;
+  strain?: number;
+  sleep_duration_minutes?: number;
+  sleep_efficiency?: number;
+}
+
+export interface CalendarDayData {
+  activities: ActivityCalendarEntry[];
+  daily_metrics: DailyMetricSummary[];
 }
 
 export interface ActivityDetail extends Activity {

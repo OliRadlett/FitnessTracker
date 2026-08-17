@@ -11,6 +11,7 @@ class DashboardSummary(BaseModel):
     weekly_distance_meters: float = 0.0
     latest_recovery: float | None = None
     latest_hrv_ms: float | None = None
+    latest_strain: float | None = None
     active_alerts_count: int = 0
     current_week_start: date
     current_week_end: date

@@ -8,6 +8,8 @@ import type {
   Activity,
   LiftingSession,
   UpdateSessionPayload,
+  CalendarDayData,
+  DailyMetricSummary,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
@@ -542,13 +544,16 @@ export default function CalendarPage() {
     };
   }, [currentMonth]);
 
-  const { data: activities, isLoading } = useQuery<ActivityCalendarEntry[]>({
+  const { data: calendarData, isLoading } = useQuery<CalendarDayData>({
     queryKey: ['activities-calendar', fetchStart, fetchEnd],
     queryFn: () =>
-      authFetch<ActivityCalendarEntry[]>(
+      authFetch<CalendarDayData>(
         `/api/v1/activities/calendar?start_date=${fetchStart}&end_date=${fetchEnd}`,
       ),
   });
+
+  const activities = calendarData?.activities;
+  const dailyMetrics = calendarData?.daily_metrics;
 
   // Build calendar grid days
   const calendarDays = useMemo(
@@ -568,11 +573,34 @@ export default function CalendarPage() {
     return map;
   }, [activities]);
 
+  // Group daily metrics by date
+  const metricsByDate = useMemo(() => {
+    const map = new Map<string, DailyMetricSummary>();
+    if (!dailyMetrics) return map;
+    for (const m of dailyMetrics) {
+      map.set(m.date, m);
+    }
+    return map;
+  }, [dailyMetrics]);
+
   // Selected day activities
   const selectedDayActivities = useMemo(() => {
     const key = format(selectedDay, 'yyyy-MM-dd');
     return activitiesByDate.get(key) || [];
   }, [selectedDay, activitiesByDate]);
+
+  // Helper to get recovery color class
+  const getRecoveryColor = (score: number): string => {
+    if (score >= 70) return 'text-green-400';
+    if (score >= 40) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+
+  const getRecoveryBg = (score: number): string => {
+    if (score >= 70) return 'bg-green-500/15';
+    if (score >= 40) return 'bg-yellow-500/15';
+    return 'bg-red-500/15';
+  };
 
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -711,10 +739,34 @@ export default function CalendarPage() {
                       )}
                     </div>
 
+                    {/* Health metric badges (recovery, sleep) */}
+                    {metricsByDate.has(dateKey) && (() => {
+                      const dm = metricsByDate.get(dateKey)!;
+                      const hasRecovery = dm.recovery_score != null;
+                      const hasSleep = dm.sleep_duration_minutes != null;
+                      if (!hasRecovery && !hasSleep) return null;
+                      return (
+                        <div className="flex gap-1 mb-0.5">
+                          {hasRecovery && (
+                            <span
+                              className={`text-[9px] font-medium px-1 py-0.5 rounded ${getRecoveryBg(dm.recovery_score!)} ${getRecoveryColor(dm.recovery_score!)}`}
+                            >
+                              {Math.round(dm.recovery_score!)}%
+                            </span>
+                          )}
+                          {hasSleep && (
+                            <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+                              {Math.round(dm.sleep_duration_minutes! / 60)}h
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Activity badges */}
                     {dayActivities.length > 0 && (
                       <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                        {dayActivities.slice(0, 3).map((activity) => (
+                        {dayActivities.slice(0, 2).map((activity) => (
                           <div
                             key={activity.id}
                             className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border ${getSportBorderColor(activity.sport_type)} ${getSportColor(activity.sport_type)}/10`}

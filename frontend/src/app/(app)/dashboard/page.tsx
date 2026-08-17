@@ -72,9 +72,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
         {summaryLoading ? (
-          Array.from({ length: 5 }).map((_, i) => (
+          Array.from({ length: 6 }).map((_, i) => (
             <Card key={i}>
               <div className="animate-pulse">
                 <div className="h-4 bg-surface-light rounded w-24 mb-3"></div>
@@ -108,6 +108,18 @@ export default function DashboardPage() {
               value={summary?.weekly_tss?.toFixed(0) ?? '—'}
               subtitle="Training Stress Score"
               color="text-blue-400"
+            />
+            <SummaryCard
+              title="Daily Strain"
+              value={summary?.latest_strain?.toFixed(1) ?? '—'}
+              subtitle="Whoop strain (0-21)"
+              color={
+                (summary?.latest_strain ?? 0) >= 14
+                  ? 'text-warning'
+                  : (summary?.latest_strain ?? 0) >= 10
+                    ? 'text-yellow-400'
+                    : 'text-green-400'
+              }
             />
             <SummaryCard
               title="Active Alerts"

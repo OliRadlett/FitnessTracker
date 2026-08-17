@@ -87,6 +87,16 @@ async def dashboard_summary(
     latest_recovery = latest_metric.recovery_score if latest_metric else None
     latest_hrv = latest_metric.hrv_ms if latest_metric else None
 
+    # Latest strain (from Whoop cycles)
+    result = await db.execute(
+        select(DailyMetric)
+        .where(DailyMetric.user_id == uid, DailyMetric.strain.isnot(None))
+        .order_by(DailyMetric.metric_date.desc())
+        .limit(1)
+    )
+    latest_strain_metric = result.scalar_one_or_none()
+    latest_strain = latest_strain_metric.strain if latest_strain_metric else None
+
     # Active alerts
     result = await db.execute(
         select(func.count(HealthAlert.id))
@@ -101,6 +111,7 @@ async def dashboard_summary(
         weekly_distance_meters=weekly_distance,
         latest_recovery=latest_recovery,
         latest_hrv_ms=latest_hrv,
+        latest_strain=latest_strain,
         active_alerts_count=active_alerts,
         current_week_start=monday,
         current_week_end=sunday,

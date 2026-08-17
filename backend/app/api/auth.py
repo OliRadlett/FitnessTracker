@@ -158,7 +158,12 @@ async def oauth_callback(
                     },
                     headers={"Accept": "application/json"},
                 )
-                token_data = token_resp.json()
+                try:
+                    token_data = token_resp.json()
+                except Exception:
+                    return RedirectResponse(
+                        url=f"{_frontend_url}/settings?error=Whoop+HTTP+{token_resp.status_code}+{token_resp.text[:100]}"
+                    )
 
             access_token = token_data.get("access_token")
             if not access_token:
@@ -175,11 +180,28 @@ async def oauth_callback(
             async with _httpx.AsyncClient() as client:
                 headers = {"Authorization": f"Bearer {access_token}"}
                 userinfo_resp = await client.get(cfg["userinfo_url"], headers=headers)
-                userinfo = userinfo_resp.json()
+
+                # Whoop fallback: if primary URL returns 404, try developer/v1 endpoint
+                if provider == "whoop" and userinfo_resp.status_code == 404:
+                    fallback_url = "https://api.prod.whoop.com/developer/v2/user/profile/basic"
+                    userinfo_resp = await client.get(fallback_url, headers=headers)
+
+                if userinfo_resp.status_code != 200:
+                    return RedirectResponse(
+                        url=f"{_frontend_url}/settings?error=Whoop+userinfo+HTTP+{userinfo_resp.status_code}+{userinfo_resp.text[:80]}"
+                    )
+                try:
+                    userinfo = userinfo_resp.json()
+                except Exception:
+                    return RedirectResponse(
+                        url=f"{_frontend_url}/settings?error=Whoop+userinfo+invalid+JSON"
+                    )
 
             # Extract provider user ID
             if provider == "strava":
                 provider_user_id = str(userinfo.get("id", ""))
+            elif provider == "whoop":
+                provider_user_id = str(userinfo.get("user_id", ""))
             else:
                 provider_user_id = str(userinfo.get("id", ""))
 
