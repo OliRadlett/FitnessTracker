@@ -50,17 +50,29 @@ _COMPATIBLE_SPORT_TYPES: dict[str, set[str]] = {
 def _date_proximity_score(d1, d2) -> float:
     """Score 0.0–1.0 based on time proximity between two datetimes.
 
-    Within 2 hours  = 1.0
-    Within 6 hours  = 0.5
-    Else            = 0.0
+    Within 30 min = 1.0  (very likely same activity)
+    Within 2 hours = 0.9
+    Within 4 hours = 0.7
+    Within 6 hours = 0.5
+    Same day       = 0.3
+    Else           = 0.0
     """
     diff = abs((d1 - d2).total_seconds())
+    thirty_min = 30 * 60
     two_hours = 2 * 3600
+    four_hours = 4 * 3600
     six_hours = 6 * 3600
-    if diff <= two_hours:
+    if diff <= thirty_min:
         return 1.0
+    elif diff <= two_hours:
+        return 0.9
+    elif diff <= four_hours:
+        return 0.7
     elif diff <= six_hours:
         return 0.5
+    # Same calendar day
+    elif d1.date() == d2.date():
+        return 0.3
     return 0.0
 
 
@@ -169,6 +181,13 @@ async def find_duplicate_activity(
             f"Found duplicate activity '{best_activity.name}' (score {best_score:.2f})"
         )
         return best_activity
+
+    # Near-miss logging: score within 0.05 of threshold — likely false negative
+    if best_score >= threshold - 0.05 and best_activity is not None:
+        logger.warning(
+            f"Near-miss merge: '{best_activity.name}' scored {best_score:.2f} "
+            f"(threshold {threshold:.2f}). Consider reviewing for false negative."
+        )
 
     return None
 

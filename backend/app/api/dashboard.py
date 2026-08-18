@@ -199,3 +199,108 @@ async def weekly_report(
         avg_sleep_hours=avg_sleep_hours,
         new_prs=new_prs,
     )
+
+
+@router.get("/whoop-weekly")
+async def whoop_weekly_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a weekly Whoop health summary.
+
+    Returns average recovery, sleep, strain, sleep consistency, and best/worst recovery day.
+    """
+    uid = current_user.id
+    monday, sunday = _week_bounds()
+    prev_monday, prev_sunday = _week_bounds(offset_weeks=1)
+
+    # Current week metrics
+    result = await db.execute(
+        select(DailyMetric)
+        .where(
+            DailyMetric.user_id == uid,
+            DailyMetric.metric_date.between(monday, sunday),
+            DailyMetric.source == "whoop",
+        )
+        .order_by(DailyMetric.metric_date)
+    )
+    current_week = list(result.scalars().all())
+
+    # Previous week metrics
+    result = await db.execute(
+        select(DailyMetric)
+        .where(
+            DailyMetric.user_id == uid,
+            DailyMetric.metric_date.between(prev_monday, prev_sunday),
+            DailyMetric.source == "whoop",
+        )
+        .order_by(DailyMetric.metric_date)
+    )
+    prev_week = list(result.scalars().all())
+
+    def _avg(values: list):
+        valid = [v for v in values if v is not None]
+        return round(sum(valid) / len(valid), 1) if valid else None
+
+    def _trend(current: float | None, previous: float | None) -> str | None:
+        if current is None or previous is None:
+            return None
+        diff_pct = ((current - previous) / previous) * 100
+        if diff_pct > 5:
+            return "up"
+        elif diff_pct < -5:
+            return "down"
+        return "stable"
+
+    cur_recovery = [m.recovery_score for m in current_week if m.recovery_score is not None]
+    prev_recovery = [m.recovery_score for m in prev_week if m.recovery_score is not None]
+    avg_recovery = _avg(cur_recovery)
+    prev_avg_recovery = _avg(prev_recovery)
+
+    cur_strain = [m.strain for m in current_week if m.strain is not None]
+    prev_strain = [m.strain for m in prev_week if m.strain is not None]
+    total_strain = round(sum(cur_strain), 1) if cur_strain else None
+    prev_total_strain = round(sum(prev_strain), 1) if prev_strain else None
+
+    cur_sleep = [m.sleep_duration_minutes for m in current_week if m.sleep_duration_minutes is not None]
+    prev_sleep = [m.sleep_duration_minutes for m in prev_week if m.sleep_duration_minutes is not None]
+    avg_sleep_hours = round(_avg(cur_sleep) / 60, 1) if _avg(cur_sleep) else None
+    prev_avg_sleep_hours = round(_avg(prev_sleep) / 60, 1) if _avg(prev_sleep) else None
+
+    # Best/worst recovery day
+    best_day = max(current_week, key=lambda m: m.recovery_score or 0) if cur_recovery else None
+    worst_day = min(current_week, key=lambda m: m.recovery_score or 200) if cur_recovery else None
+
+    # Sleep consistency
+    sleep_result = await db.execute(
+        select(SleepLog)
+        .where(
+            SleepLog.user_id == uid,
+            SleepLog.sleep_start.isnot(None),
+            SleepLog.sleep_date.between(monday, sunday),
+        )
+    )
+    sleep_logs = list(sleep_result.scalars().all())
+    from app.services.whoop import compute_sleep_consistency
+    consistency = compute_sleep_consistency(sleep_logs, window_days=7)
+
+    return {
+        "week_start": monday.isoformat(),
+        "week_end": sunday.isoformat(),
+        "avg_recovery": avg_recovery,
+        "avg_recovery_trend": _trend(avg_recovery, prev_avg_recovery),
+        "total_strain": total_strain,
+        "total_strain_trend": _trend(total_strain, prev_total_strain),
+        "avg_sleep_hours": avg_sleep_hours,
+        "avg_sleep_trend": _trend(avg_sleep_hours, prev_avg_sleep_hours),
+        "sleep_consistency": consistency["score"],
+        "best_recovery_day": {
+            "date": best_day.metric_date.isoformat(),
+            "score": best_day.recovery_score,
+        } if best_day else None,
+        "worst_recovery_day": {
+            "date": worst_day.metric_date.isoformat(),
+            "score": worst_day.recovery_score,
+        } if worst_day else None,
+        "days_with_data": len(current_week),
+    }

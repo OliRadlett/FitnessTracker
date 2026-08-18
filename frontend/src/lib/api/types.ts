@@ -27,6 +27,7 @@ export interface ChartData {
   series: ChartSeries[];
   x_label?: string;
   y_label?: string;
+  insights?: string[];
 }
 
 export interface ChartParams {
@@ -323,6 +324,7 @@ export interface RouteData {
   estimated_time_seconds?: number;
   encoded_polyline: string;
   elevation_profile?: { elevations: (number | null)[] };
+  surface_profile?: Record<string, number>;
   start_lat: number;
   start_lng: number;
   end_lat: number;
@@ -350,7 +352,9 @@ export interface RouteSummary {
   locality?: string;
   is_loop: boolean;
   sources: RouteSource[];
+  surface_profile?: Record<string, number>;
   ride_count: number;
+  is_ridden: boolean;
   last_ridden_date?: string;
   created_at: string;
   updated_at: string;
@@ -360,6 +364,7 @@ export interface RouteFilters {
   sport_type?: string;
   source?: string;
   is_loop?: boolean;
+  is_ridden?: boolean;
   min_distance?: number;
   max_distance?: number;
   min_elevation?: number;
@@ -391,6 +396,7 @@ export interface CyclingProfile {
   user_id: string;
   ftp_watts?: number;
   weight_kg?: number;
+  lactate_threshold_hr?: number;
   auto_estimate_ftp: boolean;
   created_at: string;
   updated_at: string;
@@ -399,6 +405,7 @@ export interface CyclingProfile {
 export interface CyclingProfileUpdate {
   ftp_watts?: number;
   weight_kg?: number;
+  lactate_threshold_hr?: number;
   auto_estimate_ftp?: boolean;
 }
 
@@ -461,6 +468,12 @@ export interface PowerZonesResponse {
   total_time_seconds: number;
 }
 
+export interface MetricTrend {
+  current_value: number | null;
+  baseline_value: number | null;
+  direction: 'up' | 'down' | 'stable';
+}
+
 export interface CyclingMetricsSummary {
   recent_tss: number;
   recent_distance_km: number;
@@ -474,6 +487,14 @@ export interface CyclingMetricsSummary {
   ftp_watts?: number;
   weight_kg?: number;
   power_to_weight?: number;
+  // Trend indicators (current 7d vs 28-day rolling average)
+  tss_trend?: MetricTrend;
+  distance_trend?: MetricTrend;
+  time_trend?: MetricTrend;
+  elevation_trend?: MetricTrend;
+  rides_trend?: MetricTrend;
+  if_trend?: MetricTrend;
+  vi_trend?: MetricTrend;
 }
 
 export interface PowerVsHrPoint {
@@ -525,4 +546,84 @@ export interface BackfillFtpResult {
   created: number;
   entries: BackfillFtpEntry[];
   months_analyzed: number;
+}
+
+// ─── Phase 5.2 — Whoop Intelligence ───────────────────────────────────────
+
+export interface ReadinessResponse {
+  recovery_score: number | null;
+  readiness: 'green' | 'yellow' | 'red' | 'unknown';
+  hrv_ms: number | null;
+  resting_hr: number | null;
+  message: string;
+  date?: string;
+}
+
+export interface SleepConsistencyResponse {
+  consistency_score: number;
+  avg_bedtime: string | null;
+  std_minutes: number;
+  days_analyzed: number;
+  window_days: number;
+}
+
+export interface SleepDebtResponse {
+  debt_hours: number;
+  avg_sleep_hours: number;
+  days_below_target: number;
+  target_hours: number;
+  window_days: number;
+}
+
+export interface OptimalBedtimeResponse {
+  suggested_bedtime: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  message: string;
+  best_recovery_bedtimes: { date: string; bedtime: string; recovery_score: number }[];
+}
+
+export interface RespiratoryRateResponse {
+  current_rr: number | null;
+  recent_avg_rr: number | null;
+  baseline_avg_rr: number | null;
+  trend: 'stable' | 'elevated' | 'low';
+  date: string | null;
+}
+
+export interface WhoopWeeklySummary {
+  week_start: string;
+  week_end: string;
+  avg_recovery: number | null;
+  avg_recovery_trend: 'up' | 'down' | 'stable' | null;
+  total_strain: number | null;
+  total_strain_trend: 'up' | 'down' | 'stable' | null;
+  avg_sleep_hours: number | null;
+  avg_sleep_trend: 'up' | 'down' | 'stable' | null;
+  sleep_consistency: number;
+  best_recovery_day: { date: string; score: number } | null;
+  worst_recovery_day: { date: string; score: number } | null;
+  days_with_data: number;
+}
+
+export interface WeightEntry {
+  date: string;
+  weight_kg: number;
+  source: string;
+}
+
+export interface WeightHistoryResponse {
+  entries: WeightEntry[];
+  rolling_avg: { date: string; weight_kg: number }[];
+}
+
+export interface HealthAlert {
+  id: string;
+  alert_type: string;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  evidence?: Record<string, unknown>;
+  detected_date: string;
+  status: string;
+  created_at?: string;
 }

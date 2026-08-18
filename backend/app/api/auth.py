@@ -105,7 +105,7 @@ async def oauth_authorize(
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
     # For fitness integrations, use the backend callback URL via public_url
-    if not redirect_uri and provider in ("strava", "whoop", "wahoo", "komoot"):
+    if not redirect_uri and provider in ("strava", "whoop", "wahoo"):
         redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
 
     url = get_authorize_url(provider, redirect_uri)

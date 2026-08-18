@@ -139,6 +139,37 @@ async def trigger_sync(
         )
 
 
+@router.post("/whoop/backfill")
+async def backfill_whoop(
+    months: int = 12,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backfill all historical Whoop data for the current user.
+
+    Fetches cycles (with recovery), sleep, and workout data going back
+    the specified number of months. Uses Whoop API pagination to retrieve
+    all records in the date range.
+    """
+    result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.user_id == current_user.id,
+            OAuthConnection.provider == "whoop",
+        )
+    )
+    connection = result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=404, detail="No Whoop connection found")
+
+    try:
+        from app.services.whoop import backfill_whoop_data
+        summary = await backfill_whoop_data(db, current_user.id, months=months)
+        await db.commit()
+        return summary
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/whoop/token")
 async def connect_whoop_token(
     body: WhoopTokenRequest,

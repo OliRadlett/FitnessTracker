@@ -335,11 +335,11 @@ export default function CyclingPage() {
 
       {/* Recent Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <MetricCard label="7d TSS" value={metrics?.recent_tss?.toFixed(0)} color="text-blue-400" tooltip="Training Stress Score — a composite measure of ride difficulty based on intensity and duration. 100 TSS = 1 hour at FTP." />
-        <MetricCard label="7d Rides" value={metrics?.recent_rides} color="text-purple-400" tooltip="Number of cycling activities in the last 7 days." />
-        <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-slate-300" tooltip="Total distance covered in the last 7 days." />
-        <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-slate-300" tooltip="Total time on the bike in the last 7 days." />
-        <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-slate-300" tooltip="Total elevation gain in the last 7 days." />
+        <MetricCard label="7d TSS" value={metrics?.recent_tss?.toFixed(0)} color="text-blue-400" trend={metrics?.tss_trend} tooltip="Training Stress Score — a composite measure of ride difficulty based on intensity and duration. 100 TSS = 1 hour at FTP." />
+        <MetricCard label="7d Rides" value={metrics?.recent_rides} color="text-purple-400" trend={metrics?.rides_trend} tooltip="Number of cycling activities in the last 7 days." />
+        <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-slate-300" trend={metrics?.distance_trend} tooltip="Total distance covered in the last 7 days." />
+        <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-slate-300" trend={metrics?.time_trend} tooltip="Total time on the bike in the last 7 days." />
+        <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-slate-300" trend={metrics?.elevation_trend} tooltip="Total elevation gain in the last 7 days." />
       </div>
 
       {/* IF & VI Row */}
@@ -348,6 +348,7 @@ export default function CyclingPage() {
           label="Avg Intensity Factor"
           value={metrics?.avg_intensity_factor?.toFixed(3)}
           color="text-yellow-400"
+          trend={metrics?.if_trend}
           subtext="IF = NP / FTP (7d avg)"
           tooltip="Intensity Factor = Normalized Power ÷ FTP. Measures how hard a ride was relative to your max. 0.75 = endurance, 0.85 = tempo, 0.95 = threshold, 1.05+ = VO2max."
         />
@@ -355,6 +356,7 @@ export default function CyclingPage() {
           label="Avg Variability Index"
           value={metrics?.avg_variability_index?.toFixed(3)}
           color="text-blue-400"
+          trend={metrics?.vi_trend}
           subtext="VI = NP / AP (7d avg, lower = steadier)"
           tooltip="Variability Index = Normalized Power ÷ Average Power. Measures how steady your power output was. 1.0 = perfectly steady. >1.2 = very variable (e.g. criteriums). Road: aim for <1.1."
         />

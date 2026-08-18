@@ -22,6 +22,9 @@ from app.schemas.cycling import (
     PowerZonesResponse,
     PowerZoneDistribution,
     CyclingMetricsSummary,
+    MetricTrend,
+    HrZonesResponse,
+    HrZoneDistribution,
     PowerVsHrResponse,
     PowerVsHrPoint,
 )
@@ -82,6 +85,9 @@ async def update_cycling_profile(
 
     if payload.weight_kg is not None:
         profile.weight_kg = payload.weight_kg
+
+    if payload.lactate_threshold_hr is not None:
+        profile.lactate_threshold_hr = payload.lactate_threshold_hr
 
     if payload.auto_estimate_ftp is not None:
         profile.auto_estimate_ftp = payload.auto_estimate_ftp
@@ -223,6 +229,38 @@ async def get_power_zones(
     )
 
 
+# ── Heart Rate Zones ────────────────────────────────────────────────────────
+
+
+@router.get("/hr-zones", response_model=HrZonesResponse)
+async def get_hr_zones(
+    days: int = Query(30, ge=7, le=180, description="Lookback period in days"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get heart rate zone distribution based on LTHR.
+
+    Uses the Coggan 6-zone model for HR. Requires LTHR to be set in cycling profile.
+    """
+    from app.services.cycling import compute_hr_zones_from_streams
+
+    profile = await get_or_create_cycling_profile(db, current_user.id)
+    if not profile.lactate_threshold_hr:
+        raise HTTPException(
+            status_code=400,
+            detail="LTHR not set. Set your Lactate Threshold Heart Rate in the cycling profile first.",
+        )
+
+    zones = await compute_hr_zones_from_streams(db, current_user.id, profile.lactate_threshold_hr, days)
+    total_time = sum(z["time_seconds"] for z in zones)
+
+    return HrZonesResponse(
+        lthr=profile.lactate_threshold_hr,
+        zones=[HrZoneDistribution(**z) for z in zones],
+        total_time_seconds=total_time,
+    )
+
+
 # ── Power vs HR Scatter ─────────────────────────────────────────────────────
 
 
@@ -268,9 +306,10 @@ async def get_cycling_metrics_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get a summary of cycling-specific metrics for the last 7 days."""
+    """Get a summary of cycling-specific metrics for the last 7 days with trend indicators."""
     uid = current_user.id
     cutoff_7d = date.today() - timedelta(days=7)
+    cutoff_28d = date.today() - timedelta(days=28)
     cutoff_90d = date.today() - timedelta(days=90)
 
     # Recent cycling stats (7 days)
@@ -336,6 +375,71 @@ async def get_cycling_metrics_summary(
     if effective_ftp and profile.weight_kg and profile.weight_kg > 0:
         power_to_weight = round(effective_ftp / profile.weight_kg, 2)
 
+    # ── Trend computation: compare 7-day values against 28-day weekly averages ──
+    def _trend(current: float | None, baseline: float | None) -> MetricTrend | None:
+        """Compute trend direction comparing current 7d value to 28d weekly average."""
+        if current is None or baseline is None or baseline == 0:
+            return MetricTrend(current_value=current, baseline_value=baseline, direction="stable")
+        ratio = current / baseline
+        if ratio > 1.05:
+            direction = "up"
+        elif ratio < 0.95:
+            direction = "down"
+        else:
+            direction = "stable"
+        return MetricTrend(current_value=round(current, 2), baseline_value=round(baseline, 2), direction=direction)
+
+    # 28-day stats for baseline (4 weekly averages)
+    result_28d = await db.execute(
+        select(
+            func.count(Activity.id).label("ride_count"),
+            func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
+            func.coalesce(func.sum(Activity.distance_meters), 0.0).label("total_distance"),
+            func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_time"),
+            func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label("total_elevation"),
+        )
+        .where(
+            Activity.user_id == uid,
+            Activity.sport_type == "cycling",
+            Activity.start_date >= cutoff_28d,
+        )
+    )
+    row_28d = result_28d.one()
+
+    # Convert 28-day totals to weekly averages (divide by 4)
+    baseline_tss = float(row_28d.total_tss or 0) / 4
+    baseline_distance = float(row_28d.total_distance or 0) / 1000 / 4
+    baseline_time = int(row_28d.total_time or 0) / 3600 / 4
+    baseline_elevation = float(row_28d.total_elevation or 0) / 4
+    baseline_rides = int(row_28d.ride_count or 0) / 4
+
+    # 28-day IF/VI baselines
+    result_rides_28d = await db.execute(
+        select(Activity.normalized_power, Activity.average_power)
+        .where(
+            Activity.user_id == uid,
+            Activity.sport_type == "cycling",
+            Activity.start_date >= cutoff_28d,
+            Activity.average_power.isnot(None),
+        )
+    )
+    ride_rows_28d = result_rides_28d.all()
+
+    baseline_if = None
+    if ftp and ftp > 0 and ride_rows_28d:
+        ifs_28d = []
+        for r in ride_rows_28d:
+            power = r.normalized_power or r.average_power
+            if power:
+                ifs_28d.append(power / ftp)
+        if ifs_28d:
+            baseline_if = sum(ifs_28d) / len(ifs_28d)
+
+    baseline_vi = None
+    vi_rows_28d = [r for r in ride_rows_28d if r.normalized_power and r.average_power and r.average_power > 0]
+    if vi_rows_28d:
+        baseline_vi = sum(r.normalized_power / r.average_power for r in vi_rows_28d) / len(vi_rows_28d)
+
     return CyclingMetricsSummary(
         recent_tss=float(row.total_tss or 0),
         recent_distance_km=round(float(row.total_distance or 0) / 1000, 1),
@@ -349,6 +453,14 @@ async def get_cycling_metrics_summary(
         ftp_watts=ftp,
         weight_kg=profile.weight_kg,
         power_to_weight=power_to_weight,
+        # Trend indicators
+        tss_trend=_trend(float(row.total_tss or 0), baseline_tss),
+        distance_trend=_trend(round(float(row.total_distance or 0) / 1000, 1), baseline_distance),
+        time_trend=_trend(round(int(row.total_time or 0) / 3600, 1), baseline_time),
+        elevation_trend=_trend(round(float(row.total_elevation or 0), 0), baseline_elevation),
+        rides_trend=_trend(int(row.ride_count or 0), baseline_rides),
+        if_trend=_trend(avg_if, baseline_if),
+        vi_trend=_trend(avg_vi, baseline_vi),
     )
 
 

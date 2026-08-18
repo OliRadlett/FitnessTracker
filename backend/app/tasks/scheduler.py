@@ -1,9 +1,13 @@
 """Celery tasks — scheduler.py with Redis broker, Beat schedule."""
 
+import logging
+
 from celery import Celery
 from celery.schedules import crontab
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -95,21 +99,21 @@ def sync_all_strava_activities() -> dict:
                     activities = await sync_activities(db, conn.user_id)
                     synced_count += len(activities)
                 except Exception as e:
-                    print(f"Failed to sync for user {conn.user_id}: {e}")
+                    logger.error(f"Failed to sync for user {conn.user_id}: {e}", exc_info=True)
 
                 # Backfill links for any remaining unlinked activities
                 try:
                     linked = await link_all_unlinked_activities(db, conn.user_id)
                     linked_count += linked
                 except Exception as e:
-                    print(f"Failed to backfill links for user {conn.user_id}: {e}")
+                    logger.error(f"Failed to backfill links for user {conn.user_id}: {e}", exc_info=True)
 
                 # Backfill activity-to-route links
                 try:
                     rl = await backfill_activity_route_links(db, conn.user_id)
                     route_linked_count += rl
                 except Exception as e:
-                    print(f"Failed to backfill route links for user {conn.user_id}: {e}")
+                    logger.error(f"Failed to backfill route links for user {conn.user_id}: {e}", exc_info=True)
 
             # Also sync Wahoo activities for users with Wahoo connections
             wahoo_result = await db.execute(
@@ -123,7 +127,7 @@ def sync_all_strava_activities() -> dict:
                     activities = await sync_wahoo_activities(db, conn.user_id)
                     wahoo_synced_count += len(activities)
                 except Exception as e:
-                    print(f"Failed to sync Wahoo activities for user {conn.user_id}: {e}")
+                    logger.error(f"Failed to sync Wahoo activities for user {conn.user_id}: {e}", exc_info=True)
 
             await db.commit()
             return {
@@ -141,7 +145,12 @@ def sync_all_strava_activities() -> dict:
 def generate_health_alerts() -> dict:
     """Analyze recent metrics and generate health alerts.
 
-    Checks for patterns like overtraining, sleep decline, HRV drops.
+    Uses HealthAnalysisService for composite scoring:
+    - Overtraining (TSB + recovery + HRV + sleep efficiency)
+    - Injury risk (volume spikes + rest days)
+    - Illness detection (respiratory rate + HRV + sleep + unexplained fatigue)
+
+    Also retains the original simple threshold checks for backward compatibility.
     """
     import asyncio
     from datetime import date, timedelta
@@ -150,6 +159,12 @@ def generate_health_alerts() -> dict:
     from app.models.daily_metric import DailyMetric
     from app.models.health_alert import HealthAlert
     from app.models.user import User
+    from app.services.health_analysis import (
+        analyze_overtraining,
+        analyze_injury_risk,
+        analyze_illness,
+        upsert_alert,
+    )
 
     async def _run():
         async with async_session_factory() as db:
@@ -158,7 +173,29 @@ def generate_health_alerts() -> dict:
             alerts_created = 0
 
             for user in users:
-                # Get last 7 days of metrics
+                # ── Composite analysis (Phase 6) ──────────────────────────
+                try:
+                    overtraining = await analyze_overtraining(db, user.id)
+                    if await upsert_alert(db, user.id, overtraining):
+                        alerts_created += 1
+                except Exception as e:
+                    logger.error(f"Overtraining analysis failed for user {user.id}: {e}", exc_info=True)
+
+                try:
+                    injury = await analyze_injury_risk(db, user.id)
+                    if await upsert_alert(db, user.id, injury):
+                        alerts_created += 1
+                except Exception as e:
+                    logger.error(f"Injury risk analysis failed for user {user.id}: {e}", exc_info=True)
+
+                try:
+                    illness = await analyze_illness(db, user.id)
+                    if await upsert_alert(db, user.id, illness):
+                        alerts_created += 1
+                except Exception as e:
+                    logger.error(f"Illness analysis failed for user {user.id}: {e}", exc_info=True)
+
+                # ── Simple threshold checks (legacy) ──────────────────────
                 cutoff = date.today() - timedelta(days=7)
                 result = await db.execute(
                     select(DailyMetric)
@@ -170,13 +207,12 @@ def generate_health_alerts() -> dict:
                 if len(metrics) < 3:
                     continue
 
-                # Check for HRV decline (>20% drop from average)
+                # HRV decline (>20% drop from average)
                 hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
                 if len(hrv_values) >= 3:
                     avg_hrv = sum(hrv_values) / len(hrv_values)
                     recent_hrv = hrv_values[0]
                     if recent_hrv < avg_hrv * 0.8:
-                        # Check if alert already exists
                         existing = await db.execute(
                             select(HealthAlert).where(
                                 HealthAlert.user_id == user.id,
@@ -197,7 +233,7 @@ def generate_health_alerts() -> dict:
                             db.add(alert)
                             alerts_created += 1
 
-                # Check for sleep decline
+                # Sleep decline
                 sleep_values = [m.sleep_duration_minutes for m in metrics if m.sleep_duration_minutes]
                 if len(sleep_values) >= 3:
                     avg_sleep = sum(sleep_values) / len(sleep_values)
@@ -223,6 +259,47 @@ def generate_health_alerts() -> dict:
                             db.add(alert)
                             alerts_created += 1
 
+                # Respiratory rate elevation
+                rr_cutoff = date.today() - timedelta(days=30)
+                rr_result = await db.execute(
+                    select(func.avg(DailyMetric.respiratory_rate).label("avg_rr"))
+                    .where(
+                        DailyMetric.user_id == user.id,
+                        DailyMetric.respiratory_rate.isnot(None),
+                        DailyMetric.metric_date >= rr_cutoff,
+                    )
+                )
+                rr_row = rr_result.one()
+                if rr_row.avg_rr:
+                    baseline_rr = float(rr_row.avg_rr)
+                    recent_rr_values = [m.respiratory_rate for m in metrics if m.respiratory_rate]
+                    if recent_rr_values:
+                        current_rr = recent_rr_values[0]
+                        if current_rr > baseline_rr * 1.1:
+                            existing = await db.execute(
+                                select(HealthAlert).where(
+                                    HealthAlert.user_id == user.id,
+                                    HealthAlert.alert_type == "respiratory_rate_elevated",
+                                    HealthAlert.status == "active",
+                                )
+                            )
+                            if not existing.scalar_one_or_none():
+                                alert = HealthAlert(
+                                    user_id=user.id,
+                                    alert_type="respiratory_rate_elevated",
+                                    severity="warning",
+                                    title="Elevated Respiratory Rate",
+                                    description=(
+                                        f"Your respiratory rate ({current_rr:.1f} bpm) is elevated "
+                                        f"compared to your baseline ({baseline_rr:.1f} bpm). "
+                                        f"This can be an early sign of illness."
+                                    ),
+                                    evidence={"current": current_rr, "baseline": baseline_rr},
+                                    detected_date=date.today(),
+                                )
+                                db.add(alert)
+                                alerts_created += 1
+
             await db.commit()
             return {"alerts_created": alerts_created, "users_analyzed": len(users)}
 
@@ -246,7 +323,7 @@ def sync_all_routes() -> dict:
             # Get unique users with any route-capable connection
             result = await db.execute(
                 select(OAuthConnection).where(
-                    OAuthConnection.provider.in_(["strava", "komoot", "wahoo"])
+                    OAuthConnection.provider.in_(["strava", "wahoo"])
                 )
             )
             connections = list(result.scalars().all())
@@ -269,16 +346,19 @@ def sync_all_routes() -> dict:
                         synced_total += count
                         merged_total += merged
                     except Exception as e:
-                        print(f"Failed to sync Strava routes for user {user_id}: {e}")
+                        logger.error(f"Failed to sync Strava routes for user {user_id}: {e}", exc_info=True)
 
-                if "komoot" in providers:
+                # Komoot uses Basic Auth (komoot_email/komoot_password in settings)
+                from app.config import get_settings as _get_settings
+                _s = _get_settings()
+                if _s.komoot_email and _s.komoot_password:
                     try:
                         from app.services.komoot import sync_komoot_routes
                         count, merged = await sync_komoot_routes(db, user_id)
                         synced_total += count
                         merged_total += merged
                     except Exception as e:
-                        print(f"Failed to sync Komoot routes for user {user_id}: {e}")
+                        logger.error(f"Failed to sync Komoot routes for user {user_id}: {e}", exc_info=True)
 
                 if "wahoo" in providers:
                     try:
@@ -287,7 +367,7 @@ def sync_all_routes() -> dict:
                         synced_total += count
                         merged_total += merged
                     except Exception as e:
-                        print(f"Failed to sync Wahoo routes for user {user_id}: {e}")
+                        logger.error(f"Failed to sync Wahoo routes for user {user_id}: {e}", exc_info=True)
 
             await db.commit()
             return {
@@ -394,7 +474,7 @@ def auto_estimate_ftp_weekly() -> dict:
                     estimated_count += 1
 
                 except Exception as e:
-                    print(f"Failed to auto-estimate FTP for user {profile.user_id}: {e}")
+                    logger.error(f"Failed to auto-estimate FTP for user {profile.user_id}: {e}", exc_info=True)
 
             await db.commit()
             return {
@@ -412,14 +492,15 @@ def sync_all_whoop_data() -> dict:
     This task is enqueued by Celery Beat every 30 minutes.
     It fetches Whoop cycles (with recovery), sleep data, and workout data.
     Workout enrichment matches to existing Strava activities.
-    Handles expired tokens gracefully (skips users with expired tokens).
+    Auto-refreshes expired tokens when a refresh_token is available.
     """
     import asyncio
     from sqlalchemy import select
     from app.database import async_session_factory
     from app.models.user import OAuthConnection
     from app.services.whoop import (
-        sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts, is_token_expired,
+        sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts, sync_whoop_weight,
+        refresh_if_needed,
     )
 
     async def _run():
@@ -434,10 +515,12 @@ def sync_all_whoop_data() -> dict:
             skipped_expired = 0
 
             for conn in connections:
-                # Skip if token is expired
-                if is_token_expired(conn.access_token, conn.token_expires_at):
+                # Auto-refresh token if needed
+                try:
+                    conn = await refresh_if_needed(db, conn)
+                except ValueError as e:
                     skipped_expired += 1
-                    print(f"Skipping Whoop sync for user {conn.user_id}: token expired")
+                    print(f"Skipping Whoop sync for user {conn.user_id}: {e}")
                     continue
 
                 try:
@@ -469,6 +552,16 @@ def sync_all_whoop_data() -> dict:
                     print(f"Whoop workout sync failed for user {conn.user_id}: {e}")
                 except Exception as e:
                     print(f"Whoop workout sync error for user {conn.user_id}: {e}")
+
+                # Sync body weight from Whoop
+                try:
+                    await sync_whoop_weight(db, conn.user_id)
+                except ValueError as e:
+                    if "expired" in str(e).lower():
+                        skipped_expired += 1
+                    print(f"Whoop weight sync failed for user {conn.user_id}: {e}")
+                except Exception as e:
+                    print(f"Whoop weight sync error for user {conn.user_id}: {e}")
 
             await db.commit()
             return {

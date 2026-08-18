@@ -277,12 +277,13 @@ function ActivityExpanded({
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ActivitiesPage() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, authFetchWithHeaders } = useAuthFetch();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
   const [allActivities, setAllActivities] = useState<Activity[] | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const PAGE_SIZE = 50;
 
   const activitiesUrl = useMemo(() => {
@@ -300,7 +301,12 @@ export default function ActivitiesPage() {
 
   const { data: activities, isLoading } = useQuery<Activity[]>({
     queryKey: ['activities', filters],
-    queryFn: () => authFetch<Activity[]>(activitiesUrl),
+    queryFn: async () => {
+      const result = await authFetchWithHeaders<Activity[]>(activitiesUrl);
+      const countHeader = result.headers.get('X-Total-Count');
+      if (countHeader) setTotalCount(parseInt(countHeader, 10));
+      return result.data;
+    },
   });
 
   // Sync query data to local state for append behaviour
@@ -313,6 +319,7 @@ export default function ActivitiesPage() {
   // Reset when filters change
   React.useEffect(() => {
     setAllActivities(null);
+    setTotalCount(null);
   }, [filters]);
 
   async function loadMore() {
@@ -328,8 +335,8 @@ export default function ActivitiesPage() {
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String(allActivities.length));
       const query = params.toString();
-      const more = await authFetch<Activity[]>(`/api/v1/activities${query ? `?${query}` : ''}`);
-      setAllActivities((prev) => [...(prev || []), ...more]);
+      const result = await authFetchWithHeaders<Activity[]>(`/api/v1/activities${query ? `?${query}` : ''}`);
+      setAllActivities((prev) => [...(prev || []), ...result.data]);
     } catch {
       // ignore
     } finally {
@@ -338,6 +345,9 @@ export default function ActivitiesPage() {
   }
 
   const displayActivities = allActivities ?? activities ?? [];
+  const hasMore = totalCount !== null
+    ? displayActivities.length < totalCount
+    : displayActivities.length % PAGE_SIZE === 0;
 
   const { data: activityDetail } = useQuery<ActivityDetail>({
     queryKey: ['activity', selectedActivityId],
@@ -479,7 +489,14 @@ export default function ActivitiesPage() {
 
       {/* Summary Stats */}
       {displayActivities.length > 0 && (
-        <SummaryStatsBar activities={displayActivities} />
+        <div className="space-y-2">
+          <SummaryStatsBar activities={displayActivities} />
+          {totalCount !== null && totalCount > displayActivities.length && (
+            <p className="text-xs text-muted text-center">
+              Showing {displayActivities.length} of {totalCount} activities
+            </p>
+          )}
+        </div>
       )}
 
       {/* Activity List */}
@@ -517,14 +534,16 @@ export default function ActivitiesPage() {
       )}
 
       {/* Load More */}
-      {!isLoading && displayActivities.length > 0 && displayActivities.length % PAGE_SIZE === 0 && (
-        <div className="text-center">
+      {!isLoading && displayActivities.length > 0 && hasMore && (
+        <div className="text-center py-4">
           <button
             onClick={loadMore}
             disabled={loadingMore}
-            className="px-6 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+            className="px-6 py-3 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-lg transition-colors disabled:opacity-50"
           >
-            {loadingMore ? 'Loading...' : 'Load More Activities'}
+            {loadingMore
+              ? 'Loading...'
+              : `Load More${totalCount !== null ? ` (${displayActivities.length} of ${totalCount})` : ''}`}
           </button>
         </div>
       )}

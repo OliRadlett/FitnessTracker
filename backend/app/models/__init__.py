@@ -6,6 +6,7 @@ from app.models.sleep import SleepLog
 from app.models.health_alert import HealthAlert
 from app.models.route import Route, RouteSource
 from app.models.cycling import CyclingProfile, FtpHistory
+from app.models.weight import WeightLog
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "RouteSource",
     "CyclingProfile",
     "FtpHistory",
+    "WeightLog",
 ]

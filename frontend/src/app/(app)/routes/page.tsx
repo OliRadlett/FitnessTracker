@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
+import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 
 function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`;
@@ -231,6 +232,24 @@ export default function RoutesPage() {
       <Card>
         <div className="flex flex-wrap gap-4 items-end p-4">
           <div>
+            <label className="block text-xs text-muted mb-1">Status</label>
+            <select
+              value={filters.is_ridden === undefined ? '' : filters.is_ridden ? 'ridden' : 'unridden'}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilters({
+                  ...filters,
+                  is_ridden: val === '' ? undefined : val === 'ridden',
+                });
+              }}
+              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">All</option>
+              <option value="unridden">Not yet ridden</option>
+              <option value="ridden">Ridden</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs text-muted mb-1">Sport Type</label>
             <select
               value={filters.sport_type || ''}
@@ -420,6 +439,9 @@ export default function RoutesPage() {
                         {route.is_loop && (
                           <Badge variant="positive">Loop</Badge>
                         )}
+                        {!route.is_ridden && (
+                          <Badge variant="warning">Not yet ridden</Badge>
+                        )}
                       </div>
                     </div>
                     {/* Ride count badge */}
@@ -555,6 +577,13 @@ export default function RoutesPage() {
                       encodedPolyline={selectedRoute.encoded_polyline}
                       elevations={selectedRoute.elevation_profile.elevations}
                     />
+                  </div>
+                )}
+
+                {/* Surface Breakdown */}
+                {selectedRoute.surface_profile && (
+                  <div className="px-6 pb-4">
+                    <SurfaceBreakdown surfaceProfile={selectedRoute.surface_profile} />
                   </div>
                 )}
               </Card>

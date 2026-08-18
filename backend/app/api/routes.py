@@ -50,6 +50,7 @@ async def list_routes(
     sport_type: str | None = Query(None),
     source: str | None = Query(None),
     is_loop: bool | None = Query(None),
+    is_ridden: bool | None = Query(None, description="Filter by ridden status: true=ridden, false=unridden"),
     min_distance: float | None = Query(None, ge=0),
     max_distance: float | None = Query(None, ge=0),
     min_elevation: float | None = Query(None, ge=0),
@@ -126,8 +127,13 @@ async def list_routes(
         summary = RouteSummary.model_validate(r)
         ride_count, last_ridden = stats_map.get(r.id, (0, None))
         summary.ride_count = ride_count
+        summary.is_ridden = ride_count > 0
         summary.last_ridden_date = last_ridden
         summaries.append(summary)
+
+    # Apply is_ridden filter (post-query since it's a computed field)
+    if is_ridden is not None:
+        summaries = [s for s in summaries if s.is_ridden == is_ridden]
 
     # Sort by ride_count or last_ridden if requested (these are computed fields)
     if sort_by == "ride_count":
@@ -354,8 +360,10 @@ async def sync_routes(
                 provider="strava", synced_count=0, merged_count=0, new_count=0,
             ))
 
-    # Sync Komoot routes
-    if "komoot" in connections:
+    # Sync Komoot routes (Basic Auth — configured via komoot_email/komoot_password in settings)
+    from app.config import get_settings
+    _settings = get_settings()
+    if _settings.komoot_email and _settings.komoot_password:
         try:
             from app.services.komoot import sync_komoot_routes
             count, merged = await sync_komoot_routes(db, current_user.id)

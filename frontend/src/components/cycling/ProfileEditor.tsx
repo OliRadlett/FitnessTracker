@@ -23,6 +23,7 @@ export function ProfileEditor({
 }) {
   const [ftp, setFtp] = useState('');
   const [weight, setWeight] = useState('');
+  const [lthr, setLthr] = useState('');
   const [initialized, setInitialized] = useState(false);
 
   // Sync local state when profile loads (once)
@@ -30,6 +31,7 @@ export function ProfileEditor({
     if (profile && !initialized) {
       if (profile.ftp_watts) setFtp(profile.ftp_watts.toString());
       if (profile.weight_kg) setWeight(profile.weight_kg.toString());
+      if (profile.lactate_threshold_hr) setLthr(profile.lactate_threshold_hr.toString());
       setInitialized(true);
     }
   }, [profile, initialized]);
@@ -44,7 +46,7 @@ export function ProfileEditor({
       <CardHeader>
         <CardTitle>Cycling Profile</CardTitle>
       </CardHeader>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
         <div>
           <label className="block text-xs text-muted mb-1">FTP (watts)</label>
           <input
@@ -66,11 +68,22 @@ export function ProfileEditor({
             className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">LTHR (bpm)</label>
+          <input
+            type="number"
+            value={lthr}
+            onChange={(e) => setLthr(e.target.value)}
+            placeholder="e.g. 175"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
         <button
           onClick={() => {
             const payload: CyclingProfileUpdate = {};
             if (ftp) payload.ftp_watts = parseFloat(ftp);
             if (weight) payload.weight_kg = parseFloat(weight);
+            if (lthr) payload.lactate_threshold_hr = parseFloat(lthr);
             onSave(payload);
           }}
           disabled={isSaving}

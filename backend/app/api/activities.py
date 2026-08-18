@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -54,7 +55,7 @@ def _enrich_activity_read(activity: Activity) -> ActivityRead:
     return read
 
 
-@router.get("", response_model=list[ActivityRead])
+@router.get("")
 async def list_activities(
     sport_type: str | None = Query(None),
     source: str | None = Query(None),
@@ -69,7 +70,30 @@ async def list_activities(
 
     Strava is the single source of truth — standalone Wahoo activities are excluded.
     Wahoo data enriches Strava activities via ActivitySource.
+
+    Returns the activity list with an X-Total-Count response header.
     """
+    # Build base filter conditions (shared between count and data queries)
+    base_filters = [
+        Activity.user_id == current_user.id,
+        Activity.source != "wahoo",
+    ]
+    if sport_type:
+        base_filters.append(Activity.sport_type == sport_type)
+    if source:
+        base_filters.append(Activity.source == source)
+    if start_date_after:
+        base_filters.append(Activity.start_date >= start_date_after)
+    if start_date_before:
+        base_filters.append(Activity.start_date <= start_date_before)
+
+    # Get total count
+    count_result = await db.execute(
+        select(func.count(Activity.id)).where(*base_filters)
+    )
+    total_count = int(count_result.scalar() or 0)
+
+    # Fetch page of activities
     query = (
         select(Activity)
         .options(
@@ -77,24 +101,19 @@ async def list_activities(
             selectinload(Activity.sources),
             selectinload(Activity.route),
         )
-        .where(Activity.user_id == current_user.id)
-        .where(Activity.source != "wahoo")  # noqa: E501
+        .where(*base_filters)
+        .order_by(Activity.start_date.desc())
+        .limit(limit)
+        .offset(offset)
     )
-
-    if sport_type:
-        query = query.where(Activity.sport_type == sport_type)
-    if source:
-        query = query.where(Activity.source == source)
-    if start_date_after:
-        query = query.where(Activity.start_date >= start_date_after)
-    if start_date_before:
-        query = query.where(Activity.start_date <= start_date_before)
-
-    query = query.order_by(Activity.start_date.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     activities = list(result.scalars().all())
 
-    return [_enrich_activity_read(a) for a in activities]
+    enriched = [_enrich_activity_read(a) for a in activities]
+    return JSONResponse(
+        content=[a.model_dump(mode="json") for a in enriched],
+        headers={"X-Total-Count": str(total_count)},
+    )
 
 
 @router.get("/calendar")

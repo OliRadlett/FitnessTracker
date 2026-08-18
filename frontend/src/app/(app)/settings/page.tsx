@@ -11,7 +11,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const PUBLIC_URL = process.env.NEXT_PUBLIC_PUBLIC_URL || 'https://localhost';
 
 // Providers that require HTTPS for OAuth callbacks
-const HTTPS_PROVIDERS = ['wahoo', 'komoot', 'whoop'];
+const HTTPS_PROVIDERS = ['wahoo', 'whoop'];
 
 const integrations = [
   {
@@ -26,11 +26,12 @@ const integrations = [
   {
     id: 'komoot',
     name: 'Komoot',
-    description: 'Sync planned routes and completed tours with GPS data and elevation profiles',
+    description: 'Sync planned routes and completed tours with GPS data and elevation profiles (configured via KOMOOT_EMAIL/KOMOOT_PASSWORD in .env)',
     icon: '/icons/komoot.svg',
     emoji: '🗺️',
     color: 'bg-green-600',
     available: true,
+    basicAuth: true,
   },
   {
     id: 'wahoo',
@@ -82,7 +83,7 @@ export default function SettingsPage() {
 
   async function handleExport(apiPath: string, filename: string) {
     try {
-      const response = await fetch(`${API_BASE_URL}${apiPath}`, {
+      const response = await fetch(apiPath, {
         headers: session?.backendToken ? { Authorization: `Bearer ${session.backendToken}` } : {},
         credentials: 'include',
       });
@@ -105,6 +106,8 @@ export default function SettingsPage() {
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
+  const [whoopBackfilling, setWhoopBackfilling] = useState(false);
+  const [whoopBackfillResult, setWhoopBackfillResult] = useState<string | null>(null);
 
   async function handleDisconnect(connectionId: string) {
     try {
@@ -200,7 +203,15 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  {isConnected ? (
+                  {(integration as { basicAuth?: boolean }).basicAuth ? (
+                    // Basic Auth integrations (e.g. Komoot) — configured via .env, synced from Routes page
+                    <a
+                      href="/routes"
+                      className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors"
+                    >
+                      Sync Routes
+                    </a>
+                  ) : isConnected ? (
                     <>
                       <button
                         onClick={() => handleSync(connection!.id)}
@@ -281,7 +292,7 @@ export default function SettingsPage() {
         <div className="px-6 pb-6">
           <p className="text-sm text-muted mb-4">
             Backfill historical data from connected services. This fetches your complete
-            activity history from Strava — useful after initial setup.
+            activity history — useful after initial setup.
           </p>
           <div className="flex flex-wrap gap-3">
             <button
@@ -306,11 +317,37 @@ export default function SettingsPage() {
               disabled={backfilling || !getConnection('strava')}
               className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              {backfilling ? '⏳ Backfilling...' : '📥 Backfill All Activities'}
+              {backfilling ? '⏳ Backfilling...' : '📥 Backfill All Strava Activities'}
+            </button>
+            <button
+              onClick={async () => {
+                setWhoopBackfilling(true);
+                setWhoopBackfillResult(null);
+                try {
+                  const result = await authFetch<{ synced_cycles: number; synced_sleep: number; synced_workouts: number; months: number; detail: string }>(
+                    '/api/v1/connections/whoop/backfill',
+                    { method: 'POST' }
+                  );
+                  setWhoopBackfillResult(result.detail);
+                  queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+                  queryClient.invalidateQueries({ queryKey: ['readiness'] });
+                } catch (err) {
+                  setWhoopBackfillResult(`Error: ${err instanceof Error ? err.message : 'Backfill failed'}`);
+                } finally {
+                  setWhoopBackfilling(false);
+                }
+              }}
+              disabled={whoopBackfilling || !getConnection('whoop')}
+              className="px-4 py-2 text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {whoopBackfilling ? '⏳ Backfilling...' : '💤 Backfill Whoop History'}
             </button>
           </div>
           {backfillResult && (
             <p className="mt-3 text-sm text-muted">{backfillResult}</p>
+          )}
+          {whoopBackfillResult && (
+            <p className="mt-3 text-sm text-muted">{whoopBackfillResult}</p>
           )}
         </div>
       </Card>

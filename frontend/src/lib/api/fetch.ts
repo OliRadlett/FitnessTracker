@@ -5,7 +5,17 @@ import { useCallback } from 'react';
 // Do NOT use NEXT_PUBLIC_API_URL here to avoid mixed-content / CORS issues.
 const API_BASE_URL = '';
 
+export interface FetchResult<T> {
+  data: T;
+  headers: Headers;
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  const { data } = await apiFetchWithHeaders<T>(path, options, token);
+  return data;
+}
+
+export async function apiFetchWithHeaders<T>(path: string, options: RequestInit = {}, token?: string): Promise<FetchResult<T>> {
   const url = `${API_BASE_URL}${path}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -29,8 +39,8 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}, token
 
   // Handle 204 No Content and other empty responses
   const text = await response.text();
-  if (!text) return undefined as T;
-  return JSON.parse(text);
+  if (!text) return { data: undefined as T, headers: response.headers };
+  return { data: JSON.parse(text), headers: response.headers };
 }
 
 /**
@@ -47,5 +57,12 @@ export function useAuthFetch() {
     [token],
   );
 
-  return { authFetch, token };
+  const authFetchWithHeaders = useCallback(
+    <T>(path: string, options: RequestInit = {}) => {
+      return apiFetchWithHeaders<T>(path, options, token);
+    },
+    [token],
+  );
+
+  return { authFetch, authFetchWithHeaders, token };
 }

@@ -31,6 +31,13 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "power_zones": {"method": "power_zones", "params": ["days"]},
     "daily_tss": {"method": "daily_tss", "params": ["days"]},
     "exercise_progress": {"method": "exercise_progress", "params": ["exercise_name", "weeks"]},
+    # Phase 5.2 — Whoop intelligence charts
+    "strain_vs_recovery": {"method": "strain_vs_recovery", "params": ["days"]},
+    "recovery_vs_performance": {"method": "recovery_vs_performance", "params": ["days"]},
+    "hrv_trend_detailed": {"method": "hrv_trend_detailed", "params": ["days"]},
+    "weight_trend": {"method": "weight_trend", "params": ["days"]},
+    "training_load_balance": {"method": "training_load_balance", "params": ["weeks"]},
+    "rest_day_analysis": {"method": "rest_day_analysis", "params": ["days"]},
 }
 
 
@@ -83,4 +90,5 @@ async def get_chart(
         "series": [asdict(s) for s in chart_data.series],
         "x_label": chart_data.x_label,
         "y_label": chart_data.y_label,
+        "insights": chart_data.insights,
     }

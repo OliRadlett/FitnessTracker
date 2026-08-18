@@ -29,6 +29,7 @@ class User(Base):
     routes: Mapped[list["Route"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     cycling_profile: Mapped["CyclingProfile | None"] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")  # type: ignore[name-defined]
     ftp_history: Mapped[list["FtpHistory"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    weight_logs: Mapped[list["WeightLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):

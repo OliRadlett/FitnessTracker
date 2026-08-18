@@ -32,6 +32,7 @@ class RouteRead(BaseModel):
     estimated_time_seconds: int | None = None
     encoded_polyline: str
     elevation_profile: dict | None = None
+    surface_profile: dict | None = None
     start_lat: float
     start_lng: float
     end_lat: float
@@ -62,7 +63,9 @@ class RouteSummary(BaseModel):
     locality: str | None = None
     is_loop: bool
     sources: list[RouteSourceRead] = []
+    surface_profile: dict | None = None
     ride_count: int = 0
+    is_ridden: bool = False
     last_ridden_date: datetime | None = None
     created_at: datetime
     updated_at: datetime

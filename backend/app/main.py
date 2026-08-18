@@ -89,6 +89,7 @@ from app.api.webhooks import router as webhooks_router
 from app.api.routes import router as routes_router
 from app.api.cycling import router as cycling_router
 from app.api.export import router as export_router
+from app.api.metrics import router as metrics_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections_router, prefix="/api/v1/connections", tags=["connections"])
@@ -100,3 +101,4 @@ app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"]
 app.include_router(routes_router, prefix="/api/v1/routes", tags=["routes"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
+app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])

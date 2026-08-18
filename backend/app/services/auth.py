@@ -62,14 +62,7 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "client_secret": lambda: settings.strava_client_secret,
         "scopes": "read,activity:read_all",
     },
-    "komoot": {
-        "authorize_url": "https://api.komoot.de/v0.07/oauth2/authorize",
-        "token_url": "https://api.komoot.de/v0.07/oauth2/token",
-        "userinfo_url": "https://api.komoot.de/v0.07/account",
-        "client_id": lambda: settings.komoot_client_id,
-        "client_secret": lambda: settings.komoot_client_secret,
-        "scopes": "read",
-    },
+    # Komoot removed — OAuth doesn't work; uses Basic Auth via komoot_email/komoot_password in settings
     "wahoo": {
         "authorize_url": "https://api.wahooligan.com/oauth/authorize",
         "token_url": "https://api.wahooligan.com/oauth/token",
@@ -112,12 +105,6 @@ def get_authorize_url(provider: str, redirect_uri: str) -> str:
             f"{cfg['authorize_url']}?"
             f"client_id={client_id}&redirect_uri={redirect_uri}"
             f"&response_type=code&scope={scopes}&approval_prompt=auto"
-        )
-    elif provider == "komoot":
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope={scopes}"
         )
     elif provider == "wahoo":
         return (

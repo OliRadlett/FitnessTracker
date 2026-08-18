@@ -1,7 +1,7 @@
 # Phase 5.2 — Whoop Intelligence Features
 
 > Created: 2026-08-17
-> Status: Planning
+> Status: Implemented
 > Depends on: Phase 5 (core Whoop integration)
 
 Advanced intelligence features built on top of Whoop data. These provide training guidance, sleep optimization, health monitoring, and cross-provider insights.

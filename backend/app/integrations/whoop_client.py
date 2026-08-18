@@ -13,6 +13,7 @@ Working endpoints:
     GET /developer/v2/user/measurement/body — body measurements
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -20,6 +21,11 @@ import httpx
 logger = logging.getLogger(__name__)
 
 WHOOP_API_BASE = "https://api.prod.whoop.com"
+
+# Rate limit retry configuration
+_MAX_RETRIES = 3
+_INITIAL_BACKOFF_SECONDS = 2.0
+_BACKOFF_MULTIPLIER = 2.0
 
 
 class WhoopClient:
@@ -117,19 +123,19 @@ class WhoopClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def get_all_cycles(
+    async def _paginated_get(
         self,
         access_token: str,
+        endpoint: str,
         start: str | None = None,
         end: str | None = None,
         max_records: int = 500,
+        label: str = "records",
     ) -> list[dict]:
-        """Fetch all cycles with automatic pagination.
+        """Shared paginated GET with rate limit retry (429) and backoff.
 
         Follows next_token cursors until all records are fetched or
-        max_records is reached.
-
-        Returns: list of cycle dicts.
+        max_records is reached. Retries on 429 with exponential backoff.
         """
         all_records: list[dict] = []
         next_token: str | None = None
@@ -143,16 +149,36 @@ class WhoopClient:
             if next_token:
                 params["nextToken"] = next_token
 
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self.base_url}/developer/v2/cycle",
-                    headers=self._headers(access_token),
-                    params=params,
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            # Retry loop for 429 rate limits
+            backoff = _INITIAL_BACKOFF_SECONDS
+            for attempt in range(_MAX_RETRIES + 1):
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        f"{self.base_url}{endpoint}",
+                        headers=self._headers(access_token),
+                        params=params,
+                        timeout=30,
+                    )
 
+                if resp.status_code == 429:
+                    if attempt < _MAX_RETRIES:
+                        retry_after = resp.headers.get("Retry-After")
+                        wait = float(retry_after) if retry_after else backoff
+                        logger.warning(
+                            f"Whoop rate limit hit on {endpoint} (attempt {attempt + 1}/{_MAX_RETRIES}), "
+                            f"waiting {wait:.1f}s before retry"
+                        )
+                        await asyncio.sleep(wait)
+                        backoff *= _BACKOFF_MULTIPLIER
+                        continue
+                    else:
+                        logger.error(f"Whoop rate limit exceeded after {_MAX_RETRIES} retries on {endpoint}")
+                        resp.raise_for_status()
+
+                resp.raise_for_status()
+                break
+
+            data = resp.json()
             records = data.get("records", [])
             all_records.extend(records)
 
@@ -164,8 +190,24 @@ class WhoopClient:
                 all_records = all_records[:max_records]
                 break
 
-        logger.info(f"Fetched {len(all_records)} Whoop cycles")
+            # Small delay between pages to be kind to the API
+            await asyncio.sleep(0.25)
+
+        logger.info(f"Fetched {len(all_records)} Whoop {label}")
         return all_records
+
+    async def get_all_cycles(
+        self,
+        access_token: str,
+        start: str | None = None,
+        end: str | None = None,
+        max_records: int = 500,
+    ) -> list[dict]:
+        """Fetch all cycles with automatic pagination."""
+        return await self._paginated_get(
+            access_token, "/developer/v2/cycle",
+            start=start, end=end, max_records=max_records, label="cycles",
+        )
 
     # ── Recovery ───────────────────────────────────────────────────────────
 
@@ -238,41 +280,10 @@ class WhoopClient:
         max_records: int = 500,
     ) -> list[dict]:
         """Fetch all sleep activities with automatic pagination."""
-        all_records: list[dict] = []
-        next_token: str | None = None
-
-        while len(all_records) < max_records:
-            params: dict = {"limit": 25}
-            if start and next_token is None:
-                params["start"] = start
-            if end and next_token is None:
-                params["end"] = end
-            if next_token:
-                params["nextToken"] = next_token
-
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self.base_url}/developer/v2/activity/sleep",
-                    headers=self._headers(access_token),
-                    params=params,
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-
-            records = data.get("records", [])
-            all_records.extend(records)
-
-            next_token = data.get("next_token")
-            if not next_token or not records:
-                break
-
-            if len(all_records) >= max_records:
-                all_records = all_records[:max_records]
-                break
-
-        logger.info(f"Fetched {len(all_records)} Whoop sleep activities")
-        return all_records
+        return await self._paginated_get(
+            access_token, "/developer/v2/activity/sleep",
+            start=start, end=end, max_records=max_records, label="sleep activities",
+        )
 
     # ── Workout activities ─────────────────────────────────────────────────
 
@@ -315,41 +326,38 @@ class WhoopClient:
         max_records: int = 500,
     ) -> list[dict]:
         """Fetch all workout activities with automatic pagination."""
-        all_records: list[dict] = []
-        next_token: str | None = None
+        return await self._paginated_get(
+            access_token, "/developer/v2/activity/workout",
+            start=start, end=end, max_records=max_records, label="workout activities",
+        )
 
-        while len(all_records) < max_records:
-            params: dict = {"limit": 25}
-            if start and next_token is None:
-                params["start"] = start
-            if end and next_token is None:
-                params["end"] = end
-            if next_token:
-                params["nextToken"] = next_token
 
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self.base_url}/developer/v2/activity/workout",
-                    headers=self._headers(access_token),
-                    params=params,
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+    # ── Token refresh ─────────────────────────────────────────────────────
 
-            records = data.get("records", [])
-            all_records.extend(records)
+    async def refresh_access_token(
+        self,
+        client_id: str,
+        client_secret: str,
+        refresh_token: str,
+    ) -> dict:
+        """Refresh an expired OAuth2 access token using a refresh token.
 
-            next_token = data.get("next_token")
-            if not next_token or not records:
-                break
-
-            if len(all_records) >= max_records:
-                all_records = all_records[:max_records]
-                break
-
-        logger.info(f"Fetched {len(all_records)} Whoop workout activities")
-        return all_records
+        Returns: {"access_token": str, "refresh_token": str, "expires_in": int, ...}
+        """
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self.base_url}/oauth/oauth2/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+                headers={"Accept": "application/json"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
 
 
 # Singleton

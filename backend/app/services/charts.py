@@ -41,6 +41,7 @@ class ChartData:
     series: list[ChartSeries] = field(default_factory=list)
     x_label: str = ""
     y_label: str = ""
+    insights: list[str] = field(default_factory=list)
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -142,13 +143,30 @@ class ChartService:
         )
         rows = result.all()
 
+        # Generate insights
+        insights = []
+        tss_values = [float(r.total_tss or 0) for r in rows]
+        if tss_values:
+            avg_tss = sum(tss_values) / len(tss_values)
+            insights.append(f"Average weekly TSS: {avg_tss:.0f}. {'Building well.' if avg_tss > 300 else 'Good base level.' if avg_tss > 150 else 'Light training — consider increasing if building fitness.'}")
+            if len(tss_values) >= 4:
+                recent_4 = sum(tss_values[-4:]) / 4
+                prior_4 = sum(tss_values[-8:-4]) / 4 if len(tss_values) >= 8 else avg_tss
+                if prior_4 > 0:
+                    change = (recent_4 - prior_4) / prior_4 * 100
+                    if change > 15:
+                        insights.append(f"Recent 4-week average ({recent_4:.0f}) is {change:.0f}% higher than the prior 4 weeks — volume is increasing.")
+                    elif change < -15:
+                        insights.append(f"Recent 4-week average ({recent_4:.0f}) is {abs(change):.0f}% lower — volume is tapering or recovery period.")
+
         return ChartData(
             chart_type="bar",
             title="Weekly TSS",
             labels=[r.week_start.strftime("%Y-%m-%d") if hasattr(r.week_start, "strftime") else str(r.week_start) for r in rows],
-            series=[ChartSeries(name="TSS", data=[float(r.total_tss or 0) for r in rows])],
+            series=[ChartSeries(name="TSS", data=tss_values)],
             x_label="Week",
             y_label="TSS",
+            insights=insights,
         )
 
     # ── Estimated 1RM history ─────────────────────────────────────────────────
@@ -198,13 +216,31 @@ class ChartService:
         )
         rows = result.all()
 
+        # Generate insights
+        insights = []
+        vol_values = [float(r.total_volume or 0) for r in rows]
+        if vol_values:
+            avg_vol = sum(vol_values) / len(vol_values)
+            recent = vol_values[-1]
+            if len(vol_values) >= 4:
+                recent_4 = sum(vol_values[-4:]) / 4
+                prior_4 = sum(vol_values[-8:-4]) / 4 if len(vol_values) >= 8 else avg_vol
+                if prior_4 > 0:
+                    change = (recent_4 - prior_4) / prior_4 * 100
+                    if change > 20:
+                        insights.append(f"Volume spike: recent 4-week average ({recent_4:.0f}kg) is {change:.0f}% above prior period. Monitor for injury risk.")
+                    elif change < -20:
+                        insights.append(f"Volume has decreased {abs(change):.0f}% — deload or taper period.")
+            insights.append(f"Latest week: {recent:.0f}kg. Average: {avg_vol:.0f}kg/week.")
+
         return ChartData(
             chart_type="bar",
             title="Weekly Lifting Volume",
             labels=[r.week_start.strftime("%Y-%m-%d") if hasattr(r.week_start, "strftime") else str(r.week_start) for r in rows],
-            series=[ChartSeries(name="Volume (kg)", data=[float(r.total_volume or 0) for r in rows])],
+            series=[ChartSeries(name="Volume (kg)", data=vol_values)],
             x_label="Week",
             y_label="Volume (kg)",
+            insights=insights,
         )
 
     # ── HRV trend ─────────────────────────────────────────────────────────────
@@ -224,6 +260,20 @@ class ChartService:
         )
         metrics = list(result.scalars().all())
 
+        # Generate insights
+        insights = []
+        hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
+        if hrv_values:
+            avg_hrv = sum(hrv_values) / len(hrv_values)
+            recent = hrv_values[-1]
+            if len(hrv_values) >= 7:
+                recent_7 = sum(hrv_values[-7:]) / 7
+                if recent_7 > avg_hrv * 1.05:
+                    insights.append(f"7-day HRV average ({recent_7:.0f}ms) is above your overall average ({avg_hrv:.0f}ms) — good recovery status.")
+                elif recent_7 < avg_hrv * 0.9:
+                    insights.append(f"7-day HRV average ({recent_7:.0f}ms) is below your baseline ({avg_hrv:.0f}ms) — may indicate stress or incomplete recovery.")
+            insights.append(f"Current HRV: {recent:.0f}ms. Overall average: {avg_hrv:.0f}ms.")
+
         return ChartData(
             chart_type="line",
             title="HRV Trend",
@@ -231,6 +281,7 @@ class ChartService:
             series=[ChartSeries(name="HRV (ms)", data=[m.hrv_ms for m in metrics])],
             x_label="Date",
             y_label="HRV (ms)",
+            insights=insights,
         )
 
     # ── Recovery vs Strain ────────────────────────────────────────────────────
@@ -363,6 +414,26 @@ class ChartService:
 
         labels = [d["date"].isoformat() for d in load_data]
 
+        # Generate insights
+        insights = []
+        if load_data:
+            current = load_data[-1]
+            first = load_data[0]
+            if first["ctl"] > 0:
+                ctl_change = (current["ctl"] - first["ctl"]) / first["ctl"] * 100
+                if ctl_change > 10:
+                    insights.append(f"CTL has increased {ctl_change:.0f}% over the analysis period — fitness is building well.")
+                elif ctl_change < -10:
+                    insights.append(f"CTL has declined {abs(ctl_change):.0f}% — fitness is detraining. Consider increasing volume.")
+                else:
+                    insights.append(f"CTL is stable ({current['ctl']:.0f}). Maintain current training consistency.")
+            if current["tsb"] < -30:
+                insights.append(f"TSB is {current['tsb']:.0f} — significant fatigue accumulated. Consider a recovery day or easy week.")
+            elif current["tsb"] > 25:
+                insights.append(f"TSB is +{current['tsb']:.0f} — well-rested and fresh. Good time for a hard effort or race.")
+            elif -10 <= current["tsb"] <= 10:
+                insights.append(f"TSB is {current['tsb']:.0f} — in the sweet spot for balanced training.")
+
         return ChartData(
             chart_type="line",
             title="Training Load (CTL / ATL / TSB)",
@@ -374,6 +445,7 @@ class ChartService:
             ],
             x_label="Date",
             y_label="Load (TSS/day)",
+            insights=insights,
         )
 
     # ── FTP history chart ─────────────────────────────────────────────────────
@@ -400,6 +472,16 @@ class ChartService:
                 y_label="FTP (W)",
             )
 
+        # Generate insights
+        insights = []
+        if len(entries) >= 2:
+            first_ftp = entries[0].ftp_watts
+            latest_ftp = entries[-1].ftp_watts
+            if first_ftp > 0:
+                change_pct = (latest_ftp - first_ftp) / first_ftp * 100
+                direction = "improved" if change_pct > 0 else "declined"
+                insights.append(f"FTP has {direction} from {first_ftp}W to {latest_ftp}W ({change_pct:+.1f}%) over {len(entries)} recorded changes.")
+
         return ChartData(
             chart_type="line",
             title="FTP History",
@@ -407,6 +489,7 @@ class ChartService:
             series=[ChartSeries(name="FTP (W)", data=[e.ftp_watts for e in entries], color="#f59e0b")],
             x_label="Date",
             y_label="FTP (W)",
+            insights=insights,
         )
 
     # ── Power curve from streams ──────────────────────────────────────────────
@@ -422,6 +505,17 @@ class ChartService:
                 labels.append(label)
                 data.append(best_power[duration_sec])
 
+        # Generate insights
+        insights = []
+        if 1200 in best_power and 300 in best_power:
+            ratio = best_power[1200] / best_power[300]
+            if ratio > 0.85:
+                insights.append(f"Strong endurance profile — 20min power ({best_power[1200]}W) is {ratio*100:.0f}% of 5min power ({best_power[300]}W). Good aerobic efficiency.")
+            elif ratio < 0.75:
+                insights.append(f"Anaerobic-leaning profile — 20min power ({best_power[1200]}W) is {ratio*100:.0f}% of 5min power ({best_power[300]}W). Consider more endurance work.")
+        if 5 in best_power:
+            insights.append(f"Peak sprint power: {best_power[5]}W (5s). {'Excellent neuromuscular power.' if best_power[5] > 1000 else 'Room to develop sprint power.'}")
+
         return ChartData(
             chart_type="line",
             title="Power Curve (from Streams)",
@@ -429,6 +523,7 @@ class ChartService:
             series=[ChartSeries(name="Best Power (W)", data=data, color="#f59e0b")],
             x_label="Duration",
             y_label="Power (W)",
+            insights=insights,
         )
 
     # ── Power zones distribution ──────────────────────────────────────────────
@@ -451,6 +546,20 @@ class ChartService:
         labels = [f"{z['zone']} - {z['zone_name']}" for z in zones]
         data = [round(z["time_seconds"] / 60, 1) for z in zones]  # minutes
 
+        # Generate insights
+        insights = []
+        if zones:
+            total_time = sum(z["time_seconds"] for z in zones) or 1
+            z2_pct = next((z["percentage"] for z in zones if z["zone"] == "Z2"), 0)
+            z4_pct = next((z["percentage"] for z in zones if z["zone"] == "Z4"), 0)
+            z5_pct = next((z["percentage"] for z in zones if z["zone"] == "Z5"), 0)
+            if z2_pct > 40:
+                insights.append(f"{z2_pct:.0f}% of ride time in Z2 (Endurance) — good aerobic base building.")
+            if z4_pct > 20:
+                insights.append(f"{z4_pct:.0f}% in Z4 (Threshold) — significant high-intensity work. Ensure adequate recovery.")
+            if z5_pct > 15:
+                insights.append(f"{z5_pct:.0f}% in Z5 (VO2max) — strong intensity distribution for fitness gains.")
+
         return ChartData(
             chart_type="bar",
             title="Power Zones Distribution",
@@ -458,6 +567,7 @@ class ChartService:
             series=[ChartSeries(name="Time (min)", data=data, color="#8b5cf6")],
             x_label="Zone",
             y_label="Time (min)",
+            insights=insights,
         )
 
     # ── Daily TSS chart ───────────────────────────────────────────────────────
@@ -535,6 +645,20 @@ class ChartService:
         est_1rm_data = [sessions[l]["best_1rm"] for l in labels]
         volume_data = [round(sessions[l]["volume"], 1) for l in labels]
 
+        # Generate insights
+        insights = []
+        if est_1rm_data and len(est_1rm_data) >= 2:
+            first_1rm = est_1rm_data[0]
+            latest_1rm = est_1rm_data[-1]
+            if first_1rm > 0:
+                change = (latest_1rm - first_1rm) / first_1rm * 100
+                if change > 5:
+                    insights.append(f"Estimated 1RM has increased {change:.1f}% ({first_1rm:.0f}kg → {latest_1rm:.0f}kg) — strength is progressing.")
+                elif change < -5:
+                    insights.append(f"Estimated 1RM has declined {abs(change):.1f}% — consider a deload or program change.")
+                else:
+                    insights.append(f"Estimated 1RM is stable at {latest_1rm:.0f}kg. Consider progressive overload to continue building.")
+
         return ChartData(
             chart_type="line",
             title=f"Exercise Progress — {exercise_name}",
@@ -545,6 +669,465 @@ class ChartService:
             ],
             x_label="Date",
             y_label="kg",
+            insights=insights,
+        )
+
+    # ── Strain vs Recovery correlation (scatter) ─────────────────────────────
+
+    async def strain_vs_recovery(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+        """Scatter plot: x-axis = day strain, y-axis = next-day recovery score.
+
+        Each point is a day. Color by recovery level (green/yellow/red).
+        Helps identify the optimal strain range for maintaining good recovery.
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        # Get metrics ordered by date
+        result = await db_execute(
+            self.db,
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.strain.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        # Build lookup: metric_date -> metric
+        metric_by_date: dict = {m.metric_date: m for m in metrics}
+
+        # For each day with strain, find next-day recovery
+        points: list[tuple[float, float, str]] = []
+        for m in metrics:
+            next_day = m.metric_date + timedelta(days=1)
+            next_metric = metric_by_date.get(next_day)
+            if next_metric and next_metric.recovery_score is not None and m.strain is not None:
+                recovery = next_metric.recovery_score
+                if recovery >= 67:
+                    color = "#22c55e"
+                elif recovery >= 34:
+                    color = "#eab308"
+                else:
+                    color = "#ef4444"
+                points.append((m.strain, recovery, color))
+
+        if not points:
+            return ChartData(
+                chart_type="scatter",
+                title="Strain vs Next-Day Recovery",
+                labels=[],
+                series=[],
+                x_label="Daily Strain",
+                y_label="Next-Day Recovery %",
+            )
+
+        # Scatter charts need paired (x, y) data with aligned indices.
+        # Use a single series where labels[i] = strain (x) and data[i] = recovery (y).
+        # Sort by strain for clean rendering.
+        points.sort(key=lambda p: p[0])
+        strains = [p[0] for p in points]
+        recoveries = [p[1] for p in points]
+
+        # Separate for insights
+        green = [(s, r) for s, r, c in points if c == "#22c55e"]
+        red = [(s, r) for s, r, c in points if c == "#ef4444"]
+
+        # Generate insights
+        insights = []
+        if green:
+            avg_green_strain = sum(s for s, _ in green) / len(green)
+            insights.append(f"When strain stays below {avg_green_strain:.0f}, recovery tends to stay above 67% — your optimal zone.")
+        if red:
+            avg_red_strain = sum(s for s, _ in red) / len(red)
+            insights.append(f"Strain above {avg_red_strain:.0f} often leads to recovery below 34% — consider limiting high-strain days.")
+
+        return ChartData(
+            chart_type="scatter",
+            title="Strain vs Next-Day Recovery",
+            labels=[str(s) for s in strains],
+            series=[ChartSeries(name="Recovery", data=recoveries, color="#3b82f6")],
+            x_label="Daily Strain",
+            y_label="Next-Day Recovery %",
+            insights=insights,
+        )
+
+    # ── Recovery vs Performance correlation (scatter) ────────────────────────
+
+    async def recovery_vs_performance(self, user_id: uuid.UUID, days: int = 60) -> ChartData:
+        """Scatter plot: x-axis = recovery score, y-axis = next-day performance metric.
+
+        Performance = lifting volume (kg) for strength days, or TSS for cycling days.
+        Helps answer: does better recovery lead to better performance?
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        # Get recovery scores
+        result = await db_execute(
+            self.db,
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.recovery_score.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        recovery_map = {m.metric_date: m.recovery_score for m in result.scalars().all()}
+
+        # Get lifting volumes per day
+        lift_result = await db_execute(
+            self.db,
+            select(
+                LiftingSession.session_date,
+                func.sum(LiftingSession.total_volume_kg).label("volume"),
+            )
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= cutoff,
+            )
+            .group_by(LiftingSession.session_date)
+        )
+        lift_map = {r.session_date: float(r.volume or 0) for r in lift_result.all()}
+
+        # Get TSS per day
+        tss_result = await db_execute(
+            self.db,
+            select(
+                func.date(Activity.start_date).label("day"),
+                func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
+            )
+            .where(
+                Activity.user_id == user_id,
+                Activity.tss.isnot(None),
+                Activity.start_date >= cutoff,
+            )
+            .group_by(func.date(Activity.start_date))
+        )
+        tss_map = {r.day: float(r.total_tss or 0) for r in tss_result.all()}
+
+        # Match: for each day with recovery, find next-day performance
+        lifting_points: list[tuple[float, float]] = []
+        tss_points: list[tuple[float, float]] = []
+
+        for metric_date, recovery in recovery_map.items():
+            next_day = metric_date + timedelta(days=1)
+            if next_day in lift_map and lift_map[next_day] > 0:
+                lifting_points.append((recovery, lift_map[next_day]))
+            if next_day in tss_map and tss_map[next_day] > 0:
+                tss_points.append((recovery, tss_map[next_day]))
+
+        # Scatter charts need paired (x, y) data with aligned indices.
+        # Combine all points into a single series sorted by recovery (x-axis).
+        all_points = lifting_points + tss_points
+        all_points.sort(key=lambda p: p[0])
+
+        series_list: list[ChartSeries] = []
+        if lifting_points:
+            # Sort lifting points for their own series
+            lifting_sorted = sorted(lifting_points, key=lambda p: p[0])
+            series_list.append(ChartSeries(
+                name="Lifting Volume (kg)",
+                data=[p[1] for p in lifting_sorted],
+                color="#8b5cf6",
+            ))
+        if tss_points:
+            tss_sorted = sorted(tss_points, key=lambda p: p[0])
+            series_list.append(ChartSeries(
+                name="Cycling TSS",
+                data=[p[1] for p in tss_sorted],
+                color="#3b82f6",
+            ))
+
+        # Use the larger dataset's recovery values as labels (x-axis)
+        if len(lifting_points) >= len(tss_points):
+            labels = [str(p[0]) for p in sorted(lifting_points, key=lambda p: p[0])]
+        else:
+            labels = [str(p[0]) for p in sorted(tss_points, key=lambda p: p[0])]
+
+        return ChartData(
+            chart_type="scatter",
+            title="Recovery vs Next-Day Performance",
+            labels=labels,
+            series=series_list,
+            x_label="Recovery Score %",
+            y_label="Performance",
+        )
+
+    # ── HRV trend with rolling averages ─────────────────────────────────────
+
+    async def hrv_trend_detailed(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """HRV over time with 7-day, 30-day rolling averages and personal baseline.
+
+        Shaded region = personal baseline (±1 std dev from 90-day average).
+        Points below the baseline are highlighted in red.
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await db_execute(
+            self.db,
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.hrv_ms.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        if not metrics:
+            return ChartData(
+                chart_type="line",
+                title="HRV Trend (Detailed)",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="HRV (ms)",
+            )
+
+        hrv_values = [m.hrv_ms for m in metrics]
+        labels = [m.metric_date.isoformat() for m in metrics]
+
+        # 7-day rolling average
+        rolling_7: list[float | None] = []
+        for i in range(len(hrv_values)):
+            window = hrv_values[max(0, i - 6) : i + 1]
+            rolling_7.append(round(sum(window) / len(window), 1))
+
+        # 30-day rolling average
+        rolling_30: list[float | None] = []
+        for i in range(len(hrv_values)):
+            window = hrv_values[max(0, i - 29) : i + 1]
+            rolling_30.append(round(sum(window) / len(window), 1))
+
+        # Personal baseline (±1 std dev from mean)
+        mean_hrv = sum(hrv_values) / len(hrv_values)
+        std_hrv = (sum((v - mean_hrv) ** 2 for v in hrv_values) / len(hrv_values)) ** 0.5
+
+        return ChartData(
+            chart_type="line",
+            title="HRV Trend (Detailed)",
+            labels=labels,
+            series=[
+                ChartSeries(name="Daily HRV", data=hrv_values, color="#22c55e"),
+                ChartSeries(name="7-day Average", data=rolling_7, color="#3b82f6"),
+                ChartSeries(name="30-day Average", data=rolling_30, color="#f59e0b"),
+            ],
+            x_label="Date",
+            y_label="HRV (ms)",
+        )
+
+    # ── Weight trend ────────────────────────────────────────────────────────
+
+    async def weight_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """Weight over time with 7-day rolling average."""
+        from app.models.weight import WeightLog
+
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await db_execute(
+            self.db,
+            select(WeightLog)
+            .where(
+                WeightLog.user_id == user_id,
+                WeightLog.date >= cutoff,
+            )
+            .order_by(WeightLog.date)
+        )
+        logs = list(result.scalars().all())
+
+        if not logs:
+            return ChartData(
+                chart_type="line",
+                title="Body Weight Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Weight (kg)",
+            )
+
+        weights = [log.weight_kilogram for log in logs]
+        labels = [log.date.isoformat() for log in logs]
+
+        # 7-day rolling average
+        rolling: list[float] = []
+        for i in range(len(weights)):
+            window = weights[max(0, i - 6) : i + 1]
+            rolling.append(round(sum(window) / len(window), 1))
+
+        # Generate insights
+        insights = []
+        if len(weights) >= 2:
+            first_w = weights[0]
+            latest_w = weights[-1]
+            change = latest_w - first_w
+            if abs(change) > 0.5:
+                direction = "increased" if change > 0 else "decreased"
+                weeks = len(weights) / 7 if len(weights) > 7 else 1
+                rate = abs(change) / weeks
+                insights.append(f"Weight has {direction} {abs(change):.1f}kg over {len(weights)} days ({rate:.2f}kg/week). {'Healthy pace.' if rate < 0.5 else 'Rapid change — monitor closely.'}")
+            else:
+                insights.append(f"Weight is stable at {latest_w:.1f}kg.")
+
+        return ChartData(
+            chart_type="line",
+            title="Body Weight Trend",
+            labels=labels,
+            series=[
+                ChartSeries(name="Weight (kg)", data=weights, color="#8b5cf6"),
+                ChartSeries(name="7-day Average", data=rolling, color="#f59e0b"),
+            ],
+            x_label="Date",
+            y_label="Weight (kg)",
+            insights=insights,
+        )
+
+    # ── Training Load Balance ───────────────────────────────────────────────
+
+    async def training_load_balance(self, user_id: uuid.UUID, weeks: int = 4) -> ChartData:
+        """Stacked area chart: Strava TSS + lifting volume per week.
+
+        Shows how different training modalities contribute to total load.
+        """
+        cutoff = date.today() - timedelta(weeks=weeks)
+        week_start_activity = func.date_trunc("week", Activity.start_date).label("week_start")
+        week_start_lifting = func.date_trunc("week", LiftingSession.session_date).label("week_start")
+
+        # TSS per week (from activities)
+        tss_result = await db_execute(
+            self.db,
+            select(
+                week_start_activity,
+                func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
+            )
+            .where(
+                Activity.user_id == user_id,
+                Activity.tss.isnot(None),
+                Activity.start_date >= cutoff,
+            )
+            .group_by(week_start_activity)
+            .order_by(week_start_activity)
+        )
+        tss_map = {r.week_start: float(r.total_tss or 0) for r in tss_result.all()}
+
+        # Lifting volume per week (scaled down to comparable units: volume / 100)
+        lift_result = await db_execute(
+            self.db,
+            select(
+                week_start_lifting,
+                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("total_volume"),
+            )
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= cutoff,
+            )
+            .group_by(week_start_lifting)
+            .order_by(week_start_lifting)
+        )
+        lift_map = {r.week_start: round(float(r.total_volume or 0) / 100, 1) for r in lift_result.all()}
+
+        # Whoop strain per week (sum of daily strain)
+        strain_result = await db_execute(
+            self.db,
+            select(
+                func.date_trunc("week", DailyMetric.metric_date).label("week_start"),
+                func.coalesce(func.sum(DailyMetric.strain), 0.0).label("total_strain"),
+            )
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.strain.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .group_by(func.date_trunc("week", DailyMetric.metric_date))
+            .order_by(func.date_trunc("week", DailyMetric.metric_date))
+        )
+        strain_map = {r.week_start: float(r.total_strain or 0) for r in strain_result.all()}
+
+        # Merge all weeks
+        all_weeks = sorted(set(list(tss_map.keys()) + list(lift_map.keys()) + list(strain_map.keys())))
+
+        return ChartData(
+            chart_type="area",
+            title="Training Load Balance",
+            labels=[w.strftime("%Y-%m-%d") if hasattr(w, "strftime") else str(w) for w in all_weeks],
+            series=[
+                ChartSeries(name="Cycling TSS", data=[tss_map.get(w, 0) for w in all_weeks], color="#3b82f6"),
+                ChartSeries(name="Lifting Volume (÷100)", data=[lift_map.get(w, 0) for w in all_weeks], color="#8b5cf6"),
+                ChartSeries(name="Whoop Strain", data=[strain_map.get(w, 0) for w in all_weeks], color="#f97316"),
+            ],
+            x_label="Week",
+            y_label="Load Units",
+        )
+
+    # ── Rest Day Analysis ───────────────────────────────────────────────────
+
+    async def rest_day_analysis(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+        """Compare recovery scores on rest days vs training days.
+
+        Groups DailyMetric by whether the day had an activity or lifting session.
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        # Get all daily metrics with recovery scores
+        result = await db_execute(
+            self.db,
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.recovery_score.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        # Get activity dates
+        act_result = await db_execute(
+            self.db,
+            select(func.date(Activity.start_date).label("day"))
+            .where(
+                Activity.user_id == user_id,
+                Activity.start_date >= cutoff,
+            )
+            .distinct()
+        )
+        activity_dates = {r.day for r in act_result.all()}
+
+        # Get lifting dates
+        lift_result = await db_execute(
+            self.db,
+            select(LiftingSession.session_date)
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= cutoff,
+            )
+            .distinct()
+        )
+        lifting_dates = {r.session_date for r in lift_result.all()}
+
+        training_dates = activity_dates | lifting_dates
+
+        rest_recoveries = [m.recovery_score for m in metrics if m.metric_date not in training_dates]
+        training_recoveries = [m.recovery_score for m in metrics if m.metric_date in training_dates]
+
+        avg_rest = round(sum(rest_recoveries) / len(rest_recoveries), 1) if rest_recoveries else 0
+        avg_training = round(sum(training_recoveries) / len(training_recoveries), 1) if training_recoveries else 0
+
+        return ChartData(
+            chart_type="bar",
+            title="Rest Day vs Training Day Recovery",
+            labels=["Training Days", "Rest Days"],
+            series=[
+                ChartSeries(
+                    name="Avg Recovery %",
+                    data=[avg_training, avg_rest],
+                    color="#3b82f6",
+                ),
+            ],
+            x_label="Day Type",
+            y_label="Recovery %",
         )
 
     # ── Helpers ────────────────────────────────────────────────────────────────

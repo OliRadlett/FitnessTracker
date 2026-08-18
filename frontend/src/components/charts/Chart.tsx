@@ -40,6 +40,20 @@ function formatSeriesForChart(data: ChartData) {
   });
 }
 
+function InsightsList({ insights }: { insights?: string[] }) {
+  if (!insights || insights.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-1">
+      {insights.map((insight, i) => (
+        <p key={i} className="text-xs text-slate-400 flex items-start gap-1.5">
+          <span className="text-accent mt-0.5">💡</span>
+          {insight}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function Chart({ data, height = 400, className = '' }: ChartProps) {
   const chartData = formatSeriesForChart(data);
 
@@ -66,137 +80,129 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     />
   );
 
+  let chartContent: React.ReactNode;
+
   switch (data.chart_type) {
     case 'line':
-      return (
-        <div className={className}>
-          {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
-          <ResponsiveContainer width="100%" height={height}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              {renderTooltip()}
-              {renderLegend()}
-              {data.series.map((s, i) => (
-                <Line
-                  key={s.name}
-                  type="monotone"
-                  dataKey={s.name}
-                  stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      chartContent = (
+        <ResponsiveContainer width="100%" height={height}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            {renderTooltip()}
+            {renderLegend()}
+            {data.series.map((s, i) => (
+              <Line
+                key={s.name}
+                type="monotone"
+                dataKey={s.name}
+                stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                activeDot={{ r: 5 }}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
       );
+      break;
 
     case 'bar':
-      return (
-        <div className={className}>
-          {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
-          <ResponsiveContainer width="100%" height={height}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              {renderTooltip()}
-              {renderLegend()}
-              {data.series.map((s, i) => (
-                <Bar
-                  key={s.name}
-                  dataKey={s.name}
-                  fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                  radius={[4, 4, 0, 0]}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      chartContent = (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            {renderTooltip()}
+            {renderLegend()}
+            {data.series.map((s, i) => (
+              <Bar
+                key={s.name}
+                dataKey={s.name}
+                fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                radius={[4, 4, 0, 0]}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
       );
+      break;
 
     case 'scatter':
-      return (
-        <div className={className}>
-          {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
-          <ResponsiveContainer width="100%" height={height}>
-            <ScatterChart>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="x" name={data.x_label || 'x'} type="number" {...commonAxisProps} />
-              <YAxis dataKey="y" name={data.y_label || 'y'} type="number" {...commonAxisProps} />
-              {renderTooltip()}
-              {renderLegend()}
-              {data.series.map((s, i) => (
-                <Scatter
-                  key={s.name}
-                  name={s.name}
-                  data={(data.labels ?? []).map((label, j) => ({ x: Number(label), y: s.data[j] ?? 0 }))}
-                  fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                />
-              ))}
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
+      chartContent = (
+        <ResponsiveContainer width="100%" height={height}>
+          <ScatterChart>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="x" name={data.x_label || 'x'} type="number" {...commonAxisProps} />
+            <YAxis dataKey="y" name={data.y_label || 'y'} type="number" {...commonAxisProps} />
+            {renderTooltip()}
+            {renderLegend()}
+            {data.series.map((s, i) => (
+              <Scatter
+                key={s.name}
+                name={s.name}
+                data={(data.labels ?? []).map((label, j) => ({ x: Number(label), y: s.data[j] ?? 0 }))}
+                fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+              />
+            ))}
+          </ScatterChart>
+        </ResponsiveContainer>
       );
+      break;
 
     case 'area':
-      return (
-        <div className={className}>
-          {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
-          <ResponsiveContainer width="100%" height={height}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
-              {renderTooltip()}
-              {renderLegend()}
-              {data.series.map((s, i) => (
-                <Area
-                  key={s.name}
-                  type="monotone"
-                  dataKey={s.name}
-                  stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                  fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                />
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      chartContent = (
+        <ResponsiveContainer width="100%" height={height}>
+          <AreaChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            {renderTooltip()}
+            {renderLegend()}
+            {data.series.map((s, i) => (
+              <Area
+                key={s.name}
+                type="monotone"
+                dataKey={s.name}
+                stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                fillOpacity={0.15}
+                strokeWidth={2}
+              />
+            ))}
+          </AreaChart>
+        </ResponsiveContainer>
       );
+      break;
 
     case 'pie':
-      return (
-        <div className={className}>
-          {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
-          <ResponsiveContainer width="100%" height={height}>
-            <PieChart>
-              {renderTooltip()}
-              {renderLegend()}
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                outerRadius={Math.min(height * 0.35, 150)}
-                dataKey="value"
-                nameKey="name"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              >
-                {chartData.map((_, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={data.series[0]?.data[index] != null ? (data.series[0].color || DEFAULT_COLORS[index % DEFAULT_COLORS.length]) : DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
-                  />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      chartContent = (
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            {renderTooltip()}
+            {renderLegend()}
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              outerRadius={Math.min(height * 0.35, 150)}
+              dataKey="value"
+              nameKey="name"
+              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+            >
+              {chartData.map((_, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={data.series[0]?.data[index] != null ? (data.series[0].color || DEFAULT_COLORS[index % DEFAULT_COLORS.length]) : DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
       );
+      break;
 
     default:
       return (
@@ -205,4 +211,12 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         </div>
       );
   }
+
+  return (
+    <div className={className}>
+      {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
+      {chartContent}
+      <InsightsList insights={data.insights} />
+    </div>
+  );
 }

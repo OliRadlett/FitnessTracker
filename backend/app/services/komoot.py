@@ -1,51 +1,33 @@
-"""Komoot service — OAuth helper, token refresh, route sync."""
+"""Komoot service — Basic Auth, route/tour sync.
+
+Fetches tours (completed rides) and planned routes from Komoot's
+reverse-engineered internal API (v007). Uses Basic Auth with
+komoot_email/komoot_password from settings.
+
+Enriches each route with:
+- Coordinate streams for higher-fidelity polylines
+- Surface/terrain breakdown
+- Route type (planned vs recorded) stored in raw_data
+"""
 
 import uuid
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.komoot_client import komoot_client
-from app.models.user import OAuthConnection
 from app.models.route import Route
 from app.services.polyline_utils import (
     komoot_coordinates_to_polyline,
     komoot_coordinate_array_to_polyline,
     polyline_total_distance,
     decode_polyline,
+    encode_polyline,
 )
 from app.services.route_service import create_or_merge_route
 
 logger = logging.getLogger(__name__)
-
-
-async def get_komoot_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthConnection | None:
-    """Get the Komoot OAuth connection for a user."""
-    result = await db.execute(
-        select(OAuthConnection).where(
-            OAuthConnection.user_id == user_id,
-            OAuthConnection.provider == "komoot",
-        )
-    )
-    return result.scalar_one_or_none()
-
-
-async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
-    """Refresh the access token if it's expired."""
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc):
-        if not connection.refresh_token:
-            raise ValueError("No refresh token available")
-        token_data = await komoot_client.refresh_access_token(connection.refresh_token)
-        connection.access_token = token_data["access_token"]
-        connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
-        if "expires_in" in token_data:
-            connection.token_expires_at = datetime.now(timezone.utc).replace(
-                second=0
-            ) + __import__("datetime").timedelta(seconds=int(token_data["expires_in"]))
-        await db.flush()
-    return connection
 
 
 def _extract_polyline_from_komoot_tour(tour: dict) -> str:
@@ -85,6 +67,83 @@ def _extract_polyline_from_komoot_tour(tour: dict) -> str:
     raise ValueError(f"Cannot extract polyline from Komoot tour {tour.get('id', '?')}")
 
 
+def _build_polyline_from_trackpoints(trackpoints: list[dict]) -> str | None:
+    """Build an encoded polyline from full trackpoint data [{lat, lng, alt, t}].
+
+    Returns a Google-encoded polyline string, or None if no valid points.
+    """
+    if not trackpoints:
+        return None
+
+    points: list[tuple[float, float]] = []
+    for tp in trackpoints:
+        lat = tp.get("lat") or tp.get("latitude")
+        lng = tp.get("lng") or tp.get("lon") or tp.get("longitude")
+        if lat is not None and lng is not None:
+            points.append((float(lat), float(lng)))
+
+    if not points:
+        return None
+
+    return encode_polyline(points)
+
+
+def _extract_elevations_from_trackpoints(trackpoints: list[dict]) -> list[float | None]:
+    """Extract elevation values from trackpoint data."""
+    elevations: list[float | None] = []
+    for tp in trackpoints:
+        alt = tp.get("alt") or tp.get("altitude") or tp.get("elevation")
+        elevations.append(float(alt) if alt is not None else None)
+    return elevations
+
+
+def _extract_surface_profile(surface_data: dict) -> dict[str, float] | None:
+    """Normalize Komoot surface response into a clean {type: percentage} dict.
+
+    Komoot surface data can come in various formats:
+    - {"surfaces": [{"type": "asphalt", "percentage": 60}, ...]}
+    - {"asphalt": 0.6, "gravel": 0.25, ...}
+    - {"data": {"asphalt": 60, "gravel": 25, ...}}
+    """
+    if not surface_data:
+        return None
+
+    # Try array format
+    surfaces = surface_data.get("surfaces") or surface_data.get("data")
+    if isinstance(surfaces, list):
+        result: dict[str, float] = {}
+        for item in surfaces:
+            if isinstance(item, dict):
+                name = item.get("type") or item.get("name", "unknown")
+                pct = item.get("percentage") or item.get("share") or item.get("value", 0)
+                # Normalize to 0-1 range if it looks like a percentage (0-100)
+                if isinstance(pct, (int, float)) and pct > 1.0:
+                    pct = pct / 100.0
+                result[name] = float(pct)
+        return result if result else None
+
+    # Try direct key-value format
+    if isinstance(surfaces, dict):
+        result = {}
+        for name, pct in surfaces.items():
+            if isinstance(pct, (int, float)):
+                if pct > 1.0:
+                    pct = pct / 100.0
+                result[name] = float(pct)
+        return result if result else None
+
+    # Try top-level key-value (e.g. {"asphalt": 0.6, ...})
+    result = {}
+    for key, value in surface_data.items():
+        if key in ("_links", "_embedded", "id", "type"):
+            continue
+        if isinstance(value, (int, float)):
+            if value > 1.0:
+                value = value / 100.0
+            result[key] = float(value)
+    return result if result else None
+
+
 def _map_komoot_sport_type(sport_type: str) -> str:
     """Map Komoot sport types to internal sport types."""
     mapping = {
@@ -103,6 +162,107 @@ def _map_komoot_sport_type(sport_type: str) -> str:
     return mapping.get(sport_type, "cycling")
 
 
+async def _enrich_and_create_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    tour_data: dict,
+    is_planned_route: bool = False,
+    provider_id_prefix: str = "",
+) -> tuple[bool, bool]:
+    """Process a single Komoot tour/route: fetch coordinates, extract surface, create/merge.
+
+    Returns (synced, was_existing).
+    """
+    tour_id = str(tour_data.get("id", ""))
+    if not tour_id:
+        return False, False
+
+    provider_route_id = f"{provider_id_prefix}{tour_id}" if provider_id_prefix else tour_id
+
+    # Fetch full coordinates from the /coordinates/ endpoint
+    # The tour list/detail doesn't include coordinate data — must fetch separately
+    trackpoints: list[dict] = []
+    try:
+        trackpoints = await komoot_client.get_coordinates(tour_id=tour_id)
+        logger.info(f"Tour {tour_id}: got {len(trackpoints)} trackpoints")
+    except Exception as e:
+        logger.warning(f"Failed to fetch coordinates for tour {tour_id}: {e}")
+
+    if not trackpoints or len(trackpoints) < 2:
+        logger.warning(f"Skipping Komoot tour {tour_id}: no coordinate data ({len(trackpoints)} points)")
+        return False, False
+
+    polyline = _build_polyline_from_trackpoints(trackpoints)
+    if not polyline:
+        logger.warning(f"Skipping Komoot tour {tour_id}: could not build polyline from trackpoints")
+        return False, False
+
+    # Extract surface data from tour summary (available in list/detail response)
+    # Komoot uses keys like "sb#asphalt" (surface) and "wt#cycleway" (way type)
+    surface_profile = None
+    summary = tour_data.get("summary", {})
+    if isinstance(summary, dict):
+        surfaces_raw = summary.get("surfaces", {})
+        if surfaces_raw and isinstance(surfaces_raw, dict):
+            # Strip "sb#" prefix from surface keys
+            normalized = {}
+            for key, val in surfaces_raw.items():
+                clean_key = key.split("#", 1)[1] if "#" in str(key) else str(key)
+                if isinstance(val, (int, float)) and val > 0:
+                    normalized[clean_key] = val
+            if normalized:
+                surface_profile = _extract_surface_profile({"data": normalized})
+                if surface_profile:
+                    logger.info(f"Tour {tour_id}: surface data = {surface_profile}")
+
+    name = tour_data.get("name", "Komoot Tour" if not is_planned_route else "Komoot Route")
+    distance = tour_data.get("distance", 0) or 0  # meters
+    elevation_up = tour_data.get("elevation_up", 0) or 0
+    duration = tour_data.get("duration", 0) or 0  # seconds
+    sport_type = _map_komoot_sport_type(tour_data.get("sport", ""))
+
+    if distance <= 0:
+        distance = polyline_total_distance(polyline)
+
+    # Build elevation profile from trackpoints
+    elevation_profile = None
+    elevations = _extract_elevations_from_trackpoints(trackpoints)
+    if any(e is not None for e in elevations):
+        elevation_profile = {"elevations": elevations}
+
+    # Enrich raw_data with Komoot route type
+    raw_data = dict(tour_data)
+    raw_data["_komoot_type"] = "planned" if is_planned_route else "recorded"
+
+    # Check if this was merged (existing source found)
+    existing_source = await db.execute(
+        select(Route).join(Route.sources).where(
+            Route.user_id == user_id,
+            Route.sources.any(provider="komoot", provider_route_id=provider_route_id),  # type: ignore
+        )
+    )
+    was_existing = existing_source.scalar_one_or_none() is not None
+
+    await create_or_merge_route(
+        db, user_id,
+        name=name,
+        sport_type=sport_type,
+        distance_meters=distance,
+        encoded_polyline=polyline,
+        provider="komoot",
+        provider_route_id=provider_route_id,
+        provider_name=name,
+        elevation_gain_meters=elevation_up if elevation_up > 0 else None,
+        estimated_time_seconds=duration if duration > 0 else None,
+        elevation_profile=elevation_profile,
+        surface_profile=surface_profile,
+        raw_data=raw_data,
+    )
+
+    logger.info(f"Synced Komoot tour {tour_id}: '{name}' ({distance/1000:.1f}km)")
+    return True, was_existing
+
+
 async def sync_komoot_routes(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -110,27 +270,32 @@ async def sync_komoot_routes(
 ) -> tuple[int, int]:
     """Fetch and store Komoot routes and tours for a user.
 
+    Uses Basic Auth from settings (komoot_email/komoot_password).
+
     Returns (total_synced, merged_count).
     """
-    connection = await get_komoot_connection(db, user_id)
-    if not connection:
-        raise ValueError("No Komoot connection found")
-
-    connection = await refresh_if_needed(db, connection)
+    # Authenticate via Basic Auth
+    await komoot_client.ensure_authenticated()
 
     # Get Komoot user ID
-    account = await komoot_client.get_account(connection.access_token)
-    komoot_user_id = str(account.get("username", connection.provider_user_id))
+    try:
+        account = await komoot_client.get_account()
+        komoot_user_id = str(account.get("username", account.get("user_id", "")))
+        if not komoot_user_id:
+            raise ValueError("Cannot determine Komoot user ID")
+    except Exception as e:
+        logger.error(f"Failed to get Komoot account info: {e}")
+        return 0, 0
 
     synced_count = 0
     merged_count = 0
 
-    # Sync tours (completed rides)
+    # ── Sync completed tours ────────────────────────────────────────────────
     page = 0
     while synced_count < limit:
         try:
             tours = await komoot_client.get_tours(
-                connection.access_token, komoot_user_id, page=page, limit=50,
+                user_id=komoot_user_id, page=page, limit=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Komoot tours page {page}: {e}")
@@ -147,67 +312,30 @@ async def sync_komoot_routes(
             # The list endpoint returns tour summaries without coordinate data.
             # Fetch the full tour detail to get the polyline/coordinates.
             try:
-                tour_detail = await komoot_client.get_tour_detail(
-                    connection.access_token, tour_id,
-                )
-                # Merge detail data into tour for richer metadata
+                tour_detail = await komoot_client.get_tour_detail(tour_id=tour_id)
                 tour.update(tour_detail)
             except Exception as e:
                 logger.warning(f"Failed to fetch Komoot tour detail {tour_id}: {e}")
 
-            try:
-                polyline = _extract_polyline_from_komoot_tour(tour)
-            except ValueError:
-                logger.warning(f"Skipping Komoot tour {tour_id}: no polyline data")
-                continue
-
-            name = tour.get("name", "Komoot Tour")
-            distance = tour.get("distance", 0) or 0  # meters
-            elevation_up = tour.get("elevation_up", 0) or 0
-            duration = tour.get("duration", 0) or 0  # seconds
-            sport_type = _map_komoot_sport_type(tour.get("sport", ""))
-
-            if distance <= 0:
-                # Compute from polyline
-                distance = polyline_total_distance(polyline)
-
-            # Check if this was merged (existing source found)
-            existing_source = await db.execute(
-                select(Route).join(Route.sources).where(
-                    Route.user_id == user_id,
-                    Route.sources.any(provider="komoot", provider_route_id=tour_id),  # type: ignore
-                )
+            synced, was_existing = await _enrich_and_create_route(
+                db, user_id, tour,
+                is_planned_route=False,
             )
-            was_existing = existing_source.scalar_one_or_none() is not None
-
-            await create_or_merge_route(
-                db, user_id,
-                name=name,
-                sport_type=sport_type,
-                distance_meters=distance,
-                encoded_polyline=polyline,
-                provider="komoot",
-                provider_route_id=tour_id,
-                provider_name=name,
-                elevation_gain_meters=elevation_up if elevation_up > 0 else None,
-                estimated_time_seconds=duration if duration > 0 else None,
-                raw_data=tour,
-            )
-
-            synced_count += 1
-            if was_existing:
-                merged_count += 1
+            if synced:
+                synced_count += 1
+                if was_existing:
+                    merged_count += 1
 
         page += 1
         if len(tours) < 50:
             break
 
-    # Sync planned routes
+    # ── Sync planned/saved routes ───────────────────────────────────────────
     page = 0
     while True:
         try:
             routes = await komoot_client.get_routes(
-                connection.access_token, komoot_user_id, page=page, limit=50,
+                user_id=komoot_user_id, page=page, limit=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Komoot routes page {page}: {e}")
@@ -221,43 +349,22 @@ async def sync_komoot_routes(
             if not route_id:
                 continue
 
-            # The list endpoint returns route summaries without coordinate data.
-            # Fetch the full route detail to get the polyline/coordinates.
+            # Fetch full route detail for coordinates
             try:
-                route_detail = await komoot_client.get_route_detail(
-                    connection.access_token, route_id,
-                )
+                route_detail = await komoot_client.get_route_detail(route_id=route_id)
                 route_data.update(route_detail)
             except Exception as e:
                 logger.warning(f"Failed to fetch Komoot route detail {route_id}: {e}")
 
-            try:
-                polyline = _extract_polyline_from_komoot_tour(route_data)
-            except ValueError:
-                logger.warning(f"Skipping Komoot route {route_id}: no polyline data")
-                continue
-
-            name = route_data.get("name", "Komoot Route")
-            distance = route_data.get("distance", 0) or 0
-            elevation_up = route_data.get("elevation_up", 0) or 0
-            sport_type = _map_komoot_sport_type(route_data.get("sport", ""))
-
-            if distance <= 0:
-                distance = polyline_total_distance(polyline)
-
-            await create_or_merge_route(
-                db, user_id,
-                name=name,
-                sport_type=sport_type,
-                distance_meters=distance,
-                encoded_polyline=polyline,
-                provider="komoot",
-                provider_route_id=f"route_{route_id}",
-                provider_name=name,
-                elevation_gain_meters=elevation_up if elevation_up > 0 else None,
-                raw_data=route_data,
+            synced, was_existing = await _enrich_and_create_route(
+                db, user_id, route_data,
+                is_planned_route=True,
+                provider_id_prefix="route_",
             )
-            synced_count += 1
+            if synced:
+                synced_count += 1
+                if was_existing:
+                    merged_count += 1
 
         page += 1
         if len(routes) < 50:

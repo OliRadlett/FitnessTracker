@@ -20,6 +20,7 @@ class Route(Base):
     estimated_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     encoded_polyline: Mapped[str] = mapped_column(String, nullable=False)
     elevation_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    surface_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     start_lat: Mapped[float] = mapped_column(Float, nullable=False)
     start_lng: Mapped[float] = mapped_column(Float, nullable=False)
     end_lat: Mapped[float] = mapped_column(Float, nullable=False)

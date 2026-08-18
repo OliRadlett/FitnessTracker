@@ -13,6 +13,7 @@ class CyclingProfileRead(BaseModel):
     user_id: uuid.UUID
     ftp_watts: float | None = None
     weight_kg: float | None = None
+    lactate_threshold_hr: float | None = None
     auto_estimate_ftp: bool = False
     created_at: datetime
     updated_at: datetime
@@ -23,6 +24,7 @@ class CyclingProfileRead(BaseModel):
 class CyclingProfileUpdate(BaseModel):
     ftp_watts: float | None = Field(None, gt=0, le=1000, description="Functional Threshold Power in watts")
     weight_kg: float | None = Field(None, gt=20, le=300, description="Body weight in kg")
+    lactate_threshold_hr: float | None = Field(None, gt=30, le=250, description="Lactate Threshold Heart Rate in bpm")
     auto_estimate_ftp: bool | None = Field(None, description="Enable/disable weekly automatic FTP estimation")
 
 
@@ -99,6 +101,13 @@ class PowerZonesResponse(BaseModel):
     total_time_seconds: int
 
 
+class MetricTrend(BaseModel):
+    """Trend indicator comparing current value against a rolling baseline."""
+    current_value: float | None = None
+    baseline_value: float | None = None
+    direction: str = "stable"  # "up", "down", "stable"
+
+
 class CyclingMetricsSummary(BaseModel):
     """Summary of cycling-specific metrics."""
     recent_tss: float = 0.0  # last 7 days
@@ -113,6 +122,32 @@ class CyclingMetricsSummary(BaseModel):
     ftp_watts: float | None = None
     weight_kg: float | None = None
     power_to_weight: float | None = None  # W/kg at FTP
+
+    # Trend indicators (current 7d vs 28-day rolling average)
+    tss_trend: MetricTrend | None = None
+    distance_trend: MetricTrend | None = None
+    time_trend: MetricTrend | None = None
+    elevation_trend: MetricTrend | None = None
+    rides_trend: MetricTrend | None = None
+    if_trend: MetricTrend | None = None
+    vi_trend: MetricTrend | None = None
+
+
+class HrZoneDistribution(BaseModel):
+    """Time spent in each heart rate zone."""
+    zone: str
+    zone_name: str
+    lower_bound_hr: float
+    upper_bound_hr: float
+    time_seconds: int
+    percentage: float
+
+
+class HrZonesResponse(BaseModel):
+    """HR zone distribution for a given period."""
+    lthr: float
+    zones: list[HrZoneDistribution]
+    total_time_seconds: int
 
 
 class PowerVsHrPoint(BaseModel):

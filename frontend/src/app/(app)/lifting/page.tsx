@@ -13,6 +13,7 @@ import type {
   CreatePRPayload,
   ChartData,
   LinkedActivity,
+  ReadinessResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
@@ -22,6 +23,7 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
+import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,6 +147,13 @@ export default function LiftingPage() {
   });
   const volumeData = volumeResponse?.data;
 
+  // Phase 5.2 — Readiness indicator
+  const { data: readiness } = useQuery<ReadinessResponse>({
+    queryKey: ['readiness'],
+    queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
+    staleTime: 300_000,
+  });
+
   // ── Mutations ────────────────────────────────────────────────────────────
 
   const createSessionMutation = useMutation({
@@ -267,6 +276,17 @@ export default function LiftingPage() {
           </button>
         </div>
       </div>
+
+      {/* Readiness Indicator */}
+      {readiness && readiness.readiness !== 'unknown' && (
+        <ReadinessIndicator
+          recoveryScore={readiness.recovery_score ?? undefined}
+          readiness={readiness.readiness}
+          hrvMs={readiness.hrv_ms ?? undefined}
+          restingHr={readiness.resting_hr ?? undefined}
+          message={readiness.message}
+        />
+      )}
 
       {/* Backfill result */}
       {backfillMutation.isSuccess && backfillMutation.data && (

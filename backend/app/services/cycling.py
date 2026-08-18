@@ -143,18 +143,191 @@ def calculate_vam(elevation_gain_m: float, duration_seconds: int) -> float | Non
 def estimate_ftp_from_power_curve(power_curve: dict[int, float]) -> float | None:
     """Estimate FTP from best power at various durations.
 
-    Uses the best approach available:
-    1. Best 20-min power × 0.95 (standard)
-    2. Best 8-min power × 0.90 × 0.95 (fallback)
+    Uses a tiered approach with established multipliers:
+    1. Best 20-min power × 0.95 (gold standard)
+    2. Best 8-min power × 0.90 × 0.95 (well-established fallback)
     3. Best 5-min power × 0.95 (rough estimate)
+    4. Best 60-min power (directly equals FTP by definition)
+
+    Riegel extrapolation is NOT used here because it produces unreliable
+    results when extrapolating across wide duration ranges in cycling
+    (sprint power and threshold power use different energy systems).
     """
-    if 1200 in power_curve:  # 20 min
-        return round(power_curve[1200] * 0.95, 1)
-    if 480 in power_curve:  # 8 min
-        return round(power_curve[480] * 0.90 * 0.95, 1)
-    if 300 in power_curve:  # 5 min
-        return round(power_curve[300] * 0.95, 1)
+    if not power_curve:
+        return None
+
+    FTP_FACTOR = 0.95
+
+    estimates: list[tuple[float, float]] = []  # (ftp_estimate, confidence)
+
+    # 60-min power ≈ FTP directly (by definition)
+    if 3600 in power_curve and power_curve[3600] > 0:
+        estimates.append((power_curve[3600], 0.9))
+
+    # 20-min power × 0.95 (gold standard test)
+    if 1200 in power_curve and power_curve[1200] > 0:
+        estimates.append((power_curve[1200] * FTP_FACTOR, 1.0))
+
+    # 8-min power × 0.90 × 0.95 (well-established alternative)
+    if 480 in power_curve and power_curve[480] > 0:
+        estimates.append((power_curve[480] * 0.90 * FTP_FACTOR, 0.85))
+
+    # 5-min power × 0.95 (rough estimate, lower confidence)
+    if 300 in power_curve and power_curve[300] > 0:
+        estimates.append((power_curve[300] * FTP_FACTOR, 0.5))
+
+    # 30-min power × 0.95 (close to FTP)
+    if 1800 in power_curve and power_curve[1800] > 0:
+        estimates.append((power_curve[1800] * FTP_FACTOR, 0.95))
+
+    # 10-min power × 0.92 (between 8min and 20min factors)
+    if 600 in power_curve and power_curve[600] > 0:
+        estimates.append((power_curve[600] * 0.92 * FTP_FACTOR, 0.7))
+
+    if not estimates:
+        return None
+
+    # Weighted average
+    total_weight = sum(c for _, c in estimates)
+    if total_weight <= 0:
+        return None
+
+    weighted_ftp = sum(ftp * c for ftp, c in estimates) / total_weight
+
+    # Sanity check: FTP should be reasonable (50-600W for most humans)
+    if weighted_ftp < 50 or weighted_ftp > 600:
+        return None
+
+    return round(weighted_ftp, 1)
+
+
+# ── Typical Ranges ───────────────────────────────────────────────────────────
+
+TYPICAL_RANGES: dict[str, dict[str, tuple[float, float]]] = {
+    "ftp_w_per_kg": {
+        # Male ranges (approximate)
+        "poor": (0, 2.0),
+        "below_avg": (2.0, 2.9),
+        "average": (3.0, 3.5),
+        "good": (3.6, 4.2),
+        "excellent": (4.3, 5.0),
+        "elite": (5.0, 10.0),
+    },
+    "ctl": {
+        "detrained": (0, 20),
+        "low": (20, 40),
+        "moderate": (40, 70),
+        "high": (70, 100),
+        "very_high": (100, 150),
+        "elite": (150, 500),
+    },
+    "vi": {
+        "elite": (1.0, 1.02),
+        "excellent": (1.02, 1.05),
+        "good": (1.05, 1.10),
+        "average": (1.10, 1.20),
+        "variable": (1.20, 1.30),
+        "very_variable": (1.30, 2.0),
+    },
+}
+
+
+def classify_metric(value: float, metric_name: str) -> str | None:
+    """Classify a metric value into a range label."""
+    ranges = TYPICAL_RANGES.get(metric_name)
+    if not ranges:
+        return None
+    for label, (low, high) in ranges.items():
+        if low <= value < high:
+            return label
     return None
+
+
+# ── Heart Rate Zones ─────────────────────────────────────────────────────────
+
+HR_ZONES = [
+    ("Z1", "Active Recovery", 0.0, 0.68),
+    ("Z2", "Endurance", 0.68, 0.83),
+    ("Z3", "Tempo", 0.83, 0.95),
+    ("Z4", "Threshold", 0.95, 1.05),
+    ("Z5", "VO2max", 1.05, 1.18),
+    ("Z6", "Anaerobic", 1.18, 5.0),
+]
+
+
+async def compute_hr_zones_from_streams(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    lthr: float,
+    days: int = 30,
+) -> list[dict]:
+    """Compute heart rate zone distribution from HR stream data.
+
+    Uses LTHR (Lactate Threshold Heart Rate) based zones.
+    """
+    if not lthr or lthr <= 0:
+        return []
+
+    cutoff = date.today() - timedelta(days=days)
+
+    result = await db.execute(
+        select(Activity.id)
+        .where(
+            Activity.user_id == user_id,
+            Activity.average_heartrate.isnot(None),
+            Activity.start_date >= cutoff,
+        )
+    )
+    activity_ids = [row[0] for row in result.all()]
+
+    if not activity_ids:
+        return []
+
+    result = await db.execute(
+        select(ActivityStream)
+        .where(
+            ActivityStream.activity_id.in_(activity_ids),
+            ActivityStream.stream_type == "heartrate",
+        )
+    )
+    streams = list(result.scalars().all())
+
+    zone_times: dict[str, int] = {z[0]: 0 for z in HR_ZONES}
+
+    for stream in streams:
+        data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+        resolution = stream.resolution or 1
+
+        for val in data:
+            if val is None:
+                continue
+            hr = float(val)
+            if hr <= 0:
+                continue
+
+            pct_lthr = hr / lthr
+            for zone_id, _, lower, upper in HR_ZONES:
+                if lower <= pct_lthr < upper:
+                    zone_times[zone_id] += resolution
+                    break
+            else:
+                zone_times["Z6"] += resolution
+
+    total_time = sum(zone_times.values()) or 1
+
+    zones = []
+    for zone_id, zone_name, lower, upper in HR_ZONES:
+        time_s = zone_times.get(zone_id, 0)
+        zones.append({
+            "zone": zone_id,
+            "zone_name": zone_name,
+            "lower_bound_hr": round(lthr * lower),
+            "upper_bound_hr": round(lthr * upper),
+            "time_seconds": time_s,
+            "percentage": round(time_s / total_time * 100, 1),
+        })
+
+    return zones
 
 
 # ── CTL / ATL / TSB ─────────────────────────────────────────────────────────
