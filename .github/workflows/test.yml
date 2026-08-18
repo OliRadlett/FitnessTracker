@@ -57,7 +57,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://fittrack:fittrack_test@localhost:5432/fittrack_test
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: test-secret-key-for-ci-only
-      DEBUG: "false"
+      DEBUG: "true"
 
     steps:
       - uses: actions/checkout@v4

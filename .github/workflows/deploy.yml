@@ -55,7 +55,8 @@ jobs:
             echo "▸ Building and restarting via start.sh…"
             chmod +x start.sh
             ./start.sh down
-            ./start.sh up --build --migrate
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
+            ./start.sh up --migrate
 
             echo "▸ Cleaning up old images…"
             docker image prune -f
