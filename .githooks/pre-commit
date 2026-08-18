@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Pre-commit hook: run ruff on staged backend Python files
-# Matches CI lint step: ruff check backend/
-# Tests run in CI (need full deps + DB) — not feasible in a local hook.
+# Pre-commit hook: run ruff + pytest on staged backend Python files
+# Matches CI pipeline: ruff check + pytest tests/ -v
 # Install: git config core.hooksPath .githooks
 
 set -euo pipefail
@@ -12,7 +11,8 @@ if [ -z "$STAGED" ]; then
     exit 0
 fi
 
-# Find ruff binary
+# ── Ruff ─────────────────────────────────────────────────────────────────────
+echo "▸ Running ruff check (matches CI)…"
 RUFF=""
 for cmd in ruff "python3 -m ruff" "python -m ruff"; do
     if $cmd --version &>/dev/null 2>&1; then
@@ -23,9 +23,26 @@ done
 
 if [ -z "$RUFF" ]; then
     echo "⚠ ruff not found — skipping lint check"
+else
+    $RUFF check backend/
+    echo "✓ ruff checks passed"
+fi
+
+# ── Pytest ───────────────────────────────────────────────────────────────────
+# Find a Python (≥3.12) that has sqlalchemy installed (matches CI environment)
+PYTHON=""
+for cmd in python python3 "C:/Python312/python.exe"; do
+    if $cmd -c "import sqlalchemy" &>/dev/null 2>&1; then
+        PYTHON="$cmd"
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "⚠ Python with deps not found — skipping tests (CI will run them)"
     exit 0
 fi
 
-echo "▸ Running ruff check (matches CI)…"
-$RUFF check backend/
-echo "✓ ruff checks passed"
+echo "▸ Running pytest (matches CI)…"
+$PYTHON -m pytest backend/tests/ -v --tb=short -q
+echo "✓ tests passed"
