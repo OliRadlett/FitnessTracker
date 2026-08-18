@@ -26,6 +26,9 @@ dependencies = [
     "reportlab>=4.0.0",
 ]
 
+[tool.setuptools]
+packages = ["app"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

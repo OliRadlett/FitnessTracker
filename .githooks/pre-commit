@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run ruff on staged Python files in backend/
+# Install: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+# Find ruff binary
+RUFF=""
+for cmd in ruff "python -m ruff"; do
+    if $cmd --version &>/dev/null 2>&1; then
+        RUFF="$cmd"
+        break
+    fi
+done
+
+if [ -z "$RUFF" ]; then
+    echo "⚠ ruff not found — skipping lint check"
+    exit 0
+fi
+
+# Get staged Python files in backend/
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep '^backend/.*\.py$' || true)
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+echo "▸ Running ruff on staged files…"
+echo "$STAGED" | xargs $RUFF check
+
+echo "✓ ruff checks passed"
