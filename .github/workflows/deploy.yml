@@ -39,7 +39,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            cd /opt/fitness-tracker
+            cd /opt/FitnessTracker
 
             echo "▸ Pulling latest code…"
             git fetch origin main
