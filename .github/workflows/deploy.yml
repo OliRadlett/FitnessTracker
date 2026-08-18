@@ -39,24 +39,32 @@ jobs:
           script: |
             set -euo pipefail
 
-            cd /opt/FitnessTracker
+            cd /opt/fitness-tracker
 
             echo "▸ Pulling latest code…"
             git fetch origin main
             git reset --hard origin/main
 
-            echo "▸ Ensuring Python 3.10+ is available…"
-            if ! python3 -c "import sys; assert sys.version_info >= (3, 10)" 2>/dev/null; then
-              echo "  Installing Python 3.12…"
-              apt-get update -qq && apt-get install -y -qq python3.12 python3.12-venv >/dev/null 2>&1
-              update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
-            fi
+            echo "▸ Stopping services…"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml down --timeout 30
 
-            echo "▸ Building and restarting via start.sh…"
-            chmod +x start.sh
-            ./start.sh down
+            echo "▸ Building images (no cache)…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
-            ./start.sh up --migrate
+
+            echo "▸ Starting services…"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+            echo "▸ Waiting for DB…"
+            for i in $(seq 1 30); do
+              if docker compose exec -T db pg_isready -U fittrack >/dev/null 2>&1; then
+                echo "  DB ready after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+
+            echo "▸ Running migrations…"
+            docker compose exec -T backend alembic upgrade head
 
             echo "▸ Cleaning up old images…"
             docker image prune -f
