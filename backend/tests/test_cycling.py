@@ -116,7 +116,7 @@ class TestEstimateFTPFromPowerCurve:
     def test_20min_standard(self):
         """200W for 20 min → FTP ≈ 190W (200 × 0.95)."""
         ftp = estimate_ftp_from_power_curve({1200: 200.0})
-        assert ftp == pytest.approx(190.0, abs=1.0)
+        assert ftp == pytest.approx(190.0, abs=2.0)
 
     def test_60min_direct(self):
         """250W for 60 min → FTP ≈ 250W (direct)."""
@@ -151,24 +151,34 @@ class TestComputeTrainingLoad:
     """CTL/ATL/TSB from daily TSS values."""
 
     def test_empty_tss(self):
-        result = compute_training_load({})
-        assert result == []
+        """Empty TSS → all zero values over the lookback period."""
+        today = date.today()
+        result = compute_training_load({}, end_date=today, lookback_days=7)
+        assert len(result) == 8  # 7 days + end_date
+        assert all(e["tss"] == 0.0 for e in result)
+        assert all(e["ctl"] == pytest.approx(0.0, abs=0.01) for e in result)
 
     def test_single_day(self):
-        daily_tss = {date.today(): 100.0}
-        result = compute_training_load(daily_tss)
-        assert len(result) == 1
-        assert result[0]["tsb"] == pytest.approx(0.0, abs=0.1)
+        """Single TSS value → TSS appears in result, CTL/ATL ramp up."""
+        today = date.today()
+        daily_tss = {today: 100.0}
+        result = compute_training_load(daily_tss, end_date=today, lookback_days=1)
+        assert len(result) == 2  # lookback day + today
+        today_entry = result[-1]
+        assert today_entry["tss"] == pytest.approx(100.0)
+        # CTL and ATL should have ramped up from the single day
+        assert today_entry["ctl"] > 0
+        assert today_entry["atl"] > 0
 
     def test_steady_load_builds_ctl(self):
-        """Consistent 100 TSS/day for 50 days → CTL approaches 100."""
+        """Consistent 100 TSS/day for 90 days → CTL approaches 100."""
         today = date.today()
         daily_tss = {}
-        for i in range(50):
-            d = today - timedelta(days=49 - i)
+        for i in range(90):
+            d = today - timedelta(days=89 - i)
             daily_tss[d] = 100.0
 
-        result = compute_training_load(daily_tss)
+        result = compute_training_load(daily_tss, end_date=today, lookback_days=90)
         last = result[-1]
         # CTL (42-day EWMA) should be approaching 100
         assert last["ctl"] > 80

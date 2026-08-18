@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Pre-commit hook: run ruff + pytest on staged backend files
-# Matches CI pipeline: ruff check + pytest
+# Pre-commit hook: run ruff on staged backend Python files
+# Matches CI lint step: ruff check backend/
+# Tests run in CI (need full deps + DB) — not feasible in a local hook.
 # Install: git config core.hooksPath .githooks
 
 set -euo pipefail
@@ -11,26 +12,20 @@ if [ -z "$STAGED" ]; then
     exit 0
 fi
 
-echo "▸ Running ruff check (matches CI)…"
-if command -v ruff &>/dev/null; then
-    ruff check backend/
-elif python3 -m ruff --version &>/dev/null 2>&1; then
-    python3 -m ruff check backend/
-elif python -m ruff --version &>/dev/null 2>&1; then
-    python -m ruff check backend/
-else
+# Find ruff binary
+RUFF=""
+for cmd in ruff "python3 -m ruff" "python -m ruff"; do
+    if $cmd --version &>/dev/null 2>&1; then
+        RUFF="$cmd"
+        break
+    fi
+done
+
+if [ -z "$RUFF" ]; then
     echo "⚠ ruff not found — skipping lint check"
+    exit 0
 fi
 
-echo "▸ Running pytest (matches CI)…"
-if command -v pytest &>/dev/null; then
-    pytest backend/tests/ -v --tb=short -q
-elif python3 -m pytest --version &>/dev/null 2>&1; then
-    python3 -m pytest backend/tests/ -v --tb=short -q
-elif python -m pytest --version &>/dev/null 2>&1; then
-    python -m pytest backend/tests/ -v --tb=short -q
-else
-    echo "⚠ pytest not found — skipping tests"
-fi
-
-echo "✓ pre-commit checks passed"
+echo "▸ Running ruff check (matches CI)…"
+$RUFF check backend/
+echo "✓ ruff checks passed"

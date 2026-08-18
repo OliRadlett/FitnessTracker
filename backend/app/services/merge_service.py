@@ -34,7 +34,7 @@ PROVIDER_PRIORITY: dict[str, int] = {
 
 # Sport types that are considered compatible for matching purposes
 _COMPATIBLE_SPORT_TYPES: dict[str, set[str]] = {
-    "cycling": {"cycling"},
+    "cycling": {"cycling", "virtual_cycling"},
     "running": {"running"},
     "swimming": {"swimming"},
     "strength": {"strength", "powerlifting"},
