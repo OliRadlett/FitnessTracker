@@ -7,6 +7,9 @@ from app.models.health_alert import HealthAlert
 from app.models.route import Route, RouteSource
 from app.models.cycling import CyclingProfile, FtpHistory
 from app.models.weight import WeightLog
+from app.models.goal import Goal
+from app.models.training_plan import TrainingPlan, TrainingPlanDay
+from app.models.event import Event
 
 __all__ = [
     "User",
@@ -27,4 +30,8 @@ __all__ = [
     "CyclingProfile",
     "FtpHistory",
     "WeightLog",
+    "Goal",
+    "TrainingPlan",
+    "TrainingPlanDay",
+    "Event",
 ]

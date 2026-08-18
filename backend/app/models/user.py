@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.services.encryption import EncryptedString
 
 
 class User(Base):
@@ -30,6 +31,9 @@ class User(Base):
     cycling_profile: Mapped["CyclingProfile | None"] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")  # type: ignore[name-defined]
     ftp_history: Mapped[list["FtpHistory"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     weight_logs: Mapped[list["WeightLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    goals: Mapped[list["Goal"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    training_plans: Mapped[list["TrainingPlan"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    events: Mapped[list["Event"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):
@@ -38,8 +42,8 @@ class OAuthConnection(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)  # strava, whoop, wahoo, google, github
-    access_token: Mapped[str] = mapped_column(String(1024), nullable=False)
-    refresh_token: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    access_token: Mapped[str] = mapped_column(EncryptedString(1024), nullable=False)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedString(1024), nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     provider_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

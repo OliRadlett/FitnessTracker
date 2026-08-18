@@ -54,6 +54,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────
+# CSRF protection is intentionally omitted.  The API uses JWT Bearer tokens
+# sent via the Authorization header (not cookies), so browsers do not attach
+# them automatically on cross-origin requests.  Combined with CORS origin
+# restrictions below, this effectively mitigates CSRF without needing
+# additional CSRF tokens or SameSite cookie attributes.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
@@ -127,6 +132,17 @@ async def health_check():
     )
 
 
+# ── Prometheus metrics ───────────────────────────────────────────────
+from prometheus_fastapi_instrumentator import Instrumentator
+
+Instrumentator(
+    should_respect_env_var=True,
+    excluded_handlers=["/health", "/metrics"],
+).instrument(app).expose(app, endpoint="/metrics")
+
+# ── API routers ─────────────────────────────────────────────────────
+# All routes are versioned under /api/v1/. See docs/api-versioning.md
+# for the versioning and deprecation policy.
 # Import and include routers
 from app.api.auth import router as auth_router
 from app.api.connections import router as connections_router
@@ -139,6 +155,9 @@ from app.api.routes import router as routes_router
 from app.api.cycling import router as cycling_router
 from app.api.export import router as export_router
 from app.api.metrics import router as metrics_router
+from app.api.goals import router as goals_router
+from app.api.training_plans import router as training_plans_router
+from app.api.events import router as events_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections_router, prefix="/api/v1/connections", tags=["connections"])
@@ -151,3 +170,6 @@ app.include_router(routes_router, prefix="/api/v1/routes", tags=["routes"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
+app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
+app.include_router(training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"])
+app.include_router(events_router, prefix="/api/v1/events", tags=["events"])

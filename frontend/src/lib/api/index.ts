@@ -9,3 +9,6 @@ export * from './lifting';
 export * from './routes';
 export * from './cycling';
 export * from './dashboard';
+export * from './goals';
+export * from './trainingPlans';
+export * from './events';

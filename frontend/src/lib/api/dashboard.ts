@@ -1,5 +1,5 @@
 import { apiFetch } from './fetch';
-import type { DashboardSummary, MonthlySummaryItem, WeeklyReport, ChartData, ChartParams } from './types';
+import type { DashboardSummary, MonthlySummaryItem, WeeklyReport, TrainingStreaks, ChartData, ChartParams, YearlySummary } from './types';
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch<DashboardSummary>('/api/v1/dashboard/summary');
@@ -13,6 +13,10 @@ export async function getMonthlySummary(months: number = 6): Promise<MonthlySumm
   return apiFetch<MonthlySummaryItem[]>(`/api/v1/dashboard/monthly-summary?months=${months}`);
 }
 
+export async function getTrainingStreaks(): Promise<TrainingStreaks> {
+  return apiFetch<TrainingStreaks>('/api/v1/dashboard/streaks');
+}
+
 export async function getChart(chartName: string, params: ChartParams = {}): Promise<ChartData> {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -22,4 +26,8 @@ export async function getChart(chartName: string, params: ChartParams = {}): Pro
   });
   const query = searchParams.toString();
   return apiFetch<ChartData>(`/api/v1/charts/${chartName}${query ? `?${query}` : ''}`);
+}
+
+export async function getYearlySummary(year: number): Promise<YearlySummary> {
+  return apiFetch<YearlySummary>(`/api/v1/dashboard/yearly-summary/${year}`);
 }

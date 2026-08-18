@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # Strava Webhook
     strava_verify_token: str = "fittrack_strava_webhook"
 
+    # Database backup
+    backup_dir: str = "/backups"
+
     # Merge / dedup thresholds
     activity_merge_threshold: float = 0.60  # lowered from 0.65 to reduce false negatives
     activity_route_link_threshold: float = 0.70

@@ -21,6 +21,10 @@ from app.services.cycling import (
     estimate_ftp_from_power_curve,
     POWER_DURATION_BUCKETS,
     get_or_create_cycling_profile,
+    compute_vo2max_history,
+    compute_decoupling_history,
+    _classify_vo2max,
+    _classify_decoupling,
 )
 
 
@@ -1252,6 +1256,128 @@ class ChartService:
             y_label="Recovery %",
         )
 
+    # ── VO2max Trend ────────────────────────────────────────────────────────
+
+    async def vo2max_trend(self, user_id: uuid.UUID, months: int = 12) -> ChartData:
+        """VO2max estimated over time from monthly power snapshots."""
+        history = await compute_vo2max_history(self.db, user_id, months=months)
+
+        if not history:
+            return ChartData(
+                chart_type="line",
+                title="VO2max Trend",
+                labels=[],
+                series=[ChartSeries(name="VO2max (ml/kg/min)", data=[])],
+                x_label="Date",
+                y_label="VO2max (ml/kg/min)",
+            )
+
+        labels = [h["date"].isoformat() for h in history]
+        vo2_values = [h["vo2max"] for h in history]
+
+        # Generate insights
+        insights = []
+        if len(vo2_values) >= 2:
+            first = vo2_values[0]
+            latest = vo2_values[-1]
+            if first > 0:
+                change = latest - first
+                classification = _classify_vo2max(latest)
+                insights.append(f"Current VO2max: {latest:.1f} ml/kg/min ({classification}).")
+                if abs(change) > 1:
+                    direction = "improved" if change > 0 else "declined"
+                    insights.append(f"VO2max has {direction} by {abs(change):.1f} ml/kg/min over the analysis period.")
+                else:
+                    insights.append("VO2max is stable. Consistent aerobic training will drive improvement.")
+        elif vo2_values:
+            classification = _classify_vo2max(vo2_values[-1])
+            insights.append(f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification}).")
+
+        # Add classification reference areas
+        reference_areas = [
+            ReferenceArea(y1=0, y2=35, color="#ef4444", opacity=0.06, label="Poor"),
+            ReferenceArea(y1=35, y2=45, color="#f97316", opacity=0.06, label="Below Avg"),
+            ReferenceArea(y1=45, y2=55, color="#eab308", opacity=0.06, label="Average"),
+            ReferenceArea(y1=55, y2=65, color="#22c55e", opacity=0.06, label="Good"),
+            ReferenceArea(y1=65, y2=75, color="#3b82f6", opacity=0.06, label="Excellent"),
+            ReferenceArea(y1=75, y2=100, color="#8b5cf6", opacity=0.06, label="Superior"),
+        ]
+
+        return ChartData(
+            chart_type="line",
+            title="VO2max Trend",
+            labels=labels,
+            series=[ChartSeries(name="VO2max (ml/kg/min)", data=vo2_values, color="#22c55e")],
+            x_label="Date",
+            y_label="VO2max (ml/kg/min)",
+            insights=insights,
+            reference_areas=reference_areas,
+        )
+
+    # ── Decoupling Trend ───────────────────────────────────────────────────
+
+    async def decoupling_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """HR vs power decoupling trend over recent long rides.
+
+        Shows how decoupling evolves — lower is better (<5% = excellent).
+        """
+        history = await compute_decoupling_history(self.db, user_id, days=days)
+
+        if not history:
+            return ChartData(
+                chart_type="scatter",
+                title="Decoupling Trend",
+                labels=[],
+                series=[ChartSeries(name="Decoupling %", data=[])],
+                x_label="Date",
+                y_label="Decoupling %",
+            )
+
+        labels = [h["date"].strftime("%Y-%m-%d") if hasattr(h["date"], "strftime") else str(h["date"]) for h in history]
+        dec_values = [h["decoupling_pct"] for h in history]
+
+        # Color points by classification
+        colors = []
+        for h in history:
+            cls = h["classification"]
+            if cls == "Excellent":
+                colors.append("#22c55e")
+            elif cls == "Acceptable":
+                colors.append("#eab308")
+            else:
+                colors.append("#ef4444")
+
+        # Generate insights
+        insights = []
+        avg_dec = sum(dec_values) / len(dec_values)
+        classification = _classify_decoupling(avg_dec)
+        insights.append(f"Average decoupling: {avg_dec:.1f}% ({classification}) across {len(dec_values)} rides.")
+        if len(dec_values) >= 3:
+            recent_3 = sum(dec_values[-3:]) / 3
+            if recent_3 < 5:
+                insights.append("Recent decoupling is excellent — strong aerobic base.")
+            elif recent_3 < 8:
+                insights.append("Recent decoupling is acceptable. More long Zone 2 rides would improve aerobic fitness.")
+            else:
+                insights.append("Recent decoupling is high — focus on aerobic base building with long Zone 2 rides.")
+
+        reference_areas = [
+            ReferenceArea(y1=0, y2=5, color="#22c55e", opacity=0.08, label="Excellent"),
+            ReferenceArea(y1=5, y2=8, color="#eab308", opacity=0.08, label="Acceptable"),
+            ReferenceArea(y1=8, y2=30, color="#ef4444", opacity=0.08, label="Aerobic Deficiency"),
+        ]
+
+        return ChartData(
+            chart_type="line",
+            title="Decoupling Trend (HR vs Power)",
+            labels=labels,
+            series=[ChartSeries(name="Decoupling %", data=dec_values, color="#3b82f6")],
+            x_label="Date",
+            y_label="Decoupling %",
+            insights=insights,
+            reference_areas=reference_areas,
+        )
+
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -1278,4 +1404,91 @@ class ChartService:
         order = {"30s": 0, "1min": 1, "5min": 2, "10min": 3, "20min": 4, "30min": 5, "60min": 6, "60min+": 7}
         return order.get(bucket, 99)
 
+    # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
+
+    async def periodization(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
+        """Overlay planned TSS (from training plans) with actual weekly TSS."""
+        from sqlalchemy.orm import selectinload
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        end_date = date.today()
+        start_date = end_date - timedelta(weeks=weeks)
+
+        # Actual weekly TSS
+        week_start = func.date_trunc("week", Activity.start_date).label("week_start")
+        result = await self.db.execute(
+            select(week_start, func.sum(Activity.tss).label("total_tss"))
+            .where(
+                Activity.user_id == user_id,
+                Activity.source != "wahoo",
+                Activity.start_date >= start_date,
+            )
+            .group_by(week_start)
+            .order_by(week_start)
+        )
+        actual_weekly: dict[str, float] = {}
+        for row in result.all():
+            if row[0]:
+                wk = row[0].date().isoformat() if hasattr(row[0], "date") else str(row[0])
+                actual_weekly[wk] = float(row[1] or 0)
+
+        # Planned weekly TSS from active/completed plans
+        result = await self.db.execute(
+            select(TrainingPlan)
+            .where(
+                TrainingPlan.user_id == user_id,
+                TrainingPlan.end_date >= start_date,
+                TrainingPlan.status.in_(["active", "completed"]),
+            )
+            .options(selectinload(TrainingPlan.days))
+        )
+        plans = list(result.scalars().unique().all())
+
+        planned_weekly: dict[str, float] = {}
+        plan_types: dict[str, str] = {}
+        for plan in plans:
+            for day in plan.days:
+                if day.day_date >= start_date:
+                    wk = (day.day_date - timedelta(days=day.day_date.weekday())).isoformat()
+                    planned_weekly[wk] = planned_weekly.get(wk, 0) + (day.planned_tss or 0)
+                    plan_types[wk] = plan.plan_type
+
+        BLOCK_COLORS = {
+            "base": "#3b82f6", "build": "#f59e0b", "peak": "#ef4444",
+            "taper": "#8b5cf6", "recovery": "#22c55e", "custom": "#6b7280",
+        }
+
+        all_weeks = sorted(set(list(actual_weekly.keys()) + list(planned_weekly.keys())))
+        labels, actual_data, planned_data, colors = [], [], [], []
+        for wk in all_weeks:
+            labels.append(wk)
+            actual_data.append(actual_weekly.get(wk, 0))
+            planned_data.append(planned_weekly.get(wk, 0))
+            colors.append(BLOCK_COLORS.get(plan_types.get(wk, "custom"), "#6b7280"))
+
+        insights = []
+        if planned_weekly and actual_weekly:
+            avg_p = sum(planned_weekly.values()) / len(planned_weekly)
+            avg_a = sum(actual_weekly.values()) / len(actual_weekly)
+            if avg_p > 0:
+                ratio = avg_a / avg_p
+                if ratio > 1.15:
+                    insights.append(f"You're averaging {ratio:.0%} of planned volume — consider scaling back.")
+                elif ratio < 0.85:
+                    insights.append(f"You're completing {ratio:.0%} of planned volume — room to increase.")
+                else:
+                    insights.append(f"Volume is well-aligned with plan ({ratio:.0%} of target).")
+
+        return ChartData(
+            chart_type="bar",
+            title="Periodization — Planned vs Actual TSS",
+            labels=labels,
+            series=[
+                ChartSeries(name="Planned TSS", data=planned_data, color="#3b82f6"),
+                ChartSeries(name="Actual TSS", data=actual_data, color="#22c55e"),
+            ],
+            x_label="Week",
+            y_label="TSS",
+            insights=insights,
+        )
 

@@ -64,6 +64,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.sync_all_whoop_data",
         "schedule": crontab(minute="*/30"),
     },
+    # Weekly database backup (Sunday 2 AM UTC)
+    "backup-database": {
+        "task": "app.tasks.scheduler.backup_database",
+        "schedule": crontab(hour=2, minute=0, day_of_week=0),
+    },
 }
 
 
@@ -573,3 +578,115 @@ def sync_all_whoop_data() -> dict:
             }
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.backup_database")
+def backup_database() -> dict:
+    """Run pg_dump to create a compressed backup of the database.
+
+    Backups are saved to the configured backup directory (default /backups).
+    Old backups (older than 30 days) are automatically cleaned up.
+
+    NOTE: This task runs inside the Docker container. The backup directory
+    should be a mounted volume for persistence across container restarts.
+    """
+    import glob
+    import os
+    import subprocess
+    from datetime import datetime, timedelta
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    backup_dir = settings.backup_dir
+    os.makedirs(backup_dir, exist_ok=True)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"fittrack_backup_{timestamp}.sql.gz"
+    filepath = os.path.join(backup_dir, filename)
+
+    db_url = settings.database_url
+
+    # Parse connection details from the async URL
+    # postgresql+asyncpg://user:pass@host:port/dbname -> user, pass, host, port, dbname
+    from urllib.parse import urlparse
+    parsed = urlparse(db_url.replace("postgresql+asyncpg://", "postgresql://"))
+    db_user = parsed.username or "fittrack"
+    db_host = parsed.hostname or "db"
+    db_port = str(parsed.port or 5432)
+    db_name = (parsed.path or "/fittrack").lstrip("/")
+
+    try:
+        cmd = [
+            "pg_dump",
+            "-h", db_host,
+            "-p", db_port,
+            "-U", db_user,
+            "-d", db_name,
+            "--no-password",
+            "--compress=zstd:3",
+        ]
+
+        with open(filepath, "wb") as f:
+            result = subprocess.run(
+                cmd,
+                stdout=f,
+                stderr=subprocess.PIPE,
+                timeout=3600,  # 1 hour timeout
+                env={**os.environ, "PGPASSWORD": parsed.password or ""},
+            )
+
+        if result.returncode != 0:
+            logger.error(
+                "Database backup failed: pg_dump exited with code %d: %s",
+                result.returncode,
+                result.stderr.decode() if result.stderr else "no stderr",
+            )
+            # Clean up partial file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return {"status": "failed", "error": result.stderr.decode() if result.stderr else "unknown"}
+
+        file_size = os.path.getsize(filepath)
+        logger.info(
+            "Database backup completed: %s (%.2f MB)",
+            filepath,
+            file_size / (1024 * 1024),
+        )
+
+    except subprocess.TimeoutExpired:
+        logger.error("Database backup timed out after 1 hour")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return {"status": "failed", "error": "timeout"}
+    except FileNotFoundError:
+        logger.error("pg_dump not found — ensure postgresql-client is installed in the container")
+        return {"status": "failed", "error": "pg_dump not found"}
+    except Exception as e:
+        logger.error("Database backup failed: %s", e, exc_info=True)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return {"status": "failed", "error": str(e)}
+
+    # Clean up backups older than 30 days
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    deleted_count = 0
+    for old_backup in glob.glob(os.path.join(backup_dir, "fittrack_backup_*.sql.gz")):
+        try:
+            # Extract timestamp from filename: fittrack_backup_YYYYMMDD_HHMMSS.sql.gz
+            basename = os.path.basename(old_backup)
+            ts_str = basename.replace("fittrack_backup_", "").replace(".sql.gz", "")
+            backup_dt = datetime.strptime(ts_str, "%Y%m%d_%H%M%S")
+            if backup_dt < cutoff:
+                os.remove(old_backup)
+                deleted_count += 1
+                logger.info("Deleted old backup: %s", old_backup)
+        except (ValueError, OSError) as e:
+            logger.warning("Could not process old backup %s: %s", old_backup, e)
+
+    return {
+        "status": "success",
+        "filepath": filepath,
+        "size_mb": round(file_size / (1024 * 1024), 2),
+        "deleted_old_backups": deleted_count,
+    }

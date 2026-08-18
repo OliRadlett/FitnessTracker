@@ -14,6 +14,10 @@ import type {
   BackfillStreamsResult,
   LifetimePBsResponse,
   BackfillFtpResult,
+  Vo2maxResponse,
+  Vo2maxHistoryResponse,
+  DecouplingHistoryResponse,
+  DecouplingSingleResponse,
 } from './types';
 
 export async function getCyclingProfile(): Promise<CyclingProfile> {
@@ -86,4 +90,20 @@ export async function backfillFtpHistory(months: number = 12): Promise<BackfillF
   return apiFetch<BackfillFtpResult>(`/api/v1/cycling/backfill-ftp-history?months=${months}`, {
     method: 'POST',
   });
+}
+
+export async function getVo2max(days: number = 90): Promise<Vo2maxResponse> {
+  return apiFetch<Vo2maxResponse>(`/api/v1/cycling/vo2max?days=${days}`);
+}
+
+export async function getVo2maxHistory(months: number = 12): Promise<Vo2maxHistoryResponse> {
+  return apiFetch<Vo2maxHistoryResponse>(`/api/v1/cycling/vo2max-history?months=${months}`);
+}
+
+export async function getDecouplingHistory(days: number = 90, minDuration: number = 60): Promise<DecouplingHistoryResponse> {
+  return apiFetch<DecouplingHistoryResponse>(`/api/v1/cycling/decoupling?days=${days}&min_duration=${minDuration}`);
+}
+
+export async function getDecouplingForActivity(activityId: string): Promise<DecouplingSingleResponse> {
+  return apiFetch<DecouplingSingleResponse>(`/api/v1/cycling/decoupling/${activityId}`);
 }

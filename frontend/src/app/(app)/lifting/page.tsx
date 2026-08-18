@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type {
@@ -26,6 +26,7 @@ import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
+import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,8 @@ export default function LiftingPage() {
   const [showManualPR, setShowManualPR] = useState(false);
   const [showAccessories, setShowAccessories] = useState(false);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
+  const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
+  const previousPRsRef = useRef<Map<string, number>>(new Map());
 
   const [newSession, setNewSession] = useState<CreateSessionPayload>({
     session_date: new Date().toISOString().split('T')[0],
@@ -141,6 +144,50 @@ export default function LiftingPage() {
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs'),
     staleTime: 300_000,  // 5 min — PRs change rarely
   });
+
+  // ── PR Celebration Detection ────────────────────────────────────────────
+  // Track PR changes and trigger celebration when a PR improves
+  useEffect(() => {
+    if (!personalRecords) return;
+
+    const currentMap = new Map<string, number>();
+    for (const pr of personalRecords) {
+      if (pr.record_type === '1rm' && pr.estimated_1rm) {
+        const existing = currentMap.get(pr.exercise_name);
+        if (!existing || pr.estimated_1rm > existing) {
+          currentMap.set(pr.exercise_name, pr.estimated_1rm);
+        }
+      }
+    }
+
+    // Only detect changes after we have a previous snapshot (skip first load)
+    if (previousPRsRef.current.size > 0) {
+      for (const [exercise, new1rm] of currentMap.entries()) {
+        const prev1rm = previousPRsRef.current.get(exercise);
+        if (prev1rm !== undefined && new1rm > prev1rm) {
+          const improvementPct = ((new1rm - prev1rm) / prev1rm) * 100;
+          setCelebrationPR({
+            exercise_name: exercise,
+            new_1rm: new1rm,
+            previous_1rm: prev1rm,
+            improvement_pct: improvementPct,
+          });
+          break; // celebrate one at a time
+        } else if (prev1rm === undefined) {
+          // Brand new exercise PR
+          setCelebrationPR({
+            exercise_name: exercise,
+            new_1rm: new1rm,
+            previous_1rm: null,
+            improvement_pct: null,
+          });
+          break;
+        }
+      }
+    }
+
+    previousPRsRef.current = currentMap;
+  }, [personalRecords]);
 
   const { data: volumeResponse, isLoading: volumeLoading } = useQuery<VolumeTrendResponse>({
     queryKey: ['lifting-volume'],
@@ -255,6 +302,9 @@ export default function LiftingPage() {
 
   return (
     <div className="space-y-6">
+      {/* PR Celebration Toast */}
+      <PRCelebration pr={celebrationPR} onDismiss={() => setCelebrationPR(null)} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

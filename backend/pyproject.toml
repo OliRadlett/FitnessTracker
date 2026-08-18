@@ -20,6 +20,10 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "slowapi>=0.1.9",
     "python-json-logger>=2.0.0",
+    "cryptography>=43.0.0",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    "fitparse>=1.2.0",
+    "reportlab>=4.0.0",
 ]
 
 [project.optional-dependencies]

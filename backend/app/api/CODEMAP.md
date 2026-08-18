@@ -14,3 +14,5 @@
 | `dashboard.py` | `/dashboard/` | `GET /summary`, `GET /weekly-report` |
 | `webhooks.py` | `/webhooks/` | `GET /strava` (challenge), `POST /strava` (event receiver) |
 | `export.py` | `/export/` | Data export endpoints |
+| `training_plans.py` | `/training-plans/` | Plan CRUD, `POST /generate` (template-based auto-generation) |
+| `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter |

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityDetail, ChartData, ActivityFilters, ActivitySource } from '@/lib/api';
 import dynamic from 'next/dynamic';
@@ -279,7 +279,8 @@ function ActivityExpanded({
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ActivitiesPage() {
-  const { authFetch, authFetchWithHeaders } = useAuthFetch();
+  const { authFetch, authFetchWithHeaders, authUpload } = useAuthFetch();
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
@@ -287,6 +288,34 @@ export default function ActivitiesPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const PAGE_SIZE = 50;
+
+  // ── File import state ────────────────────────────────────────────────────
+  const gpxInputRef = useRef<HTMLInputElement>(null);
+  const fitInputRef = useRef<HTMLInputElement>(null);
+  const [importLoading, setImportLoading] = useState<string | null>(null); // 'gpx' | 'fit' | null
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleFileImport = useCallback(async (file: File, type: 'gpx' | 'fit') => {
+    setImportLoading(type);
+    setImportMessage(null);
+    try {
+      const endpoint = type === 'gpx' ? '/api/v1/activities/import-gpx' : '/api/v1/activities/import-fit';
+      const formData = new FormData();
+      formData.append('file', file);
+      await authUpload<Activity>(endpoint, formData);
+      setImportMessage({ type: 'success', text: `Successfully imported ${file.name}` });
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['activities-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    } catch (err) {
+      setImportMessage({ type: 'error', text: err instanceof Error ? err.message : 'Import failed' });
+    } finally {
+      setImportLoading(null);
+      // Reset file inputs so the same file can be re-selected
+      if (gpxInputRef.current) gpxInputRef.current.value = '';
+      if (fitInputRef.current) fitInputRef.current.value = '';
+    }
+  }, [authUpload, queryClient]);
 
   const activitiesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -438,6 +467,76 @@ export default function ActivitiesPage() {
           </button>
         </div>
       </div>
+
+      {/* File Import */}
+      <Card>
+        <div className="flex flex-wrap gap-4 items-center">
+          <span className="text-sm font-medium text-white">Import File</span>
+
+          {/* GPX upload */}
+          <label
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border cursor-pointer transition-colors ${
+              importLoading === 'gpx'
+                ? 'bg-accent/10 text-accent border-accent/30 opacity-60 cursor-wait'
+                : 'bg-surface-light border-surface-light text-muted hover:text-white hover:bg-surface-light/80'
+            }`}
+          >
+            {importLoading === 'gpx' ? (
+              <span className="inline-block w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            ) : (
+              '📄'
+            )}
+            {importLoading === 'gpx' ? 'Importing…' : 'Import GPX'}
+            <input
+              ref={gpxInputRef}
+              type="file"
+              accept=".gpx"
+              className="hidden"
+              disabled={!!importLoading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileImport(file, 'gpx');
+              }}
+            />
+          </label>
+
+          {/* FIT upload */}
+          <label
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border cursor-pointer transition-colors ${
+              importLoading === 'fit'
+                ? 'bg-accent/10 text-accent border-accent/30 opacity-60 cursor-wait'
+                : 'bg-surface-light border-surface-light text-muted hover:text-white hover:bg-surface-light/80'
+            }`}
+          >
+            {importLoading === 'fit' ? (
+              <span className="inline-block w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            ) : (
+              '⌚'
+            )}
+            {importLoading === 'fit' ? 'Importing…' : 'Import FIT'}
+            <input
+              ref={fitInputRef}
+              type="file"
+              accept=".fit"
+              className="hidden"
+              disabled={!!importLoading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileImport(file, 'fit');
+              }}
+            />
+          </label>
+
+          {/* Status message */}
+          {importMessage && (
+            <span
+              className={`text-sm ${importMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}
+            >
+              {importMessage.type === 'success' ? '✓' : '✗'} {importMessage.text}
+            </span>
+          )}
+        </div>
+      </Card>
 
       {/* Filter Bar */}
       <Card>

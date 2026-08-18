@@ -46,6 +46,14 @@ export interface ChartParams {
   days_b?: number;
 }
 
+export interface RestDaySuggestion {
+  should_rest: boolean;
+  reasons: string[];
+  current_tsb?: number;
+  latest_recovery?: number;
+  consecutive_training_days: number;
+}
+
 export interface DashboardSummary {
   weekly_volume_kg: number;
   weekly_sessions: number;
@@ -57,6 +65,7 @@ export interface DashboardSummary {
   active_alerts_count: number;
   current_week_start: string;
   current_week_end: string;
+  rest_day_suggestion?: RestDaySuggestion;
 }
 
 export interface WeeklyReport {
@@ -82,6 +91,67 @@ export interface MonthlySummaryItem {
   cardio_sessions: number;
   pr_count: number;
   avg_recovery?: number;
+}
+
+// ─── Yearly Summary ─────────────────────────────────────────────────────────
+
+export interface PRHighlight {
+  exercise_name: string;
+  record_type: string;
+  weight_kg: number;
+  reps: number;
+  estimated_1rm?: number;
+  achieved_date: string;
+  improvement_pct?: number;
+}
+
+export interface BestActivity {
+  id?: string;
+  name: string;
+  sport_type: string;
+  start_date: string;
+  value: number;
+  unit: string;
+}
+
+export interface YearlyHighlights {
+  best_month_tss?: string;
+  best_month_tss_value: number;
+  longest_ride?: BestActivity;
+  heaviest_lift?: BestActivity;
+  total_prs: number;
+  pr_highlights: PRHighlight[];
+}
+
+export interface YearOverYearComparison {
+  activities_delta: number;
+  distance_delta_m: number;
+  time_delta_s: number;
+  tss_delta: number;
+  lifting_volume_delta_kg: number;
+  lifting_sessions_delta: number;
+  prs_delta: number;
+  avg_recovery_delta?: number;
+  activities_pct?: number;
+  distance_pct?: number;
+  time_pct?: number;
+  tss_pct?: number;
+  lifting_volume_pct?: number;
+}
+
+export interface YearlySummary {
+  year: number;
+  total_activities: number;
+  total_distance_m: number;
+  total_time_s: number;
+  total_tss: number;
+  total_lifting_sessions: number;
+  total_lifting_volume_kg: number;
+  avg_recovery?: number;
+  avg_hrv_ms?: number;
+  months: MonthlySummaryItem[];
+  highlights: YearlyHighlights;
+  year_over_year?: YearOverYearComparison;
 }
 
 // ─── Activity ────────────────────────────────────────────────────────────────
@@ -606,6 +676,61 @@ export interface BackfillFtpResult {
   months_analyzed: number;
 }
 
+// ─── VO2max Estimation ────────────────────────────────────────────────────
+
+export interface Vo2maxDetail {
+  vo2max: number;
+  confidence: number;
+  method: string;
+}
+
+export interface Vo2maxResponse {
+  vo2max: number;
+  confidence: number;
+  method: string;
+  classification: string;
+  all_estimates: Vo2maxDetail[];
+}
+
+export interface Vo2maxHistoryPoint {
+  date: string;
+  vo2max: number;
+  method: string;
+}
+
+export interface Vo2maxHistoryResponse {
+  data: Vo2maxHistoryPoint[];
+  current_vo2max?: number;
+  current_classification?: string;
+}
+
+// ─── Decoupling Analysis ──────────────────────────────────────────────────
+
+export interface DecouplingActivityPoint {
+  date: string;
+  activity_id: string;
+  decoupling_pct: number;
+  first_half_ratio: number;
+  second_half_ratio: number;
+  classification: string;
+  duration_seconds: number;
+}
+
+export interface DecouplingHistoryResponse {
+  data: DecouplingActivityPoint[];
+  avg_decoupling_pct?: number;
+  classification?: string;
+}
+
+export interface DecouplingSingleResponse {
+  decoupling_pct: number;
+  first_half_ratio: number;
+  second_half_ratio: number;
+  classification: string;
+  duration_seconds: number;
+  activity_id?: string;
+}
+
 // ─── Phase 5.2 — Whoop Intelligence ───────────────────────────────────────
 
 export interface ReadinessResponse {
@@ -697,4 +822,189 @@ export interface HealthAnalysisResult {
     evidence?: Record<string, unknown>;
   };
   error?: string;
+}
+
+// ─── Merge Analysis ─────────────────────────────────────────────────────
+
+export interface MergePairScore {
+  activity_a_id: string;
+  activity_a_name: string;
+  activity_a_source: string;
+  activity_a_sport: string;
+  activity_a_date: string;
+  activity_b_id: string;
+  activity_b_name: string;
+  activity_b_source: string;
+  activity_b_sport: string;
+  activity_b_date: string;
+  score: number;
+  date_score: number;
+  sport_score: number;
+  duration_score: number;
+  distance_score: number;
+  likely_false_positive: boolean;
+}
+
+export interface MergeThresholdResult {
+  threshold: number;
+  total_activities: number;
+  total_pairs_scored: number;
+  pairs_above_threshold: number;
+  likely_merges: number;
+  potential_false_positives: number;
+  pairs: MergePairScore[];
+}
+
+// ─── Training Streaks ────────────────────────────────────────────────────
+
+export interface TrainingStreaks {
+  current_streak_days: number;
+  longest_streak_days: number;
+  weekly_consistency_pct: number;
+  monthly_sessions: { month: string; sessions: number }[];
+}
+
+// ─── Goals ───────────────────────────────────────────────────────────────
+
+export interface Goal {
+  id: string;
+  user_id: string;
+  goal_type: string;
+  target_value: number;
+  current_value?: number;
+  target_date?: string;
+  status: 'active' | 'achieved' | 'expired';
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateGoalPayload {
+  goal_type: string;
+  target_value: number;
+  current_value?: number;
+  target_date?: string;
+  notes?: string;
+}
+
+export interface UpdateGoalPayload {
+  goal_type?: string;
+  target_value?: number;
+  current_value?: number;
+  target_date?: string;
+  status?: string;
+  notes?: string;
+}
+
+// ─── Training Plans ───────────────────────────────────────────────────────
+
+export interface TrainingPlanDay {
+  id: string;
+  plan_id: string;
+  day_date: string;
+  planned_tss?: number;
+  planned_duration_min?: number;
+  planned_type: 'rest' | 'easy' | 'moderate' | 'hard' | 'race';
+  notes?: string;
+  activity_id?: string;
+  completed: boolean;
+  created_at: string;
+}
+
+export interface TrainingPlan {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  start_date: string;
+  end_date: string;
+  plan_type: 'custom' | 'build' | 'base' | 'peak' | 'taper' | 'recovery';
+  status: 'draft' | 'active' | 'completed' | 'archived';
+  created_at: string;
+  updated_at: string;
+  days: TrainingPlanDay[];
+}
+
+export interface TrainingPlanSummary {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  plan_type: string;
+  status: string;
+  day_count: number;
+  completed_days: number;
+}
+
+export interface CreateTrainingPlanPayload {
+  name: string;
+  description?: string;
+  start_date: string;
+  end_date: string;
+  plan_type?: string;
+  status?: string;
+  days?: CreateTrainingPlanDayPayload[];
+}
+
+export interface CreateTrainingPlanDayPayload {
+  day_date: string;
+  planned_tss?: number;
+  planned_duration_min?: number;
+  planned_type?: string;
+  notes?: string;
+}
+
+export interface UpdateTrainingPlanPayload {
+  name?: string;
+  description?: string;
+  start_date?: string;
+  end_date?: string;
+  plan_type?: string;
+  status?: string;
+  days?: CreateTrainingPlanDayPayload[];
+}
+
+export interface GeneratePlanPayload {
+  name: string;
+  template_type: string;
+  weeks?: number;
+  start_date: string;
+  base_tss?: number;
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────
+
+export interface Event {
+  id: string;
+  user_id: string;
+  name: string;
+  event_date: string;
+  event_type: 'race' | 'ride' | 'lift' | 'other';
+  target_tss?: number;
+  taper_days: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  days_until: number;
+  taper_start_date?: string;
+  days_until_taper?: number;
+  is_in_taper: boolean;
+}
+
+export interface CreateEventPayload {
+  name: string;
+  event_date: string;
+  event_type?: string;
+  target_tss?: number;
+  taper_days?: number;
+  notes?: string;
+}
+
+export interface UpdateEventPayload {
+  name?: string;
+  event_date?: string;
+  event_type?: string;
+  target_tss?: number;
+  taper_days?: number;
+  notes?: string;
 }

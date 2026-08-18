@@ -9,4 +9,7 @@
 | `lifting.py` | `Session/Set Create/Read/Update`, `PersonalRecordCreate/Read`, `VolumeTrend`, `LinkActivity` |
 | `route.py` | `RouteRead/Summary/Create/Update`, `RouteSourceRead`, `MergeRequest` |
 | `cycling.py` | `CyclingProfileRead/Update`, `FtpHistoryRead/Create`, `TrainingLoad`, `PowerCurve`, `PowerZones`, `CyclingMetricsSummary` |
-| `dashboard.py` | `DashboardSummary`, `WeeklyReport` |
+| `dashboard.py` | `DashboardSummary`, `WeeklyReport`, `RestDaySuggestion` |
+| `goal.py` | `GoalCreate/Read/Update` |
+| `training_plan.py` | `TrainingPlanCreate/Read/Update/Summary`, `TrainingPlanDayCreate/Read`, `GeneratePlanRequest` |
+| `event.py` | `EventCreate/Read/Update`, `EventWithCountdown` |

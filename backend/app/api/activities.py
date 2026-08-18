@@ -1,10 +1,11 @@
-"""Activity API — list/filter/get activities, calendar, backfill route links."""
+"""Activity API — list/filter/get activities, calendar, backfill route links, merge analysis, file import."""
 
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -295,4 +296,337 @@ async def backfill_route_links(
         "linked_count": linked_count,
     }
 
+
+# ── Merge Threshold Analysis ───────────────────────────────────────────────
+
+
+class MergeThresholdResult(BaseModel):
+    """Result of a merge-threshold analysis scan."""
+    threshold: float
+    total_activities: int
+    total_pairs_scored: int
+    pairs_above_threshold: int
+    likely_merges: int
+    potential_false_positives: int
+    pairs: list[dict] = Field(default_factory=list, description="Detailed pair scores (top matches)")
+
+
+class MergePairDetail(BaseModel):
+    """Detail about a scored activity pair."""
+    activity_a_id: str
+    activity_a_name: str
+    activity_a_source: str
+    activity_a_sport: str
+    activity_a_date: str
+    activity_b_id: str
+    activity_b_name: str
+    activity_b_source: str
+    activity_b_sport: str
+    activity_b_date: str
+    score: float
+    date_score: float
+    sport_score: float
+    duration_score: float
+    distance_score: float
+    likely_false_positive: bool
+
+
+@router.get("/merge-analysis")
+async def analyze_merge_thresholds(
+    threshold: float = Query(0.60, ge=0.0, le=1.0, description="Merge threshold to test"),
+    days: int = Query(90, ge=7, le=365, description="Lookback period in days"),
+    limit: int = Query(100, ge=10, le=500, description="Max activities to scan"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Analyze what would merge at a given threshold.
+
+    Scans recent activities and scores every pair using the same weighted
+    algorithm as the production merge service. Returns summary counts and
+    the top matching pairs with their component scores.
+
+    Use this to tune `ACTIVITY_MERGE_THRESHOLD` — lower values catch more
+    duplicates but risk false positives (different activities merging).
+    """
+    from app.services.merge_service import (
+        _date_proximity_score,
+        _sport_type_score,
+        _duration_score,
+        _distance_score,
+    )
+
+    cutoff = date.today() - timedelta(days=days)
+
+    result = await db.execute(
+        select(Activity)
+        .where(
+            Activity.user_id == current_user.id,
+            Activity.start_date >= cutoff,
+        )
+        .order_by(Activity.start_date.desc())
+        .limit(limit)
+    )
+    activities = list(result.scalars().all())
+
+    total_activities = len(activities)
+    total_pairs = 0
+    pairs_above = 0
+    likely_merges = 0
+    potential_false_positives = 0
+    scored_pairs: list[dict] = []
+
+    # Compare every pair (within a ±6h window for efficiency)
+    for i in range(len(activities)):
+        for j in range(i + 1, len(activities)):
+            a = activities[i]
+            b = activities[j]
+
+            # Quick skip: more than 6h apart
+            time_diff = abs((a.start_date - b.start_date).total_seconds())
+            if time_diff > 6 * 3600:
+                continue
+
+            total_pairs += 1
+
+            # Score using the same algorithm as merge_service
+            date_s = _date_proximity_score(a.start_date, b.start_date)
+            sport_s = _sport_type_score(a.sport_type, b.sport_type)
+            dur_s = _duration_score(a.duration_seconds, b.duration_seconds)
+            dist_s = _distance_score(a.distance_meters, b.distance_meters)
+
+            score = (date_s * 0.50) + (sport_s * 0.20) + (dur_s * 0.15) + (dist_s * 0.15)
+
+            if score >= threshold:
+                pairs_above += 1
+
+                # Heuristic false-positive detection:
+                # Same source + different name + score < 0.85 → likely different activities
+                # Different source + same-ish data → likely true duplicate
+                is_false_positive = False
+                if a.source == b.source and a.name != b.name and score < 0.85:
+                    is_false_positive = True
+                elif a.sport_type != b.sport_type and score < 0.70:
+                    is_false_positive = True
+
+                if is_false_positive:
+                    potential_false_positives += 1
+                else:
+                    likely_merges += 1
+
+                scored_pairs.append({
+                    "activity_a_id": str(a.id),
+                    "activity_a_name": a.name,
+                    "activity_a_source": a.source,
+                    "activity_a_sport": a.sport_type,
+                    "activity_a_date": a.start_date.isoformat(),
+                    "activity_b_id": str(b.id),
+                    "activity_b_name": b.name,
+                    "activity_b_source": b.source,
+                    "activity_b_sport": b.sport_type,
+                    "activity_b_date": b.start_date.isoformat(),
+                    "score": round(score, 3),
+                    "date_score": round(date_s, 3),
+                    "sport_score": round(sport_s, 3),
+                    "duration_score": round(dur_s, 3),
+                    "distance_score": round(dist_s, 3),
+                    "likely_false_positive": is_false_positive,
+                })
+
+    # Sort scored pairs by score descending, limit to top 50 for response
+    scored_pairs.sort(key=lambda p: p["score"], reverse=True)
+
+    return {
+        "threshold": threshold,
+        "total_activities": total_activities,
+        "total_pairs_scored": total_pairs,
+        "pairs_above_threshold": pairs_above,
+        "likely_merges": likely_merges,
+        "potential_false_positives": potential_false_positives,
+        "pairs": scored_pairs[:50],
+    }
+
+
+# ── File Import ───────────────────────────────────────────────────────────────
+
+
+@router.post("/import-gpx")
+async def import_gpx(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import an activity from a GPX file upload.
+
+    Parses the GPX using the existing ``parse_gpx`` service, computes
+    distance / elevation gain from the track points, and creates an
+    Activity record with ``source='manual'``.
+    """
+    from app.services.gpx import parse_gpx
+    from app.services.polyline_utils import encode_polyline, haversine_distance
+
+    raw = await file.read()
+    try:
+        gpx_text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be valid UTF-8 encoded GPX XML")
+
+    try:
+        parsed = parse_gpx(gpx_text, include_timestamps=True)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    points = parsed["points"]
+    elevations = parsed["elevations"]
+    timestamps = parsed.get("timestamps", [])
+
+    # Compute total distance
+    total_distance = 0.0
+    for i in range(1, len(points)):
+        total_distance += haversine_distance(
+            points[i - 1][0], points[i - 1][1],
+            points[i][0], points[i][1],
+        )
+
+    # Compute elevation gain
+    elev_gain = 0.0
+    for i in range(1, len(elevations)):
+        if elevations[i] is not None and elevations[i - 1] is not None:
+            diff = elevations[i] - elevations[i - 1]
+            if diff > 0:
+                elev_gain += diff
+
+    # Derive start_date from first timestamp or fall back to now
+    valid_timestamps = [t for t in timestamps if t is not None]
+    start_date = valid_timestamps[0] if valid_timestamps else datetime.now(timezone.utc)
+
+    # Derive duration from first and last timestamps
+    duration_seconds = None
+    if len(valid_timestamps) >= 2:
+        delta = valid_timestamps[-1] - valid_timestamps[0]
+        duration_seconds = max(int(delta.total_seconds()), 0)
+
+    encoded_polyline = encode_polyline(points)
+
+    activity = Activity(
+        user_id=current_user.id,
+        source="manual",
+        sport_type=parsed["sport_type"],
+        name=parsed["name"],
+        start_date=start_date,
+        duration_seconds=duration_seconds,
+        distance_meters=round(total_distance, 1) if total_distance > 0 else None,
+        elevation_gain_meters=round(elev_gain, 1) if elev_gain > 0 else None,
+        raw_data={"map": {"summary_polyline": encoded_polyline}},
+    )
+    db.add(activity)
+    await db.flush()
+
+    # Re-query with eager loading so _enrich_activity_read can access relationships
+    result = await db.execute(
+        select(Activity)
+        .options(
+            selectinload(Activity.lifting_session),
+            selectinload(Activity.sources),
+            selectinload(Activity.route),
+        )
+        .where(Activity.id == activity.id)
+    )
+    activity = result.scalar_one()
+
+    enriched = _enrich_activity_read(activity)
+    return enriched
+
+
+@router.post("/import-fit")
+async def import_fit(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import an activity from a FIT file upload.
+
+    Parses the FIT file, creates an Activity with session-level metrics
+    and ActivityStream records for time-series data (HR, power, GPS, etc.).
+    """
+    from app.services.fit_parser import parse_fit_file
+    from app.services.polyline_utils import encode_polyline
+
+    raw = await file.read()
+
+    try:
+        parsed = parse_fit_file(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    session = parsed["session"]
+    streams = parsed.get("streams", {})
+
+    # Build encoded polyline from GPS stream if available (filter out None values)
+    gps_lats = streams.get("position_lat", [])
+    gps_lons = streams.get("position_long", [])
+    encoded_polyline = None
+    if gps_lats and gps_lons and len(gps_lats) == len(gps_lons):
+        points = [(lat, lng) for lat, lng in zip(gps_lats, gps_lons) if lat is not None and lng is not None]
+        if points:
+            encoded_polyline = encode_polyline(points)
+
+    activity = Activity(
+        user_id=current_user.id,
+        source="manual",
+        sport_type=session.get("sport_type", "cycling"),
+        name=session.get("name", "Imported Activity"),
+        start_date=session.get("start_time", datetime.now(timezone.utc)),
+        duration_seconds=session.get("duration_seconds"),
+        distance_meters=session.get("distance_meters"),
+        elevation_gain_meters=session.get("elevation_gain_meters"),
+        average_heartrate=session.get("average_heartrate"),
+        max_heartrate=session.get("max_heartrate"),
+        average_power=session.get("average_power"),
+        normalized_power=session.get("normalized_power"),
+        average_speed=session.get("average_speed"),
+        average_cadence=session.get("average_cadence"),
+        calories=session.get("calories"),
+        raw_data={"map": {"summary_polyline": encoded_polyline}} if encoded_polyline else None,
+    )
+    db.add(activity)
+    await db.flush()
+
+    # Persist time-series streams
+    STREAM_TYPE_MAP = {
+        "heartrate": "heartrate",
+        "power": "power",
+        "cadence": "cadence",
+        "altitude": "altitude",
+        "enhanced_speed": "velocity",
+        "position_lat": "position_lat",
+        "position_long": "position_long",
+        "temperature": "temperature",
+    }
+    dur = session.get("duration_seconds")
+    for fit_key, stream_type in STREAM_TYPE_MAP.items():
+        values = streams.get(fit_key)
+        if values and len(values) > 0:
+            res = max(1, dur // len(values)) if dur else None
+            stream = ActivityStream(
+                activity_id=activity.id,
+                stream_type=stream_type,
+                data={"data": values},
+                resolution=res,
+            )
+            db.add(stream)
+
+    # Re-query with eager loading so _enrich_activity_read can access relationships
+    result = await db.execute(
+        select(Activity)
+        .options(
+            selectinload(Activity.lifting_session),
+            selectinload(Activity.sources),
+            selectinload(Activity.route),
+        )
+        .where(Activity.id == activity.id)
+    )
+    activity = result.scalar_one()
+
+    enriched = _enrich_activity_read(activity)
+    return enriched
 

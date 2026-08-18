@@ -123,8 +123,13 @@ def activity_to_gpx(activity) -> str | None:
 # ── GPX parsing ──────────────────────────────────────────────────────────────
 
 
-def parse_gpx(gpx_xml: str) -> dict:
+def parse_gpx(gpx_xml: str, *, include_timestamps: bool = False) -> dict:
     """Parse a GPX 1.1 XML string and extract route data.
+
+    Args:
+        gpx_xml: The GPX XML string to parse.
+        include_timestamps: If True, also extract ``<time>`` elements from
+            track points and return them in the result dict.
 
     Returns:
         {
@@ -132,6 +137,7 @@ def parse_gpx(gpx_xml: str) -> dict:
             "sport_type": str,
             "points": [(lat, lng), ...],
             "elevations": [float | None, ...],
+            "timestamps": [datetime | None, ...]  # only when include_timestamps=True
         }
 
     Raises ValueError if the GPX is invalid or contains no track points.
@@ -179,6 +185,7 @@ def parse_gpx(gpx_xml: str) -> dict:
     # Extract track points
     points: list[tuple[float, float]] = []
     elevations: list[float | None] = []
+    timestamps: list[datetime | None] = []
 
     for trkseg in root.iter(f"{ns_prefix}trkseg"):
         for trkpt in trkseg.findall(f"{ns_prefix}trkpt"):
@@ -196,6 +203,16 @@ def parse_gpx(gpx_xml: str) -> dict:
                     elevations.append(None)
             else:
                 elevations.append(None)
+
+            if include_timestamps:
+                time_elem = trkpt.find(f"{ns_prefix}time")
+                if time_elem is not None and time_elem.text:
+                    try:
+                        timestamps.append(datetime.fromisoformat(time_elem.text.replace("Z", "+00:00")))
+                    except (ValueError, AttributeError):
+                        timestamps.append(None)
+                else:
+                    timestamps.append(None)
 
     # Also check for <rte> (route) elements if no tracks found
     if not points:
@@ -219,12 +236,25 @@ def parse_gpx(gpx_xml: str) -> dict:
                 else:
                     elevations.append(None)
 
+                if include_timestamps:
+                    time_elem = rtept.find(f"{ns_prefix}time")
+                    if time_elem is not None and time_elem.text:
+                        try:
+                            timestamps.append(datetime.fromisoformat(time_elem.text.replace("Z", "+00:00")))
+                        except (ValueError, AttributeError):
+                            timestamps.append(None)
+                    else:
+                        timestamps.append(None)
+
     if not points:
         raise ValueError("GPX file contains no track or route points")
 
-    return {
+    result: dict = {
         "name": name or "Imported Route",
         "sport_type": sport_type,
         "points": points,
         "elevations": elevations,
     }
+    if include_timestamps:
+        result["timestamps"] = timestamps
+    return result

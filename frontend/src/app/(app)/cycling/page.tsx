@@ -17,6 +17,9 @@ import type {
   LifetimePBsResponse,
   FtpHistoryEntry,
   BackfillFtpResult,
+  Vo2maxResponse,
+  Vo2maxHistoryResponse,
+  DecouplingHistoryResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
@@ -136,6 +139,38 @@ export default function CyclingPage() {
     queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
     enabled: !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
+  });
+
+  // ── VO2max query ───────────────────────────────────────────────────────
+  const { data: vo2max } = useQuery<Vo2maxResponse>({
+    queryKey: ['vo2max'],
+    queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
+    staleTime: 600_000,  // 10 min — expensive computation
+  });
+
+  const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
+    queryKey: ['vo2max-history'],
+    queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
+    staleTime: 600_000,
+  });
+
+  const { data: chartVo2maxTrend } = useQuery<ChartData>({
+    queryKey: ['chart-vo2max-trend'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
+    staleTime: 600_000,
+  });
+
+  // ── Decoupling query ───────────────────────────────────────────────────
+  const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
+    queryKey: ['decoupling-history'],
+    queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
+    staleTime: 600_000,
+  });
+
+  const { data: chartDecouplingTrend } = useQuery<ChartData>({
+    queryKey: ['chart-decoupling-trend'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
+    staleTime: 600_000,
   });
 
   // ── Weight trend chart ──────────────────────────────────────────────────
@@ -367,6 +402,49 @@ export default function CyclingPage() {
           tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
         />
       </div>
+
+      {/* VO2max Card */}
+      {vo2max && (
+        <Card>
+          <CardHeader>
+            <CardTitle>🫁 VO2max Estimate</CardTitle>
+          </CardHeader>
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+            <div className="flex items-center gap-4">
+              <p className="text-4xl font-bold text-green-400">
+                {vo2max.vo2max.toFixed(1)}
+              </p>
+              <div>
+                <p className="text-sm text-muted">ml/kg/min</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  vo2max.classification === 'Superior' ? 'bg-purple-500/20 text-purple-400'
+                  : vo2max.classification === 'Excellent' ? 'bg-blue-500/20 text-blue-400'
+                  : vo2max.classification === 'Good' ? 'bg-green-500/20 text-green-400'
+                  : vo2max.classification === 'Average' ? 'bg-yellow-500/20 text-yellow-400'
+                  : vo2max.classification === 'Below Average' ? 'bg-orange-500/20 text-orange-400'
+                  : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {vo2max.classification}
+                </span>
+              </div>
+            </div>
+            <div className="text-sm text-muted">
+              <p>Method: <span className="text-white">{vo2max.method}</span></p>
+              <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
+              {vo2max.all_estimates.length > 1 && (
+                <p className="mt-1 text-xs">
+                  {vo2max.all_estimates.length} estimates available — showing highest.
+                </p>
+              )}
+            </div>
+          </div>
+          {vo2maxHistory && vo2maxHistory.data.length > 1 && (
+            <div className="mt-2 text-xs text-muted">
+              Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min over {vo2maxHistory.data.length} months
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Recent Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -621,6 +699,65 @@ export default function CyclingPage() {
           )}
         </Card>
       </div>
+
+      {/* Decoupling Trend Chart */}
+      {decoupling && decoupling.data.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>🫀 Decoupling Trend (HR vs Power)</CardTitle>
+          </CardHeader>
+          <div className="mb-3 flex items-center gap-4 text-sm">
+            <span className="text-muted">Average decoupling:</span>
+            <span className={`font-bold ${
+              (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-green-400'
+              : (decoupling.avg_decoupling_pct ?? 0) < 8 ? 'text-yellow-400'
+              : 'text-red-400'
+            }`}>
+              {decoupling.avg_decoupling_pct?.toFixed(1)}%
+            </span>
+            {decoupling.classification && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-green-400'
+                : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
+                : 'bg-red-500/20 text-red-400'
+              }`}>
+                {decoupling.classification}
+              </span>
+            )}
+            <span className="text-xs text-muted">
+              ({decoupling.data.length} rides {'>'}60 min)
+            </span>
+          </div>
+          {chartDecouplingTrend ? (
+            <Chart data={chartDecouplingTrend} height={280} />
+          ) : (
+            <div className="h-40 flex items-center justify-center text-muted text-sm">
+              No decoupling data available
+            </div>
+          )}
+          <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span> {'<'}5% Excellent
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-yellow-500"></span> 5-8% Acceptable
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span> {'>'}8% Aerobic Deficiency
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* VO2max Trend Chart */}
+      {chartVo2maxTrend && chartVo2maxTrend.labels.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>📈 VO2max Trend</CardTitle>
+          </CardHeader>
+          <Chart data={chartVo2maxTrend} height={280} />
+        </Card>
+      )}
 
       {/* Daily TSS + Power vs HR */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

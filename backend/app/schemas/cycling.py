@@ -197,3 +197,67 @@ class FtpEstimateResponse(BaseModel):
     days_analyzed: int
     accepted: bool = False
     previous_ftp: float | None = None
+
+
+# ── VO2max Estimation ─────────────────────────────────────────────────────
+
+
+class Vo2maxDetail(BaseModel):
+    """Individual VO2max estimate from a specific method."""
+    vo2max: float
+    confidence: float
+    method: str
+
+
+class Vo2maxResponse(BaseModel):
+    """VO2max estimation response."""
+    vo2max: float  # ml/kg/min
+    confidence: float
+    method: str
+    classification: str  # Poor, Below Average, Average, Good, Excellent, Superior
+    all_estimates: list[Vo2maxDetail]
+
+
+class Vo2maxHistoryPoint(BaseModel):
+    """A single VO2max estimate in the history trend."""
+    date: date
+    vo2max: float
+    method: str
+
+
+class Vo2maxHistoryResponse(BaseModel):
+    """VO2max trend over time."""
+    data: list[Vo2maxHistoryPoint]
+    current_vo2max: float | None = None
+    current_classification: str | None = None
+
+
+# ── Decoupling Analysis ───────────────────────────────────────────────────
+
+
+class DecouplingActivityPoint(BaseModel):
+    """Decoupling result for a single activity."""
+    date: date
+    activity_id: str
+    decoupling_pct: float
+    first_half_ratio: float
+    second_half_ratio: float
+    classification: str
+    duration_seconds: int
+
+
+class DecouplingHistoryResponse(BaseModel):
+    """Decoupling trend over time for recent long rides."""
+    data: list[DecouplingActivityPoint]
+    avg_decoupling_pct: float | None = None
+    classification: str | None = None  # overall classification based on average
+
+
+class DecouplingSingleResponse(BaseModel):
+    """Decoupling result for a single activity."""
+    decoupling_pct: float
+    first_half_ratio: float
+    second_half_ratio: float
+    classification: str
+    duration_seconds: int
+    activity_id: str | None = None

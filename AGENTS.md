@@ -71,19 +71,20 @@ Quick reference maps in each package — use these for orientation before readin
 
 **Charts**: Backend registry [`CHART_REGISTRY`](backend/app/api/charts.py:17) → [`ChartService`](backend/app/services/charts.py:37) → frontend [`Chart`](frontend/src/components/charts/Chart.tsx:49) renders Recharts. See source for available chart names.
 
-## Database (18 tables, UUID PKs)
+## Database (21 tables, UUID PKs)
 
 **Relationships (compact)**:
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
 | `LiftingSession` | `LiftingSet` | has many |
 | `Route` | `RouteSource` | has many |
 | `WarmupTemplate` | `WarmupTemplateStep` | has many |
+| `TrainingPlan` | `TrainingPlanDay` | has many |
 
 ## Celery Tasks
 

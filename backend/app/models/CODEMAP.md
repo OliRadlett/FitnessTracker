@@ -12,3 +12,7 @@
 | `daily_metric.py` | `DailyMetric` | Recovery, HRV, strain per day per source |
 | `sleep.py` | `SleepLog` | Sleep stages, efficiency |
 | `health_alert.py` | `HealthAlert` | Overtraining/illness/injury with JSONB evidence |
+| `weight.py` | `WeightLog` | Weight tracking per day |
+| `goal.py` | `Goal` | Training goals with auto-computed progress |
+| `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day optionally links to Activity |
+| `event.py` | `Event` | Race/ride/lift events with taper config |

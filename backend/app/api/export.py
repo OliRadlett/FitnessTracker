@@ -3,8 +3,9 @@
 import csv
 import io
 import uuid
+from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -181,4 +182,60 @@ async def export_prs_csv(
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=fittrack_prs.csv"},
+    )
+
+
+# ── PDF Reports ──────────────────────────────────────────────────────────
+
+
+@router.get("/weekly-report/{week_start}")
+async def export_weekly_report(
+    week_start: date,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a PDF weekly training report."""
+    from app.services.pdf_report import generate_weekly_report
+
+    try:
+        pdf_bytes = await generate_weekly_report(db, current_user.id, week_start)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
+
+    week_end = week_start + timedelta(days=6)
+    filename = f"fittrack_weekly_{week_start.isoformat()}_{week_end.isoformat()}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/monthly-report/{month}")
+async def export_monthly_report(
+    month: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a PDF monthly training report.
+
+    Args:
+        month: Month string in "YYYY-MM" format (e.g. "2026-08").
+    """
+    import re
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Month must be in YYYY-MM format")
+
+    from app.services.pdf_report import generate_monthly_report
+
+    try:
+        pdf_bytes = await generate_monthly_report(db, current_user.id, month)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
+
+    filename = f"fittrack_monthly_{month}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

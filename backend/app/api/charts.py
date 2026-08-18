@@ -40,6 +40,11 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "weight_trend": {"method": "weight_trend", "params": ["days"]},
     "training_load_balance": {"method": "training_load_balance", "params": ["weeks"]},
     "rest_day_analysis": {"method": "rest_day_analysis", "params": ["days"]},
+    # VO2max and decoupling charts
+    "vo2max_trend": {"method": "vo2max_trend", "params": ["months"]},
+    "decoupling_trend": {"method": "decoupling_trend", "params": ["days"]},
+    # Training plan periodization
+    "periodization": {"method": "periodization", "params": ["weeks"]},
 }
 
 
@@ -62,6 +67,7 @@ async def get_chart(
     chart_name: str,
     days: int | None = Query(None, ge=1, le=365),
     weeks: int | None = Query(None, ge=1, le=52),
+    months: int | None = Query(None, ge=1, le=24),
     exercise_name: str | None = Query(None),
     days_b: int | None = Query(None, ge=1, le=365, description="Second period in days (for comparison charts)"),
     db: AsyncSession = Depends(get_db),
@@ -81,6 +87,8 @@ async def get_chart(
         kwargs["days"] = days
     if weeks is not None and "weeks" in chart_info["params"]:
         kwargs["weeks"] = weeks
+    if months is not None and "months" in chart_info["params"]:
+        kwargs["months"] = months
     if exercise_name is not None and "exercise_name" in chart_info["params"]:
         kwargs["exercise_name"] = exercise_name
     if days_b is not None and "days_b" in chart_info["params"]:

@@ -1,5 +1,5 @@
-import { apiFetch } from './fetch';
-import type { Activity, ActivityDetail, ActivityFilters } from './types';
+import { apiFetch, apiUpload } from './fetch';
+import type { Activity, ActivityDetail, ActivityFilters, MergeThresholdResult } from './types';
 
 export async function getActivities(filters: ActivityFilters = {}): Promise<Activity[]> {
   const params = new URLSearchParams();
@@ -31,4 +31,26 @@ export async function backfillRouteLinks(): Promise<{ detail: string; linked_cou
   return apiFetch('/api/v1/activities/backfill-route-links', {
     method: 'POST',
   });
+}
+
+export async function analyzeMergeThresholds(
+  threshold: number = 0.60,
+  days: number = 90,
+  limit: number = 100,
+): Promise<MergeThresholdResult> {
+  return apiFetch<MergeThresholdResult>(
+    `/api/v1/activities/merge-analysis?threshold=${threshold}&days=${days}&limit=${limit}`,
+  );
+}
+
+export async function importGpxFile(file: File, token?: string): Promise<Activity> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiUpload<Activity>('/api/v1/activities/import-gpx', formData, token);
+}
+
+export async function importFitFile(file: File, token?: string): Promise<Activity> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiUpload<Activity>('/api/v1/activities/import-fit', formData, token);
 }
