@@ -25,9 +25,9 @@ Read only the sections relevant to your task:
 
 ## Overview
 
-FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates Strava, Komoot, Wahoo, Whoop into a dashboard with trends, correlations, routes, and health alerts.
+FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates Strava, Komoot, Wahoo, Whoop into a dashboard with trends, correlations, routes, health alerts, training plans, goals, and events.
 
-**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy
+**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF)
 
 ## Architecture
 
@@ -69,9 +69,15 @@ Quick reference maps in each package — use these for orientation before readin
 
 **CTL/ATL/TSB**: Computed on-the-fly. CTL = 42-day EWMA of TSS, ATL = 7-day EWMA, TSB = CTL − ATL.
 
-**Charts**: Backend registry [`CHART_REGISTRY`](backend/app/api/charts.py:17) → [`ChartService`](backend/app/services/charts.py:37) → frontend [`Chart`](frontend/src/components/charts/Chart.tsx:49) renders Recharts. See source for available chart names.
+**Charts**: Backend registry [`CHART_REGISTRY`](backend/app/api/charts.py) → [`ChartService`](backend/app/services/charts.py) → frontend [`Chart`](frontend/src/components/charts/Chart.tsx) renders Recharts. Charts include: training_load, ftp_history, power_curve, power_zones, daily_tss, exercise_progress, strain_vs_recovery, hrv_trend, weight_trend, vo2max_trend, decoupling_trend, hr_zone_distribution, periodization. Reference areas supported for zone coloring.
 
-## Database (21 tables, UUID PKs)
+**VO2max**: ACSM power formula + Uth HR formula. Endpoint: `GET /api/v1/cycling/vo2max`.
+
+**Decoupling**: HR vs power ratio across ride halves. Only for rides >60min with both streams.
+
+**Encryption**: OAuth tokens encrypted at rest via Fernet ([`encryption.py`](backend/app/services/encryption.py)). `EncryptedString` TypeDecorator transparent to services.
+
+## Database (24 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -95,24 +101,31 @@ Quick reference maps in each package — use these for orientation before readin
 | `cleanup_old_data` | Weekly Sun 3AM | Streams older than 90 days |
 | `sync_all_routes` | 2 hours | All providers with dedup |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
+| `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 
 All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 
 ## Conventions
 
 ### Backend
-- **Async everywhere**: `AsyncSession` + `await`. [`get_db`](backend/app/database.py:28) handles commit/rollback
+- **Async everywhere**: `AsyncSession` + `await`. [`get_db`](backend/app/database.py) handles commit/rollback
 - **UUID PKs**: `uuid.uuid4()` default on all models
 - **Pydantic v2**: `model_config = {"from_attributes": True}`, convert via `.model_validate()`
 - **No raw SQL**: Use SQLAlchemy `select()` constructs
 - **Service signature**: `(db: AsyncSession, user_id: UUID, ...)` — services don't use FastAPI DI
+- **Structured logging**: JSON in production, human-readable in debug. Correlation IDs via middleware.
+- **Rate limiting**: slowapi (100/min global, 20/min auth). In-memory — won't work across multiple workers.
+- **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
+- **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
 
 ### Frontend
 - **Client-side rendering**: All pages `'use client'` with React Query
 - **Query keys**: `['lifting-sessions']`, `['activities', filters]`, etc.
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
-- **Component structure**: `ui/`, `charts/`, `lifting/`, `maps/`
-- **Field name mismatch warning**: TS interfaces in [`api/types.ts`](frontend/src/lib/api/types.ts) sometimes differ from backend schemas (e.g., `distance_m` vs `distance_meters`). Check both sides.
+- **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`
+- **Responsive sidebar**: Mobile hamburger menu via SidebarProvider context
+- **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages
+- **File uploads**: [`apiUpload`](frontend/src/lib/api/fetch.ts) for multipart/form-data (GPX, FIT imports)
 
 ## Critical Pitfalls
 
@@ -123,7 +136,9 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. Self-heal in [`main.py`](backend/app/main.py) is a safety net
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019
+9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
+10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 
 ## Development Lessons
 
@@ -135,8 +150,12 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 
 ## Planned / Incomplete
 
-- **Phase 6** [`plans/phase-6.md`](plans/phase-6.md): Health warnings (overtraining, injury, illness), enhanced FTP estimation, HR zones, chart insights, trend indicators. Some items completed (trends, insights, merge analysis).
-- **Phase 7** [`plans/phase-7.md`](plans/phase-7.md): Komoot client rework (Basic Auth fallback, v007 API), surface/terrain breakdown, ridden vs unridden routes.
+- **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
+- **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
+- **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
+- **Full E2E tests**: Playwright login flow, activity sync, lifting session creation
+- **Frontend component tests**: Vitest + React Testing Library for charts, MetricCard, etc.
+- See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
 ## Quick Reference
 
