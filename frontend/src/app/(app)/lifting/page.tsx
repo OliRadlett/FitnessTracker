@@ -17,6 +17,8 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
+import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { LinkActivityModal } from '@/components/lifting/LinkActivityModal';
 import { WarmupTemplateManager } from '@/components/lifting/WarmupTemplateManager';
 import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
@@ -290,7 +292,7 @@ export default function LiftingPage() {
 
       {/* Backfill result */}
       {backfillMutation.isSuccess && backfillMutation.data && (
-        <div className="p-3 bg-positive/10 border border-positive/30 rounded-lg text-sm text-positive">
+        <div className="p-3 bg-positive/10 border border-positive/30 rounded-lg text-sm text-positive" role="status" aria-live="polite">
           Linked {backfillMutation.data.linked_count} Strava activities to lifting sessions
         </div>
       )}
@@ -342,7 +344,7 @@ export default function LiftingPage() {
             >
               {createSessionMutation.isPending ? 'Creating...' : 'Create Session'}
             </button>
-            {createSessionMutation.isError && <p className="text-warning text-sm">Failed to create session</p>}
+            {createSessionMutation.isError && <p className="text-warning text-sm" role="alert" aria-live="assertive">Failed to create session</p>}
           </form>
         </Card>
       )}
@@ -352,9 +354,10 @@ export default function LiftingPage() {
         {/* Session List */}
         <div className="lg:col-span-1 space-y-3">
           <h2 className="text-lg font-semibold text-white">Sessions</h2>
+          <div aria-live="polite">
           {sessionsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="animate-pulse h-20 bg-surface rounded-xl"></div>
+              <SkeletonRow key={i} />
             ))
           ) : sessions && sessions.length > 0 ? (
             sessions.map((session) => (
@@ -383,8 +386,13 @@ export default function LiftingPage() {
               </Card>
             ))
           ) : (
-            <Card><p className="text-muted text-center py-4">No sessions yet</p></Card>
+            <EmptyState
+              icon="🏋️"
+              title="No lifting sessions recorded"
+              description="Create your first session above to start tracking your strength training."
+            />
           )}
+          </div>
         </div>
 
         {/* Session Detail */}
@@ -404,6 +412,7 @@ export default function LiftingPage() {
                     <button
                       onClick={() => setShowEditSession(!showEditSession)}
                       className="px-3 py-1.5 text-muted hover:text-accent text-sm transition-colors"
+                      aria-label="Edit session"
                       title="Edit session"
                     >
                       ✏️
@@ -423,6 +432,7 @@ export default function LiftingPage() {
                       <button
                         onClick={() => setConfirmDeleteSession(true)}
                         className="px-3 py-1.5 text-muted hover:text-warning text-sm transition-colors"
+                        aria-label="Delete session"
                         title="Delete session"
                       >
                         🗑️
@@ -551,7 +561,7 @@ export default function LiftingPage() {
         {showManualPR && <ManualPRForm onSubmit={(data) => createPRMutation.mutate(data)} onCancel={() => setShowManualPR(false)} isPending={createPRMutation.isPending} />}
 
         {prLoading ? (
-          <div className="animate-pulse h-40 bg-surface-light rounded-lg"></div>
+          <SkeletonRow className="h-40" />
         ) : personalRecords && personalRecords.length > 0 ? (() => {
           // Group and sort PRs: Big 3 first, then compounds, then accessories
           const BIG_3 = ['Back Squat', 'Bench Press', 'Deadlift'];

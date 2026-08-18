@@ -29,3 +29,16 @@ class WeeklyReport(BaseModel):
     avg_hrv_ms: float | None = None
     avg_sleep_hours: float | None = None
     new_prs: int = 0
+
+
+class MonthlySummaryItem(BaseModel):
+    """Aggregated training stats for a single month."""
+    month: str  # e.g. "2026-01"
+    total_tss: float = 0.0
+    lifting_volume_kg: float = 0.0
+    total_distance_meters: float = 0.0
+    total_time_seconds: float = 0.0
+    lifting_sessions: int = 0
+    cardio_sessions: int = 0
+    pr_count: int = 0
+    avg_recovery: float | None = None

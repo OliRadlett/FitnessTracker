@@ -7,6 +7,7 @@ import type {
   TrainingLoadResponse,
   PowerCurveResponse,
   PowerZonesResponse,
+  HrZonesResponse,
   CyclingMetricsSummary,
   PowerVsHrResponse,
   FtpEstimate,
@@ -47,6 +48,10 @@ export async function getPowerCurve(days: number = 90): Promise<PowerCurveRespon
 
 export async function getPowerZones(days: number = 30): Promise<PowerZonesResponse> {
   return apiFetch<PowerZonesResponse>(`/api/v1/cycling/power-zones?days=${days}`);
+}
+
+export async function getHrZones(days: number = 30): Promise<HrZonesResponse> {
+  return apiFetch<HrZonesResponse>(`/api/v1/cycling/hr-zones?days=${days}`);
 }
 
 export async function getCyclingMetricsSummary(): Promise<CyclingMetricsSummary> {

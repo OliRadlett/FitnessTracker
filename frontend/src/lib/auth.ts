@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from 'next-auth';
-import type { DefaultSession } from 'next-auth';
+import type { DefaultSession, Session } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
 
@@ -61,16 +62,14 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async jwt({ token }: any) {
+    async jwt({ token }: { token: JWT }) {
       if (pendingBackendToken) {
         token.backendToken = pendingBackendToken;
         pendingBackendToken = undefined;
       }
       return token;
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async session({ session, token }: any) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
         session.user.id = token.sub ?? '';
         session.backendToken = token.backendToken;

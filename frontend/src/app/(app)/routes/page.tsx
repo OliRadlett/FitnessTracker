@@ -6,6 +6,8 @@ import { useAuthFetch } from '@/lib/api';
 import type { RouteSummary, RouteData, RouteFilters, RouteSyncResult } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { SkeletonRouteCard } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
@@ -42,9 +44,9 @@ const PROVIDER_ICONS: Record<string, string> = {
 function ProviderIcon({ provider, size = 14 }: { provider: string; size?: number }) {
   const src = PROVIDER_ICONS[provider];
   if (src) {
-    return <img src={src} alt={provider} className="inline-block" style={{ width: size, height: size }} />;
+    return <img src={src} alt={`${provider} logo`} className="inline-block" style={{ width: size, height: size }} />;
   }
-  return <span>✏️</span>;
+  return <span aria-hidden="true">✏️</span>;
 }
 
 const SORT_OPTIONS = [
@@ -186,6 +188,7 @@ export default function RoutesPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowUploadModal(!showUploadModal)}
+            aria-label="Upload GPX file"
             className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors"
           >
             📤 Upload GPX
@@ -193,6 +196,7 @@ export default function RoutesPage() {
           <button
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
+            aria-label="Sync routes from providers"
             className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
           >
             {syncMutation.isPending ? 'Syncing...' : '🔄 Sync Routes'}
@@ -219,7 +223,7 @@ export default function RoutesPage() {
       {/* Sync result */}
       {syncMutation.isSuccess && syncMutation.data && (
         <Card>
-          <div className="p-4">
+          <div className="p-4" aria-live="polite">
             <p className="text-sm text-positive">
               ✅ Synced {syncMutation.data.reduce((sum, r) => sum + r.synced_count, 0)} routes
               ({syncMutation.data.reduce((sum, r) => sum + r.merged_count, 0)} merged duplicates)
@@ -392,6 +396,7 @@ export default function RoutesPage() {
           </div>
           <button
             onClick={() => setFilters({})}
+            aria-label="Clear all route filters"
             className="px-4 py-2 text-sm text-muted hover:text-white border border-surface-light rounded-lg hover:bg-surface-light/50 transition-colors"
           >
             Clear
@@ -402,11 +407,11 @@ export default function RoutesPage() {
       {/* Main content: list + detail */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Route List */}
-        <div className="space-y-3">
+        <div className="space-y-3" aria-live="polite">
           {isLoading ? (
             <>
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="animate-pulse h-24 bg-surface rounded-xl"></div>
+                <SkeletonRouteCard key={i} />
               ))}
             </>
           ) : routes && routes.length > 0 ? (
@@ -422,36 +427,31 @@ export default function RoutesPage() {
                   onClick={() => setSelectedRouteId(route.id)}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-medium truncate">{route.name}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        {/* Deduplicate sources by provider for display */}
-                        {Array.from(
-                          new Map(route.sources.map((s) => [s.provider, s])).values()
-                        ).map((s) => (
-                          <span
-                            key={s.provider}
-                            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
-                          >
-                            <ProviderIcon provider={s.provider} size={12} /> {s.provider}
-                          </span>
-                        ))}
-                        {route.is_loop && (
-                          <Badge variant="positive">Loop</Badge>
-                        )}
-                        {!route.is_ridden && (
-                          <Badge variant="warning">Not yet ridden</Badge>
-                        )}
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-medium truncate">{route.name}</h3>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {/* Deduplicate sources by provider for display */}
+                      {Array.from(
+                        new Map(route.sources.map((s) => [s.provider, s])).values()
+                      ).map((s) => (
+                        <span
+                          key={s.provider}
+                          className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
+                        >
+                          <ProviderIcon provider={s.provider} size={12} /> {s.provider}
+                        </span>
+                      ))}
+                      {route.is_loop && (
+                        <Badge variant="positive">Loop</Badge>
+                      )}
+                      {route.ride_count > 0 ? (
+                        <Badge variant="positive">✓ Ridden ({route.ride_count})</Badge>
+                      ) : (
+                        <Badge variant="muted">New</Badge>
+                      )}
                     </div>
-                    {/* Ride count badge */}
-                    {route.ride_count > 0 && (
-                      <div className="text-right flex-shrink-0 ml-3">
-                        <p className="text-sm font-semibold text-accent">{route.ride_count}</p>
-                        <p className="text-[10px] text-muted">rides</p>
-                      </div>
-                    )}
                   </div>
+                </div>
                   <div className="flex items-center gap-4 text-sm text-muted flex-wrap">
                     <span>📏 {formatDistance(route.distance_meters)}</span>
                     {route.elevation_gain_meters && (
@@ -473,13 +473,12 @@ export default function RoutesPage() {
               </Card>
             ))
           ) : (
-            <Card>
-              <div className="p-12 text-center text-muted">
-                <p className="text-4xl mb-3">🗺️</p>
-                <p className="mb-2">No routes found</p>
-                <p className="text-sm">Connect Strava, Komoot, or Wahoo and sync to get started. You can also upload a GPX file.</p>
-              </div>
-            </Card>
+            <EmptyState
+              icon="🗺️"
+              title="No routes synced yet"
+              description="Connect a provider (Strava, Komoot, or Wahoo) and sync to import routes. You can also upload a GPX file."
+              action={{ label: 'Go to Settings', href: '/settings' }}
+            />
           )}
         </div>
 
@@ -494,6 +493,7 @@ export default function RoutesPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleDownloadGpx(selectedRoute.id, selectedRoute.name)}
+                        aria-label="Download route as GPX file"
                         className="px-3 py-1.5 text-xs font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors"
                       >
                         ⬇️ GPX
@@ -504,6 +504,7 @@ export default function RoutesPage() {
                             deleteMutation.mutate(selectedRoute.id);
                           }
                         }}
+                        aria-label="Delete route"
                         className="px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
                         🗑️
@@ -581,11 +582,13 @@ export default function RoutesPage() {
                 )}
 
                 {/* Surface Breakdown */}
-                {selectedRoute.surface_profile && (
-                  <div className="px-6 pb-4">
+                <div className="px-6 pb-4">
+                  {selectedRoute.surface_profile ? (
                     <SurfaceBreakdown surfaceProfile={selectedRoute.surface_profile} />
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-xs text-muted">Surface data not available for this route</p>
+                  )}
+                </div>
               </Card>
             </div>
           ) : (

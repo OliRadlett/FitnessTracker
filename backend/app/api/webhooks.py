@@ -1,5 +1,8 @@
 """Webhook API — Strava webhook challenge + event receiver."""
 
+import hashlib
+import hmac
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +12,25 @@ from app.services.strava import handle_strava_event
 
 settings = get_settings()
 router = APIRouter()
+
+
+def _verify_strava_signature(payload_body: bytes, signature_header: str | None) -> bool:
+    """Verify the Strava X-Hub-Signature-256 header using HMAC-SHA256.
+
+    The signature is sent as ``sha256=<hex_digest>`` of the raw request body,
+    keyed with the Strava client secret.
+    """
+    if not signature_header:
+        return False
+
+    expected = hmac.new(
+        key=settings.strava_client_secret.encode("utf-8"),
+        msg=payload_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    expected_formatted = f"sha256={expected}"
+
+    return hmac.compare_digest(expected_formatted, signature_header)
 
 
 @router.get("/strava")
@@ -34,7 +56,13 @@ async def strava_webhook_event(
     """Receive Strava webhook events.
 
     Strava POSTs event data when activities are created, updated, or deleted.
+    Verifies the ``X-Hub-Signature-256`` header before processing.
     """
+    raw_body = await request.body()
+
+    if not _verify_strava_signature(raw_body, request.headers.get("x-hub-signature-256")):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     body = await request.json()
 
     object_type = body.get("object_type")

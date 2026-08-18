@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type {
   DashboardSummary,
+  MonthlySummaryItem,
   ChartData,
   Activity,
   LiftingSession,
@@ -12,11 +13,14 @@ import type {
   RespiratoryRateResponse,
   WhoopWeeklySummary,
   HealthAlert,
+  HealthAnalysisResult,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
+import { SkeletonMetric, SkeletonChart, SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -141,7 +145,7 @@ function HealthMonitorCard({
   isAnalyzing,
   onAnalyze,
 }: {
-  analysisResults: any[] | null;
+  analysisResults: HealthAnalysisResult[] | null;
   isAnalyzing: boolean;
   onAnalyze: () => void;
 }) {
@@ -153,6 +157,7 @@ function HealthMonitorCard({
           <button
             onClick={onAnalyze}
             disabled={isAnalyzing}
+            aria-label="Run health analysis"
             className="px-3 py-1.5 text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50"
           >
             {isAnalyzing ? '⏳ Analyzing...' : '🔍 Analyze Now'}
@@ -296,21 +301,11 @@ function SessionRow({ session }: { session: LiftingSession }) {
 
 /* ── Skeleton Loaders ───────────────────────────────────────────────────── */
 
-function MetricSkeleton() {
-  return (
-    <div className="bg-surface rounded-xl border border-surface-light/50 p-4 animate-pulse">
-      <div className="h-3 bg-surface-light rounded w-20 mb-3"></div>
-      <div className="h-7 bg-surface-light rounded w-14 mb-2"></div>
-      <div className="h-3 bg-surface-light rounded w-24"></div>
-    </div>
-  );
-}
-
 function ListSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2" aria-label="Loading data">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="animate-pulse h-16 bg-surface-light rounded-lg"></div>
+        <SkeletonRow key={i} />
       ))}
     </div>
   );
@@ -321,7 +316,7 @@ function ListSkeleton({ count = 3 }: { count?: number }) {
 export default function DashboardPage() {
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
-  const [analysisResults, setAnalysisResults] = useState<any[] | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<HealthAnalysisResult[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   /* ── Queries ───────────────────────────────────────────────────────────── */
@@ -374,6 +369,12 @@ export default function DashboardPage() {
     staleTime: 300_000,
   });
 
+  const { data: monthlySummary, isLoading: monthlyLoading } = useQuery<MonthlySummaryItem[]>({
+    queryKey: ['monthly-summary'],
+    queryFn: () => authFetch<MonthlySummaryItem[]>('/api/v1/dashboard/monthly-summary?months=6'),
+    staleTime: 300_000,
+  });
+
   const recentSessions = sessions?.slice(0, 5) ?? [];
 
   const hasReadiness = readiness && readiness.readiness !== 'unknown';
@@ -383,7 +384,7 @@ export default function DashboardPage() {
 
   const handleAnalyze = () => {
     setIsAnalyzing(true);
-    authFetch<{ analysis_results: any[] }>('/api/v1/metrics/health-alerts/analyze', { method: 'POST' })
+    authFetch<{ analysis_results: HealthAnalysisResult[] }>('/api/v1/metrics/health-alerts/analyze', { method: 'POST' })
       .then((data) => {
         setAnalysisResults(data.analysis_results || []);
         queryClient.invalidateQueries({ queryKey: ['health-alerts'] });
@@ -393,8 +394,17 @@ export default function DashboardPage() {
       .finally(() => setIsAnalyzing(false));
   };
 
+  // Check if dashboard has any data at all
+  const hasAnyData = !!(summary && (
+    summary.weekly_volume_kg > 0 ||
+    summary.weekly_distance_meters > 0 ||
+    summary.weekly_sessions > 0 ||
+    (activities && activities.length > 0) ||
+    (sessions && sessions.length > 0)
+  ));
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" aria-live="polite">
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between">
         <div>
@@ -458,7 +468,7 @@ export default function DashboardPage() {
         <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">This Week</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {summaryLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <MetricSkeleton key={i} />)
+            Array.from({ length: 5 }).map((_, i) => <SkeletonMetric key={i} />)
           ) : (
             <>
               <MetricCard
@@ -539,9 +549,7 @@ export default function DashboardPage() {
           <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Training Load</h2>
           <Card>
             {tssLoading ? (
-              <div className="h-80 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-              </div>
+              <SkeletonChart height={300} />
             ) : weeklyTss ? (
               <Chart data={weeklyTss} height={300} />
             ) : (
@@ -582,7 +590,13 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted text-center py-8 text-sm">No recent activities</p>
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2" aria-hidden="true">🏃</p>
+                <p className="text-muted text-sm">No recent activities</p>
+                <p className="text-muted text-xs mt-1">
+                  <a href="/settings" className="text-accent hover:text-accent-hover">Connect Strava</a> to start syncing
+                </p>
+              </div>
             )}
           </Card>
 
@@ -602,11 +616,98 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted text-center py-8 text-sm">No lifting sessions yet</p>
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2" aria-hidden="true">🏋️</p>
+                <p className="text-muted text-sm">No lifting sessions yet</p>
+                <a href="/lifting" className="text-accent hover:text-accent-hover text-xs mt-1 inline-block">Create your first session</a>
+              </div>
             )}
           </Card>
         </div>
       </div>
+
+      {/* ── Monthly Summary ──────────────────────────────────────────────── */}
+      {monthlySummary && monthlySummary.length > 0 && (
+        <div>
+          <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Monthly Summary</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {monthlySummary.map((month, i) => {
+              const prevMonth = i < monthlySummary.length - 1 ? monthlySummary[i + 1] : null;
+              const tssTrend = prevMonth && prevMonth.total_tss > 0
+                ? ((month.total_tss - prevMonth.total_tss) / prevMonth.total_tss * 100)
+                : null;
+              const volTrend = prevMonth && prevMonth.lifting_volume_kg > 0
+                ? ((month.lifting_volume_kg - prevMonth.lifting_volume_kg) / prevMonth.lifting_volume_kg * 100)
+                : null;
+              return (
+                <Card key={month.month}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between w-full">
+                      <CardTitle>{new Date(month.month + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</CardTitle>
+                      {month.pr_count > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                          🏆 {month.pr_count} PR{month.pr_count > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-muted">TSS</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-sm font-bold text-blue-400">{month.total_tss.toFixed(0)}</p>
+                        {tssTrend !== null && (
+                          <span className={`text-xs ${tssTrend > 5 ? 'text-positive' : tssTrend < -5 ? 'text-warning' : 'text-muted'}`}>
+                            {tssTrend > 0 ? '↑' : tssTrend < 0 ? '↓' : '→'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">Lifting Volume</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-sm font-bold text-purple-400">{(month.lifting_volume_kg / 1000).toFixed(1)}k kg</p>
+                        {volTrend !== null && (
+                          <span className={`text-xs ${volTrend > 5 ? 'text-positive' : volTrend < -5 ? 'text-warning' : 'text-muted'}`}>
+                            {volTrend > 0 ? '↑' : volTrend < 0 ? '↓' : '→'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">Distance</p>
+                      <p className="text-sm font-bold text-green-400">{(month.total_distance_meters / 1000).toFixed(0)} km</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">Time</p>
+                      <p className="text-sm font-bold text-slate-300">{(month.total_time_seconds / 3600).toFixed(1)}h</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">Sessions</p>
+                      <p className="text-sm font-bold text-white">
+                        {month.lifting_sessions + month.cardio_sessions}
+                        <span className="text-xs text-muted ml-1">
+                          ({month.lifting_sessions}🏋️ {month.cardio_sessions}🚴)
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">Avg Recovery</p>
+                      <p className={`text-sm font-bold ${
+                        (month.avg_recovery ?? 0) >= 70 ? 'text-green-400'
+                        : (month.avg_recovery ?? 0) >= 50 ? 'text-yellow-400'
+                        : 'text-red-400'
+                      }`}>
+                        {month.avg_recovery?.toFixed(0) ?? '—'}%
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

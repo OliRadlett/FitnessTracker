@@ -83,6 +83,8 @@ export default function SettingsPage() {
 
   async function handleExport(apiPath: string, filename: string) {
     try {
+      // Use raw fetch() instead of authFetch because we need the Response blob,
+      // not a parsed JSON body. authFetch always returns parsed JSON.
       const response = await fetch(apiPath, {
         headers: session?.backendToken ? { Authorization: `Bearer ${session.backendToken}` } : {},
         credentials: 'include',

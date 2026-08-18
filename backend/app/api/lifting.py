@@ -44,15 +44,33 @@ async def create_session(
     return LiftingSessionRead.model_validate(session)
 
 
-@router.get("/sessions", response_model=list[LiftingSessionRead])
+@router.get("/sessions")
 async def list_sessions(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List lifting sessions with pagination.
+
+    Returns the session list with an X-Total-Count response header.
+    """
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import func, select
+    from app.models.lifting import LiftingSession
+
+    # Get total count
+    count_result = await db.execute(
+        select(func.count(LiftingSession.id)).where(LiftingSession.user_id == current_user.id)
+    )
+    total_count = int(count_result.scalar() or 0)
+
     sessions = await lifting_service.list_sessions(db, current_user.id, limit=limit, offset=offset)
-    return [LiftingSessionRead.model_validate(s) for s in sessions]
+    enriched = [LiftingSessionRead.model_validate(s) for s in sessions]
+    return JSONResponse(
+        content=[s.model_dump(mode="json") for s in enriched],
+        headers={"X-Total-Count": str(total_count)},
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=LiftingSessionRead)

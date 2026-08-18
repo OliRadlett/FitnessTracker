@@ -4,6 +4,7 @@ import httpx
 import logging
 
 from app.config import get_settings
+from app.integrations.retry import retry_request
 
 logger = logging.getLogger(__name__)
 
@@ -79,24 +80,32 @@ class WahooClient:
         per_page: int = 50,
     ) -> list[dict]:
         """Fetch user's saved routes."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{WAHOO_API_BASE}/v1/routes",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"page": page, "per_page": per_page},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{WAHOO_API_BASE}/v1/routes",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"page": page, "per_page": per_page},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_route_detail(self, access_token: str, route_id: int) -> dict:
         """Fetch detailed info for a single route."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{WAHOO_API_BASE}/v1/routes/{route_id}",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{WAHOO_API_BASE}/v1/routes/{route_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_workouts(
         self,
@@ -105,14 +114,18 @@ class WahooClient:
         per_page: int = 50,
     ) -> list[dict]:
         """Fetch user's completed workouts."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{WAHOO_API_BASE}/v1/workouts",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"page": page, "per_page": per_page},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{WAHOO_API_BASE}/v1/workouts",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"page": page, "per_page": per_page},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
 
 # Singleton

@@ -23,10 +23,13 @@ from app.schemas.cycling import (
     PowerZoneDistribution,
     CyclingMetricsSummary,
     MetricTrend,
+    MetricBenchmark,
     HrZonesResponse,
     HrZoneDistribution,
     PowerVsHrResponse,
     PowerVsHrPoint,
+    FtpEstimateResponse,
+    FtpEstimateDetail,
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
@@ -39,11 +42,13 @@ from app.services.cycling import (
     compute_power_zones_from_streams,
     compute_training_load,
     estimate_ftp_from_power_curve,
+    estimate_ftp_from_power_curve_detailed,
     get_daily_tss,
     get_or_create_cycling_profile,
     calculate_intensity_factor,
     calculate_variability_index,
     calculate_vam,
+    get_metric_benchmark,
 )
 
 router = APIRouter()
@@ -440,6 +445,31 @@ async def get_cycling_metrics_summary(
     if vi_rows_28d:
         baseline_vi = sum(r.normalized_power / r.average_power for r in vi_rows_28d) / len(vi_rows_28d)
 
+    # Benchmark classifications
+    ftp_wkg_benchmark = None
+    if power_to_weight and power_to_weight > 0:
+        bench = get_metric_benchmark(power_to_weight, "ftp_w_per_kg")
+        if bench:
+            ftp_wkg_benchmark = MetricBenchmark(**bench)
+
+    ctl_benchmark = None
+    # Compute CTL for benchmark classification
+    end_date = date.today()
+    start_date = end_date - timedelta(days=90 + 42)
+    daily_tss_data = await get_daily_tss(db, uid, start_date, end_date)
+    load_data = compute_training_load(daily_tss_data, end_date, lookback_days=90)
+    current_ctl = load_data[-1]["ctl"] if load_data else None
+    if current_ctl and current_ctl > 0:
+        bench = get_metric_benchmark(current_ctl, "ctl")
+        if bench:
+            ctl_benchmark = MetricBenchmark(**bench)
+
+    vi_benchmark = None
+    if avg_vi and avg_vi > 0:
+        bench = get_metric_benchmark(avg_vi, "vi")
+        if bench:
+            vi_benchmark = MetricBenchmark(**bench)
+
     return CyclingMetricsSummary(
         recent_tss=float(row.total_tss or 0),
         recent_distance_km=round(float(row.total_distance or 0) / 1000, 1),
@@ -461,6 +491,10 @@ async def get_cycling_metrics_summary(
         rides_trend=_trend(int(row.ride_count or 0), baseline_rides),
         if_trend=_trend(avg_if, baseline_if),
         vi_trend=_trend(avg_vi, baseline_vi),
+        # Benchmarks
+        ftp_wkg_benchmark=ftp_wkg_benchmark,
+        ctl_benchmark=ctl_benchmark,
+        vi_benchmark=vi_benchmark,
     )
 
 
@@ -568,7 +602,7 @@ async def recalculate_tss(
 # ── FTP Estimation ───────────────────────────────────────────────────────────
 
 
-@router.post("/estimate-ftp")
+@router.post("/estimate-ftp", response_model=FtpEstimateResponse)
 async def estimate_ftp(
     days: int = Query(90, ge=30, le=365),
     accept: bool = Query(False, description="If true, automatically save the estimate as the user's FTP"),
@@ -577,8 +611,11 @@ async def estimate_ftp(
 ):
     """Estimate FTP from best power data and optionally save it.
 
-    Uses best 20-min power × 0.95 (standard method).
-    Falls back to best 8-min × 0.90 × 0.95 or best 5-min × 0.95.
+    Uses a weighted multi-method approach:
+    - 20-min × 0.95 (gold standard, confidence 1.0)
+    - 30-min × 0.95, 8-min × 0.855, 10-min × 0.92 (well-established)
+    - 5-min × 0.95 (rough estimate)
+    - Riegel extrapolation from shorter efforts (lower confidence)
     """
     best_power = await compute_power_curve_from_streams(db, current_user.id, days)
     if not best_power:
@@ -587,59 +624,55 @@ async def estimate_ftp(
             detail="No power stream data available. Sync activities with power data from Strava first.",
         )
 
-    estimated_ftp = estimate_ftp_from_power_curve(best_power)
-    if not estimated_ftp:
+    detailed = estimate_ftp_from_power_curve_detailed(best_power)
+    if not detailed:
         raise HTTPException(
             status_code=400,
             detail="Insufficient data for FTP estimation. Need at least a 5-min all-out effort with power data.",
         )
 
-    # Determine which duration was used
-    source_method = None
-    best_20min = best_power.get(1200)
-    best_8min = best_power.get(480)
-    best_5min = best_power.get(300)
+    # Human-readable source method
+    source_method = f"{detailed.method}: {detailed.source_duration}s power → FTP (confidence: {detailed.confidence:.0%})"
 
-    if best_20min:
-        source_method = f"20-min power: {best_20min} W × 0.95"
-    elif best_8min:
-        source_method = f"8-min power: {best_8min} W × 0.855 (0.90 × 0.95)"
-    elif best_5min:
-        source_method = f"5-min power: {best_5min} W × 0.95"
-
-    result = {
-        "estimated_ftp": estimated_ftp,
-        "source_method": source_method,
-        "best_power_available": {
+    result = FtpEstimateResponse(
+        estimated_ftp=detailed.ftp,
+        confidence=detailed.confidence,
+        method=detailed.method,
+        source_duration=detailed.source_duration,
+        all_estimates=[FtpEstimateDetail(**e) for e in detailed.all_estimates],
+        source_method=source_method,
+        best_power_available={
             "5s": best_power.get(5),
             "1min": best_power.get(60),
-            "5min": best_5min,
-            "8min": best_8min,
-            "20min": best_20min,
+            "5min": best_power.get(300),
+            "8min": best_power.get(480),
+            "10min": best_power.get(600),
+            "20min": best_power.get(1200),
+            "30min": best_power.get(1800),
             "60min": best_power.get(3600),
         },
-        "days_analyzed": days,
-        "accepted": False,
-    }
+        days_analyzed=days,
+        accepted=False,
+    )
 
     if accept:
         profile = await get_or_create_cycling_profile(db, current_user.id)
         old_ftp = profile.ftp_watts
-        profile.ftp_watts = estimated_ftp
+        profile.ftp_watts = detailed.ftp
 
         # Record in FTP history
         ftp_entry = FtpHistory(
             user_id=current_user.id,
-            ftp_watts=estimated_ftp,
+            ftp_watts=detailed.ftp,
             effective_date=date.today(),
             source="estimated",
-            notes=f"Auto-estimated: {source_method}" if source_method else None,
+            notes=f"Auto-estimated: {source_method}",
         )
         db.add(ftp_entry)
         await db.flush()
         await db.refresh(profile)
-        result["accepted"] = True
-        result["previous_ftp"] = old_ftp
+        result.accepted = True
+        result.previous_ftp = old_ftp
 
     return result
 

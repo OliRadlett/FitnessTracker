@@ -679,9 +679,16 @@ async def backfill_all_activities(
         if len(strava_activities) < 100:
             break
 
-    # Auto-link newly synced activities to lifting sessions and routes
-    # Fetch all strava activities for this user (link functions check internally)
+    # Auto-link newly synced activities to lifting sessions and routes.
+    # Pre-fetch all candidate data in bulk to avoid N+1 queries.
     from app.models.lifting import LiftingSession
+    from app.models.route import Route
+    from collections import defaultdict
+    from app.services.merge_service import _extract_activity_polyline
+    from app.services.route_service import _compute_match_score
+    from app.services.polyline_utils import decode_polyline, haversine_distance
+
+    # 1. Collect IDs of activities already linked to a lifting session
     linked_ids_result = await db.execute(
         select(LiftingSession.activity_id).where(
             LiftingSession.user_id == user_id,
@@ -690,6 +697,7 @@ async def backfill_all_activities(
     )
     linked_activity_ids = set(linked_ids_result.scalars().all())
 
+    # 2. Fetch all Strava activities with lifting_session eagerly loaded
     result = await db.execute(
         select(Activity)
         .options(selectinload(Activity.lifting_session))
@@ -700,9 +708,84 @@ async def backfill_all_activities(
     )
     all_activities = list(result.scalars().unique().all())
     activities = [a for a in all_activities if a.id not in linked_activity_ids]
+
+    if not activities:
+        return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1}
+
+    # 3. Batch-fetch all unlinked lifting sessions with sets (for strength matching)
+    session_result = await db.execute(
+        select(LiftingSession)
+        .options(selectinload(LiftingSession.sets))
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.activity_id.is_(None),
+        )
+    )
+    unlinked_sessions = list(session_result.scalars().all())
+    # Index by date for fast ±2 day lookups
+    sessions_by_date: dict[date, list] = defaultdict(list)
+    for s in unlinked_sessions:
+        sessions_by_date[s.session_date].append(s)
+
+    # 4. Batch-fetch all user routes (for route matching)
+    route_result = await db.execute(
+        select(Route).where(Route.user_id == user_id)
+    )
+    all_routes = list(route_result.scalars().all())
+
+    # 5. Link activities using pre-fetched data (no per-activity DB queries)
     for activity in activities:
-        await link_activity_to_lifting_sessions(db, activity)
-        await link_activity_to_route(db, activity)
+        # -- Strength activity → lifting session matching --
+        if activity.sport_type in STRENGTH_SPORT_TYPES and not activity.lifting_session:
+            activity_date = activity.start_date.date() if activity.start_date.tzinfo else activity.start_date.date()
+            candidates = []
+            for offset in range(-2, 3):
+                check_date = activity_date + timedelta(days=offset)
+                candidates.extend(sessions_by_date.get(check_date, []))
+            if candidates:
+                scored = [(s, _match_score(activity, s)) for s in candidates]
+                scored.sort(key=lambda x: x[1], reverse=True)
+                best_session, best_score = scored[0]
+                if best_score >= MATCH_THRESHOLD:
+                    best_session.activity_id = activity.id
+                    if not best_session.duration_seconds and activity.duration_seconds:
+                        best_session.duration_seconds = activity.duration_seconds
+
+        # -- GPS activity → route matching --
+        if activity.route_id is None and all_routes:
+            if activity.sport_type in ("cycling", "running", "walking", "hiking"):
+                polyline = _extract_activity_polyline(activity)
+                if polyline:
+                    points = decode_polyline(polyline)
+                    if points and len(points) >= 2:
+                        from app.config import get_settings as _gs
+                        threshold = _gs().activity_route_link_threshold
+                        start_lat, start_lng = points[0]
+                        end_lat, end_lng = points[-1]
+                        best_route = None
+                        best_score = 0.0
+                        for route in all_routes:
+                            if route.sport_type != activity.sport_type and not (
+                                route.sport_type in ("cycling", "running")
+                                and activity.sport_type in ("cycling", "running")
+                            ):
+                                continue
+                            start_dist = haversine_distance(start_lat, start_lng, route.start_lat, route.start_lng)
+                            if start_dist > 5000:
+                                continue
+                            score = _compute_match_score(
+                                activity.distance_meters or 0,
+                                polyline,
+                                activity.name,
+                                start_lat, start_lng,
+                                end_lat, end_lng,
+                                route,
+                            )
+                            if score > best_score:
+                                best_score = score
+                                best_route = route
+                        if best_score >= threshold and best_route is not None:
+                            activity.route_id = best_route.id
 
     await db.flush()
     return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1}
@@ -850,7 +933,7 @@ async def sync_strava_routes(
         if not activity.raw_data:
             continue
         map_data = activity.raw_data.get("map", {})
-        polyline = map_data.get("summary_polyline") or map_data.get("polyline", "")
+        polyline = map_data.get("polyline") or map_data.get("summary_polyline", "")
         if not polyline:
             continue
 

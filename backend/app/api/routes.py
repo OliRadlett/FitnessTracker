@@ -63,28 +63,42 @@ async def list_routes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List user's routes with optional filters, sort, and ride stats."""
+    """List user's routes with optional filters, sort, and ride stats.
+
+    Returns the route list with an X-Total-Count response header.
+    Note: is_ridden filter is applied post-query (computed field), so
+    total_count reflects SQL-level filters only.
+    """
     # Build base query
+    base_filters = [Route.user_id == current_user.id]
+    if sport_type:
+        base_filters.append(Route.sport_type == sport_type)
+    if is_loop is not None:
+        base_filters.append(Route.is_loop == is_loop)
+    if min_distance is not None:
+        base_filters.append(Route.distance_meters >= min_distance)
+    if max_distance is not None:
+        base_filters.append(Route.distance_meters <= max_distance)
+    if min_elevation is not None:
+        base_filters.append(Route.elevation_gain_meters >= min_elevation)
+    if max_elevation is not None:
+        base_filters.append(Route.elevation_gain_meters <= max_elevation)
+    if q:
+        base_filters.append(Route.name.ilike(f"%{q}%"))
+
+    # Get total count (before pagination)
+    count_query = select(func.count(Route.id)).where(*base_filters)
+    if source:
+        count_query = count_query.join(Route.sources).where(RouteSource.provider == source)
+    count_result = await db.execute(count_query)
+    total_count = int(count_result.scalar() or 0)
+
     query = (
         select(Route)
         .options(selectinload(Route.sources))
-        .where(Route.user_id == current_user.id)
+        .where(*base_filters)
     )
 
-    if sport_type:
-        query = query.where(Route.sport_type == sport_type)
-    if is_loop is not None:
-        query = query.where(Route.is_loop == is_loop)
-    if min_distance is not None:
-        query = query.where(Route.distance_meters >= min_distance)
-    if max_distance is not None:
-        query = query.where(Route.distance_meters <= max_distance)
-    if min_elevation is not None:
-        query = query.where(Route.elevation_gain_meters >= min_elevation)
-    if max_elevation is not None:
-        query = query.where(Route.elevation_gain_meters <= max_elevation)
-    if q:
-        query = query.where(Route.name.ilike(f"%{q}%"))
     if source:
         query = query.join(Route.sources).where(RouteSource.provider == source)
 
@@ -144,7 +158,11 @@ async def list_routes(
             reverse=(sort_order == "desc"),
         )
 
-    return summaries
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content=[s.model_dump(mode="json") for s in summaries],
+        headers={"X-Total-Count": str(total_count)},
+    )
 
 
 @router.get("/duplicates", response_model=list[DuplicatePair])

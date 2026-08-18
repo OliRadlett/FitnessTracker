@@ -149,8 +149,25 @@ export function ProfileEditor({
               <div>
                 <p className="text-sm font-medium text-white">
                   Estimated FTP: <span className="text-yellow-400 font-mono text-lg">{ftpEstimate.estimated_ftp} W</span>
+                  {ftpEstimate.confidence != null && (
+                    <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                      ftpEstimate.confidence >= 0.8
+                        ? 'bg-green-500/20 text-green-400'
+                        : ftpEstimate.confidence >= 0.5
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {Math.round(ftpEstimate.confidence * 100)}% confidence
+                    </span>
+                  )}
                 </p>
-                {ftpEstimate.source_method && (
+                {ftpEstimate.method && (
+                  <p className="text-xs text-muted mt-0.5">
+                    Primary: {ftpEstimate.method}
+                    {ftpEstimate.source_duration ? ` (${ftpEstimate.source_duration}s effort)` : ''}
+                  </p>
+                )}
+                {ftpEstimate.source_method && !ftpEstimate.method && (
                   <p className="text-xs text-muted mt-0.5">Method: {ftpEstimate.source_method}</p>
                 )}
               </div>
@@ -166,6 +183,25 @@ export function ProfileEditor({
                 <span className="text-xs text-green-400 font-medium">✓ Saved as FTP</span>
               )}
             </div>
+
+            {/* All method estimates breakdown */}
+            {ftpEstimate.all_estimates && ftpEstimate.all_estimates.length > 0 && (
+              <div className="mt-2 mb-2">
+                <p className="text-xs text-muted mb-1">Method breakdown:</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {ftpEstimate.all_estimates.map((est, i) => (
+                    <div key={i} className="text-xs flex items-center gap-1">
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                        est.confidence >= 0.8 ? 'bg-green-400' : est.confidence >= 0.5 ? 'bg-yellow-400' : 'bg-red-400'
+                      }`} />
+                      <span className="text-muted truncate">{est.method}:</span>
+                      <span className="font-mono text-white">{est.ftp}W</span>
+                      <span className="text-muted/60">({Math.round(est.confidence * 100)}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Best power breakdown */}
             {ftpEstimate.best_power_available && (

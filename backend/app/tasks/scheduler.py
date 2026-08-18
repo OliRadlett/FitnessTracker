@@ -520,7 +520,7 @@ def sync_all_whoop_data() -> dict:
                     conn = await refresh_if_needed(db, conn)
                 except ValueError as e:
                     skipped_expired += 1
-                    print(f"Skipping Whoop sync for user {conn.user_id}: {e}")
+                    logger.warning(f"Skipping Whoop sync for user {conn.user_id}: {e}")
                     continue
 
                 try:
@@ -529,9 +529,9 @@ def sync_all_whoop_data() -> dict:
                 except ValueError as e:
                     if "expired" in str(e).lower():
                         skipped_expired += 1
-                    print(f"Whoop cycle sync failed for user {conn.user_id}: {e}")
+                    logger.warning(f"Whoop cycle sync failed for user {conn.user_id}: {e}")
                 except Exception as e:
-                    print(f"Whoop cycle sync error for user {conn.user_id}: {e}")
+                    logger.error(f"Whoop cycle sync error for user {conn.user_id}: {e}", exc_info=True)
 
                 try:
                     sleep_logs = await sync_whoop_sleep(db, conn.user_id)
@@ -539,9 +539,9 @@ def sync_all_whoop_data() -> dict:
                 except ValueError as e:
                     if "expired" in str(e).lower():
                         skipped_expired += 1
-                    print(f"Whoop sleep sync failed for user {conn.user_id}: {e}")
+                    logger.warning(f"Whoop sleep sync failed for user {conn.user_id}: {e}")
                 except Exception as e:
-                    print(f"Whoop sleep sync error for user {conn.user_id}: {e}")
+                    logger.error(f"Whoop sleep sync error for user {conn.user_id}: {e}", exc_info=True)
 
                 try:
                     enriched = await sync_whoop_workouts(db, conn.user_id)
@@ -549,9 +549,9 @@ def sync_all_whoop_data() -> dict:
                 except ValueError as e:
                     if "expired" in str(e).lower():
                         skipped_expired += 1
-                    print(f"Whoop workout sync failed for user {conn.user_id}: {e}")
+                    logger.warning(f"Whoop workout sync failed for user {conn.user_id}: {e}")
                 except Exception as e:
-                    print(f"Whoop workout sync error for user {conn.user_id}: {e}")
+                    logger.error(f"Whoop workout sync error for user {conn.user_id}: {e}", exc_info=True)
 
                 # Sync body weight from Whoop
                 try:
@@ -559,9 +559,9 @@ def sync_all_whoop_data() -> dict:
                 except ValueError as e:
                     if "expired" in str(e).lower():
                         skipped_expired += 1
-                    print(f"Whoop weight sync failed for user {conn.user_id}: {e}")
+                    logger.warning(f"Whoop weight sync failed for user {conn.user_id}: {e}")
                 except Exception as e:
-                    print(f"Whoop weight sync error for user {conn.user_id}: {e}")
+                    logger.error(f"Whoop weight sync error for user {conn.user_id}: {e}", exc_info=True)
 
             await db.commit()
             return {

@@ -108,6 +108,13 @@ class MetricTrend(BaseModel):
     direction: str = "stable"  # "up", "down", "stable"
 
 
+class MetricBenchmark(BaseModel):
+    """Benchmark classification for a metric value."""
+    label: str  # e.g. "Trained", "Good", "Excellent"
+    range: str  # e.g. "3.0–4.0"
+    raw_label: str  # internal label
+
+
 class CyclingMetricsSummary(BaseModel):
     """Summary of cycling-specific metrics."""
     recent_tss: float = 0.0  # last 7 days
@@ -131,6 +138,11 @@ class CyclingMetricsSummary(BaseModel):
     rides_trend: MetricTrend | None = None
     if_trend: MetricTrend | None = None
     vi_trend: MetricTrend | None = None
+
+    # Benchmark classifications
+    ftp_wkg_benchmark: MetricBenchmark | None = None
+    ctl_benchmark: MetricBenchmark | None = None
+    vi_benchmark: MetricBenchmark | None = None
 
 
 class HrZoneDistribution(BaseModel):
@@ -160,3 +172,28 @@ class PowerVsHrPoint(BaseModel):
 class PowerVsHrResponse(BaseModel):
     """Power vs heart rate scatter data."""
     data: list[PowerVsHrPoint]
+
+
+# ── Enhanced FTP Estimate ───────────────────────────────────────────────────
+
+
+class FtpEstimateDetail(BaseModel):
+    """Individual FTP estimate from a specific method."""
+    ftp: float
+    confidence: float
+    source_duration: int
+    method: str
+
+
+class FtpEstimateResponse(BaseModel):
+    """Enhanced FTP estimate response with confidence scoring."""
+    estimated_ftp: float
+    confidence: float  # 0.0 - 1.0
+    method: str  # primary method used
+    source_duration: int  # primary duration in seconds
+    all_estimates: list[FtpEstimateDetail]
+    source_method: str | None = None  # human-readable for display
+    best_power_available: dict[str, float | None]
+    days_analyzed: int
+    accepted: bool = False
+    previous_ftp: float | None = None

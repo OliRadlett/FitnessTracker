@@ -4,8 +4,9 @@ import React from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, SidebarProvider, MobileMenuButton } from '@/components/Sidebar';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -30,14 +31,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <PageLoadingBar />
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          {children}
-        </div>
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="flex min-h-screen bg-background">
+        <PageLoadingBar />
+        <MobileMenuButton />
+        <Sidebar />
+        <main role="main" className="flex-1 overflow-auto">
+          <div className="p-4 md:p-8">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }

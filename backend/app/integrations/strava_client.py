@@ -1,9 +1,14 @@
 """Strava integration client — OAuth, activity fetch, stream fetch."""
 
+import logging
+
 import httpx
 from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
+from app.integrations.retry import retry_request
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -72,25 +77,32 @@ class StravaClient:
         if before:
             params["before"] = int(before.timestamp())
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/athlete/activities",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params=params,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/athlete/activities",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params=params,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_activity_detail(self, access_token: str, activity_id: int) -> dict:
         """Fetch detailed info for a single Strava activity."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/activities/{activity_id}",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"include_all_efforts": True},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/activities/{activity_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"include_all_efforts": True},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_activity_streams(
         self,
@@ -103,26 +115,33 @@ class StravaClient:
             stream_types = ["time", "heartrate", "watts", "cadence", "altitude", "velocity_smooth"]
 
         keys = ",".join(stream_types)
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/activities/{activity_id}/streams",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"keys": keys, "key_type": "time"},
-            )
-            resp.raise_for_status()
-            streams = resp.json()
-            # Convert list of stream objects to dict keyed by type
-            return {s["type"]: s for s in streams}
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/activities/{activity_id}/streams",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"keys": keys, "key_type": "time"},
+                )
+                resp.raise_for_status()
+                streams = resp.json()
+                return {s["type"]: s for s in streams}
+
+        return await retry_request(_fetch)
 
     async def get_athlete(self, access_token: str) -> dict:
         """Fetch the authenticated athlete profile."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/athlete",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/athlete",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_athlete_routes(
         self,
@@ -139,24 +158,31 @@ class StravaClient:
             athlete = await self.get_athlete(access_token)
             athlete_id = athlete["id"]
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/athletes/{athlete_id}/routes",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"page": page, "per_page": per_page},
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/athletes/{athlete_id}/routes",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"page": page, "per_page": per_page},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_route_detail(self, access_token: str, route_id: int) -> dict:
         """Fetch detailed info for a single Strava route."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{STRAVA_API_BASE}/routes/{route_id}",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/routes/{route_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
 
 # Singleton

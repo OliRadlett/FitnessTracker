@@ -13,6 +13,8 @@ const RouteMap = dynamic(
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
+import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -413,9 +415,11 @@ export default function ActivitiesPage() {
           <p className="text-muted">Browse and analyze your fitness activities</p>
         </div>
         {/* View Toggle */}
-        <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden">
+        <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden" role="tablist" aria-label="Activity view mode">
           <button
             onClick={() => setViewMode('list')}
+            role="tab"
+            aria-selected={viewMode === 'list'}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
@@ -424,6 +428,8 @@ export default function ActivitiesPage() {
           </button>
           <button
             onClick={() => setViewMode('week')}
+            role="tab"
+            aria-selected={viewMode === 'week'}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
@@ -480,6 +486,7 @@ export default function ActivitiesPage() {
           </div>
           <button
             onClick={() => setFilters({})}
+            aria-label="Clear all filters"
             className="px-4 py-2 text-sm text-muted hover:text-white border border-surface-light rounded-lg hover:bg-surface-light/50 transition-colors"
           >
             Clear
@@ -500,10 +507,11 @@ export default function ActivitiesPage() {
       )}
 
       {/* Activity List */}
+      <div aria-live="polite">
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-3" aria-label="Loading activities">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="animate-pulse h-20 bg-surface rounded-xl"></div>
+            <SkeletonRow key={i} />
           ))}
         </div>
       ) : displayActivities.length > 0 ? (
@@ -528,10 +536,14 @@ export default function ActivitiesPage() {
           </div>
         )
       ) : (
-        <Card>
-          <p className="text-muted text-center py-8">No activities found</p>
-        </Card>
+        <EmptyState
+          icon="🏃"
+          title="No activities yet"
+          description="Connect Strava to sync your first activity, or use the filters above to search existing data."
+          action={{ label: 'Go to Settings', href: '/settings' }}
+        />
       )}
+      </div>
 
       {/* Load More */}
       {!isLoading && displayActivities.length > 0 && hasMore && (

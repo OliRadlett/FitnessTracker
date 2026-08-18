@@ -10,6 +10,7 @@ import type {
   TrainingLoadResponse,
   PowerCurveResponse,
   PowerZonesResponse,
+  HrZonesResponse,
   PowerVsHrResponse,
   ChartData,
   FtpEstimate,
@@ -22,6 +23,7 @@ import { Chart } from '@/components/charts/Chart';
 import { MetricCard } from '@/components/cycling/MetricCard';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
 import { PowerZonesDisplay } from '@/components/cycling/PowerZonesDisplay';
+import { HRZonesDisplay } from '@/components/cycling/HRZonesDisplay';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 
 // ── Main Page ───────────────────────────────────────────────────────────────
@@ -81,6 +83,15 @@ export default function CyclingPage() {
     staleTime: 300_000,  // 5 min
   });
 
+  // Power curve comparison state + query
+  const [comparisonDays, setComparisonDays] = useState(30);
+  const comparisonBaselineDays = comparisonDays * 3;
+  const { data: chartPowerComparison } = useQuery<ChartData>({
+    queryKey: ['chart-power-comparison', comparisonDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
+    staleTime: 300_000,
+  });
+
   const { data: chartPowerZones } = useQuery<ChartData>({
     queryKey: ['chart-power-zones'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
@@ -110,6 +121,28 @@ export default function CyclingPage() {
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
     staleTime: 300_000,  // 5 min
+  });
+
+  // ── HR Zones query ──────────────────────────────────────────────────────
+  const { data: hrZones } = useQuery<HrZonesResponse>({
+    queryKey: ['hr-zones'],
+    queryFn: () => authFetch<HrZonesResponse>('/api/v1/cycling/hr-zones?days=30'),
+    enabled: !!profile?.lactate_threshold_hr,
+    staleTime: 300_000,
+  });
+
+  const { data: chartHrZones } = useQuery<ChartData>({
+    queryKey: ['chart-hr-zones'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
+    enabled: !!profile?.lactate_threshold_hr,
+    staleTime: 300_000,
+  });
+
+  // ── Weight trend chart ──────────────────────────────────────────────────
+  const { data: chartWeightTrend } = useQuery<ChartData>({
+    queryKey: ['chart-weight-trend'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
+    staleTime: 300_000,
   });
 
   // ── FTP Estimate state ──────────────────────────────────────────────────
@@ -303,6 +336,7 @@ export default function CyclingPage() {
           unit="W/kg"
           color="text-green-400"
           subtext="At FTP"
+          benchmark={metrics?.ftp_wkg_benchmark}
           tooltip="Power-to-weight ratio at FTP. Higher is better for climbing. Elite: 5-6 W/kg, Good: 3.5-4.5 W/kg."
         />
         <MetricCard
@@ -310,6 +344,7 @@ export default function CyclingPage() {
           value={currentLoad?.ctl?.toFixed(0)}
           color="text-positive"
           subtext="42-day EWMA"
+          benchmark={metrics?.ctl_benchmark}
           tooltip="Chronic Training Load — your long-term fitness, calculated as a 42-day exponentially weighted moving average of TSS. Higher = fitter. Typical range: 30-150."
         />
         <MetricCard
@@ -357,6 +392,7 @@ export default function CyclingPage() {
           value={metrics?.avg_variability_index?.toFixed(3)}
           color="text-blue-400"
           trend={metrics?.vi_trend}
+          benchmark={metrics?.vi_benchmark}
           subtext="VI = NP / AP (7d avg, lower = steadier)"
           tooltip="Variability Index = Normalized Power ÷ Average Power. Measures how steady your power output was. 1.0 = perfectly steady. >1.2 = very variable (e.g. criteriums). Road: aim for <1.1."
         />
@@ -514,6 +550,73 @@ export default function CyclingPage() {
           ) : (
             <div className="h-60 flex items-center justify-center text-muted">
               Set your FTP and sync activities with power stream data to see zone distribution.
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Power Curve Comparison */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between w-full">
+            <CardTitle>⚡ Power Curve Comparison</CardTitle>
+            <div className="flex gap-2">
+              {[14, 30, 60, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setComparisonDays(d)}
+                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                    comparisonDays === d
+                      ? 'bg-accent/20 text-accent border-accent/30'
+                      : 'text-muted border-surface-light hover:border-accent/30'
+                  }`}
+                >
+                  {d}d vs {d * 3}d
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        {chartPowerComparison && chartPowerComparison.labels.length > 0 ? (
+          <Chart data={chartPowerComparison} height={300} />
+        ) : (
+          <div className="h-60 flex items-center justify-center text-muted text-sm">
+            No power data available for comparison. Fetch streams from Strava first.
+          </div>
+        )}
+      </Card>
+
+      {/* HR Zones + Weight Trend */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Heart Rate Zones */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Heart Rate Zones (30 days)</CardTitle>
+          </CardHeader>
+          {hrZones?.zones?.length ? (
+            <>
+              <HRZonesDisplay zones={hrZones.zones} lthr={hrZones.lthr} />
+              {chartHrZones && <div className="mt-4"><Chart data={chartHrZones} height={220} /></div>}
+            </>
+          ) : (
+            <div className="h-60 flex items-center justify-center text-muted text-sm">
+              {profile?.lactate_threshold_hr
+                ? 'No heart rate stream data available. Sync activities with HR data.'
+                : 'Set your LTHR in the cycling profile to see HR zone distribution.'}
+            </div>
+          )}
+        </Card>
+
+        {/* Weight Trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Body Weight Trend (90 days)</CardTitle>
+          </CardHeader>
+          {chartWeightTrend && chartWeightTrend.labels.length > 0 ? (
+            <Chart data={chartWeightTrend} height={280} />
+          ) : (
+            <div className="h-60 flex items-center justify-center text-muted text-sm">
+              No weight data available. Log weight in settings or sync from Whoop.
             </div>
           )}
         </Card>

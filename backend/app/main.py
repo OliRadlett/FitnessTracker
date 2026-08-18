@@ -1,59 +1,45 @@
+import logging
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import engine, Base
+from app.database import engine, Base, async_session_factory
+from app.logging_config import correlation_id, setup_logging
 
 settings = get_settings()
+
+# ── Logging ────────────────────────────────────────────────────────────
+setup_logging(debug=settings.debug)
+logger = logging.getLogger(__name__)
+
+# ── Rate limiting ──────────────────────────────────────────────────────
+# Global default: 100 requests/minute per IP
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100/minute"],
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from sqlalchemy import inspect, text
+    logger.info("Starting FitTrack API (debug=%s)", settings.debug)
+
+    # Create any brand-new tables from models (for fresh installs).
+    # Schema changes are handled by Alembic migrations (see 016_cleanup_self_heal.py
+    # for the migration that replaced the old inline self-heal logic).
     async with engine.begin() as conn:
-        def _check_and_migrate(sync_conn):
-            inspector = inspect(sync_conn)
-            tables = inspector.get_table_names()
-
-            # If no tables exist at all, create everything from models
-            if not tables:
-                Base.metadata.create_all(sync_conn)
-                return
-
-            # Self-heal: add missing columns/tables that migrations may have missed
-            existing_cols = {c["name"] for c in inspector.get_columns("activities")} if "activities" in tables else set()
-            if "activities" in tables and "route_id" not in existing_cols:
-                sync_conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS route_id UUID"))
-                sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_activities_route_id ON activities(route_id)"))
-
-            if "activity_sources" not in tables:
-                sync_conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS activity_sources (
-                        id UUID PRIMARY KEY,
-                        activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
-                        provider VARCHAR(50) NOT NULL,
-                        provider_activity_id VARCHAR(255) NOT NULL,
-                        provider_name VARCHAR(500),
-                        raw_data JSONB,
-                        synced_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-                        CONSTRAINT uq_activity_source_provider UNIQUE (provider, provider_activity_id)
-                    )
-                """))
-                sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_sources_activity_id ON activity_sources(activity_id)"))
-
-            lifting_cols = {c["name"] for c in inspector.get_columns("lifting_sets")} if "lifting_sets" in tables else set()
-            if "lifting_sets" in tables and "created_at" not in lifting_cols:
-                sync_conn.execute(text("ALTER TABLE lifting_sets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL"))
-
-        await conn.run_sync(_check_and_migrate)
-
-        # Create any brand-new tables from models
         await conn.run_sync(Base.metadata.create_all)
 
     yield
     await engine.dispose()
+    logger.info("FitTrack API shutdown complete")
 
 
 app = FastAPI(
@@ -63,19 +49,82 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# ── Rate limiting middleware ───────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS ──────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Total-Count"],
 )
+
+
+# ── Correlation ID middleware ──────────────────────────────────────────
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Generate a UUID correlation ID for every request and inject into log context."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    token = correlation_id.set(request_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        correlation_id.reset(token)
+
+
+# ── Stricter rate limit for auth/token endpoints (20 req/min) ─────────
+@app.middleware("http")
+async def auth_rate_limit_middleware(request: Request, call_next):
+    """Apply a stricter 20 req/min limit on auth/token endpoints."""
+    if request.url.path.startswith("/api/v1/auth"):
+        rate_key = get_remote_address(request)
+        if not limiter.limiter.hit("20/minute", rate_key, "auth"):
+            return Response(
+                content='{"detail":"Rate limit exceeded for auth endpoints"}',
+                status_code=429,
+                media_type="application/json",
+            )
+    return await call_next(request)
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """Health check that verifies database and Redis connectivity."""
+    db_ok = False
+    redis_ok = False
+
+    # Database ping
+    try:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception:
+        pass
+
+    # Redis ping
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.redis_url)
+        await r.ping()
+        await r.aclose()
+        redis_ok = True
+    except Exception:
+        pass
+
+    if db_ok and redis_ok:
+        return {"status": "ok", "db": "ok", "redis": "ok"}
+
+    return Response(
+        content='{"status":"degraded","db":"%s","redis":"%s"}'
+        % ("ok" if db_ok else "error", "ok" if redis_ok else "error"),
+        status_code=503,
+        media_type="application/json",
+    )
 
 
 # Import and include routers

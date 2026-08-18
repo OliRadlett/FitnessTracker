@@ -20,6 +20,14 @@ export interface ChartSeries {
   color?: string;
 }
 
+export interface ReferenceArea {
+  y1: number;
+  y2: number;
+  color?: string;
+  opacity?: number;
+  label?: string;
+}
+
 export interface ChartData {
   chart_type: 'line' | 'bar' | 'scatter' | 'area' | 'pie';
   title: string;
@@ -28,12 +36,14 @@ export interface ChartData {
   x_label?: string;
   y_label?: string;
   insights?: string[];
+  reference_areas?: ReferenceArea[];
 }
 
 export interface ChartParams {
   days?: number;
   weeks?: number;
   exercise_name?: string;
+  days_b?: number;
 }
 
 export interface DashboardSummary {
@@ -60,6 +70,18 @@ export interface WeeklyReport {
   avg_hrv_ms?: number;
   avg_sleep_hours?: number;
   new_prs: number;
+}
+
+export interface MonthlySummaryItem {
+  month: string;
+  total_tss: number;
+  lifting_volume_kg: number;
+  total_distance_meters: number;
+  total_time_seconds: number;
+  lifting_sessions: number;
+  cardio_sessions: number;
+  pr_count: number;
+  avg_recovery?: number;
 }
 
 // ─── Activity ────────────────────────────────────────────────────────────────
@@ -474,6 +496,12 @@ export interface MetricTrend {
   direction: 'up' | 'down' | 'stable';
 }
 
+export interface MetricBenchmark {
+  label: string;  // e.g. "Trained", "Good", "Excellent"
+  range: string;  // e.g. "3.0–4.0"
+  raw_label: string;
+}
+
 export interface CyclingMetricsSummary {
   recent_tss: number;
   recent_distance_km: number;
@@ -495,6 +523,10 @@ export interface CyclingMetricsSummary {
   rides_trend?: MetricTrend;
   if_trend?: MetricTrend;
   vi_trend?: MetricTrend;
+  // Benchmark classifications
+  ftp_wkg_benchmark?: MetricBenchmark;
+  ctl_benchmark?: MetricBenchmark;
+  vi_benchmark?: MetricBenchmark;
 }
 
 export interface PowerVsHrPoint {
@@ -507,13 +539,39 @@ export interface PowerVsHrResponse {
   data: PowerVsHrPoint[];
 }
 
+export interface FtpEstimateDetail {
+  ftp: number;
+  confidence: number;
+  source_duration: number;
+  method: string;
+}
+
 export interface FtpEstimate {
   estimated_ftp: number;
-  source_method: string;
+  confidence: number;
+  method: string;
+  source_duration: number;
+  all_estimates: FtpEstimateDetail[];
+  source_method?: string;
   best_power_available: Record<string, number | null>;
   days_analyzed: number;
   accepted: boolean;
   previous_ftp?: number;
+}
+
+export interface HrZoneDistribution {
+  zone: string;
+  zone_name: string;
+  lower_bound_hr: number;
+  upper_bound_hr: number;
+  time_seconds: number;
+  percentage: number;
+}
+
+export interface HrZonesResponse {
+  lthr: number;
+  zones: HrZoneDistribution[];
+  total_time_seconds: number;
 }
 
 export interface BackfillStreamsResult {
@@ -626,4 +684,17 @@ export interface HealthAlert {
   detected_date: string;
   status: string;
   created_at?: string;
+}
+
+export interface HealthAnalysisResult {
+  type: string;
+  label: string;
+  result?: {
+    score: number;
+    severity: 'none' | 'info' | 'warning' | 'critical';
+    title: string;
+    description: string;
+    evidence?: Record<string, unknown>;
+  };
+  error?: string;
 }

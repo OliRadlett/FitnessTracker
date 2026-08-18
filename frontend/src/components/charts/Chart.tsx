@@ -10,6 +10,7 @@ import {
   AreaChart, Area,
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ReferenceArea as RechartsReferenceArea,
 } from 'recharts';
 
 interface ChartProps {
@@ -38,6 +39,20 @@ function formatSeriesForChart(data: ChartData) {
     });
     return point;
   });
+}
+
+function renderReferenceAreas(areas?: { y1: number; y2: number; color?: string; opacity?: number; label?: string }[]) {
+  if (!areas || areas.length === 0) return null;
+  return areas.map((area, i) => (
+    <RechartsReferenceArea
+      key={`ref-area-${i}`}
+      y1={area.y1}
+      y2={area.y2}
+      fill={area.color || '#3b82f6'}
+      fillOpacity={area.opacity ?? 0.08}
+      label={area.label ? { value: area.label, position: 'insideTopLeft', fill: '#94a3b8', fontSize: 10 } : undefined}
+    />
+  ));
 }
 
 function InsightsList({ insights }: { insights?: string[] }) {
@@ -90,6 +105,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="x" label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined} {...commonAxisProps} />
             <YAxis label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined} {...commonAxisProps} />
+            {renderReferenceAreas(data.reference_areas)}
             {renderTooltip()}
             {renderLegend()}
             {data.series.map((s, i) => (

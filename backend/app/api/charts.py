@@ -29,8 +29,10 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "ftp_history": {"method": "ftp_history", "params": []},
     "stream_power_curve": {"method": "stream_power_curve", "params": ["days"]},
     "power_zones": {"method": "power_zones", "params": ["days"]},
+    "hr_zone_distribution": {"method": "hr_zone_distribution", "params": ["days"]},
     "daily_tss": {"method": "daily_tss", "params": ["days"]},
     "exercise_progress": {"method": "exercise_progress", "params": ["exercise_name", "weeks"]},
+    "power_curve_comparison": {"method": "power_curve_comparison", "params": ["days", "days_b"]},
     # Phase 5.2 — Whoop intelligence charts
     "strain_vs_recovery": {"method": "strain_vs_recovery", "params": ["days"]},
     "recovery_vs_performance": {"method": "recovery_vs_performance", "params": ["days"]},
@@ -61,6 +63,7 @@ async def get_chart(
     days: int | None = Query(None, ge=1, le=365),
     weeks: int | None = Query(None, ge=1, le=52),
     exercise_name: str | None = Query(None),
+    days_b: int | None = Query(None, ge=1, le=365, description="Second period in days (for comparison charts)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -80,6 +83,8 @@ async def get_chart(
         kwargs["weeks"] = weeks
     if exercise_name is not None and "exercise_name" in chart_info["params"]:
         kwargs["exercise_name"] = exercise_name
+    if days_b is not None and "days_b" in chart_info["params"]:
+        kwargs["days_b"] = days_b
 
     chart_data = await method(**kwargs)
 
@@ -91,4 +96,5 @@ async def get_chart(
         "x_label": chart_data.x_label,
         "y_label": chart_data.y_label,
         "insights": chart_data.insights,
+        "reference_areas": [asdict(r) for r in chart_data.reference_areas],
     }

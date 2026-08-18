@@ -17,6 +17,7 @@ from app.services.cycling import (
     get_daily_tss,
     compute_power_curve_from_streams,
     compute_power_zones_from_streams,
+    compute_hr_zones_from_streams,
     estimate_ftp_from_power_curve,
     POWER_DURATION_BUCKETS,
     get_or_create_cycling_profile,
@@ -34,6 +35,16 @@ class ChartSeries:
 
 
 @dataclass
+class ReferenceArea:
+    """A colored background zone on a chart (e.g. TSB overtrained zone)."""
+    y1: float
+    y2: float
+    color: str = "#3b82f6"
+    opacity: float = 0.08
+    label: str = ""
+
+
+@dataclass
 class ChartData:
     chart_type: str  # line, bar, scatter, area, pie
     title: str
@@ -42,6 +53,7 @@ class ChartData:
     x_label: str = ""
     y_label: str = ""
     insights: list[str] = field(default_factory=list)
+    reference_areas: list[ReferenceArea] = field(default_factory=list)
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -58,8 +70,7 @@ class ChartService:
     async def power_curve(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(Activity)
             .where(
                 Activity.user_id == user_id,
@@ -92,8 +103,7 @@ class ChartService:
 
     async def ftp_over_time(self, user_id: uuid.UUID) -> ChartData:
         """FTP estimated from best 20-min power × 0.95."""
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(Activity)
             .where(
                 Activity.user_id == user_id,
@@ -127,8 +137,7 @@ class ChartService:
         cutoff = date.today() - timedelta(weeks=weeks)
         week_start = func.date_trunc("week", Activity.start_date).label("week_start")
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(
                 week_start,
                 func.sum(Activity.tss).label("total_tss"),
@@ -174,8 +183,7 @@ class ChartService:
     async def estimated_1rm_history(
         self, user_id: uuid.UUID, exercise_name: str
     ) -> ChartData:
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(PersonalRecord)
             .where(
                 PersonalRecord.user_id == user_id,
@@ -201,8 +209,7 @@ class ChartService:
         cutoff = date.today() - timedelta(weeks=weeks)
         week_start = func.date_trunc("week", LiftingSession.session_date).label("week_start")
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(
                 week_start,
                 func.sum(LiftingSession.total_volume_kg).label("total_volume"),
@@ -248,8 +255,7 @@ class ChartService:
     async def hrv_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -289,8 +295,7 @@ class ChartService:
     async def recovery_vs_strain(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -325,8 +330,7 @@ class ChartService:
         """
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -370,8 +374,7 @@ class ChartService:
     async def sleep_quality_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(SleepLog)
             .where(
                 SleepLog.user_id == user_id,
@@ -434,6 +437,16 @@ class ChartService:
             elif -10 <= current["tsb"] <= 10:
                 insights.append(f"TSB is {current['tsb']:.0f} — in the sweet spot for balanced training.")
 
+        # TSB zone coloring: red (overtrained, TSB < -30), green (fresh, TSB > 5), blue (neutral)
+        tsb_values = [d["tsb"] for d in load_data]
+        tsb_min = min(tsb_values) if tsb_values else -100
+        tsb_max = max(tsb_values) if tsb_values else 100
+        reference_areas = [
+            ReferenceArea(y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained"),
+            ReferenceArea(y1=-30, y2=5, color="#3b82f6", opacity=0.04, label="Neutral"),
+            ReferenceArea(y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh"),
+        ]
+
         return ChartData(
             chart_type="line",
             title="Training Load (CTL / ATL / TSB)",
@@ -446,6 +459,7 @@ class ChartService:
             x_label="Date",
             y_label="Load (TSS/day)",
             insights=insights,
+            reference_areas=reference_areas,
         )
 
     # ── FTP history chart ─────────────────────────────────────────────────────
@@ -454,8 +468,7 @@ class ChartService:
         """FTP progression over time."""
         from app.models.cycling import FtpHistory
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(FtpHistory)
             .where(FtpHistory.user_id == user_id)
             .order_by(FtpHistory.effective_date)
@@ -570,14 +583,65 @@ class ChartService:
             insights=insights,
         )
 
+    # ── HR Zone Distribution chart ────────────────────────────────────────────
+
+    async def hr_zone_distribution(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+        """Heart rate zone distribution as a bar chart (LTHR-based)."""
+        from app.models.cycling import CyclingProfile
+
+        result = await self.db.execute(
+            select(CyclingProfile).where(CyclingProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
+        if not profile or not profile.lactate_threshold_hr:
+            return ChartData(
+                chart_type="bar",
+                title="Heart Rate Zones",
+                labels=[],
+                series=[],
+                x_label="Zone",
+                y_label="Time",
+            )
+
+        zones = await compute_hr_zones_from_streams(
+            self.db, user_id, profile.lactate_threshold_hr, days
+        )
+
+        labels = [f"{z['zone']} - {z['zone_name']}" for z in zones]
+        data = [round(z["time_seconds"] / 60, 1) for z in zones]  # minutes
+
+        # Generate insights
+        insights = []
+        if zones:
+            z2_pct = next((z["percentage"] for z in zones if z["zone"] == "Z2"), 0)
+            z4_pct = next((z["percentage"] for z in zones if z["zone"] == "Z4"), 0)
+            z5_pct = next((z["percentage"] for z in zones if z["zone"] == "Z5"), 0)
+            if z2_pct > 40:
+                insights.append(f"{z2_pct:.0f}% of time in Z2 (Endurance) — solid aerobic base work.")
+            if z4_pct > 20:
+                insights.append(f"{z4_pct:.0f}% in Z4 (Threshold) — significant tempo work. Monitor recovery.")
+            if z5_pct > 15:
+                insights.append(f"{z5_pct:.0f}% in Z5 (VO2max) — high-intensity efforts for fitness gains.")
+            total_minutes = sum(data)
+            insights.append(f"Total tracked time: {total_minutes:.0f} min across {len(zones)} zones (LTHR: {profile.lactate_threshold_hr:.0f} bpm).")
+
+        return ChartData(
+            chart_type="bar",
+            title="Heart Rate Zone Distribution",
+            labels=labels,
+            series=[ChartSeries(name="Time (min)", data=data, color="#ef4444")],
+            x_label="Zone",
+            y_label="Time (min)",
+            insights=insights,
+        )
+
     # ── Daily TSS chart ───────────────────────────────────────────────────────
 
     async def daily_tss(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
         """Daily TSS as a bar chart."""
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(
                 func.date(Activity.start_date).label("day"),
                 func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
@@ -611,8 +675,7 @@ class ChartService:
 
         cutoff = date_type.today() - td(weeks=weeks)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(
                 LiftingSession.session_date,
                 LiftingSet.weight_kg,
@@ -671,8 +734,79 @@ class ChartService:
             y_label="kg",
             insights=insights,
         )
-
-    # ── Strain vs Recovery correlation (scatter) ─────────────────────────────
+    
+        # ── Power curve comparison (two time periods) ────────────────────────────
+    
+        async def power_curve_comparison(
+            self, user_id: uuid.UUID, days: int = 30, days_b: int = 90
+        ) -> ChartData:
+            """Compare power curves from two different time periods.
+    
+            Computes best power curve for period A (days) and period B (days_b),
+            returning them as two series on the same chart.
+            """
+            curve_a = await compute_power_curve_from_streams(self.db, user_id, days)
+            curve_b = await compute_power_curve_from_streams(self.db, user_id, days_b)
+    
+            if not curve_a and not curve_b:
+                return ChartData(
+                    chart_type="line",
+                    title=f"Power Curve Comparison ({days}d vs {days_b}d)",
+                    labels=[],
+                    series=[],
+                    x_label="Duration",
+                    y_label="Power (W)",
+                )
+    
+            # Use the union of all durations from both curves
+            all_durations = sorted(set(list(curve_a.keys()) + list(curve_b.keys())))
+            labels = []
+            data_a = []
+            data_b = []
+            for dur in all_durations:
+                label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+                labels.append(label)
+                data_a.append(curve_a.get(dur))
+                data_b.append(curve_b.get(dur))
+    
+            # Generate insights
+            insights = []
+            if curve_a and curve_b:
+                shared_durs = set(curve_a.keys()) & set(curve_b.keys())
+                if shared_durs:
+                    improvements = []
+                    declines = []
+                    for dur in sorted(shared_durs):
+                        a_val = curve_a[dur]
+                        b_val = curve_b[dur]
+                        if b_val > 0:
+                            pct = (a_val - b_val) / b_val * 100
+                            label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+                            if pct > 3:
+                                improvements.append(f"{label}: +{pct:.1f}%")
+                            elif pct < -3:
+                                declines.append(f"{label}: {pct:.1f}%")
+                    if improvements:
+                        insights.append(f"Recent ({days}d) vs baseline ({days_b}d) improvements: {', '.join(improvements)}")
+                    if declines:
+                        insights.append(f"Declines vs baseline: {', '.join(declines)}")
+                    if not improvements and not declines:
+                        insights.append(f"Power output is stable between {days}d and {days_b}d windows.")
+    
+            return ChartData(
+                chart_type="line",
+                title=f"Power Curve Comparison ({days}d vs {days_b}d)",
+                labels=labels,
+                series=[
+                    ChartSeries(name=f"Last {days} days", data=data_a, color="#f59e0b"),
+                    ChartSeries(name=f"Last {days_b} days", data=data_b, color="#64748b"),
+                ],
+                x_label="Duration",
+                y_label="Power (W)",
+                insights=insights,
+            )
+    
+        # ── Strain vs Recovery correlation (scatter) ─────────────────────────────
 
     async def strain_vs_recovery(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
         """Scatter plot: x-axis = day strain, y-axis = next-day recovery score.
@@ -683,8 +817,7 @@ class ChartService:
         cutoff = date.today() - timedelta(days=days)
 
         # Get metrics ordered by date
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -764,8 +897,7 @@ class ChartService:
         cutoff = date.today() - timedelta(days=days)
 
         # Get recovery scores
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -777,8 +909,7 @@ class ChartService:
         recovery_map = {m.metric_date: m.recovery_score for m in result.scalars().all()}
 
         # Get lifting volumes per day
-        lift_result = await db_execute(
-            self.db,
+        lift_result = await self.db.execute(
             select(
                 LiftingSession.session_date,
                 func.sum(LiftingSession.total_volume_kg).label("volume"),
@@ -792,8 +923,7 @@ class ChartService:
         lift_map = {r.session_date: float(r.volume or 0) for r in lift_result.all()}
 
         # Get TSS per day
-        tss_result = await db_execute(
-            self.db,
+        tss_result = await self.db.execute(
             select(
                 func.date(Activity.start_date).label("day"),
                 func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
@@ -865,8 +995,7 @@ class ChartService:
         """
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -927,8 +1056,7 @@ class ChartService:
 
         cutoff = date.today() - timedelta(days=days)
 
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(WeightLog)
             .where(
                 WeightLog.user_id == user_id,
@@ -996,8 +1124,7 @@ class ChartService:
         week_start_lifting = func.date_trunc("week", LiftingSession.session_date).label("week_start")
 
         # TSS per week (from activities)
-        tss_result = await db_execute(
-            self.db,
+        tss_result = await self.db.execute(
             select(
                 week_start_activity,
                 func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
@@ -1013,8 +1140,7 @@ class ChartService:
         tss_map = {r.week_start: float(r.total_tss or 0) for r in tss_result.all()}
 
         # Lifting volume per week (scaled down to comparable units: volume / 100)
-        lift_result = await db_execute(
-            self.db,
+        lift_result = await self.db.execute(
             select(
                 week_start_lifting,
                 func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("total_volume"),
@@ -1029,8 +1155,7 @@ class ChartService:
         lift_map = {r.week_start: round(float(r.total_volume or 0) / 100, 1) for r in lift_result.all()}
 
         # Whoop strain per week (sum of daily strain)
-        strain_result = await db_execute(
-            self.db,
+        strain_result = await self.db.execute(
             select(
                 func.date_trunc("week", DailyMetric.metric_date).label("week_start"),
                 func.coalesce(func.sum(DailyMetric.strain), 0.0).label("total_strain"),
@@ -1071,8 +1196,7 @@ class ChartService:
         cutoff = date.today() - timedelta(days=days)
 
         # Get all daily metrics with recovery scores
-        result = await db_execute(
-            self.db,
+        result = await self.db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
@@ -1084,8 +1208,7 @@ class ChartService:
         metrics = list(result.scalars().all())
 
         # Get activity dates
-        act_result = await db_execute(
-            self.db,
+        act_result = await self.db.execute(
             select(func.date(Activity.start_date).label("day"))
             .where(
                 Activity.user_id == user_id,
@@ -1096,8 +1219,7 @@ class ChartService:
         activity_dates = {r.day for r in act_result.all()}
 
         # Get lifting dates
-        lift_result = await db_execute(
-            self.db,
+        lift_result = await self.db.execute(
             select(LiftingSession.session_date)
             .where(
                 LiftingSession.user_id == user_id,
@@ -1157,6 +1279,3 @@ class ChartService:
         return order.get(bucket, 99)
 
 
-async def db_execute(db: AsyncSession, query):
-    """Helper to execute a query and return the result."""
-    return await db.execute(query)

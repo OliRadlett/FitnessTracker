@@ -792,7 +792,10 @@ export default function CalendarPage() {
         )}
 
         {/* Legend */}
-        <div className="px-6 pb-5 pt-2 border-t border-surface-light/50">
+        <div className="px-6 pb-5 pt-2 border-t border-surface-light/50" aria-live="polite">
+          {!isLoading && activities && activities.length === 0 && (
+            <p className="text-xs text-muted/60 mb-2">No data for this period</p>
+          )}
           <div className="flex flex-wrap gap-4">
             {[
               { label: 'Cycling', emoji: '🚴', color: 'text-blue-400' },
