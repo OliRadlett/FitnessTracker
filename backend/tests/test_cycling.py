@@ -1,16 +1,17 @@
 """Tests for cycling service — TSS, IF, VI, NP, VAM, FTP estimation."""
 
-import pytest
 from datetime import date, timedelta
+
+import pytest
+
 from app.services.cycling import (
-    calculate_power_tss,
-    calculate_hr_tss,
     calculate_intensity_factor,
+    calculate_power_tss,
+    calculate_vam,
     calculate_variability_index,
     compute_normalized_power,
-    calculate_vam,
-    estimate_ftp_from_power_curve,
     compute_training_load,
+    estimate_ftp_from_power_curve,
 )
 
 

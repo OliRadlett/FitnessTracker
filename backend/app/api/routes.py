@@ -1,13 +1,13 @@
 """Routes API — CRUD, filtering, GPX download/upload, sync, merge."""
 
-import uuid
 import logging
+import uuid
 from datetime import datetime
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func, desc, asc
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,19 +15,19 @@ from app.database import get_db
 from app.models.activity import Activity
 from app.models.route import Route, RouteSource
 from app.models.user import User
-from app.schemas.auth import UserRead  # noqa: F401
+from app.schemas.auth import UserRead
 from app.schemas.route import (
+    DuplicatePair,
+    MergeRequest,
+    RouteCreate,
     RouteRead,
     RouteSummary,
-    RouteCreate,
-    RouteUpdate,
-    MergeRequest,
-    DuplicatePair,
     RouteSyncResult,
+    RouteUpdate,
 )
-from app.services.auth import get_current_user
 from app.services import route_service
-from app.services.gpx import route_to_gpx, parse_gpx
+from app.services.auth import get_current_user
+from app.services.gpx import parse_gpx, route_to_gpx
 from app.services.polyline_utils import encode_polyline
 
 logger = logging.getLogger(__name__)
@@ -355,6 +355,7 @@ async def sync_routes(
 ):
     """Trigger route sync from all connected providers."""
     from sqlalchemy import select
+
     from app.models.user import OAuthConnection
 
     result = await db.execute(

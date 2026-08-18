@@ -1,9 +1,9 @@
 """Cycling-specific models — FTP tracking and user cycling profile."""
 
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime
 
-from sqlalchemy import String, DateTime, Date, Float, Boolean, ForeignKey, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

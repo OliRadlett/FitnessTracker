@@ -517,20 +517,67 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ── Rest Day Suggestion Banner ──────────────────────────────────────── */}
-      {summary?.rest_day_suggestion?.should_rest && (
-        <div className="bg-amber-900/30 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-2xl">💡</span>
-          <div>
-            <p className="text-amber-200 font-medium">Consider a rest day today</p>
-            <ul className="mt-1 space-y-0.5">
-              {summary.rest_day_suggestion.reasons.map((reason, i) => (
-                <li key={i} className="text-sm text-amber-300/80">• {reason}</li>
-              ))}
-            </ul>
+      {/* ── Rest Day Suggestion / Training Readiness ─────────────────────────── */}
+      {summary?.rest_day_suggestion && (() => {
+        const rds = summary.rest_day_suggestion;
+        const isWarning = rds.should_rest;
+        return (
+          <div className={`rounded-xl p-4 flex items-start gap-3 border ${
+            isWarning
+              ? 'bg-amber-900/30 border-amber-500/30'
+              : 'bg-surface border-surface-light/50'
+          }`}>
+            <span className="text-2xl">{isWarning ? '💡' : '✅'}</span>
+            <div className="flex-1">
+              <p className={`font-medium ${isWarning ? 'text-amber-200' : 'text-green-300'}`}>
+                {isWarning ? 'Consider a rest day today' : 'Training readiness looks good'}
+              </p>
+              {/* Contributing factors always visible */}
+              <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted uppercase tracking-wider">TSB (Form)</p>
+                  <p className={`font-mono font-bold ${
+                    (rds.current_tsb ?? 0) < -30 ? 'text-red-400'
+                    : (rds.current_tsb ?? 0) < -10 ? 'text-amber-400'
+                    : (rds.current_tsb ?? 0) > 10 ? 'text-green-400'
+                    : 'text-blue-400'
+                  }`}>
+                    {rds.current_tsb?.toFixed(0) ?? '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted uppercase tracking-wider">Recovery</p>
+                  <p className={`font-mono font-bold ${
+                    (rds.latest_recovery ?? 0) >= 70 ? 'text-green-400'
+                    : (rds.latest_recovery ?? 0) >= 50 ? 'text-amber-400'
+                    : 'text-red-400'
+                  }`}>
+                    {rds.latest_recovery?.toFixed(0) ?? '—'}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted uppercase tracking-wider">Consecutive Days</p>
+                  <p className={`font-mono font-bold ${
+                    rds.consecutive_training_days >= 7 ? 'text-red-400'
+                    : rds.consecutive_training_days >= 4 ? 'text-amber-400'
+                    : 'text-green-400'
+                  }`}>
+                    {rds.consecutive_training_days}
+                  </p>
+                </div>
+              </div>
+              {/* Reasons */}
+              {rds.reasons.length > 0 && (
+                <ul className="mt-2 space-y-0.5">
+                  {rds.reasons.map((reason, i) => (
+                    <li key={i} className={`text-sm ${isWarning ? 'text-amber-300/80' : 'text-muted'}`}>• {reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Upcoming Events Banner ──────────────────────────────────────────── */}
       {upcomingEvents && upcomingEvents.length > 0 && (

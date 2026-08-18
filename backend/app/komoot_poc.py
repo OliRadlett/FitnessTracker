@@ -6,9 +6,10 @@ Run inside the backend container:
 Reads KOMOOT_EMAIL, KOMOOT_PASSWORD, KOMOOT_USER_ID from environment.
 """
 
-import os
 import base64
 import json
+import os
+
 import httpx
 
 EMAIL = os.environ.get("KOMOOT_EMAIL", "")
@@ -159,10 +160,10 @@ def main():
     print("─" * 80)
     account_urls = [
         f"https://www.komoot.com/api/v007/account/email/{EMAIL}/",
-        f"https://www.komoot.com/api/v007/account/v1/users/me",
-        f"https://www.komoot.com/api/v007/users/me/",
-        f"https://api.komoot.de/v0.07/account",
-        f"https://api.komoot.de/v007/account",
+        "https://www.komoot.com/api/v007/account/v1/users/me",
+        "https://www.komoot.com/api/v007/users/me/",
+        "https://api.komoot.de/v0.07/account",
+        "https://api.komoot.de/v007/account",
     ]
     for url in account_urls:
         result = test_endpoint(url, auth_type="basic")

@@ -36,3 +36,33 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+ignore = [
+    "B008",     # FastAPI Depends()/Query() in default args — standard pattern
+    "F821",     # Forward refs in SQLAlchemy models (string-based relationships)
+    "BLE001",   # Blind except — acceptable in service/integration code
+    "DTZ011",   # date.today() — fine in business logic
+    "DTZ001",   # datetime() without tzinfo — mostly in tests
+    "DTZ003",   # datetime.utcnow() — migration pending
+    "DTZ007",   # datetime.strptime() without zone
+    "DTZ901",   # datetime.min/max without tzinfo
+    "F401",     # Unused imports — barrel re-exports in __init__.py
+    "F841",     # Unused variables — placeholders / planned future use
+    "FURB162",  # fromisoformat replace("Z","+00:00") — Python 3.10 compat
+    "G201",     # logging.exception() — already provides exc_info
+    "PLW1510",  # subprocess.run without check — intentional
+    "PYI063",   # PEP 570 positional-only — Pydantic compat
+    "RUF034",   # Useless if-else — style preference
+    "RUF046",   # Unnecessary cast to int — defensive coding
+    "RUF059",   # Unused unpacked variable
+    "S110",     # try-except-pass — intentional in many places
+    "SIM102",   # Collapsible if — readability preference
+    "UP031",    # printf-style formatting — existing code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["DTZ001", "DTZ011", "DTZ007"]

@@ -8,12 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.user import User
-from app.models.goal import Goal
-from app.models.cycling import CyclingProfile
-from app.models.weight import WeightLog
-from app.models.lifting import PersonalRecord, LiftingSession
 from app.models.activity import Activity
+from app.models.cycling import CyclingProfile
+from app.models.goal import Goal
+from app.models.lifting import LiftingSession, PersonalRecord
+from app.models.user import User
+from app.models.weight import WeightLog
 from app.schemas.goal import GoalCreate, GoalRead, GoalUpdate
 from app.services.auth import get_current_user
 

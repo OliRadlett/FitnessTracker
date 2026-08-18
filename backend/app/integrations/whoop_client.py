@@ -339,20 +339,26 @@ class WhoopClient:
         client_id: str,
         client_secret: str,
         refresh_token: str,
+        redirect_uri: str | None = None,
     ) -> dict:
         """Refresh an expired OAuth2 access token using a refresh token.
 
         Returns: {"access_token": str, "refresh_token": str, "expires_in": int, ...}
         """
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "offline",
+        }
+        if redirect_uri:
+            data["redirect_uri"] = redirect_uri
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{self.base_url}/oauth/oauth2/token",
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
+                data=data,
                 headers={"Accept": "application/json"},
                 timeout=30,
             )

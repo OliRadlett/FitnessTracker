@@ -84,11 +84,13 @@ def sync_all_strava_activities() -> dict:
     syncs Wahoo activities for users with Wahoo connections.
     """
     import asyncio
+
     from sqlalchemy import select
+
     from app.database import async_session_factory
     from app.models.user import OAuthConnection
-    from app.services.strava import sync_activities, link_all_unlinked_activities
     from app.services.merge_service import backfill_activity_route_links
+    from app.services.strava import link_all_unlinked_activities, sync_activities
 
     async def _run():
         async with async_session_factory() as db:
@@ -159,15 +161,17 @@ def generate_health_alerts() -> dict:
     """
     import asyncio
     from datetime import date, timedelta
-    from sqlalchemy import select, func
+
+    from sqlalchemy import func, select
+
     from app.database import async_session_factory
     from app.models.daily_metric import DailyMetric
     from app.models.health_alert import HealthAlert
     from app.models.user import User
     from app.services.health_analysis import (
-        analyze_overtraining,
-        analyze_injury_risk,
         analyze_illness,
+        analyze_injury_risk,
+        analyze_overtraining,
         upsert_alert,
     )
 
@@ -319,7 +323,9 @@ def sync_all_routes() -> dict:
     It syncs routes from Strava, Komoot, and Wahoo for each connected user.
     """
     import asyncio
+
     from sqlalchemy import select
+
     from app.database import async_session_factory
     from app.models.user import OAuthConnection
 
@@ -389,7 +395,9 @@ def cleanup_old_data() -> dict:
     """Clean up old activity streams and raw data to save space."""
     import asyncio
     from datetime import date, timedelta
+
     from sqlalchemy import delete, select
+
     from app.database import async_session_factory
     from app.models.activity import Activity, ActivityStream
 
@@ -417,7 +425,9 @@ def auto_estimate_ftp_weekly() -> dict:
     """
     import asyncio
     from datetime import date
+
     from sqlalchemy import select
+
     from app.database import async_session_factory
     from app.models.cycling import CyclingProfile, FtpHistory
     from app.services.cycling import (
@@ -430,7 +440,7 @@ def auto_estimate_ftp_weekly() -> dict:
             # Find all users with auto_estimate_ftp enabled
             result = await db.execute(
                 select(CyclingProfile).where(
-                    CyclingProfile.auto_estimate_ftp == True,  # noqa: E712
+                    CyclingProfile.auto_estimate_ftp == True,
                 )
             )
             profiles = list(result.scalars().all())
@@ -500,12 +510,17 @@ def sync_all_whoop_data() -> dict:
     Auto-refreshes expired tokens when a refresh_token is available.
     """
     import asyncio
+
     from sqlalchemy import select
+
     from app.database import async_session_factory
     from app.models.user import OAuthConnection
     from app.services.whoop import (
-        sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts, sync_whoop_weight,
         refresh_if_needed,
+        sync_whoop_cycles,
+        sync_whoop_sleep,
+        sync_whoop_weight,
+        sync_whoop_workouts,
     )
 
     async def _run():

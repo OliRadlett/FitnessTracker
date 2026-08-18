@@ -1,12 +1,14 @@
 """Tests for merge service — scoring functions (date, sport, duration, distance)."""
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
+
 from app.services.merge_service import (
     _date_proximity_score,
-    _sport_type_score,
-    _duration_score,
     _distance_score,
+    _duration_score,
+    _sport_type_score,
 )
 
 

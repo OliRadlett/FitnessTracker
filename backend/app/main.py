@@ -10,7 +10,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import engine, Base, async_session_factory
+from app.database import Base, async_session_factory, engine
 from app.logging_config import correlation_id, setup_logging
 
 settings = get_settings()
@@ -83,12 +83,18 @@ async def correlation_id_middleware(request: Request, call_next):
 
 
 # ── Stricter rate limit for auth/token endpoints (20 req/min) ─────────
+_AUTH_RATE_LIMIT = None  # lazily parsed
+
 @app.middleware("http")
 async def auth_rate_limit_middleware(request: Request, call_next):
     """Apply a stricter 20 req/min limit on auth/token endpoints."""
+    global _AUTH_RATE_LIMIT
     if request.url.path.startswith("/api/v1/auth"):
-        rate_key = get_remote_address(request)
-        if not limiter.limiter.hit("20/minute", rate_key, "auth"):
+        if _AUTH_RATE_LIMIT is None:
+            from limits import parse as limits_parse
+            _AUTH_RATE_LIMIT = limits_parse("20/minute")
+        rate_key = f"auth:{get_remote_address(request)}"
+        if not limiter.limiter.hit(_AUTH_RATE_LIMIT, rate_key):
             return Response(
                 content='{"detail":"Rate limit exceeded for auth endpoints"}',
                 status_code=429,
@@ -144,20 +150,20 @@ Instrumentator(
 # All routes are versioned under /api/v1/. See docs/api-versioning.md
 # for the versioning and deprecation policy.
 # Import and include routers
-from app.api.auth import router as auth_router
-from app.api.connections import router as connections_router
 from app.api.activities import router as activities_router
-from app.api.lifting import router as lifting_router
+from app.api.auth import router as auth_router
 from app.api.charts import router as charts_router
-from app.api.dashboard import router as dashboard_router
-from app.api.webhooks import router as webhooks_router
-from app.api.routes import router as routes_router
+from app.api.connections import router as connections_router
 from app.api.cycling import router as cycling_router
-from app.api.export import router as export_router
-from app.api.metrics import router as metrics_router
-from app.api.goals import router as goals_router
-from app.api.training_plans import router as training_plans_router
+from app.api.dashboard import router as dashboard_router
 from app.api.events import router as events_router
+from app.api.export import router as export_router
+from app.api.goals import router as goals_router
+from app.api.lifting import router as lifting_router
+from app.api.metrics import router as metrics_router
+from app.api.routes import router as routes_router
+from app.api.training_plans import router as training_plans_router
+from app.api.webhooks import router as webhooks_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections_router, prefix="/api/v1/connections", tags=["connections"])

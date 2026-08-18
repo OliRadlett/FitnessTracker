@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity
-from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord, WarmupTemplate, WarmupTemplateStep
+from app.models.lifting import (
+    LiftingSession,
+    LiftingSet,
+    PersonalRecord,
+    WarmupTemplate,
+    WarmupTemplateStep,
+)
 from app.schemas.lifting import (
     LiftingSessionCreate,
     LiftingSessionLink,
@@ -479,7 +485,7 @@ async def _recalculate_pr_after_set_change(
         .where(
             LiftingSession.user_id == user_id,
             LiftingSet.exercise_name == exercise_name,
-            LiftingSet.is_warmup == False,  # noqa: E712
+            LiftingSet.is_warmup == False,
         )
         .order_by(
             # Order by estimated 1RM descending (best first)
@@ -762,7 +768,7 @@ async def cleanup_orphaned_prs(
             .where(
                 LiftingSession.user_id == user_id,
                 LiftingSet.exercise_name == pr.exercise_name,
-                LiftingSet.is_warmup == False,  # noqa: E712
+                LiftingSet.is_warmup == False,
             )
             .order_by(
                 (LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc()

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { Goal, CreateGoalPayload } from '@/lib/api';
+import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 
 // ── Goal Type Config ─────────────────────────────────────────────────────
 
@@ -208,12 +209,10 @@ export function GoalForm({
         {goalType === '1rm_target' && (
           <div>
             <label className="block text-xs text-muted mb-1">Exercise Name *</label>
-            <input
-              type="text"
+            <ExerciseAutocomplete
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={setNotes}
               placeholder="e.g. Bench Press"
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         )}

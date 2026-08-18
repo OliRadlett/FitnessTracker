@@ -184,7 +184,7 @@ class KomootClient:
                 return resp.json()
 
             logger.error(f"All Komoot account endpoints failed. Last: HTTP {resp.status_code} for {url}")
-            raise ValueError(f"Cannot determine Komoot user ID. Set KOMOOT_USER_ID in .env (your user ID is 4895699973941)")
+            raise ValueError("Cannot determine Komoot user ID. Set KOMOOT_USER_ID in .env (your user ID is 4895699973941)")
 
     async def get_tours(
         self,

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivityStream
 from app.models.cycling import CyclingProfile, FtpHistory
-
+from app.models.daily_metric import DailyMetric
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -439,7 +439,7 @@ async def compute_hr_zones_from_streams(
             if val is None:
                 continue
             hr = float(val)
-            if hr <= 0:
+            if not math.isfinite(hr) or hr <= 0:
                 continue
 
             pct_lthr = hr / lthr
@@ -494,7 +494,8 @@ def compute_training_load(
 
     current = start_date
     while current <= end_date:
-        tss = daily_tss.get(current, 0.0)
+        raw_tss = daily_tss.get(current, 0.0)
+        tss = raw_tss if (isinstance(raw_tss, (int, float)) and math.isfinite(raw_tss)) else 0.0
         ctl = ctl + (tss - ctl) * ctl_decay
         atl = atl + (tss - atl) * atl_decay
         tsb = ctl - atl
@@ -599,8 +600,7 @@ async def compute_power_curve_from_streams(
             max_window_sum = 0.0
             for i in range(n - duration_sec + 1):
                 window_sum = prefix[i + duration_sec] - prefix[i]
-                if window_sum > max_window_sum:
-                    max_window_sum = window_sum
+                max_window_sum = max(max_window_sum, window_sum)
 
             best_avg = max_window_sum / duration_sec
             if duration_sec not in best_power or best_avg > best_power[duration_sec]:
@@ -659,7 +659,7 @@ async def compute_power_zones_from_streams(
             if val is None:
                 continue
             power = float(val)
-            if power <= 0:
+            if not math.isfinite(power) or power <= 0:
                 continue
 
             pct_ftp = power / ftp
@@ -730,7 +730,10 @@ async def get_daily_tss(
         .group_by(func.date(Activity.start_date))
     )
     rows = result.all()
-    return {row.day: float(row.total_tss) for row in rows}
+    return {
+        row.day: (v if math.isfinite(v := float(row.total_tss)) else 0.0)
+        for row in rows
+    }
 
 
 async def auto_compute_tss_for_activity(
@@ -832,8 +835,7 @@ async def backfill_ftp_estimates(
                 for j in range(1, len(power_data) - duration_sec + 1):
                     window_sum = window_sum - power_data[j - 1] + power_data[j + duration_sec - 1]
                     avg = window_sum / duration_sec
-                    if avg > best_avg:
-                        best_avg = avg
+                    best_avg = max(best_avg, avg)
                 if duration_sec not in best_power or best_avg > best_power[duration_sec]:
                     best_power[duration_sec] = round(best_avg, 1)
 
@@ -1081,11 +1083,9 @@ async def compute_vo2max_history(
             max_sum = 0.0
             for k in range(len(power_data) - 299):
                 s = prefix[k + 300] - prefix[k]
-                if s > max_sum:
-                    max_sum = s
+                max_sum = max(max_sum, s)
             avg = max_sum / 300
-            if avg > best_5min:
-                best_5min = avg
+            best_5min = max(best_5min, avg)
 
         if best_5min <= 0:
             continue

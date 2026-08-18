@@ -1,5 +1,6 @@
 """Dashboard API — summary and weekly report endpoints."""
 
+import math
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -12,23 +13,34 @@ from app.models.daily_metric import DailyMetric
 from app.models.health_alert import HealthAlert
 from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.sleep import SleepLog
-from app.models.user import User
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
+from app.models.user import User
 from app.schemas.dashboard import (
+    BestActivity,
     DashboardSummary,
     MonthlySummaryItem,
-    WeeklyReport,
-    TrainingStreaks,
-    RestDaySuggestion,
-    YearlySummary,
-    YearlyHighlights,
-    YearOverYearComparison,
     PRHighlight,
-    BestActivity,
+    RestDaySuggestion,
+    TrainingStreaks,
+    WeeklyReport,
+    YearlyHighlights,
+    YearlySummary,
+    YearOverYearComparison,
 )
 from app.services.auth import get_current_user
 
 router = APIRouter()
+
+
+def _safe_agg(val, default=0.0):
+    """Convert a SQL aggregation result to a safe float, guarding against NaN/Inf."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return default if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return default
 
 
 def _week_bounds(offset_weeks: int = 0) -> tuple[date, date]:
@@ -53,7 +65,7 @@ async def dashboard_summary(
         select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0))
         .where(LiftingSession.user_id == uid, LiftingSession.session_date.between(monday, sunday))
     )
-    weekly_volume = float(result.scalar() or 0.0)
+    weekly_volume = _safe_agg(result.scalar())
 
     # Session count
     result = await db.execute(
@@ -72,7 +84,7 @@ async def dashboard_summary(
             Activity.start_date <= sunday,
         )
     )
-    weekly_tss = float(result.scalar() or 0.0)
+    weekly_tss = _safe_agg(result.scalar())
 
     # Weekly distance (cardio activities only — Strava as source of truth)
     CARDIO_SPORT_TYPES = ["cycling", "running", "swimming", "walking", "hiking"]
@@ -86,7 +98,7 @@ async def dashboard_summary(
             Activity.sport_type.in_(CARDIO_SPORT_TYPES),
         )
     )
-    weekly_distance = float(result.scalar() or 0.0)
+    weekly_distance = _safe_agg(result.scalar())
 
     # Latest recovery & HRV
     result = await db.execute(
@@ -145,7 +157,7 @@ async def _suggest_rest_days(
     current_tsb = None
 
     # 1. Check TSB
-    from app.services.cycling import get_daily_tss, compute_training_load
+    from app.services.cycling import compute_training_load, get_daily_tss
     end_date = date.today()
     start_date = end_date - timedelta(days=90)
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)
@@ -257,7 +269,7 @@ async def weekly_report(
     )
     row = result.one()
     lifting_sessions = int(row[0] or 0)
-    lifting_volume = float(row[1] or 0.0)
+    lifting_volume = _safe_agg(row[1])
 
     # Cardio sessions & TSS
     result = await db.execute(
@@ -274,7 +286,7 @@ async def weekly_report(
     )
     row = result.one()
     cardio_sessions = int(row[0] or 0)
-    total_tss = float(row[1] or 0.0)
+    total_tss = _safe_agg(row[1])
 
     # Avg recovery & HRV
     result = await db.execute(
@@ -285,15 +297,15 @@ async def weekly_report(
         .where(DailyMetric.user_id == uid, DailyMetric.metric_date.between(monday, sunday))
     )
     row = result.one()
-    avg_recovery = float(row[0]) if row[0] is not None else None
-    avg_hrv = float(row[1]) if row[1] is not None else None
+    avg_recovery = _safe_agg(row[0], default=None)
+    avg_hrv = _safe_agg(row[1], default=None)
 
     # Avg sleep
     result = await db.execute(
         select(func.avg(SleepLog.total_sleep_seconds))
         .where(SleepLog.user_id == uid, SleepLog.sleep_date.between(monday, sunday))
     )
-    avg_sleep_secs = result.scalar()
+    avg_sleep_secs = _safe_agg(result.scalar(), default=None)
     avg_sleep_hours = round(avg_sleep_secs / 3600, 1) if avg_sleep_secs else None
 
     # New PRs
@@ -456,7 +468,7 @@ async def monthly_summary(
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
-        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": float(row.volume)}
+        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": _safe_agg(row.volume)}
 
     # Activity (cardio) stats per month — Strava as source of truth
     result = await db.execute(
@@ -479,9 +491,9 @@ async def monthly_summary(
     for row in result.all():
         activity_by_month[row.month] = {
             "sessions": int(row.sessions),
-            "tss": float(row.tss),
-            "distance": float(row.distance),
-            "time": float(row.time),
+            "tss": _safe_agg(row.tss),
+            "distance": _safe_agg(row.distance),
+            "time": _safe_agg(row.time),
         }
 
     # PRs per month
@@ -515,7 +527,8 @@ async def monthly_summary(
     )
     recovery_by_month: dict[str, float | None] = {}
     for row in result.all():
-        recovery_by_month[row.month] = round(float(row.avg_recovery), 1) if row.avg_recovery else None
+        safe = _safe_agg(row.avg_recovery, default=None)
+        recovery_by_month[row.month] = round(safe, 1) if safe is not None else None
 
     # Build list of all months in the range
     months_list: list[MonthlySummaryItem] = []
@@ -706,9 +719,9 @@ async def yearly_summary(
     )
     row = result.one()
     total_activities = int(row[0] or 0)
-    total_distance_m = float(row[1] or 0.0)
-    total_time_s = float(row[2] or 0.0)
-    total_tss = float(row[3] or 0.0)
+    total_distance_m = _safe_agg(row[1])
+    total_time_s = _safe_agg(row[2])
+    total_tss = _safe_agg(row[3])
 
     # Total lifting sessions and volume
     result = await db.execute(
@@ -724,7 +737,7 @@ async def yearly_summary(
     )
     row = result.one()
     total_lifting_sessions = int(row[0] or 0)
-    total_lifting_volume_kg = float(row[1] or 0.0)
+    total_lifting_volume_kg = _safe_agg(row[1])
 
     # ── Averages ─────────────────────────────────────────────────────────
     result = await db.execute(
@@ -739,8 +752,10 @@ async def yearly_summary(
         )
     )
     row = result.one()
-    avg_recovery = round(float(row[0]), 1) if row[0] is not None else None
-    avg_hrv = round(float(row[1]), 1) if row[1] is not None else None
+    safe_ar = _safe_agg(row[0], default=None)
+    avg_recovery = round(safe_ar, 1) if safe_ar is not None else None
+    safe_ah = _safe_agg(row[1], default=None)
+    avg_hrv = round(safe_ah, 1) if safe_ah is not None else None
 
     # ── PR count and highlights ──────────────────────────────────────────
     result = await db.execute(
@@ -805,7 +820,7 @@ async def yearly_summary(
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
-        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": float(row.volume)}
+        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": _safe_agg(row.volume)}
 
     # Activity by month
     result = await db.execute(
@@ -829,9 +844,9 @@ async def yearly_summary(
     for row in result.all():
         activity_by_month[row.month] = {
             "sessions": int(row.sessions),
-            "tss": float(row.tss),
-            "distance": float(row.distance),
-            "time": float(row.time),
+            "tss": _safe_agg(row.tss),
+            "distance": _safe_agg(row.distance),
+            "time": _safe_agg(row.time),
         }
 
     # PRs by month
@@ -867,7 +882,8 @@ async def yearly_summary(
     )
     recovery_by_month: dict[str, float | None] = {}
     for row in result.all():
-        recovery_by_month[row.month] = round(float(row.avg_recovery), 1) if row.avg_recovery else None
+        safe = _safe_agg(row.avg_recovery, default=None)
+        recovery_by_month[row.month] = round(safe, 1) if safe is not None else None
 
     # Build 12-month list
     months_list: list[MonthlySummaryItem] = []
@@ -995,9 +1011,9 @@ async def yearly_summary(
         )
         prev_row = result.one()
         prev_activities = int(prev_row[0] or 0)
-        prev_distance = float(prev_row[1] or 0.0)
-        prev_time = float(prev_row[2] or 0.0)
-        prev_tss = float(prev_row[3] or 0.0)
+        prev_distance = _safe_agg(prev_row[1])
+        prev_time = _safe_agg(prev_row[2])
+        prev_tss = _safe_agg(prev_row[3])
 
         result = await db.execute(
             select(
@@ -1012,7 +1028,7 @@ async def yearly_summary(
         )
         prev_lift_row = result.one()
         prev_lifting_sessions = int(prev_lift_row[0] or 0)
-        prev_lifting_volume = float(prev_lift_row[1] or 0.0)
+        prev_lifting_volume = _safe_agg(prev_lift_row[1])
 
         result = await db.execute(
             select(func.count(PersonalRecord.id))
@@ -1034,7 +1050,8 @@ async def yearly_summary(
             )
         )
         prev_avg_recovery_raw = result.scalar()
-        prev_avg_recovery = round(float(prev_avg_recovery_raw), 1) if prev_avg_recovery_raw else None
+        safe_prev_ar = _safe_agg(prev_avg_recovery_raw, default=None)
+        prev_avg_recovery = round(safe_prev_ar, 1) if safe_prev_ar is not None else None
 
         def _pct(current: float, prev: float) -> float | None:
             if prev == 0:

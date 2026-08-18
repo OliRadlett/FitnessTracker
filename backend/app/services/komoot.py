@@ -10,8 +10,8 @@ Enriches each route with:
 - Route type (planned vs recorded) stored in raw_data
 """
 
-import uuid
 import logging
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,11 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.komoot_client import komoot_client
 from app.models.route import Route
 from app.services.polyline_utils import (
-    komoot_coordinates_to_polyline,
-    komoot_coordinate_array_to_polyline,
-    polyline_total_distance,
-    decode_polyline,
     encode_polyline,
+    komoot_coordinate_array_to_polyline,
+    komoot_coordinates_to_polyline,
+    polyline_total_distance,
 )
 from app.services.route_service import create_or_merge_route
 
@@ -39,7 +38,7 @@ def _extract_polyline_from_komoot_tour(tour: dict) -> str:
     - decoded_coordinate: pre-decoded polyline string
     """
     # Try decoded_coordinate first (some responses include this)
-    if "decoded_coordinate" in tour and tour["decoded_coordinate"]:
+    if tour.get("decoded_coordinate"):
         return tour["decoded_coordinate"]
 
     # Try _embedded.coordinate

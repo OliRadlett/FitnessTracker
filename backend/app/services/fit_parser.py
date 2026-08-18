@@ -7,11 +7,10 @@ structured dict compatible with Activity and ActivityStream models.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fitparse import FitFile
-
 
 # FIT files store lat/lon as semicircles; convert to degrees.
 _SEMICIRCLE_TO_DEG = 180.0 / (2 ** 31)
@@ -133,7 +132,7 @@ def parse_fit_file(file_bytes: bytes) -> dict:
     session_info = {
         "name": name,
         "sport_type": sport_type,
-        "start_time": start_time if isinstance(start_time, datetime) else datetime.now(timezone.utc),
+        "start_time": start_time if isinstance(start_time, datetime) else datetime.now(UTC),
         "duration_seconds": duration,
         "distance_meters": distance,
         "elevation_gain_meters": elev_gain,

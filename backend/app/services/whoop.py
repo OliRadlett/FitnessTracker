@@ -13,10 +13,9 @@ import json
 import logging
 import time
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
-
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,7 +87,7 @@ def is_token_expired(token: str, db_expiry: datetime | None = None) -> bool:
         return time.time() > exp
     # Fall back to database expiry
     if db_expiry is not None:
-        return db_expiry < datetime.now(timezone.utc)
+        return db_expiry < datetime.now(UTC)
     # No expiry info available — assume valid
     return False
 
@@ -98,7 +97,7 @@ def token_expiry_date(token: str) -> datetime | None:
     exp = decode_token_exp(token)
     if exp is None:
         return None
-    return datetime.fromtimestamp(exp, tz=timezone.utc)
+    return datetime.fromtimestamp(exp, tz=UTC)
 
 
 # ── Connection helpers ────────────────────────────────────────────────────
@@ -122,11 +121,14 @@ async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OA
     from app.config import get_settings
     settings = get_settings()
 
+    redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/whoop/callback"
+
     try:
         token_data = await whoop_client.refresh_access_token(
             client_id=settings.whoop_client_id,
             client_secret=settings.whoop_client_secret,
             refresh_token=connection.refresh_token,
+            redirect_uri=redirect_uri,
         )
     except httpx.HTTPStatusError as e:
         body = ""
@@ -149,7 +151,7 @@ async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OA
     connection.access_token = token_data["access_token"]
     connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
     if "expires_in" in token_data:
-        connection.token_expires_at = datetime.now(timezone.utc) + timedelta(
+        connection.token_expires_at = datetime.now(UTC) + timedelta(
             seconds=int(token_data["expires_in"])
         )
     await db.flush()
@@ -344,7 +346,7 @@ async def sync_whoop_cycles(
             "strain": float(strain) if strain else None,
             "calories": calories,
             "raw_data": cycle_with_recovery,
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
         if recovery_score is not None:
             update_fields["recovery_score"] = recovery_score
@@ -503,7 +505,7 @@ async def sync_whoop_sleep(
                     "sleep_start": sleep_start,
                     "sleep_end": sleep_end,
                     "raw_data": record,
-                    "created_at": datetime.now(timezone.utc),
+                    "created_at": datetime.now(UTC),
                 },
             )
             .returning(SleepLog)
@@ -543,7 +545,7 @@ async def sync_whoop_sleep(
                         set_={
                             "sleep_duration_minutes": round(total_sleep_seconds / 60, 1),
                             "sleep_efficiency": efficiency,
-                            "updated_at": datetime.now(timezone.utc),
+                            "updated_at": datetime.now(UTC),
                         },
                     )
                 )
@@ -577,7 +579,7 @@ async def sync_whoop_workouts(
 
     Returns the list of enriched activities.
     """
-    from app.models.activity import Activity, ActivitySource
+    from app.models.activity import ActivitySource
     from app.services.merge_service import find_duplicate_activity, merge_activity
 
     connection = await get_whoop_connection(db, user_id)
@@ -889,8 +891,9 @@ async def sync_whoop_weight(
 
     Returns the WeightLog record, or None if no weight data available.
     """
-    from app.models.weight import WeightLog
     from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.models.weight import WeightLog
 
     connection = await get_whoop_connection(db, user_id)
     if not connection:
@@ -962,7 +965,7 @@ async def backfill_whoop_data(
     token = connection.access_token
 
     # Calculate date range
-    start_date = (datetime.now(timezone.utc) - timedelta(days=months * 30)).strftime(
+    start_date = (datetime.now(UTC) - timedelta(days=months * 30)).strftime(
         "%Y-%m-%dT%H:%M:%S.000Z"
     )
 
@@ -1066,7 +1069,7 @@ async def backfill_whoop_data(
                     "resting_hr": resting_hr,
                     "respiratory_rate": respiratory_rate,
                     "raw_data": cycle_with_recovery,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 },
             )
             .returning(DailyMetric)
@@ -1189,7 +1192,7 @@ async def backfill_whoop_data(
                     set_={
                         "sleep_duration_minutes": round(total_sleep_seconds / 60, 1),
                         "sleep_efficiency": efficiency,
-                        "updated_at": datetime.now(timezone.utc),
+                        "updated_at": datetime.now(UTC),
                     },
                 )
             )

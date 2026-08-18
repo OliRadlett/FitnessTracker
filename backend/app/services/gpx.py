@@ -1,12 +1,10 @@
 """GPX service — generate and parse GPX 1.1 files."""
 
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
-from io import StringIO
+from datetime import UTC, datetime
 
 from app.models.route import Route
 from app.services.polyline_utils import decode_polyline
-
 
 # ── GPX generation ───────────────────────────────────────────────────────────
 
@@ -46,7 +44,7 @@ def route_to_gpx(route: Route) -> str:
     name_elem = ET.SubElement(metadata, "name")
     name_elem.text = route.name
     time_elem = ET.SubElement(metadata, "time")
-    time_elem.text = route.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if route.created_at else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_elem.text = route.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if route.created_at else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Track
     trk = ET.SubElement(root, "trk")

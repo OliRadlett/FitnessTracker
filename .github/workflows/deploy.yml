@@ -1,0 +1,77 @@
+# CD — Deploy to DigitalOcean on push to main (after CI passes)
+#
+# Required GitHub repository secrets:
+#   DROPLET_HOST    — Droplet IP or hostname (e.g. 203.0.113.42)
+#   DROPLET_USER    — SSH user (usually "root")
+#   DROPLET_SSH_KEY — Private SSH key for the Droplet
+#
+# The .env file must already exist on the Droplet (created during initial setup).
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # don't cancel a running deploy
+
+jobs:
+  deploy:
+    name: Deploy to DigitalOcean
+    runs-on: ubuntu-latest
+    # Only deploy if CI succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            cd /opt/fitness-tracker
+
+            echo "▸ Pulling latest code…"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "▸ Ensuring Python 3.10+ is available…"
+            if ! python3 -c "import sys; assert sys.version_info >= (3, 10)" 2>/dev/null; then
+              echo "  Installing Python 3.12…"
+              apt-get update -qq && apt-get install -y -qq python3.12 python3.12-venv >/dev/null 2>&1
+              update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+            fi
+
+            echo "▸ Building and restarting via start.sh…"
+            chmod +x start.sh
+            ./start.sh down
+            ./start.sh up --build --migrate
+
+            echo "▸ Cleaning up old images…"
+            docker image prune -f
+
+            echo "▸ Health check…"
+            sleep 10
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "  ✓ Health check passed (HTTP $HTTP_CODE)"
+            else
+              echo "  ⚠ Health check returned HTTP $HTTP_CODE — check logs"
+            fi
+
+            echo "▸ Deploy complete ✓"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Deployment to DigitalOcean failed. Check the SSH action logs above."

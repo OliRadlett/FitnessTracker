@@ -8,25 +8,23 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
+from app.models.cycling import CyclingProfile
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
-from app.models.cycling import CyclingProfile
 from app.services.cycling import (
-    compute_training_load,
-    get_daily_tss,
+    POWER_DURATION_BUCKETS,
+    _classify_decoupling,
+    _classify_vo2max,
+    compute_decoupling_history,
+    compute_hr_zones_from_streams,
     compute_power_curve_from_streams,
     compute_power_zones_from_streams,
-    compute_hr_zones_from_streams,
-    estimate_ftp_from_power_curve,
-    POWER_DURATION_BUCKETS,
-    get_or_create_cycling_profile,
+    compute_training_load,
     compute_vo2max_history,
-    compute_decoupling_history,
-    _classify_vo2max,
-    _classify_decoupling,
+    get_daily_tss,
+    get_or_create_cycling_profile,
 )
-
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -591,7 +589,6 @@ class ChartService:
 
     async def hr_zone_distribution(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
         """Heart rate zone distribution as a bar chart (LTHR-based)."""
-        from app.models.cycling import CyclingProfile
 
         result = await self.db.execute(
             select(CyclingProfile).where(CyclingProfile.user_id == user_id)
@@ -675,7 +672,8 @@ class ChartService:
         self, user_id: uuid.UUID, exercise_name: str, weeks: int = 12
     ) -> ChartData:
         """Best estimated 1RM and total volume per session for a given exercise."""
-        from datetime import date as date_type, timedelta as td
+        from datetime import date as date_type
+        from datetime import timedelta as td
 
         cutoff = date_type.today() - td(weeks=weeks)
 
@@ -689,7 +687,7 @@ class ChartService:
             .where(
                 LiftingSession.user_id == user_id,
                 LiftingSet.exercise_name == exercise_name,
-                LiftingSet.is_warmup == False,  # noqa: E712
+                LiftingSet.is_warmup == False,
                 LiftingSession.session_date >= cutoff,
             )
             .order_by(LiftingSession.session_date)
@@ -740,77 +738,77 @@ class ChartService:
         )
     
         # ── Power curve comparison (two time periods) ────────────────────────────
-    
-        async def power_curve_comparison(
-            self, user_id: uuid.UUID, days: int = 30, days_b: int = 90
-        ) -> ChartData:
-            """Compare power curves from two different time periods.
-    
-            Computes best power curve for period A (days) and period B (days_b),
-            returning them as two series on the same chart.
-            """
-            curve_a = await compute_power_curve_from_streams(self.db, user_id, days)
-            curve_b = await compute_power_curve_from_streams(self.db, user_id, days_b)
-    
-            if not curve_a and not curve_b:
-                return ChartData(
-                    chart_type="line",
-                    title=f"Power Curve Comparison ({days}d vs {days_b}d)",
-                    labels=[],
-                    series=[],
-                    x_label="Duration",
-                    y_label="Power (W)",
-                )
-    
-            # Use the union of all durations from both curves
-            all_durations = sorted(set(list(curve_a.keys()) + list(curve_b.keys())))
-            labels = []
-            data_a = []
-            data_b = []
-            for dur in all_durations:
-                label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
-                labels.append(label)
-                data_a.append(curve_a.get(dur))
-                data_b.append(curve_b.get(dur))
-    
-            # Generate insights
-            insights = []
-            if curve_a and curve_b:
-                shared_durs = set(curve_a.keys()) & set(curve_b.keys())
-                if shared_durs:
-                    improvements = []
-                    declines = []
-                    for dur in sorted(shared_durs):
-                        a_val = curve_a[dur]
-                        b_val = curve_b[dur]
-                        if b_val > 0:
-                            pct = (a_val - b_val) / b_val * 100
-                            label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
-                            if pct > 3:
-                                improvements.append(f"{label}: +{pct:.1f}%")
-                            elif pct < -3:
-                                declines.append(f"{label}: {pct:.1f}%")
-                    if improvements:
-                        insights.append(f"Recent ({days}d) vs baseline ({days_b}d) improvements: {', '.join(improvements)}")
-                    if declines:
-                        insights.append(f"Declines vs baseline: {', '.join(declines)}")
-                    if not improvements and not declines:
-                        insights.append(f"Power output is stable between {days}d and {days_b}d windows.")
-    
+
+    async def power_curve_comparison(
+        self, user_id: uuid.UUID, days: int = 30, days_b: int = 90
+    ) -> ChartData:
+        """Compare power curves from two different time periods.
+
+        Computes best power curve for period A (days) and period B (days_b),
+        returning them as two series on the same chart.
+        """
+        curve_a = await compute_power_curve_from_streams(self.db, user_id, days)
+        curve_b = await compute_power_curve_from_streams(self.db, user_id, days_b)
+
+        if not curve_a and not curve_b:
             return ChartData(
                 chart_type="line",
                 title=f"Power Curve Comparison ({days}d vs {days_b}d)",
-                labels=labels,
-                series=[
-                    ChartSeries(name=f"Last {days} days", data=data_a, color="#f59e0b"),
-                    ChartSeries(name=f"Last {days_b} days", data=data_b, color="#64748b"),
-                ],
+                labels=[],
+                series=[],
                 x_label="Duration",
                 y_label="Power (W)",
-                insights=insights,
             )
-    
-        # ── Strain vs Recovery correlation (scatter) ─────────────────────────────
+
+        # Use the union of all durations from both curves
+        all_durations = sorted(set(list(curve_a.keys()) + list(curve_b.keys())))
+        labels = []
+        data_a = []
+        data_b = []
+        for dur in all_durations:
+            label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+            labels.append(label)
+            data_a.append(curve_a.get(dur))
+            data_b.append(curve_b.get(dur))
+
+        # Generate insights
+        insights = []
+        if curve_a and curve_b:
+            shared_durs = set(curve_a.keys()) & set(curve_b.keys())
+            if shared_durs:
+                improvements = []
+                declines = []
+                for dur in sorted(shared_durs):
+                    a_val = curve_a[dur]
+                    b_val = curve_b[dur]
+                    if b_val > 0:
+                        pct = (a_val - b_val) / b_val * 100
+                        label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+                        if pct > 3:
+                            improvements.append(f"{label}: +{pct:.1f}%")
+                        elif pct < -3:
+                            declines.append(f"{label}: {pct:.1f}%")
+                if improvements:
+                    insights.append(f"Recent ({days}d) vs baseline ({days_b}d) improvements: {', '.join(improvements)}")
+                if declines:
+                    insights.append(f"Declines vs baseline: {', '.join(declines)}")
+                if not improvements and not declines:
+                    insights.append(f"Power output is stable between {days}d and {days_b}d windows.")
+
+        return ChartData(
+            chart_type="line",
+            title=f"Power Curve Comparison ({days}d vs {days_b}d)",
+            labels=labels,
+            series=[
+                ChartSeries(name=f"Last {days} days", data=data_a, color="#f59e0b"),
+                ChartSeries(name=f"Last {days_b} days", data=data_b, color="#64748b"),
+            ],
+            x_label="Duration",
+            y_label="Power (W)",
+            insights=insights,
+        )
+
+    # ── Strain vs Recovery correlation (scatter) ─────────────────────────────
 
     async def strain_vs_recovery(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
         """Scatter plot: x-axis = day strain, y-axis = next-day recovery score.
@@ -1409,7 +1407,8 @@ class ChartService:
     async def periodization(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
         """Overlay planned TSS (from training plans) with actual weekly TSS."""
         from sqlalchemy.orm import selectinload
-        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        from app.models.training_plan import TrainingPlan
 
         end_date = date.today()
         start_date = end_date - timedelta(weeks=weeks)

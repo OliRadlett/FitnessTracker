@@ -1,5 +1,6 @@
 """Cycling API — Power analysis, training load, FTP management, cycling metrics."""
 
+import math
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,56 +12,52 @@ from app.models.activity import Activity
 from app.models.cycling import FtpHistory
 from app.models.user import User
 from app.schemas.cycling import (
+    CyclingMetricsSummary,
     CyclingProfileRead,
     CyclingProfileUpdate,
-    FtpHistoryRead,
-    FtpHistoryCreate,
-    TrainingLoadResponse,
     DailyLoadPoint,
+    DecouplingActivityPoint,
+    DecouplingHistoryResponse,
+    DecouplingSingleResponse,
+    FtpEstimateDetail,
+    FtpEstimateResponse,
+    FtpHistoryCreate,
+    FtpHistoryRead,
+    HrZoneDistribution,
+    HrZonesResponse,
+    MetricBenchmark,
+    MetricTrend,
     PowerCurveResponse,
     PowerDurationPoint,
-    PowerZonesResponse,
-    PowerZoneDistribution,
-    CyclingMetricsSummary,
-    MetricTrend,
-    MetricBenchmark,
-    HrZonesResponse,
-    HrZoneDistribution,
-    PowerVsHrResponse,
     PowerVsHrPoint,
-    FtpEstimateResponse,
-    FtpEstimateDetail,
-    Vo2maxResponse,
+    PowerVsHrResponse,
+    PowerZoneDistribution,
+    PowerZonesResponse,
+    TrainingLoadResponse,
     Vo2maxDetail,
-    Vo2maxHistoryResponse,
     Vo2maxHistoryPoint,
-    DecouplingHistoryResponse,
-    DecouplingActivityPoint,
-    DecouplingSingleResponse,
+    Vo2maxHistoryResponse,
+    Vo2maxResponse,
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
     POWER_DURATION_BUCKETS,
-    POWER_ZONES,
+    _classify_vo2max,
     auto_compute_tss_for_activity,
     backfill_ftp_estimates,
+    compute_decoupling_for_activity,
+    compute_decoupling_history,
     compute_normalized_power,
     compute_power_curve_from_streams,
     compute_power_zones_from_streams,
     compute_training_load,
+    compute_vo2max_history,
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
-    get_daily_tss,
-    get_or_create_cycling_profile,
-    calculate_intensity_factor,
-    calculate_variability_index,
-    calculate_vam,
-    get_metric_benchmark,
     estimate_vo2max,
-    compute_vo2max_history,
-    compute_decoupling_for_activity,
-    compute_decoupling_history,
-    _classify_vo2max,
+    get_daily_tss,
+    get_metric_benchmark,
+    get_or_create_cycling_profile,
 )
 
 router = APIRouter()
@@ -305,7 +302,10 @@ async def get_power_vs_hr(
 
     data = []
     for act in activities:
-        if act.average_power and act.average_heartrate:
+        if (
+            act.average_power and act.average_heartrate
+            and math.isfinite(act.average_power) and math.isfinite(act.average_heartrate)
+        ):
             data.append(PowerVsHrPoint(
                 power=act.average_power,
                 heart_rate=act.average_heartrate,
@@ -346,6 +346,19 @@ async def get_cycling_metrics_summary(
     )
     row = result.one()
 
+    # Guard against PostgreSQL NaN from COALESCE(SUM(NaN), 0.0)
+    def _nan0(val):
+        if val is None:
+            return 0.0
+        f = float(val)
+        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
+
+    def _nan0_int(val):
+        if val is None:
+            return 0
+        f = float(val)
+        return 0 if (math.isnan(f) or math.isinf(f)) else int(val)
+
     profile = await get_or_create_cycling_profile(db, uid)
     ftp = profile.ftp_watts
 
@@ -368,7 +381,7 @@ async def get_cycling_metrics_summary(
         ifs = []
         for r in ride_rows:
             power = r.normalized_power or r.average_power
-            if power:
+            if power and math.isfinite(power):
                 ifs.append(power / ftp)
         if ifs:
             avg_if = round(sum(ifs) / len(ifs), 3)
@@ -424,11 +437,11 @@ async def get_cycling_metrics_summary(
     row_28d = result_28d.one()
 
     # Convert 28-day totals to weekly averages (divide by 4)
-    baseline_tss = float(row_28d.total_tss or 0) / 4
-    baseline_distance = float(row_28d.total_distance or 0) / 1000 / 4
-    baseline_time = int(row_28d.total_time or 0) / 3600 / 4
-    baseline_elevation = float(row_28d.total_elevation or 0) / 4
-    baseline_rides = int(row_28d.ride_count or 0) / 4
+    baseline_tss = _nan0(row_28d.total_tss) / 4
+    baseline_distance = _nan0(row_28d.total_distance) / 1000 / 4
+    baseline_time = _nan0(row_28d.total_time) / 3600 / 4
+    baseline_elevation = _nan0(row_28d.total_elevation) / 4
+    baseline_rides = _nan0_int(row_28d.ride_count) / 4
 
     # 28-day IF/VI baselines
     result_rides_28d = await db.execute(
@@ -447,7 +460,7 @@ async def get_cycling_metrics_summary(
         ifs_28d = []
         for r in ride_rows_28d:
             power = r.normalized_power or r.average_power
-            if power:
+            if power and math.isfinite(power):
                 ifs_28d.append(power / ftp)
         if ifs_28d:
             baseline_if = sum(ifs_28d) / len(ifs_28d)
@@ -483,11 +496,11 @@ async def get_cycling_metrics_summary(
             vi_benchmark = MetricBenchmark(**bench)
 
     return CyclingMetricsSummary(
-        recent_tss=float(row.total_tss or 0),
-        recent_distance_km=round(float(row.total_distance or 0) / 1000, 1),
-        recent_time_hours=round(int(row.total_time or 0) / 3600, 1),
-        recent_elevation_m=round(float(row.total_elevation or 0), 0),
-        recent_rides=int(row.ride_count or 0),
+        recent_tss=_nan0(row.total_tss),
+        recent_distance_km=round(_nan0(row.total_distance) / 1000, 1),
+        recent_time_hours=round(_nan0_int(row.total_time) / 3600, 1),
+        recent_elevation_m=round(_nan0(row.total_elevation), 0),
+        recent_rides=_nan0_int(row.ride_count),
         avg_intensity_factor=avg_if,
         avg_variability_index=avg_vi,
         best_20min_power=best_20min,
@@ -496,11 +509,11 @@ async def get_cycling_metrics_summary(
         weight_kg=profile.weight_kg,
         power_to_weight=power_to_weight,
         # Trend indicators
-        tss_trend=_trend(float(row.total_tss or 0), baseline_tss),
-        distance_trend=_trend(round(float(row.total_distance or 0) / 1000, 1), baseline_distance),
-        time_trend=_trend(round(int(row.total_time or 0) / 3600, 1), baseline_time),
-        elevation_trend=_trend(round(float(row.total_elevation or 0), 0), baseline_elevation),
-        rides_trend=_trend(int(row.ride_count or 0), baseline_rides),
+        tss_trend=_trend(_nan0(row.total_tss), baseline_tss),
+        distance_trend=_trend(round(_nan0(row.total_distance) / 1000, 1), baseline_distance),
+        time_trend=_trend(round(_nan0_int(row.total_time) / 3600, 1), baseline_time),
+        elevation_trend=_trend(round(_nan0(row.total_elevation), 0), baseline_elevation),
+        rides_trend=_trend(_nan0_int(row.ride_count), baseline_rides),
         if_trend=_trend(avg_if, baseline_if),
         vi_trend=_trend(avg_vi, baseline_vi),
         # Benchmarks
@@ -696,6 +709,7 @@ async def estimate_ftp(
 async def backfill_streams(
     days: int = Query(90, ge=7, le=365),
     limit: int = Query(20, ge=1, le=100),
+    force: bool = Query(False, description="Delete existing streams and re-fetch at high resolution"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -703,14 +717,15 @@ async def backfill_streams(
 
     This is useful for backfilling stream data for activities that were synced
     before the stream-fetching feature was added.
+    Use force=true to delete existing low-res streams and re-fetch at high resolution.
     """
+    from app.integrations.strava_client import strava_client
     from app.models.activity import ActivityStream
     from app.services.strava import get_strava_connection, refresh_if_needed
-    from app.integrations.strava_client import strava_client
 
     cutoff = date.today() - timedelta(days=days)
 
-    # Find cycling activities with average_power but no watts stream
+    # Find cycling activities with average_power
     result = await db.execute(
         select(Activity.id, Activity.provider_activity_id)
         .where(
@@ -726,27 +741,31 @@ async def backfill_streams(
     )
     all_activities = result.all()
 
-    # Filter to those without watts stream
     activity_ids = [row[0] for row in all_activities]
     if not activity_ids:
         return {"backfilled": 0, "total_checked": 0, "message": "No cycling activities with power data found."}
 
-    result = await db.execute(
-        select(ActivityStream.activity_id)
-        .where(
-            ActivityStream.activity_id.in_(activity_ids),
-            ActivityStream.stream_type == "watts",
+    if force:
+        # Force mode: re-fetch all activities (delete old streams per-activity after success)
+        need_streams = [(row[0], row[1]) for row in all_activities][:limit]
+    else:
+        # Filter to those without watts stream
+        result = await db.execute(
+            select(ActivityStream.activity_id)
+            .where(
+                ActivityStream.activity_id.in_(activity_ids),
+                ActivityStream.stream_type == "watts",
+            )
         )
-    )
-    already_have_streams = set(result.scalars().all())
+        already_have_streams = set(result.scalars().all())
 
-    need_streams = [
-        (row[0], row[1]) for row in all_activities
-        if row[0] not in already_have_streams
-    ][:limit]
+        need_streams = [
+            (row[0], row[1]) for row in all_activities
+            if row[0] not in already_have_streams
+        ][:limit]
 
-    if not need_streams:
-        return {"backfilled": 0, "total_checked": len(all_activities), "message": "All activities already have stream data."}
+        if not need_streams:
+            return {"backfilled": 0, "total_checked": len(all_activities), "message": "All activities already have stream data."}
 
     # Get Strava connection
     connection = await get_strava_connection(db, current_user.id)
@@ -760,6 +779,15 @@ async def backfill_streams(
             streams = await strava_client.get_activity_streams(
                 connection.access_token, int(provider_id)
             )
+            if not streams:
+                continue
+            # In force mode, delete old streams for this activity before inserting new ones
+            if force:
+                await db.execute(
+                    ActivityStream.__table__.delete().where(
+                        ActivityStream.activity_id == activity_id
+                    )
+                )
             for stream_type, stream_data in streams.items():
                 if "data" in stream_data:
                     # Strava may return resolution as "high"/"low" strings — convert to int or None
@@ -778,7 +806,9 @@ async def backfill_streams(
                     )
                     db.add(stream)
             backfilled += 1
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Stream backfill failed for activity {provider_id}: {e}")
             continue  # Skip activities that fail
 
     await db.flush()
@@ -890,7 +920,7 @@ async def get_decoupling_history(
 
     data = [
         DecouplingActivityPoint(
-            date=h["date"],
+            date=h["date"].date() if hasattr(h["date"], "date") else h["date"],
             activity_id=h["activity_id"],
             decoupling_pct=h["decoupling_pct"],
             first_half_ratio=h["first_half_ratio"],

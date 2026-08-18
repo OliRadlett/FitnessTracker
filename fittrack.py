@@ -215,15 +215,25 @@ def _run(
     )
 
 
+def _compose_file_args() -> list[str]:
+    """Return ``-f`` flags for docker compose, including prod override if present."""
+    root = _project_root()
+    args = ["-f", str(root / "docker-compose.yml")]
+    prod = root / "docker-compose.prod.yml"
+    if prod.is_file():
+        args += ["-f", str(prod)]
+    return args
+
+
 def _compose(*args: str, capture: bool = False, check: bool = False) -> subprocess.CompletedProcess[str]:
     """Run a ``docker compose`` command and return the result."""
-    return _run(["docker", "compose", *args], capture=capture, check=check)
+    return _run(["docker", "compose", *_compose_file_args(), *args], capture=capture, check=check)
 
 
 def _compose_bg(*args: str) -> subprocess.Popen[str]:
     """Start a ``docker compose`` command in the background (e.g. log tailing)."""
     return subprocess.Popen(
-        ["docker", "compose", *args],
+        ["docker", "compose", *_compose_file_args(), *args],
         cwd=_project_root(),
         text=True,
     )

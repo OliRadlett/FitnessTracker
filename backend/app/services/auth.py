@@ -1,7 +1,7 @@
 """Auth service — Google/GitHub OAuth, JWT, session management."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from jose import JWTError, jwt
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.models.user import OAuthConnection, User
-from app.schemas.auth import TokenPayload, UserRead
+from app.schemas.auth import TokenPayload
 
 settings = get_settings()
 
@@ -22,8 +22,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 
 def create_access_token(user_id: uuid.UUID) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": str(user_id), "exp": expire, "iat": datetime.now(timezone.utc)}
+    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "exp": expire, "iat": datetime.now(UTC)}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
@@ -131,6 +131,8 @@ async def exchange_code_for_user(
     redirect_uri: str,
 ) -> tuple[User, bool]:
     """Exchange OAuth code for tokens, find or create user. Returns (user, is_new)."""
+    from fastapi import HTTPException as _HTTPException
+    from fastapi import status as _status
     cfg = OAUTH_PROVIDERS[provider]
     client_id = cfg["client_id"]()
     client_secret = cfg["client_secret"]()
@@ -166,7 +168,7 @@ async def exchange_code_for_user(
     expires_in = token_data.get("expires_in")
     token_expires = None
     if expires_in:
-        token_expires = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+        token_expires = datetime.now(UTC) + timedelta(seconds=int(expires_in))
 
     # Fetch user info
     async with httpx.AsyncClient() as client:
@@ -215,6 +217,13 @@ async def exchange_code_for_user(
         avatar_url = None
     else:
         raise ValueError(f"Unsupported provider: {provider}")
+
+    # Check email allowlist for app auth providers (google, github)
+    if provider in ("google", "github") and not settings.is_email_allowed(email):
+        raise _HTTPException(
+            status_code=_status.HTTP_403_FORBIDDEN,
+            detail="This account is not allowed to access FitTrack.",
+        )
 
     # Look up existing connection
     result = await db.execute(

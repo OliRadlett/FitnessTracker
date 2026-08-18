@@ -1,7 +1,8 @@
 """Wahoo integration client — OAuth, routes/workouts fetch."""
 
-import httpx
 import logging
+
+import httpx
 
 from app.config import get_settings
 from app.integrations.retry import retry_request

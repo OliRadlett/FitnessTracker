@@ -6,8 +6,8 @@ Mirrors the route_service.py dedup pattern:
 - link_activity_to_route() matches GPS activities to saved routes
 """
 
-import uuid
 import logging
+import uuid
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -254,10 +254,7 @@ async def merge_activity(
             continue
 
         # Fill empty fields regardless of priority
-        if existing_val is None:
-            setattr(primary, field, new_val)
-        # Override if new provider has strictly higher priority
-        elif new_priority > primary_priority:
+        if existing_val is None or new_priority > primary_priority:
             setattr(primary, field, new_val)
 
     # 3. Merge raw_data — keep the primary's raw_data, but store full response in source
@@ -309,8 +306,8 @@ async def link_activity_to_route(
     if activity.sport_type not in ("cycling", "running", "walking", "hiking"):
         return False
 
-    from app.services.route_service import _compute_match_score
     from app.services.polyline_utils import decode_polyline
+    from app.services.route_service import _compute_match_score
 
     points = decode_polyline(polyline)
     if not points or len(points) < 2:

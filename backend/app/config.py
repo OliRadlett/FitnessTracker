@@ -1,8 +1,8 @@
 import logging
 import warnings
+from functools import lru_cache
 
 from pydantic_settings import BaseSettings
-from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     debug: bool = True
     allowed_origins: str = "http://localhost:3000,https://localhost"
     public_url: str = "https://localhost"
+
+    # Account whitelist — comma-separated email addresses allowed to log in.
+    # If empty, all accounts are allowed (no restriction).
+    allowed_emails: str = ""
 
     # Google OAuth
     google_client_id: str = ""
@@ -106,6 +110,20 @@ class Settings(BaseSettings):
                 "Missing required configuration for production:\n  - "
                 + "\n  - ".join(errors)
             )
+
+    @property
+    def allowed_email_list(self) -> list[str]:
+        """Return the list of allowed emails (lowercased, stripped). Empty = allow all."""
+        if not self.allowed_emails:
+            return []
+        return [e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()]
+
+    def is_email_allowed(self, email: str) -> bool:
+        """Check if an email is allowed. Returns True if no whitelist is configured."""
+        allowed = self.allowed_email_list
+        if not allowed:
+            return True
+        return email.strip().lower() in allowed
 
     def _warn_optional_integrations(self) -> None:
         """Log warnings for optional integrations that aren't configured."""

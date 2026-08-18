@@ -8,8 +8,7 @@ route deduplication shape comparison.
 """
 
 import math
-from typing import Sequence
-
+from collections.abc import Sequence
 
 # ── Polyline encode / decode ─────────────────────────────────────────────────
 

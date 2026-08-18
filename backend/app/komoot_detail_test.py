@@ -1,7 +1,8 @@
 """Test Komoot tour detail and coordinates endpoints."""
-import os
 import base64
 import json
+import os
+
 import httpx
 
 EMAIL = os.environ.get("KOMOOT_EMAIL", "")

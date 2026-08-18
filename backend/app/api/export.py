@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.activity import Activity
-from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
+from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.gpx import activity_to_gpx

@@ -6,17 +6,17 @@ from datetime import date, timedelta
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate,
+    HRFlowable,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    HRFlowable,
 )
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -24,7 +24,6 @@ from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.sleep import SleepLog
 from app.models.user import User
-
 
 # ── Styles ────────────────────────────────────────────────────────────────
 
@@ -228,7 +227,7 @@ async def generate_weekly_report(
     story: list = []
 
     # Header
-    story.append(Paragraph(f"Weekly Training Report", TITLE_STYLE))
+    story.append(Paragraph("Weekly Training Report", TITLE_STYLE))
     story.append(Paragraph(
         f"{user_name} — {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}",
         SUBTITLE_STYLE,

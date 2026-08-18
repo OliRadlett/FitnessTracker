@@ -1,9 +1,9 @@
 """Strava integration client — OAuth, activity fetch, stream fetch."""
 
 import logging
+from datetime import datetime
 
 import httpx
-from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
 from app.integrations.retry import retry_request
@@ -121,7 +121,7 @@ class StravaClient:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/activities/{activity_id}/streams",
                     headers={"Authorization": f"Bearer {access_token}"},
-                    params={"keys": keys, "key_type": "time"},
+                    params={"keys": keys, "key_type": "time", "resolution": "high"},
                 )
                 resp.raise_for_status()
                 streams = resp.json()

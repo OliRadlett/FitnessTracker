@@ -6,6 +6,12 @@ import GitHubProvider from 'next-auth/providers/github';
 
 const API_BASE_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Comma-separated email allowlist. Empty = allow all.
+const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
 // Store backend token temporarily during sign-in flow
 let pendingBackendToken: string | undefined;
 
@@ -37,6 +43,15 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account }) {
+      // Check email allowlist before proceeding
+      if (ALLOWED_EMAILS.length > 0 && user.email) {
+        const emailLower = user.email.toLowerCase();
+        if (!ALLOWED_EMAILS.includes(emailLower)) {
+          console.warn(`Sign-in rejected: ${user.email} is not in the allowlist`);
+          return false;
+        }
+      }
+
       // After successful OAuth, sync user with backend and get a JWT
       if (user.email && account) {
         try {

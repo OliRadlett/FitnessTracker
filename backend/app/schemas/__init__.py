@@ -1,22 +1,22 @@
+from app.schemas.activity import (
+    ActivityCreate,
+    ActivityRead,
+    ActivityStreamRead,
+)
 from app.schemas.auth import (
-    UserRead,
-    UserCreate,
+    AuthResponse,
     OAuthConnectionRead,
     TokenPayload,
     TokenResponse,
-    AuthResponse,
+    UserCreate,
+    UserRead,
 )
-from app.schemas.activity import (
-    ActivityRead,
-    ActivityCreate,
-    ActivityStreamRead,
-)
+from app.schemas.dashboard import DashboardSummary, WeeklyReport
 from app.schemas.lifting import (
-    LiftingSessionRead,
     LiftingSessionCreate,
-    LiftingSetRead,
+    LiftingSessionRead,
     LiftingSetCreate,
+    LiftingSetRead,
     PersonalRecordRead,
     VolumeTrendResponse,
 )
-from app.schemas.dashboard import DashboardSummary, WeeklyReport

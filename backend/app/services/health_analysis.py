@@ -4,11 +4,11 @@ Combines multiple signals (recovery, HRV, sleep, training load, volume) into
 weighted risk scores that produce actionable health alerts.
 """
 
-import uuid
 import logging
+import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -242,7 +242,7 @@ async def analyze_overtraining(
         }
 
     # Get TSB from activities (simplified: use CTL/ATL from cycling service)
-    from app.services.cycling import get_daily_tss, compute_training_load
+    from app.services.cycling import compute_training_load, get_daily_tss
     end_date = date.today()
     start_date = end_date - timedelta(days=49)  # 7 days + 42 buffer
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)

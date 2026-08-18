@@ -5,9 +5,10 @@ Revises: 010
 Create Date: 2026-08-17
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
+
+from alembic import op
 
 # revision identifiers
 revision = "011"

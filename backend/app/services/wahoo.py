@@ -1,8 +1,9 @@
 """Wahoo service — OAuth helper, token refresh, route sync, activity sync."""
 
-import uuid
 import logging
-from datetime import datetime, timezone, timedelta
+import math
+import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +12,27 @@ from app.integrations.wahoo_client import wahoo_client
 from app.models.activity import Activity, ActivitySource
 from app.models.user import OAuthConnection
 from app.services.polyline_utils import (
-    wahoo_points_to_polyline,
-    polyline_total_distance,
     extract_elevation_profile_from_wahoo_points,
+    polyline_total_distance,
+    wahoo_points_to_polyline,
 )
 from app.services.route_service import create_or_merge_route
 
 logger = logging.getLogger(__name__)
+
+
+# ── NaN / Inf guard ─────────────────────────────────────────────────────────
+
+
+def _safe_float(value, default=None):
+    """Return *default* if *value* is None, NaN, or Inf."""
+    if value is None:
+        return default
+    try:
+        v = float(value)
+        return default if (math.isnan(v) or math.isinf(v)) else v
+    except (TypeError, ValueError):
+        return default
 
 
 # ── Sport type mapping ───────────────────────────────────────────────────────
@@ -60,14 +75,14 @@ async def get_wahoo_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthCon
 
 async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
     """Refresh the access token if it's expired."""
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc):
+    if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
         if not connection.refresh_token:
             raise ValueError("No refresh token available")
         token_data = await wahoo_client.refresh_access_token(connection.refresh_token)
         connection.access_token = token_data["access_token"]
         connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
         if "expires_in" in token_data:
-            connection.token_expires_at = datetime.now(timezone.utc) + timedelta(
+            connection.token_expires_at = datetime.now(UTC) + timedelta(
                 seconds=int(token_data["expires_in"])
             )
         await db.flush()
@@ -93,8 +108,15 @@ async def sync_wahoo_activities(
 
     Returns the list of enriched activities.
     """
-    from app.services.merge_service import find_duplicate_activity, merge_activity, link_activity_to_route
-    from app.services.cycling import auto_compute_tss_for_activity, get_or_create_cycling_profile
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
+    from app.services.merge_service import (
+        find_duplicate_activity,
+        link_activity_to_route,
+        merge_activity,
+    )
 
     connection = await get_wahoo_connection(db, user_id)
     if not connection:
@@ -168,36 +190,37 @@ async def sync_wahoo_activities(
             distance_meters = workout.get("distance") or workout.get("distance_meters")
 
             # Power data
-            average_power = workout.get("average_power") or workout.get("avg_power")
-            normalized_power = workout.get("normalized_power") or workout.get("weighted_average_power")
+            average_power = _safe_float(workout.get("average_power") or workout.get("avg_power"))
+            normalized_power = _safe_float(workout.get("normalized_power") or workout.get("weighted_average_power"))
 
             # HR data
-            average_heartrate = workout.get("average_heartrate") or workout.get("avg_heartrate")
-            max_heartrate = workout.get("max_heartrate")
+            average_heartrate = _safe_float(workout.get("average_heartrate") or workout.get("avg_heartrate"))
+            max_heartrate = _safe_float(workout.get("max_heartrate"))
 
             # Other metrics
-            elevation_gain = workout.get("elevation_gain") or workout.get("total_elevation_gain")
-            average_speed = workout.get("average_speed") or workout.get("avg_speed")
-            calories = workout.get("calories") or workout.get("kcal")
+            elevation_gain = _safe_float(workout.get("elevation_gain") or workout.get("total_elevation_gain"))
+            average_speed = _safe_float(workout.get("average_speed") or workout.get("avg_speed"))
+            calories = _safe_float(workout.get("calories") or workout.get("kcal"))
 
             # Use merge engine to detect duplicates from other providers
+            safe_distance = _safe_float(distance_meters)
             duplicate = await find_duplicate_activity(
                 db, user_id, sport_type, start_date,
                 int(duration_seconds) if duration_seconds else None,
-                float(distance_meters) if distance_meters else None,
+                safe_distance,
             )
 
             new_data = {
                 "name": name,
                 "duration_seconds": int(duration_seconds) if duration_seconds else None,
-                "distance_meters": float(distance_meters) if distance_meters else None,
-                "elevation_gain_meters": float(elevation_gain) if elevation_gain else None,
-                "average_heartrate": float(average_heartrate) if average_heartrate else None,
-                "max_heartrate": float(max_heartrate) if max_heartrate else None,
-                "average_power": float(average_power) if average_power else None,
-                "normalized_power": float(normalized_power) if normalized_power else None,
-                "average_speed": float(average_speed) if average_speed else None,
-                "calories": float(calories) if calories else None,
+                "distance_meters": safe_distance,
+                "elevation_gain_meters": elevation_gain,
+                "average_heartrate": average_heartrate,
+                "max_heartrate": max_heartrate,
+                "average_power": average_power,
+                "normalized_power": normalized_power,
+                "average_speed": average_speed,
+                "calories": calories,
             }
 
             if duplicate:

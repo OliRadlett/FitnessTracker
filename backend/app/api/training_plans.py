@@ -4,20 +4,20 @@ import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.user import User
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
+from app.models.user import User
 from app.schemas.training_plan import (
-    TrainingPlanCreate,
-    TrainingPlanRead,
-    TrainingPlanUpdate,
-    TrainingPlanSummary,
-    TrainingPlanDayCreate,
     GeneratePlanRequest,
+    TrainingPlanCreate,
+    TrainingPlanDayCreate,
+    TrainingPlanRead,
+    TrainingPlanSummary,
+    TrainingPlanUpdate,
 )
 from app.services.auth import get_current_user
 

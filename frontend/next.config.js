@@ -2,6 +2,7 @@
 const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
+  basePath: '/fittrack',
   async rewrites() {
     // In Docker, use the backend service name for SSR requests.
     // Client-side requests use relative URLs (via Caddy proxy).

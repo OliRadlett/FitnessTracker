@@ -24,9 +24,9 @@ from app.schemas.lifting import (
     WarmupTemplateUpdate,
 )
 from app.services import lifting as lifting_service
+from app.services.auth import get_current_user
 from app.services.exercise_db import search_exercises
 from app.services.strava import link_all_unlinked_activities
-from app.services.auth import get_current_user
 
 router = APIRouter()
 
@@ -57,6 +57,7 @@ async def list_sessions(
     """
     from fastapi.responses import JSONResponse
     from sqlalchemy import func, select
+
     from app.models.lifting import LiftingSession
 
     # Get total count

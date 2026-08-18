@@ -1,7 +1,7 @@
 """Connections API — list connections, trigger sync, Whoop token paste."""
 
-import uuid
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -106,7 +106,7 @@ async def trigger_sync(
             raise HTTPException(status_code=400, detail=str(e))
     elif connection.provider == "wahoo":
         try:
-            from app.services.wahoo import sync_wahoo_routes, sync_wahoo_activities
+            from app.services.wahoo import sync_wahoo_activities, sync_wahoo_routes
             # Sync both routes and activities
             route_count, merged = await sync_wahoo_routes(db, current_user.id)
             activities = await sync_wahoo_activities(db, current_user.id)
@@ -121,7 +121,11 @@ async def trigger_sync(
             raise HTTPException(status_code=400, detail=str(e))
     elif connection.provider == "whoop":
         try:
-            from app.services.whoop import sync_whoop_cycles, sync_whoop_sleep, sync_whoop_workouts
+            from app.services.whoop import (
+                sync_whoop_cycles,
+                sync_whoop_sleep,
+                sync_whoop_workouts,
+            )
             metrics = await sync_whoop_cycles(db, current_user.id)
             sleep_logs = await sync_whoop_sleep(db, current_user.id)
             enriched = await sync_whoop_workouts(db, current_user.id)

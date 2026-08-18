@@ -1,8 +1,10 @@
 """Tests for the retry utility — exponential backoff on HTTP errors."""
 
-import pytest
-import httpx
 from unittest.mock import AsyncMock, MagicMock
+
+import httpx
+import pytest
+
 from app.integrations.retry import retry_request
 
 

@@ -1,6 +1,7 @@
 """Tests for lifting service — pure functions (brzycki_1rm, calculate_session_volume)."""
 
 import pytest
+
 from app.services.lifting import brzycki_1rm, calculate_session_volume
 
 

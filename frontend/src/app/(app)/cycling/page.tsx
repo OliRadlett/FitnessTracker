@@ -259,7 +259,7 @@ export default function CyclingPage() {
 
   const backfillStreamsMutation = useMutation({
     mutationFn: () => authFetch<{ backfilled: number; total_checked: number; message?: string }>(
-      '/api/v1/cycling/backfill-streams?days=90&limit=30',
+      '/api/v1/cycling/backfill-streams?days=90&limit=30&force=true',
       { method: 'POST' }
     ),
     onSuccess: (data) => {
@@ -403,48 +403,56 @@ export default function CyclingPage() {
         />
       </div>
 
-      {/* VO2max Card */}
-      {vo2max && (
-        <Card>
-          <CardHeader>
-            <CardTitle>🫁 VO2max Estimate</CardTitle>
-          </CardHeader>
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-            <div className="flex items-center gap-4">
-              <p className="text-4xl font-bold text-green-400">
-                {vo2max.vo2max.toFixed(1)}
-              </p>
-              <div>
-                <p className="text-sm text-muted">ml/kg/min</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  vo2max.classification === 'Superior' ? 'bg-purple-500/20 text-purple-400'
-                  : vo2max.classification === 'Excellent' ? 'bg-blue-500/20 text-blue-400'
-                  : vo2max.classification === 'Good' ? 'bg-green-500/20 text-green-400'
-                  : vo2max.classification === 'Average' ? 'bg-yellow-500/20 text-yellow-400'
-                  : vo2max.classification === 'Below Average' ? 'bg-orange-500/20 text-orange-400'
-                  : 'bg-red-500/20 text-red-400'
-                }`}>
-                  {vo2max.classification}
-                </span>
+      {/* VO2max Card — always visible */}
+      <Card>
+        <CardHeader>
+          <CardTitle>🫁 VO2max Estimate</CardTitle>
+        </CardHeader>
+        {vo2max ? (
+          <>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+              <div className="flex items-center gap-4">
+                <p className="text-4xl font-bold text-green-400">
+                  {vo2max.vo2max.toFixed(1)}
+                </p>
+                <div>
+                  <p className="text-sm text-muted">ml/kg/min</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    vo2max.classification === 'Superior' ? 'bg-purple-500/20 text-purple-400'
+                    : vo2max.classification === 'Excellent' ? 'bg-blue-500/20 text-blue-400'
+                    : vo2max.classification === 'Good' ? 'bg-green-500/20 text-green-400'
+                    : vo2max.classification === 'Average' ? 'bg-yellow-500/20 text-yellow-400'
+                    : vo2max.classification === 'Below Average' ? 'bg-orange-500/20 text-orange-400'
+                    : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {vo2max.classification}
+                  </span>
+                </div>
+              </div>
+              <div className="text-sm text-muted">
+                <p>Method: <span className="text-white">{vo2max.method}</span></p>
+                <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
+                {vo2max.all_estimates.length > 1 && (
+                  <p className="mt-1 text-xs">
+                    {vo2max.all_estimates.length} estimates available — showing highest.
+                  </p>
+                )}
               </div>
             </div>
-            <div className="text-sm text-muted">
-              <p>Method: <span className="text-white">{vo2max.method}</span></p>
-              <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
-              {vo2max.all_estimates.length > 1 && (
-                <p className="mt-1 text-xs">
-                  {vo2max.all_estimates.length} estimates available — showing highest.
-                </p>
-              )}
-            </div>
+            {vo2maxHistory && vo2maxHistory.data.length > 1 && (
+              <div className="mt-2 text-xs text-muted">
+                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min over {vo2maxHistory.data.length} months
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-6 flex flex-col items-center gap-2">
+            <p className="text-3xl">🫁</p>
+            <p className="text-sm text-muted">VO2max requires per-second power data from Strava streams</p>
+            <p className="text-xs text-muted">Fetch streams above, then refresh this page</p>
           </div>
-          {vo2maxHistory && vo2maxHistory.data.length > 1 && (
-            <div className="mt-2 text-xs text-muted">
-              Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min over {vo2maxHistory.data.length} months
-            </div>
-          )}
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* Recent Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -550,18 +558,19 @@ export default function CyclingPage() {
         </Card>
       )}
 
-      {/* Fetch Streams Banner — shown when no stream data exists */}
-      {(() => {
-        const hasStreamData = powerCurve?.data?.some(p => p.best_power_watts != null);
-        return !hasStreamData && !curveLoading;
-      })() && (
+      {/* Fetch Streams Banner — always available as a utility action */}
+      {profile?.ftp_watts && (
         <Card className="border-blue-500/30 bg-blue-500/5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-white">No power stream data found</p>
+              <p className="text-sm font-medium text-white">
+                {powerCurve?.data?.some(p => p.best_power_watts != null)
+                  ? 'Fetch more stream data from Strava'
+                  : 'No power stream data found'}
+              </p>
               <p className="text-xs text-muted mt-1">
-                Your cycling activities need per-second power data from Strava for power curves, zones, and FTP estimation.
-                Click below to fetch streams for your last 90 days of rides.
+                Per-second power data is needed for power curves, zones, VO2max, and FTP estimation.
+                Fetch streams for your last 90 days of rides.
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
@@ -666,7 +675,7 @@ export default function CyclingPage() {
 
       {/* HR Zones + Weight Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Heart Rate Zones */}
+        {/* Heart Rate Zones — always visible */}
         <Card>
           <CardHeader>
             <CardTitle>Heart Rate Zones (30 days)</CardTitle>
@@ -677,10 +686,19 @@ export default function CyclingPage() {
               {chartHrZones && <div className="mt-4"><Chart data={chartHrZones} height={220} /></div>}
             </>
           ) : (
-            <div className="h-60 flex items-center justify-center text-muted text-sm">
-              {profile?.lactate_threshold_hr
-                ? 'No heart rate stream data available. Sync activities with HR data.'
-                : 'Set your LTHR in the cycling profile to see HR zone distribution.'}
+            <div className="h-60 flex flex-col items-center justify-center gap-3">
+              <p className="text-3xl">💓</p>
+              {!profile?.lactate_threshold_hr ? (
+                <>
+                  <p className="text-sm text-muted">Set your LTHR to see HR zone distribution</p>
+                  <p className="text-xs text-muted">Enter your Lactate Threshold Heart Rate in the profile editor above</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted">No heart rate stream data available</p>
+                  <p className="text-xs text-muted">Sync activities with HR data to populate zones</p>
+                </>
+              )}
             </div>
           )}
         </Card>
@@ -700,64 +718,78 @@ export default function CyclingPage() {
         </Card>
       </div>
 
-      {/* Decoupling Trend Chart */}
-      {decoupling && decoupling.data.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>🫀 Decoupling Trend (HR vs Power)</CardTitle>
-          </CardHeader>
-          <div className="mb-3 flex items-center gap-4 text-sm">
-            <span className="text-muted">Average decoupling:</span>
-            <span className={`font-bold ${
-              (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-green-400'
-              : (decoupling.avg_decoupling_pct ?? 0) < 8 ? 'text-yellow-400'
-              : 'text-red-400'
-            }`}>
-              {decoupling.avg_decoupling_pct?.toFixed(1)}%
-            </span>
-            {decoupling.classification && (
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-green-400'
-                : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
-                : 'bg-red-500/20 text-red-400'
+      {/* Decoupling Trend Chart — always visible */}
+      <Card>
+        <CardHeader>
+          <CardTitle>🫀 Decoupling Trend (HR vs Power)</CardTitle>
+        </CardHeader>
+        {decoupling && decoupling.data.length > 0 ? (
+          <>
+            <div className="mb-3 flex items-center gap-4 text-sm">
+              <span className="text-muted">Average decoupling:</span>
+              <span className={`font-bold ${
+                (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-green-400'
+                : (decoupling.avg_decoupling_pct ?? 0) < 8 ? 'text-yellow-400'
+                : 'text-red-400'
               }`}>
-                {decoupling.classification}
+                {decoupling.avg_decoupling_pct?.toFixed(1)}%
               </span>
+              {decoupling.classification && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-green-400'
+                  : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
+                  : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {decoupling.classification}
+                </span>
+              )}
+              <span className="text-xs text-muted">
+                ({decoupling.data.length} rides {'>'}60 min)
+              </span>
+            </div>
+            {chartDecouplingTrend ? (
+              <Chart data={chartDecouplingTrend} height={280} />
+            ) : (
+              <div className="h-40 flex items-center justify-center text-muted text-sm">
+                No decoupling chart data available
+              </div>
             )}
-            <span className="text-xs text-muted">
-              ({decoupling.data.length} rides {'>'}60 min)
-            </span>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-500"></span> {'<'}5% Excellent
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-yellow-500"></span> 5-8% Acceptable
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500"></span> {'>'}8% Aerobic Deficiency
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="h-40 flex flex-col items-center justify-center gap-2">
+            <p className="text-3xl">🫀</p>
+            <p className="text-sm text-muted">Requires rides {'>'}60 min with both power and HR stream data</p>
+            <p className="text-xs text-muted">Fetch streams above to enable decoupling analysis</p>
           </div>
-          {chartDecouplingTrend ? (
-            <Chart data={chartDecouplingTrend} height={280} />
-          ) : (
-            <div className="h-40 flex items-center justify-center text-muted text-sm">
-              No decoupling data available
-            </div>
-          )}
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span> {'<'}5% Excellent
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-yellow-500"></span> 5-8% Acceptable
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span> {'>'}8% Aerobic Deficiency
-            </div>
-          </div>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {/* VO2max Trend Chart */}
-      {chartVo2maxTrend && chartVo2maxTrend.labels.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>📈 VO2max Trend</CardTitle>
-          </CardHeader>
+      {/* VO2max Trend Chart — always visible */}
+      <Card>
+        <CardHeader>
+          <CardTitle>📈 VO2max Trend</CardTitle>
+        </CardHeader>
+        {chartVo2maxTrend && chartVo2maxTrend.labels.length > 0 ? (
           <Chart data={chartVo2maxTrend} height={280} />
-        </Card>
-      )}
+        ) : (
+          <div className="h-40 flex flex-col items-center justify-center gap-2">
+            <p className="text-3xl">📈</p>
+            <p className="text-sm text-muted">VO2max trend requires multiple months of cycling data with power streams</p>
+            <p className="text-xs text-muted">Fetch streams and sync activities to build trend data</p>
+          </div>
+        )}
+      </Card>
 
       {/* Daily TSS + Power vs HR */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -1,7 +1,8 @@
 """Strava service — sync logic, webhook handling, activity-to-lifting linking."""
 
+import math
 import uuid
-from datetime import datetime, timezone, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from difflib import SequenceMatcher
 
 from sqlalchemy import select
@@ -12,6 +13,20 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+
+# ── NaN / Inf guard ─────────────────────────────────────────────────────────
+
+
+def _safe_float(value, default=None):
+    """Return *default* if *value* is None, NaN, or Inf."""
+    if value is None:
+        return default
+    try:
+        v = float(value)
+        return default if (math.isnan(v) or math.isinf(v)) else v
+    except (TypeError, ValueError):
+        return default
+
 
 # ── Exercise name extraction / matching ──────────────────────────────────────
 
@@ -221,14 +236,14 @@ async def get_strava_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthCo
 
 async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
     """Refresh the access token if it's expired."""
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc):
+    if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
         if not connection.refresh_token:
             raise ValueError("No refresh token available")
         token_data = await strava_client.refresh_access_token(connection.refresh_token)
         connection.access_token = token_data["access_token"]
         connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
         connection.token_expires_at = datetime.fromtimestamp(
-            token_data["expires_at"], tz=timezone.utc
+            token_data["expires_at"], tz=UTC
         )
         await db.flush()
     return connection
@@ -250,15 +265,15 @@ async def _create_activity_from_strava(
         name=sa.get("name", "Untitled"),
         start_date=datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00")),
         duration_seconds=int(sa.get("moving_time", 0)),
-        distance_meters=sa.get("distance"),
-        elevation_gain_meters=sa.get("total_elevation_gain"),
-        average_heartrate=sa.get("average_heartrate"),
-        max_heartrate=sa.get("max_heartrate"),
-        average_power=sa.get("average_watts"),
-        normalized_power=sa.get("weighted_average_watts"),
-        average_speed=sa.get("average_speed"),
-        average_cadence=sa.get("average_cadence"),
-        calories=sa.get("calories"),
+        distance_meters=_safe_float(sa.get("distance")),
+        elevation_gain_meters=_safe_float(sa.get("total_elevation_gain")),
+        average_heartrate=_safe_float(sa.get("average_heartrate")),
+        max_heartrate=_safe_float(sa.get("max_heartrate")),
+        average_power=_safe_float(sa.get("average_watts")),
+        normalized_power=_safe_float(sa.get("weighted_average_watts")),
+        average_speed=_safe_float(sa.get("average_speed")),
+        average_cadence=_safe_float(sa.get("average_cadence")),
+        calories=_safe_float(sa.get("calories")),
         raw_data=sa,
     )
     db.add(activity)
@@ -301,7 +316,11 @@ async def sync_activities(
     from other providers (Wahoo, Komoot). Creates ActivitySource records
     for all synced activities.
     """
-    from app.services.merge_service import find_duplicate_activity, merge_activity, link_activity_to_route
+    from app.services.merge_service import (
+        find_duplicate_activity,
+        link_activity_to_route,
+        merge_activity,
+    )
 
     connection = await get_strava_connection(db, user_id)
     if not connection:
@@ -360,15 +379,15 @@ async def sync_activities(
             new_data = {
                 "name": sa.get("name"),
                 "duration_seconds": duration_seconds,
-                "distance_meters": distance_meters,
-                "elevation_gain_meters": sa.get("total_elevation_gain"),
-                "average_heartrate": sa.get("average_heartrate"),
-                "max_heartrate": sa.get("max_heartrate"),
-                "average_power": sa.get("average_watts"),
-                "normalized_power": sa.get("weighted_average_watts"),
-                "average_speed": sa.get("average_speed"),
-                "average_cadence": sa.get("average_cadence"),
-                "calories": sa.get("calories"),
+                "distance_meters": _safe_float(distance_meters),
+                "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+                "average_heartrate": _safe_float(sa.get("average_heartrate")),
+                "max_heartrate": _safe_float(sa.get("max_heartrate")),
+                "average_power": _safe_float(sa.get("average_watts")),
+                "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+                "average_speed": _safe_float(sa.get("average_speed")),
+                "average_cadence": _safe_float(sa.get("average_cadence")),
+                "calories": _safe_float(sa.get("calories")),
             }
             await merge_activity(
                 db, duplicate, new_data, "strava", provider_id, raw_data=sa,
@@ -409,7 +428,10 @@ async def sync_activities(
     await db.flush()
 
     # Auto-compute TSS for cycling activities if not provided by Strava
-    from app.services.cycling import auto_compute_tss_for_activity, get_or_create_cycling_profile
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
     profile = await get_or_create_cycling_profile(db, user_id)
     if profile.ftp_watts:
         for activity in synced:
@@ -450,7 +472,11 @@ async def handle_strava_event(
 
 async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, activity_id: int) -> None:
     """Fetch and store a new activity from a webhook event."""
-    from app.services.merge_service import find_duplicate_activity, merge_activity, link_activity_to_route
+    from app.services.merge_service import (
+        find_duplicate_activity,
+        link_activity_to_route,
+        merge_activity,
+    )
 
     # Find the connection by provider_user_id
     result = await db.execute(
@@ -487,15 +513,15 @@ async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, acti
         new_data = {
             "name": sa.get("name"),
             "duration_seconds": duration_seconds,
-            "distance_meters": distance_meters,
-            "elevation_gain_meters": sa.get("total_elevation_gain"),
-            "average_heartrate": sa.get("average_heartrate"),
-            "max_heartrate": sa.get("max_heartrate"),
-            "average_power": sa.get("average_watts"),
-            "normalized_power": sa.get("weighted_average_watts"),
-            "average_speed": sa.get("average_speed"),
-            "average_cadence": sa.get("average_cadence"),
-            "calories": sa.get("calories"),
+            "distance_meters": _safe_float(distance_meters),
+            "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+            "average_heartrate": _safe_float(sa.get("average_heartrate")),
+            "max_heartrate": _safe_float(sa.get("max_heartrate")),
+            "average_power": _safe_float(sa.get("average_watts")),
+            "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+            "average_speed": _safe_float(sa.get("average_speed")),
+            "average_cadence": _safe_float(sa.get("average_cadence")),
+            "calories": _safe_float(sa.get("calories")),
         }
         await merge_activity(
             db, duplicate, new_data, "strava", str(activity_id), raw_data=sa,
@@ -528,7 +554,10 @@ async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, acti
         pass  # Streams are optional
 
     # Auto-compute TSS for cycling activities
-    from app.services.cycling import auto_compute_tss_for_activity, get_or_create_cycling_profile
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
     profile = await get_or_create_cycling_profile(db, activity.user_id)
     if profile.ftp_watts and activity.sport_type == "cycling" and activity.tss is None:
         await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
@@ -591,7 +620,10 @@ async def backfill_all_activities(
 
     Returns a dict with counts: ``{"synced": N, "skipped": N, "pages": N}``.
     """
-    from app.services.merge_service import find_duplicate_activity, merge_activity, link_activity_to_route
+    from app.services.merge_service import (
+        find_duplicate_activity,
+        merge_activity,
+    )
 
     connection = await get_strava_connection(db, user_id)
     if not connection:
@@ -656,15 +688,15 @@ async def backfill_all_activities(
                 new_data = {
                     "name": sa.get("name"),
                     "duration_seconds": duration_seconds,
-                    "distance_meters": distance_meters,
-                    "elevation_gain_meters": sa.get("total_elevation_gain"),
-                    "average_heartrate": sa.get("average_heartrate"),
-                    "max_heartrate": sa.get("max_heartrate"),
-                    "average_power": sa.get("average_watts"),
-                    "normalized_power": sa.get("weighted_average_watts"),
-                    "average_speed": sa.get("average_speed"),
-                    "average_cadence": sa.get("average_cadence"),
-                    "calories": sa.get("calories"),
+                    "distance_meters": _safe_float(distance_meters),
+                    "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+                    "average_heartrate": _safe_float(sa.get("average_heartrate")),
+                    "max_heartrate": _safe_float(sa.get("max_heartrate")),
+                    "average_power": _safe_float(sa.get("average_watts")),
+                    "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+                    "average_speed": _safe_float(sa.get("average_speed")),
+                    "average_cadence": _safe_float(sa.get("average_cadence")),
+                    "calories": _safe_float(sa.get("calories")),
                 }
                 await merge_activity(db, duplicate, new_data, "strava", provider_id, raw_data=sa)
             else:
@@ -681,12 +713,13 @@ async def backfill_all_activities(
 
     # Auto-link newly synced activities to lifting sessions and routes.
     # Pre-fetch all candidate data in bulk to avoid N+1 queries.
+    from collections import defaultdict
+
     from app.models.lifting import LiftingSession
     from app.models.route import Route
-    from collections import defaultdict
     from app.services.merge_service import _extract_activity_polyline
-    from app.services.route_service import _compute_match_score
     from app.services.polyline_utils import decode_polyline, haversine_distance
+    from app.services.route_service import _compute_match_score
 
     # 1. Collect IDs of activities already linked to a lifting session
     linked_ids_result = await db.execute(
@@ -830,8 +863,8 @@ async def sync_strava_routes(
 
     Returns (total_synced, merged_count).
     """
-    from app.services.route_service import create_or_merge_route
     from app.services.polyline_utils import polyline_total_distance
+    from app.services.route_service import create_or_merge_route
 
     connection = await get_strava_connection(db, user_id)
     if not connection:
@@ -883,6 +916,7 @@ async def sync_strava_routes(
 
             # Check if already synced
             from sqlalchemy import select as sa_select
+
             from app.models.route import RouteSource
             existing = await db.execute(
                 sa_select(RouteSource).where(
@@ -916,8 +950,7 @@ async def sync_strava_routes(
 
     # 2. Extract routes from existing cycling activities with polylines
     # Find cycling activities that have map.summary_polyline in raw_data
-    from sqlalchemy import select as sa_select, cast, String
-    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy import select as sa_select
 
     result = await db.execute(
         sa_select(Activity).where(

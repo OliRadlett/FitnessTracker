@@ -7,16 +7,8 @@
 }
 
 {$DOMAIN:localhost} {
-    # Frontend
-    handle /api/auth/* {
-        reverse_proxy frontend:3000
-    }
-
-    handle /_next/* {
-        reverse_proxy frontend:3000
-    }
-
-    handle /static/* {
+    # Frontend — Next.js basePath is /fittrack
+    handle /fittrack/* {
         reverse_proxy frontend:3000
     }
 
@@ -29,9 +21,9 @@
         reverse_proxy backend:8000
     }
 
-    # Everything else to frontend
-    handle {
-        reverse_proxy frontend:3000
+    # Root → redirect to /fittrack
+    handle / {
+        redir /fittrack permanent
     }
 
     tls internal

@@ -1,0 +1,35 @@
+# Production overrides — use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# NOTE: fittrack.py / start.sh auto-detects this file and includes it automatically.
+#
+# These overrides replace dev-friendly settings (hot-reload, debug, exposed ports)
+# with production equivalents (optimized builds, HTTPS via Caddy, no debug).
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    volumes: []
+    restart: unless-stopped
+
+  worker:
+    volumes: []
+    restart: unless-stopped
+
+  beat:
+    volumes: []
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes: []
+    restart: unless-stopped
+
+  caddy:
+    restart: unless-stopped

@@ -1,23 +1,27 @@
 """Activity API — list/filter/get activities, calendar, backfill route links, merge analysis, file import."""
 
 import uuid
-from datetime import datetime, date, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, cast, Date
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
-from app.models.lifting import LiftingSession, LiftingSet
+from app.models.lifting import LiftingSession
 from app.models.user import User
 from app.schemas.activity import (
-    ActivityRead, ActivityStreamRead, ActivityCalendarEntry,
-    LinkedLiftingSessionSummary, DailyMetricSummary, CalendarDayData,
+    ActivityCalendarEntry,
+    ActivityRead,
+    ActivityStreamRead,
+    CalendarDayData,
+    DailyMetricSummary,
+    LinkedLiftingSessionSummary,
 )
 from app.services.auth import get_current_user
 
@@ -350,9 +354,9 @@ async def analyze_merge_thresholds(
     """
     from app.services.merge_service import (
         _date_proximity_score,
-        _sport_type_score,
-        _duration_score,
         _distance_score,
+        _duration_score,
+        _sport_type_score,
     )
 
     cutoff = date.today() - timedelta(days=days)
@@ -403,9 +407,7 @@ async def analyze_merge_thresholds(
                 # Same source + different name + score < 0.85 → likely different activities
                 # Different source + same-ish data → likely true duplicate
                 is_false_positive = False
-                if a.source == b.source and a.name != b.name and score < 0.85:
-                    is_false_positive = True
-                elif a.sport_type != b.sport_type and score < 0.70:
+                if a.source == b.source and a.name != b.name and score < 0.85 or a.sport_type != b.sport_type and score < 0.70:
                     is_false_positive = True
 
                 if is_false_positive:
@@ -497,7 +499,7 @@ async def import_gpx(
 
     # Derive start_date from first timestamp or fall back to now
     valid_timestamps = [t for t in timestamps if t is not None]
-    start_date = valid_timestamps[0] if valid_timestamps else datetime.now(timezone.utc)
+    start_date = valid_timestamps[0] if valid_timestamps else datetime.now(UTC)
 
     # Derive duration from first and last timestamps
     duration_seconds = None
@@ -575,7 +577,7 @@ async def import_fit(
         source="manual",
         sport_type=session.get("sport_type", "cycling"),
         name=session.get("name", "Imported Activity"),
-        start_date=session.get("start_time", datetime.now(timezone.utc)),
+        start_date=session.get("start_time", datetime.now(UTC)),
         duration_seconds=session.get("duration_seconds"),
         distance_meters=session.get("distance_meters"),
         elevation_gain_meters=session.get("elevation_gain_meters"),

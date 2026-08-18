@@ -1,10 +1,9 @@
 """Metrics API — readiness, sleep intelligence, respiratory rate, weight, health alerts endpoints."""
 
-import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -19,7 +18,6 @@ from app.services.whoop import (
     compute_sleep_consistency,
     compute_sleep_debt,
     suggest_optimal_bedtime,
-    get_whoop_connection,
 )
 
 router = APIRouter()
@@ -359,9 +357,9 @@ async def run_health_analysis(
 ):
     """Run health analysis on-demand and return all results including signal scores."""
     from app.services.health_analysis import (
-        analyze_overtraining,
-        analyze_injury_risk,
         analyze_illness,
+        analyze_injury_risk,
+        analyze_overtraining,
         upsert_alert,
     )
 

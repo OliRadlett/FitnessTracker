@@ -1,6 +1,7 @@
 """Auth API — OAuth authorize/callback, sync-user, /me, /logout."""
 
 import uuid
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
@@ -14,7 +15,6 @@ from app.schemas.auth import AuthResponse, TokenResponse, UserRead
 from app.services.auth import (
     OAUTH_PROVIDERS,
     create_access_token,
-    decode_access_token,
     exchange_code_for_user,
     get_authorize_url,
     get_current_user,
@@ -47,6 +47,14 @@ async def sync_user(
     This bridges NextAuth (frontend) with the backend user system.
     Called by NextAuth's signIn callback after successful OAuth.
     """
+    from app.config import get_settings as _get_settings
+    _s = _get_settings()
+    if not _s.is_email_allowed(body.email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is not allowed to access FitTrack.",
+        )
+
     # Find existing user by email
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -63,8 +71,8 @@ async def sync_user(
         await db.flush()
 
     # Also ensure an OAuth connection exists for this provider
+
     from app.models.user import OAuthConnection
-    from datetime import datetime
 
     conn_result = await db.execute(
         select(OAuthConnection).where(
@@ -170,11 +178,12 @@ async def oauth_callback(
                 return RedirectResponse(url=f"{_frontend_url}/settings?error=Failed+to+get+access+token")
 
             refresh_token = token_data.get("refresh_token")
-            from datetime import datetime as _dt, timedelta, timezone as _tz
+            from datetime import datetime as _dt
+            from datetime import timedelta
             expires_in = token_data.get("expires_in")
             token_expires = None
             if expires_in:
-                token_expires = _dt.now(_tz.utc) + timedelta(seconds=int(expires_in))
+                token_expires = _dt.now(UTC) + timedelta(seconds=int(expires_in))
 
             # Fetch provider user info
             async with _httpx.AsyncClient() as client:
@@ -206,8 +215,9 @@ async def oauth_callback(
                 provider_user_id = str(userinfo.get("id", ""))
 
             # Find existing connection or create new one for the most recent user
-            from app.models.user import OAuthConnection, User
             from sqlalchemy import select as _select
+
+            from app.models.user import OAuthConnection, User
 
             # Check if connection already exists
             conn_result = await db.execute(

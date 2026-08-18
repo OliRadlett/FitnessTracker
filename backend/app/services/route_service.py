@@ -1,9 +1,8 @@
 """Route service — CRUD, deduplication, and merge logic."""
 
-import uuid
 import logging
+import uuid
 from difflib import SequenceMatcher
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +12,7 @@ from app.config import get_settings
 from app.models.route import Route, RouteSource
 from app.services.polyline_utils import (
     decode_polyline,
-    encode_polyline,
     haversine_distance,
-    polyline_total_distance,
     shape_similarity,
 )
 
