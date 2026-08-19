@@ -96,11 +96,11 @@ services:
       - .env
     volumes:
       - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     depends_on:
       - backend
     entrypoint: ""
-    command: sh -c "rm -rf .next && npm install && npm run dev"
+    command: sh -c "npm install && npm run dev"
     environment:
       - WATCHPACK_POLLING=true
       - INTERNAL_API_URL=http://backend:8000
@@ -124,5 +124,6 @@ services:
 volumes:
   pgdata:
   frontend_node_modules:
+  frontend_next:
   caddy_data:
   caddy_config:
