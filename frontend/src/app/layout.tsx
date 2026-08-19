@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import 'leaflet/dist/leaflet.css';
 import { Providers } from '@/components/Providers';
 
 export const metadata: Metadata = {
@@ -15,6 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      </head>
       <body className="bg-background text-slate-200 antialiased">
         <Providers>
           {children}

@@ -16,3 +16,4 @@
 | `export.py` | `/export/` | Data export endpoints |
 | `training_plans.py` | `/training-plans/` | Plan CRUD, `POST /generate` (template-based auto-generation) |
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter |
+| `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |

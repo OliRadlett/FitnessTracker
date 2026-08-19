@@ -100,7 +100,7 @@ services:
     depends_on:
       - backend
     entrypoint: ""
-    command: sh -c "npm install && npm run dev"
+    command: sh -c "rm -rf .next && npm install && npm run dev"
     environment:
       - WATCHPACK_POLLING=true
       - INTERNAL_API_URL=http://backend:8000

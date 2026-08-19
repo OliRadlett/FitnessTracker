@@ -181,6 +181,7 @@ from app.api.metrics import router as metrics_router
 from app.api.routes import router as routes_router
 from app.api.training_plans import router as training_plans_router
 from app.api.webhooks import router as webhooks_router
+from app.api.workout_planner import router as workout_planner_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(connections_router, prefix="/api/v1/connections", tags=["connections"])
@@ -196,3 +197,4 @@ app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"])
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
+app.include_router(workout_planner_router, prefix="/api/v1/workout-planner", tags=["workout-planner"])

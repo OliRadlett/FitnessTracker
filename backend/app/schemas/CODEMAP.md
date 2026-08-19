@@ -13,3 +13,4 @@
 | `goal.py` | `GoalCreate/Read/Update` |
 | `training_plan.py` | `TrainingPlanCreate/Read/Update/Summary`, `TrainingPlanDayCreate/Read`, `GeneratePlanRequest` |
 | `event.py` | `EventCreate/Read/Update`, `EventWithCountdown` |
+| `workout_planner.py` | `WorkoutZone`, `ReadinessInfo`, `WorkoutZonesResponse`, `WorkoutPlanRequest/Response`, `RouteMatchRequest/Response` |

@@ -11,6 +11,7 @@ venv/
 node_modules/
 .next/
 out/
+frontend/package-lock.json
 
 # Environment
 .env

@@ -16,3 +16,4 @@
 | `charts.py` | Chart generation — queries DB, returns ChartData dataclasses | `ChartService` class with methods per chart type |
 | `polyline_utils.py` | Polyline encode/decode, Haversine distance, provider conversions | `decode_polyline()`, `encode_polyline()` |
 | `gpx.py` | GPX 1.1 generation and parsing | `generate_gpx()`, `parse_gpx()` |
+| `workout_planner.py` | Workout zone computation, target planning, route matching | `compute_workout_zones()`, `plan_workout()`, `find_matching_routes()` |
