@@ -26,8 +26,5 @@
         redir /fittrack permanent
     }
 
-    # tls internal is only for localhost — Caddy auto-detects this.
-    # For real domains, Caddy automatically obtains Let's Encrypt certs.
-    # Do NOT add "tls internal" here; the deploy workflow resets this file
-    # on every deploy, so any manual edits would be lost.
+    tls internal
 }

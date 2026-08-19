@@ -45,6 +45,33 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "▸ Generating production Caddyfile (without tls internal)…"
+            DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
+            cat > infra/Caddyfile <<CADDYEOF
+            {
+                email admin@example.com
+            }
+
+            :80 {
+                redir https://{host}{uri} permanent
+            }
+
+            ${DEPLOY_DOMAIN} {
+                handle /fittrack/* {
+                    reverse_proxy frontend:3000
+                }
+                handle /api/v1/* {
+                    reverse_proxy backend:8000
+                }
+                handle /health {
+                    reverse_proxy backend:8000
+                }
+                handle / {
+                    redir /fittrack permanent
+                }
+            }
+            CADDYEOF
+
             echo "▸ Stopping services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down --timeout 30
 
