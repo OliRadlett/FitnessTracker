@@ -1,11 +1,12 @@
 # CD — Deploy to DigitalOcean on push to main (after CI passes)
 #
 # Required GitHub repository secrets:
-#   DROPLET_HOST    — Droplet IP or hostname (e.g. 203.0.113.42)
+#   DROPLET_HOST    — Droplet IP or hostname
 #   DROPLET_USER    — SSH user (usually "root")
 #   DROPLET_SSH_KEY — Private SSH key for the Droplet
 #
 # The .env file must already exist on the Droplet (created during initial setup).
+# Migrations run automatically on app startup (see backend/app/main.py lifespan).
 
 name: Deploy
 
@@ -17,13 +18,12 @@ on:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: false   # don't cancel a running deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy to DigitalOcean
     runs-on: ubuntu-latest
-    # Only deploy if CI succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
@@ -39,7 +39,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            cd /opt/FitnessTracker
+            cd /opt/fitness-tracker
 
             echo "▸ Pulling latest code…"
             git fetch origin main
@@ -54,29 +54,18 @@ jobs:
             echo "▸ Starting services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
-            echo "▸ Waiting for DB…"
-            for i in $(seq 1 30); do
-              if docker compose exec -T db pg_isready -U fittrack >/dev/null 2>&1; then
-                echo "  DB ready after ${i}s"
-                break
-              fi
-              sleep 1
-            done
-
-            echo "▸ Running migrations…"
-            docker compose exec -T backend alembic upgrade head
-
             echo "▸ Cleaning up old images…"
             docker image prune -f
 
-            echo "▸ Health check…"
-            sleep 10
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
-              echo "  ✓ Health check passed (HTTP $HTTP_CODE)"
-            else
-              echo "  ⚠ Health check returned HTTP $HTTP_CODE — check logs"
-            fi
+            echo "▸ Waiting for backend health check…"
+            for i in $(seq 1 60); do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "  ✓ Backend healthy after ${i}s"
+                break
+              fi
+              sleep 2
+            done
 
             echo "▸ Deploy complete ✓"
 

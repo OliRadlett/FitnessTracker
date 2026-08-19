@@ -31,11 +31,28 @@ limiter = Limiter(
 async def lifespan(app: FastAPI):
     logger.info("Starting FitTrack API (debug=%s)", settings.debug)
 
-    # Create any brand-new tables from models (for fresh installs).
-    # Schema changes are handled by Alembic migrations (see 016_cleanup_self_heal.py
-    # for the migration that replaced the old inline self-heal logic).
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Run Alembic migrations on startup.
+    # This creates tables on fresh installs and applies schema changes on existing DBs.
+    # Using Alembic instead of Base.metadata.create_all avoids DuplicateTable errors
+    # when tables already exist.
+    import asyncio
+    import sys
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "alembic", "upgrade", "head",
+            cwd="/app",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        if proc.returncode != 0:
+            logger.error("Alembic migration failed: %s", stderr.decode())
+        else:
+            logger.info("Alembic migrations applied successfully")
+            if stdout.strip():
+                logger.info("Alembic output: %s", stdout.decode().strip())
+    except Exception as e:
+        logger.error("Failed to run Alembic migrations: %s", e)
 
     yield
     await engine.dispose()
