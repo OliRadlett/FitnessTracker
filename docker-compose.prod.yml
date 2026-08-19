@@ -1,6 +1,8 @@
 # Production overrides — use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# NOTE: fittrack.py / start.sh auto-detects this file and includes it automatically.
+# NOTE: fittrack.py does NOT auto-include this file. Use the --prod flag:
+#   python fittrack.py --prod up
+#   ./start.sh --prod up
 #
 # These overrides replace dev-friendly settings (hot-reload, debug, exposed ports)
 # with production equivalents (optimized builds, HTTPS via Caddy, no debug).
@@ -26,6 +28,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    command: ["node", "server.js"]
+    entrypoint: ""
     volumes: []
     restart: unless-stopped
 

@@ -145,46 +145,17 @@ openssl rand -base64 48
 
 ## 7. Configure Caddy for Your Domain
 
-Edit the Caddyfile to use your real domain and get automatic HTTPS:
+The Caddyfile uses the `DOMAIN` environment variable (set in `.env`). No manual Caddyfile editing is needed — the deploy workflow resets it on every push.
+
+Set your domain in `.env`:
 
 ```bash
-nano infra/Caddyfile
+DOMAIN=oliradlett.co.uk
 ```
 
-Replace the contents with:
+Caddy will automatically obtain a Let's Encrypt certificate for your domain. For `localhost`, it uses a self-signed certificate.
 
-```caddyfile
-{
-    email you@gmail.com    # Used for Let's Encrypt notifications
-}
-
-:80 {
-    redir https://{host}{uri} permanent
-}
-
-oliradlett.co.uk {
-    # Frontend — Next.js basePath is /fittrack
-    handle /fittrack/* {
-        reverse_proxy frontend:3000
-    }
-
-    # Backend API
-    handle /api/v1/* {
-        reverse_proxy backend:8000
-    }
-
-    handle /health {
-        reverse_proxy backend:8000
-    }
-
-    # Root → redirect to /fittrack
-    handle / {
-        redir /fittrack permanent
-    }
-}
-```
-
-> **Note**: Remove `tls internal` — Caddy will automatically obtain a Let's Encrypt certificate.
+> **Note**: Do NOT edit the Caddyfile directly — the deploy workflow (`git reset --hard`) overwrites it on every deploy. All domain configuration is via the `DOMAIN` env var.
 
 ## 8. Configure Google OAuth
 
@@ -198,20 +169,22 @@ oliradlett.co.uk {
 
 ## 9. Build and Start
 
-Use the start script (works on Linux, macOS, and WSL):
+Use the start script with the `--prod` flag for production overrides:
 
 ```bash
-# Build all images and start with migrations
-./start.sh up --build --migrate
+# Build all images and start with migrations (production mode)
+./start.sh --prod up --build --migrate
 
 # Or step by step:
-./start.sh build
-./start.sh up
-./start.sh migrate
+./start.sh --prod build
+./start.sh --prod up
+./start.sh --prod migrate
 
 # Verify all services are running
-./start.sh status
+./start.sh --prod status
 ```
+
+> **Important**: Always use `--prod` in production. Without it, `fittrack.py` runs in dev mode (no volume mounts are used, but the frontend runs `npm run dev` instead of the production build).
 
 ## 10. Verify
 
@@ -275,7 +248,7 @@ ALLOWED_EMAILS=you@gmail.com,family@gmail.com,friend@gmail.com
 
 Then restart:
 ```bash
-./start.sh restart backend frontend
+./start.sh --prod restart backend frontend
 ```
 
 > Leave `ALLOWED_EMAILS` empty to allow **all** Google accounts (not recommended for personal use).
@@ -285,36 +258,37 @@ Then restart:
 ## Common Operations
 
 All commands use `./start.sh` (Linux/macOS/WSL) or `.\start.ps1` (Windows PowerShell).
+In production, always pass `--prod` to include the production compose overrides.
 
 ### View logs
 ```bash
-./start.sh logs backend          # Tail backend logs
-./start.sh logs                  # Tail all service logs
+./start.sh --prod logs backend          # Tail backend logs
+./start.sh --prod logs                  # Tail all service logs
 ```
 
 ### Restart after config changes
 ```bash
-./start.sh restart               # Restart all
-./start.sh restart backend       # Restart single service
+./start.sh --prod restart               # Restart all
+./start.sh --prod restart backend       # Restart single service
 ```
 
 ### Update to latest code
 ```bash
 cd /opt/fitness-tracker
 git pull
-./start.sh up --build --migrate
+./start.sh --prod up --build --migrate
 ```
 
 ### Database backup & restore
 ```bash
-./start.sh backup                            # Backup to backups/
-./start.sh backup -o my-backup.sql.gz        # Custom output path
-./start.sh restore backups/fittrack_20260101_120000.sql.gz
+./start.sh --prod backup                            # Backup to backups/
+./start.sh --prod backup -o my-backup.sql.gz        # Custom output path
+./start.sh --prod restore backups/fittrack_20260101_120000.sql.gz
 ```
 
 ### Full reset (teardown + rebuild + migrate)
 ```bash
-./start.sh reset
+./start.sh --prod reset
 ```
 
 ---
@@ -341,10 +315,10 @@ ufw enable
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `502 Bad Gateway` from Caddy | Backend/frontend not ready | `./start.sh logs backend frontend` |
+| `502 Bad Gateway` from Caddy | Backend/frontend not ready | `./start.sh --prod logs backend frontend` |
 | `SSL certificate error` | DNS not propagated | Wait 5 min, verify A record |
-| Sign-in rejected | Email not in `ALLOWED_EMAILS` | Update `.env` and restart: `./start.sh restart` |
+| Sign-in rejected | Email not in `ALLOWED_EMAILS` | Update `.env` and restart: `./start.sh --prod restart` |
 | `SECRET_KEY` validation error | Still using default value | Generate a real secret: `openssl rand -base64 48` |
-| Migrations fail | DB not ready | `./start.sh logs db`, wait for healthcheck |
+| Migrations fail | DB not ready | `./start.sh --prod logs db`, wait for healthcheck |
 | NextAuth `redirect_uri` mismatch | Google Console config wrong | Ensure redirect URI matches: `https://oliradlett.co.uk/fittrack/api/auth/callback/google` |
-| Pages load at `/` instead of `/fittrack` | Next.js basePath not applied | Rebuild frontend: `./start.sh build frontend` |
+| Pages load at `/` instead of `/fittrack` | Next.js basePath not applied | Rebuild frontend: `./start.sh --prod build frontend` |

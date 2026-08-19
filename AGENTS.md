@@ -62,6 +62,7 @@ Quick reference maps in each package — use these for orientation before readin
 | Route dedup | [`route_service.py`](backend/app/services/route_service.py) | `0.60` | start/end 40%, distance 30%, name 15%, shape 15% |
 | PR detection | [`lifting.py`](backend/app/services/lifting.py) `_check_and_record_pr()` | Brzycki: `weight × (36/(37-reps))` | Updated in-place (one PR per exercise) |
 | Exercise normalisation | [`exercise_db.py`](backend/app/services/exercise_db.py) | — | Canonical names, aliases, categories |
+| Workout zone matching | [`workout_planner.py`](backend/app/services/workout_planner.py) | TSB-based readiness | 5 zones from FTP/LTHR, route scoring: TSS 35%, duration 25%, power 25%, HR 15% |
 
 **Merge priority**: Strava (3) > Wahoo (2) > Komoot (1). Lower-priority only fills NULL fields. Strava is source of truth.
 
@@ -74,6 +75,8 @@ Quick reference maps in each package — use these for orientation before readin
 **VO2max**: ACSM power formula + Uth HR formula. Endpoint: `GET /api/v1/cycling/vo2max`.
 
 **Decoupling**: HR vs power ratio across ride halves. Only for rides >60min with both streams.
+
+**Workout Planner**: 5 intensity zones (Z1–Z5) derived from FTP and LTHR. Readiness recommendation based on TSB (CTL − ATL). Unridden route TSS estimated from distance + elevation. Endpoint: `GET /api/v1/workout-planner/zones`, `POST /api/v1/workout-planner/plan`, `POST /api/v1/workout-planner/match-routes`.
 
 **Encryption**: OAuth tokens encrypted at rest via Fernet ([`encryption.py`](backend/app/services/encryption.py)). `EncryptedString` TypeDecorator transparent to services.
 
@@ -139,6 +142,8 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
+11. **`fittrack.py` dev mode only**: Does NOT auto-include `docker-compose.prod.yml`. Use `--prod` flag for production overrides
+12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
 
 ## Development Lessons
 
@@ -160,7 +165,8 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 ## Quick Reference
 
 ```bash
-python fittrack.py up --migrate    # Start all services
+python fittrack.py up --migrate    # Start all services (dev mode)
+python fittrack.py --prod up       # Start with production overrides
 python fittrack.py down            # Stop all
 python fittrack.py restart worker beat  # Restart after task changes
 python fittrack.py logs backend --tail 30

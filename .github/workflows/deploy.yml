@@ -58,8 +58,11 @@ jobs:
             docker image prune -f
 
             echo "▸ Waiting for backend health check…"
+            # Read domain from .env so Caddy routes to the correct site block.
+            # Uses -k for self-signed/local certs, -L to follow HTTPS redirect.
+            DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
             for i in $(seq 1 60); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k -L -H "Host: ${DEPLOY_DOMAIN}" "https://localhost/health" || true)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "  ✓ Backend healthy after ${i}s"
                 break

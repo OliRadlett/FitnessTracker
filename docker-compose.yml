@@ -119,7 +119,7 @@ services:
       - frontend
       - backend
     environment:
-      - DOMAIN=localhost
+      - DOMAIN=${DOMAIN:-localhost}
 
 volumes:
   pgdata:

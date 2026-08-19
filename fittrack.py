@@ -215,13 +215,29 @@ def _run(
     )
 
 
+_prod_mode = False
+
+
+def use_prod(enabled: bool = True) -> None:
+    """Enable or disable production compose overrides globally."""
+    global _prod_mode
+    _prod_mode = enabled
+
+
 def _compose_file_args() -> list[str]:
-    """Return ``-f`` flags for docker compose, including prod override if present."""
+    """Return ``-f`` flags for docker compose.
+
+    Only includes ``docker-compose.prod.yml`` when production mode has been
+    explicitly enabled via :func:`use_prod` (or the ``--prod`` CLI flag).
+    Auto-including the prod file breaks local development because it removes
+    volume mounts and hot-reload.
+    """
     root = _project_root()
     args = ["-f", str(root / "docker-compose.yml")]
-    prod = root / "docker-compose.prod.yml"
-    if prod.is_file():
-        args += ["-f", str(prod)]
+    if _prod_mode:
+        prod = root / "docker-compose.prod.yml"
+        if prod.is_file():
+            args += ["-f", str(prod)]
     return args
 
 
@@ -1183,7 +1199,8 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=textwrap.dedent("""\
             examples:
               %(prog)s                         Interactive menu
-              %(prog)s up                      Start all services
+              %(prog)s up                      Start all services (dev mode)
+              %(prog)s --prod up               Start with production overrides
               %(prog)s up backend frontend     Start specific services
               %(prog)s down                    Stop all services
               %(prog)s restart backend         Restart backend
@@ -1194,6 +1211,13 @@ def _build_parser() -> argparse.ArgumentParser:
               %(prog)s migrate                 Run database migrations
               %(prog)s exec backend bash       Open shell in backend container
         """),
+    )
+
+    parser.add_argument(
+        "--prod",
+        action="store_true",
+        default=False,
+        help="Use docker-compose.prod.yml overrides (production mode)",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -1259,6 +1283,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Enable production compose overrides if --prod flag is set
+    if getattr(args, "prod", False):
+        use_prod(True)
 
     # No subcommand → interactive menu
     if args.command is None:
