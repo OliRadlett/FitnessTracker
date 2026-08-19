@@ -4,6 +4,7 @@ FROM node:20-slim AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
+ENV NODE_OPTIONS=--max-old-space-size=512
 RUN npm install
 
 # Rebuild the source code only when needed
@@ -11,6 +12,7 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ENV NODE_OPTIONS=--max-old-space-size=512
 RUN npm run build
 
 # Production image, copy all the files and run next
