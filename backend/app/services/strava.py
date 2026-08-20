@@ -1,5 +1,6 @@
 """Strava service — sync logic, webhook handling, activity-to-lifting linking."""
 
+import logging
 import math
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -13,6 +14,8 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+
+logger = logging.getLogger(__name__)
 
 # ── NaN / Inf guard ─────────────────────────────────────────────────────────
 
@@ -704,7 +707,15 @@ async def backfill_all_activities(
 
             synced_total += 1
 
-        await db.flush()
+        # Commit every 10 pages to persist partial progress
+        if page % 10 == 0:
+            await db.commit()
+            logger.info(
+                f"Strava backfill progress: {synced_total} synced, "
+                f"{skipped_total} skipped through page {page}"
+            )
+        else:
+            await db.flush()
         page += 1
 
         # If fewer than 100 results, we've reached the end

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.activity import ActivityRead
 from app.schemas.lifting import (
+    LiftingAnalysisResponse,
     LiftingSessionCreate,
     LiftingSessionLink,
     LiftingSessionRead,
@@ -330,3 +331,21 @@ async def delete_warmup_template(
     deleted = await lifting_service.delete_warmup_template(db, template_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Warmup template not found")
+
+
+# ── Session Analysis ─────────────────────────────────────────────────────────
+
+
+@router.get("/sessions/{session_id}/analysis", response_model=LiftingAnalysisResponse)
+async def get_session_analysis(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get comprehensive analysis of a lifting session."""
+    from app.services.session_analysis import analyze_lifting_session
+
+    analysis = await analyze_lifting_session(db, current_user.id, session_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return LiftingAnalysisResponse(**analysis)

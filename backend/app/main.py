@@ -177,6 +177,7 @@ from app.api.events import router as events_router
 from app.api.export import router as export_router
 from app.api.goals import router as goals_router
 from app.api.lifting import router as lifting_router
+from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
 from app.api.routes import router as routes_router
 from app.api.training_plans import router as training_plans_router
@@ -198,3 +199,4 @@ app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"])
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
 app.include_router(workout_planner_router, prefix="/api/v1/workout-planner", tags=["workout-planner"])
+app.include_router(llm_analysis_router, prefix="/api/v1/cycling/llm-analysis", tags=["LLM Analysis"])

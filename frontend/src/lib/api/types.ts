@@ -1008,3 +1008,160 @@ export interface UpdateEventPayload {
   taper_days?: number;
   notes?: string;
 }
+
+// ─── Session Analysis ──────────────────────────────────────────────────────
+
+export interface ExerciseVolume {
+  exercise_name: string;
+  volume_kg: number;
+}
+
+export interface SetProgressionPoint {
+  set_number: number;
+  weight_kg: number;
+  reps: number;
+  estimated_1rm?: number;
+}
+
+export interface RepDropoff {
+  exercise_name: string;
+  first_set_reps: number;
+  last_set_reps: number;
+  dropoff_pct: number;
+}
+
+export interface PrProximity {
+  exercise_name: string;
+  top_set_1rm: number;
+  pr_1rm: number;
+  proximity_pct: number;
+}
+
+export interface LiftingAnalysis {
+  volume_breakdown: ExerciseVolume[];
+  set_progression: Record<string, SetProgressionPoint[]>;
+  rep_dropoff: RepDropoff[];
+  pr_proximity: PrProximity[];
+  rpe_analysis: {
+    session_rpe?: number;
+    avg_set_rpe?: number;
+    rpe_vs_volume_correlation?: number;
+  };
+  fatigue_index: number;
+  session_density?: number;
+  exercise_count: number;
+  working_sets_count: number;
+}
+
+export interface RidePowerZoneDistribution {
+  zone_name: string;
+  zone_label: string;
+  seconds: number;
+  pct: number;
+}
+
+export interface PowerHistogramBucket {
+  range_label: string;
+  count: number;
+  pct: number;
+}
+
+export interface PacingSegment {
+  pct_start: number;
+  pct_end: number;
+  avg_power?: number;
+  avg_hr?: number;
+}
+
+export interface RideAnalysis {
+  power_zones: RidePowerZoneDistribution[];
+  power_distribution: PowerHistogramBucket[];
+  pacing_analysis: {
+    segments: PacingSegment[];
+    power_variability?: number;
+  };
+  variability_index?: number;
+  intensity_factor?: number;
+  decoupling?: {
+    first_half_ef?: number;
+    second_half_ef?: number;
+    decoupling_pct?: number;
+    classification?: string;
+  };
+  efficiency_factor?: number;
+  vam?: number;
+  tss_breakdown: {
+    total_tss?: number;
+    tss_per_hour?: number;
+  };
+  climbing_analysis?: {
+    total_climbing_m?: number;
+    avg_gradient_pct?: number;
+    max_gradient_pct?: number;
+    time_climbing_s?: number;
+    time_flat_s?: number;
+    time_descending_s?: number;
+  };
+}
+
+// ─── Today Summary ────────────────────────────────────────────────────────
+
+export interface TodayActivitySummary {
+  id: string;
+  name: string;
+  sport_type: string;
+  start_date: string;
+  duration_seconds?: number;
+  distance_meters?: number;
+  average_power?: number;
+  normalized_power?: number;
+  average_heartrate?: number;
+  tss?: number;
+  calories?: number;
+}
+
+export interface TodayLiftingSummary {
+  id: string;
+  session_date: string;
+  focus?: string;
+  duration_seconds?: number;
+  rpe_session?: number;
+  total_volume_kg: number;
+  sets_count: number;
+}
+
+export interface TodaySummary {
+  today_activities: TodayActivitySummary[];
+  today_lifting_sessions: TodayLiftingSummary[];
+  today_tss: number;
+  today_volume_kg: number;
+  today_distance_meters: number;
+  today_duration_seconds: number;
+  latest_recovery?: number;
+  latest_hrv_ms?: number;
+  latest_strain?: number;
+  latest_sleep_hours?: number;
+  current_ctl: number;
+  current_atl: number;
+  current_tsb: number;
+  active_alerts: number;
+}
+
+// ─── LLM Analysis ──────────────────────────────────────────────────────────
+
+export interface LlmAnalysis {
+  id: string;
+  analysis_date: string;
+  stats_json: Record<string, unknown>;
+  analysis_text: string;
+  model_used: string;
+  created_at: string;
+}
+
+export interface LlmAnalysisSummary {
+  id: string;
+  analysis_date: string;
+  analysis_text: string;
+  model_used: string;
+  created_at: string;
+}

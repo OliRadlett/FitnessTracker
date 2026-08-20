@@ -17,3 +17,5 @@
 | `polyline_utils.py` | Polyline encode/decode, Haversine distance, provider conversions | `decode_polyline()`, `encode_polyline()` |
 | `gpx.py` | GPX 1.1 generation and parsing | `generate_gpx()`, `parse_gpx()` |
 | `workout_planner.py` | Workout zone computation, target planning, route matching | `compute_workout_zones()`, `plan_workout()`, `find_matching_routes()` |
+| `session_analysis.py` | Post-session ride and lifting analysis | `analyze_lifting_session()`, `analyze_ride()` |
+| `llm_analysis.py` | LLM-powered cycling analysis via Gemini | `compile_cycling_stats()`, `analyze_with_gemini()`, `run_llm_analysis()` |

@@ -187,7 +187,7 @@ async def validate_and_store_token(
     """
     # Check expiry locally first
     if is_token_expired(token):
-        raise ValueError("Whoop token is expired. Please paste a fresh token.")
+        raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
 
     # Validate against Whoop API
     try:
@@ -240,7 +240,7 @@ async def validate_and_store_token(
 async def sync_whoop_cycles(
     db: AsyncSession,
     user_id: uuid.UUID,
-    limit: int = 100,
+    limit: int = 500,
 ) -> list[DailyMetric]:
     """Sync Whoop cycle + recovery data into DailyMetric records.
 
@@ -325,7 +325,7 @@ async def sync_whoop_cycles(
             except Exception as e:
                 err_str = str(e).lower()
                 if "401" in err_str or "expired" in err_str:
-                    raise ValueError("Whoop token is expired. Please paste a fresh token in Settings.")
+                    raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
 
         # Merge recovery data into cycle raw_data for reference
@@ -399,7 +399,7 @@ async def sync_whoop_cycles(
 async def sync_whoop_sleep(
     db: AsyncSession,
     user_id: uuid.UUID,
-    limit: int = 100,
+    limit: int = 500,
 ) -> list[SleepLog]:
     """Fetch Whoop sleep data and upsert into SleepLog.
 
@@ -562,7 +562,7 @@ async def sync_whoop_sleep(
 async def sync_whoop_workouts(
     db: AsyncSession,
     user_id: uuid.UUID,
-    limit: int = 100,
+    limit: int = 500,
 ) -> list:
     """Enrich existing Strava activities with Whoop workout data.
 
@@ -947,12 +947,20 @@ async def backfill_whoop_data(
     db: AsyncSession,
     user_id: uuid.UUID,
     months: int = 12,
+    *,
+    start_dt: datetime | None = None,
+    end_dt: datetime | None = None,
 ) -> dict:
     """Backfill all historical Whoop data for the given time range.
 
     Fetches cycles (+ recovery), sleep, and workout data from (now - months) to now.
     Uses the Whoop API's start/end date filters and automatic pagination to
     retrieve all records, not just the most recent page.
+
+    Args:
+        months: Number of months to look back (ignored if start_dt/end_dt given).
+        start_dt: Explicit start of the window (inclusive). Overrides ``months``.
+        end_dt: Explicit end of the window (exclusive). Defaults to now.
 
     Returns a summary dict with counts for each data type.
     """
@@ -965,9 +973,15 @@ async def backfill_whoop_data(
     token = connection.access_token
 
     # Calculate date range
-    start_date = (datetime.now(UTC) - timedelta(days=months * 30)).strftime(
-        "%Y-%m-%dT%H:%M:%S.000Z"
-    )
+    if start_dt is not None:
+        start_date = start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    else:
+        start_date = (datetime.now(UTC) - timedelta(days=months * 30)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
+    end_date: str | None = None
+    if end_dt is not None:
+        end_date = end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     synced_cycles = 0
     synced_sleep = 0
@@ -979,6 +993,7 @@ async def backfill_whoop_data(
         cycles = await whoop_client.get_all_cycles(
             token,
             start=start_date,
+            end=end_date,
             max_records=10000,
         )
     except Exception as e:
@@ -1031,7 +1046,7 @@ async def backfill_whoop_data(
             except Exception as e:
                 err_str = str(e).lower()
                 if "401" in err_str or "expired" in err_str:
-                    raise ValueError("Whoop token is expired. Please paste a fresh token in Settings.")
+                    raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
 
         cycle_with_recovery = {**cycle}
@@ -1042,6 +1057,24 @@ async def backfill_whoop_data(
                 "resting_heart_rate": resting_hr,
                 "respiratory_rate": respiratory_rate,
             }
+
+        # Build conditional update fields — only overwrite recovery fields
+        # if we have non-null values, to prevent clobbering existing data
+        # when the recovery fetch fails.
+        update_fields: dict = {
+            "strain": float(strain) if strain else None,
+            "calories": calories,
+            "raw_data": cycle_with_recovery,
+            "updated_at": datetime.now(UTC),
+        }
+        if recovery_score is not None:
+            update_fields["recovery_score"] = recovery_score
+        if hrv_ms is not None:
+            update_fields["hrv_ms"] = hrv_ms
+        if resting_hr is not None:
+            update_fields["resting_hr"] = resting_hr
+        if respiratory_rate is not None:
+            update_fields["respiratory_rate"] = respiratory_rate
 
         stmt = (
             pg_insert(DailyMetric)
@@ -1061,16 +1094,7 @@ async def backfill_whoop_data(
             )
             .on_conflict_do_update(
                 index_elements=["user_id", "metric_date", "source"],
-                set_={
-                    "strain": float(strain) if strain else None,
-                    "calories": calories,
-                    "recovery_score": recovery_score,
-                    "hrv_ms": hrv_ms,
-                    "resting_hr": resting_hr,
-                    "respiratory_rate": respiratory_rate,
-                    "raw_data": cycle_with_recovery,
-                    "updated_at": datetime.now(UTC),
-                },
+                set_=update_fields,
             )
             .returning(DailyMetric)
         )
@@ -1082,7 +1106,7 @@ async def backfill_whoop_data(
     await db.flush()
     logger.info(
         f"Whoop backfill: {synced_cycles} cycles synced for user {user_id} "
-        f"(last {months} months)"
+        f"(window {start_date} → {end_date or 'now'})"
     )
 
     # ── 2. Backfill sleep ─────────────────────────────────────────────────
@@ -1091,6 +1115,7 @@ async def backfill_whoop_data(
         sleep_records = await whoop_client.get_all_sleep_activities(
             token,
             start=start_date,
+            end=end_date,
             max_records=10000,
         )
     except httpx.HTTPStatusError as e:
@@ -1209,6 +1234,7 @@ async def backfill_whoop_data(
         workouts = await whoop_client.get_all_workout_activities(
             token,
             start=start_date,
+            end=end_date,
             max_records=10000,
         )
     except httpx.HTTPStatusError as e:
@@ -1288,7 +1314,7 @@ async def backfill_whoop_data(
     logger.info(
         f"Whoop backfill complete for user {user_id}: "
         f"{synced_cycles} cycles, {synced_sleep} sleep, {synced_workouts} workouts "
-        f"(last {months} months)"
+        f"(window {start_date} → {end_date or 'now'})"
     )
 
     return {
@@ -1301,5 +1327,85 @@ async def backfill_whoop_data(
             f"{synced_sleep} sleep records, and "
             f"{synced_workouts} enriched workouts from Whoop "
             f"(last {months} months)"
+        ),
+    }
+
+
+# ── Chunked backfill ──────────────────────────────────────────────────────
+
+_CHUNK_MONTHS = 3  # Each chunk covers 3 months
+
+
+async def backfill_whoop_chunked(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    months: int = 12,
+    chunk_months: int = _CHUNK_MONTHS,
+):
+    """Async generator that backfills Whoop data in time-window chunks.
+
+    Yields progress dicts after each chunk is committed::
+
+        {"type": "progress", "chunk": 1, "total_chunks": 4, "synced_cycles": 42, ...}
+        ...
+        {"type": "complete", "synced_cycles": 150, "synced_sleep": 140, ...}
+
+    Each chunk commits independently so partial progress is preserved
+    even if the request is interrupted.
+    """
+    now = datetime.now(UTC)
+    total_months = months
+    # Build list of (start_dt, end_dt) windows, oldest first
+    chunks: list[tuple[datetime, datetime]] = []
+    cursor = now
+    remaining = total_months
+    while remaining > 0:
+        window = min(remaining, chunk_months)
+        chunk_start = cursor - timedelta(days=window * 30)
+        chunks.append((chunk_start, cursor))
+        cursor = chunk_start
+        remaining -= window
+    chunks.reverse()  # oldest → newest
+
+    total_chunks = len(chunks)
+    agg = {"synced_cycles": 0, "synced_sleep": 0, "synced_workouts": 0}
+
+    for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
+        logger.info(
+            f"Whoop chunked backfill user {user_id}: "
+            f"chunk {i}/{total_chunks} ({chunk_start.date()} → {chunk_end.date()})"
+        )
+        result = await backfill_whoop_data(
+            db, user_id, months=0,
+            start_dt=chunk_start, end_dt=chunk_end,
+        )
+        await db.commit()
+
+        agg["synced_cycles"] += result["synced_cycles"]
+        agg["synced_sleep"] += result["synced_sleep"]
+        agg["synced_workouts"] += result["synced_workouts"]
+
+        yield {
+            "type": "progress",
+            "chunk": i,
+            "total_chunks": total_chunks,
+            "window_start": chunk_start.date().isoformat(),
+            "window_end": chunk_end.date().isoformat(),
+            "chunk_cycles": result["synced_cycles"],
+            "chunk_sleep": result["synced_sleep"],
+            "chunk_workouts": result["synced_workouts"],
+            **agg,
+        }
+
+    yield {
+        "type": "complete",
+        "total_chunks": total_chunks,
+        "months": total_months,
+        **agg,
+        "detail": (
+            f"Backfilled {agg['synced_cycles']} daily metrics, "
+            f"{agg['synced_sleep']} sleep records, and "
+            f"{agg['synced_workouts']} enriched workouts from Whoop "
+            f"(last {total_months} months, {total_chunks} chunks)"
         ),
     }

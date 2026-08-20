@@ -11,6 +11,7 @@ from app.models.lifting import (
     WarmupTemplate,
     WarmupTemplateStep,
 )
+from app.models.llm_analysis import LlmAnalysis
 from app.models.route import Route, RouteSource
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
@@ -29,6 +30,7 @@ __all__ = [
     "HealthAlert",
     "LiftingSession",
     "LiftingSet",
+    "LlmAnalysis",
     "OAuthConnection",
     "PersonalRecord",
     "Route",

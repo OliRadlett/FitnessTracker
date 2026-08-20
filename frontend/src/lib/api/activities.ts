@@ -1,5 +1,5 @@
 import { apiFetch, apiUpload } from './fetch';
-import type { Activity, ActivityDetail, ActivityFilters, MergeThresholdResult } from './types';
+import type { Activity, ActivityDetail, ActivityFilters, MergeThresholdResult, RideAnalysis } from './types';
 
 export async function getActivities(filters: ActivityFilters = {}): Promise<Activity[]> {
   const params = new URLSearchParams();
@@ -53,4 +53,10 @@ export async function importFitFile(file: File, token?: string): Promise<Activit
   const formData = new FormData();
   formData.append('file', file);
   return apiUpload<Activity>('/api/v1/activities/import-fit', formData, token);
+}
+
+// ─── Activity Analysis ──────────────────────────────────────────────────────
+
+export async function getActivityAnalysis(activityId: string): Promise<RideAnalysis> {
+  return apiFetch<RideAnalysis>(`/api/v1/activities/${activityId}/analysis`);
 }

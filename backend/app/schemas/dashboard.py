@@ -1,7 +1,53 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
+
+
+class TodayActivitySummary(BaseModel):
+    """Single activity summary for the today view."""
+    model_config = {"from_attributes": True}
+    id: UUID
+    name: str
+    sport_type: str
+    start_date: datetime
+    duration_seconds: int | None = None
+    distance_meters: float | None = None
+    average_power: float | None = None
+    normalized_power: float | None = None
+    average_heartrate: float | None = None
+    tss: float | None = None
+    calories: float | None = None
+
+
+class TodayLiftingSummary(BaseModel):
+    """Single lifting session summary for the today view."""
+    model_config = {"from_attributes": True}
+    id: UUID
+    session_date: date
+    focus: str | None = None
+    duration_seconds: int | None = None
+    rpe_session: float | None = None
+    total_volume_kg: float = 0.0
+    sets_count: int = 0
+
+
+class TodaySummary(BaseModel):
+    """Aggregated today data for the dashboard today view."""
+    today_activities: list[TodayActivitySummary] = []
+    today_lifting_sessions: list[TodayLiftingSummary] = []
+    today_tss: float = 0.0
+    today_volume_kg: float = 0.0
+    today_distance_meters: float = 0.0
+    today_duration_seconds: int = 0
+    latest_recovery: float | None = None
+    latest_hrv_ms: float | None = None
+    latest_strain: float | None = None
+    latest_sleep_hours: float | None = None
+    current_ctl: float = 0.0
+    current_atl: float = 0.0
+    current_tsb: float = 0.0
+    active_alerts: int = 0
 
 
 class RestDaySuggestion(BaseModel):

@@ -11,6 +11,7 @@ import type {
   UpdateWarmupTemplatePayload,
   VolumeTrendResponse,
   Activity,
+  LiftingAnalysis,
 } from './types';
 
 export async function getLiftingSessions(): Promise<LiftingSession[]> {
@@ -89,5 +90,11 @@ export async function deleteWarmupTemplate(id: string): Promise<void> {
   return apiFetch<void>(`/api/v1/lifting/warmup-templates/${id}`, {
     method: 'DELETE',
   });
+}
+
+// ─── Session Analysis ────────────────────────────────────────────────────────
+
+export async function getLiftingAnalysis(sessionId: string): Promise<LiftingAnalysis> {
+  return apiFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${sessionId}/analysis`);
 }
 

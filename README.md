@@ -142,41 +142,56 @@ Once the backend is running, visit:
 
 ## Features
 
-### Phase 1 (Current)
-- **Dashboard** — Summary cards, weekly TSS chart, recent activities and lifting sessions
-- **Activities** — Cycling activity sync from Strava with filtering and stream data charts
-- **Lifting** — Manual session logging with sets/reps/weight/RPE, automatic PR detection (Brzycki formula), volume tracking
-- **Charts** — Backend-driven chart service with reusable frontend renderer
+### Dashboard
+- **Today / Weekly / Monthly tabs** — Switch between daily snapshot, weekly trends, and monthly/yearly review
+- **Summary cards** — TSS, volume, distance, recovery, HRV, strain, sleep, training load (CTL/ATL/TSB)
+- **Health Monitor** — Composite analysis for overtraining, injury risk, and illness detection
+- **AI Performance Analysis** — Weekly Gemini-powered cycling analysis with personalized recommendations
 
-### Phase 2 (Planned) — [Detailed Plan](plans/phase-2.md)
-**Features:**
-- **Custom service runner states** — Per-service startup status in `fittrack.py` (e.g., "Installing node modules")
-- **Exercise autocomplete + normalisation** — Built-in exercise database with canonical names to prevent "Squat"/"squat"/"squats" fragmentation
-- **Linked sessions on Activities page** — Show linked lifting session data on Strava strength activities
-- **Manual PR entry** — Record PRs from sessions not logged in the app
-- **PR display reordering** — Big 3 (Squat, Bench, Deadlift) first, accessories behind toggle
-- **Session editing UI** — Edit date, focus, notes, and other session fields after creation
-- **Delete session** — Remove sessions with confirmation dialog
-- **PR deduplication** — Keep only the single best PR per exercise (update rather than duplicate)
+### Activities
+- **Multi-provider sync** — Strava, Wahoo, Komoot activity and route sync with intelligent deduplication
+- **Activity calendar** — Visual calendar with activity dots and filtering
+- **Stream data** — Power, HR, cadence, altitude, velocity time-series from connected devices
+- **Ride Analysis** — Comprehensive post-ride report: power zones, pacing, VI, decoupling, climbing analysis
 
-**Bug Fixes:**
-- **PR persists after set deletion** — Recalculate PRs when the underlying set is deleted
-- **PR persists after session deletion** — Recalculate PRs when a session is deleted
-- **Session volume not updated on set edit** — Recalculate `total_volume_kg` when set weight/reps change
-- **Strava sport type mismatch** — Normalise "WeightTraining"/"Workout"/"CrossFit" to "strength" during sync
+### Lifting
+- **Session logging** — Manual session entry with sets/reps/weight/RPE
+- **PR tracking** — Automatic PR detection using Brzycki 1RM formula
+- **Volume tracking** — Session and per-exercise volume trends
+- **Lifting Analysis** — Post-session report: volume breakdown, set progression, rep dropoff, PR proximity, fatigue index
 
-**Infrastructure:**
-- **Docker healthchecks for worker/beat** — Add proper healthchecks so `fittrack.py` can report accurate health status
+### Cycling
+- **FTP management** — Manual entry, auto-estimation from power curve, FTP history tracking
+- **Training load** — CTL/ATL/TSB computation with EWMA model
+- **Power analysis** — Power curve, power zones, normalized power, variability index
+- **VO2max estimation** — ACSM power formula + Uth HR formula
+- **Decoupling analysis** — Cardiac drift detection for rides >60min
 
-Future integrations:
-- Whoop integration (recovery, sleep, strain)
-- Wahoo integration (indoor cycling workouts)
-- Autopopulated training calendar
+### Routes
+- **Multi-provider sync** — Strava, Komoot, Wahoo route sync with deduplication
+- **Route matching** — Automatic linking of activities to routes
+- **GPX import/export** — Upload and download GPX files
 
-### Phase 3 (Planned)
-- Sport-specific trend analysis
-- Cross-sport correlation insights
-- Health alert engine (overtraining, illness, injury detection)
+### Training
+- **Training plans** — Template-based plan generation with day-by-day scheduling
+- **Workout planner** — 5-zone intensity model, route matching, TSS estimation
+- **Goals** — Set and track fitness goals with progress monitoring
+- **Events** — Race/event tracking with countdown and taper info
+
+### Health & Recovery
+- **Whoop integration** — Recovery scores, sleep tracking, HRV, strain, respiratory rate
+- **Health alerts** — Automated detection of overtraining, injury risk, illness indicators
+- **Rest day suggestions** — TSB and recovery-based training recommendations
+
+### Wiki
+- **In-app documentation** — Features overview, metrics glossary, science explanations, usage guide
+- **18 metric definitions** — TSS, CTL, ATL, TSB, FTP, NP, IF, VI, VAM, VO2max, and more
+- **Research explanations** — Training load models, power algorithms, 1RM formulas
+
+### Data & Export
+- **CSV export** — Lifting sessions, activities, personal records
+- **PDF reports** — Formatted training reports
+- **Database backup** — Weekly automated pg_dump with 30-day retention
 
 ## License
 

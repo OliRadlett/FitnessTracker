@@ -12,3 +12,4 @@ export * from './dashboard';
 export * from './goals';
 export * from './trainingPlans';
 export * from './events';
+export * from './llmAnalysis';

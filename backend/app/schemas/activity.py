@@ -124,3 +124,40 @@ class CalendarDayData(BaseModel):
     """Combined activity + health data for a calendar day."""
     activities: list[ActivityCalendarEntry]
     daily_metrics: list[DailyMetricSummary]
+
+
+# ── Ride Analysis ────────────────────────────────────────────────────────────
+
+
+class PowerZoneDistribution(BaseModel):
+    zone_name: str
+    zone_label: str
+    seconds: float
+    pct: float
+
+
+class PowerHistogramBucket(BaseModel):
+    range_label: str  # "0-50W"
+    count: int
+    pct: float
+
+
+class PacingSegment(BaseModel):
+    pct_start: float
+    pct_end: float
+    avg_power: float | None = None
+    avg_hr: float | None = None
+
+
+class RideAnalysisResponse(BaseModel):
+    model_config = {"from_attributes": True}
+    power_zones: list[PowerZoneDistribution]
+    power_distribution: list[PowerHistogramBucket]
+    pacing_analysis: dict  # segments list + power_variability
+    variability_index: float | None
+    intensity_factor: float | None
+    decoupling: dict | None  # from compute_decoupling_for_activity
+    efficiency_factor: float | None
+    vam: float | None
+    tss_breakdown: dict  # total_tss, tss_per_hour
+    climbing_analysis: dict | None

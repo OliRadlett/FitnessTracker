@@ -104,6 +104,7 @@ services:
     environment:
       - WATCHPACK_POLLING=true
       - INTERNAL_API_URL=http://backend:8000
+      - NODE_ENV=development
 
   caddy:
     image: caddy:2-alpine

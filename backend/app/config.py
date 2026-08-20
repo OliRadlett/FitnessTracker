@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     debug: bool = True
     allowed_origins: str = "http://localhost:3000,https://localhost"
     public_url: str = "https://localhost"
+    frontend_url: str = "https://localhost/fittrack"
 
     # Account whitelist — comma-separated email addresses allowed to log in.
     # If empty, all accounts are allowed (no restriction).
@@ -55,6 +56,9 @@ class Settings(BaseSettings):
 
     # Strava Webhook
     strava_verify_token: str = "fittrack_strava_webhook"
+
+    # Google Gemini (for LLM analysis)
+    gemini_api_key: str = ""
 
     # Database backup
     backup_dir: str = "/backups"

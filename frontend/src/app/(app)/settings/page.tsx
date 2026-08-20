@@ -110,6 +110,13 @@ export default function SettingsPage() {
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
   const [whoopBackfilling, setWhoopBackfilling] = useState(false);
   const [whoopBackfillResult, setWhoopBackfillResult] = useState<string | null>(null);
+  const [whoopBackfillProgress, setWhoopBackfillProgress] = useState<{
+    chunk: number;
+    total_chunks: number;
+    synced_cycles: number;
+    synced_sleep: number;
+    synced_workouts: number;
+  } | null>(null);
 
   async function handleDisconnect(connectionId: string) {
     try {
@@ -325,16 +332,69 @@ export default function SettingsPage() {
               onClick={async () => {
                 setWhoopBackfilling(true);
                 setWhoopBackfillResult(null);
+                setWhoopBackfillProgress(null);
                 try {
-                  const result = await authFetch<{ synced_cycles: number; synced_sleep: number; synced_workouts: number; months: number; detail: string }>(
-                    '/api/v1/connections/whoop/backfill',
-                    { method: 'POST' }
-                  );
-                  setWhoopBackfillResult(result.detail);
+                  // Use raw fetch for SSE streaming — authFetch always parses JSON
+                  const headers: Record<string, string> = {};
+                  if (session?.backendToken) {
+                    headers['Authorization'] = `Bearer ${session.backendToken}`;
+                  }
+                  const response = await fetch('/api/v1/connections/whoop/backfill?months=24', {
+                    method: 'POST',
+                    headers,
+                    credentials: 'include',
+                  });
+                  if (!response.ok) {
+                    const err = await response.json().catch(() => ({ detail: response.statusText }));
+                    throw new Error(err.detail || `Backfill failed: ${response.status}`);
+                  }
+
+                  const reader = response.body?.getReader();
+                  if (!reader) throw new Error('No response stream');
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Parse SSE events from buffer
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                      if (!line.startsWith('data: ')) continue;
+                      try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.type === 'progress') {
+                          setWhoopBackfillProgress({
+                            chunk: event.chunk,
+                            total_chunks: event.total_chunks,
+                            synced_cycles: event.synced_cycles,
+                            synced_sleep: event.synced_sleep,
+                            synced_workouts: event.synced_workouts,
+                          });
+                        } else if (event.type === 'complete') {
+                          setWhoopBackfillResult(event.detail);
+                          setWhoopBackfillProgress(null);
+                        } else if (event.type === 'error') {
+                          throw new Error(event.detail);
+                        }
+                      } catch (parseErr) {
+                        if (parseErr instanceof Error && parseErr.message !== 'Backfill failed') {
+                          console.warn('SSE parse error:', parseErr);
+                        } else {
+                          throw parseErr;
+                        }
+                      }
+                    }
+                  }
+
                   queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
                   queryClient.invalidateQueries({ queryKey: ['readiness'] });
                 } catch (err) {
                   setWhoopBackfillResult(`Error: ${err instanceof Error ? err.message : 'Backfill failed'}`);
+                  setWhoopBackfillProgress(null);
                 } finally {
                   setWhoopBackfilling(false);
                 }
@@ -347,6 +407,24 @@ export default function SettingsPage() {
           </div>
           {backfillResult && (
             <p className="mt-3 text-sm text-muted">{backfillResult}</p>
+          )}
+          {whoopBackfillProgress && (
+            <div className="mt-3">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex-1 bg-surface-light/30 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-purple-500 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${(whoopBackfillProgress.chunk / whoopBackfillProgress.total_chunks) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted whitespace-nowrap">
+                  {whoopBackfillProgress.chunk}/{whoopBackfillProgress.total_chunks} chunks
+                </span>
+              </div>
+              <p className="text-xs text-muted">
+                {whoopBackfillProgress.synced_cycles} metrics · {whoopBackfillProgress.synced_sleep} sleep · {whoopBackfillProgress.synced_workouts} workouts
+              </p>
+            </div>
           )}
           {whoopBackfillResult && (
             <p className="mt-3 text-sm text-muted">{whoopBackfillResult}</p>

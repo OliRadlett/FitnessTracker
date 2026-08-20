@@ -34,6 +34,7 @@ class User(Base):
     goals: Mapped[list["Goal"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     training_plans: Mapped[list["TrainingPlan"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     events: Mapped[list["Event"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    llm_analyses: Mapped[list["LlmAnalysis"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):

@@ -1,10 +1,11 @@
-"""Connections API — list connections, trigger sync, Whoop token paste."""
+"""Connections API — list connections, trigger sync, Whoop backfill."""
 
+import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +14,6 @@ from app.models.user import OAuthConnection, User
 from app.schemas.auth import OAuthConnectionRead
 from app.services.auth import get_current_user
 from app.services.strava import sync_activities
-
-
-class WhoopTokenRequest(BaseModel):
-    """Request body for Whoop token paste."""
-    token: str
 
 logger = logging.getLogger(__name__)
 
@@ -145,16 +141,18 @@ async def trigger_sync(
 
 @router.post("/whoop/backfill")
 async def backfill_whoop(
-    months: int = 12,
+    months: int = Query(12, ge=1, le=120, description="Months of history to backfill"),
+    chunk_months: int = Query(3, ge=1, le=12, description="Months per chunk (smaller = more progress updates)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Backfill all historical Whoop data for the current user.
 
-    Fetches cycles (with recovery), sleep, and workout data going back
-    the specified number of months. Uses Whoop API pagination to retrieve
-    all records in the date range.
+    Processes data in time-window chunks (default 3 months each) with
+    independent commits, so partial progress is preserved if the request
+    is interrupted. Returns an SSE stream with progress updates.
     """
+    # Validate connection exists before starting the stream
     result = await db.execute(
         select(OAuthConnection).where(
             OAuthConnection.user_id == current_user.id,
@@ -165,34 +163,31 @@ async def backfill_whoop(
     if not connection:
         raise HTTPException(status_code=404, detail="No Whoop connection found")
 
-    try:
-        from app.services.whoop import backfill_whoop_data
-        summary = await backfill_whoop_data(db, current_user.id, months=months)
-        await db.commit()
-        return summary
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    from app.database import async_session_factory
+    from app.services.whoop import backfill_whoop_chunked
+
+    user_id = current_user.id
+
+    async def event_stream():
+        # Create a dedicated session for the long-running stream.
+        # The DI session from get_db is closed after the endpoint returns,
+        # which happens immediately for StreamingResponse.
+        async with async_session_factory() as stream_db:
+            try:
+                async for event in backfill_whoop_chunked(
+                    stream_db, user_id, months=months, chunk_months=chunk_months,
+                ):
+                    yield f"data: {json.dumps(event)}\n\n"
+            except ValueError as e:
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            except Exception as e:
+                logger.error(f"Whoop backfill stream error for user {user_id}: {e}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
-@router.post("/whoop/token")
-async def connect_whoop_token(
-    body: WhoopTokenRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Connect Whoop by pasting a bearer token from the web app.
-
-    The token is validated against the Whoop profile endpoint,
-    then stored as an OAuthConnection with provider='whoop'.
-    """
-    try:
-        from app.services.whoop import validate_and_store_token
-        connection = await validate_and_store_token(db, current_user.id, body.token)
-        await db.commit()
-        return {
-            "detail": "Whoop connected successfully",
-            "provider_user_id": connection.provider_user_id,
-            "token_expires_at": connection.token_expires_at.isoformat() if connection.token_expires_at else None,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))

@@ -14,7 +14,7 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main]
+    branches: [prod]
 
 concurrency:
   group: deploy-production
@@ -44,8 +44,8 @@ jobs:
             cd /opt/fitness-tracker
 
             echo "▸ Pulling latest code…"
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin prod
+            git reset --hard origin/prod
 
             echo "▸ Generating production Caddyfile (without tls internal)…"
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")

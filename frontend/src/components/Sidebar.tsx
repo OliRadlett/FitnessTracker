@@ -13,6 +13,7 @@ const navItems = [
   { href: '/cycling', label: 'Cycling', icon: '🚴' },
   { href: '/lifting', label: 'Lifting', icon: '🏋️' },
   { href: '/routes', label: 'Routes', icon: '🗺️' },
+  { href: '/wiki', label: 'Wiki', icon: '📖' },
   { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 

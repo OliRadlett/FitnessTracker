@@ -1,5 +1,5 @@
 import { apiFetch } from './fetch';
-import type { DashboardSummary, MonthlySummaryItem, WeeklyReport, TrainingStreaks, ChartData, ChartParams, YearlySummary } from './types';
+import type { DashboardSummary, MonthlySummaryItem, WeeklyReport, TrainingStreaks, ChartData, ChartParams, YearlySummary, TodaySummary } from './types';
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch<DashboardSummary>('/api/v1/dashboard/summary');
@@ -30,4 +30,8 @@ export async function getChart(chartName: string, params: ChartParams = {}): Pro
 
 export async function getYearlySummary(year: number): Promise<YearlySummary> {
   return apiFetch<YearlySummary>(`/api/v1/dashboard/yearly-summary/${year}`);
+}
+
+export async function getTodaySummary(): Promise<TodaySummary> {
+  return apiFetch<TodaySummary>('/api/v1/dashboard/today');
 }

@@ -69,6 +69,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.backup_database",
         "schedule": crontab(hour=2, minute=0, day_of_week=0),
     },
+    # Weekly LLM cycling analysis (Sunday 5 AM UTC)
+    "weekly-llm-analysis": {
+        "task": "app.tasks.scheduler.weekly_llm_analysis",
+        "schedule": crontab(hour=5, minute=0, day_of_week=0),
+    },
 }
 
 
@@ -393,26 +398,7 @@ def sync_all_routes() -> dict:
 @celery_app.task(name="app.tasks.scheduler.cleanup_old_data")
 def cleanup_old_data() -> dict:
     """Clean up old activity streams and raw data to save space."""
-    import asyncio
-    from datetime import date, timedelta
-
-    from sqlalchemy import delete, select
-
-    from app.database import async_session_factory
-    from app.models.activity import Activity, ActivityStream
-
-    async def _run():
-        async with async_session_factory() as db:
-            # Remove activity streams for activities older than 90 days
-            cutoff = date.today() - timedelta(days=90)
-            old_activity_ids = select(Activity.id).where(Activity.start_date < cutoff)
-            result = await db.execute(
-                delete(ActivityStream).where(ActivityStream.activity_id.in_(old_activity_ids))
-            )
-            await db.commit()
-            return {"deleted_streams": result.rowcount}
-
-    return asyncio.run(_run())
+    return {"deleted_streams": 0, "note": "Stream cleanup disabled — streams are retained indefinitely"}
 
 
 @celery_app.task(name="app.tasks.scheduler.auto_estimate_ftp_weekly")
@@ -705,3 +691,35 @@ def backup_database() -> dict:
         "size_mb": round(file_size / (1024 * 1024), 2),
         "deleted_old_backups": deleted_count,
     }
+
+
+@celery_app.task(name="app.tasks.scheduler.weekly_llm_analysis")
+def weekly_llm_analysis() -> dict:
+    """Run LLM cycling analysis for all users with Gemini API key configured."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import async_session_factory
+    from app.models.user import User
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        return {"status": "skipped", "reason": "GEMINI_API_KEY not configured"}
+
+    async def _run():
+        async with async_session_factory() as db:
+            result = await db.execute(select(User))
+            users = list(result.scalars().all())
+            analyzed = 0
+            for user in users:
+                try:
+                    from app.services.llm_analysis import run_llm_analysis
+                    await run_llm_analysis(db, user.id)
+                    analyzed += 1
+                except Exception as e:
+                    logger.error(f"LLM analysis failed for user {user.id}: {e}", exc_info=True)
+            await db.commit()
+            return {"users_analyzed": analyzed, "users_total": len(users)}
+
+    return asyncio.run(_run())

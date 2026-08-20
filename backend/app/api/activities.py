@@ -22,6 +22,7 @@ from app.schemas.activity import (
     CalendarDayData,
     DailyMetricSummary,
     LinkedLiftingSessionSummary,
+    RideAnalysisResponse,
 )
 from app.services.auth import get_current_user
 
@@ -628,7 +629,24 @@ async def import_fit(
         .where(Activity.id == activity.id)
     )
     activity = result.scalar_one()
-
     enriched = _enrich_activity_read(activity)
     return enriched
+
+
+# ── Activity Analysis ────────────────────────────────────────────────────────
+
+
+@router.get("/{activity_id}/analysis", response_model=RideAnalysisResponse)
+async def get_activity_analysis(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get comprehensive analysis of a ride activity."""
+    from app.services.session_analysis import analyze_ride
+
+    analysis = await analyze_ride(db, current_user.id, activity_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return RideAnalysisResponse(**analysis)
 

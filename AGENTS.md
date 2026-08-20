@@ -80,13 +80,13 @@ Quick reference maps in each package — use these for orientation before readin
 
 **Encryption**: OAuth tokens encrypted at rest via Fernet ([`encryption.py`](backend/app/services/encryption.py)). `EncryptedString` TypeDecorator transparent to services.
 
-## Database (24 tables, UUID PKs)
+## Database (25 tables, UUID PKs)
 
 **Relationships (compact)**:
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
@@ -105,6 +105,7 @@ Quick reference maps in each package — use these for orientation before readin
 | `sync_all_routes` | 2 hours | All providers with dedup |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
+| `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
 
 All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 
@@ -120,6 +121,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 - **Rate limiting**: slowapi (100/min global, 20/min auth). In-memory — won't work across multiple workers.
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
+- **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
 
 ### Frontend
 - **Client-side rendering**: All pages `'use client'` with React Query
@@ -144,6 +146,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Does NOT auto-include `docker-compose.prod.yml`. Use `--prod` flag for production overrides
 12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
+13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 
 ## Development Lessons
 

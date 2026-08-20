@@ -6,14 +6,15 @@
 |------|--------|---------------|
 | `auth.py` | `/auth/` | `POST /sync-user`, `GET /oauth/{provider}/authorize`, `GET /oauth/{provider}/callback` |
 | `connections.py` | `/connections/` | `GET /`, `DELETE /{id}`, `POST /{id}/sync` |
-| `activities.py` | `/activities/` | `GET /` (list+filter), `GET /calendar`, `GET /{id}`, `GET /{id}/streams` |
-| `lifting.py` | `/lifting/` | Sessions CRUD, sets CRUD, PRs, volume trends, warmup templates, activity linking |
+| `activities.py` | `/activities/` | `GET /` (list+filter), `GET /calendar`, `GET /{id}`, `GET /{id}/streams`, `GET /{id}/analysis` |
+| `lifting.py` | `/lifting/` | Sessions CRUD, sets CRUD, PRs, volume trends, warmup templates, activity linking, `GET /sessions/{id}/analysis` |
 | `routes.py` | `/routes/` | Route CRUD, filtering, GPX download/upload, sync, merge, duplicates |
 | `cycling.py` | `/cycling/` | Profile, FTP history, training load, power curve/zones, metrics, FTP estimation, backfill |
 | `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data |
-| `dashboard.py` | `/dashboard/` | `GET /summary`, `GET /weekly-report` |
+| `dashboard.py` | `/dashboard/` | `GET /summary`, `GET /weekly-report`, `GET /today` |
 | `webhooks.py` | `/webhooks/` | `GET /strava` (challenge), `POST /strava` (event receiver) |
 | `export.py` | `/export/` | Data export endpoints |
 | `training_plans.py` | `/training-plans/` | Plan CRUD, `POST /generate` (template-based auto-generation) |
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |
+| `llm_analysis.py` | `/cycling/llm-analysis/` | `GET /latest`, `POST /on-demand`, `GET /history` |

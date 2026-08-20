@@ -8,9 +8,17 @@
 
 {$DOMAIN:localhost} {
     # Frontend — Next.js basePath is /fittrack
+    handle /fittrack {
+        reverse_proxy frontend:3000
+    }
+
     handle /fittrack/* {
         reverse_proxy frontend:3000
     }
+
+    # NextAuth error redirects omit basePath — catch and redirect
+    @nextauth path /api/auth /api/auth/*
+    redir @nextauth /fittrack{uri} permanent
 
     # Backend API
     handle /api/v1/* {

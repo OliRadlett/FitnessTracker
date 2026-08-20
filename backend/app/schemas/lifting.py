@@ -186,3 +186,45 @@ class WarmupTemplateRead(WarmupTemplateBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Session Analysis ─────────────────────────────────────────────────────────
+
+
+class ExerciseVolume(BaseModel):
+    exercise_name: str
+    volume_kg: float
+
+
+class SetProgressionPoint(BaseModel):
+    set_number: int
+    weight_kg: float
+    reps: int
+    estimated_1rm: float | None = None
+
+
+class RepDropoff(BaseModel):
+    exercise_name: str
+    first_set_reps: int
+    last_set_reps: int
+    dropoff_pct: float
+
+
+class PrProximity(BaseModel):
+    exercise_name: str
+    top_set_1rm: float
+    pr_1rm: float
+    proximity_pct: float
+
+
+class LiftingAnalysisResponse(BaseModel):
+    model_config = {"from_attributes": True}
+    volume_breakdown: list[ExerciseVolume]
+    set_progression: dict[str, list[SetProgressionPoint]]  # exercise_name -> points
+    rep_dropoff: list[RepDropoff]
+    pr_proximity: list[PrProximity]
+    rpe_analysis: dict  # session_rpe, avg_set_rpe, etc.
+    fatigue_index: float  # 0-100
+    session_density: float | None  # kg per minute
+    exercise_count: int
+    working_sets_count: int

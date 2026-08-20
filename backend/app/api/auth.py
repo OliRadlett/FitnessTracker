@@ -136,7 +136,7 @@ async def oauth_callback(
     """
     from app.config import get_settings
     _settings = get_settings()
-    _frontend_url = _settings.public_url  # Frontend and backend share the same Caddy origin
+    _frontend_url = _settings.frontend_url  # Frontend lives at /fittrack basePath
 
     if provider not in OAUTH_PROVIDERS:
         if provider in ("strava", "whoop", "wahoo"):
