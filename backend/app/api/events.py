@@ -137,3 +137,61 @@ async def delete_event(
         raise HTTPException(status_code=404, detail="Event not found")
     await db.delete(event)
     await db.commit()
+
+
+# ── Event AI Analysis ───────────────────────────────────────────────────────
+
+
+@router.post("/{event_id}/ai-analysis")
+async def trigger_event_ai_analysis(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger an on-demand AI analysis for event preparation.
+
+    Compiles event details, current fitness, recent training, and recovery
+    data, then sends to Gemini for taper plan, race-day strategy, and
+    nutrition advice.
+    """
+    from app.schemas.llm_analysis import LlmAnalysisRead
+    from app.services.llm_analysis import run_event_ai_analysis
+
+    try:
+        analysis = await run_event_ai_analysis(db, current_user.id, event_id)
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        await db.commit()
+        return LlmAnalysisRead.model_validate(analysis)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Event analysis failed: {e!s}")
+
+
+@router.get("/{event_id}/ai-analysis")
+async def get_event_ai_analysis(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the most recent cached AI analysis for a specific event."""
+    from app.models.llm_analysis import LlmAnalysis as LlmAnalysisModel
+    from app.schemas.llm_analysis import LlmAnalysisRead
+
+    result = await db.execute(
+        select(LlmAnalysisModel)
+        .where(
+            LlmAnalysisModel.user_id == current_user.id,
+            LlmAnalysisModel.event_id == event_id,
+            LlmAnalysisModel.analysis_type == "event",
+        )
+        .order_by(LlmAnalysisModel.created_at.desc())
+        .limit(1)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        return None
+    return LlmAnalysisRead.model_validate(analysis)

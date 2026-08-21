@@ -1,5 +1,5 @@
 import { apiFetch, apiUpload } from './fetch';
-import type { Activity, ActivityDetail, ActivityFilters, MergeThresholdResult, RideAnalysis } from './types';
+import type { Activity, ActivityDetail, ActivityFilters, LlmAnalysis, MergeThresholdResult, RideAnalysis } from './types';
 
 export async function getActivities(filters: ActivityFilters = {}): Promise<Activity[]> {
   const params = new URLSearchParams();
@@ -59,4 +59,16 @@ export async function importFitFile(file: File, token?: string): Promise<Activit
 
 export async function getActivityAnalysis(activityId: string): Promise<RideAnalysis> {
   return apiFetch<RideAnalysis>(`/api/v1/activities/${activityId}/analysis`);
+}
+
+// ─── Per-Activity AI Analysis ───────────────────────────────────────────────
+
+export async function getActivityAiAnalysis(activityId: string): Promise<LlmAnalysis | null> {
+  return apiFetch<LlmAnalysis | null>(`/api/v1/activities/${activityId}/ai-analysis`);
+}
+
+export async function triggerActivityAiAnalysis(activityId: string): Promise<LlmAnalysis> {
+  return apiFetch<LlmAnalysis>(`/api/v1/activities/${activityId}/ai-analysis`, {
+    method: 'POST',
+  });
 }

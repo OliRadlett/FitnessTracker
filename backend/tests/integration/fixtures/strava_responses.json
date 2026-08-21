@@ -1,0 +1,201 @@
+{
+  "activities": [
+    {
+      "id": 1000001,
+      "name": "Morning Ride",
+      "sport_type": "Ride",
+      "type": "Ride",
+      "start_date": "2026-08-15T07:00:00Z",
+      "moving_time": 3600,
+      "elapsed_time": 3900,
+      "distance": 42000.0,
+      "total_elevation_gain": 450.0,
+      "average_heartrate": 148.0,
+      "max_heartrate": 178.0,
+      "average_watts": 205.0,
+      "weighted_average_watts": 215.0,
+      "average_speed": 11.67,
+      "max_speed": 16.5,
+      "average_cadence": 85.0,
+      "calories": 780.0,
+      "kilojoules": 738.0,
+      "has_heartrate": true,
+      "start_latlng": [51.5074, -0.1278],
+      "end_latlng": [51.5074, -0.1278],
+      "map": {
+        "id": "a1000001",
+        "summary_polyline": "o}~mH~}xMz@z@z@z@z@z@",
+        "resource_state": 2
+      }
+    },
+    {
+      "id": 1000002,
+      "name": "Evening Recovery Spin",
+      "sport_type": "Ride",
+      "type": "Ride",
+      "start_date": "2026-08-14T17:30:00Z",
+      "moving_time": 2400,
+      "elapsed_time": 2700,
+      "distance": 25000.0,
+      "total_elevation_gain": 150.0,
+      "average_heartrate": 130.0,
+      "max_heartrate": 155.0,
+      "average_watts": 160.0,
+      "weighted_average_watts": 165.0,
+      "average_speed": 10.42,
+      "max_speed": 14.0,
+      "average_cadence": 78.0,
+      "calories": 450.0,
+      "kilojoules": 384.0,
+      "has_heartrate": true,
+      "start_latlng": [51.5074, -0.1278],
+      "end_latlng": [51.5200, -0.1000],
+      "map": {
+        "id": "a1000002",
+        "summary_polyline": "o}~mH~}xMa@b@a@b@",
+        "resource_state": 2
+      }
+    },
+    {
+      "id": 1000003,
+      "name": "Hill Repeats",
+      "sport_type": "Ride",
+      "type": "Ride",
+      "start_date": "2026-08-12T06:00:00Z",
+      "moving_time": 5400,
+      "elapsed_time": 6000,
+      "distance": 55000.0,
+      "total_elevation_gain": 800.0,
+      "average_heartrate": 158.0,
+      "max_heartrate": 188.0,
+      "average_watts": 230.0,
+      "weighted_average_watts": 245.0,
+      "average_speed": 10.19,
+      "max_speed": 18.0,
+      "average_cadence": 82.0,
+      "calories": 1100.0,
+      "kilojoules": 1242.0,
+      "has_heartrate": true,
+      "start_latlng": [51.4500, -0.3000],
+      "end_latlng": [51.4500, -0.3000],
+      "map": {
+        "id": "a1000003",
+        "summary_polyline": "kv|mH`~wMz@b@z@b@z@b@",
+        "resource_state": 2
+      }
+    },
+    {
+      "id": 1000004,
+      "name": "Weight Training",
+      "sport_type": "WeightTraining",
+      "type": "WeightTraining",
+      "start_date": "2026-08-11T08:00:00Z",
+      "moving_time": 3600,
+      "elapsed_time": 4200,
+      "distance": 0.0,
+      "total_elevation_gain": 0.0,
+      "average_heartrate": 120.0,
+      "max_heartrate": 160.0,
+      "average_watts": null,
+      "weighted_average_watts": null,
+      "average_speed": 0.0,
+      "max_speed": 0.0,
+      "average_cadence": null,
+      "calories": 350.0,
+      "kilojoules": null,
+      "has_heartrate": true,
+      "start_latlng": null,
+      "end_latlng": null,
+      "map": {
+        "id": "a1000004",
+        "summary_polyline": "",
+        "resource_state": 2
+      }
+    },
+    {
+      "id": 1000005,
+      "name": "Long Weekend Ride",
+      "sport_type": "Ride",
+      "type": "Ride",
+      "start_date": "2026-08-10T09:00:00Z",
+      "moving_time": 7200,
+      "elapsed_time": 8400,
+      "distance": 85000.0,
+      "total_elevation_gain": 1200.0,
+      "average_heartrate": 145.0,
+      "max_heartrate": 182.0,
+      "average_watts": 195.0,
+      "weighted_average_watts": 210.0,
+      "average_speed": 11.81,
+      "max_speed": 20.0,
+      "average_cadence": 88.0,
+      "calories": 1500.0,
+      "kilojoules": 1404.0,
+      "has_heartrate": true,
+      "start_latlng": [51.5074, -0.1278],
+      "end_latlng": [51.5074, -0.1278],
+      "map": {
+        "id": "a1000005",
+        "summary_polyline": "o}~mH~}xMz@z@z@z@z@z@z@z@",
+        "resource_state": 2
+      }
+    }
+  ],
+  "activity_detail": {
+    "id": 1000001,
+    "name": "Morning Ride",
+    "sport_type": "Ride",
+    "type": "Ride",
+    "start_date": "2026-08-15T07:00:00Z",
+    "moving_time": 3600,
+    "elapsed_time": 3900,
+    "distance": 42000.0,
+    "total_elevation_gain": 450.0,
+    "average_heartrate": 148.0,
+    "max_heartrate": 178.0,
+    "average_watts": 205.0,
+    "weighted_average_watts": 215.0,
+    "average_speed": 11.67,
+    "max_speed": 16.5,
+    "average_cadence": 85.0,
+    "calories": 780.0,
+    "kilojoules": 738.0,
+    "has_heartrate": true,
+    "start_latlng": [51.5074, -0.1278],
+    "end_latlng": [51.5074, -0.1278],
+    "map": {
+      "id": "a1000001",
+      "summary_polyline": "o}~mH~}xMz@z@z@z@z@z@",
+      "resource_state": 3
+    },
+    "best_efforts": [],
+    "splits_metric": [],
+    "laps": []
+  },
+  "activity_streams": {
+    "watts": {
+      "data": [200, 210, 195, 220, 205, 215, 190, 230, 200, 210, 195, 220, 205, 215, 190, 230, 200, 210, 195, 220],
+      "series_type": "distance",
+      "original_size": 20,
+      "resolution": "high"
+    },
+    "heartrate": {
+      "data": [140, 145, 148, 152, 155, 150, 147, 160, 158, 155, 140, 145, 148, 152, 155, 150, 147, 160, 158, 155],
+      "series_type": "distance",
+      "original_size": 20,
+      "resolution": "high"
+    },
+    "cadence": {
+      "data": [85, 86, 84, 88, 87, 85, 83, 90, 88, 86, 85, 86, 84, 88, 87, 85, 83, 90, 88, 86],
+      "series_type": "distance",
+      "original_size": 20,
+      "resolution": "high"
+    },
+    "altitude": {
+      "data": [50, 52, 55, 60, 65, 70, 75, 80, 78, 72, 68, 62, 58, 55, 52, 50, 48, 45, 42, 40],
+      "series_type": "distance",
+      "original_size": 20,
+      "resolution": "high"
+    }
+  }
+}

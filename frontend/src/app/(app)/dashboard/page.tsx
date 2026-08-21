@@ -284,6 +284,7 @@ export default function DashboardPage() {
           isCreatingGoal={createGoalMutation.isPending}
           onAchieveGoal={(id) => achieveGoalMutation.mutate(id)}
           onDeleteGoal={(id) => deleteGoalMutation.mutate(id)}
+          goalError={goalError}
           monthlySummary={monthlySummary}
           selectedYear={selectedYear}
           setSelectedYear={setSelectedYear}

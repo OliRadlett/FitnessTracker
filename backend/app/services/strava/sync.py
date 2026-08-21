@@ -326,6 +326,7 @@ async def backfill_all_activities(
 
     synced_total = 0
     skipped_total = 0
+    synced_cycling: list[tuple[uuid.UUID, int]] = []  # (activity_id, strava_id)
     page = 1
 
     while page <= max_pages:
@@ -392,8 +393,12 @@ async def backfill_all_activities(
                     "calories": _safe_float(sa.get("calories")),
                 }
                 await merge_activity(db, duplicate, new_data, "strava", provider_id, raw_data=sa)
+                if sport_type == "cycling":
+                    synced_cycling.append((duplicate.id, int(provider_id)))
             else:
-                await _create_activity_from_strava(db, sa, user_id, connection)
+                activity = await _create_activity_from_strava(db, sa, user_id, connection)
+                if sport_type == "cycling":
+                    synced_cycling.append((activity.id, int(provider_id)))
 
             synced_total += 1
 
@@ -411,6 +416,38 @@ async def backfill_all_activities(
         # If fewer than 100 results, we've reached the end
         if len(strava_activities) < 100:
             break
+
+    # Fetch streams for newly synced cycling activities
+    stream_count = 0
+    for activity_id, strava_id in synced_cycling:
+        try:
+            streams = await strava_client.get_activity_streams(
+                connection.access_token, strava_id
+            )
+            for stream_type, stream_data in streams.items():
+                if "data" in stream_data:
+                    raw_res = stream_data.get("resolution")
+                    resolution = None
+                    if isinstance(raw_res, int):
+                        resolution = raw_res
+                    elif isinstance(raw_res, str) and raw_res.isdigit():
+                        resolution = int(raw_res)
+
+                    stream = ActivityStream(
+                        activity_id=activity_id,
+                        stream_type=stream_type,
+                        data={"data": stream_data["data"]},
+                        resolution=resolution,
+                    )
+                    db.add(stream)
+            stream_count += 1
+        except Exception:
+            pass  # Streams are optional — don't fail the backfill
+    if synced_cycling:
+        logger.info(
+            f"Backfilled streams for {stream_count} of {len(synced_cycling)} cycling activities"
+        )
+    await db.flush()
 
     # Auto-link newly synced activities to lifting sessions and routes.
     # Pre-fetch all candidate data in bulk to avoid N+1 queries.
@@ -441,7 +478,7 @@ async def backfill_all_activities(
     activities = [a for a in all_activities if a.id not in linked_activity_ids]
 
     if not activities:
-        return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1}
+        return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1, "streams_backfilled": stream_count}
 
     # 3. Batch-fetch all unlinked lifting sessions with sets (for strength matching)
     session_result = await db.execute(
@@ -519,7 +556,96 @@ async def backfill_all_activities(
                             activity.route_id = best_route.id
 
     await db.flush()
-    return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1}
+    return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1, "streams_backfilled": stream_count}
+
+
+async def backfill_streams_for_all_activities(
+    db: AsyncSession,
+    user_id: uuid.UUID | None = None,
+) -> dict:
+    """Backfill streams for cycling activities that are missing them.
+
+    Queries all cycling activities with a ``provider_activity_id`` that
+    have no associated ``ActivityStream`` records, fetches streams from
+    Strava, and stores them.
+
+    If *user_id* is given, only that user's activities are processed.
+    Returns ``{"backfilled": N, "total": N}``.
+    """
+    from sqlalchemy import not_
+
+    # Subquery: activity IDs that already have streams
+    stream_exists = (
+        select(ActivityStream.activity_id)
+        .where(ActivityStream.activity_id == Activity.id)
+        .correlate(Activity)
+        .exists()
+    )
+
+    query = select(Activity).where(
+        Activity.sport_type == "cycling",
+        Activity.provider_activity_id.isnot(None),
+        not_(stream_exists),
+    )
+    if user_id:
+        query = query.where(Activity.user_id == user_id)
+
+    result = await db.execute(query)
+    activities = list(result.scalars().all())
+
+    if not activities:
+        return {"backfilled": 0, "total": 0}
+
+    # Group by user to batch token refresh
+    activities_by_user: dict[uuid.UUID, list[Activity]] = defaultdict(list)
+    for a in activities:
+        activities_by_user[a.user_id].append(a)
+
+    backfilled = 0
+    total = len(activities)
+
+    for uid, user_activities in activities_by_user.items():
+        connection = await get_strava_connection(db, uid)
+        if not connection:
+            logger.warning(f"No Strava connection for user {uid}, skipping stream backfill")
+            continue
+
+        try:
+            connection = await refresh_if_needed(db, connection)
+        except Exception as e:
+            logger.warning(f"Could not refresh Strava token for user {uid}: {e}")
+            continue
+
+        for activity in user_activities:
+            try:
+                streams = await strava_client.get_activity_streams(
+                    connection.access_token, int(activity.provider_activity_id)
+                )
+                for stream_type, stream_data in streams.items():
+                    if "data" in stream_data:
+                        raw_res = stream_data.get("resolution")
+                        resolution = None
+                        if isinstance(raw_res, int):
+                            resolution = raw_res
+                        elif isinstance(raw_res, str) and raw_res.isdigit():
+                            resolution = int(raw_res)
+
+                        stream = ActivityStream(
+                            activity_id=activity.id,
+                            stream_type=stream_type,
+                            data={"data": stream_data["data"]},
+                            resolution=resolution,
+                        )
+                        db.add(stream)
+                backfilled += 1
+            except Exception as e:
+                logger.debug(f"Failed to fetch streams for activity {activity.id}: {e}")
+
+        # Commit per user to save progress
+        await db.commit()
+
+    logger.info(f"Backfilled streams for {backfilled} of {total} activities")
+    return {"backfilled": backfilled, "total": total}
 
 
 # ── Route sync ───────────────────────────────────────────────────────────────

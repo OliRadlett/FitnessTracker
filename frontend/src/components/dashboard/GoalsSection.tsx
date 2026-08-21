@@ -13,6 +13,7 @@ interface GoalsSectionProps {
   isCreatingGoal: boolean;
   onAchieveGoal: (goalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
+  goalError?: string | null;
 }
 
 export function GoalsSection({
@@ -23,6 +24,7 @@ export function GoalsSection({
   isCreatingGoal,
   onAchieveGoal,
   onDeleteGoal,
+  goalError,
 }: GoalsSectionProps) {
   return (
     <div>
@@ -35,6 +37,12 @@ export function GoalsSection({
           {showGoalForm ? 'Cancel' : '+ New Goal'}
         </button>
       </div>
+
+      {goalError && (
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          ⚠️ {goalError}
+        </div>
+      )}
 
       {showGoalForm && (
         <div className="mb-4">

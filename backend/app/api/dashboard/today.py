@@ -167,7 +167,7 @@ async def dashboard_today(
         select(func.count(HealthAlert.id))
         .where(
             HealthAlert.user_id == uid,
-            HealthAlert.is_active.is_(True),
+            HealthAlert.status == "active",
         )
     )
     active_alerts = int(result.scalar() or 0)

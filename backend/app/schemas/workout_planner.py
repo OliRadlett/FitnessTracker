@@ -27,6 +27,8 @@ class WorkoutZone(BaseModel):
 class ReadinessInfo(BaseModel):
     """Training readiness based on CTL/TSB."""
 
+    model_config = {"from_attributes": True}
+
     current_ctl: float  # Chronic Training Load (fitness)
     current_atl: float  # Acute Training Load (fatigue)
     current_tsb: float  # Training Stress Balance (form)

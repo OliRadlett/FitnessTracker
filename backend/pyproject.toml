@@ -40,6 +40,14 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "integration: Full integration tests requiring a real PostgreSQL database (deselect with '-m \"not integration\"')",
+    "cheap: Fast API-level integration tests (< 1s each)",
+    "expensive: Service-level tests, sync flows, backfills (may take longer)",
+    "smoke: Minimal subset for quick CI checks",
+]
 
 [tool.ruff]
 target-version = "py312"

@@ -165,8 +165,8 @@ def _volume_spike_signal(
 
     # EWMA with 4-week half-life (alpha = 1 - e^(-1/half_life))
     alpha = 1 - math.exp(-1 / 4)
-    ewma = 0.0
-    for vol in active_volumes:  # oldest first
+    ewma = active_volumes[0]  # seed with first actual value
+    for vol in active_volumes[1:]:  # oldest first
         ewma = alpha * vol + (1 - alpha) * ewma
 
     if ewma <= 0:

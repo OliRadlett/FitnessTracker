@@ -21,16 +21,17 @@
 | File | Backend Prefix | Key Functions |
 |------|---------------|---------------|
 | `fetch.ts` | — | `apiFetch`, `apiFetchWithHeaders`, `apiUpload`, `useAuthFetch` hook |
-| `types.ts` | — | All TypeScript interfaces (1,168 lines — split by domain planned) |
-| `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams` |
-| `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `addSet`, `fetchPRs`, `fetchWarmupTemplates` |
+| `types.ts` | — | Barrel re-exports from `types/` domain modules |
+| `types/llm.ts` | — | `LlmAnalysis`, `LlmAnalysisSummary` interfaces |
+| `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis` |
+| `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `addSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
 | `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
 | `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes` |
 | `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
 | `trainingPlans.ts` | `/api/v1/training-plans/` | `fetchPlans`, `createPlan`, `generatePlan` |
-| `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent` |
-| `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `fetchLatest`, `triggerOnDemand`, `fetchHistory` |
+| `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
+| `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `auth.ts` | — | NextAuth config, `authOptions`, JWT/session callbacks |
 | `index.ts` | — | Barrel re-exports all modules |
 
@@ -64,7 +65,8 @@
 | `HRZonesDisplay` | HR zone horizontal bars |
 | `ProfileEditor` | FTP/weight/LTHR editor |
 | `RideAnalysisCard` | Post-ride analysis card |
-| `LlmAnalysisCard` | Gemini LLM analysis display |
+| `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
+| `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -73,9 +75,15 @@
 | `ExerciseGroup` | Grouped sets for one exercise |
 | `ExerciseProgressSection` | Exercise progress over time |
 | `LiftingAnalysisCard` | Post-session analysis card |
+| `SessionAiAnalysisCard` | Per-session AI lifting analysis (on-demand Gemini) |
 | `LinkActivityModal` | Link activity to lifting session |
 | `ManualPRForm` | Manual PR entry form |
 | `WarmupTemplateManager` | Warmup template CRUD |
+
+### `health/` — Health-specific
+| Component | Purpose |
+|-----------|---------|
+| `HealthAiAnalysisCard` | AI health analysis (HRV, sleep, recovery — on-demand Gemini) |
 
 ### `maps/` — Map components
 | Component | Purpose |
@@ -88,6 +96,12 @@
 | Component | Purpose |
 |-----------|---------|
 | `PlanBuilder` | Weekly calendar plan builder |
+| `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
+
+### `lib/` — Shared utilities
+| File | Purpose |
+|------|---------|
+| `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
 
 ## Patterns
 
@@ -95,4 +109,4 @@
 - **Data fetching**: React Query `useQuery` + `useMutation`. Query keys are string arrays like `['activities', filters]`
 - **Styling**: Tailwind with custom dark theme tokens. No CSS modules
 - **State**: Local `useState` for UI state. React Query for server state. No global state manager
-- **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline
+- **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures

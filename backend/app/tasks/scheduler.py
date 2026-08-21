@@ -723,3 +723,25 @@ def weekly_llm_analysis() -> dict:
             return {"users_analyzed": analyzed, "users_total": len(users)}
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.backfill_streams_for_all_activities")
+def backfill_streams_for_all_activities() -> dict:
+    """Backfill streams for all cycling activities missing them.
+
+    Queries all cycling activities with a Strava ``provider_activity_id``
+    that have no associated ``ActivityStream`` records, fetches streams
+    from Strava, and stores them.  Can be triggered on-demand or scheduled.
+    """
+    import asyncio
+
+    from app.database import async_session_factory
+    from app.services.strava.sync import (
+        backfill_streams_for_all_activities as _backfill_streams,
+    )
+
+    async def _run():
+        async with async_session_factory() as db:
+            return await _backfill_streams(db)
+
+    return asyncio.run(_run())

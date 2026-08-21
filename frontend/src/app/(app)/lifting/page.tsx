@@ -14,6 +14,7 @@ import type {
   ChartData,
   LinkedActivity,
   ReadinessResponse,
+  LiftingAnalysis,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
@@ -25,6 +26,8 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
+import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
+import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 
@@ -136,6 +139,12 @@ export default function LiftingPage() {
   const { data: sessionDetail } = useQuery<LiftingSession>({
     queryKey: ['lifting-session', selectedSessionId],
     queryFn: () => authFetch<LiftingSession>(`/api/v1/lifting/sessions/${selectedSessionId}`),
+    enabled: !!selectedSessionId,
+  });
+
+  const { data: sessionAnalysis } = useQuery<LiftingAnalysis>({
+    queryKey: ['lifting-analysis', selectedSessionId],
+    queryFn: () => authFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${selectedSessionId}/analysis`),
     enabled: !!selectedSessionId,
   });
 
@@ -448,6 +457,7 @@ export default function LiftingPage() {
         {/* Session Detail */}
         <div className="lg:col-span-2">
           {selectedSessionId && sessionDetail ? (
+            <div className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -584,6 +594,19 @@ export default function LiftingPage() {
                 <p className="text-muted text-center py-8">No exercises yet. Add your first exercise above.</p>
               )}
             </Card>
+
+            {/* Static Session Analysis */}
+            {sessionAnalysis && (
+              <div className="mt-6">
+                <LiftingAnalysisCard analysis={sessionAnalysis} />
+              </div>
+            )}
+
+            {/* AI Session Analysis */}
+            <div className="mt-6">
+              <SessionAiAnalysisCard sessionId={selectedSessionId} />
+            </div>
+            </div>
           ) : (
             <Card><p className="text-muted text-center py-12">Select a session to view details</p></Card>
           )}

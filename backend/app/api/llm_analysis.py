@@ -20,10 +20,13 @@ async def get_latest_analysis(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get the most recent LLM analysis for the current user."""
+    """Get the most recent cycling LLM analysis for the current user."""
     result = await db.execute(
         select(LlmAnalysis)
-        .where(LlmAnalysis.user_id == current_user.id)
+        .where(
+            LlmAnalysis.user_id == current_user.id,
+            LlmAnalysis.analysis_type == "cycling",
+        )
         .order_by(LlmAnalysis.created_at.desc())
         .limit(1)
     )
@@ -43,7 +46,6 @@ async def trigger_analysis(
 
     try:
         analysis = await run_llm_analysis(db, current_user.id)
-        await db.commit()
         return LlmAnalysisRead.model_validate(analysis)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -54,15 +56,18 @@ async def trigger_analysis(
 @router.get("/history", response_model=list[LlmAnalysisSummary])
 async def get_analysis_history(
     limit: int = 10,
+    analysis_type: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get LLM analysis history for the current user."""
-    result = await db.execute(
+    """Get LLM analysis history for the current user, optionally filtered by type."""
+    query = (
         select(LlmAnalysis)
         .where(LlmAnalysis.user_id == current_user.id)
-        .order_by(LlmAnalysis.created_at.desc())
-        .limit(limit)
     )
+    if analysis_type:
+        query = query.where(LlmAnalysis.analysis_type == analysis_type)
+    query = query.order_by(LlmAnalysis.created_at.desc()).limit(limit)
+    result = await db.execute(query)
     analyses = result.scalars().all()
     return [LlmAnalysisSummary.model_validate(a) for a in analyses]

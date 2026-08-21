@@ -282,7 +282,7 @@ async def analyze_ride(
             select(CyclingProfile).where(CyclingProfile.user_id == user_id)
         )
         profile = profile_result.scalar_one_or_none()
-        ftp = profile.ftp if profile and profile.ftp else None
+        ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
         if ftp and ftp > 0:
             resolution = power_stream.resolution if power_stream and power_stream.resolution else 1
@@ -383,7 +383,7 @@ async def analyze_ride(
                     select(CyclingProfile).where(CyclingProfile.user_id == user_id)
                 )
                 profile = profile_result.scalar_one_or_none()
-            ftp = profile.ftp if profile and profile.ftp else None
+            ftp = profile.ftp_watts if profile and profile.ftp_watts else None
             if ftp:
                 intensity_factor = calculate_intensity_factor(np_val, ftp)
 

@@ -166,8 +166,8 @@ async def yearly_summary(
             LiftingSession.session_date >= year_start,
             LiftingSession.session_date <= effective_end,
         )
-        .group_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
-        .order_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
@@ -188,8 +188,8 @@ async def yearly_summary(
             Activity.start_date >= year_start,
             Activity.start_date <= effective_end,
         )
-        .group_by(func.to_char(Activity.start_date, "YYYY-MM"))
-        .order_by(func.to_char(Activity.start_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     activity_by_month: dict[str, dict] = {}
     for row in result.all():
@@ -211,7 +211,7 @@ async def yearly_summary(
             PersonalRecord.achieved_date >= year_start,
             PersonalRecord.achieved_date <= effective_end,
         )
-        .group_by(func.to_char(PersonalRecord.achieved_date, "YYYY-MM"))
+        .group_by("month")
     )
     prs_by_month: dict[str, int] = {}
     for row in result.all():
@@ -229,7 +229,7 @@ async def yearly_summary(
             DailyMetric.metric_date <= effective_end,
             DailyMetric.recovery_score.isnot(None),
         )
-        .group_by(func.to_char(DailyMetric.metric_date, "YYYY-MM"))
+        .group_by("month")
     )
     recovery_by_month: dict[str, float | None] = {}
     for row in result.all():

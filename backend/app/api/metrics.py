@@ -411,3 +411,53 @@ async def run_health_analysis(
         "analysis_results": all_results,
         "alerts_generated": alerts_generated,
     }
+
+
+# ── Health AI Analysis ──────────────────────────────────────────────────────
+
+
+@router.post("/health-ai-analysis")
+async def trigger_health_ai_analysis(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger an on-demand LLM health analysis.
+
+    Compiles health-specific data (HRV, resting HR, sleep, respiratory rate,
+    health alerts, recovery scores) and sends to Gemini for interpretation.
+    """
+    from app.schemas.llm_analysis import LlmAnalysisRead
+    from app.services.llm_analysis import run_health_ai_analysis
+
+    try:
+        analysis = await run_health_ai_analysis(db, current_user.id)
+        await db.commit()
+        return LlmAnalysisRead.model_validate(analysis)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health analysis failed: {e!s}")
+
+
+@router.get("/health-ai-analysis")
+async def get_latest_health_ai_analysis(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the most recent cached health AI analysis for the current user."""
+    from app.models.llm_analysis import LlmAnalysis as LlmAnalysisModel
+    from app.schemas.llm_analysis import LlmAnalysisRead
+
+    result = await db.execute(
+        select(LlmAnalysisModel)
+        .where(
+            LlmAnalysisModel.user_id == current_user.id,
+            LlmAnalysisModel.analysis_type == "health",
+        )
+        .order_by(LlmAnalysisModel.created_at.desc())
+        .limit(1)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        return None
+    return LlmAnalysisRead.model_validate(analysis)

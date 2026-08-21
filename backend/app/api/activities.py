@@ -650,3 +650,71 @@ async def get_activity_analysis(
         raise HTTPException(status_code=404, detail="Activity not found")
     return RideAnalysisResponse(**analysis)
 
+
+# ── Per-Activity AI Analysis ─────────────────────────────────────────────────
+
+
+@router.get("/{activity_id}/ai-analysis")
+async def get_activity_ai_analysis(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get cached AI analysis for a specific activity.
+
+    Returns the most recent per-activity LLM analysis, or null if none exists.
+    """
+    from app.models.llm_analysis import LlmAnalysis
+    from app.schemas.llm_analysis import LlmAnalysisRead
+
+    result = await db.execute(
+        select(LlmAnalysis)
+        .where(
+            LlmAnalysis.user_id == current_user.id,
+            LlmAnalysis.activity_id == activity_id,
+        )
+        .order_by(LlmAnalysis.created_at.desc())
+        .limit(1)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        return None
+    return LlmAnalysisRead.model_validate(analysis)
+
+
+@router.post("/{activity_id}/ai-analysis")
+async def trigger_activity_ai_analysis(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate an AI analysis for a specific activity.
+
+    Uses Gemini to analyze the ride data in the context of the user's
+    recent training load, recovery, and other rides.
+    """
+    from app.schemas.llm_analysis import LlmAnalysisRead
+    from app.services.llm_analysis import run_activity_ai_analysis
+
+    # Verify activity exists and belongs to user
+    result = await db.execute(
+        select(Activity).where(
+            Activity.id == activity_id,
+            Activity.user_id == current_user.id,
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    try:
+        analysis = await run_activity_ai_analysis(db, current_user.id, activity_id)
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="Activity not found")
+        await db.commit()
+        return LlmAnalysisRead.model_validate(analysis)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")
+

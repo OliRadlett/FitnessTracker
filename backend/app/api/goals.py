@@ -42,9 +42,9 @@ async def _compute_current_value(db: AsyncSession, user_id: uuid.UUID, goal: Goa
 
     elif goal.goal_type == "weight_target":
         result = await db.execute(
-            select(WeightLog.weight_kg)
+            select(WeightLog.weight_kilogram)
             .where(WeightLog.user_id == user_id)
-            .order_by(WeightLog.log_date.desc())
+            .order_by(WeightLog.date.desc())
             .limit(1)
         )
         weight = result.scalar_one_or_none()
@@ -133,6 +133,8 @@ async def list_goals(
                     goal.status = "expired"
 
     await db.flush()
+    for g in goals:
+        await db.refresh(g)
     return [GoalRead.model_validate(g) for g in goals]
 
 
@@ -163,6 +165,9 @@ async def create_goal(
         goal.current_value = current
 
     await db.flush()
+    # Refresh to load server-default columns (created_at, updated_at, status)
+    # before Pydantic validation — avoids MissingGreenlet lazy-load error.
+    await db.refresh(goal)
     return GoalRead.model_validate(goal)
 
 
@@ -185,6 +190,7 @@ async def get_goal(
         goal.current_value = current
 
     await db.flush()
+    await db.refresh(goal)
     return GoalRead.model_validate(goal)
 
 
@@ -210,6 +216,7 @@ async def update_goal(
         setattr(goal, field, value)
 
     await db.flush()
+    await db.refresh(goal)
     return GoalRead.model_validate(goal)
 
 

@@ -3,7 +3,9 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import type { Activity, ActivityDetail, ChartData, ActivityFilters, ActivitySource } from '@/lib/api';
+import type { Activity, ActivityDetail, ChartData, ActivityFilters, ActivitySource, RideAnalysis } from '@/lib/api';
+import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
+import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(
@@ -217,8 +219,18 @@ function ActivityExpanded({
   activity: Activity;
   activityDetail?: ActivityDetail;
 }) {
+  const { authFetch } = useAuthFetch();
   const streamTypes = activityDetail?.streams?.map((s) => s.stream_type) ?? [];
   const [selectedStream, setSelectedStream] = useState<string>('');
+
+  const isCycling = activity.sport_type === 'cycling';
+
+  // Fetch ride analysis for cycling activities
+  const { data: rideAnalysis } = useQuery<RideAnalysis>({
+    queryKey: ['ride-analysis', activity.id],
+    queryFn: () => authFetch<RideAnalysis>(`/api/v1/activities/${activity.id}/analysis`),
+    enabled: isCycling,
+  });
 
   const streamChart: ChartData | null = activityDetail?.streams?.length
     ? (() => {
@@ -271,6 +283,20 @@ function ActivityExpanded({
         </>
       ) : (
         <p className="text-muted text-sm">No stream data available</p>
+      )}
+
+      {/* Ride Analysis Card — cycling activities only */}
+      {isCycling && rideAnalysis && (
+        <div className="mt-4">
+          <RideAnalysisCard analysis={rideAnalysis} />
+        </div>
+      )}
+
+      {/* AI Ride Analysis — cycling activities only */}
+      {isCycling && (
+        <div className="mt-4">
+          <ActivityAiAnalysisCard activityId={activity.id} />
+        </div>
       )}
     </div>
   );

@@ -149,7 +149,8 @@ async def update_session(
         setattr(session, field, value)
 
     await db.flush()
-    return session
+    # Re-fetch with relationships loaded to avoid MissingGreenlet on sets
+    return await get_session(db, session.id, user_id)  # type: ignore[return-value]
 
 
 async def delete_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:

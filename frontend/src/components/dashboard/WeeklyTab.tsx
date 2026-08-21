@@ -23,6 +23,8 @@ import { Chart } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric, SkeletonChart } from '@/components/ui/Skeleton';
 import { LlmAnalysisCard } from '@/components/cycling/LlmAnalysisCard';
+import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
+import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 import { MetricCard, WhoopWeeklyCard, RespiratoryRateCard, ActivityRow, SessionRow, ListSkeleton } from './helpers';
 import { HealthAlertsSection } from './HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
@@ -51,6 +53,7 @@ interface WeeklyTabProps {
   isCreatingGoal: boolean;
   onAchieveGoal: (goalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
+  goalError?: string | null;
   monthlySummary: MonthlySummaryItem[] | undefined;
   selectedYear: number;
   setSelectedYear: React.Dispatch<React.SetStateAction<number>>;
@@ -93,6 +96,7 @@ export function WeeklyTab({
   isCreatingGoal,
   onAchieveGoal,
   onDeleteGoal,
+  goalError,
   monthlySummary,
   selectedYear,
   setSelectedYear,
@@ -207,6 +211,11 @@ export function WeeklyTab({
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Event AI Analysis (for nearest upcoming event) ────────────────────── */}
+      {upcomingEvents && upcomingEvents.length > 0 && upcomingEvents[0].days_until <= 56 && (
+        <EventAiAnalysisCard eventId={upcomingEvents[0].id} />
       )}
 
       {/* ── Status Row: Readiness + Respiratory + Key Vitals ─────────────────── */}
@@ -326,6 +335,9 @@ export function WeeklyTab({
           </Card>
         )}
       </div>
+
+      {/* ── AI Health Analysis ─────────────────────────────────────────────────── */}
+      <HealthAiAnalysisCard />
 
       {/* ── AI Performance Analysis ─────────────────────────────────────────── */}
       <LlmAnalysisCard
@@ -491,6 +503,7 @@ export function WeeklyTab({
         isCreatingGoal={isCreatingGoal}
         onAchieveGoal={onAchieveGoal}
         onDeleteGoal={onDeleteGoal}
+        goalError={goalError}
       />
 
       {/* ── Monthly Summary ──────────────────────────────────────────────── */}

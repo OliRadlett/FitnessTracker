@@ -256,8 +256,8 @@ async def monthly_summary(
             LiftingSession.user_id == uid,
             LiftingSession.session_date >= start_date,
         )
-        .group_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
-        .order_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
@@ -277,8 +277,8 @@ async def monthly_summary(
             Activity.source != "wahoo",
             Activity.start_date >= start_date,
         )
-        .group_by(func.to_char(Activity.start_date, "YYYY-MM"))
-        .order_by(func.to_char(Activity.start_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     activity_by_month: dict[str, dict] = {}
     for row in result.all():
@@ -299,7 +299,7 @@ async def monthly_summary(
             PersonalRecord.user_id == uid,
             PersonalRecord.achieved_date >= start_date,
         )
-        .group_by(func.to_char(PersonalRecord.achieved_date, "YYYY-MM"))
+        .group_by("month")
     )
     prs_by_month: dict[str, int] = {}
     for row in result.all():
@@ -316,7 +316,7 @@ async def monthly_summary(
             DailyMetric.metric_date >= start_date,
             DailyMetric.recovery_score.isnot(None),
         )
-        .group_by(func.to_char(DailyMetric.metric_date, "YYYY-MM"))
+        .group_by("month")
     )
     recovery_by_month: dict[str, float | None] = {}
     for row in result.all():
@@ -443,8 +443,8 @@ async def training_streaks(
             func.count(LiftingSession.id).label("count"),
         )
         .where(LiftingSession.user_id == uid, LiftingSession.session_date >= start_month)
-        .group_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
-        .order_by(func.to_char(LiftingSession.session_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     lifting_by_month: dict[str, int] = {row.month: int(row.count) for row in monthly_result.all()}
 
@@ -454,8 +454,8 @@ async def training_streaks(
             func.count(Activity.id).label("count"),
         )
         .where(Activity.user_id == uid, Activity.source != "wahoo", Activity.start_date >= start_month)
-        .group_by(func.to_char(Activity.start_date, "YYYY-MM"))
-        .order_by(func.to_char(Activity.start_date, "YYYY-MM"))
+        .group_by("month")
+        .order_by("month")
     )
     activity_by_month: dict[str, int] = {row.month: int(row.count) for row in activity_monthly_result.all()}
 

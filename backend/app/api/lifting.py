@@ -3,9 +3,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.lifting import LiftingSession
 from app.models.user import User
 from app.schemas.activity import ActivityRead
 from app.schemas.lifting import (
@@ -349,3 +351,72 @@ async def get_session_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return LiftingAnalysisResponse(**analysis)
+
+
+# ── Per-Session AI Analysis ─────────────────────────────────────────────────
+
+
+@router.get("/sessions/{session_id}/ai-analysis")
+async def get_session_ai_analysis(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get cached AI analysis for a specific lifting session.
+
+    Returns the most recent per-session LLM analysis, or null if none exists.
+    """
+    from app.models.llm_analysis import LlmAnalysis
+    from app.schemas.llm_analysis import LlmAnalysisRead
+
+    result = await db.execute(
+        select(LlmAnalysis)
+        .where(
+            LlmAnalysis.user_id == current_user.id,
+            LlmAnalysis.lifting_session_id == session_id,
+        )
+        .order_by(LlmAnalysis.created_at.desc())
+        .limit(1)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        return None
+    return LlmAnalysisRead.model_validate(analysis)
+
+
+@router.post("/sessions/{session_id}/ai-analysis")
+async def trigger_session_ai_analysis(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate an AI analysis for a specific lifting session.
+
+    Uses Gemini to analyze the session data in the context of the user's
+    recent lifting volume, PRs, recovery, and training trends.
+    """
+    from app.models.llm_analysis import LlmAnalysis
+    from app.schemas.llm_analysis import LlmAnalysisRead
+    from app.services.llm_analysis import run_lifting_session_ai_analysis
+
+    # Verify session exists and belongs to user
+    result = await db.execute(
+        select(LiftingSession).where(
+            LiftingSession.id == session_id,
+            LiftingSession.user_id == current_user.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        analysis = await run_lifting_session_ai_analysis(db, current_user.id, session_id)
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        await db.commit()
+        return LlmAnalysisRead.model_validate(analysis)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")

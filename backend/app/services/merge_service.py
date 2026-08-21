@@ -128,6 +128,10 @@ def _compute_activity_match_score(
     dur_s = _duration_score(candidate.duration_seconds, duration_seconds)
     dist_s = _distance_score(candidate.distance_meters, distance_meters)
 
+    # Hard cutoff: completely incompatible sport types should never match
+    if sport_s == 0.0:
+        return 0.0
+
     return (date_s * 0.50) + (sport_s * 0.20) + (dur_s * 0.15) + (dist_s * 0.15)
 
 

@@ -12,6 +12,7 @@ import type {
   VolumeTrendResponse,
   Activity,
   LiftingAnalysis,
+  LlmAnalysis,
 } from './types';
 
 export async function getLiftingSessions(): Promise<LiftingSession[]> {
@@ -96,5 +97,17 @@ export async function deleteWarmupTemplate(id: string): Promise<void> {
 
 export async function getLiftingAnalysis(sessionId: string): Promise<LiftingAnalysis> {
   return apiFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${sessionId}/analysis`);
+}
+
+// ─── Session AI Analysis ────────────────────────────────────────────────────
+
+export async function getSessionAiAnalysis(sessionId: string): Promise<LlmAnalysis | null> {
+  return apiFetch<LlmAnalysis | null>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`);
+}
+
+export async function triggerSessionAiAnalysis(sessionId: string): Promise<LlmAnalysis> {
+  return apiFetch<LlmAnalysis>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`, {
+    method: 'POST',
+  });
 }
 

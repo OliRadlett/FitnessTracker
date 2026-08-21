@@ -18,4 +18,4 @@
 | `gpx.py` | GPX 1.1 generation and parsing | `generate_gpx()`, `parse_gpx()` |
 | `workout_planner.py` | Workout zone computation, target planning, route matching | `compute_workout_zones()`, `plan_workout()`, `find_matching_routes()` |
 | `session_analysis.py` | Post-session ride and lifting analysis | `analyze_lifting_session()`, `analyze_ride()` |
-| `llm_analysis.py` | LLM-powered cycling analysis via Gemini | `compile_cycling_stats()`, `analyze_with_gemini()`, `run_llm_analysis()` |
+| `llm_analysis.py` | LLM-powered analysis via Gemini (cycling, activity, lifting, health, event) | `compile_cycling_stats()`, `analyze_with_gemini()`, `run_llm_analysis()`, `compile_activity_context()`, `analyze_activity_with_gemini()`, `run_activity_ai_analysis()`, `compile_lifting_session_context()`, `analyze_lifting_session_with_gemini()`, `run_lifting_session_ai_analysis()`, `compile_health_stats()`, `analyze_health_with_gemini()`, `run_health_ai_analysis()`, `compile_event_stats()`, `analyze_event_with_gemini()`, `run_event_ai_analysis()` |
