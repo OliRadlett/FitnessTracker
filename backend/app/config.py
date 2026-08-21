@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     def model_post_init(self, __context) -> None:
+        # Diagnostic: log Gemini API key status at startup
+        if self.gemini_api_key:
+            logger.info("GEMINI_API_KEY loaded successfully (length=%d)", len(self.gemini_api_key))
+        else:
+            logger.warning(
+                "GEMINI_API_KEY is empty — check .env file has a trailing newline "
+                "and that the variable is set in the container environment"
+            )
+
         # Existing SECRET_KEY check
         if self.secret_key == _DEFAULT_SECRET_KEY:
             if not self.debug:

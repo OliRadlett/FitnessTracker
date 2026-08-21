@@ -12,9 +12,6 @@ const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-// Store backend token temporarily during sign-in flow
-let pendingBackendToken: string | undefined;
-
 declare module 'next-auth' {
   interface Session {
     backendToken?: string;
@@ -42,7 +39,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user }) {
       // Check email allowlist before proceeding
       if (ALLOWED_EMAILS.length > 0 && user.email) {
         const emailLower = user.email.toLowerCase();
@@ -51,17 +48,20 @@ export const authOptions: NextAuthOptions = {
           return false;
         }
       }
-
-      // After successful OAuth, sync user with backend and get a JWT
-      if (user.email && account) {
+      return true;
+    },
+    async jwt({ token, account }: { token: JWT; account?: { provider: string; providerAccountId: string } | null }) {
+      // On initial sign-in, sync user with backend and get a JWT.
+      // The `account` param is only present on the first call after sign-in.
+      if (account && token.email) {
         try {
           const res = await fetch(`${API_BASE_URL}/api/v1/auth/sync-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: user.email,
-              name: user.name || '',
-              avatar_url: user.image || null,
+              email: token.email,
+              name: token.name || '',
+              avatar_url: token.picture || null,
               provider: account.provider,
               provider_user_id: account.providerAccountId,
             }),
@@ -69,18 +69,11 @@ export const authOptions: NextAuthOptions = {
 
           if (res.ok) {
             const data = await res.json();
-            pendingBackendToken = data.access_token;
+            token.backendToken = data.access_token;
           }
         } catch (err) {
           console.error('Failed to sync user with backend:', err);
         }
-      }
-      return true;
-    },
-    async jwt({ token }: { token: JWT }) {
-      if (pendingBackendToken) {
-        token.backendToken = pendingBackendToken;
-        pendingBackendToken = undefined;
       }
       return token;
     },

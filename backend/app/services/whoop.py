@@ -1370,15 +1370,33 @@ async def backfill_whoop_chunked(
     total_chunks = len(chunks)
     agg = {"synced_cycles": 0, "synced_sleep": 0, "synced_workouts": 0}
 
+    _CHUNK_DELAY_SECONDS = 5  # Pause between chunks to avoid Whoop rate limits
+
     for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
+        # Pause between chunks to respect Whoop rate limits
+        if i > 1:
+            logger.info(f"Whoop backfill: waiting {_CHUNK_DELAY_SECONDS}s before chunk {i}/{total_chunks}")
+            await asyncio.sleep(_CHUNK_DELAY_SECONDS)
+
         logger.info(
             f"Whoop chunked backfill user {user_id}: "
             f"chunk {i}/{total_chunks} ({chunk_start.date()} → {chunk_end.date()})"
         )
-        result = await backfill_whoop_data(
-            db, user_id, months=0,
-            start_dt=chunk_start, end_dt=chunk_end,
-        )
+        try:
+            result = await backfill_whoop_data(
+                db, user_id, months=0,
+                start_dt=chunk_start, end_dt=chunk_end,
+            )
+        except Exception as e:
+            logger.error(f"Whoop backfill chunk {i} failed: {e}")
+            yield {
+                "type": "error",
+                "detail": f"Chunk {i}/{total_chunks} failed: {e}",
+                "chunk": i,
+                "total_chunks": total_chunks,
+                **agg,
+            }
+            continue
         await db.commit()
 
         agg["synced_cycles"] += result["synced_cycles"]

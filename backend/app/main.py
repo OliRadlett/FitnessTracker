@@ -120,6 +120,19 @@ async def auth_rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Shared Redis client for health checks ───────────────────────────────
+import redis.asyncio as aioredis
+
+_redis_client: aioredis.Redis | None = None
+
+
+def _get_redis_client() -> aioredis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = aioredis.from_url(settings.redis_url)
+    return _redis_client
+
+
 @app.get("/health")
 async def health_check():
     """Health check that verifies database and Redis connectivity."""
@@ -134,15 +147,15 @@ async def health_check():
     except Exception:
         pass
 
-    # Redis ping
+    # Redis ping (reuses connection pool)
     try:
-        import redis.asyncio as aioredis
-        r = aioredis.from_url(settings.redis_url)
+        r = _get_redis_client()
         await r.ping()
-        await r.aclose()
         redis_ok = True
     except Exception:
-        pass
+        # Reset client on connection failure so it's recreated next time
+        global _redis_client
+        _redis_client = None
 
     if db_ok and redis_ok:
         return {"status": "ok", "db": "ok", "redis": "ok"}

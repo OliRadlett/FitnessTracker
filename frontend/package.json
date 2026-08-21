@@ -6,10 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:bug-report": "playwright test e2e/bug-report.spec.ts"
   },
   "dependencies": {
-    "@swc/helpers": "^0.5.0",
+    "@swc/helpers": "^0.5.23",
     "@tanstack/react-query": "^5.28.0",
     "@types/leaflet": "^1.9.22",
     "@types/node": "20.19.43",
@@ -27,5 +33,13 @@
     "recharts": "^2.12.0",
     "tailwindcss": "^3.4.0",
     "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.0"
   }
 }

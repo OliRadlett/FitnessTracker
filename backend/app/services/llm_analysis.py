@@ -3,9 +3,8 @@
 import json
 import logging
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +15,17 @@ from app.models.lifting import PersonalRecord
 from app.models.llm_analysis import LlmAnalysis
 
 logger = logging.getLogger(__name__)
+
+
+def _make_json_serializable(obj):
+    """Recursively convert date/datetime objects to ISO strings."""
+    if isinstance(obj, dict):
+        return {k: _make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_make_json_serializable(item) for item in obj]
+    elif isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    return obj
 
 
 async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
@@ -44,7 +54,12 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
         training_load = compute_training_load(daily_tss, today, lookback_days=90)
         # Only include the last 28 days for the LLM
-        stats["training_load"] = training_load[-28:] if training_load else []
+        recent_load = training_load[-28:] if training_load else []
+        # Convert date objects to ISO strings for JSON serialization
+        stats["training_load"] = [
+            {**entry, "date": entry["date"].isoformat()} if isinstance(entry.get("date"), date) else entry
+            for entry in recent_load
+        ]
         if training_load:
             latest = training_load[-1]
             stats["current_ctl"] = latest["ctl"]
@@ -206,11 +221,14 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         logger.warning("Failed to compute decoupling trends: %s", e)
         stats["decoupling_trends"] = []
 
-    return stats
+    return _make_json_serializable(stats)
 
 
 async def analyze_with_gemini(stats_json: dict) -> str:
     """Call Google Gemini API to analyze cycling stats and return the analysis text."""
+    from google import genai
+    from google.genai import types
+
     from app.config import get_settings
 
     settings = get_settings()
@@ -255,23 +273,18 @@ Provide your analysis in the following structure:
 
 Be specific, reference actual numbers from the data, and provide science-backed explanations. Keep the total response under 800 words."""
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+    client = genai.Client(api_key=settings.gemini_api_key)
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 2048,
-        },
-    }
+    response = await client.aio.models.generate_content(
+        model="gemini-3.6-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.7,
+            max_output_tokens=2048,
+        ),
+    )
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-        result = response.json()
-
-    # Extract text from Gemini response
-    return result["candidates"][0]["content"]["parts"][0]["text"]
+    return response.text
 
 
 async def run_llm_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
@@ -292,7 +305,7 @@ async def run_llm_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
         analysis_date=date_type.today(),
         stats_json=stats,
         analysis_text=analysis_text,
-        model_used="gemini-2.0-flash",
+        model_used="gemini-3.6-flash",
     )
     db.add(record)
     await db.flush()

@@ -9,7 +9,7 @@ settings = get_settings()
 
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=False,  # Use logging.getLogger("sqlalchemy.engine").setLevel(DEBUG) when needed
     pool_size=5,
     max_overflow=10,
 )

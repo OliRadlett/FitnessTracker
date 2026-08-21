@@ -21,15 +21,14 @@ import type {
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
 } from '@/lib/api';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
-import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
-import { PowerZonesDisplay } from '@/components/cycling/PowerZonesDisplay';
-import { HRZonesDisplay } from '@/components/cycling/HRZonesDisplay';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
-
-// ── Main Page ───────────────────────────────────────────────────────────────
+import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
+import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
+import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
+import { DecouplingSection } from '@/components/cycling/DecouplingSection';
+import { FtpSection } from '@/components/cycling/FtpSection';
 
 export default function CyclingPage() {
   const { authFetch } = useAuthFetch();
@@ -40,53 +39,52 @@ export default function CyclingPage() {
   const { data: profile, isLoading: profileLoading } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
-    staleTime: 300_000,  // 5 min — profile changes rarely
+    staleTime: 300_000,
   });
 
   const { data: metrics } = useQuery<CyclingMetricsSummary>({
     queryKey: ['cycling-metrics'],
     queryFn: () => authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary'),
-    staleTime: 120_000,  // 2 min
+    staleTime: 120_000,
   });
 
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
     queryKey: ['training-load', loadDays],
     queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${loadDays}`),
-    staleTime: 300_000,  // 5 min — expensive computation
+    staleTime: 300_000,
   });
 
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
     queryKey: ['power-zones'],
     queryFn: () => authFetch<PowerZonesResponse>('/api/v1/cycling/power-zones?days=30'),
     enabled: !!profile?.ftp_watts,
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
     queryKey: ['power-vs-hr'],
     queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
   const { data: chartTrainingLoad } = useQuery<ChartData>({
     queryKey: ['chart-training-load', loadDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${loadDays}`),
-    staleTime: 300_000,  // 5 min — charts are expensive
+    staleTime: 300_000,
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
     queryKey: ['chart-stream-power-curve'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
-  // Power curve comparison state + query
   const [comparisonDays, setComparisonDays] = useState(30);
   const comparisonBaselineDays = comparisonDays * 3;
   const { data: chartPowerComparison } = useQuery<ChartData>({
@@ -99,34 +97,33 @@ export default function CyclingPage() {
     queryKey: ['chart-power-zones'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
     enabled: !!profile?.ftp_watts,
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
   const { data: chartDailyTss } = useQuery<ChartData>({
     queryKey: ['chart-daily-tss'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
-    staleTime: 120_000,  // 2 min
+    staleTime: 120_000,
   });
 
   const { data: lifetimePBs } = useQuery<LifetimePBsResponse>({
     queryKey: ['lifetime-pbs'],
     queryFn: () => authFetch<LifetimePBsResponse>('/api/v1/cycling/lifetime-pbs'),
-    staleTime: 300_000,  // 5 min — PBs change rarely
+    staleTime: 300_000,
   });
 
   const { data: ftpHistory } = useQuery<FtpHistoryEntry[]>({
     queryKey: ['ftp-history'],
     queryFn: () => authFetch<FtpHistoryEntry[]>('/api/v1/cycling/ftp-history'),
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
   const { data: chartFtpHistory } = useQuery<ChartData>({
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
-    staleTime: 300_000,  // 5 min
+    staleTime: 300_000,
   });
 
-  // ── HR Zones query ──────────────────────────────────────────────────────
   const { data: hrZones } = useQuery<HrZonesResponse>({
     queryKey: ['hr-zones'],
     queryFn: () => authFetch<HrZonesResponse>('/api/v1/cycling/hr-zones?days=30'),
@@ -141,11 +138,10 @@ export default function CyclingPage() {
     staleTime: 300_000,
   });
 
-  // ── VO2max query ───────────────────────────────────────────────────────
   const { data: vo2max } = useQuery<Vo2maxResponse>({
     queryKey: ['vo2max'],
     queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
-    staleTime: 600_000,  // 10 min — expensive computation
+    staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
@@ -160,7 +156,6 @@ export default function CyclingPage() {
     staleTime: 600_000,
   });
 
-  // ── Decoupling query ───────────────────────────────────────────────────
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
     queryKey: ['decoupling-history'],
     queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
@@ -173,17 +168,18 @@ export default function CyclingPage() {
     staleTime: 600_000,
   });
 
-  // ── Weight trend chart ──────────────────────────────────────────────────
   const { data: chartWeightTrend } = useQuery<ChartData>({
     queryKey: ['chart-weight-trend'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
     staleTime: 300_000,
   });
 
-  // ── FTP Estimate state ──────────────────────────────────────────────────
+  // ── State ───────────────────────────────────────────────────────────────
   const [ftpEstimate, setFtpEstimate] = useState<FtpEstimate | null>(null);
-
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [backfillResult, setBackfillResult] = useState<string | null>(null);
+  const [recalcResult, setRecalcResult] = useState<string | null>(null);
+  const [backfillFtpResult, setBackfillFtpResult] = useState<string | null>(null);
 
   // ── Mutations ───────────────────────────────────────────────────────────
   const updateProfileMutation = useMutation({
@@ -235,10 +231,6 @@ export default function CyclingPage() {
       setTimeout(() => setSaveMessage(null), 5000);
     },
   });
-
-  const [backfillResult, setBackfillResult] = useState<string | null>(null);
-  const [recalcResult, setRecalcResult] = useState<string | null>(null);
-  const [backfillFtpResult, setBackfillFtpResult] = useState<string | null>(null);
 
   const recalculateTssMutation = useMutation({
     mutationFn: () => authFetch<{ updated: number; total_checked: number }>(
@@ -292,23 +284,6 @@ export default function CyclingPage() {
       setBackfillFtpResult(`Error: ${error.message}`);
     },
   });
-
-  // ── Power vs HR chart data ──────────────────────────────────────────────
-  const powerVsHrChart: ChartData | null = powerVsHr?.data?.length
-    ? {
-        chart_type: 'scatter',
-        title: 'Power vs Heart Rate',
-        labels: powerVsHr.data.map((p) => String(p.power)),
-        series: [
-          {
-            name: 'Rides',
-            data: powerVsHr.data.map((p) => p.heart_rate),
-          },
-        ],
-        x_label: 'Power (W)',
-        y_label: 'Heart Rate (bpm)',
-      }
-    : null;
 
   // ── Loading state ───────────────────────────────────────────────────────
   if (profileLoading) {
@@ -403,56 +378,12 @@ export default function CyclingPage() {
         />
       </div>
 
-      {/* VO2max Card — always visible */}
-      <Card>
-        <CardHeader>
-          <CardTitle>🫁 VO2max Estimate</CardTitle>
-        </CardHeader>
-        {vo2max ? (
-          <>
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-              <div className="flex items-center gap-4">
-                <p className="text-4xl font-bold text-green-400">
-                  {vo2max.vo2max.toFixed(1)}
-                </p>
-                <div>
-                  <p className="text-sm text-muted">ml/kg/min</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    vo2max.classification === 'Superior' ? 'bg-purple-500/20 text-purple-400'
-                    : vo2max.classification === 'Excellent' ? 'bg-blue-500/20 text-blue-400'
-                    : vo2max.classification === 'Good' ? 'bg-green-500/20 text-green-400'
-                    : vo2max.classification === 'Average' ? 'bg-yellow-500/20 text-yellow-400'
-                    : vo2max.classification === 'Below Average' ? 'bg-orange-500/20 text-orange-400'
-                    : 'bg-red-500/20 text-red-400'
-                  }`}>
-                    {vo2max.classification}
-                  </span>
-                </div>
-              </div>
-              <div className="text-sm text-muted">
-                <p>Method: <span className="text-white">{vo2max.method}</span></p>
-                <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
-                {vo2max.all_estimates.length > 1 && (
-                  <p className="mt-1 text-xs">
-                    {vo2max.all_estimates.length} estimates available — showing highest.
-                  </p>
-                )}
-              </div>
-            </div>
-            {vo2maxHistory && vo2maxHistory.data.length > 1 && (
-              <div className="mt-2 text-xs text-muted">
-                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min over {vo2maxHistory.data.length} months
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="py-6 flex flex-col items-center gap-2">
-            <p className="text-3xl">🫁</p>
-            <p className="text-sm text-muted">VO2max requires per-second power data from Strava streams</p>
-            <p className="text-xs text-muted">Fetch streams above, then refresh this page</p>
-          </div>
-        )}
-      </Card>
+      {/* VO2max Section */}
+      <Vo2maxSection
+        vo2max={vo2max}
+        vo2maxHistory={vo2maxHistory}
+        chartVo2maxTrend={chartVo2maxTrend}
+      />
 
       {/* Recent Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -492,42 +423,16 @@ export default function CyclingPage() {
         />
       </div>
 
-      {/* Training Load Chart */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <CardTitle>Training Load — CTL / ATL / TSB</CardTitle>
-            <div className="flex gap-2">
-              {[30, 60, 90, 180].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setLoadDays(d)}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
-                    loadDays === d
-                      ? 'bg-accent/20 text-accent border-accent/30'
-                      : 'text-muted border-surface-light hover:border-accent/30'
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        {loadLoading ? (
-          <div className="h-80 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-          </div>
-        ) : chartTrainingLoad ? (
-          <Chart data={chartTrainingLoad} height={320} />
-        ) : (
-          <div className="h-80 flex items-center justify-center text-muted">
-            No training load data available. Set your FTP and sync activities.
-          </div>
-        )}
-      </Card>
+      {/* Training Load Section */}
+      <TrainingLoadSection
+        trainingLoad={trainingLoad}
+        chartTrainingLoad={chartTrainingLoad}
+        isLoading={loadLoading}
+        loadDays={loadDays}
+        setLoadDays={setLoadDays}
+      />
 
-      {/* Recalculate TSS Banner — shown when FTP is set */}
+      {/* Recalculate TSS Banner */}
       {profile?.ftp_watts && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <div className="flex items-center justify-between gap-4">
@@ -558,7 +463,7 @@ export default function CyclingPage() {
         </Card>
       )}
 
-      {/* Fetch Streams Banner — always available as a utility action */}
+      {/* Fetch Streams Banner */}
       {profile?.ftp_watts && (
         <Card className="border-blue-500/30 bg-blue-500/5">
           <div className="flex items-center justify-between gap-4">
@@ -589,351 +494,42 @@ export default function CyclingPage() {
         </Card>
       )}
 
-      {/* Power Curve + Power Zones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Power Curve */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Power Curve (90 days)</CardTitle>
-          </CardHeader>
-          {curveLoading ? (
-            <div className="h-60 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-            </div>
-          ) : powerCurve?.data?.some(p => p.best_power_watts != null) ? (
-            <>
-              {chartPowerCurve && <Chart data={chartPowerCurve} height={280} />}
-              <div className="mt-4">
-                <PowerCurveTable data={powerCurve.data} ftpWatts={powerCurve.ftp_watts} />
-              </div>
-            </>
-          ) : (
-            <div className="h-60 flex flex-col items-center justify-center text-muted text-sm">
-              <p>No power data yet</p>
-              <p className="text-xs mt-1">Fetch streams above to populate this chart</p>
-            </div>
-          )}
-        </Card>
+      {/* Power Curve Section */}
+      <PowerCurveSection
+        powerCurve={powerCurve}
+        chartPowerCurve={chartPowerCurve}
+        curveLoading={curveLoading}
+        powerZones={powerZones}
+        chartPowerZones={chartPowerZones}
+        zonesLoading={zonesLoading}
+        chartPowerComparison={chartPowerComparison}
+        comparisonDays={comparisonDays}
+        setComparisonDays={setComparisonDays}
+        hrZones={hrZones}
+        chartHrZones={chartHrZones}
+        hasLthr={!!profile?.lactate_threshold_hr}
+        powerVsHr={powerVsHr}
+        chartDailyTss={chartDailyTss}
+        chartWeightTrend={chartWeightTrend}
+      />
 
-        {/* Power Zones */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Power Zones (30 days)</CardTitle>
-          </CardHeader>
-          {zonesLoading ? (
-            <div className="h-60 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-            </div>
-          ) : powerZones?.zones?.length ? (
-            <>
-              <div className="mb-4">
-                <p className="text-sm text-muted">
-                  Based on FTP: <span className="text-yellow-400 font-mono">{powerZones.ftp_watts} W</span>
-                </p>
-              </div>
-              <PowerZonesDisplay zones={powerZones.zones} />
-              {chartPowerZones && <div className="mt-4"><Chart data={chartPowerZones} height={220} /></div>}
-            </>
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted">
-              Set your FTP and sync activities with power stream data to see zone distribution.
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* Decoupling Section */}
+      <DecouplingSection
+        decoupling={decoupling}
+        chartDecouplingTrend={chartDecouplingTrend}
+      />
 
-      {/* Power Curve Comparison */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <CardTitle>⚡ Power Curve Comparison</CardTitle>
-            <div className="flex gap-2">
-              {[14, 30, 60, 90].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setComparisonDays(d)}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
-                    comparisonDays === d
-                      ? 'bg-accent/20 text-accent border-accent/30'
-                      : 'text-muted border-surface-light hover:border-accent/30'
-                  }`}
-                >
-                  {d}d vs {d * 3}d
-                </button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        {chartPowerComparison && chartPowerComparison.labels.length > 0 ? (
-          <Chart data={chartPowerComparison} height={300} />
-        ) : (
-          <div className="h-60 flex items-center justify-center text-muted text-sm">
-            No power data available for comparison. Fetch streams from Strava first.
-          </div>
-        )}
-      </Card>
-
-      {/* HR Zones + Weight Trend */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Heart Rate Zones — always visible */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Heart Rate Zones (30 days)</CardTitle>
-          </CardHeader>
-          {hrZones?.zones?.length ? (
-            <>
-              <HRZonesDisplay zones={hrZones.zones} lthr={hrZones.lthr} />
-              {chartHrZones && <div className="mt-4"><Chart data={chartHrZones} height={220} /></div>}
-            </>
-          ) : (
-            <div className="h-60 flex flex-col items-center justify-center gap-3">
-              <p className="text-3xl">💓</p>
-              {!profile?.lactate_threshold_hr ? (
-                <>
-                  <p className="text-sm text-muted">Set your LTHR to see HR zone distribution</p>
-                  <p className="text-xs text-muted">Enter your Lactate Threshold Heart Rate in the profile editor above</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-muted">No heart rate stream data available</p>
-                  <p className="text-xs text-muted">Sync activities with HR data to populate zones</p>
-                </>
-              )}
-            </div>
-          )}
-        </Card>
-
-        {/* Weight Trend */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Body Weight Trend (90 days)</CardTitle>
-          </CardHeader>
-          {chartWeightTrend && chartWeightTrend.labels.length > 0 ? (
-            <Chart data={chartWeightTrend} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted text-sm">
-              No weight data available. Log weight in settings or sync from Whoop.
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Decoupling Trend Chart — always visible */}
-      <Card>
-        <CardHeader>
-          <CardTitle>🫀 Decoupling Trend (HR vs Power)</CardTitle>
-        </CardHeader>
-        {decoupling && decoupling.data.length > 0 ? (
-          <>
-            <div className="mb-3 flex items-center gap-4 text-sm">
-              <span className="text-muted">Average decoupling:</span>
-              <span className={`font-bold ${
-                (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-green-400'
-                : (decoupling.avg_decoupling_pct ?? 0) < 8 ? 'text-yellow-400'
-                : 'text-red-400'
-              }`}>
-                {decoupling.avg_decoupling_pct?.toFixed(1)}%
-              </span>
-              {decoupling.classification && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-green-400'
-                  : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-red-500/20 text-red-400'
-                }`}>
-                  {decoupling.classification}
-                </span>
-              )}
-              <span className="text-xs text-muted">
-                ({decoupling.data.length} rides {'>'}60 min)
-              </span>
-            </div>
-            {chartDecouplingTrend ? (
-              <Chart data={chartDecouplingTrend} height={280} />
-            ) : (
-              <div className="h-40 flex items-center justify-center text-muted text-sm">
-                No decoupling chart data available
-              </div>
-            )}
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-green-500"></span> {'<'}5% Excellent
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-yellow-500"></span> 5-8% Acceptable
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-500"></span> {'>'}8% Aerobic Deficiency
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="h-40 flex flex-col items-center justify-center gap-2">
-            <p className="text-3xl">🫀</p>
-            <p className="text-sm text-muted">Requires rides {'>'}60 min with both power and HR stream data</p>
-            <p className="text-xs text-muted">Fetch streams above to enable decoupling analysis</p>
-          </div>
-        )}
-      </Card>
-
-      {/* VO2max Trend Chart — always visible */}
-      <Card>
-        <CardHeader>
-          <CardTitle>📈 VO2max Trend</CardTitle>
-        </CardHeader>
-        {chartVo2maxTrend && chartVo2maxTrend.labels.length > 0 ? (
-          <Chart data={chartVo2maxTrend} height={280} />
-        ) : (
-          <div className="h-40 flex flex-col items-center justify-center gap-2">
-            <p className="text-3xl">📈</p>
-            <p className="text-sm text-muted">VO2max trend requires multiple months of cycling data with power streams</p>
-            <p className="text-xs text-muted">Fetch streams and sync activities to build trend data</p>
-          </div>
-        )}
-      </Card>
-
-      {/* Daily TSS + Power vs HR */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Daily TSS */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily TSS (30 days)</CardTitle>
-          </CardHeader>
-          {chartDailyTss ? (
-            <Chart data={chartDailyTss} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted">
-              No TSS data available
-            </div>
-          )}
-        </Card>
-
-        {/* Power vs HR */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Power vs Heart Rate (90 days)</CardTitle>
-          </CardHeader>
-          {powerVsHrChart ? (
-            <Chart data={powerVsHrChart} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted">
-              No power/HR data available
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* FTP History Chart + Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <CardTitle>📈 FTP Progression</CardTitle>
-            <button
-              onClick={() => backfillFtpHistoryMutation.mutate()}
-              disabled={backfillFtpHistoryMutation.isPending}
-              className="px-3 py-1.5 text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-lg hover:bg-purple-500/30 transition-colors disabled:opacity-50 font-medium"
-            >
-              {backfillFtpHistoryMutation.isPending ? 'Backfilling...' : '📊 Backfill FTP History'}
-            </button>
-          </div>
-        </CardHeader>
-        {backfillFtpResult && (
-          <p className={`text-xs mb-3 ${backfillFtpResult.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>
-            {backfillFtpResult}
-          </p>
-        )}
-        <div className="mb-4 text-sm text-muted">
-          Current FTP: <span className="text-yellow-400 font-mono font-bold">{profile?.ftp_watts ?? '—'} W</span>
-          {profile?.weight_kg && profile?.ftp_watts && (
-            <span className="ml-4">
-              W/kg: <span className="text-green-400 font-mono font-bold">
-                {(profile.ftp_watts / profile.weight_kg).toFixed(2)}
-              </span>
-            </span>
-          )}
-        </div>
-        {chartFtpHistory && chartFtpHistory.labels.length > 0 ? (
-          <Chart data={chartFtpHistory} height={250} />
-        ) : (
-          <div className="h-40 flex items-center justify-center text-muted text-sm">
-            No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.
-          </div>
-        )}
-        {ftpHistory && ftpHistory.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-surface-light/50">
-                  <th className="text-left py-2 text-muted font-medium">Date</th>
-                  <th className="text-right py-2 text-muted font-medium">FTP (W)</th>
-                  <th className="text-left py-2 text-muted font-medium">Source</th>
-                  <th className="text-left py-2 text-muted font-medium">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ftpHistory.map((entry) => (
-                  <tr key={entry.id} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-white">{new Date(entry.effective_date).toLocaleDateString()}</td>
-                    <td className="py-2 text-right text-yellow-400 font-mono">{entry.ftp_watts} W</td>
-                    <td className="py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        entry.source === 'estimated' ? 'bg-blue-500/20 text-blue-400' : 'bg-surface-light text-muted'
-                      }`}>
-                        {entry.source}
-                      </span>
-                    </td>
-                    <td className="py-2 text-muted text-xs">{entry.notes || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {/* Lifetime Power PBs */}
-      {lifetimePBs && lifetimePBs.pbs.some(p => p.best_power_watts != null) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>🏆 Lifetime Power PBs</CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-surface-light/50">
-                  <th className="text-left py-2 text-muted font-medium">Duration</th>
-                  <th className="text-right py-2 text-muted font-medium">Best Power</th>
-                  {profile?.weight_kg && (
-                    <th className="text-right py-2 text-muted font-medium">W/kg</th>
-                  )}
-                  {lifetimePBs.ftp_watts && (
-                    <th className="text-right py-2 text-muted font-medium">% FTP</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {lifetimePBs.pbs.filter(p => p.best_power_watts != null).map((pb) => (
-                  <tr key={pb.duration_label} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-white font-medium">{pb.duration_label}</td>
-                    <td className="py-2 text-right text-yellow-400 font-mono">
-                      {pb.best_power_watts} W
-                    </td>
-                    {profile?.weight_kg && (
-                      <td className="py-2 text-right text-green-400 font-mono">
-                        {(pb.best_power_watts! / profile.weight_kg).toFixed(2)}
-                      </td>
-                    )}
-                    {lifetimePBs.ftp_watts && (
-                      <td className="py-2 text-right text-muted font-mono">
-                        {pb.pct_ftp ?? '—'}%
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      {/* FTP Section */}
+      <FtpSection
+        profile={profile}
+        ftpHistory={ftpHistory}
+        chartFtpHistory={chartFtpHistory}
+        lifetimePBs={lifetimePBs}
+        ftpEstimate={ftpEstimate}
+        backfillFtpResult={backfillFtpResult}
+        onBackfillFtp={() => backfillFtpHistoryMutation.mutate()}
+        isBackfillingFtp={backfillFtpHistoryMutation.isPending}
+      />
     </div>
   );
 }

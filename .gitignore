@@ -38,3 +38,9 @@ pgdata/
 $null
 *.log
 frontend/tsconfig.tsbuildinfo
+
+# Playwright test artifacts
+frontend/test-results/
+frontend/e2e/screenshots/
+frontend/playwright-report/
+frontend/e2e/.auth/

@@ -9,6 +9,7 @@ import { useAuthFetch, Connection } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const PUBLIC_URL = process.env.NEXT_PUBLIC_PUBLIC_URL || 'https://localhost';
+const BASE_PATH = '/fittrack';
 
 // Providers that require HTTPS for OAuth callbacks
 const HTTPS_PROVIDERS = ['wahoo', 'whoop'];
@@ -18,7 +19,7 @@ const integrations = [
     id: 'strava',
     name: 'Strava',
     description: 'Sync cycling, running, and swimming activities with routes, power, HR, and GPS data',
-    icon: '/icons/strava.svg',
+    icon: `${BASE_PATH}/icons/strava.svg`,
     emoji: '🚴',
     color: 'bg-orange-500',
     available: true,
@@ -27,7 +28,7 @@ const integrations = [
     id: 'komoot',
     name: 'Komoot',
     description: 'Sync planned routes and completed tours with GPS data and elevation profiles (configured via KOMOOT_EMAIL/KOMOOT_PASSWORD in .env)',
-    icon: '/icons/komoot.svg',
+    icon: `${BASE_PATH}/icons/komoot.svg`,
     emoji: '🗺️',
     color: 'bg-green-600',
     available: true,
@@ -37,7 +38,7 @@ const integrations = [
     id: 'wahoo',
     name: 'Wahoo',
     description: 'Sync routes and workouts from Wahoo trainers and ELEMNT head units',
-    icon: '/icons/wahoo.svg',
+    icon: `${BASE_PATH}/icons/wahoo.svg`,
     emoji: '📊',
     color: 'bg-blue-500',
     available: true,
@@ -46,7 +47,7 @@ const integrations = [
     id: 'whoop',
     name: 'Whoop',
     description: 'Recovery scores, sleep tracking, HRV, daily strain, and heart rate data',
-    icon: '/icons/whoop.svg',
+    icon: `${BASE_PATH}/icons/whoop.svg`,
     emoji: '💤',
     color: 'bg-purple-500',
     available: true,
@@ -193,7 +194,7 @@ export default function SettingsPage() {
               >
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-lg ${integration.color} flex items-center justify-center`}>
-                    <img src={integration.icon} alt={integration.name} className="w-7 h-7" />
+                    <img src={integration.icon} alt={integration.name} className="w-7 h-7" width="28" height="28" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -378,14 +379,14 @@ export default function SettingsPage() {
                           setWhoopBackfillResult(event.detail);
                           setWhoopBackfillProgress(null);
                         } else if (event.type === 'error') {
-                          throw new Error(event.detail);
+                          // Backend error (e.g. 429 rate limit) — surface to user
+                          setWhoopBackfillResult(`Error: ${event.detail}`);
+                          setWhoopBackfillProgress(null);
+                          return; // Stop processing further events
                         }
                       } catch (parseErr) {
-                        if (parseErr instanceof Error && parseErr.message !== 'Backfill failed') {
-                          console.warn('SSE parse error:', parseErr);
-                        } else {
-                          throw parseErr;
-                        }
+                        // Only log actual JSON parse errors, not backend errors
+                        console.warn('SSE event parse error:', parseErr);
                       }
                     }
                   }

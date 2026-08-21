@@ -33,6 +33,4 @@
     handle / {
         redir /fittrack permanent
     }
-
-    tls internal
 }
