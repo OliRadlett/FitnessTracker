@@ -20,6 +20,7 @@ import type {
   Vo2maxResponse,
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
+  SuggestedCycleResponse,
 } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
@@ -29,6 +30,7 @@ import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
+import { SuggestedCycleCard } from '@/components/cycling/SuggestedCycleCard';
 
 export default function CyclingPage() {
   const { authFetch } = useAuthFetch();
@@ -174,6 +176,12 @@ export default function CyclingPage() {
     staleTime: 300_000,
   });
 
+  const { data: suggestedCycle, isLoading: suggestedCycleLoading } = useQuery<SuggestedCycleResponse>({
+    queryKey: ['suggested-cycle'],
+    queryFn: () => authFetch<SuggestedCycleResponse>('/api/v1/cycling/suggested-cycle'),
+    staleTime: 600_000,
+  });
+
   // ── State ───────────────────────────────────────────────────────────────
   const [ftpEstimate, setFtpEstimate] = useState<FtpEstimate | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -251,7 +259,7 @@ export default function CyclingPage() {
 
   const backfillStreamsMutation = useMutation({
     mutationFn: () => authFetch<{ backfilled: number; total_checked: number; message?: string }>(
-      '/api/v1/cycling/backfill-streams?days=90&limit=30&force=true',
+      '/api/v1/cycling/backfill-streams?days=3650&limit=500&force=true',
       { method: 'POST' }
     ),
     onSuccess: (data) => {
@@ -315,6 +323,9 @@ export default function CyclingPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Cycling</h1>
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
+
+      {/* Suggested Training Cycle */}
+      <SuggestedCycleCard data={suggestedCycle} isLoading={suggestedCycleLoading} />
 
       {/* Profile Editor */}
       <ProfileEditor
@@ -464,35 +475,33 @@ export default function CyclingPage() {
       )}
 
       {/* Fetch Streams Banner */}
-      {profile?.ftp_watts && (
-        <Card className="border-blue-500/30 bg-blue-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-white">
-                {powerCurve?.data?.some(p => p.best_power_watts != null)
-                  ? 'Fetch more stream data from Strava'
-                  : 'No power stream data found'}
-              </p>
-              <p className="text-xs text-muted mt-1">
-                Per-second power data is needed for power curves, zones, VO2max, and FTP estimation.
-                Fetch streams for your last 90 days of rides.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => backfillStreamsMutation.mutate()}
-                disabled={backfillStreamsMutation.isPending}
-                className="px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium"
-              >
-                {backfillStreamsMutation.isPending ? 'Fetching...' : '📡 Fetch Streams from Strava'}
-              </button>
-            </div>
+      <Card className="border-blue-500/30 bg-blue-500/5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-white">
+              {powerCurve?.data?.some(p => p.best_power_watts != null)
+                ? 'Fetch stream data for all cycling activities'
+                : 'No power stream data found'}
+            </p>
+            <p className="text-xs text-muted mt-1">
+              Per-second power data is needed for power curves, zones, VO2max, and FTP estimation.
+              Fetches streams for ALL your cycling activities (up to 500 at a time).
+            </p>
           </div>
-          {backfillResult && (
-            <p className="text-xs text-green-400 mt-2">{backfillResult}</p>
-          )}
-        </Card>
-      )}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => backfillStreamsMutation.mutate()}
+              disabled={backfillStreamsMutation.isPending}
+              className="px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium"
+            >
+              {backfillStreamsMutation.isPending ? 'Fetching...' : '📡 Fetch Streams from Strava'}
+            </button>
+          </div>
+        </div>
+        {backfillResult && (
+          <p className="text-xs text-green-400 mt-2">{backfillResult}</p>
+        )}
+      </Card>
 
       {/* Power Curve Section */}
       <PowerCurveSection

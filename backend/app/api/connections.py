@@ -78,9 +78,15 @@ async def trigger_sync(
             route_count = 0
             try:
                 from app.services.strava import sync_strava_routes
-                route_count, route_merged = await sync_strava_routes(db, current_user.id)
+
+                route_count, route_merged = await sync_strava_routes(
+                    db, current_user.id
+                )
             except Exception as e:
-                logger.error(f"Strava route sync failed for user {current_user.id}: {e}", exc_info=True)
+                logger.error(
+                    f"Strava route sync failed for user {current_user.id}: {e}",
+                    exc_info=True,
+                )
             return {
                 "detail": f"Synced {len(activities)} activities and {route_count} routes from Strava",
                 "synced_count": len(activities),
@@ -91,6 +97,7 @@ async def trigger_sync(
     elif connection.provider == "komoot":
         try:
             from app.services.komoot import sync_komoot_routes
+
             route_count, merged = await sync_komoot_routes(db, current_user.id)
             await db.commit()
             return {
@@ -103,6 +110,7 @@ async def trigger_sync(
     elif connection.provider == "wahoo":
         try:
             from app.services.wahoo import sync_wahoo_activities, sync_wahoo_routes
+
             # Sync both routes and activities
             route_count, merged = await sync_wahoo_routes(db, current_user.id)
             activities = await sync_wahoo_activities(db, current_user.id)
@@ -118,10 +126,16 @@ async def trigger_sync(
     elif connection.provider == "whoop":
         try:
             from app.services.whoop import (
+                refresh_if_needed as whoop_refresh,
+            )
+            from app.services.whoop import (
                 sync_whoop_cycles,
                 sync_whoop_sleep,
                 sync_whoop_workouts,
             )
+
+            # Refresh token first (same as Celery task does)
+            connection = await whoop_refresh(db, connection)
             metrics = await sync_whoop_cycles(db, current_user.id)
             sleep_logs = await sync_whoop_sleep(db, current_user.id)
             enriched = await sync_whoop_workouts(db, current_user.id)
@@ -142,7 +156,9 @@ async def trigger_sync(
 @router.post("/whoop/backfill")
 async def backfill_whoop(
     months: int = Query(12, ge=1, le=120, description="Months of history to backfill"),
-    chunk_months: int = Query(3, ge=1, le=12, description="Months per chunk (smaller = more progress updates)"),
+    chunk_months: int = Query(
+        3, ge=1, le=12, description="Months per chunk (smaller = more progress updates)"
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -175,13 +191,19 @@ async def backfill_whoop(
         async with async_session_factory() as stream_db:
             try:
                 async for event in backfill_whoop_chunked(
-                    stream_db, user_id, months=months, chunk_months=chunk_months,
+                    stream_db,
+                    user_id,
+                    months=months,
+                    chunk_months=chunk_months,
                 ):
                     yield f"data: {json.dumps(event)}\n\n"
             except ValueError as e:
                 yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
             except Exception as e:
-                logger.error(f"Whoop backfill stream error for user {user_id}: {e}", exc_info=True)
+                logger.error(
+                    f"Whoop backfill stream error for user {user_id}: {e}",
+                    exc_info=True,
+                )
                 yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
 
     return StreamingResponse(
@@ -189,5 +211,3 @@ async def backfill_whoop(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-

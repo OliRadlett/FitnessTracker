@@ -102,6 +102,7 @@ class TestGetEvent:
     async def test_get_nonexistent_event(self, client):
         """Get returns 404 for nonexistent event."""
         import uuid
+
         resp = await client.get(f"/api/v1/events/{uuid.uuid4()}")
         assert resp.status_code == 404
 
@@ -152,7 +153,9 @@ class TestEventAiAnalysis:
         assert resp.status_code == 200
         assert resp.json() is None
 
-    async def test_triggers_event_ai_analysis(self, client, test_event, test_user, monkeypatch):
+    async def test_triggers_event_ai_analysis(
+        self, client, test_event, test_user, monkeypatch
+    ):
         """POST triggers event AI analysis (mocked Gemini)."""
         import uuid
         from datetime import UTC, date, datetime

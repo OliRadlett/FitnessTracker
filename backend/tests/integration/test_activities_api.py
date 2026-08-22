@@ -111,7 +111,9 @@ class TestActivityStreams:
 class TestActivityAnalysis:
     """GET /api/v1/activities/{id}/analysis — static ride analysis."""
 
-    async def test_analysis_for_activity_with_power_stream(self, client, test_activity, test_cycling_profile):
+    async def test_analysis_for_activity_with_power_stream(
+        self, client, test_activity, test_cycling_profile
+    ):
         """Analysis should return power zones, pacing, and TSS breakdown."""
         resp = await client.get(f"/api/v1/activities/{test_activity.id}/analysis")
         assert resp.status_code == 200
@@ -133,13 +135,17 @@ class TestActivityAnalysis:
 class TestActivityAiAnalysis:
     """GET/POST /api/v1/activities/{id}/ai-analysis — per-activity Gemini analysis."""
 
-    async def test_get_ai_analysis_returns_null_when_none_exists(self, client, test_activity):
+    async def test_get_ai_analysis_returns_null_when_none_exists(
+        self, client, test_activity
+    ):
         """Returns null/None when no AI analysis has been generated yet."""
         resp = await client.get(f"/api/v1/activities/{test_activity.id}/ai-analysis")
         assert resp.status_code == 200
         assert resp.json() is None
 
-    async def test_trigger_ai_analysis_with_mocked_gemini(self, client, test_activity, test_cycling_profile):
+    async def test_trigger_ai_analysis_with_mocked_gemini(
+        self, client, test_activity, test_cycling_profile
+    ):
         """Triggering AI analysis creates and returns an LlmAnalysis record.
 
         Only the external Gemini HTTP call is mocked — the full internal
@@ -166,7 +172,9 @@ class TestActivityAiAnalysis:
             mock_client.aio.models.generate_content.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            resp = await client.post(f"/api/v1/activities/{test_activity.id}/ai-analysis")
+            resp = await client.post(
+                f"/api/v1/activities/{test_activity.id}/ai-analysis"
+            )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -177,7 +185,9 @@ class TestActivityAiAnalysis:
         # The stats_json should contain the real compiled context
         assert "activity_summary" in data["stats_json"]
 
-    async def test_get_ai_analysis_after_trigger(self, client, test_activity, test_cycling_profile):
+    async def test_get_ai_analysis_after_trigger(
+        self, client, test_activity, test_cycling_profile
+    ):
         """After triggering analysis, GET returns the stored result."""
         from unittest.mock import AsyncMock, patch
 

@@ -6,28 +6,30 @@
 #
 # These overrides replace dev-friendly settings (hot-reload, debug, exposed ports)
 # with production equivalents (optimized builds, HTTPS via Caddy, no debug).
+#
+# Images are built in GitHub Actions and pushed to GHCR. This file uses pre-built images.
+# Set REGISTRY and IMAGE_NAME env vars (or use .env) to override.
+# Example: REGISTRY=ghcr.io IMAGE_NAME=your-org/fitness-tracker
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/backend:latest
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     volumes: []
     restart: unless-stopped
 
   worker:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/worker:latest
     volumes: []
     restart: unless-stopped
 
   beat:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/worker:latest
     volumes: []
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/frontend:latest
     command: ["node", "server.js"]
     entrypoint: ""
     volumes: []

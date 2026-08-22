@@ -37,7 +37,9 @@ router = APIRouter()
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
 
-@router.post("/sessions", response_model=LiftingSessionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions", response_model=LiftingSessionRead, status_code=status.HTTP_201_CREATED
+)
 async def create_session(
     data: LiftingSessionCreate,
     db: AsyncSession = Depends(get_db),
@@ -65,11 +67,15 @@ async def list_sessions(
 
     # Get total count
     count_result = await db.execute(
-        select(func.count(LiftingSession.id)).where(LiftingSession.user_id == current_user.id)
+        select(func.count(LiftingSession.id)).where(
+            LiftingSession.user_id == current_user.id
+        )
     )
     total_count = int(count_result.scalar() or 0)
 
-    sessions = await lifting_service.list_sessions(db, current_user.id, limit=limit, offset=offset)
+    sessions = await lifting_service.list_sessions(
+        db, current_user.id, limit=limit, offset=offset
+    )
     enriched = [LiftingSessionRead.model_validate(s) for s in sessions]
     return JSONResponse(
         content=[s.model_dump(mode="json") for s in enriched],
@@ -96,7 +102,9 @@ async def update_session(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    session = await lifting_service.update_session(db, session_id, current_user.id, data)
+    session = await lifting_service.update_session(
+        db, session_id, current_user.id, data
+    )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return LiftingSessionRead.model_validate(session)
@@ -127,13 +135,17 @@ async def link_session(
 
     Pass `activity_id` to link, or `{"activity_id": null}` to unlink.
     """
-    session = await lifting_service.link_session_to_activity(db, session_id, current_user.id, data)
+    session = await lifting_service.link_session_to_activity(
+        db, session_id, current_user.id, data
+    )
     if not session:
         raise HTTPException(status_code=404, detail="Session or activity not found")
     return LiftingSessionRead.model_validate(session)
 
 
-@router.get("/sessions/{session_id}/linkable-activities", response_model=list[ActivityRead])
+@router.get(
+    "/sessions/{session_id}/linkable-activities", response_model=list[ActivityRead]
+)
 async def get_linkable_activities(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -143,7 +155,9 @@ async def get_linkable_activities(
 
     Returns activities on the same date (±1 day) with sport_type strength/powerlifting.
     """
-    activities = await lifting_service.find_linkable_activities(db, current_user.id, session_id)
+    activities = await lifting_service.find_linkable_activities(
+        db, current_user.id, session_id
+    )
     return [ActivityRead.model_validate(a) for a in activities]
 
 
@@ -166,7 +180,11 @@ async def backfill_links(
 # ── Sets ──────────────────────────────────────────────────────────────────────
 
 
-@router.post("/sessions/{session_id}/sets", response_model=LiftingSetRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions/{session_id}/sets",
+    response_model=LiftingSetRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_set(
     session_id: uuid.UUID,
     data: LiftingSetCreate,
@@ -213,7 +231,9 @@ async def get_prs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    prs = await lifting_service.get_prs(db, current_user.id, exercise_name=exercise_name, limit=limit)
+    prs = await lifting_service.get_prs(
+        db, current_user.id, exercise_name=exercise_name, limit=limit
+    )
     return [PersonalRecordRead.model_validate(pr) for pr in prs]
 
 
@@ -251,7 +271,9 @@ async def list_exercises(
 # ── Manual PR Entry ──────────────────────────────────────────────────────────
 
 
-@router.post("/prs", response_model=PersonalRecordRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/prs", response_model=PersonalRecordRead, status_code=status.HTTP_201_CREATED
+)
 async def create_pr(
     data: PersonalRecordCreate,
     db: AsyncSession = Depends(get_db),
@@ -272,7 +294,9 @@ async def get_volume_trends(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    trends = await lifting_service.get_volume_trends(db, current_user.id, exercise_name=exercise_name, weeks=weeks)
+    trends = await lifting_service.get_volume_trends(
+        db, current_user.id, exercise_name=exercise_name, weeks=weeks
+    )
     return VolumeTrendResponse(exercise_name=exercise_name, data=trends)
 
 
@@ -285,11 +309,17 @@ async def list_warmup_templates(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    templates = await lifting_service.list_warmup_templates(db, current_user.id, exercise_name=exercise_name)
+    templates = await lifting_service.list_warmup_templates(
+        db, current_user.id, exercise_name=exercise_name
+    )
     return [WarmupTemplateRead.model_validate(t) for t in templates]
 
 
-@router.post("/warmup-templates", response_model=WarmupTemplateRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/warmup-templates",
+    response_model=WarmupTemplateRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_warmup_template(
     data: WarmupTemplateCreate,
     db: AsyncSession = Depends(get_db),
@@ -305,7 +335,9 @@ async def get_warmup_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    template = await lifting_service.get_warmup_template(db, template_id, current_user.id)
+    template = await lifting_service.get_warmup_template(
+        db, template_id, current_user.id
+    )
     if not template:
         raise HTTPException(status_code=404, detail="Warmup template not found")
     return WarmupTemplateRead.model_validate(template)
@@ -318,19 +350,25 @@ async def update_warmup_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    template = await lifting_service.update_warmup_template(db, template_id, current_user.id, data)
+    template = await lifting_service.update_warmup_template(
+        db, template_id, current_user.id, data
+    )
     if not template:
         raise HTTPException(status_code=404, detail="Warmup template not found")
     return WarmupTemplateRead.model_validate(template)
 
 
-@router.delete("/warmup-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/warmup-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_warmup_template(
     template_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = await lifting_service.delete_warmup_template(db, template_id, current_user.id)
+    deleted = await lifting_service.delete_warmup_template(
+        db, template_id, current_user.id
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Warmup template not found")
 
@@ -411,7 +449,9 @@ async def trigger_session_ai_analysis(
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
-        analysis = await run_lifting_session_ai_analysis(db, current_user.id, session_id)
+        analysis = await run_lifting_session_ai_analysis(
+            db, current_user.id, session_id
+        )
         if analysis is None:
             raise HTTPException(status_code=404, detail="Session not found")
         await db.commit()

@@ -13,17 +13,17 @@ from typing import Any
 from fitparse import FitFile
 
 # FIT files store lat/lon as semicircles; convert to degrees.
-_SEMICIRCLE_TO_DEG = 180.0 / (2 ** 31)
+_SEMICIRCLE_TO_DEG = 180.0 / (2**31)
 
 # FIT sport-type enum values we recognise → internal sport_type strings.
 _SPORT_MAP: dict[int, str] = {
-    0: "cycling",       # generic
-    1: "running",       # running
-    2: "cycling",       # cycling (explicit)
-    3: "walking",       # walking / transition
-    4: "cycling",       # cycling — keep default for unknown sub_sport
-    5: "cycling",       # cycling
-    11: "swimming",     # swimming
+    0: "cycling",  # generic
+    1: "running",  # running
+    2: "cycling",  # cycling (explicit)
+    3: "walking",  # walking / transition
+    4: "cycling",  # cycling — keep default for unknown sub_sport
+    5: "cycling",  # cycling
+    11: "swimming",  # swimming
     17: "weighttraining",  # strength_training
 }
 
@@ -118,7 +118,9 @@ def parse_fit_file(file_bytes: bytes) -> dict:
     name = f"{sport_type.capitalize()} — {ts_label}"
 
     # Duration: prefer total_elapsed_time, fall back to total_timer_time
-    duration = _safe_int(session_data.get("total_elapsed_time") or session_data.get("total_timer_time"))
+    duration = _safe_int(
+        session_data.get("total_elapsed_time") or session_data.get("total_timer_time")
+    )
 
     # Distance
     distance = _safe_float(session_data.get("total_distance"))
@@ -127,19 +129,26 @@ def parse_fit_file(file_bytes: bytes) -> dict:
     elev_gain = _safe_float(session_data.get("total_ascent"))
 
     # Speed: FIT stores m/s
-    avg_speed = _safe_float(session_data.get("enhanced_avg_speed") or session_data.get("avg_speed"))
+    avg_speed = _safe_float(
+        session_data.get("enhanced_avg_speed") or session_data.get("avg_speed")
+    )
 
     session_info = {
         "name": name,
         "sport_type": sport_type,
-        "start_time": start_time if isinstance(start_time, datetime) else datetime.now(UTC),
+        "start_time": start_time
+        if isinstance(start_time, datetime)
+        else datetime.now(UTC),
         "duration_seconds": duration,
         "distance_meters": distance,
         "elevation_gain_meters": elev_gain,
         "average_heartrate": _safe_float(session_data.get("avg_heart_rate")),
         "max_heartrate": _safe_float(session_data.get("max_heart_rate")),
         "average_power": _safe_float(session_data.get("avg_power")),
-        "normalized_power": _safe_float(session_data.get("normalized_power_power") or session_data.get("normalized_power")),
+        "normalized_power": _safe_float(
+            session_data.get("normalized_power_power")
+            or session_data.get("normalized_power")
+        ),
         "average_speed": avg_speed,
         "average_cadence": _safe_float(session_data.get("avg_cadence")),
         "calories": _safe_float(session_data.get("total_calories")),
@@ -182,12 +191,12 @@ def parse_fit_file(file_bytes: bytes) -> dict:
     session_info["record_count"] = record_count
 
     # Drop streams that are entirely None (no data for that field)
-    pruned_streams = {
-        k: v for k, v in streams.items() if any(x is not None for x in v)
-    }
+    pruned_streams = {k: v for k, v in streams.items() if any(x is not None for x in v)}
 
     # Also drop GPS coordinates entirely None
-    if not pruned_streams.get("position_lat") or not pruned_streams.get("position_long"):
+    if not pruned_streams.get("position_lat") or not pruned_streams.get(
+        "position_long"
+    ):
         pruned_streams.pop("position_lat", None)
         pruned_streams.pop("position_long", None)
 

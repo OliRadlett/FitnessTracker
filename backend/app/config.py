@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 
 # Default values used to detect unconfigured settings
 _DEFAULT_SECRET_KEY = "change-me-to-a-random-secret-key"
-_DEFAULT_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack"
+_DEFAULT_DATABASE_URL = (
+    "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack"
+)
 
 
 class Settings(BaseSettings):
@@ -64,7 +66,9 @@ class Settings(BaseSettings):
     backup_dir: str = "/backups"
 
     # Merge / dedup thresholds
-    activity_merge_threshold: float = 0.60  # lowered from 0.65 to reduce false negatives
+    activity_merge_threshold: float = (
+        0.60  # lowered from 0.65 to reduce false negatives
+    )
     activity_route_link_threshold: float = 0.70
     route_match_threshold: float = 0.60
 
@@ -73,7 +77,10 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         # Diagnostic: log Gemini API key status at startup
         if self.gemini_api_key:
-            logger.info("GEMINI_API_KEY loaded successfully (length=%d)", len(self.gemini_api_key))
+            logger.info(
+                "GEMINI_API_KEY loaded successfully (length=%d)",
+                len(self.gemini_api_key),
+            )
         else:
             logger.warning(
                 "GEMINI_API_KEY is empty — check .env file has a trailing newline "

@@ -34,7 +34,9 @@ def upgrade() -> None:
             CONSTRAINT fk_training_plans_user FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_training_plans_user_id ON training_plans (user_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_training_plans_user_id ON training_plans (user_id)"
+    )
 
     # Training Plan Days
     op.execute("""
@@ -54,8 +56,12 @@ def upgrade() -> None:
             CONSTRAINT fk_tpd_activity FOREIGN KEY(activity_id) REFERENCES activities (id) ON DELETE SET NULL
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_tpd_plan_id ON training_plan_days (plan_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_tpd_day_date ON training_plan_days (day_date)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_tpd_plan_id ON training_plan_days (plan_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_tpd_day_date ON training_plan_days (day_date)"
+    )
 
     # Events
     op.execute("""

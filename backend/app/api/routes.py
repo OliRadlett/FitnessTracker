@@ -50,13 +50,18 @@ async def list_routes(
     sport_type: str | None = Query(None),
     source: str | None = Query(None),
     is_loop: bool | None = Query(None),
-    is_ridden: bool | None = Query(None, description="Filter by ridden status: true=ridden, false=unridden"),
+    is_ridden: bool | None = Query(
+        None, description="Filter by ridden status: true=ridden, false=unridden"
+    ),
     min_distance: float | None = Query(None, ge=0),
     max_distance: float | None = Query(None, ge=0),
     min_elevation: float | None = Query(None, ge=0),
     max_elevation: float | None = Query(None, ge=0),
     q: str | None = Query(None),
-    sort_by: str | None = Query(None, description="name, distance, elevation, ride_count, last_ridden, created_at"),
+    sort_by: str | None = Query(
+        None,
+        description="name, distance, elevation, ride_count, last_ridden, created_at",
+    ),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
@@ -89,15 +94,13 @@ async def list_routes(
     # Get total count (before pagination)
     count_query = select(func.count(Route.id)).where(*base_filters)
     if source:
-        count_query = count_query.join(Route.sources).where(RouteSource.provider == source)
+        count_query = count_query.join(Route.sources).where(
+            RouteSource.provider == source
+        )
     count_result = await db.execute(count_query)
     total_count = int(count_result.scalar() or 0)
 
-    query = (
-        select(Route)
-        .options(selectinload(Route.sources))
-        .where(*base_filters)
-    )
+    query = select(Route).options(selectinload(Route.sources)).where(*base_filters)
 
     if source:
         query = query.join(Route.sources).where(RouteSource.provider == source)
@@ -105,7 +108,9 @@ async def list_routes(
     # Apply sorting
     if sort_by and sort_by in ROUTE_SORT_FIELDS:
         sort_col = ROUTE_SORT_FIELDS[sort_by]
-        query = query.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
+        query = query.order_by(
+            desc(sort_col) if sort_order == "desc" else asc(sort_col)
+        )
     else:
         query = query.order_by(Route.created_at.desc())
 
@@ -129,8 +134,7 @@ async def list_routes(
             .group_by(Activity.route_id)
         )
         stats_map: dict[uuid.UUID, tuple[int, datetime | None]] = {
-            row.route_id: (row.ride_count, row.last_ridden)
-            for row in ride_stats.all()
+            row.route_id: (row.ride_count, row.last_ridden) for row in ride_stats.all()
         }
     else:
         stats_map = {}
@@ -159,6 +163,7 @@ async def list_routes(
         )
 
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         content=[s.model_dump(mode="json") for s in summaries],
         headers={"X-Total-Count": str(total_count)},
@@ -208,21 +213,29 @@ async def create_route(
         elevations = parsed["elevations"]
         name = body.name or parsed["name"]
         sport_type = body.sport_type or parsed["sport_type"]
-        elevation_profile = {"elevations": elevations} if any(e is not None for e in elevations) else None
+        elevation_profile = (
+            {"elevations": elevations}
+            if any(e is not None for e in elevations)
+            else None
+        )
     elif body.encoded_polyline:
         encoded = body.encoded_polyline
         name = body.name
         sport_type = body.sport_type
         elevation_profile = None
     else:
-        raise HTTPException(status_code=400, detail="Either gpx_data or encoded_polyline is required")
+        raise HTTPException(
+            status_code=400, detail="Either gpx_data or encoded_polyline is required"
+        )
 
     # Compute distance from polyline
     from app.services.polyline_utils import polyline_total_distance
+
     distance = polyline_total_distance(encoded)
 
     route = await route_service.create_or_merge_route(
-        db, current_user.id,
+        db,
+        current_user.id,
         name=name,
         sport_type=sport_type,
         distance_meters=distance,
@@ -245,7 +258,9 @@ async def update_route(
 ):
     """Update route metadata (name, sport type)."""
     route = await route_service.update_route(
-        db, route_id, current_user.id,
+        db,
+        route_id,
+        current_user.id,
         name=body.name,
         sport_type=body.sport_type,
     )
@@ -309,13 +324,17 @@ async def upload_gpx(
     parsed = parse_gpx(gpx_text)
     encoded = encode_polyline(parsed["points"])
     elevations = parsed["elevations"]
-    elevation_profile = {"elevations": elevations} if any(e is not None for e in elevations) else None
+    elevation_profile = (
+        {"elevations": elevations} if any(e is not None for e in elevations) else None
+    )
 
     from app.services.polyline_utils import polyline_total_distance
+
     distance = polyline_total_distance(encoded)
 
     route = await route_service.create_or_merge_route(
-        db, current_user.id,
+        db,
+        current_user.id,
         name=parsed["name"],
         sport_type=parsed["sport_type"],
         distance_meters=distance,
@@ -340,7 +359,10 @@ async def merge_routes(
         raise HTTPException(status_code=400, detail="Cannot merge a route with itself")
 
     merged = await route_service.merge_routes(
-        db, body.primary_route_id, body.duplicate_route_id, current_user.id,
+        db,
+        body.primary_route_id,
+        body.duplicate_route_id,
+        current_user.id,
     )
     if not merged:
         raise HTTPException(status_code=404, detail="One or both routes not found")
@@ -369,45 +391,88 @@ async def sync_routes(
     if "strava" in connections:
         try:
             from app.services.strava import sync_strava_routes
+
             count, merged = await sync_strava_routes(db, current_user.id)
-            sync_results.append(RouteSyncResult(
-                provider="strava", synced_count=count, merged_count=merged, new_count=count - merged,
-            ))
+            sync_results.append(
+                RouteSyncResult(
+                    provider="strava",
+                    synced_count=count,
+                    merged_count=merged,
+                    new_count=count - merged,
+                )
+            )
         except Exception as e:
-            logger.error(f"Strava route sync failed for user {current_user.id}: {e}", exc_info=True)
-            sync_results.append(RouteSyncResult(
-                provider="strava", synced_count=0, merged_count=0, new_count=0,
-            ))
+            logger.error(
+                f"Strava route sync failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            sync_results.append(
+                RouteSyncResult(
+                    provider="strava",
+                    synced_count=0,
+                    merged_count=0,
+                    new_count=0,
+                )
+            )
 
     # Sync Komoot routes (Basic Auth — configured via komoot_email/komoot_password in settings)
     from app.config import get_settings
+
     _settings = get_settings()
     if _settings.komoot_email and _settings.komoot_password:
         try:
             from app.services.komoot import sync_komoot_routes
+
             count, merged = await sync_komoot_routes(db, current_user.id)
-            sync_results.append(RouteSyncResult(
-                provider="komoot", synced_count=count, merged_count=merged, new_count=count - merged,
-            ))
+            sync_results.append(
+                RouteSyncResult(
+                    provider="komoot",
+                    synced_count=count,
+                    merged_count=merged,
+                    new_count=count - merged,
+                )
+            )
         except Exception as e:
-            logger.error(f"Komoot route sync failed for user {current_user.id}: {e}", exc_info=True)
-            sync_results.append(RouteSyncResult(
-                provider="komoot", synced_count=0, merged_count=0, new_count=0,
-            ))
+            logger.error(
+                f"Komoot route sync failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            sync_results.append(
+                RouteSyncResult(
+                    provider="komoot",
+                    synced_count=0,
+                    merged_count=0,
+                    new_count=0,
+                )
+            )
 
     # Sync Wahoo routes
     if "wahoo" in connections:
         try:
             from app.services.wahoo import sync_wahoo_routes
+
             count, merged = await sync_wahoo_routes(db, current_user.id)
-            sync_results.append(RouteSyncResult(
-                provider="wahoo", synced_count=count, merged_count=merged, new_count=count - merged,
-            ))
+            sync_results.append(
+                RouteSyncResult(
+                    provider="wahoo",
+                    synced_count=count,
+                    merged_count=merged,
+                    new_count=count - merged,
+                )
+            )
         except Exception as e:
-            logger.error(f"Wahoo route sync failed for user {current_user.id}: {e}", exc_info=True)
-            sync_results.append(RouteSyncResult(
-                provider="wahoo", synced_count=0, merged_count=0, new_count=0,
-            ))
+            logger.error(
+                f"Wahoo route sync failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            sync_results.append(
+                RouteSyncResult(
+                    provider="wahoo",
+                    synced_count=0,
+                    merged_count=0,
+                    new_count=0,
+                )
+            )
 
     await db.commit()
     return sync_results

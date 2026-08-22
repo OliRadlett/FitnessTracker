@@ -17,6 +17,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
+import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -356,6 +357,9 @@ export default function TrainingPage() {
           )}
         </div>
       </div>
+
+      {/* Workout Planner */}
+      <WorkoutPlanner />
 
       {/* Periodization Chart */}
       {periodizationChart && (

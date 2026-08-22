@@ -44,7 +44,11 @@ def route_to_gpx(route: Route) -> str:
     name_elem = ET.SubElement(metadata, "name")
     name_elem.text = route.name
     time_elem = ET.SubElement(metadata, "time")
-    time_elem.text = route.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if route.created_at else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_elem.text = (
+        route.created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if route.created_at
+        else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
 
     # Track
     trk = ET.SubElement(root, "trk")
@@ -99,7 +103,11 @@ def activity_to_gpx(activity) -> str | None:
     name_elem = ET.SubElement(metadata, "name")
     name_elem.text = activity.name or "Activity"
     time_elem = ET.SubElement(metadata, "time")
-    time_elem.text = activity.start_date.strftime("%Y-%m-%dT%H:%M:%SZ") if activity.start_date else ""
+    time_elem.text = (
+        activity.start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if activity.start_date
+        else ""
+    )
 
     trk = ET.SubElement(root, "trk")
     trk_name = ET.SubElement(trk, "name")
@@ -206,7 +214,11 @@ def parse_gpx(gpx_xml: str, *, include_timestamps: bool = False) -> dict:
                 time_elem = trkpt.find(f"{ns_prefix}time")
                 if time_elem is not None and time_elem.text:
                     try:
-                        timestamps.append(datetime.fromisoformat(time_elem.text.replace("Z", "+00:00")))
+                        timestamps.append(
+                            datetime.fromisoformat(
+                                time_elem.text.replace("Z", "+00:00")
+                            )
+                        )
                     except (ValueError, AttributeError):
                         timestamps.append(None)
                 else:
@@ -238,7 +250,11 @@ def parse_gpx(gpx_xml: str, *, include_timestamps: bool = False) -> dict:
                     time_elem = rtept.find(f"{ns_prefix}time")
                     if time_elem is not None and time_elem.text:
                         try:
-                            timestamps.append(datetime.fromisoformat(time_elem.text.replace("Z", "+00:00")))
+                            timestamps.append(
+                                datetime.fromisoformat(
+                                    time_elem.text.replace("Z", "+00:00")
+                                )
+                            )
                         except (ValueError, AttributeError):
                             timestamps.append(None)
                     else:

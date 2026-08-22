@@ -46,9 +46,7 @@ def brzycki_1rm(weight_kg: float, reps: int) -> float:
 def calculate_session_volume(sets: list[dict]) -> float:
     """Total volume = sum of (weight × reps) for non-warmup sets."""
     return sum(
-        s["weight_kg"] * s["reps"]
-        for s in sets
-        if not s.get("is_warmup", False)
+        s["weight_kg"] * s["reps"] for s in sets if not s.get("is_warmup", False)
     )
 
 
@@ -111,7 +109,10 @@ async def get_session(
 ) -> LiftingSession | None:
     result = await db.execute(
         select(LiftingSession)
-        .options(selectinload(LiftingSession.sets), selectinload(LiftingSession.linked_activity))
+        .options(
+            selectinload(LiftingSession.sets),
+            selectinload(LiftingSession.linked_activity),
+        )
         .where(LiftingSession.id == session_id, LiftingSession.user_id == user_id)
     )
     return result.scalar_one_or_none()
@@ -125,7 +126,10 @@ async def list_sessions(
 ) -> list[LiftingSession]:
     result = await db.execute(
         select(LiftingSession)
-        .options(selectinload(LiftingSession.sets), selectinload(LiftingSession.linked_activity))
+        .options(
+            selectinload(LiftingSession.sets),
+            selectinload(LiftingSession.linked_activity),
+        )
         .where(LiftingSession.user_id == user_id)
         .order_by(LiftingSession.session_date.desc())
         .limit(limit)
@@ -153,7 +157,9 @@ async def update_session(
     return await get_session(db, session.id, user_id)  # type: ignore[return-value]
 
 
-async def delete_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+async def delete_session(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
     session = await get_session(db, session_id, user_id)
     if not session:
         return False
@@ -238,6 +244,7 @@ async def find_linkable_activities(
 
     session_date = session.session_date
     from datetime import timedelta
+
     date_low = session_date - timedelta(days=1)
     date_high = session_date + timedelta(days=1)
 
@@ -255,7 +262,9 @@ async def find_linkable_activities(
         select(Activity).where(
             Activity.user_id == user_id,
             Activity.source == "strava",
-            Activity.sport_type.in_(("strength", "powerlifting", "weighttraining", "workout", "crossfit")),
+            Activity.sport_type.in_(
+                ("strength", "powerlifting", "weighttraining", "workout", "crossfit")
+            ),
             Activity.start_date >= date_low,
             Activity.start_date <= date_high,
         )
@@ -346,7 +355,9 @@ async def update_set(
             new_volume = lifting_set.weight_kg * lifting_set.reps
         else:
             new_volume = 0.0
-        session.total_volume_kg = max(0.0, (session.total_volume_kg or 0.0) - old_volume + new_volume)
+        session.total_volume_kg = max(
+            0.0, (session.total_volume_kg or 0.0) - old_volume + new_volume
+        )
 
     await db.flush()
 
@@ -379,7 +390,9 @@ async def delete_set(db: AsyncSession, set_id: uuid.UUID, user_id: uuid.UUID) ->
     session = await db.get(LiftingSession, lifting_set.session_id)
     if session and not is_warmup:
         current_volume = session.total_volume_kg or 0.0
-        session.total_volume_kg = max(0.0, current_volume - (lifting_set.weight_kg * lifting_set.reps))
+        session.total_volume_kg = max(
+            0.0, current_volume - (lifting_set.weight_kg * lifting_set.reps)
+        )
 
     await db.delete(lifting_set)
     await db.flush()
@@ -545,7 +558,9 @@ async def get_volume_trends(
     cutoff = date.today() - timedelta(weeks=weeks)
 
     # Build the query to get weekly volume
-    week_start = func.date_trunc("week", LiftingSession.session_date).label("week_start")
+    week_start = func.date_trunc("week", LiftingSession.session_date).label(
+        "week_start"
+    )
 
     query = (
         select(
@@ -566,7 +581,9 @@ async def get_volume_trends(
 
     return [
         VolumeTrendPoint(
-            week_start=row.week_start.date() if hasattr(row.week_start, "date") else row.week_start,
+            week_start=row.week_start.date()
+            if hasattr(row.week_start, "date")
+            else row.week_start,
             total_volume_kg=float(row.total_volume_kg or 0),
             session_count=row.session_count,
         )
@@ -749,8 +766,7 @@ async def cleanup_orphaned_prs(
     or remove the PR. Returns a list of exercise names that were cleaned up.
     """
     result = await db.execute(
-        select(PersonalRecord)
-        .where(PersonalRecord.user_id == user_id)
+        select(PersonalRecord).where(PersonalRecord.user_id == user_id)
     )
     prs = list(result.scalars().all())
 
@@ -771,9 +787,7 @@ async def cleanup_orphaned_prs(
                 LiftingSet.exercise_name == pr.exercise_name,
                 LiftingSet.is_warmup == False,
             )
-            .order_by(
-                (LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc()
-            )
+            .order_by((LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc())
             .limit(1)
         )
         best_set = best_set_result.scalar_one_or_none()

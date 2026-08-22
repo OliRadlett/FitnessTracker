@@ -86,23 +86,34 @@ def _format_distance(meters: float | None) -> str:
     return f"{meters / 1000:.1f} km"
 
 
-def _build_summary_table(rows: list[list[str]], col_widths: list[float] | None = None) -> Table:
+def _build_summary_table(
+    rows: list[list[str]], col_widths: list[float] | None = None
+) -> Table:
     """Build a styled summary table from rows of [label, value] pairs."""
     if col_widths is None:
         col_widths = [50 * mm, 50 * mm]
 
     table = Table(rows, colWidths=col_widths)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
-        ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#fafafa")],
+                ),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ]
+        )
+    )
     return table
 
 
@@ -204,13 +215,20 @@ async def generate_weekly_report(
         sum(m.recovery_score for m in metrics) / len(metrics) if metrics else None
     )
     avg_hrv = (
-        sum(m.hrv_ms for m in metrics if m.hrv_ms) / len([m for m in metrics if m.hrv_ms])
+        sum(m.hrv_ms for m in metrics if m.hrv_ms)
+        / len([m for m in metrics if m.hrv_ms])
         if any(m.hrv_ms for m in metrics)
         else None
     )
-    sleep_seconds = [s.total_sleep_seconds for s in sleep_logs if s.total_sleep_seconds]
+    sleep_seconds = [
+        s.effective_total_sleep_seconds
+        for s in sleep_logs
+        if s.effective_total_sleep_seconds
+    ]
     avg_sleep_hours = (
-        round(sum(sleep_seconds) / len(sleep_seconds) / 3600, 1) if sleep_seconds else None
+        round(sum(sleep_seconds) / len(sleep_seconds) / 3600, 1)
+        if sleep_seconds
+        else None
     )
 
     # ── Build PDF ────────────────────────────────────────────────────────
@@ -228,11 +246,15 @@ async def generate_weekly_report(
 
     # Header
     story.append(Paragraph("Weekly Training Report", TITLE_STYLE))
-    story.append(Paragraph(
-        f"{user_name} — {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}",
-        SUBTITLE_STYLE,
-    ))
-    story.append(HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=1))
+    story.append(
+        Paragraph(
+            f"{user_name} — {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}",
+            SUBTITLE_STYLE,
+        )
+    )
+    story.append(
+        HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=1)
+    )
 
     # Summary stats
     story.append(Paragraph("Summary", SECTION_STYLE))
@@ -266,24 +288,39 @@ async def generate_weekly_report(
         story.append(Paragraph("Activities", SECTION_STYLE))
         act_rows = [["Date", "Name", "Sport", "Duration", "Distance", "TSS"]]
         for a in activities:
-            act_rows.append([
-                a.start_date.strftime("%a %d") if a.start_date else "—",
-                (a.name[:30] + "…") if a.name and len(a.name) > 30 else (a.name or "—"),
-                a.sport_type or "—",
-                _format_duration(a.duration_seconds),
-                _format_distance(a.distance_meters),
-                f"{a.tss:.0f}" if a.tss else "—",
-            ])
-        act_table = Table(act_rows, colWidths=[22 * mm, 55 * mm, 22 * mm, 22 * mm, 22 * mm, 17 * mm])
-        act_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
-        ]))
+            act_rows.append(
+                [
+                    a.start_date.strftime("%a %d") if a.start_date else "—",
+                    (a.name[:30] + "…")
+                    if a.name and len(a.name) > 30
+                    else (a.name or "—"),
+                    a.sport_type or "—",
+                    _format_duration(a.duration_seconds),
+                    _format_distance(a.distance_meters),
+                    f"{a.tss:.0f}" if a.tss else "—",
+                ]
+            )
+        act_table = Table(
+            act_rows, colWidths=[22 * mm, 55 * mm, 22 * mm, 22 * mm, 22 * mm, 17 * mm]
+        )
+        act_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#fafafa")],
+                    ),
+                ]
+            )
+        )
         story.append(act_table)
         story.append(Spacer(1, 4 * mm))
 
@@ -292,33 +329,50 @@ async def generate_weekly_report(
         story.append(Paragraph("🏆 Personal Records", SECTION_STYLE))
         pr_rows = [["Date", "Exercise", "Type", "Weight", "Reps", "Est. 1RM"]]
         for pr in prs:
-            pr_rows.append([
-                pr.achieved_date.strftime("%a %d"),
-                pr.exercise_name,
-                pr.record_type,
-                f"{pr.weight_kg:.1f} kg",
-                str(pr.reps),
-                f"{pr.estimated_1rm:.1f} kg" if pr.estimated_1rm else "—",
-            ])
-        pr_table = Table(pr_rows, colWidths=[22 * mm, 40 * mm, 18 * mm, 22 * mm, 16 * mm, 22 * mm])
-        pr_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fff8e1")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffde7")]),
-        ]))
+            pr_rows.append(
+                [
+                    pr.achieved_date.strftime("%a %d"),
+                    pr.exercise_name,
+                    pr.record_type,
+                    f"{pr.weight_kg:.1f} kg",
+                    str(pr.reps),
+                    f"{pr.estimated_1rm:.1f} kg" if pr.estimated_1rm else "—",
+                ]
+            )
+        pr_table = Table(
+            pr_rows, colWidths=[22 * mm, 40 * mm, 18 * mm, 22 * mm, 16 * mm, 22 * mm]
+        )
+        pr_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fff8e1")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#fffde7")],
+                    ),
+                ]
+            )
+        )
         story.append(pr_table)
 
     # Footer
     story.append(Spacer(1, 8 * mm))
-    story.append(HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=0.5))
-    story.append(Paragraph(
-        f"Generated by FitTrack — {date.today().isoformat()}",
-        SMALL_STYLE,
-    ))
+    story.append(
+        HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=0.5)
+    )
+    story.append(
+        Paragraph(
+            f"Generated by FitTrack — {date.today().isoformat()}",
+            SMALL_STYLE,
+        )
+    )
 
     doc.build(story)
     buf.seek(0)
@@ -437,9 +491,15 @@ async def generate_monthly_report(
     )
     avg_hrv_vals = [m.hrv_ms for m in metrics if m.hrv_ms]
     avg_hrv = sum(avg_hrv_vals) / len(avg_hrv_vals) if avg_hrv_vals else None
-    sleep_seconds = [s.total_sleep_seconds for s in sleep_logs if s.total_sleep_seconds]
+    sleep_seconds = [
+        s.effective_total_sleep_seconds
+        for s in sleep_logs
+        if s.effective_total_sleep_seconds
+    ]
     avg_sleep_hours = (
-        round(sum(sleep_seconds) / len(sleep_seconds) / 3600, 1) if sleep_seconds else None
+        round(sum(sleep_seconds) / len(sleep_seconds) / 3600, 1)
+        if sleep_seconds
+        else None
     )
 
     # ── Build PDF ────────────────────────────────────────────────────────
@@ -458,7 +518,9 @@ async def generate_monthly_report(
     # Header
     story.append(Paragraph("Monthly Training Report", TITLE_STYLE))
     story.append(Paragraph(f"{user_name} — {month_label}", SUBTITLE_STYLE))
-    story.append(HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=1))
+    story.append(
+        HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=1)
+    )
 
     # Summary stats
     story.append(Paragraph("Summary", SECTION_STYLE))
@@ -500,26 +562,37 @@ async def generate_monthly_report(
         w_tss = sum(a.tss or 0 for a in w_acts)
         w_dist = sum(a.distance_meters or 0 for a in w_acts)
         w_vol = sum(s.total_volume_kg or 0 for s in w_lifts)
-        week_rows.append([
-            f"Wk {week_num} ({current.strftime('%b %d')})",
-            f"{len(w_acts) + len(w_lifts)}",
-            f"{w_tss:.0f}",
-            _format_distance(w_dist),
-            f"{w_vol:,.0f} kg",
-        ])
+        week_rows.append(
+            [
+                f"Wk {week_num} ({current.strftime('%b %d')})",
+                f"{len(w_acts) + len(w_lifts)}",
+                f"{w_tss:.0f}",
+                _format_distance(w_dist),
+                f"{w_vol:,.0f} kg",
+            ]
+        )
         current += timedelta(days=7)
         week_num += 1
 
     wk_table = Table(week_rows, colWidths=[35 * mm, 22 * mm, 22 * mm, 25 * mm, 30 * mm])
-    wk_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-        ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
-    ]))
+    wk_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#fafafa")],
+                ),
+            ]
+        )
+    )
     story.append(wk_table)
     story.append(Spacer(1, 4 * mm))
 
@@ -528,24 +601,39 @@ async def generate_monthly_report(
         story.append(Paragraph("Activities", SECTION_STYLE))
         act_rows = [["Date", "Name", "Sport", "Duration", "Distance", "TSS"]]
         for a in activities[-25:]:
-            act_rows.append([
-                a.start_date.strftime("%a %d") if a.start_date else "—",
-                (a.name[:28] + "…") if a.name and len(a.name) > 28 else (a.name or "—"),
-                a.sport_type or "—",
-                _format_duration(a.duration_seconds),
-                _format_distance(a.distance_meters),
-                f"{a.tss:.0f}" if a.tss else "—",
-            ])
-        act_table = Table(act_rows, colWidths=[22 * mm, 55 * mm, 22 * mm, 22 * mm, 22 * mm, 17 * mm])
-        act_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")]),
-        ]))
+            act_rows.append(
+                [
+                    a.start_date.strftime("%a %d") if a.start_date else "—",
+                    (a.name[:28] + "…")
+                    if a.name and len(a.name) > 28
+                    else (a.name or "—"),
+                    a.sport_type or "—",
+                    _format_duration(a.duration_seconds),
+                    _format_distance(a.distance_meters),
+                    f"{a.tss:.0f}" if a.tss else "—",
+                ]
+            )
+        act_table = Table(
+            act_rows, colWidths=[22 * mm, 55 * mm, 22 * mm, 22 * mm, 22 * mm, 17 * mm]
+        )
+        act_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f5")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#fafafa")],
+                    ),
+                ]
+            )
+        )
         story.append(act_table)
         story.append(Spacer(1, 4 * mm))
 
@@ -554,33 +642,50 @@ async def generate_monthly_report(
         story.append(Paragraph("🏆 Personal Records", SECTION_STYLE))
         pr_rows = [["Date", "Exercise", "Type", "Weight", "Reps", "Est. 1RM"]]
         for pr in prs:
-            pr_rows.append([
-                pr.achieved_date.strftime("%a %d"),
-                pr.exercise_name,
-                pr.record_type,
-                f"{pr.weight_kg:.1f} kg",
-                str(pr.reps),
-                f"{pr.estimated_1rm:.1f} kg" if pr.estimated_1rm else "—",
-            ])
-        pr_table = Table(pr_rows, colWidths=[22 * mm, 40 * mm, 18 * mm, 22 * mm, 16 * mm, 22 * mm])
-        pr_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fff8e1")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffde7")]),
-        ]))
+            pr_rows.append(
+                [
+                    pr.achieved_date.strftime("%a %d"),
+                    pr.exercise_name,
+                    pr.record_type,
+                    f"{pr.weight_kg:.1f} kg",
+                    str(pr.reps),
+                    f"{pr.estimated_1rm:.1f} kg" if pr.estimated_1rm else "—",
+                ]
+            )
+        pr_table = Table(
+            pr_rows, colWidths=[22 * mm, 40 * mm, 18 * mm, 22 * mm, 16 * mm, 22 * mm]
+        )
+        pr_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fff8e1")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#fffde7")],
+                    ),
+                ]
+            )
+        )
         story.append(pr_table)
 
     # Footer
     story.append(Spacer(1, 8 * mm))
-    story.append(HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=0.5))
-    story.append(Paragraph(
-        f"Generated by FitTrack — {date.today().isoformat()}",
-        SMALL_STYLE,
-    ))
+    story.append(
+        HRFlowable(width="100%", color=colors.HexColor("#e0e0e0"), thickness=0.5)
+    )
+    story.append(
+        Paragraph(
+            f"Generated by FitTrack — {date.today().isoformat()}",
+            SMALL_STYLE,
+        )
+    )
 
     doc.build(story)
     buf.seek(0)

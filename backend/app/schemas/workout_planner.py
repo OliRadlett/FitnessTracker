@@ -95,7 +95,9 @@ class RouteMatchItem(BaseModel):
     distance_meters: float
     elevation_gain_meters: float | None = None
     is_loop: bool
-    match_score: float = Field(description="0.0-1.0 how well this route matches the workout")
+    match_score: float = Field(
+        description="0.0-1.0 how well this route matches the workout"
+    )
     avg_tss: float | None = None
     avg_power: float | None = None
     avg_hr: float | None = None

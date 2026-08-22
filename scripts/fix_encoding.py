@@ -8,7 +8,8 @@ then re-encoded to UTF-8.  This produces multi-char sequences like:
 Strategy: read as UTF-8, try to re-encode each char via cp1252 to recover
 original bytes, then decode those bytes as UTF-8.
 """
-import sys, os
+import os
+import sys
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
 

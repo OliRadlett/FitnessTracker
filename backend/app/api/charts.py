@@ -18,7 +18,10 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "power_curve": {"method": "power_curve", "params": ["days"]},
     "ftp_over_time": {"method": "ftp_over_time", "params": []},
     "weekly_tss": {"method": "weekly_tss", "params": ["weeks"]},
-    "estimated_1rm_history": {"method": "estimated_1rm_history", "params": ["exercise_name"]},
+    "estimated_1rm_history": {
+        "method": "estimated_1rm_history",
+        "params": ["exercise_name"],
+    },
     "weekly_volume": {"method": "weekly_volume", "params": ["weeks"]},
     "hrv_trend": {"method": "hrv_trend", "params": ["days"]},
     "recovery_vs_strain": {"method": "recovery_vs_strain", "params": ["days"]},
@@ -31,11 +34,20 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "power_zones": {"method": "power_zones", "params": ["days"]},
     "hr_zone_distribution": {"method": "hr_zone_distribution", "params": ["days"]},
     "daily_tss": {"method": "daily_tss", "params": ["days"]},
-    "exercise_progress": {"method": "exercise_progress", "params": ["exercise_name", "weeks"]},
-    "power_curve_comparison": {"method": "power_curve_comparison", "params": ["days", "days_b"]},
+    "exercise_progress": {
+        "method": "exercise_progress",
+        "params": ["exercise_name", "weeks"],
+    },
+    "power_curve_comparison": {
+        "method": "power_curve_comparison",
+        "params": ["days", "days_b"],
+    },
     # Phase 5.2 — Whoop intelligence charts
     "strain_vs_recovery": {"method": "strain_vs_recovery", "params": ["days"]},
-    "recovery_vs_performance": {"method": "recovery_vs_performance", "params": ["days"]},
+    "recovery_vs_performance": {
+        "method": "recovery_vs_performance",
+        "params": ["days"],
+    },
     "hrv_trend_detailed": {"method": "hrv_trend_detailed", "params": ["days"]},
     "weight_trend": {"method": "weight_trend", "params": ["days"]},
     "training_load_balance": {"method": "training_load_balance", "params": ["weeks"]},
@@ -69,7 +81,9 @@ async def get_chart(
     weeks: int | None = Query(None, ge=1, le=52),
     months: int | None = Query(None, ge=1, le=24),
     exercise_name: str | None = Query(None),
-    days_b: int | None = Query(None, ge=1, le=365, description="Second period in days (for comparison charts)"),
+    days_b: int | None = Query(
+        None, ge=1, le=365, description="Second period in days (for comparison charts)"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

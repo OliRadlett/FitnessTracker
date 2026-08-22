@@ -7,6 +7,8 @@
 #
 # The .env file must already exist on the Droplet (created during initial setup).
 # Migrations run automatically on app startup (see backend/app/main.py lifespan).
+#
+# This workflow builds and pushes images to GHCR, then pulls them on the server.
 
 name: Deploy
 
@@ -20,10 +22,95 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
+  build-and-push:
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for worker/beat (same as backend)
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push worker (same image as backend)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   deploy:
     name: Deploy to DigitalOcean
     runs-on: ubuntu-latest
+    needs: build-and-push
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
@@ -38,7 +125,11 @@ jobs:
           script_stop: true
           timeout: 30m
           command_timeout: 20m
+          envs: REGISTRY,IMAGE_NAME,GITHUB_SHA
           script: |
+            export REGISTRY="${{ env.REGISTRY }}"
+            export IMAGE_NAME="${{ env.IMAGE_NAME }}"
+            export GITHUB_SHA="${{ github.sha }}"
             set -euo pipefail
 
             cd /opt/fitness-tracker
@@ -74,14 +165,14 @@ jobs:
             }
             CADDYEOF
 
+            echo "▸ Logging in to GHCR…"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "▸ Pulling pre-built images…"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+
             echo "▸ Stopping services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down --timeout 30
-
-            echo "▸ Clearing Docker build cache…"
-            docker builder prune -a -f
-
-            echo "▸ Building images (no cache)…"
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
 
             echo "▸ Starting services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d

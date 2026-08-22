@@ -61,6 +61,7 @@ class TrainingPlanRead(TrainingPlanBase):
 
 class TrainingPlanSummary(BaseModel):
     """Lightweight plan info without days."""
+
     id: uuid.UUID
     name: str
     start_date: date
@@ -75,6 +76,7 @@ class TrainingPlanSummary(BaseModel):
 
 class GeneratePlanRequest(BaseModel):
     """Request to auto-generate a plan from a template."""
+
     name: str
     template_type: str  # build, base, peak, taper, recovery
     weeks: int = 4

@@ -19,7 +19,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.cheap]
 class TestWorkoutZones:
     """GET /api/v1/workout-planner/zones — intensity zones."""
 
-    async def test_returns_zones_with_cycling_profile(self, client, test_cycling_profile):
+    async def test_returns_zones_with_cycling_profile(
+        self, client, test_cycling_profile
+    ):
         """Zones endpoint returns zones when cycling profile exists."""
         resp = await client.get("/api/v1/workout-planner/zones")
         assert resp.status_code == 200

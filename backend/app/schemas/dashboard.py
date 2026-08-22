@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class TodayActivitySummary(BaseModel):
     """Single activity summary for the today view."""
+
     model_config = {"from_attributes": True}
     id: UUID
     name: str
@@ -22,6 +23,7 @@ class TodayActivitySummary(BaseModel):
 
 class TodayLiftingSummary(BaseModel):
     """Single lifting session summary for the today view."""
+
     model_config = {"from_attributes": True}
     id: UUID
     session_date: date
@@ -34,6 +36,7 @@ class TodayLiftingSummary(BaseModel):
 
 class TodaySummary(BaseModel):
     """Aggregated today data for the dashboard today view."""
+
     today_activities: list[TodayActivitySummary] = []
     today_lifting_sessions: list[TodayLiftingSummary] = []
     today_tss: float = 0.0
@@ -52,6 +55,7 @@ class TodaySummary(BaseModel):
 
 class RestDaySuggestion(BaseModel):
     """Auto-suggested rest day based on TSB, recovery, and training history."""
+
     should_rest: bool = False
     reasons: list[str] = []
     current_tsb: float | None = None
@@ -61,6 +65,7 @@ class RestDaySuggestion(BaseModel):
 
 class DashboardSummary(BaseModel):
     """Top-level summary for the dashboard."""
+
     weekly_volume_kg: float = 0.0
     weekly_sessions: int = 0
     weekly_tss: float = 0.0
@@ -76,6 +81,7 @@ class DashboardSummary(BaseModel):
 
 class WeeklyReport(BaseModel):
     """Detailed weekly report."""
+
     week_start: date
     week_end: date
     lifting_sessions: int = 0
@@ -90,6 +96,7 @@ class WeeklyReport(BaseModel):
 
 class MonthlySummaryItem(BaseModel):
     """Aggregated training stats for a single month."""
+
     month: str  # e.g. "2026-01"
     total_tss: float = 0.0
     lifting_volume_kg: float = 0.0
@@ -103,6 +110,7 @@ class MonthlySummaryItem(BaseModel):
 
 class TrainingStreaks(BaseModel):
     """Training streak and consistency metrics."""
+
     current_streak_days: int = 0
     longest_streak_days: int = 0
     weekly_consistency_pct: float = 0.0  # % of last 12 weeks with >=3 training days
@@ -114,6 +122,7 @@ class TrainingStreaks(BaseModel):
 
 class PRHighlight(BaseModel):
     """A single PR highlight for the yearly summary."""
+
     exercise_name: str
     record_type: str
     weight_kg: float
@@ -125,6 +134,7 @@ class PRHighlight(BaseModel):
 
 class BestActivity(BaseModel):
     """A highlight activity (longest ride, etc.)."""
+
     id: UUID | None = None
     name: str
     sport_type: str
@@ -135,6 +145,7 @@ class BestActivity(BaseModel):
 
 class YearlyHighlights(BaseModel):
     """Best-of highlights for the year."""
+
     best_month_tss: str | None = None  # e.g. "2026-07"
     best_month_tss_value: float = 0.0
     longest_ride: BestActivity | None = None
@@ -145,6 +156,7 @@ class YearlyHighlights(BaseModel):
 
 class YearOverYearComparison(BaseModel):
     """Year-over-year delta values."""
+
     activities_delta: int = 0
     distance_delta_m: float = 0.0
     time_delta_s: float = 0.0
@@ -163,6 +175,7 @@ class YearOverYearComparison(BaseModel):
 
 class YearlySummary(BaseModel):
     """Comprehensive yearly training review."""
+
     year: int
     # Totals
     total_activities: int = 0

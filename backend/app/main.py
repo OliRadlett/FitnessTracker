@@ -37,9 +37,14 @@ async def lifespan(app: FastAPI):
     # when tables already exist.
     import asyncio
     import sys
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "alembic", "upgrade", "head",
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "head",
             cwd="/app",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -102,6 +107,7 @@ async def correlation_id_middleware(request: Request, call_next):
 # ── Stricter rate limit for auth/token endpoints (20 req/min) ─────────
 _AUTH_RATE_LIMIT = None  # lazily parsed
 
+
 @app.middleware("http")
 async def auth_rate_limit_middleware(request: Request, call_next):
     """Apply a stricter 20 req/min limit on auth/token endpoints."""
@@ -109,6 +115,7 @@ async def auth_rate_limit_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/v1/auth"):
         if _AUTH_RATE_LIMIT is None:
             from limits import parse as limits_parse
+
             _AUTH_RATE_LIMIT = limits_parse("20/minute")
         rate_key = f"auth:{get_remote_address(request)}"
         if not limiter.limiter.hit(_AUTH_RATE_LIMIT, rate_key):
@@ -198,7 +205,9 @@ from app.api.webhooks import router as webhooks_router
 from app.api.workout_planner import router as workout_planner_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(connections_router, prefix="/api/v1/connections", tags=["connections"])
+app.include_router(
+    connections_router, prefix="/api/v1/connections", tags=["connections"]
+)
 app.include_router(activities_router, prefix="/api/v1/activities", tags=["activities"])
 app.include_router(lifting_router, prefix="/api/v1/lifting", tags=["lifting"])
 app.include_router(charts_router, prefix="/api/v1/charts", tags=["charts"])
@@ -209,7 +218,13 @@ app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
-app.include_router(training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"])
+app.include_router(
+    training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"]
+)
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
-app.include_router(workout_planner_router, prefix="/api/v1/workout-planner", tags=["workout-planner"])
-app.include_router(llm_analysis_router, prefix="/api/v1/cycling/llm-analysis", tags=["LLM Analysis"])
+app.include_router(
+    workout_planner_router, prefix="/api/v1/workout-planner", tags=["workout-planner"]
+)
+app.include_router(
+    llm_analysis_router, prefix="/api/v1/cycling/llm-analysis", tags=["LLM Analysis"]
+)

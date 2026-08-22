@@ -28,7 +28,9 @@ def upgrade() -> None:
             CONSTRAINT fk_cycling_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_cycling_profiles_user ON cycling_profiles(user_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_cycling_profiles_user ON cycling_profiles(user_id)"
+    )
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS ftp_history (

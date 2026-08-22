@@ -12,7 +12,13 @@ from app.models.activity import Activity
 from app.models.lifting import LiftingSession
 
 # Sport types that represent strength/weight training (used in filters)
-STRENGTH_SPORT_TYPES = ("strength", "powerlifting", "weighttraining", "workout", "crossfit")
+STRENGTH_SPORT_TYPES = (
+    "strength",
+    "powerlifting",
+    "weighttraining",
+    "workout",
+    "crossfit",
+)
 
 # ── Exercise name extraction / matching ──────────────────────────────────────
 
@@ -22,7 +28,18 @@ _EXERCISE_KEYWORDS: dict[str, list[str]] = {
     "bench": ["bench", "bench press", "chest press", "incline", "decline"],
     "deadlift": ["deadlift", "deadlifts", "romanian deadlift", "rdl", "rack pull"],
     "overhead_press": ["overhead", "ohp", "military press", "shoulder press", "press"],
-    "upper_body": ["upper", "push", "pull", "chest", "back", "shoulder", "arms", "biceps", "triceps", "rows"],
+    "upper_body": [
+        "upper",
+        "push",
+        "pull",
+        "chest",
+        "back",
+        "shoulder",
+        "arms",
+        "biceps",
+        "triceps",
+        "rows",
+    ],
     "lower_body": ["lower", "legs", "leg", "glutes", "hamstrings", "quads", "calves"],
     "accessories": ["accessory", "accessories", "arms", "core", "abs", "isolation"],
 }
@@ -82,7 +99,11 @@ def _match_score(
     - Exercise name/focus overlap (via keyword extraction)
     """
     # 1. Date proximity
-    activity_date = activity.start_date.date() if activity.start_date.tzinfo else activity.start_date.date()
+    activity_date = (
+        activity.start_date.date()
+        if activity.start_date.tzinfo
+        else activity.start_date.date()
+    )
     session_date = session.session_date
     day_diff = abs((activity_date - session_date).days)
     if day_diff == 0:
@@ -128,11 +149,20 @@ async def link_activity_to_lifting_sessions(
     if activity.sport_type not in STRENGTH_SPORT_TYPES:
         return None
 
-    # Already linked?
-    if activity.lifting_session:
+    # Already linked? — use an explicit query to avoid lazy-loading in async context.
+    linked_check = await db.execute(
+        select(LiftingSession.id)
+        .where(LiftingSession.activity_id == activity.id)
+        .limit(1)
+    )
+    if linked_check.scalar_one_or_none() is not None:
         return None
 
-    activity_date = activity.start_date.date() if activity.start_date.tzinfo else activity.start_date.date()
+    activity_date = (
+        activity.start_date.date()
+        if activity.start_date.tzinfo
+        else activity.start_date.date()
+    )
     date_low = activity_date - timedelta(days=2)
     date_high = activity_date + timedelta(days=2)
 
@@ -179,8 +209,7 @@ async def link_all_unlinked_activities(
     """
     # Get all strength activities from Strava that aren't linked to any lifting session
     result = await db.execute(
-        select(Activity)
-        .where(
+        select(Activity).where(
             Activity.user_id == user_id,
             Activity.source == "strava",
             Activity.sport_type.in_(STRENGTH_SPORT_TYPES),
@@ -190,8 +219,7 @@ async def link_all_unlinked_activities(
 
     # Filter to only those not already linked
     linked_ids_result = await db.execute(
-        select(LiftingSession.activity_id)
-        .where(
+        select(LiftingSession.activity_id).where(
             LiftingSession.user_id == user_id,
             LiftingSession.activity_id.is_not(None),
         )

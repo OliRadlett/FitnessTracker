@@ -27,7 +27,10 @@ class TestFindDuplicateActivity:
     """find_duplicate_activity() — detects same-activity-from-different-providers."""
 
     async def test_finds_duplicate_with_matching_timestamps(
-        self, db_session, test_user, test_activity,
+        self,
+        db_session,
+        test_user,
+        test_activity,
     ):
         """Detects a duplicate when timestamps are within 30 minutes."""
         from app.services.merge_service import find_duplicate_activity
@@ -44,7 +47,10 @@ class TestFindDuplicateActivity:
         assert duplicate.id == test_activity.id
 
     async def test_returns_none_for_different_dates(
-        self, db_session, test_user, test_activity,
+        self,
+        db_session,
+        test_user,
+        test_activity,
     ):
         """Returns None when activities are on different dates."""
         from app.services.merge_service import find_duplicate_activity
@@ -60,7 +66,10 @@ class TestFindDuplicateActivity:
         assert duplicate is None
 
     async def test_returns_none_for_different_sport_type(
-        self, db_session, test_user, test_activity,
+        self,
+        db_session,
+        test_user,
+        test_activity,
     ):
         """Returns None when sport types don't match."""
         from app.services.merge_service import find_duplicate_activity
@@ -83,7 +92,10 @@ class TestMergeActivity:
     """merge_activity() — merges data from a duplicate into the primary."""
 
     async def test_merges_two_activities_from_different_sources(
-        self, db_session, test_user, test_activity,
+        self,
+        db_session,
+        test_user,
+        test_activity,
     ):
         """Merging adds an ActivitySource and updates fields from higher-priority provider."""
         from app.services.merge_service import merge_activity
@@ -94,7 +106,11 @@ class TestMergeActivity:
             "calories": 850.0,
         }
         await merge_activity(
-            db_session, test_activity, new_data, "wahoo", "wahoo_999",
+            db_session,
+            test_activity,
+            new_data,
+            "wahoo",
+            "wahoo_999",
         )
         await db_session.flush()
 
@@ -110,7 +126,10 @@ class TestMergeActivity:
         assert source.provider_activity_id == "wahoo_999"
 
     async def test_rejects_merge_from_same_source(
-        self, db_session, test_user, test_activity,
+        self,
+        db_session,
+        test_user,
+        test_activity,
     ):
         """Merging from the same provider should not create a duplicate source."""
         from app.services.merge_service import merge_activity
@@ -118,7 +137,11 @@ class TestMergeActivity:
         # First merge from strava (same as existing)
         new_data = {"name": "Test"}
         await merge_activity(
-            db_session, test_activity, new_data, "strava", "strava_12345",
+            db_session,
+            test_activity,
+            new_data,
+            "strava",
+            "strava_12345",
         )
         await db_session.flush()
 

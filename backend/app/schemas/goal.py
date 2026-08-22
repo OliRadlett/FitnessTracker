@@ -5,7 +5,9 @@ from pydantic import BaseModel
 
 
 class GoalBase(BaseModel):
-    goal_type: str  # ftp_target, weight_target, weekly_sessions, 1rm_target, distance_target
+    goal_type: (
+        str  # ftp_target, weight_target, weekly_sessions, 1rm_target, distance_target
+    )
     target_value: float
     current_value: float | None = None
     target_date: date | None = None

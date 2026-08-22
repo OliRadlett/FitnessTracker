@@ -47,7 +47,11 @@ async def get_training_load(
     load_data = compute_training_load(daily_tss, end_date, lookback_days=days)
 
     points = [DailyLoadPoint(**d) for d in load_data]
-    current = points[-1] if points else DailyLoadPoint(date=end_date, tss=0, ctl=0, atl=0, tsb=0)
+    current = (
+        points[-1]
+        if points
+        else DailyLoadPoint(date=end_date, tss=0, ctl=0, atl=0, tsb=0)
+    )
 
     return TrainingLoadResponse(
         data=points,
@@ -63,7 +67,10 @@ async def get_training_load(
 @router.post("/recalculate-tss")
 async def recalculate_tss(
     days: int = Query(365, ge=1, le=3650),
-    force: bool = Query(False, description="If true, recalculate all activities even if TSS is already set"),
+    force: bool = Query(
+        False,
+        description="If true, recalculate all activities even if TSS is already set",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -95,9 +102,9 @@ async def recalculate_tss(
     np_map: dict = {}
     if activity_ids:
         from app.models.activity import ActivityStream
+
         np_result = await db.execute(
-            select(ActivityStream)
-            .where(
+            select(ActivityStream).where(
                 ActivityStream.activity_id.in_(activity_ids),
                 ActivityStream.stream_type == "watts",
             )

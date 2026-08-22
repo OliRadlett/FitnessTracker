@@ -18,6 +18,7 @@ import type {
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
   DecouplingSingleResponse,
+  SuggestedCycleResponse,
 } from './types';
 
 export async function getCyclingProfile(): Promise<CyclingProfile> {
@@ -106,4 +107,8 @@ export async function getDecouplingHistory(days: number = 90, minDuration: numbe
 
 export async function getDecouplingForActivity(activityId: string): Promise<DecouplingSingleResponse> {
   return apiFetch<DecouplingSingleResponse>(`/api/v1/cycling/decoupling/${activityId}`);
+}
+
+export async function getSuggestedCycle(): Promise<SuggestedCycleResponse> {
+  return apiFetch<SuggestedCycleResponse>('/api/v1/cycling/suggested-cycle');
 }

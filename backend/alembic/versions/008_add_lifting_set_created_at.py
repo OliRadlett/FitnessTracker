@@ -20,7 +20,12 @@ def upgrade() -> None:
     # Add created_at column with server default
     op.add_column(
         "lifting_sets",
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
     )
 
     # Backfill existing rows: use the session's created_at + a small offset per set_number

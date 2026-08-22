@@ -4,6 +4,7 @@ Revision ID: 002
 Revises: 001
 Create Date: 2026-08-16
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -22,17 +23,36 @@ def upgrade() -> None:
     op.create_table(
         "warmup_templates",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("exercise_name", sa.String(255), nullable=True, index=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            onupdate=sa.func.now(),
+        ),
     )
 
     op.create_table(
         "warmup_template_steps",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("warmup_template_id", UUID(as_uuid=True), sa.ForeignKey("warmup_templates.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "warmup_template_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("warmup_templates.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("step_number", sa.Integer, nullable=False),
         sa.Column("weight_kg", sa.Float, nullable=False),
         sa.Column("reps", sa.Integer, nullable=False),

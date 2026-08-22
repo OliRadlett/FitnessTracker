@@ -89,7 +89,10 @@ def haversine_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> fl
     dlat = lat2_r - lat1_r
     dlng = lng2_r - lng1_r
 
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlng / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlng / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return _EARTH_RADIUS_M * c
@@ -107,8 +110,10 @@ def polyline_total_distance(encoded: str) -> float:
     total = 0.0
     for i in range(1, len(points)):
         total += haversine_distance(
-            points[i - 1][0], points[i - 1][1],
-            points[i][0], points[i][1],
+            points[i - 1][0],
+            points[i - 1][1],
+            points[i][0],
+            points[i][1],
         )
     return total
 
@@ -120,10 +125,15 @@ def _cumulative_distances(points: list[tuple[float, float]]) -> list[float]:
     """Compute cumulative distance along a polyline."""
     cum = [0.0]
     for i in range(1, len(points)):
-        cum.append(cum[-1] + haversine_distance(
-            points[i - 1][0], points[i - 1][1],
-            points[i][0], points[i][1],
-        ))
+        cum.append(
+            cum[-1]
+            + haversine_distance(
+                points[i - 1][0],
+                points[i - 1][1],
+                points[i][0],
+                points[i][1],
+            )
+        )
     return cum
 
 
@@ -186,8 +196,10 @@ def shape_similarity(encoded1: str, encoded2: str, n_points: int = 20) -> float:
     total_dist = 0.0
     for i in range(n):
         total_dist += haversine_distance(
-            sample1[i][0], sample1[i][1],
-            sample2[i][0], sample2[i][1],
+            sample1[i][0],
+            sample1[i][1],
+            sample2[i][0],
+            sample2[i][1],
         )
 
     avg_dist = total_dist / n

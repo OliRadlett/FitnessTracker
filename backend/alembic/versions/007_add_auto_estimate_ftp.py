@@ -19,7 +19,9 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "cycling_profiles",
-        sa.Column("auto_estimate_ftp", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "auto_estimate_ftp", sa.Boolean(), nullable=False, server_default="false"
+        ),
     )
 
 

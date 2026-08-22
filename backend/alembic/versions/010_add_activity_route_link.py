@@ -21,7 +21,12 @@ def upgrade() -> None:
     # Add route_id column to activities table
     op.add_column(
         "activities",
-        sa.Column("route_id", UUID(as_uuid=True), sa.ForeignKey("routes.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "route_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("routes.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
     )
     op.create_index("ix_activities_route_id", "activities", ["route_id"])
 

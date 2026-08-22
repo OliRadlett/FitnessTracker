@@ -126,6 +126,7 @@ class TestGetTrainingPlan:
     async def test_get_nonexistent_plan(self, client):
         """Get returns 404 for nonexistent plan."""
         import uuid
+
         resp = await client.get(f"/api/v1/training-plans/{uuid.uuid4()}")
         assert resp.status_code == 404
 

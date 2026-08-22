@@ -192,8 +192,7 @@ async def get_respiratory_rate(
         select(
             func.avg(DailyMetric.respiratory_rate).label("avg_rr"),
             func.stddev(DailyMetric.respiratory_rate).label("std_rr"),
-        )
-        .where(
+        ).where(
             DailyMetric.user_id == current_user.id,
             DailyMetric.respiratory_rate.isnot(None),
             DailyMetric.metric_date >= cutoff_30,
@@ -203,8 +202,7 @@ async def get_respiratory_rate(
 
     # Latest 7-day average
     result = await db.execute(
-        select(func.avg(DailyMetric.respiratory_rate))
-        .where(
+        select(func.avg(DailyMetric.respiratory_rate)).where(
             DailyMetric.user_id == current_user.id,
             DailyMetric.respiratory_rate.isnot(None),
             DailyMetric.metric_date >= cutoff_7,
@@ -226,7 +224,9 @@ async def get_respiratory_rate(
 
     baseline_avg = float(baseline.avg_rr) if baseline.avg_rr else None
     recent = float(recent_avg) if recent_avg else None
-    latest_rr = float(latest.respiratory_rate) if latest and latest.respiratory_rate else None
+    latest_rr = (
+        float(latest.respiratory_rate) if latest and latest.respiratory_rate else None
+    )
 
     # Trend arrow
     trend = "stable"
@@ -271,7 +271,11 @@ async def get_weight_history(
         return {"entries": [], "rolling_avg": []}
 
     entries = [
-        {"date": log.date.isoformat(), "weight_kg": log.weight_kilogram, "source": log.source}
+        {
+            "date": log.date.isoformat(),
+            "weight_kg": log.weight_kilogram,
+            "source": log.source,
+        }
         for log in logs
     ]
 
@@ -296,7 +300,9 @@ async def get_weight_history(
 
 @router.get("/health-alerts")
 async def get_health_alerts(
-    status: str = Query("active", description="Filter by status: active, acknowledged, dismissed, all"),
+    status: str = Query(
+        "active", description="Filter by status: active, acknowledged, dismissed, all"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -371,39 +377,51 @@ async def run_health_analysis(
         if overtraining:
             await upsert_alert(db, current_user.id, overtraining)
             alerts_generated += 1
-        all_results.append({
-            "type": "overtraining",
-            "label": "Overtraining Risk",
-            "result": overtraining,
-        })
+        all_results.append(
+            {
+                "type": "overtraining",
+                "label": "Overtraining Risk",
+                "result": overtraining,
+            }
+        )
     except Exception as e:
-        all_results.append({"type": "overtraining", "label": "Overtraining Risk", "error": str(e)})
+        all_results.append(
+            {"type": "overtraining", "label": "Overtraining Risk", "error": str(e)}
+        )
 
     try:
         injury = await analyze_injury_risk(db, current_user.id)
         if injury:
             await upsert_alert(db, current_user.id, injury)
             alerts_generated += 1
-        all_results.append({
-            "type": "injury_risk",
-            "label": "Injury Risk",
-            "result": injury,
-        })
+        all_results.append(
+            {
+                "type": "injury_risk",
+                "label": "Injury Risk",
+                "result": injury,
+            }
+        )
     except Exception as e:
-        all_results.append({"type": "injury_risk", "label": "Injury Risk", "error": str(e)})
+        all_results.append(
+            {"type": "injury_risk", "label": "Injury Risk", "error": str(e)}
+        )
 
     try:
         illness = await analyze_illness(db, current_user.id)
         if illness:
             await upsert_alert(db, current_user.id, illness)
             alerts_generated += 1
-        all_results.append({
-            "type": "illness_risk",
-            "label": "Illness Risk",
-            "result": illness,
-        })
+        all_results.append(
+            {
+                "type": "illness_risk",
+                "label": "Illness Risk",
+                "result": illness,
+            }
+        )
     except Exception as e:
-        all_results.append({"type": "illness_risk", "label": "Illness Risk", "error": str(e)})
+        all_results.append(
+            {"type": "illness_risk", "label": "Illness Risk", "error": str(e)}
+        )
 
     await db.commit()
 

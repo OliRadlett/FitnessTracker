@@ -142,3 +142,78 @@ export interface UpdateEventPayload {
   taper_days?: number;
   notes?: string;
 }
+
+// ─── Workout Planner ─────────────────────────────────────────────────────
+
+export interface WorkoutZone {
+  zone: string;
+  name: string;
+  color: string;
+  if_low: number;
+  if_high: number;
+  power_low: number;
+  power_high: number;
+  hr_low: number;
+  hr_high: number;
+  tss_per_hour_low: number;
+  tss_per_hour_high: number;
+}
+
+export interface ReadinessInfo {
+  current_ctl: number;
+  current_atl: number;
+  current_tsb: number;
+  recommended_max_zone: string;
+  readiness_note: string;
+  is_fatigued: boolean;
+}
+
+export interface WorkoutZonesResponse {
+  zones: WorkoutZone[];
+  readiness: ReadinessInfo;
+  ftp_watts?: number;
+  lthr?: number;
+}
+
+export interface WorkoutPlanRequest {
+  difficulty: string;
+  duration_minutes: number;
+}
+
+export interface WorkoutPlanResponse {
+  difficulty: string;
+  zone_id: string;
+  zone_name: string;
+  duration_minutes: number;
+  target_power_low: number;
+  target_power_high: number;
+  target_if_low: number;
+  target_if_high: number;
+  target_hr_low: number;
+  target_hr_high: number;
+  target_tss_low: number;
+  target_tss_high: number;
+  estimated_calories_low: number;
+  estimated_calories_high: number;
+}
+
+export interface RouteMatchItem {
+  route_id: string;
+  route_name: string;
+  distance_meters: number;
+  elevation_gain_meters?: number;
+  is_loop: boolean;
+  match_score: number;
+  avg_tss?: number;
+  avg_power?: number;
+  avg_hr?: number;
+  avg_duration_min?: number;
+  ride_count: number;
+  is_estimated: boolean;
+  confidence: number;
+}
+
+export interface RouteMatchResponse {
+  matches: RouteMatchItem[];
+  workout_target?: WorkoutPlanResponse;
+}

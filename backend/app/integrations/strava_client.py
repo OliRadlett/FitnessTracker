@@ -112,7 +112,14 @@ class StravaClient:
     ) -> dict:
         """Fetch time-series streams for a Strava activity."""
         if stream_types is None:
-            stream_types = ["time", "heartrate", "watts", "cadence", "altitude", "velocity_smooth"]
+            stream_types = [
+                "time",
+                "heartrate",
+                "watts",
+                "cadence",
+                "altitude",
+                "velocity_smooth",
+            ]
 
         keys = ",".join(stream_types)
 

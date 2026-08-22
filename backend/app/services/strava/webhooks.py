@@ -39,7 +39,9 @@ async def handle_strava_event(
         await _handle_activity_delete(db, owner_id, object_id)
 
 
-async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, activity_id: int) -> None:
+async def _handle_activity_create(
+    db: AsyncSession, strava_athlete_id: int, activity_id: int
+) -> None:
     """Fetch and store a new activity from a webhook event."""
     from app.services.merge_service import (
         find_duplicate_activity,
@@ -75,7 +77,12 @@ async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, acti
 
     # Use merge engine to detect duplicates from other providers
     duplicate = await find_duplicate_activity(
-        db, connection.user_id, sport_type, start_date, duration_seconds, distance_meters,
+        db,
+        connection.user_id,
+        sport_type,
+        start_date,
+        duration_seconds,
+        distance_meters,
     )
 
     if duplicate:
@@ -93,15 +100,24 @@ async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, acti
             "calories": _safe_float(sa.get("calories")),
         }
         await merge_activity(
-            db, duplicate, new_data, "strava", str(activity_id), raw_data=sa,
+            db,
+            duplicate,
+            new_data,
+            "strava",
+            str(activity_id),
+            raw_data=sa,
         )
         activity = duplicate
     else:
-        activity = await _create_activity_from_strava(db, sa, connection.user_id, connection)
+        activity = await _create_activity_from_strava(
+            db, sa, connection.user_id, connection
+        )
 
     # Fetch and store streams
     try:
-        streams = await strava_client.get_activity_streams(connection.access_token, activity_id)
+        streams = await strava_client.get_activity_streams(
+            connection.access_token, activity_id
+        )
         for stream_type, stream_data in streams.items():
             if "data" in stream_data:
                 raw_res = stream_data.get("resolution")
@@ -127,6 +143,7 @@ async def _handle_activity_create(db: AsyncSession, strava_athlete_id: int, acti
         auto_compute_tss_for_activity,
         get_or_create_cycling_profile,
     )
+
     profile = await get_or_create_cycling_profile(db, activity.user_id)
     if profile.ftp_watts and activity.sport_type == "cycling" and activity.tss is None:
         await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
@@ -158,7 +175,9 @@ async def _handle_activity_update(
     await db.flush()
 
 
-async def _handle_activity_delete(db: AsyncSession, strava_athlete_id: int, activity_id: int) -> None:
+async def _handle_activity_delete(
+    db: AsyncSession, strava_athlete_id: int, activity_id: int
+) -> None:
     """Handle activity deletion webhook."""
     result = await db.execute(
         select(Activity).where(

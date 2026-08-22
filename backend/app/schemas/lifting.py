@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 # ── Lifting Set ───────────────────────────────────────────────────────────────
 
+
 class LiftingSetBase(BaseModel):
     exercise_name: str
     set_number: int
@@ -40,6 +41,7 @@ class LiftingSetRead(LiftingSetBase):
 
 # ── Lifting Session ───────────────────────────────────────────────────────────
 
+
 class LiftingSessionBase(BaseModel):
     session_date: date
     program_name: str | None = None
@@ -64,11 +66,13 @@ class LiftingSessionUpdate(BaseModel):
 
 class LiftingSessionLink(BaseModel):
     """Request to manually link/unlink a lifting session to a Strava activity."""
+
     activity_id: uuid.UUID | None = None  # None to unlink
 
 
 class LinkedActivityRead(BaseModel):
     """Subset of activity data shown alongside a lifting session."""
+
     id: uuid.UUID
     source: str
     sport_type: str
@@ -97,8 +101,10 @@ class LiftingSessionRead(LiftingSessionBase):
 
 # ── Personal Record ───────────────────────────────────────────────────────────
 
+
 class PersonalRecordCreate(BaseModel):
     """Request to manually create a PR (for sessions not logged in the app)."""
+
     exercise_name: str
     record_type: str = "1rm"
     weight_kg: float
@@ -125,6 +131,7 @@ class PersonalRecordRead(BaseModel):
 
 # ── Volume / Stats ────────────────────────────────────────────────────────────
 
+
 class VolumeTrendPoint(BaseModel):
     week_start: date
     total_volume_kg: float
@@ -137,6 +144,7 @@ class VolumeTrendResponse(BaseModel):
 
 
 # ── Warmup Template ───────────────────────────────────────────────────────────
+
 
 class WarmupTemplateStepBase(BaseModel):
     step_number: int
@@ -175,7 +183,9 @@ class WarmupTemplateCreate(WarmupTemplateBase):
 class WarmupTemplateUpdate(BaseModel):
     name: str | None = None
     exercise_name: str | None = None
-    steps: list[WarmupTemplateStepCreate] | None = None  # replaces all steps if provided
+    steps: list[WarmupTemplateStepCreate] | None = (
+        None  # replaces all steps if provided
+    )
 
 
 class WarmupTemplateRead(WarmupTemplateBase):

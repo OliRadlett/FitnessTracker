@@ -22,13 +22,26 @@ def upgrade() -> None:
     op.create_table(
         "activity_sources",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("activity_id", UUID(as_uuid=True), sa.ForeignKey("activities.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "activity_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("activities.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("provider", sa.String(50), nullable=False),
         sa.Column("provider_activity_id", sa.String(255), nullable=False),
         sa.Column("provider_name", sa.String(500), nullable=True),
         sa.Column("raw_data", JSONB, nullable=True),
-        sa.Column("synced_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.UniqueConstraint("provider", "provider_activity_id", name="uq_activity_source_provider"),
+        sa.Column(
+            "synced_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.UniqueConstraint(
+            "provider", "provider_activity_id", name="uq_activity_source_provider"
+        ),
     )
 
     # Backfill: create ActivitySource rows from existing Activity data

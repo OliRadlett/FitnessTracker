@@ -98,19 +98,21 @@ def compute_workout_zones(
         tss_low = round(if_low**2 * 100, 1)
         tss_high = round(if_high**2 * 100, 1)
 
-        zones.append(WorkoutZone(
-            zone=zone_id,
-            name=name,
-            color=ZONE_COLORS.get(zone_id, "#888888"),
-            if_low=if_low,
-            if_high=if_high,
-            power_low=power_low,
-            power_high=power_high,
-            hr_low=hr_low,
-            hr_high=hr_high,
-            tss_per_hour_low=tss_low,
-            tss_per_hour_high=tss_high,
-        ))
+        zones.append(
+            WorkoutZone(
+                zone=zone_id,
+                name=name,
+                color=ZONE_COLORS.get(zone_id, "#888888"),
+                if_low=if_low,
+                if_high=if_high,
+                power_low=power_low,
+                power_high=power_high,
+                hr_low=hr_low,
+                hr_high=hr_high,
+                tss_per_hour_low=tss_low,
+                tss_per_hour_high=tss_high,
+            )
+        )
 
     readiness = get_readiness_recommendation(ctl, atl, tsb)
 
@@ -418,21 +420,25 @@ async def find_matching_routes(
             target_duration_min=duration_minutes,
         )
 
-        matches.append(RouteMatch(
-            route_id=route.id,
-            route_name=route.name,
-            distance_meters=route.distance_meters,
-            elevation_gain_meters=route.elevation_gain_meters,
-            is_loop=route.is_loop,
-            match_score=round(score, 3),
-            avg_tss=round(avg_tss, 1) if avg_tss else None,
-            avg_power=round(avg_power, 1) if avg_power else None,
-            avg_hr=round(avg_hr, 1) if avg_hr else None,
-            avg_duration_min=avg_duration_min,
-            ride_count=int(row.ride_count),
-            is_estimated=False,
-            confidence=min(1.0, int(row.ride_count) / 5),  # full confidence at 5+ rides
-        ))
+        matches.append(
+            RouteMatch(
+                route_id=route.id,
+                route_name=route.name,
+                distance_meters=route.distance_meters,
+                elevation_gain_meters=route.elevation_gain_meters,
+                is_loop=route.is_loop,
+                match_score=round(score, 3),
+                avg_tss=round(avg_tss, 1) if avg_tss else None,
+                avg_power=round(avg_power, 1) if avg_power else None,
+                avg_hr=round(avg_hr, 1) if avg_hr else None,
+                avg_duration_min=avg_duration_min,
+                ride_count=int(row.ride_count),
+                is_estimated=False,
+                confidence=min(
+                    1.0, int(row.ride_count) / 5
+                ),  # full confidence at 5+ rides
+            )
+        )
 
     # ── 2. Unridden routes ────────────────────────────────────────────────
     if ftp and ftp > 0:
@@ -489,21 +495,23 @@ async def find_matching_routes(
                 target_duration_min=duration_minutes,
             )
 
-            matches.append(RouteMatch(
-                route_id=route.id,
-                route_name=route.name,
-                distance_meters=route.distance_meters,
-                elevation_gain_meters=route.elevation_gain_meters,
-                is_loop=route.is_loop,
-                match_score=round(score * 0.85, 3),  # penalize estimates by 15%
-                avg_tss=round(est_tss, 1) if est_tss else None,
-                avg_power=est_power,
-                avg_hr=None,
-                avg_duration_min=est_duration_min,
-                ride_count=0,
-                is_estimated=True,
-                confidence=0.3,  # low confidence for estimates
-            ))
+            matches.append(
+                RouteMatch(
+                    route_id=route.id,
+                    route_name=route.name,
+                    distance_meters=route.distance_meters,
+                    elevation_gain_meters=route.elevation_gain_meters,
+                    is_loop=route.is_loop,
+                    match_score=round(score * 0.85, 3),  # penalize estimates by 15%
+                    avg_tss=round(est_tss, 1) if est_tss else None,
+                    avg_power=est_power,
+                    avg_hr=None,
+                    avg_duration_min=est_duration_min,
+                    ride_count=0,
+                    is_estimated=True,
+                    confidence=0.3,  # low confidence for estimates
+                )
+            )
 
     # Sort by match score descending
     matches.sort(key=lambda m: m.match_score, reverse=True)
@@ -539,7 +547,9 @@ def _compute_route_match_score(
 
     # Duration match (25%)
     if avg_duration_min is not None and target_duration_min and target_duration_min > 0:
-        dur_score = max(0, 1 - abs(avg_duration_min - target_duration_min) / target_duration_min)
+        dur_score = max(
+            0, 1 - abs(avg_duration_min - target_duration_min) / target_duration_min
+        )
         score += dur_score * 0.25
         total_weight += 0.25
 

@@ -30,6 +30,7 @@ VALID_DAY_TYPES = {"rest", "easy", "moderate", "hard", "race"}
 
 # ── Template generation ──────────────────────────────────────────────────
 
+
 def _generate_plan_days(
     template_type: str,
     weeks: int,
@@ -61,7 +62,7 @@ def _generate_plan_days(
             week_tss = base_tss * (1.1 + 0.02 * week)
         elif template_type == "taper":
             # Progressive reduction: 20% less each week
-            week_tss = base_tss * (0.8 ** week)
+            week_tss = base_tss * (0.8**week)
         elif template_type == "recovery":
             # Very low load
             week_tss = base_tss * 0.3
@@ -75,31 +76,37 @@ def _generate_plan_days(
             dow = day_date.weekday()  # 0=Mon, 6=Sun
 
             if dow == 6:  # Sunday = rest
-                days.append(TrainingPlanDayCreate(
-                    day_date=day_date,
-                    planned_tss=0,
-                    planned_duration_min=0,
-                    planned_type="rest",
-                ))
+                days.append(
+                    TrainingPlanDayCreate(
+                        day_date=day_date,
+                        planned_tss=0,
+                        planned_duration_min=0,
+                        planned_type="rest",
+                    )
+                )
             elif dow == 2:  # Wednesday = hard day
                 tss = daily_tss * 1.4
-                days.append(TrainingPlanDayCreate(
-                    day_date=day_date,
-                    planned_tss=round(tss, 1),
-                    planned_duration_min=int(tss / 1.0),
-                    planned_type="hard" if template_type != "recovery" else "easy",
-                ))
+                days.append(
+                    TrainingPlanDayCreate(
+                        day_date=day_date,
+                        planned_tss=round(tss, 1),
+                        planned_duration_min=int(tss / 1.0),
+                        planned_type="hard" if template_type != "recovery" else "easy",
+                    )
+                )
             elif dow == 5:  # Saturday = long/hard day
                 tss = daily_tss * 1.3
                 ptype = "hard" if template_type in ("build", "peak") else "moderate"
                 if template_type == "taper" and week == weeks - 1:
                     ptype = "race"
-                days.append(TrainingPlanDayCreate(
-                    day_date=day_date,
-                    planned_tss=round(tss, 1),
-                    planned_duration_min=int(tss / 0.9),
-                    planned_type=ptype,
-                ))
+                days.append(
+                    TrainingPlanDayCreate(
+                        day_date=day_date,
+                        planned_tss=round(tss, 1),
+                        planned_duration_min=int(tss / 0.9),
+                        planned_type=ptype,
+                    )
+                )
             else:  # Other days = moderate/easy
                 if dow in (0, 4):  # Mon, Fri = moderate
                     tss = daily_tss * 0.9
@@ -107,17 +114,20 @@ def _generate_plan_days(
                 else:  # Tue, Thu = easy
                     tss = daily_tss * 0.7
                     ptype = "easy"
-                days.append(TrainingPlanDayCreate(
-                    day_date=day_date,
-                    planned_tss=round(tss, 1),
-                    planned_duration_min=int(tss / 0.8),
-                    planned_type=ptype,
-                ))
+                days.append(
+                    TrainingPlanDayCreate(
+                        day_date=day_date,
+                        planned_tss=round(tss, 1),
+                        planned_duration_min=int(tss / 0.8),
+                        planned_type=ptype,
+                    )
+                )
 
     return days
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
+
 
 @router.get("", response_model=list[TrainingPlanSummary])
 async def list_plans(
@@ -141,16 +151,18 @@ async def list_plans(
     for p in plans:
         total_days = len(p.days)
         completed_days = sum(1 for d in p.days if d.completed)
-        summaries.append(TrainingPlanSummary(
-            id=p.id,
-            name=p.name,
-            start_date=p.start_date,
-            end_date=p.end_date,
-            plan_type=p.plan_type,
-            status=p.status,
-            day_count=total_days,
-            completed_days=completed_days,
-        ))
+        summaries.append(
+            TrainingPlanSummary(
+                id=p.id,
+                name=p.name,
+                start_date=p.start_date,
+                end_date=p.end_date,
+                plan_type=p.plan_type,
+                status=p.status,
+                day_count=total_days,
+                completed_days=completed_days,
+            )
+        )
     return summaries
 
 
@@ -180,7 +192,10 @@ async def create_plan(
 ):
     """Create a new training plan with optional days."""
     if data.plan_type not in VALID_PLAN_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid plan_type. Must be one of: {', '.join(VALID_PLAN_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid plan_type. Must be one of: {', '.join(VALID_PLAN_TYPES)}",
+        )
     if data.end_date < data.start_date:
         raise HTTPException(status_code=400, detail="end_date must be after start_date")
 
@@ -198,7 +213,9 @@ async def create_plan(
 
     for day_data in data.days:
         if day_data.planned_type not in VALID_DAY_TYPES:
-            raise HTTPException(status_code=400, detail=f"Invalid planned_type: {day_data.planned_type}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid planned_type: {day_data.planned_type}"
+            )
         day = TrainingPlanDay(plan_id=plan.id, **day_data.model_dump())
         db.add(day)
 
@@ -263,8 +280,9 @@ async def delete_plan(
 ):
     """Delete a training plan and all its days."""
     result = await db.execute(
-        select(TrainingPlan)
-        .where(TrainingPlan.id == plan_id, TrainingPlan.user_id == current_user.id)
+        select(TrainingPlan).where(
+            TrainingPlan.id == plan_id, TrainingPlan.user_id == current_user.id
+        )
     )
     plan = result.scalar_one_or_none()
     if not plan:
@@ -275,7 +293,10 @@ async def delete_plan(
 
 # ── Template generation endpoint ──────────────────────────────────────────
 
-@router.post("/generate", response_model=TrainingPlanRead, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/generate", response_model=TrainingPlanRead, status_code=status.HTTP_201_CREATED
+)
 async def generate_plan(
     data: GeneratePlanRequest,
     db: AsyncSession = Depends(get_db),
@@ -290,10 +311,14 @@ async def generate_plan(
     if data.weeks < 1 or data.weeks > 24:
         raise HTTPException(status_code=400, detail="weeks must be between 1 and 24")
     if data.base_tss < 50 or data.base_tss > 1500:
-        raise HTTPException(status_code=400, detail="base_tss must be between 50 and 1500")
+        raise HTTPException(
+            status_code=400, detail="base_tss must be between 50 and 1500"
+        )
 
     end_date = data.start_date + timedelta(weeks=data.weeks) - timedelta(days=1)
-    days = _generate_plan_days(data.template_type, data.weeks, data.start_date, data.base_tss)
+    days = _generate_plan_days(
+        data.template_type, data.weeks, data.start_date, data.base_tss
+    )
 
     plan = TrainingPlan(
         user_id=current_user.id,

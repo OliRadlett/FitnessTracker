@@ -17,7 +17,6 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -272,7 +271,7 @@ def download_docs() -> None:
         # Extract main content
         content_html = extract_docusaurus_content(soup)
         if not content_html:
-            print(f"    WARNING: No content found, using full body")
+            print("    WARNING: No content found, using full body")
             body = soup.find("body")
             content_html = str(body) if body else resp.text
 

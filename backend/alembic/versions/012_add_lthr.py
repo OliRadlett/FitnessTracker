@@ -4,6 +4,7 @@ Revision ID: 012
 Revises: 011
 Create Date: 2026-08-17
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -15,7 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("cycling_profiles", sa.Column("lactate_threshold_hr", sa.Float(), nullable=True))
+    op.add_column(
+        "cycling_profiles", sa.Column("lactate_threshold_hr", sa.Float(), nullable=True)
+    )
 
 
 def downgrade() -> None:

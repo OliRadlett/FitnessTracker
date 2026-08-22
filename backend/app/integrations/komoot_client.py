@@ -81,7 +81,9 @@ class KomootClient:
 
         # Create new basic auth token from email:password
         credentials = f"{self.komoot_email}:{self.komoot_password}"
-        self._basic_token = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
+        self._basic_token = base64.b64encode(credentials.encode("utf-8")).decode(
+            "utf-8"
+        )
         # Basic tokens don't really expire, but refresh daily just in case
         self._basic_token_expires = time.time() + 86400
         return self._basic_token
@@ -134,7 +136,9 @@ class KomootClient:
     async def ensure_authenticated(self) -> bool:
         """Ensure we have valid credentials. Returns True if authenticated."""
         if not self.komoot_email or not self.komoot_password:
-            logger.error("Komoot credentials not configured. Set KOMOOT_EMAIL and KOMOOT_PASSWORD in .env")
+            logger.error(
+                "Komoot credentials not configured. Set KOMOOT_EMAIL and KOMOOT_PASSWORD in .env"
+            )
             return False
         return True
 
@@ -183,8 +187,12 @@ class KomootClient:
             if resp.status_code == 200:
                 return resp.json()
 
-            logger.error(f"All Komoot account endpoints failed. Last: HTTP {resp.status_code} for {url}")
-            raise ValueError("Cannot determine Komoot user ID. Set KOMOOT_USER_ID in .env (your user ID is 4895699973941)")
+            logger.error(
+                f"All Komoot account endpoints failed. Last: HTTP {resp.status_code} for {url}"
+            )
+            raise ValueError(
+                "Cannot determine Komoot user ID. Set KOMOOT_USER_ID in .env (your user ID is 4895699973941)"
+            )
 
     async def get_tours(
         self,

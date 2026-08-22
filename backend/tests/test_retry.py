@@ -21,21 +21,25 @@ class TestRetryRequest:
 
     async def test_retry_on_timeout(self):
         """Retries on httpx.TimeoutException."""
-        mock_fn = AsyncMock(side_effect=[
-            httpx.TimeoutException("timeout"),
-            httpx.TimeoutException("timeout"),
-            "ok",
-        ])
+        mock_fn = AsyncMock(
+            side_effect=[
+                httpx.TimeoutException("timeout"),
+                httpx.TimeoutException("timeout"),
+                "ok",
+            ]
+        )
         result = await retry_request(mock_fn, initial_backoff=0.01)
         assert result == "ok"
         assert mock_fn.call_count == 3
 
     async def test_retry_on_connect_error(self):
         """Retries on httpx.ConnectError."""
-        mock_fn = AsyncMock(side_effect=[
-            httpx.ConnectError("connection refused"),
-            "ok",
-        ])
+        mock_fn = AsyncMock(
+            side_effect=[
+                httpx.ConnectError("connection refused"),
+                "ok",
+            ]
+        )
         result = await retry_request(mock_fn, initial_backoff=0.01)
         assert result == "ok"
         assert mock_fn.call_count == 2
@@ -45,7 +49,9 @@ class TestRetryRequest:
         response_500 = MagicMock()
         response_500.status_code = 500
         response_500.headers = {}
-        error_500 = httpx.HTTPStatusError("server error", request=MagicMock(), response=response_500)
+        error_500 = httpx.HTTPStatusError(
+            "server error", request=MagicMock(), response=response_500
+        )
 
         mock_fn = AsyncMock(side_effect=[error_500, "ok"])
         result = await retry_request(mock_fn, initial_backoff=0.01)
@@ -56,7 +62,9 @@ class TestRetryRequest:
         """Does NOT retry on HTTP 400 (client error)."""
         response_400 = MagicMock()
         response_400.status_code = 400
-        error_400 = httpx.HTTPStatusError("bad request", request=MagicMock(), response=response_400)
+        error_400 = httpx.HTTPStatusError(
+            "bad request", request=MagicMock(), response=response_400
+        )
 
         mock_fn = AsyncMock(side_effect=error_400)
         with pytest.raises(httpx.HTTPStatusError):
@@ -75,7 +83,9 @@ class TestRetryRequest:
         response_429 = MagicMock()
         response_429.status_code = 429
         response_429.headers = {}
-        error_429 = httpx.HTTPStatusError("rate limited", request=MagicMock(), response=response_429)
+        error_429 = httpx.HTTPStatusError(
+            "rate limited", request=MagicMock(), response=response_429
+        )
 
         mock_fn = AsyncMock(side_effect=[error_429, "ok"])
         result = await retry_request(mock_fn, initial_backoff=0.01)

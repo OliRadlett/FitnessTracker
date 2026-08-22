@@ -29,7 +29,9 @@ GOAL_TYPES = {
 }
 
 
-async def _compute_current_value(db: AsyncSession, user_id: uuid.UUID, goal: Goal) -> float | None:
+async def _compute_current_value(
+    db: AsyncSession, user_id: uuid.UUID, goal: Goal
+) -> float | None:
     """Compute the current value for a goal based on its type."""
     today = date.today()
 
@@ -53,16 +55,22 @@ async def _compute_current_value(db: AsyncSession, user_id: uuid.UUID, goal: Goa
     elif goal.goal_type == "weekly_sessions":
         # Count sessions in the last 7 days (lifting + cardio)
         from datetime import timedelta
+
         week_ago = today - timedelta(days=7)
         result = await db.execute(
-            select(LiftingSession.id)
-            .where(LiftingSession.user_id == user_id, LiftingSession.session_date >= week_ago)
+            select(LiftingSession.id).where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= week_ago,
+            )
         )
         lifting_count = len(result.scalars().all())
 
         result = await db.execute(
-            select(Activity.id)
-            .where(Activity.user_id == user_id, Activity.start_date >= week_ago, Activity.source != "wahoo")
+            select(Activity.id).where(
+                Activity.user_id == user_id,
+                Activity.start_date >= week_ago,
+                Activity.source != "wahoo",
+            )
         )
         activity_count = len(result.scalars().all())
 
@@ -89,10 +97,10 @@ async def _compute_current_value(db: AsyncSession, user_id: uuid.UUID, goal: Goa
     elif goal.goal_type == "distance_target":
         # Total distance this month (km converted to the target unit)
         from datetime import timedelta
+
         month_start = today.replace(day=1)
         result = await db.execute(
-            select(Activity.distance_meters)
-            .where(
+            select(Activity.distance_meters).where(
                 Activity.user_id == user_id,
                 Activity.source != "wahoo",
                 Activity.start_date >= month_start,
@@ -128,7 +136,11 @@ async def list_goals(
             if goal.status == "active" and current >= goal.target_value:
                 goal.status = "achieved"
             # Auto-expire if past target date
-            if goal.target_date and goal.status == "active" and date.today() > goal.target_date:
+            if (
+                goal.target_date
+                and goal.status == "active"
+                and date.today() > goal.target_date
+            ):
                 if current < goal.target_value:
                     goal.status = "expired"
 
@@ -146,7 +158,10 @@ async def create_goal(
 ):
     """Create a new training goal."""
     if data.goal_type not in GOAL_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}",
+        )
 
     goal = Goal(
         user_id=current_user.id,
@@ -210,7 +225,10 @@ async def update_goal(
 
     update_data = data.model_dump(exclude_unset=True)
     if "goal_type" in update_data and update_data["goal_type"] not in GOAL_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}",
+        )
 
     for field, value in update_data.items():
         setattr(goal, field, value)

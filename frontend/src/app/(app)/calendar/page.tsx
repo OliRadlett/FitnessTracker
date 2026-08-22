@@ -10,6 +10,7 @@ import type {
   UpdateSessionPayload,
   CalendarDayData,
   DailyMetricSummary,
+  SleepLogSummary,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
@@ -159,10 +160,14 @@ function buildCalendarDays(currentMonth: Date): Date[] {
 function DayDetailPanel({
   selectedDay,
   calendarActivities,
+  dayMetric,
+  daySleepLog,
   authFetch,
 }: {
   selectedDay: Date;
   calendarActivities: ActivityCalendarEntry[];
+  dayMetric?: DailyMetricSummary;
+  daySleepLog?: SleepLogSummary;
   authFetch: <T>(path: string, options?: RequestInit) => Promise<T>;
 }) {
   const queryClient = useQueryClient();
@@ -233,8 +238,149 @@ function DayDetailPanel({
 
   const isLoading = loadingActivities || loadingSessions;
 
+  // Format helpers for sleep
+  const formatSleepHrs = (seconds: number) => `${(seconds / 3600).toFixed(1)}h`;
+  const formatTime = (iso?: string) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    } catch { return '—'; }
+  };
+
+  const hasRecovery = dayMetric?.recovery_score != null || dayMetric?.hrv_ms != null || dayMetric?.resting_hr != null;
+  const hasSleep = daySleepLog != null || dayMetric?.sleep_duration_minutes != null;
+
   return (
     <div className="space-y-4">
+      {/* Recovery & Sleep Summary */}
+      {(hasRecovery || hasSleep) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Recovery Card */}
+          {hasRecovery && (
+            <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">❤️</span>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Recovery</h3>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {dayMetric?.recovery_score != null && (
+                  <div className="text-center">
+                    <div className="text-xs text-muted mb-1">Score</div>
+                    <div className={`text-lg font-bold ${
+                      dayMetric.recovery_score >= 67 ? 'text-green-400'
+                      : dayMetric.recovery_score >= 34 ? 'text-yellow-400'
+                      : 'text-red-400'
+                    }`}>
+                      {Math.round(dayMetric.recovery_score)}%
+                    </div>
+                  </div>
+                )}
+                {dayMetric?.hrv_ms != null && (
+                  <div className="text-center">
+                    <div className="text-xs text-muted mb-1">HRV</div>
+                    <div className="text-lg font-bold text-blue-400">{Math.round(dayMetric.hrv_ms)}ms</div>
+                  </div>
+                )}
+                {dayMetric?.resting_hr != null && (
+                  <div className="text-center">
+                    <div className="text-xs text-muted mb-1">RHR</div>
+                    <div className="text-lg font-bold text-orange-400">{Math.round(dayMetric.resting_hr)} bpm</div>
+                  </div>
+                )}
+              </div>
+              {dayMetric?.strain != null && (
+                <div className="mt-3 pt-2 border-t border-surface-light">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted">Strain</span>
+                    <span className={`text-sm font-semibold ${
+                      dayMetric.strain >= 14 ? 'text-red-400'
+                      : dayMetric.strain >= 10 ? 'text-yellow-400'
+                      : 'text-green-400'
+                    }`}>{dayMetric.strain.toFixed(1)} / 21</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sleep Card */}
+          {hasSleep && (
+            <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">😴</span>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Sleep</h3>
+              </div>
+              {daySleepLog ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="text-center">
+                      <div className="text-xs text-muted mb-1">Total</div>
+                      <div className={`text-lg font-bold ${
+                        (daySleepLog.total_sleep_seconds ?? 0) >= 25200 ? 'text-green-400'
+                        : (daySleepLog.total_sleep_seconds ?? 0) >= 21600 ? 'text-yellow-400'
+                        : 'text-red-400'
+                      }`}>
+                        {daySleepLog.total_sleep_seconds ? formatSleepHrs(daySleepLog.total_sleep_seconds) : '—'}
+                      </div>
+                    </div>
+                    {daySleepLog.sleep_efficiency != null && (
+                      <div className="text-center">
+                        <div className="text-xs text-muted mb-1">Efficiency</div>
+                        <div className="text-lg font-bold text-blue-400">{Math.round(daySleepLog.sleep_efficiency)}%</div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Sleep stages */}
+                  <div className="space-y-1.5">
+                    {daySleepLog.deep_sleep_seconds != null && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-indigo-300">Deep</span>
+                        <span className="text-white">{formatSleepHrs(daySleepLog.deep_sleep_seconds)}</span>
+                      </div>
+                    )}
+                    {daySleepLog.rem_sleep_seconds != null && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-purple-300">REM</span>
+                        <span className="text-white">{formatSleepHrs(daySleepLog.rem_sleep_seconds)}</span>
+                      </div>
+                    )}
+                    {daySleepLog.light_sleep_seconds != null && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-sky-300">Light</span>
+                        <span className="text-white">{formatSleepHrs(daySleepLog.light_sleep_seconds)}</span>
+                      </div>
+                    )}
+                    {daySleepLog.awake_seconds != null && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-400">Awake</span>
+                        <span className="text-white">{formatSleepHrs(daySleepLog.awake_seconds)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Bedtime / Wake */}
+                  {(daySleepLog.sleep_start || daySleepLog.sleep_end) && (
+                    <div className="mt-2 pt-2 border-t border-surface-light flex justify-between text-xs text-muted">
+                      <span>🛏️ {formatTime(daySleepLog.sleep_start)}</span>
+                      <span>⏰ {formatTime(daySleepLog.sleep_end)}</span>
+                    </div>
+                  )}
+                </>
+              ) : dayMetric?.sleep_duration_minutes != null ? (
+                <div className="text-center">
+                  <div className="text-xs text-muted mb-1">Duration</div>
+                  <div className="text-lg font-bold text-blue-400">
+                    {(dayMetric.sleep_duration_minutes / 60).toFixed(1)}h
+                  </div>
+                  {dayMetric.sleep_efficiency != null && (
+                    <div className="text-xs text-muted mt-1">Efficiency: {Math.round(dayMetric.sleep_efficiency)}%</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Activity details */}
       {isLoading ? (
         <div className="animate-pulse space-y-3">
@@ -554,6 +700,7 @@ export default function CalendarPage() {
 
   const activities = calendarData?.activities;
   const dailyMetrics = calendarData?.daily_metrics;
+  const sleepLogs = calendarData?.sleep_logs;
 
   // Build calendar grid days
   const calendarDays = useMemo(
@@ -583,11 +730,29 @@ export default function CalendarPage() {
     return map;
   }, [dailyMetrics]);
 
+  // Group sleep logs by date
+  const sleepLogsByDate = useMemo(() => {
+    const map = new Map<string, SleepLogSummary>();
+    if (!sleepLogs) return map;
+    for (const sl of sleepLogs) {
+      // Prefer whoop source (most complete data)
+      if (!map.has(sl.sleep_date) || sl.source === 'whoop') {
+        map.set(sl.sleep_date, sl);
+      }
+    }
+    return map;
+  }, [sleepLogs]);
+
   // Selected day activities
   const selectedDayActivities = useMemo(() => {
     const key = format(selectedDay, 'yyyy-MM-dd');
     return activitiesByDate.get(key) || [];
   }, [selectedDay, activitiesByDate]);
+
+  // Selected day metric and sleep log
+  const selectedDayKey = format(selectedDay, 'yyyy-MM-dd');
+  const selectedDayMetric = metricsByDate.get(selectedDayKey);
+  const selectedDaySleepLog = sleepLogsByDate.get(selectedDayKey);
 
   // Helper to get recovery color class
   const getRecoveryColor = (score: number): string => {
@@ -830,6 +995,8 @@ export default function CalendarPage() {
           <DayDetailPanel
             selectedDay={selectedDay}
             calendarActivities={selectedDayActivities}
+            dayMetric={selectedDayMetric}
+            daySleepLog={selectedDaySleepLog}
             authFetch={authFetch}
           />
         </div>

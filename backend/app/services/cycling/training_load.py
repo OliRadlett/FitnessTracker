@@ -12,7 +12,7 @@ from app.models.cycling import CyclingProfile
 # ── Constants ────────────────────────────────────────────────────────────────
 
 CTL_DAYS = 42  # Chronic Training Load time constant
-ATL_DAYS = 7   # Acute Training Load time constant
+ATL_DAYS = 7  # Acute Training Load time constant
 
 
 # ── CTL / ATL / TSB ─────────────────────────────────────────────────────────
@@ -43,18 +43,24 @@ def compute_training_load(
     current = start_date
     while current <= end_date:
         raw_tss = daily_tss.get(current, 0.0)
-        tss = raw_tss if (isinstance(raw_tss, (int, float)) and math.isfinite(raw_tss)) else 0.0
+        tss = (
+            raw_tss
+            if (isinstance(raw_tss, (int, float)) and math.isfinite(raw_tss))
+            else 0.0
+        )
         ctl = ctl + (tss - ctl) * ctl_decay
         atl = atl + (tss - atl) * atl_decay
         tsb = ctl - atl
 
-        result.append({
-            "date": current,
-            "tss": round(tss, 1),
-            "ctl": round(ctl, 1),
-            "atl": round(atl, 1),
-            "tsb": round(tsb, 1),
-        })
+        result.append(
+            {
+                "date": current,
+                "tss": round(tss, 1),
+                "ctl": round(ctl, 1),
+                "atl": round(atl, 1),
+                "tsb": round(tsb, 1),
+            }
+        )
         current += timedelta(days=1)
 
     return result

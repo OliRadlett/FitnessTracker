@@ -97,9 +97,7 @@ class TestGetLiftingSession:
     """GET /api/v1/lifting/sessions/{id} — single session detail."""
 
     async def test_get_existing_session(self, client, test_lifting_session):
-        resp = await client.get(
-            f"/api/v1/lifting/sessions/{test_lifting_session.id}"
-        )
+        resp = await client.get(f"/api/v1/lifting/sessions/{test_lifting_session.id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == str(test_lifting_session.id)
@@ -134,9 +132,7 @@ class TestUpdateDeleteSession:
         assert resp.status_code == 204
 
         # Verify gone
-        resp = await client.get(
-            f"/api/v1/lifting/sessions/{test_lifting_session.id}"
-        )
+        resp = await client.get(f"/api/v1/lifting/sessions/{test_lifting_session.id}")
         assert resp.status_code == 404
 
 
@@ -197,9 +193,7 @@ class TestLiftingAnalysis:
         assert data["exercise_count"] >= 1
 
     async def test_analysis_nonexistent_session(self, client):
-        resp = await client.get(
-            f"/api/v1/lifting/sessions/{_uuid.uuid4()}/analysis"
-        )
+        resp = await client.get(f"/api/v1/lifting/sessions/{_uuid.uuid4()}/analysis")
         assert resp.status_code == 404
 
 
@@ -209,14 +203,18 @@ class TestLiftingAnalysis:
 class TestLiftingSessionAiAnalysis:
     """GET/POST /api/v1/lifting/sessions/{id}/ai-analysis."""
 
-    async def test_get_ai_analysis_returns_null_when_none(self, client, test_lifting_session):
+    async def test_get_ai_analysis_returns_null_when_none(
+        self, client, test_lifting_session
+    ):
         resp = await client.get(
             f"/api/v1/lifting/sessions/{test_lifting_session.id}/ai-analysis"
         )
         assert resp.status_code == 200
         assert resp.json() is None
 
-    async def test_trigger_ai_analysis_with_mocked_gemini(self, client, test_lifting_session):
+    async def test_trigger_ai_analysis_with_mocked_gemini(
+        self, client, test_lifting_session
+    ):
         """Full AI pipeline runs — only the Gemini HTTP call is mocked."""
         from unittest.mock import AsyncMock, patch
 

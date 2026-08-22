@@ -43,11 +43,12 @@ async def sync_user(
     db: AsyncSession = Depends(get_db),
 ):
     """Create or find a user from NextAuth session data and return a backend JWT.
-    
+
     This bridges NextAuth (frontend) with the backend user system.
     Called by NextAuth's signIn callback after successful OAuth.
     """
     from app.config import get_settings as _get_settings
+
     _s = _get_settings()
     if not _s.is_email_allowed(body.email):
         raise HTTPException(
@@ -107,6 +108,7 @@ async def oauth_authorize(
 ):
     """Redirect the user to the OAuth provider's authorize page."""
     from app.config import get_settings
+
     settings = get_settings()
 
     if provider not in OAUTH_PROVIDERS:
@@ -129,30 +131,47 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Handle OAuth callback, exchange code for tokens, create/find user.
-    
+
     For fitness integrations (strava, whoop, wahoo): exchanges code for tokens,
     saves connection to the current user, redirects to frontend.
     For app auth (google, github): exchanges code, creates/finds user, returns JSON.
     """
+    import logging as _logging
+
+    _logger = _logging.getLogger(__name__)
+
     from app.config import get_settings
+
     _settings = get_settings()
     _frontend_url = _settings.frontend_url  # Frontend lives at /fittrack basePath
 
+    _logger.info(
+        "OAuth callback for provider=%s, code=%s..., redirect_uri=%s",
+        provider,
+        code[:8] if code else None,
+        redirect_uri,
+    )
+
     if provider not in OAUTH_PROVIDERS:
         if provider in ("strava", "whoop", "wahoo"):
-            return RedirectResponse(url=f"{_frontend_url}/settings?error=Unsupported+provider:+{provider}")
+            return RedirectResponse(
+                url=f"{_frontend_url}/settings?error=Unsupported+provider:+{provider}"
+            )
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
     # For token exchange, we need the same redirect_uri that was used during authorization.
     token_exchange_redirect_uri = redirect_uri
     if not token_exchange_redirect_uri:
-        token_exchange_redirect_uri = f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+        token_exchange_redirect_uri = (
+            f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+        )
 
     # For fitness integrations, save connection to existing user instead of creating new one
     if provider in ("strava", "whoop", "wahoo"):
         try:
             # Exchange code for tokens directly
             import httpx as _httpx
+
             cfg = OAUTH_PROVIDERS[provider]
             async with _httpx.AsyncClient() as client:
                 token_resp = await client.post(
@@ -175,11 +194,24 @@ async def oauth_callback(
 
             access_token = token_data.get("access_token")
             if not access_token:
-                return RedirectResponse(url=f"{_frontend_url}/settings?error=Failed+to+get+access+token")
+                _logger.error(
+                    "Whoop token exchange failed: status=%s, response=%s",
+                    token_resp.status_code,
+                    token_data,
+                )
+                error_detail = token_data.get(
+                    "error_description", token_data.get("error", "unknown")
+                )
+                import urllib.parse as _urlparse
+
+                return RedirectResponse(
+                    url=f"{_frontend_url}/settings?error=Whoop+token+exchange+failed:+{_urlparse.quote(str(error_detail))}"
+                )
 
             refresh_token = token_data.get("refresh_token")
             from datetime import datetime as _dt
             from datetime import timedelta
+
             expires_in = token_data.get("expires_in")
             token_expires = None
             if expires_in:
@@ -192,7 +224,9 @@ async def oauth_callback(
 
                 # Whoop fallback: if primary URL returns 404, try developer/v1 endpoint
                 if provider == "whoop" and userinfo_resp.status_code == 404:
-                    fallback_url = "https://api.prod.whoop.com/developer/v2/user/profile/basic"
+                    fallback_url = (
+                        "https://api.prod.whoop.com/developer/v2/user/profile/basic"
+                    )
                     userinfo_resp = await client.get(fallback_url, headers=headers)
 
                 if userinfo_resp.status_code != 200:
@@ -247,7 +281,9 @@ async def oauth_callback(
                 )
                 target_user = user_result.scalar_one_or_none()
                 if not target_user:
-                    return RedirectResponse(url=f"{_frontend_url}/settings?error=No+user+found.+Please+log+in+first.")
+                    return RedirectResponse(
+                        url=f"{_frontend_url}/settings?error=No+user+found.+Please+log+in+first."
+                    )
 
                 connection = OAuthConnection(
                     user_id=target_user.id,
@@ -260,18 +296,26 @@ async def oauth_callback(
                 db.add(connection)
 
             await db.commit()
-            return RedirectResponse(url=f"{_frontend_url}/settings?connected={provider}")
+            return RedirectResponse(
+                url=f"{_frontend_url}/settings?connected={provider}"
+            )
 
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"OAuth callback error for {provider}: {e}")
+
+            logging.getLogger(__name__).error(
+                f"OAuth callback error for {provider}: {e}"
+            )
             import urllib.parse
+
             error_msg = urllib.parse.quote(str(e))
             return RedirectResponse(url=f"{_frontend_url}/settings?error={error_msg}")
 
     # For app auth providers (google, github), use the original flow
     try:
-        user, is_new = await exchange_code_for_user(db, provider, code, token_exchange_redirect_uri)
+        user, is_new = await exchange_code_for_user(
+            db, provider, code, token_exchange_redirect_uri
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

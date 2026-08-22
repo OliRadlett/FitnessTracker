@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 # ── Cycling Profile ──────────────────────────────────────────────────────────
 
+
 class CyclingProfileRead(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -21,13 +22,22 @@ class CyclingProfileRead(BaseModel):
 
 
 class CyclingProfileUpdate(BaseModel):
-    ftp_watts: float | None = Field(None, gt=0, le=1000, description="Functional Threshold Power in watts")
-    weight_kg: float | None = Field(None, gt=20, le=300, description="Body weight in kg")
-    lactate_threshold_hr: float | None = Field(None, gt=30, le=250, description="Lactate Threshold Heart Rate in bpm")
-    auto_estimate_ftp: bool | None = Field(None, description="Enable/disable weekly automatic FTP estimation")
+    ftp_watts: float | None = Field(
+        None, gt=0, le=1000, description="Functional Threshold Power in watts"
+    )
+    weight_kg: float | None = Field(
+        None, gt=20, le=300, description="Body weight in kg"
+    )
+    lactate_threshold_hr: float | None = Field(
+        None, gt=30, le=250, description="Lactate Threshold Heart Rate in bpm"
+    )
+    auto_estimate_ftp: bool | None = Field(
+        None, description="Enable/disable weekly automatic FTP estimation"
+    )
 
 
 # ── FTP History ──────────────────────────────────────────────────────────────
+
 
 class FtpHistoryRead(BaseModel):
     id: uuid.UUID
@@ -50,8 +60,10 @@ class FtpHistoryCreate(BaseModel):
 
 # ── Training Load (CTL/ATL/TSB) ─────────────────────────────────────────────
 
+
 class DailyLoadPoint(BaseModel):
     """A single day's training load data."""
+
     date: date
     tss: float = 0.0
     ctl: float = 0.0  # Chronic Training Load (fitness)
@@ -61,6 +73,7 @@ class DailyLoadPoint(BaseModel):
 
 class TrainingLoadResponse(BaseModel):
     """Training load over time."""
+
     data: list[DailyLoadPoint]
     current_ctl: float = 0.0
     current_atl: float = 0.0
@@ -69,8 +82,10 @@ class TrainingLoadResponse(BaseModel):
 
 # ── Power Analysis ───────────────────────────────────────────────────────────
 
+
 class PowerDurationPoint(BaseModel):
     """Best power at a given duration."""
+
     duration_label: str  # e.g. "5s", "1min", "5min", "20min", "60min"
     duration_seconds: int
     best_power_watts: float | None = None
@@ -79,12 +94,14 @@ class PowerDurationPoint(BaseModel):
 
 class PowerCurveResponse(BaseModel):
     """Enhanced power curve from stream data."""
+
     data: list[PowerDurationPoint]
     ftp_watts: float | None = None
 
 
 class PowerZoneDistribution(BaseModel):
     """Time spent in each power zone."""
+
     zone: str  # Z1, Z2, Z3, Z4, Z5, Z6, Z7
     zone_name: str  # Active Recovery, Endurance, Tempo, Threshold, VO2max, Anaerobic, Neuromuscular
     lower_bound_watts: float
@@ -95,6 +112,7 @@ class PowerZoneDistribution(BaseModel):
 
 class PowerZonesResponse(BaseModel):
     """Power zone distribution for a given period."""
+
     ftp_watts: float
     zones: list[PowerZoneDistribution]
     total_time_seconds: int
@@ -102,6 +120,7 @@ class PowerZonesResponse(BaseModel):
 
 class MetricTrend(BaseModel):
     """Trend indicator comparing current value against a rolling baseline."""
+
     current_value: float | None = None
     baseline_value: float | None = None
     direction: str = "stable"  # "up", "down", "stable"
@@ -109,6 +128,7 @@ class MetricTrend(BaseModel):
 
 class MetricBenchmark(BaseModel):
     """Benchmark classification for a metric value."""
+
     label: str  # e.g. "Trained", "Good", "Excellent"
     range: str  # e.g. "3.0–4.0"
     raw_label: str  # internal label
@@ -116,6 +136,7 @@ class MetricBenchmark(BaseModel):
 
 class CyclingMetricsSummary(BaseModel):
     """Summary of cycling-specific metrics."""
+
     recent_tss: float = 0.0  # last 7 days
     recent_distance_km: float = 0.0
     recent_time_hours: float = 0.0
@@ -146,6 +167,7 @@ class CyclingMetricsSummary(BaseModel):
 
 class HrZoneDistribution(BaseModel):
     """Time spent in each heart rate zone."""
+
     zone: str
     zone_name: str
     lower_bound_hr: float
@@ -156,6 +178,7 @@ class HrZoneDistribution(BaseModel):
 
 class HrZonesResponse(BaseModel):
     """HR zone distribution for a given period."""
+
     lthr: float
     zones: list[HrZoneDistribution]
     total_time_seconds: int
@@ -163,6 +186,7 @@ class HrZonesResponse(BaseModel):
 
 class PowerVsHrPoint(BaseModel):
     """A data point for power vs heart rate analysis."""
+
     power: float
     heart_rate: float
     date: date
@@ -170,6 +194,7 @@ class PowerVsHrPoint(BaseModel):
 
 class PowerVsHrResponse(BaseModel):
     """Power vs heart rate scatter data."""
+
     data: list[PowerVsHrPoint]
 
 
@@ -178,6 +203,7 @@ class PowerVsHrResponse(BaseModel):
 
 class FtpEstimateDetail(BaseModel):
     """Individual FTP estimate from a specific method."""
+
     ftp: float
     confidence: float
     source_duration: int
@@ -186,6 +212,7 @@ class FtpEstimateDetail(BaseModel):
 
 class FtpEstimateResponse(BaseModel):
     """Enhanced FTP estimate response with confidence scoring."""
+
     estimated_ftp: float
     confidence: float  # 0.0 - 1.0
     method: str  # primary method used
@@ -203,6 +230,7 @@ class FtpEstimateResponse(BaseModel):
 
 class Vo2maxDetail(BaseModel):
     """Individual VO2max estimate from a specific method."""
+
     vo2max: float
     confidence: float
     method: str
@@ -210,6 +238,7 @@ class Vo2maxDetail(BaseModel):
 
 class Vo2maxResponse(BaseModel):
     """VO2max estimation response."""
+
     vo2max: float  # ml/kg/min
     confidence: float
     method: str
@@ -219,6 +248,7 @@ class Vo2maxResponse(BaseModel):
 
 class Vo2maxHistoryPoint(BaseModel):
     """A single VO2max estimate in the history trend."""
+
     date: date
     vo2max: float
     method: str
@@ -226,6 +256,7 @@ class Vo2maxHistoryPoint(BaseModel):
 
 class Vo2maxHistoryResponse(BaseModel):
     """VO2max trend over time."""
+
     data: list[Vo2maxHistoryPoint]
     current_vo2max: float | None = None
     current_classification: str | None = None
@@ -236,6 +267,7 @@ class Vo2maxHistoryResponse(BaseModel):
 
 class DecouplingActivityPoint(BaseModel):
     """Decoupling result for a single activity."""
+
     date: date
     activity_id: str
     decoupling_pct: float
@@ -247,6 +279,7 @@ class DecouplingActivityPoint(BaseModel):
 
 class DecouplingHistoryResponse(BaseModel):
     """Decoupling trend over time for recent long rides."""
+
     data: list[DecouplingActivityPoint]
     avg_decoupling_pct: float | None = None
     classification: str | None = None  # overall classification based on average
@@ -254,9 +287,40 @@ class DecouplingHistoryResponse(BaseModel):
 
 class DecouplingSingleResponse(BaseModel):
     """Decoupling result for a single activity."""
+
     decoupling_pct: float
     first_half_ratio: float
     second_half_ratio: float
     classification: str
     duration_seconds: int
     activity_id: str | None = None
+
+
+# ── Suggested Training Cycle ────────────────────────────────────────────────
+
+
+class SuggestedDay(BaseModel):
+    """A single day in the suggested training cycle."""
+
+    day_name: str  # e.g. "Monday"
+    date: str  # ISO date
+    workout_type: str  # "rest" | "recovery" | "endurance" | "tempo" | "threshold" | "vo2max" | "strength" | "mixed"
+    label: str  # Human-readable label e.g. "Easy Recovery Ride"
+    description: str  # What to do and why
+    target_tss: float | None = None  # Suggested TSS target
+    intensity: str  # "low" | "moderate" | "high" | "none"
+    icon: str  # Emoji icon
+
+
+class SuggestedCycleResponse(BaseModel):
+    """Suggested 7-day training cycle based on recovery and training load."""
+
+    readiness: str  # "green" | "yellow" | "red"
+    readiness_message: str
+    current_tsb: float | None = None
+    current_ctl: float | None = None
+    current_atl: float | None = None
+    latest_recovery: float | None = None
+    latest_hrv: float | None = None
+    days: list[SuggestedDay]
+    summary: str  # Overall recommendation text

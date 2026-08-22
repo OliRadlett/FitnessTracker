@@ -36,6 +36,7 @@ POWER_DURATION_BUCKETS = [
 @dataclass
 class FtpEstimateResult:
     """Structured result from FTP estimation."""
+
     ftp: float
     confidence: float  # 0.0 - 1.0
     method: str  # human-readable method description
@@ -62,7 +63,9 @@ def estimate_ftp_from_power_curve(power_curve: dict[int, float]) -> float | None
     return result.ftp if result else None
 
 
-def _riegel_extrapolate(power: float, from_duration: int, to_duration: int = 3600) -> float:
+def _riegel_extrapolate(
+    power: float, from_duration: int, to_duration: int = 3600
+) -> float:
     """Riegel endurance extrapolation: T2 = T1 × (D2/D1)^1.06.
 
     Given power at from_duration, extrapolate what power could be
@@ -75,7 +78,9 @@ def _riegel_extrapolate(power: float, from_duration: int, to_duration: int = 360
     return power * ratio
 
 
-def estimate_ftp_from_power_curve_detailed(power_curve: dict[int, float]) -> FtpEstimateResult | None:
+def estimate_ftp_from_power_curve_detailed(
+    power_curve: dict[int, float],
+) -> FtpEstimateResult | None:
     """Estimate FTP with detailed result including confidence and method info.
 
     Uses a tiered approach with established multipliers plus Riegel
@@ -86,7 +91,9 @@ def estimate_ftp_from_power_curve_detailed(power_curve: dict[int, float]) -> Ftp
 
     FTP_FACTOR = 0.95
 
-    estimates: list[tuple[float, float, int, str]] = []  # (ftp, confidence, duration, method)
+    estimates: list[
+        tuple[float, float, int, str]
+    ] = []  # (ftp, confidence, duration, method)
 
     # 60-min power ≈ FTP directly (by definition)
     if 3600 in power_curve and power_curve[3600] > 0:
@@ -102,11 +109,15 @@ def estimate_ftp_from_power_curve_detailed(power_curve: dict[int, float]) -> Ftp
 
     # 8-min power × 0.90 × 0.95 (well-established alternative)
     if 480 in power_curve and power_curve[480] > 0:
-        estimates.append((power_curve[480] * 0.90 * FTP_FACTOR, 0.85, 480, "8-min × 0.855"))
+        estimates.append(
+            (power_curve[480] * 0.90 * FTP_FACTOR, 0.85, 480, "8-min × 0.855")
+        )
 
     # 10-min power × 0.92 (between 8min and 20min factors)
     if 600 in power_curve and power_curve[600] > 0:
-        estimates.append((power_curve[600] * 0.92 * FTP_FACTOR, 0.7, 600, "10-min × 0.92 × 0.95"))
+        estimates.append(
+            (power_curve[600] * 0.92 * FTP_FACTOR, 0.7, 600, "10-min × 0.92 × 0.95")
+        )
 
     # 5-min power × 0.95 (rough estimate, lower confidence)
     if 300 in power_curve and power_curve[300] > 0:
@@ -120,7 +131,9 @@ def estimate_ftp_from_power_curve_detailed(power_curve: dict[int, float]) -> Ftp
     ]
     for src_dur, method_label in riegel_sources:
         if src_dur in power_curve and power_curve[src_dur] > 0:
-            riegel_ftp = round(_riegel_extrapolate(power_curve[src_dur], src_dur, 3600), 1)
+            riegel_ftp = round(
+                _riegel_extrapolate(power_curve[src_dur], src_dur, 3600), 1
+            )
             if 50 <= riegel_ftp <= 600:
                 # Riegel extrapolation confidence decreases with distance
                 if src_dur >= 1200:
@@ -206,8 +219,7 @@ async def compute_power_curve_from_streams(
 
     # Get all cycling activities with power data in the time range
     result = await db.execute(
-        select(Activity.id)
-        .where(
+        select(Activity.id).where(
             Activity.user_id == user_id,
             Activity.sport_type == "cycling",
             Activity.average_power.isnot(None),
@@ -221,8 +233,7 @@ async def compute_power_curve_from_streams(
 
     # Fetch power streams for these activities
     result = await db.execute(
-        select(ActivityStream)
-        .where(
+        select(ActivityStream).where(
             ActivityStream.activity_id.in_(activity_ids),
             ActivityStream.stream_type == "watts",
         )
@@ -298,8 +309,7 @@ async def backfill_ftp_estimates(
         window_start = window_end - timedelta(days=90)
 
         result = await db.execute(
-            select(Activity.id)
-            .where(
+            select(Activity.id).where(
                 Activity.user_id == user_id,
                 Activity.sport_type == "cycling",
                 Activity.average_power.isnot(None),
@@ -313,8 +323,7 @@ async def backfill_ftp_estimates(
             continue
 
         result = await db.execute(
-            select(ActivityStream)
-            .where(
+            select(ActivityStream).where(
                 ActivityStream.activity_id.in_(activity_ids),
                 ActivityStream.stream_type == "watts",
             )
@@ -336,10 +345,17 @@ async def backfill_ftp_estimates(
                 window_sum = sum(power_data[:duration_sec])
                 best_avg = window_sum / duration_sec
                 for j in range(1, len(power_data) - duration_sec + 1):
-                    window_sum = window_sum - power_data[j - 1] + power_data[j + duration_sec - 1]
+                    window_sum = (
+                        window_sum
+                        - power_data[j - 1]
+                        + power_data[j + duration_sec - 1]
+                    )
                     avg = window_sum / duration_sec
                     best_avg = max(best_avg, avg)
-                if duration_sec not in best_power or best_avg > best_power[duration_sec]:
+                if (
+                    duration_sec not in best_power
+                    or best_avg > best_power[duration_sec]
+                ):
                     best_power[duration_sec] = round(best_avg, 1)
 
         estimated_ftp = estimate_ftp_from_power_curve(best_power)
@@ -368,14 +384,18 @@ async def backfill_ftp_estimates(
             ftp_watts=estimated_ftp,
             effective_date=month_date,
             source="estimated",
-            notes=f"Backfill: {source_method}" if source_method else "Backfill from power data",
+            notes=f"Backfill: {source_method}"
+            if source_method
+            else "Backfill from power data",
         )
         db.add(entry)
-        created_entries.append({
-            "effective_date": month_date.isoformat(),
-            "ftp_watts": estimated_ftp,
-            "source_method": source_method,
-        })
+        created_entries.append(
+            {
+                "effective_date": month_date.isoformat(),
+                "ftp_watts": estimated_ftp,
+                "source_method": source_method,
+            }
+        )
 
     await db.flush()
     return created_entries

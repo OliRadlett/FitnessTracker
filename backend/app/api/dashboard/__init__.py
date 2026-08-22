@@ -65,22 +65,25 @@ async def dashboard_summary(
 
     # Lifting volume this week
     result = await db.execute(
-        select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0))
-        .where(LiftingSession.user_id == uid, LiftingSession.session_date.between(monday, sunday))
+        select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0)).where(
+            LiftingSession.user_id == uid,
+            LiftingSession.session_date.between(monday, sunday),
+        )
     )
     weekly_volume = _safe_agg(result.scalar())
 
     # Session count
     result = await db.execute(
-        select(func.count(LiftingSession.id))
-        .where(LiftingSession.user_id == uid, LiftingSession.session_date.between(monday, sunday))
+        select(func.count(LiftingSession.id)).where(
+            LiftingSession.user_id == uid,
+            LiftingSession.session_date.between(monday, sunday),
+        )
     )
     weekly_sessions = int(result.scalar() or 0)
 
     # TSS this week (Strava is source of truth — exclude standalone Wahoo)
     result = await db.execute(
-        select(func.coalesce(func.sum(Activity.tss), 0.0))
-        .where(
+        select(func.coalesce(func.sum(Activity.tss), 0.0)).where(
             Activity.user_id == uid,
             Activity.source != "wahoo",
             Activity.start_date >= monday,
@@ -92,8 +95,7 @@ async def dashboard_summary(
     # Weekly distance (cardio activities only — Strava as source of truth)
     CARDIO_SPORT_TYPES = ["cycling", "running", "swimming", "walking", "hiking"]
     result = await db.execute(
-        select(func.coalesce(func.sum(Activity.distance_meters), 0.0))
-        .where(
+        select(func.coalesce(func.sum(Activity.distance_meters), 0.0)).where(
             Activity.user_id == uid,
             Activity.source != "wahoo",
             Activity.start_date >= monday,
@@ -126,8 +128,9 @@ async def dashboard_summary(
 
     # Active alerts
     result = await db.execute(
-        select(func.count(HealthAlert.id))
-        .where(HealthAlert.user_id == uid, HealthAlert.status == "active")
+        select(func.count(HealthAlert.id)).where(
+            HealthAlert.user_id == uid, HealthAlert.status == "active"
+        )
     )
     active_alerts = int(result.scalar() or 0)
 
@@ -161,6 +164,7 @@ async def _suggest_rest_days(
 
     # 1. Check TSB
     from app.services.cycling import compute_training_load, get_daily_tss
+
     end_date = date.today()
     start_date = end_date - timedelta(days=90)
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)
@@ -187,7 +191,9 @@ async def _suggest_rest_days(
         low_recovery_days = result.scalars().all()
         if len(low_recovery_days) >= 2:
             should_rest = True
-            reasons.append(f"Recovery below 40% for {len(low_recovery_days)} consecutive days ({latest_recovery:.0f}%)")
+            reasons.append(
+                f"Recovery below 40% for {len(low_recovery_days)} consecutive days ({latest_recovery:.0f}%)"
+            )
         else:
             reasons.append(f"Low recovery: {latest_recovery:.0f}%")
 
@@ -198,8 +204,7 @@ async def _suggest_rest_days(
         check_date = today - timedelta(days=i)
         # Check activities
         act_result = await db.execute(
-            select(func.count(Activity.id))
-            .where(
+            select(func.count(Activity.id)).where(
                 Activity.user_id == user_id,
                 Activity.source != "wahoo",
                 func.date(Activity.start_date) == check_date,
@@ -209,8 +214,7 @@ async def _suggest_rest_days(
 
         # Check lifting sessions
         lift_result = await db.execute(
-            select(func.count(LiftingSession.id))
-            .where(
+            select(func.count(LiftingSession.id)).where(
                 LiftingSession.user_id == user_id,
                 LiftingSession.session_date == check_date,
             )

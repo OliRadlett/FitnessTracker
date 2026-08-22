@@ -85,12 +85,14 @@ async def analyze_lifting_session(
         points = []
         for s in sorted(exercise_sets, key=lambda x: x.set_number):
             est_1rm = brzycki_1rm(s.weight_kg, s.reps) if s.reps > 0 else None
-            points.append({
-                "set_number": s.set_number,
-                "weight_kg": s.weight_kg,
-                "reps": s.reps,
-                "estimated_1rm": round(est_1rm, 1) if est_1rm else None,
-            })
+            points.append(
+                {
+                    "set_number": s.set_number,
+                    "weight_kg": s.weight_kg,
+                    "reps": s.reps,
+                    "estimated_1rm": round(est_1rm, 1) if est_1rm else None,
+                }
+            )
         set_progression[exercise] = points
 
     # 3. Rep dropoff (first vs last working set per exercise)
@@ -105,12 +107,14 @@ async def analyze_lifting_session(
             dropoff_pct = round(((first_reps - last_reps) / first_reps) * 100, 1)
         else:
             dropoff_pct = 0.0
-        rep_dropoff.append({
-            "exercise_name": exercise,
-            "first_set_reps": first_reps,
-            "last_set_reps": last_reps,
-            "dropoff_pct": dropoff_pct,
-        })
+        rep_dropoff.append(
+            {
+                "exercise_name": exercise,
+                "first_set_reps": first_reps,
+                "last_set_reps": last_reps,
+                "dropoff_pct": dropoff_pct,
+            }
+        )
 
     # 4. PR proximity
     # Get all PRs for exercises in this session
@@ -128,7 +132,10 @@ async def analyze_lifting_session(
     pr_by_exercise: dict[str, float] = {}
     for pr in prs:
         if pr.estimated_1rm is not None:
-            if pr.exercise_name not in pr_by_exercise or pr.estimated_1rm > pr_by_exercise[pr.exercise_name]:
+            if (
+                pr.exercise_name not in pr_by_exercise
+                or pr.estimated_1rm > pr_by_exercise[pr.exercise_name]
+            ):
                 pr_by_exercise[pr.exercise_name] = pr.estimated_1rm
 
     pr_proximity = []
@@ -144,12 +151,14 @@ async def analyze_lifting_session(
             continue
         pr_1rm = pr_by_exercise[exercise]
         proximity_pct = round((top_1rm / pr_1rm) * 100, 1) if pr_1rm > 0 else 0.0
-        pr_proximity.append({
-            "exercise_name": exercise,
-            "top_set_1rm": round(top_1rm, 1),
-            "pr_1rm": round(pr_1rm, 1),
-            "proximity_pct": proximity_pct,
-        })
+        pr_proximity.append(
+            {
+                "exercise_name": exercise,
+                "top_set_1rm": round(top_1rm, 1),
+                "pr_1rm": round(pr_1rm, 1),
+                "proximity_pct": proximity_pct,
+            }
+        )
 
     # 5. RPE analysis
     set_rpes = [s.rpe for s in working_sets if s.rpe is not None]
@@ -197,7 +206,9 @@ async def analyze_lifting_session(
     # Component C: Session RPE (0-20 points)
     if session.rpe_session is not None:
         # RPE 1-10 mapped to 0-20 points
-        fatigue_components.append(min(20.0, max(0.0, (session.rpe_session - 1) * 20 / 9)))
+        fatigue_components.append(
+            min(20.0, max(0.0, (session.rpe_session - 1) * 20 / 9))
+        )
     else:
         fatigue_components.append(0.0)
 
@@ -205,8 +216,14 @@ async def analyze_lifting_session(
 
     # 7. Session density
     session_density = None
-    if session.duration_seconds and session.duration_seconds > 0 and session.total_volume_kg:
-        session_density = round(session.total_volume_kg / (session.duration_seconds / 60), 1)
+    if (
+        session.duration_seconds
+        and session.duration_seconds > 0
+        and session.total_volume_kg
+    ):
+        session_density = round(
+            session.total_volume_kg / (session.duration_seconds / 60), 1
+        )
 
     # 8 & 9. Counts
     exercise_count = len(exercises)
@@ -285,7 +302,11 @@ async def analyze_ride(
         ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
         if ftp and ftp > 0:
-            resolution = power_stream.resolution if power_stream and power_stream.resolution else 1
+            resolution = (
+                power_stream.resolution
+                if power_stream and power_stream.resolution
+                else 1
+            )
             zone_times: dict[str, int] = {z[0]: 0 for z in POWER_ZONES}
 
             for val in power_data:
@@ -302,12 +323,14 @@ async def analyze_ride(
             total_zone_time = sum(zone_times.values()) or 1
             for zone_id, zone_name, _, _ in POWER_ZONES:
                 secs = zone_times.get(zone_id, 0)
-                power_zones.append({
-                    "zone_name": zone_id,
-                    "zone_label": zone_name,
-                    "seconds": secs,
-                    "pct": round((secs / total_zone_time) * 100, 1),
-                })
+                power_zones.append(
+                    {
+                        "zone_name": zone_id,
+                        "zone_label": zone_name,
+                        "seconds": secs,
+                        "pct": round((secs / total_zone_time) * 100, 1),
+                    }
+                )
 
     # 2. Power distribution histogram
     histogram_buckets = [
@@ -326,11 +349,15 @@ async def analyze_ride(
         total_points = len(power_data)
         for low, high, label in histogram_buckets:
             count = sum(1 for p in power_data if low <= p < high)
-            power_distribution.append({
-                "range_label": label,
-                "count": count,
-                "pct": round((count / total_points) * 100, 1) if total_points > 0 else 0.0,
-            })
+            power_distribution.append(
+                {
+                    "range_label": label,
+                    "count": count,
+                    "pct": round((count / total_points) * 100, 1)
+                    if total_points > 0
+                    else 0.0,
+                }
+            )
 
     # 3. Pacing analysis (10% segments)
     pacing_analysis = None
@@ -341,20 +368,28 @@ async def analyze_ride(
             start_idx = int(n * i / 10)
             end_idx = int(n * (i + 1) / 10)
             segment_data = power_data[start_idx:end_idx]
-            avg_pwr = round(sum(segment_data) / len(segment_data), 1) if segment_data else None
-            segments.append({
-                "pct_start": round(i * 10, 1),
-                "pct_end": round((i + 1) * 10, 1),
-                "avg_power": avg_pwr,
-            })
+            avg_pwr = (
+                round(sum(segment_data) / len(segment_data), 1)
+                if segment_data
+                else None
+            )
+            segments.append(
+                {
+                    "pct_start": round(i * 10, 1),
+                    "pct_end": round((i + 1) * 10, 1),
+                    "avg_power": avg_pwr,
+                }
+            )
 
         # Power variability across segments
         seg_powers = [s["avg_power"] for s in segments if s["avg_power"] is not None]
         if len(seg_powers) >= 2:
             mean_pwr = sum(seg_powers) / len(seg_powers)
             if mean_pwr > 0:
-                variance = sum((p - mean_pwr) ** 2 for p in seg_powers) / len(seg_powers)
-                power_variability = round((variance ** 0.5) / mean_pwr * 100, 1)
+                variance = sum((p - mean_pwr) ** 2 for p in seg_powers) / len(
+                    seg_powers
+                )
+                power_variability = round((variance**0.5) / mean_pwr * 100, 1)
             else:
                 power_variability = None
         else:
@@ -370,7 +405,9 @@ async def analyze_ride(
     if power_data:
         np_val = compute_normalized_power(power_data)
         if np_val and activity.average_power:
-            variability_index = calculate_variability_index(np_val, activity.average_power)
+            variability_index = calculate_variability_index(
+                np_val, activity.average_power
+            )
 
     # 5. Intensity factor (NP / FTP)
     intensity_factor = None
@@ -389,7 +426,12 @@ async def analyze_ride(
 
     # 6. Decoupling (ride > 60 min with both power + HR streams)
     decoupling = None
-    if activity.duration_seconds and activity.duration_seconds > 3600 and power_data and hr_data:
+    if (
+        activity.duration_seconds
+        and activity.duration_seconds > 3600
+        and power_data
+        and hr_data
+    ):
         dec_result = await compute_decoupling_for_activity(db, activity_id)
         if dec_result:
             decoupling = {
@@ -418,14 +460,20 @@ async def analyze_ride(
         "tss_per_hour": None,
     }
     if activity.tss and activity.duration_seconds and activity.duration_seconds > 0:
-        tss_breakdown["tss_per_hour"] = round(activity.tss / (activity.duration_seconds / 3600), 1)
+        tss_breakdown["tss_per_hour"] = round(
+            activity.tss / (activity.duration_seconds / 3600), 1
+        )
 
     # 10. Climbing analysis (from altitude stream)
     climbing_analysis = None
     if altitude_data and len(altitude_data) >= 2:
         # Compute gradient from altitude changes
         # Assume 1-second resolution unless specified
-        resolution = altitude_stream.resolution if altitude_stream and altitude_stream.resolution else 1
+        resolution = (
+            altitude_stream.resolution
+            if altitude_stream and altitude_stream.resolution
+            else 1
+        )
 
         total_climbing = 0.0
         total_descending = 0.0
@@ -460,18 +508,24 @@ async def analyze_ride(
         climbing_analysis = {
             "total_climbing_m": round(total_climbing, 1),
             "total_descending_m": round(total_descending, 1),
-            "avg_gradient_pct": round(sum(gradients) / len(gradients), 1) if gradients else None,
+            "avg_gradient_pct": round(sum(gradients) / len(gradients), 1)
+            if gradients
+            else None,
             "max_gradient_pct": round(max(gradients), 1) if gradients else None,
             "climbing_seconds": climbing_seconds,
             "flat_seconds": flat_seconds,
             "descending_seconds": descending_seconds,
-            "climbing_pct": round((climbing_seconds / total_climb_desc_time) * 100, 1) if total_climb_desc_time > 0 else None,
+            "climbing_pct": round((climbing_seconds / total_climb_desc_time) * 100, 1)
+            if total_climb_desc_time > 0
+            else None,
         }
 
     return {
         "power_zones": power_zones,
         "power_distribution": power_distribution,
-        "pacing_analysis": pacing_analysis if pacing_analysis else {"segments": [], "power_variability": None},
+        "pacing_analysis": pacing_analysis
+        if pacing_analysis
+        else {"segments": [], "power_variability": None},
         "variability_index": variability_index,
         "intensity_factor": intensity_factor,
         "decoupling": decoupling,

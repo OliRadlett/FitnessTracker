@@ -61,10 +61,7 @@ async def get_analysis_history(
     current_user: User = Depends(get_current_user),
 ):
     """Get LLM analysis history for the current user, optionally filtered by type."""
-    query = (
-        select(LlmAnalysis)
-        .where(LlmAnalysis.user_id == current_user.id)
-    )
+    query = select(LlmAnalysis).where(LlmAnalysis.user_id == current_user.id)
     if analysis_type:
         query = query.where(LlmAnalysis.analysis_type == analysis_type)
     query = query.order_by(LlmAnalysis.created_at.desc()).limit(limit)

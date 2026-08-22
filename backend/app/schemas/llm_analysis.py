@@ -23,6 +23,7 @@ class LlmAnalysisRead(BaseModel):
 
 class LlmAnalysisSummary(BaseModel):
     """Lightweight version without the full stats JSON."""
+
     model_config = {"from_attributes": True}
 
     id: UUID

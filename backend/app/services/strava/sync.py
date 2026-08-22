@@ -61,7 +61,9 @@ def _map_strava_type(strava_type: str) -> str:
 # ── Connection helpers ──────────────────────────────────────────────────────
 
 
-async def get_strava_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthConnection | None:
+async def get_strava_connection(
+    db: AsyncSession, user_id: uuid.UUID
+) -> OAuthConnection | None:
     """Get the Strava OAuth connection for a user."""
     result = await db.execute(
         select(OAuthConnection).where(
@@ -72,14 +74,18 @@ async def get_strava_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthCo
     return result.scalar_one_or_none()
 
 
-async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
+async def refresh_if_needed(
+    db: AsyncSession, connection: OAuthConnection
+) -> OAuthConnection:
     """Refresh the access token if it's expired."""
     if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
         if not connection.refresh_token:
             raise ValueError("No refresh token available")
         token_data = await strava_client.refresh_access_token(connection.refresh_token)
         connection.access_token = token_data["access_token"]
-        connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
+        connection.refresh_token = token_data.get(
+            "refresh_token", connection.refresh_token
+        )
         connection.token_expires_at = datetime.fromtimestamp(
             token_data["expires_at"], tz=UTC
         )
@@ -134,7 +140,9 @@ async def _create_activity_from_strava(
     return activity
 
 
-async def _find_activity_source(db: AsyncSession, provider_activity_id: str) -> ActivitySource | None:
+async def _find_activity_source(
+    db: AsyncSession, provider_activity_id: str
+) -> ActivitySource | None:
     """Check if an ActivitySource already exists for this Strava activity."""
     result = await db.execute(
         select(ActivitySource).where(
@@ -216,7 +224,12 @@ async def sync_activities(
 
         # Use merge engine to detect duplicates from other providers
         duplicate = await find_duplicate_activity(
-            db, user_id, sport_type, start_date, duration_seconds, distance_meters,
+            db,
+            user_id,
+            sport_type,
+            start_date,
+            duration_seconds,
+            distance_meters,
         )
 
         if duplicate:
@@ -235,7 +248,12 @@ async def sync_activities(
                 "calories": _safe_float(sa.get("calories")),
             }
             await merge_activity(
-                db, duplicate, new_data, "strava", provider_id, raw_data=sa,
+                db,
+                duplicate,
+                new_data,
+                "strava",
+                provider_id,
+                raw_data=sa,
             )
             synced.append(duplicate)
         else:
@@ -277,6 +295,7 @@ async def sync_activities(
         auto_compute_tss_for_activity,
         get_or_create_cycling_profile,
     )
+
     profile = await get_or_create_cycling_profile(db, user_id)
     if profile.ftp_watts:
         for activity in synced:
@@ -370,12 +389,19 @@ async def backfill_all_activities(
 
             # Parse and create
             start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
-            sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+            sport_type = _map_strava_type(
+                sa.get("sport_type", sa.get("type", "Unknown"))
+            )
             duration_seconds = int(sa.get("moving_time", 0))
             distance_meters = sa.get("distance")
 
             duplicate = await find_duplicate_activity(
-                db, user_id, sport_type, start_date, duration_seconds, distance_meters,
+                db,
+                user_id,
+                sport_type,
+                start_date,
+                duration_seconds,
+                distance_meters,
             )
 
             if duplicate:
@@ -383,7 +409,9 @@ async def backfill_all_activities(
                     "name": sa.get("name"),
                     "duration_seconds": duration_seconds,
                     "distance_meters": _safe_float(distance_meters),
-                    "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+                    "elevation_gain_meters": _safe_float(
+                        sa.get("total_elevation_gain")
+                    ),
                     "average_heartrate": _safe_float(sa.get("average_heartrate")),
                     "max_heartrate": _safe_float(sa.get("max_heartrate")),
                     "average_power": _safe_float(sa.get("average_watts")),
@@ -392,11 +420,15 @@ async def backfill_all_activities(
                     "average_cadence": _safe_float(sa.get("average_cadence")),
                     "calories": _safe_float(sa.get("calories")),
                 }
-                await merge_activity(db, duplicate, new_data, "strava", provider_id, raw_data=sa)
+                await merge_activity(
+                    db, duplicate, new_data, "strava", provider_id, raw_data=sa
+                )
                 if sport_type == "cycling":
                     synced_cycling.append((duplicate.id, int(provider_id)))
             else:
-                activity = await _create_activity_from_strava(db, sa, user_id, connection)
+                activity = await _create_activity_from_strava(
+                    db, sa, user_id, connection
+                )
                 if sport_type == "cycling":
                     synced_cycling.append((activity.id, int(provider_id)))
 
@@ -478,7 +510,12 @@ async def backfill_all_activities(
     activities = [a for a in all_activities if a.id not in linked_activity_ids]
 
     if not activities:
-        return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1, "streams_backfilled": stream_count}
+        return {
+            "synced": synced_total,
+            "skipped": skipped_total,
+            "pages": page - 1,
+            "streams_backfilled": stream_count,
+        }
 
     # 3. Batch-fetch all unlinked lifting sessions with sets (for strength matching)
     session_result = await db.execute(
@@ -496,16 +533,18 @@ async def backfill_all_activities(
         sessions_by_date[s.session_date].append(s)
 
     # 4. Batch-fetch all user routes (for route matching)
-    route_result = await db.execute(
-        select(Route).where(Route.user_id == user_id)
-    )
+    route_result = await db.execute(select(Route).where(Route.user_id == user_id))
     all_routes = list(route_result.scalars().all())
 
     # 5. Link activities using pre-fetched data (no per-activity DB queries)
     for activity in activities:
         # -- Strength activity → lifting session matching --
         if activity.sport_type in STRENGTH_SPORT_TYPES and not activity.lifting_session:
-            activity_date = activity.start_date.date() if activity.start_date.tzinfo else activity.start_date.date()
+            activity_date = (
+                activity.start_date.date()
+                if activity.start_date.tzinfo
+                else activity.start_date.date()
+            )
             candidates = []
             for offset in range(-2, 3):
                 check_date = activity_date + timedelta(days=offset)
@@ -527,6 +566,7 @@ async def backfill_all_activities(
                     points = decode_polyline(polyline)
                     if points and len(points) >= 2:
                         from app.config import get_settings as _gs
+
                         threshold = _gs().activity_route_link_threshold
                         start_lat, start_lng = points[0]
                         end_lat, end_lng = points[-1]
@@ -538,15 +578,19 @@ async def backfill_all_activities(
                                 and activity.sport_type in ("cycling", "running")
                             ):
                                 continue
-                            start_dist = haversine_distance(start_lat, start_lng, route.start_lat, route.start_lng)
+                            start_dist = haversine_distance(
+                                start_lat, start_lng, route.start_lat, route.start_lng
+                            )
                             if start_dist > 5000:
                                 continue
                             score = _compute_match_score(
                                 activity.distance_meters or 0,
                                 polyline,
                                 activity.name,
-                                start_lat, start_lng,
-                                end_lat, end_lng,
+                                start_lat,
+                                start_lng,
+                                end_lat,
+                                end_lng,
                                 route,
                             )
                             if score > best_score:
@@ -556,7 +600,12 @@ async def backfill_all_activities(
                             activity.route_id = best_route.id
 
     await db.flush()
-    return {"synced": synced_total, "skipped": skipped_total, "pages": page - 1, "streams_backfilled": stream_count}
+    return {
+        "synced": synced_total,
+        "skipped": skipped_total,
+        "pages": page - 1,
+        "streams_backfilled": stream_count,
+    }
 
 
 async def backfill_streams_for_all_activities(
@@ -607,7 +656,9 @@ async def backfill_streams_for_all_activities(
     for uid, user_activities in activities_by_user.items():
         connection = await get_strava_connection(db, uid)
         if not connection:
-            logger.warning(f"No Strava connection for user {uid}, skipping stream backfill")
+            logger.warning(
+                f"No Strava connection for user {uid}, skipping stream backfill"
+            )
             continue
 
         try:
@@ -681,10 +732,14 @@ async def sync_strava_routes(
     while synced_count < limit:
         try:
             routes = await strava_client.get_athlete_routes(
-                connection.access_token, page=page, per_page=30,
+                connection.access_token,
+                page=page,
+                per_page=30,
             )
         except Exception as e:
-            logging.getLogger(__name__).error(f"Failed to fetch Strava routes page {page}: {e}")
+            logging.getLogger(__name__).error(
+                f"Failed to fetch Strava routes page {page}: {e}"
+            )
             break
 
         if not routes:
@@ -704,7 +759,9 @@ async def sync_strava_routes(
             map_data = route_data.get("map", {})
             polyline = map_data.get("polyline") or map_data.get("summary_polyline", "")
             if not polyline:
-                logging.getLogger(__name__).warning(f"Skipping Strava route {route_id}: no polyline")
+                logging.getLogger(__name__).warning(
+                    f"Skipping Strava route {route_id}: no polyline"
+                )
                 continue
 
             sport_type = _map_strava_type(route_data.get("type", "Ride"))
@@ -717,6 +774,7 @@ async def sync_strava_routes(
             from sqlalchemy import select as sa_select
 
             from app.models.route import RouteSource
+
             existing = await db.execute(
                 sa_select(RouteSource).where(
                     RouteSource.provider == "strava",
@@ -726,7 +784,8 @@ async def sync_strava_routes(
             was_existing = existing.scalar_one_or_none() is not None
 
             await create_or_merge_route(
-                db, user_id,
+                db,
+                user_id,
                 name=name,
                 sport_type=sport_type,
                 distance_meters=distance,
@@ -773,6 +832,7 @@ async def sync_strava_routes(
 
         # Check if this activity-derived route already exists
         from app.models.route import RouteSource
+
         existing = await db.execute(
             sa_select(RouteSource).where(
                 RouteSource.provider == "strava",
@@ -785,7 +845,8 @@ async def sync_strava_routes(
         distance = activity.distance_meters or polyline_total_distance(polyline)
 
         await create_or_merge_route(
-            db, user_id,
+            db,
+            user_id,
             name=activity.name,
             sport_type="cycling",
             distance_meters=distance,

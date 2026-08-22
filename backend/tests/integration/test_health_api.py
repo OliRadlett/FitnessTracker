@@ -94,7 +94,9 @@ class TestSleepDebt:
 class TestOptimalBedtime:
     """GET /api/v1/metrics/optimal-bedtime — optimal bedtime suggestion."""
 
-    async def test_returns_optimal_bedtime(self, client, test_sleep_log, test_daily_metric):
+    async def test_returns_optimal_bedtime(
+        self, client, test_sleep_log, test_daily_metric
+    ):
         """Optimal bedtime returns a suggestion."""
         resp = await client.get("/api/v1/metrics/optimal-bedtime")
         assert resp.status_code == 200
@@ -218,7 +220,9 @@ class TestHealthAiAnalysis:
         assert resp.status_code == 200
         assert resp.json() is None
 
-    async def test_triggers_health_ai_analysis(self, client, test_daily_metric, monkeypatch):
+    async def test_triggers_health_ai_analysis(
+        self, client, test_daily_metric, monkeypatch
+    ):
         """POST health-ai-analysis triggers analysis (mocked Gemini)."""
         import uuid
         from unittest.mock import AsyncMock, patch

@@ -57,7 +57,11 @@ class TestSyncActivities:
     """sync_activities() — creates Activity records from Strava API response."""
 
     async def test_creates_activity_records(
-        self, db_session, test_user, strava_connection, strava_responses,
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
     ):
         """Sync creates Activity records from Strava API data."""
         from app.services.strava.sync import sync_activities
@@ -86,14 +90,20 @@ class TestSyncActivities:
         assert len(activities) == 2
 
     async def test_creates_activity_streams_for_cycling(
-        self, db_session, test_user, strava_connection, strava_responses,
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
     ):
         """Sync creates ActivityStream records for cycling activities."""
         from app.services.strava.sync import sync_activities
 
         with patch("app.services.strava.sync.strava_client") as mock_client:
             mock_client.get_activities = AsyncMock(
-                return_value=strava_responses["activities"][:1],  # Just the cycling ride
+                return_value=strava_responses["activities"][
+                    :1
+                ],  # Just the cycling ride
             )
             mock_client.get_activity_streams = AsyncMock(
                 return_value=strava_responses["activity_streams"],
@@ -113,7 +123,11 @@ class TestSyncActivities:
         assert "heartrate" in stream_types
 
     async def test_handles_duplicate_activities_idempotent(
-        self, db_session, test_user, strava_connection, strava_responses,
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
     ):
         """Sync is idempotent — running twice doesn't create duplicates."""
         from app.services.strava.sync import sync_activities
@@ -142,7 +156,10 @@ class TestSyncActivities:
         assert len(activities) == 1
 
     async def test_handles_strava_api_errors_gracefully(
-        self, db_session, test_user, strava_connection,
+        self,
+        db_session,
+        test_user,
+        strava_connection,
     ):
         """Sync raises ValueError when no connection exists."""
         from app.services.strava.sync import sync_activities
@@ -162,7 +179,11 @@ class TestBackfillAllActivities:
     """backfill_all_activities() — backfills historical activities."""
 
     async def test_backfills_historical_activities(
-        self, db_session, test_user, strava_connection, strava_responses,
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
     ):
         """Backfill creates Activity records from multiple pages."""
         from app.services.strava.sync import backfill_all_activities

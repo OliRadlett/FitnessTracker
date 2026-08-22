@@ -27,6 +27,7 @@ router = APIRouter()
 def _safe_agg(val, default=0.0):
     """Convert a SQL aggregation result to a safe float, guarding against NaN/Inf."""
     import math
+
     if val is None:
         return default
     try:
@@ -60,8 +61,7 @@ async def yearly_summary(
             func.coalesce(func.sum(Activity.distance_meters), 0.0),
             func.coalesce(func.sum(Activity.duration_seconds), 0.0),
             func.coalesce(func.sum(Activity.tss), 0.0),
-        )
-        .where(
+        ).where(
             Activity.user_id == uid,
             Activity.source != "wahoo",
             Activity.start_date >= year_start,
@@ -79,8 +79,7 @@ async def yearly_summary(
         select(
             func.count(LiftingSession.id),
             func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0),
-        )
-        .where(
+        ).where(
             LiftingSession.user_id == uid,
             LiftingSession.session_date >= year_start,
             LiftingSession.session_date <= effective_end,
@@ -95,8 +94,7 @@ async def yearly_summary(
         select(
             func.avg(DailyMetric.recovery_score),
             func.avg(DailyMetric.hrv_ms),
-        )
-        .where(
+        ).where(
             DailyMetric.user_id == uid,
             DailyMetric.metric_date >= year_start,
             DailyMetric.metric_date <= effective_end,
@@ -138,20 +136,29 @@ async def yearly_summary(
         )
         prev_pr = prev_result.scalar_one_or_none()
         improvement_pct = None
-        if prev_pr and prev_pr.estimated_1rm and prev_pr.estimated_1rm > 0 and pr.estimated_1rm:
+        if (
+            prev_pr
+            and prev_pr.estimated_1rm
+            and prev_pr.estimated_1rm > 0
+            and pr.estimated_1rm
+        ):
             improvement_pct = round(
-                ((pr.estimated_1rm - prev_pr.estimated_1rm) / prev_pr.estimated_1rm) * 100, 1
+                ((pr.estimated_1rm - prev_pr.estimated_1rm) / prev_pr.estimated_1rm)
+                * 100,
+                1,
             )
 
-        pr_highlights.append(PRHighlight(
-            exercise_name=pr.exercise_name,
-            record_type=pr.record_type,
-            weight_kg=pr.weight_kg,
-            reps=pr.reps,
-            estimated_1rm=pr.estimated_1rm,
-            achieved_date=pr.achieved_date,
-            improvement_pct=improvement_pct,
-        ))
+        pr_highlights.append(
+            PRHighlight(
+                exercise_name=pr.exercise_name,
+                record_type=pr.record_type,
+                weight_kg=pr.weight_kg,
+                reps=pr.reps,
+                estimated_1rm=pr.estimated_1rm,
+                achieved_date=pr.achieved_date,
+                improvement_pct=improvement_pct,
+            )
+        )
 
     # ── Monthly breakdown ────────────────────────────────────────────────
     # Lifting by month
@@ -159,7 +166,9 @@ async def yearly_summary(
         select(
             func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
             func.count(LiftingSession.id).label("sessions"),
-            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("volume"),
+            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
+                "volume"
+            ),
         )
         .where(
             LiftingSession.user_id == uid,
@@ -171,7 +180,10 @@ async def yearly_summary(
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
-        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": _safe_agg(row.volume)}
+        lifting_by_month[row.month] = {
+            "sessions": int(row.sessions),
+            "volume": _safe_agg(row.volume),
+        }
 
     # Activity by month
     result = await db.execute(
@@ -285,13 +297,16 @@ async def yearly_summary(
             id=longest_act.id,
             name=longest_act.name,
             sport_type=longest_act.sport_type,
-            start_date=longest_act.start_date.date() if hasattr(longest_act.start_date, 'date') else longest_act.start_date,
+            start_date=longest_act.start_date.date()
+            if hasattr(longest_act.start_date, "date")
+            else longest_act.start_date,
             value=round(longest_act.distance_meters / 1000, 1),
             unit="km",
         )
 
     # Heaviest lift (by weight in any set)
     from app.models.lifting import LiftingSet
+
     result = await db.execute(
         select(LiftingSet, LiftingSession)
         .join(LiftingSession, LiftingSet.session_id == LiftingSession.id)
@@ -334,8 +349,7 @@ async def yearly_summary(
 
     # Check if previous year has any data
     result = await db.execute(
-        select(func.count(Activity.id))
-        .where(
+        select(func.count(Activity.id)).where(
             Activity.user_id == uid,
             Activity.source != "wahoo",
             Activity.start_date >= prev_year_start,
@@ -352,8 +366,7 @@ async def yearly_summary(
                 func.coalesce(func.sum(Activity.distance_meters), 0.0),
                 func.coalesce(func.sum(Activity.duration_seconds), 0.0),
                 func.coalesce(func.sum(Activity.tss), 0.0),
-            )
-            .where(
+            ).where(
                 Activity.user_id == uid,
                 Activity.source != "wahoo",
                 Activity.start_date >= prev_year_start,
@@ -370,8 +383,7 @@ async def yearly_summary(
             select(
                 func.count(LiftingSession.id),
                 func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0),
-            )
-            .where(
+            ).where(
                 LiftingSession.user_id == uid,
                 LiftingSession.session_date >= prev_year_start,
                 LiftingSession.session_date <= prev_year_end,
@@ -382,8 +394,7 @@ async def yearly_summary(
         prev_lifting_volume = _safe_agg(prev_lift_row[1])
 
         result = await db.execute(
-            select(func.count(PersonalRecord.id))
-            .where(
+            select(func.count(PersonalRecord.id)).where(
                 PersonalRecord.user_id == uid,
                 PersonalRecord.achieved_date >= prev_year_start,
                 PersonalRecord.achieved_date <= prev_year_end,
@@ -392,8 +403,7 @@ async def yearly_summary(
         prev_prs = int(result.scalar() or 0)
 
         result = await db.execute(
-            select(func.avg(DailyMetric.recovery_score))
-            .where(
+            select(func.avg(DailyMetric.recovery_score)).where(
                 DailyMetric.user_id == uid,
                 DailyMetric.metric_date >= prev_year_start,
                 DailyMetric.metric_date <= prev_year_end,

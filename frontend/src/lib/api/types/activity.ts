@@ -57,11 +57,28 @@ export interface DailyMetricSummary {
   strain?: number;
   sleep_duration_minutes?: number;
   sleep_efficiency?: number;
+  resting_hr?: number;
+  respiratory_rate?: number;
+}
+
+export interface SleepLogSummary {
+  id: string;
+  sleep_date: string;
+  source: string;
+  total_sleep_seconds?: number;
+  deep_sleep_seconds?: number;
+  rem_sleep_seconds?: number;
+  light_sleep_seconds?: number;
+  awake_seconds?: number;
+  sleep_efficiency?: number;
+  sleep_start?: string;
+  sleep_end?: string;
 }
 
 export interface CalendarDayData {
   activities: ActivityCalendarEntry[];
   daily_metrics: DailyMetricSummary[];
+  sleep_logs: SleepLogSummary[];
 }
 
 export interface ActivityDetail extends Activity {

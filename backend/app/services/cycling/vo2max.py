@@ -17,6 +17,7 @@ from app.models.daily_metric import DailyMetric
 @dataclass
 class Vo2maxEstimate:
     """VO2max estimation result."""
+
     vo2max: float  # ml/kg/min
     confidence: float  # 0.0 - 1.0
     method: str  # human-readable method description
@@ -88,7 +89,13 @@ async def estimate_vo2max(
 
             # Sanity check: VO2max between 20-90 ml/kg/min
             if 20 <= vo2_ml_kg_min <= 90:
-                estimates.append((round(vo2_ml_kg_min, 1), 0.7, f"ACSM power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)"))
+                estimates.append(
+                    (
+                        round(vo2_ml_kg_min, 1),
+                        0.7,
+                        f"ACSM power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
+                    )
+                )
         else:
             # Without weight, estimate from power alone using typical weight assumptions
             # Use 75kg as default — very rough
@@ -97,7 +104,13 @@ async def estimate_vo2max(
             vo2_l_min = (10.8 * power_5min) / default_weight + 7
             vo2_ml_kg_min = (vo2_l_min * 1000) / default_weight
             if 20 <= vo2_ml_kg_min <= 90:
-                estimates.append((round(vo2_ml_kg_min, 1), 0.4, f"ACSM power-based (5-min: {power_5min}W, no weight — estimated with 75kg)"))
+                estimates.append(
+                    (
+                        round(vo2_ml_kg_min, 1),
+                        0.4,
+                        f"ACSM power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
+                    )
+                )
 
     # Also try best 8-min power as a secondary signal
     power_8min = best_power.get(480)
@@ -108,14 +121,19 @@ async def estimate_vo2max(
             vo2_l_min = (10.8 * power_8min) / weight_kg + 7
             vo2_ml_kg_min = (vo2_l_min * 1000) / weight_kg
             if 20 <= vo2_ml_kg_min <= 90:
-                estimates.append((round(vo2_ml_kg_min, 1), 0.6, f"ACSM power-based (8-min: {power_8min}W, {power_8min/weight_kg:.1f} W/kg)"))
+                estimates.append(
+                    (
+                        round(vo2_ml_kg_min, 1),
+                        0.6,
+                        f"ACSM power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
+                    )
+                )
 
     # ── Method 2: HR-based (Uth formula) ──────────────────────────────────
     # HRmax: get the highest max_heartrate from recent activities
     cutoff = date.today() - timedelta(days=days)
     result = await db.execute(
-        select(func.max(Activity.max_heartrate))
-        .where(
+        select(func.max(Activity.max_heartrate)).where(
             Activity.user_id == user_id,
             Activity.max_heartrate.isnot(None),
             Activity.start_date >= cutoff,
@@ -139,7 +157,13 @@ async def estimate_vo2max(
     if hr_max and hr_rest and hr_rest > 0 and hr_max > hr_rest:
         vo2max_hr = 15.3 * (hr_max / hr_rest)
         if 20 <= vo2max_hr <= 90:
-            estimates.append((round(vo2max_hr, 1), 0.6, f"Uth HR-based (HRmax: {hr_max:.0f}, HRrest: {hr_rest:.0f})"))
+            estimates.append(
+                (
+                    round(vo2max_hr, 1),
+                    0.6,
+                    f"Uth HR-based (HRmax: {hr_max:.0f}, HRrest: {hr_rest:.0f})",
+                )
+            )
 
     if not estimates:
         return None
@@ -183,8 +207,7 @@ async def compute_vo2max_history(
 
         # Get best 5-min power in this window
         result = await db.execute(
-            select(Activity.id)
-            .where(
+            select(Activity.id).where(
                 Activity.user_id == user_id,
                 Activity.sport_type == "cycling",
                 Activity.average_power.isnot(None),
@@ -198,8 +221,7 @@ async def compute_vo2max_history(
             continue
 
         result = await db.execute(
-            select(ActivityStream)
-            .where(
+            select(ActivityStream).where(
                 ActivityStream.activity_id.in_(activity_ids),
                 ActivityStream.stream_type == "watts",
             )
@@ -234,11 +256,13 @@ async def compute_vo2max_history(
         vo2_ml_kg_min = (vo2_l_min * 1000) / weight_kg
 
         if 20 <= vo2_ml_kg_min <= 90:
-            history.append({
-                "date": month_date,
-                "vo2max": round(vo2_ml_kg_min, 1),
-                "method": "power",
-            })
+            history.append(
+                {
+                    "date": month_date,
+                    "vo2max": round(vo2_ml_kg_min, 1),
+                    "method": "power",
+                }
+            )
 
     return history
 
@@ -249,6 +273,7 @@ async def compute_vo2max_history(
 @dataclass
 class DecouplingResult:
     """Decoupling analysis result for a single activity."""
+
     decoupling_pct: float  # percentage
     first_half_ratio: float  # power:HR ratio for 1st half
     second_half_ratio: float  # power:HR ratio for 2nd half
@@ -297,7 +322,8 @@ def compute_decoupling_from_streams(
 
     # Filter to valid pairs (both power > 0 and HR > 0)
     valid_pairs = [
-        (p, h) for p, h in zip(power_data, hr_data)
+        (p, h)
+        for p, h in zip(power_data, hr_data)
         if p is not None and h is not None and float(p) > 0 and float(h) > 0
     ]
 
@@ -335,9 +361,7 @@ async def compute_decoupling_for_activity(
 ) -> DecouplingResult | None:
     """Compute decoupling for a single activity by loading its power + HR streams."""
     # Get the activity
-    result = await db.execute(
-        select(Activity).where(Activity.id == activity_id)
-    )
+    result = await db.execute(select(Activity).where(Activity.id == activity_id))
     activity = result.scalar_one_or_none()
     if not activity:
         return None
@@ -367,8 +391,12 @@ async def compute_decoupling_for_activity(
     if not power_stream or not hr_stream:
         return None
 
-    power_data_raw = power_stream.data.get("data", []) if isinstance(power_stream.data, dict) else []
-    hr_data_raw = hr_stream.data.get("data", []) if isinstance(hr_stream.data, dict) else []
+    power_data_raw = (
+        power_stream.data.get("data", []) if isinstance(power_stream.data, dict) else []
+    )
+    hr_data_raw = (
+        hr_stream.data.get("data", []) if isinstance(hr_stream.data, dict) else []
+    )
 
     power_data = [float(p) for p in power_data_raw if p is not None]
     hr_data = [float(h) for h in hr_data_raw if h is not None]
@@ -425,15 +453,13 @@ async def compute_decoupling_history(
     activity_ids = [a.id for a in activities]
 
     power_result = await db.execute(
-        select(ActivityStream)
-        .where(
+        select(ActivityStream).where(
             ActivityStream.activity_id.in_(activity_ids),
             ActivityStream.stream_type == "watts",
         )
     )
     hr_result = await db.execute(
-        select(ActivityStream)
-        .where(
+        select(ActivityStream).where(
             ActivityStream.activity_id.in_(activity_ids),
             ActivityStream.stream_type == "heartrate",
         )
@@ -457,14 +483,16 @@ async def compute_decoupling_history(
 
         dec_result = compute_decoupling_from_streams(power_data, hr_data)
         if dec_result:
-            history.append({
-                "date": act.start_date,
-                "activity_id": str(act.id),
-                "decoupling_pct": dec_result["decoupling_pct"],
-                "first_half_ratio": dec_result["first_half_ratio"],
-                "second_half_ratio": dec_result["second_half_ratio"],
-                "classification": dec_result["classification"],
-                "duration_seconds": act.duration_seconds or 0,
-            })
+            history.append(
+                {
+                    "date": act.start_date,
+                    "activity_id": str(act.id),
+                    "decoupling_pct": dec_result["decoupling_pct"],
+                    "first_half_ratio": dec_result["first_half_ratio"],
+                    "second_half_ratio": dec_result["second_half_ratio"],
+                    "classification": dec_result["classification"],
+                    "duration_seconds": act.duration_seconds or 0,
+                }
+            )
 
     return history

@@ -26,6 +26,7 @@ router = APIRouter()
 def _safe_agg(val, default=0.0):
     """Convert a SQL aggregation result to a safe float, guarding against NaN/Inf."""
     import math
+
     if val is None:
         return default
     try:
@@ -75,6 +76,7 @@ async def dashboard_today(
 
     # Today's lifting sessions
     from app.models.lifting import LiftingSet
+
     result = await db.execute(
         select(
             LiftingSession,
@@ -120,8 +122,7 @@ async def dashboard_today(
 
     # Lifting volume today
     result = await db.execute(
-        select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0))
-        .where(
+        select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0)).where(
             LiftingSession.user_id == uid,
             LiftingSession.session_date == today,
         )
@@ -140,7 +141,7 @@ async def dashboard_today(
     latest_hrv = latest_metric.hrv_ms if latest_metric else None
     latest_strain = latest_metric.strain if latest_metric else None
 
-    # Latest sleep hours
+    # Latest sleep hours — try SleepLog first, fall back to DailyMetric
     result = await db.execute(
         select(SleepLog)
         .where(SleepLog.user_id == uid)
@@ -148,11 +149,32 @@ async def dashboard_today(
         .limit(1)
     )
     latest_sleep = result.scalar_one_or_none()
-    latest_sleep_hours = (
-        round(latest_sleep.total_sleep_seconds / 3600, 1)
-        if latest_sleep and latest_sleep.total_sleep_seconds
-        else None
-    )
+    latest_sleep_hours: float | None = None
+
+    if latest_sleep:
+        if latest_sleep.total_sleep_seconds:
+            latest_sleep_hours = round(latest_sleep.total_sleep_seconds / 3600, 1)
+        elif latest_sleep.sleep_start and latest_sleep.sleep_end:
+            # Compute from bounds if total was never populated (e.g. old Whoop v2 sync)
+            delta = (latest_sleep.sleep_end - latest_sleep.sleep_start).total_seconds()
+            awake = latest_sleep.awake_seconds or 0
+            if delta > awake:
+                latest_sleep_hours = round((delta - awake) / 3600, 1)
+
+    # Fallback: if no SleepLog data, check DailyMetric for sleep_duration_minutes
+    if latest_sleep_hours is None:
+        dm_sleep_result = await db.execute(
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == uid,
+                DailyMetric.sleep_duration_minutes.isnot(None),
+            )
+            .order_by(DailyMetric.metric_date.desc())
+            .limit(1)
+        )
+        dm_sleep = dm_sleep_result.scalar_one_or_none()
+        if dm_sleep and dm_sleep.sleep_duration_minutes:
+            latest_sleep_hours = round(dm_sleep.sleep_duration_minutes / 60, 1)
 
     # Training load (CTL / ATL / TSB)
     start_date = today - timedelta(days=90)
@@ -164,8 +186,7 @@ async def dashboard_today(
 
     # Active alerts
     result = await db.execute(
-        select(func.count(HealthAlert.id))
-        .where(
+        select(func.count(HealthAlert.id)).where(
             HealthAlert.user_id == uid,
             HealthAlert.status == "active",
         )

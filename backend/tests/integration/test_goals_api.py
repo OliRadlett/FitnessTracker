@@ -132,6 +132,7 @@ class TestGetGoal:
 
     async def test_get_nonexistent_goal_returns_404(self, client):
         import uuid
+
         resp = await client.get(f"/api/v1/goals/{uuid.uuid4()}")
         assert resp.status_code == 404
 
@@ -174,6 +175,7 @@ class TestUpdateGoal:
 
     async def test_update_nonexistent_returns_404(self, client):
         import uuid
+
         resp = await client.patch(
             f"/api/v1/goals/{uuid.uuid4()}",
             json={"target_value": 100.0},
@@ -211,6 +213,7 @@ class TestDeleteGoal:
 
     async def test_delete_nonexistent_returns_404(self, client):
         import uuid
+
         resp = await client.delete(f"/api/v1/goals/{uuid.uuid4()}")
         assert resp.status_code == 404
 
@@ -225,7 +228,11 @@ class TestGoalRoundTrip:
         # 1. Create
         create_resp = await client.post(
             "/api/v1/goals",
-            json={"goal_type": "ftp_target", "target_value": 300.0, "notes": "Big goal"},
+            json={
+                "goal_type": "ftp_target",
+                "target_value": 300.0,
+                "notes": "Big goal",
+            },
         )
         assert create_resp.status_code == 201
         goal_id = create_resp.json()["id"]

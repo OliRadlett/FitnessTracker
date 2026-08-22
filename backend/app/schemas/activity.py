@@ -5,8 +5,10 @@ from pydantic import BaseModel
 
 # ── Linked Lifting Session Summary ────────────────────────────────────────────
 
+
 class LinkedLiftingSessionSummary(BaseModel):
     """Subset of lifting session data shown alongside an activity."""
+
     id: uuid.UUID
     session_date: date
     focus: str | None = None
@@ -18,8 +20,10 @@ class LinkedLiftingSessionSummary(BaseModel):
 
 # ── Activity Source ──────────────────────────────────────────────────────────
 
+
 class ActivitySourceRead(BaseModel):
     """Provenance record for a merged activity."""
+
     id: uuid.UUID
     provider: str
     provider_activity_id: str
@@ -30,6 +34,7 @@ class ActivitySourceRead(BaseModel):
 
 
 # ── Activity ──────────────────────────────────────────────────────────────────
+
 
 class ActivityBase(BaseModel):
     source: str
@@ -82,6 +87,7 @@ class ActivityListParams(BaseModel):
 
 # ── Activity Stream ───────────────────────────────────────────────────────────
 
+
 class ActivityStreamRead(BaseModel):
     id: uuid.UUID
     activity_id: uuid.UUID
@@ -94,8 +100,10 @@ class ActivityStreamRead(BaseModel):
 
 # ── Activity Calendar Entry ──────────────────────────────────────────────────
 
+
 class ActivityCalendarEntry(BaseModel):
     """Lightweight activity data for calendar display."""
+
     id: uuid.UUID
     date: date
     sport_type: str
@@ -110,20 +118,43 @@ class ActivityCalendarEntry(BaseModel):
 
 class DailyMetricSummary(BaseModel):
     """Lightweight daily metric data for calendar day cells."""
+
     date: date
     recovery_score: float | None = None
     hrv_ms: float | None = None
     strain: float | None = None
     sleep_duration_minutes: float | None = None
     sleep_efficiency: float | None = None
+    resting_hr: float | None = None
+    respiratory_rate: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SleepLogSummary(BaseModel):
+    """Lightweight sleep log data for calendar day detail panel."""
+
+    id: uuid.UUID
+    sleep_date: date
+    source: str
+    total_sleep_seconds: int | None = None
+    deep_sleep_seconds: int | None = None
+    rem_sleep_seconds: int | None = None
+    light_sleep_seconds: int | None = None
+    awake_seconds: int | None = None
+    sleep_efficiency: float | None = None
+    sleep_start: datetime | None = None
+    sleep_end: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class CalendarDayData(BaseModel):
     """Combined activity + health data for a calendar day."""
+
     activities: list[ActivityCalendarEntry]
     daily_metrics: list[DailyMetricSummary]
+    sleep_logs: list[SleepLogSummary] = []
 
 
 # ── Ride Analysis ────────────────────────────────────────────────────────────

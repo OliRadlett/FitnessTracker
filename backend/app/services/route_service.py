@@ -29,14 +29,22 @@ LOOP_THRESHOLD_M = 200  # Start/end within this distance = loop
 
 
 def _proximity_score(
-    new_start_lat: float, new_start_lng: float,
-    new_end_lat: float, new_end_lng: float,
-    existing_start_lat: float, existing_start_lng: float,
-    existing_end_lat: float, existing_end_lng: float,
+    new_start_lat: float,
+    new_start_lng: float,
+    new_end_lat: float,
+    new_end_lng: float,
+    existing_start_lat: float,
+    existing_start_lng: float,
+    existing_end_lat: float,
+    existing_end_lng: float,
 ) -> float:
     """Score based on start/end point proximity. 0.0–1.0."""
-    start_dist = haversine_distance(new_start_lat, new_start_lng, existing_start_lat, existing_start_lng)
-    end_dist = haversine_distance(new_end_lat, new_end_lng, existing_end_lat, existing_end_lng)
+    start_dist = haversine_distance(
+        new_start_lat, new_start_lng, existing_start_lat, existing_start_lng
+    )
+    end_dist = haversine_distance(
+        new_end_lat, new_end_lng, existing_end_lat, existing_end_lng
+    )
 
     if start_dist < 200 and end_dist < 200:
         return 1.0
@@ -85,8 +93,14 @@ def _compute_match_score(
     Score = proximity × 0.40 + distance × 0.30 + name × 0.15 + shape × 0.15
     """
     proximity = _proximity_score(
-        new_start_lat, new_start_lng, new_end_lat, new_end_lng,
-        existing.start_lat, existing.start_lng, existing.end_lat, existing.end_lng,
+        new_start_lat,
+        new_start_lng,
+        new_end_lat,
+        new_end_lng,
+        existing.start_lat,
+        existing.start_lng,
+        existing.end_lat,
+        existing.end_lng,
     )
     distance = _distance_score(new_distance, existing.distance_meters)
     name = _name_score(new_name, existing.name)
@@ -98,7 +112,9 @@ def _compute_match_score(
 # ── Core CRUD operations ─────────────────────────────────────────────────────
 
 
-def compute_is_loop(start_lat: float, start_lng: float, end_lat: float, end_lng: float) -> bool:
+def compute_is_loop(
+    start_lat: float, start_lng: float, end_lat: float, end_lng: float
+) -> bool:
     """Check if route start and end are within LOOP_THRESHOLD_M."""
     return haversine_distance(start_lat, start_lng, end_lat, end_lng) < LOOP_THRESHOLD_M
 
@@ -135,13 +151,20 @@ async def find_duplicate_route(
 
     for route in existing_routes:
         # Quick pre-filter: skip if start points are > 5km apart
-        start_dist = haversine_distance(start_lat, start_lng, route.start_lat, route.start_lng)
+        start_dist = haversine_distance(
+            start_lat, start_lng, route.start_lat, route.start_lng
+        )
         if start_dist > 5000:
             continue
 
         score = _compute_match_score(
-            distance_meters, encoded_polyline, name,
-            start_lat, start_lng, end_lat, end_lng,
+            distance_meters,
+            encoded_polyline,
+            name,
+            start_lat,
+            start_lng,
+            end_lat,
+            end_lng,
             route,
         )
         if score > best_score:
@@ -149,7 +172,9 @@ async def find_duplicate_route(
             best_route = route
 
     if best_score >= settings.route_match_threshold and best_route is not None:
-        logger.info(f"Found duplicate route '{best_route.name}' with score {best_score:.2f}")
+        logger.info(
+            f"Found duplicate route '{best_route.name}' with score {best_score:.2f}"
+        )
         return best_route
 
     return None
@@ -226,7 +251,9 @@ async def add_route_source(
     )
     existing_source = existing.scalar_one_or_none()
     if existing_source:
-        logger.info(f"Route {route_id} already has a source from {provider}, skipping duplicate")
+        logger.info(
+            f"Route {route_id} already has a source from {provider}, skipping duplicate"
+        )
         return existing_source
 
     source = RouteSource(
@@ -293,17 +320,27 @@ async def create_or_merge_route(
 
     # Check for duplicates
     duplicate = await find_duplicate_route(
-        db, user_id,
-        distance_meters, encoded_polyline, name,
-        start_lat, start_lng, end_lat, end_lng,
+        db,
+        user_id,
+        distance_meters,
+        encoded_polyline,
+        name,
+        start_lat,
+        start_lng,
+        end_lat,
+        end_lng,
     )
 
     if duplicate:
         # Merge: add source to existing route
         await add_route_source(
-            db, duplicate.id,
-            provider, provider_route_id, provider_name,
-            encoded_polyline, raw_data,
+            db,
+            duplicate.id,
+            provider,
+            provider_route_id,
+            provider_name,
+            encoded_polyline,
+            raw_data,
         )
         # Optionally update the canonical polyline if the new one is higher fidelity
         new_point_count = len(points)
@@ -316,21 +353,36 @@ async def create_or_merge_route(
         if surface_profile and not duplicate.surface_profile:
             duplicate.surface_profile = surface_profile
         await db.flush()
-        logger.info(f"Merged {provider}/{provider_route_id} into existing route '{duplicate.name}'")
+        logger.info(
+            f"Merged {provider}/{provider_route_id} into existing route '{duplicate.name}'"
+        )
         return duplicate
     else:
         # Create new route
         route = await create_route(
-            db, user_id,
-            name, sport_type, distance_meters, encoded_polyline,
-            elevation_gain_meters, estimated_time_seconds,
-            elevation_profile, surface_profile, country, locality, raw_data,
+            db,
+            user_id,
+            name,
+            sport_type,
+            distance_meters,
+            encoded_polyline,
+            elevation_gain_meters,
+            estimated_time_seconds,
+            elevation_profile,
+            surface_profile,
+            country,
+            locality,
+            raw_data,
         )
         # Add the source
         await add_route_source(
-            db, route.id,
-            provider, provider_route_id, provider_name,
-            encoded_polyline, raw_data,
+            db,
+            route.id,
+            provider,
+            provider_route_id,
+            provider_name,
+            encoded_polyline,
+            raw_data,
         )
         logger.info(f"Created new route '{name}' from {provider}/{provider_route_id}")
         return route
@@ -482,16 +534,23 @@ async def find_potential_duplicates(
         for j in range(i + 1, len(routes)):
             a, b = routes[i], routes[j]
             score = _compute_match_score(
-                a.distance_meters, a.encoded_polyline, a.name,
-                a.start_lat, a.start_lng, a.end_lat, a.end_lng,
+                a.distance_meters,
+                a.encoded_polyline,
+                a.name,
+                a.start_lat,
+                a.start_lng,
+                a.end_lat,
+                a.end_lng,
                 b,
             )
             if score >= 0.40:  # Lower threshold for "potential" duplicates
-                potential.append({
-                    "route_a": a,
-                    "route_b": b,
-                    "score": round(score, 3),
-                })
+                potential.append(
+                    {
+                        "route_a": a,
+                        "route_b": b,
+                        "score": round(score, 3),
+                    }
+                )
 
     potential.sort(key=lambda x: x["score"], reverse=True)
     return potential

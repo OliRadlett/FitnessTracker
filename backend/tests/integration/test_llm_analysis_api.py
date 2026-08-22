@@ -53,9 +53,7 @@ def _patch_gemini(response_text: str = GEMINI_RESPONSE_TEXT):
             patch.object(settings, "gemini_api_key", "fake-test-key-for-integration")
         )
         # Patch the Gemini client so no real HTTP call is made
-        stack.enter_context(
-            patch("google.genai.Client", return_value=mock_client)
-        )
+        stack.enter_context(patch("google.genai.Client", return_value=mock_client))
         yield
 
 
@@ -65,7 +63,9 @@ def _patch_gemini(response_text: str = GEMINI_RESPONSE_TEXT):
 class TestCyclingLlmAnalysis:
     """GET/POST /api/v1/cycling/llm-analysis — overall cycling analysis."""
 
-    async def test_latest_returns_null_when_no_analyses(self, client, test_cycling_profile):
+    async def test_latest_returns_null_when_no_analyses(
+        self, client, test_cycling_profile
+    ):
         """Before any analysis exists, /latest returns null."""
         resp = await client.get("/api/v1/cycling/llm-analysis/latest")
         assert resp.status_code == 200
@@ -76,7 +76,9 @@ class TestCyclingLlmAnalysis:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_on_demand_full_pipeline(self, client, test_cycling_profile, test_activity):
+    async def test_on_demand_full_pipeline(
+        self, client, test_cycling_profile, test_activity
+    ):
         """Trigger analysis → compile stats → mock Gemini → store → retrieve.
 
         The entire internal pipeline runs for real (compile_cycling_stats
@@ -95,7 +97,9 @@ class TestCyclingLlmAnalysis:
         assert "id" in data
         assert "created_at" in data
 
-    async def test_latest_after_on_demand(self, client, test_cycling_profile, test_activity):
+    async def test_latest_after_on_demand(
+        self, client, test_cycling_profile, test_activity
+    ):
         """After triggering analysis, /latest returns the stored record."""
         with _patch_gemini():
             await client.post("/api/v1/cycling/llm-analysis/on-demand")
@@ -107,7 +111,9 @@ class TestCyclingLlmAnalysis:
         assert data["analysis_type"] == "cycling"
         assert "Performance Assessment" in data["analysis_text"]
 
-    async def test_history_after_on_demand(self, client, test_cycling_profile, test_activity):
+    async def test_history_after_on_demand(
+        self, client, test_cycling_profile, test_activity
+    ):
         """After triggering analysis, /history returns it."""
         with _patch_gemini():
             await client.post("/api/v1/cycling/llm-analysis/on-demand")
@@ -118,7 +124,9 @@ class TestCyclingLlmAnalysis:
         assert len(history) >= 1
         assert history[0]["analysis_type"] == "cycling"
 
-    async def test_history_filter_by_type(self, client, test_cycling_profile, test_activity):
+    async def test_history_filter_by_type(
+        self, client, test_cycling_profile, test_activity
+    ):
         """Filtering history by analysis_type works."""
         with _patch_gemini():
             await client.post("/api/v1/cycling/llm-analysis/on-demand")
@@ -144,7 +152,9 @@ class TestCyclingLlmAnalysis:
 class TestStatsCompilation:
     """Verify compile_cycling_stats runs without errors and returns expected keys."""
 
-    async def test_compile_stats_via_on_demand(self, client, test_cycling_profile, test_activity):
+    async def test_compile_stats_via_on_demand(
+        self, client, test_cycling_profile, test_activity
+    ):
         """The stats_json in the analysis response should contain all expected sections."""
         with _patch_gemini():
             resp = await client.post("/api/v1/cycling/llm-analysis/on-demand")
@@ -178,7 +188,9 @@ class TestStatsCompilation:
 class TestPerActivityAiAnalysis:
     """GET/POST /api/v1/activities/{id}/ai-analysis — per-activity Gemini analysis."""
 
-    async def test_compile_activity_context_runs(self, client, test_activity, test_cycling_profile):
+    async def test_compile_activity_context_runs(
+        self, client, test_activity, test_cycling_profile
+    ):
         """The full compile_activity_context pipeline runs, only Gemini is mocked."""
         with _patch_gemini("### Pacing Analysis\nGood pacing."):
             resp = await client.post(
@@ -244,7 +256,9 @@ class TestHealthAiAnalysis:
 
             # We can't use the db_session fixture here since we need a committed session
             # Instead, verify compile_health_stats runs without error
-            pytest.skip("Health AI analysis endpoint not yet implemented — service function tested separately")
+            pytest.skip(
+                "Health AI analysis endpoint not yet implemented — service function tested separately"
+            )
         elif resp.status_code == 200:
             data = resp.json()
             assert data["analysis_type"] == "health"
@@ -259,13 +273,13 @@ class TestEventAiAnalysis:
 
     async def test_event_analysis_for_nonexistent_event(self, client):
         """Requesting analysis for a nonexistent event returns 404."""
-        resp = await client.post(
-            f"/api/v1/events/{_uuid.uuid4()}/ai-analysis"
-        )
+        resp = await client.post(f"/api/v1/events/{_uuid.uuid4()}/ai-analysis")
         # Should be 404 if endpoint exists, or 404/405 if it doesn't
         assert resp.status_code in (404, 405)
 
-    async def test_event_analysis_pipeline(self, client, test_cycling_profile, db_session):
+    async def test_event_analysis_pipeline(
+        self, client, test_cycling_profile, db_session
+    ):
         """Create an event, then trigger analysis with mocked Gemini."""
         from datetime import date, timedelta
 
@@ -296,6 +310,7 @@ class TestEventAiAnalysis:
         elif resp.status_code in (404, 405):
             # Endpoint may not be implemented yet — verify service function exists
             from app.services.llm_analysis import compile_event_stats
+
             assert callable(compile_event_stats)
         else:
             pytest.fail(f"Unexpected status code: {resp.status_code}")
@@ -308,7 +323,11 @@ class TestFullPipeline:
     """End-to-end: create data → trigger analysis → verify stored result."""
 
     async def test_cycling_analysis_with_rich_data(
-        self, client, test_cycling_profile, test_activity, test_lifting_session,
+        self,
+        client,
+        test_cycling_profile,
+        test_activity,
+        test_lifting_session,
     ):
         """With cycling activities + lifting sessions + profile, the compiled
         stats should contain cross-sport data."""
@@ -329,7 +348,10 @@ class TestFullPipeline:
         assert stats["lifting_session_count_4w"] >= 1
 
     async def test_multiple_analyses_ordered_by_date(
-        self, client, test_cycling_profile, test_activity,
+        self,
+        client,
+        test_cycling_profile,
+        test_activity,
     ):
         """Multiple on-demand analyses should all be stored and ordered."""
         with _patch_gemini("Analysis 1"):

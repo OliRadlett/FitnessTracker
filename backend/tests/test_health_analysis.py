@@ -86,23 +86,34 @@ class TestVolumeSpikeSignal:
 
     def test_moderate_spike(self):
         """~26% increase over EWMA → 40."""
-        assert _volume_spike_signal(125, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 40.0
+        assert (
+            _volume_spike_signal(125, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 40.0
+        )
 
     def test_large_spike(self):
         """~41% increase over EWMA → 70."""
-        assert _volume_spike_signal(140, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 70.0
+        assert (
+            _volume_spike_signal(140, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 70.0
+        )
 
     def test_extreme_spike(self):
         """>50% increase over EWMA → 100."""
-        assert _volume_spike_signal(160, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 100.0
+        assert (
+            _volume_spike_signal(160, self._PRIOR_20x100, self._ALL_ACTIVE_20) == 100.0
+        )
 
     def test_zero_baseline_returns_zero(self):
         """All prior weeks inactive → gate blocks signal."""
-        assert _volume_spike_signal(100, [0, 0, 0, 0], [False, False, False, False]) == 0.0
+        assert (
+            _volume_spike_signal(100, [0, 0, 0, 0], [False, False, False, False]) == 0.0
+        )
 
     def test_insufficient_active_weeks(self):
         """Fewer than 2 active prior weeks → 0."""
-        assert _volume_spike_signal(200, [100, 100, 100, 100], [True, False, False, False]) == 0.0
+        assert (
+            _volume_spike_signal(200, [100, 100, 100, 100], [True, False, False, False])
+            == 0.0
+        )
 
 
 class TestRestDaySignal:

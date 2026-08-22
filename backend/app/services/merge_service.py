@@ -174,7 +174,11 @@ async def find_duplicate_activity(
 
     for candidate in candidates:
         score = _compute_activity_match_score(
-            candidate, sport_type, start_date, duration_seconds, distance_meters,
+            candidate,
+            sport_type,
+            start_date,
+            duration_seconds,
+            distance_meters,
         )
         if score > best_score:
             best_score = score
@@ -321,10 +325,7 @@ async def link_activity_to_route(
     end_lat, end_lng = points[-1]
 
     # Fetch all user routes
-    result = await db.execute(
-        select(Route)
-        .where(Route.user_id == activity.user_id)
-    )
+    result = await db.execute(select(Route).where(Route.user_id == activity.user_id))
     routes = list(result.scalars().all())
 
     if not routes:
@@ -344,7 +345,10 @@ async def link_activity_to_route(
 
         # Quick pre-filter: skip if start points are > 5km apart
         from app.services.polyline_utils import haversine_distance
-        start_dist = haversine_distance(start_lat, start_lng, route.start_lat, route.start_lng)
+
+        start_dist = haversine_distance(
+            start_lat, start_lng, route.start_lat, route.start_lng
+        )
         if start_dist > 5000:
             continue
 
@@ -352,8 +356,10 @@ async def link_activity_to_route(
             activity.distance_meters or 0,
             polyline,
             activity.name,
-            start_lat, start_lng,
-            end_lat, end_lng,
+            start_lat,
+            start_lng,
+            end_lat,
+            end_lng,
             route,
         )
         if score > best_score:
@@ -381,8 +387,7 @@ async def backfill_activity_route_links(
     Returns the number of new links created.
     """
     result = await db.execute(
-        select(Activity)
-        .where(
+        select(Activity).where(
             Activity.user_id == user_id,
             Activity.route_id.is_(None),
             Activity.sport_type.in_(["cycling", "running", "walking", "hiking"]),

@@ -1,4 +1,4 @@
-"""Cycling API — Power curve, power zones, HR zones, power vs HR, metrics summary."""
+"""Cycling API — Power curve, power zones, HR zones, power vs HR, metrics summary, suggested cycle."""
 
 import math
 from datetime import date, timedelta
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.activity import Activity
+from app.models.daily_metric import DailyMetric
 from app.models.user import User
 from app.schemas.cycling import (
     CyclingMetricsSummary,
@@ -22,6 +23,8 @@ from app.schemas.cycling import (
     PowerVsHrResponse,
     PowerZoneDistribution,
     PowerZonesResponse,
+    SuggestedCycleResponse,
+    SuggestedDay,
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
@@ -59,11 +62,13 @@ async def get_power_curve(
 
     data = []
     for duration_sec, label in POWER_DURATION_BUCKETS:
-        data.append(PowerDurationPoint(
-            duration_label=label,
-            duration_seconds=duration_sec,
-            best_power_watts=best_power.get(duration_sec),
-        ))
+        data.append(
+            PowerDurationPoint(
+                duration_label=label,
+                duration_seconds=duration_sec,
+                best_power_watts=best_power.get(duration_sec),
+            )
+        )
 
     return PowerCurveResponse(data=data, ftp_watts=ftp)
 
@@ -83,9 +88,14 @@ async def get_power_zones(
     """
     profile = await get_or_create_cycling_profile(db, current_user.id)
     if not profile.ftp_watts:
-        raise HTTPException(status_code=400, detail="FTP not set. Set your FTP in the cycling profile first.")
+        raise HTTPException(
+            status_code=400,
+            detail="FTP not set. Set your FTP in the cycling profile first.",
+        )
 
-    zones = await compute_power_zones_from_streams(db, current_user.id, profile.ftp_watts, days)
+    zones = await compute_power_zones_from_streams(
+        db, current_user.id, profile.ftp_watts, days
+    )
     total_time = sum(z["time_seconds"] for z in zones)
 
     return PowerZonesResponse(
@@ -117,7 +127,9 @@ async def get_hr_zones(
             detail="LTHR not set. Set your Lactate Threshold Heart Rate in the cycling profile first.",
         )
 
-    zones = await compute_hr_zones_from_streams(db, current_user.id, profile.lactate_threshold_hr, days)
+    zones = await compute_hr_zones_from_streams(
+        db, current_user.id, profile.lactate_threshold_hr, days
+    )
     total_time = sum(z["time_seconds"] for z in zones)
 
     return HrZonesResponse(
@@ -155,14 +167,18 @@ async def get_power_vs_hr(
     data = []
     for act in activities:
         if (
-            act.average_power and act.average_heartrate
-            and math.isfinite(act.average_power) and math.isfinite(act.average_heartrate)
+            act.average_power
+            and act.average_heartrate
+            and math.isfinite(act.average_power)
+            and math.isfinite(act.average_heartrate)
         ):
-            data.append(PowerVsHrPoint(
-                power=act.average_power,
-                heart_rate=act.average_heartrate,
-                date=act.start_date.date(),
-            ))
+            data.append(
+                PowerVsHrPoint(
+                    power=act.average_power,
+                    heart_rate=act.average_heartrate,
+                    date=act.start_date.date(),
+                )
+            )
 
     return PowerVsHrResponse(data=data)
 
@@ -186,11 +202,14 @@ async def get_cycling_metrics_summary(
         select(
             func.count(Activity.id).label("ride_count"),
             func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
-            func.coalesce(func.sum(Activity.distance_meters), 0.0).label("total_distance"),
+            func.coalesce(func.sum(Activity.distance_meters), 0.0).label(
+                "total_distance"
+            ),
             func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_time"),
-            func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label("total_elevation"),
-        )
-        .where(
+            func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label(
+                "total_elevation"
+            ),
+        ).where(
             Activity.user_id == uid,
             Activity.sport_type == "cycling",
             Activity.start_date >= cutoff_7d,
@@ -218,8 +237,7 @@ async def get_cycling_metrics_summary(
     # IF = NP / FTP (or avg_power / FTP as fallback)
     # VI = NP / AP (only meaningful when NP is available)
     result_rides = await db.execute(
-        select(Activity.normalized_power, Activity.average_power)
-        .where(
+        select(Activity.normalized_power, Activity.average_power).where(
             Activity.user_id == uid,
             Activity.sport_type == "cycling",
             Activity.start_date >= cutoff_7d,
@@ -239,7 +257,11 @@ async def get_cycling_metrics_summary(
             avg_if = round(sum(ifs) / len(ifs), 3)
 
     avg_vi = None
-    vi_rows = [r for r in ride_rows if r.normalized_power and r.average_power and r.average_power > 0]
+    vi_rows = [
+        r
+        for r in ride_rows
+        if r.normalized_power and r.average_power and r.average_power > 0
+    ]
     if vi_rows:
         vis = [r.normalized_power / r.average_power for r in vi_rows]
         avg_vi = round(sum(vis) / len(vis), 3)
@@ -261,7 +283,9 @@ async def get_cycling_metrics_summary(
     def _trend(current: float | None, baseline: float | None) -> MetricTrend | None:
         """Compute trend direction comparing current 7d value to 28d weekly average."""
         if current is None or baseline is None or baseline == 0:
-            return MetricTrend(current_value=current, baseline_value=baseline, direction="stable")
+            return MetricTrend(
+                current_value=current, baseline_value=baseline, direction="stable"
+            )
         ratio = current / baseline
         if ratio > 1.05:
             direction = "up"
@@ -269,18 +293,25 @@ async def get_cycling_metrics_summary(
             direction = "down"
         else:
             direction = "stable"
-        return MetricTrend(current_value=round(current, 2), baseline_value=round(baseline, 2), direction=direction)
+        return MetricTrend(
+            current_value=round(current, 2),
+            baseline_value=round(baseline, 2),
+            direction=direction,
+        )
 
     # 28-day stats for baseline (4 weekly averages)
     result_28d = await db.execute(
         select(
             func.count(Activity.id).label("ride_count"),
             func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
-            func.coalesce(func.sum(Activity.distance_meters), 0.0).label("total_distance"),
+            func.coalesce(func.sum(Activity.distance_meters), 0.0).label(
+                "total_distance"
+            ),
             func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_time"),
-            func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label("total_elevation"),
-        )
-        .where(
+            func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label(
+                "total_elevation"
+            ),
+        ).where(
             Activity.user_id == uid,
             Activity.sport_type == "cycling",
             Activity.start_date >= cutoff_28d,
@@ -297,8 +328,7 @@ async def get_cycling_metrics_summary(
 
     # 28-day IF/VI baselines
     result_rides_28d = await db.execute(
-        select(Activity.normalized_power, Activity.average_power)
-        .where(
+        select(Activity.normalized_power, Activity.average_power).where(
             Activity.user_id == uid,
             Activity.sport_type == "cycling",
             Activity.start_date >= cutoff_28d,
@@ -318,9 +348,15 @@ async def get_cycling_metrics_summary(
             baseline_if = sum(ifs_28d) / len(ifs_28d)
 
     baseline_vi = None
-    vi_rows_28d = [r for r in ride_rows_28d if r.normalized_power and r.average_power and r.average_power > 0]
+    vi_rows_28d = [
+        r
+        for r in ride_rows_28d
+        if r.normalized_power and r.average_power and r.average_power > 0
+    ]
     if vi_rows_28d:
-        baseline_vi = sum(r.normalized_power / r.average_power for r in vi_rows_28d) / len(vi_rows_28d)
+        baseline_vi = sum(
+            r.normalized_power / r.average_power for r in vi_rows_28d
+        ) / len(vi_rows_28d)
 
     # Benchmark classifications
     ftp_wkg_benchmark = None
@@ -362,9 +398,13 @@ async def get_cycling_metrics_summary(
         power_to_weight=power_to_weight,
         # Trend indicators
         tss_trend=_trend(_nan0(row.total_tss), baseline_tss),
-        distance_trend=_trend(round(_nan0(row.total_distance) / 1000, 1), baseline_distance),
+        distance_trend=_trend(
+            round(_nan0(row.total_distance) / 1000, 1), baseline_distance
+        ),
         time_trend=_trend(round(_nan0_int(row.total_time) / 3600, 1), baseline_time),
-        elevation_trend=_trend(round(_nan0(row.total_elevation), 0), baseline_elevation),
+        elevation_trend=_trend(
+            round(_nan0(row.total_elevation), 0), baseline_elevation
+        ),
         rides_trend=_trend(_nan0_int(row.ride_count), baseline_rides),
         if_trend=_trend(avg_if, baseline_if),
         vi_trend=_trend(avg_vi, baseline_vi),
@@ -387,21 +427,358 @@ async def get_lifetime_power_pbs(
 
     Uses all-time power stream data (no date filter).
     """
-    best_power = await compute_power_curve_from_streams(db, current_user.id, days=3650)  # ~10 years
+    best_power = await compute_power_curve_from_streams(
+        db, current_user.id, days=3650
+    )  # ~10 years
     profile = await get_or_create_cycling_profile(db, current_user.id)
 
     pbs = []
     for duration_sec, label in POWER_DURATION_BUCKETS:
         power = best_power.get(duration_sec)
-        pbs.append({
-            "duration_label": label,
-            "duration_seconds": duration_sec,
-            "best_power_watts": power,
-            "pct_ftp": round(power / profile.ftp_watts * 100, 1) if power and profile.ftp_watts else None,
-        })
+        pbs.append(
+            {
+                "duration_label": label,
+                "duration_seconds": duration_sec,
+                "best_power_watts": power,
+                "pct_ftp": round(power / profile.ftp_watts * 100, 1)
+                if power and profile.ftp_watts
+                else None,
+            }
+        )
 
     return {
         "pbs": pbs,
         "ftp_watts": profile.ftp_watts,
         "weight_kg": profile.weight_kg,
     }
+
+
+# ── Suggested Training Cycle ────────────────────────────────────────────────
+
+
+@router.get("/suggested-cycle", response_model=SuggestedCycleResponse)
+async def get_suggested_cycle(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Compute a suggested 7-day training cycle based on recovery, training load, and recent activity.
+
+    Uses current TSB, latest Whoop recovery score, and recent ride frequency to
+    recommend workout types for each day of the coming week.
+    """
+    today = date.today()
+
+    # 1. Get training load (CTL/ATL/TSB)
+    ninety_days_ago = today - timedelta(days=90)
+    daily_tss = await get_daily_tss(db, current_user.id, ninety_days_ago, today)
+    training_load = compute_training_load(daily_tss, today, lookback_days=90)
+
+    current_ctl = current_atl = current_tsb = None
+    if training_load:
+        latest = training_load[-1]
+        current_ctl = latest["ctl"]
+        current_atl = latest["atl"]
+        current_tsb = latest["tsb"]
+
+    # 2. Get latest recovery data
+    result = await db.execute(
+        select(DailyMetric)
+        .where(
+            DailyMetric.user_id == current_user.id,
+            DailyMetric.recovery_score.isnot(None),
+        )
+        .order_by(DailyMetric.metric_date.desc())
+        .limit(1)
+    )
+    latest_metric = result.scalar_one_or_none()
+    latest_recovery = latest_metric.recovery_score if latest_metric else None
+    latest_hrv = latest_metric.hrv_ms if latest_metric else None
+
+    # 3. Determine readiness
+    if latest_recovery is not None:
+        if latest_recovery >= 67:
+            readiness = "green"
+            readiness_msg = "Ready to train hard — recovery is strong"
+        elif latest_recovery >= 34:
+            readiness = "yellow"
+            readiness_msg = "Moderate recovery — listen to your body, mix intensity"
+        else:
+            readiness = "red"
+            readiness_msg = "Low recovery — prioritize rest and easy movement"
+    elif current_tsb is not None:
+        if current_tsb > -10:
+            readiness = "green"
+            readiness_msg = "Training load is manageable — no recovery data available"
+        elif current_tsb > -30:
+            readiness = "yellow"
+            readiness_msg = "Building fatigue — no recovery data available"
+        else:
+            readiness = "red"
+            readiness_msg = "High fatigue — no recovery data available, consider rest"
+    else:
+        readiness = "yellow"
+        readiness_msg = (
+            "Insufficient data — start logging activities for personalized suggestions"
+        )
+
+    # 4. Count recent rides (last 7 days)
+    seven_days_ago = today - timedelta(days=7)
+    result = await db.execute(
+        select(func.count(Activity.id)).where(
+            Activity.user_id == current_user.id,
+            Activity.sport_type == "cycling",
+            Activity.start_date >= seven_days_ago,
+        )
+    )
+    recent_ride_count = int(result.scalar() or 0)
+
+    # 5. Count recent lifting sessions (last 7 days)
+    from app.models.lifting import LiftingSession
+
+    result = await db.execute(
+        select(func.count(LiftingSession.id)).where(
+            LiftingSession.user_id == current_user.id,
+            LiftingSession.session_date >= seven_days_ago,
+        )
+    )
+    recent_lift_count = int(result.scalar() or 0)
+
+    # 6. Check for upcoming events (next 14 days)
+    from app.models.event import Event
+
+    fourteen_days = today + timedelta(days=14)
+    result = await db.execute(
+        select(Event)
+        .where(
+            Event.user_id == current_user.id,
+            Event.event_date >= today,
+            Event.event_date <= fourteen_days,
+        )
+        .order_by(Event.event_date)
+    )
+    upcoming_events = list(result.scalars().all())
+    has_upcoming_event = len(upcoming_events) > 0
+    days_to_event = (
+        (upcoming_events[0].event_date - today).days if upcoming_events else None
+    )
+
+    # 7. Build the7-day plan
+    days: list[SuggestedDay] = []
+
+    # Determine the weekly pattern based on readiness and recent load
+    # Pattern: Mon=ride, Tue=lift, Wed=ride, Thu=lift/rest, Fri=ride, Sat=long ride, Sun=rest
+    # Adjust based on readiness
+    day_names = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+
+    for i in range(7):
+        d = today + timedelta(days=i)
+        day_name = day_names[d.weekday()]
+
+        # Default pattern
+        if d == today:
+            # Today — most important recommendation
+            if readiness == "red":
+                workout_type = "rest"
+                label = "Rest Day"
+                description = "Your body needs recovery. Take a complete rest day or do light walking. Focus on sleep, hydration, and nutrition."
+                target_tss = 0
+                intensity = "none"
+                icon = "🛌"
+            elif readiness == "yellow":
+                if recent_ride_count >= 5:
+                    workout_type = "recovery"
+                    label = "Easy Spin"
+                    description = "You've been training hard. Keep it easy today — Zone 1-2 only, under 60 minutes. Focus on pedaling technique."
+                    target_tss = 25
+                    intensity = "low"
+                    icon = "🟢"
+                else:
+                    workout_type = "endurance"
+                    label = "Steady Endurance"
+                    description = "Moderate recovery allows a Zone 2 endurance ride. Keep it controlled — 60-90 minutes at conversational pace."
+                    target_tss = 55
+                    intensity = "moderate"
+                    icon = "🚴"
+            else:  # green
+                if current_tsb is not None and current_tsb > 15:
+                    workout_type = "threshold"
+                    label = "Threshold Intervals"
+                    description = "You're fresh and ready for quality work. Do 2-3×12min at FTP (Zone 4) with 5min recovery. Great for building fitness."
+                    target_tss = 80
+                    intensity = "high"
+                    icon = "🔥"
+                elif recent_ride_count < 3:
+                    workout_type = "endurance"
+                    label = "Endurance Ride"
+                    description = "Good recovery and room to build. Aim for 90-120 minutes at Zone 2-3. Build your aerobic base."
+                    target_tss = 65
+                    intensity = "moderate"
+                    icon = "🚴"
+                else:
+                    workout_type = "tempo"
+                    label = "Tempo Ride"
+                    description = "Solid recovery allows a tempo session. Try 2×20min at Zone 3 (sweet spot). Good balance of stimulus and recovery."
+                    target_tss = 70
+                    intensity = "moderate"
+                    icon = "⚡"
+        elif d.weekday() == 0:  # Monday
+            workout_type = "endurance"
+            label = "Endurance Ride"
+            description = (
+                "Start the week with a steady Zone 2 ride. Build your aerobic engine."
+            )
+            target_tss = 55
+            intensity = "moderate"
+            icon = "🚴"
+        elif d.weekday() == 1:  # Tuesday
+            if recent_lift_count < 2:
+                workout_type = "strength"
+                label = "Strength Training"
+                description = "Hit the gym for a lifting session. Focus on compound movements — squats, deadlifts, presses."
+                target_tss = None
+                intensity = "moderate"
+                icon = "🏋️"
+            else:
+                workout_type = "recovery"
+                label = "Active Recovery"
+                description = "Easy spin or walk. Keep heart rate low. Recovery between hard days."
+                target_tss = 20
+                intensity = "low"
+                icon = "🟢"
+        elif d.weekday() == 2:  # Wednesday
+            if readiness == "red":
+                workout_type = "recovery"
+                label = "Easy Spin"
+                description = "Keep it light — Zone 1-2 only. Recovery is the priority."
+                target_tss = 25
+                intensity = "low"
+                icon = "🟢"
+            else:
+                workout_type = "tempo"
+                label = "Tempo / Sweet Spot"
+                description = "Mid-week quality session. 2×20min at 88-93% FTP. Builds threshold without excessive fatigue."
+                target_tss = 70
+                intensity = "moderate"
+                icon = "⚡"
+        elif d.weekday() == 3:  # Thursday
+            if recent_lift_count < 2:
+                workout_type = "strength"
+                label = "Strength Training"
+                description = "Second lifting session of the week. Upper body focus or full body depending on your program."
+                target_tss = None
+                intensity = "moderate"
+                icon = "🏋️"
+            else:
+                workout_type = "rest"
+                label = "Rest Day"
+                description = "Full rest day. Let your body absorb the training from earlier in the week."
+                target_tss = 0
+                intensity = "none"
+                icon = "🛌"
+        elif d.weekday() == 4:  # Friday
+            if readiness == "red" or (current_tsb is not None and current_tsb < -25):
+                workout_type = "recovery"
+                label = "Easy Spin"
+                description = (
+                    "Keep it easy before the weekend. Zone 1-2, under 45 minutes."
+                )
+                target_tss = 20
+                intensity = "low"
+                icon = "🟢"
+            else:
+                workout_type = "vo2max"
+                label = "VO2max Intervals"
+                description = "High-intensity session: 5×4min at 105-120% FTP with 4min recovery. Key for raising your ceiling."
+                target_tss = 85
+                intensity = "high"
+                icon = "🔥"
+        elif d.weekday() == 5:  # Saturday
+            if has_upcoming_event and days_to_event is not None and days_to_event <= 7:
+                workout_type = "endurance"
+                label = "Pre-Event Ride"
+                description = f"Event in {days_to_event} days. Keep it easy — Zone 2, 60-90 minutes. Stay sharp without adding fatigue."
+                target_tss = 40
+                intensity = "low"
+                icon = "🏁"
+            else:
+                workout_type = "endurance"
+                label = "Long Ride"
+                description = "Weekend long ride. 2-3 hours at Zone 2. Build endurance and fat oxidation. Include some tempo efforts if feeling good."
+                target_tss = 100
+                intensity = "moderate"
+                icon = "🚴"
+        else:  # Sunday
+            workout_type = "rest"
+            label = "Rest Day"
+            description = "Complete rest or light stretching/yoga. Let your body recover and prepare for next week."
+            target_tss = 0
+            intensity = "none"
+            icon = "🛌"
+
+        days.append(
+            SuggestedDay(
+                day_name=day_name,
+                date=d.isoformat(),
+                workout_type=workout_type,
+                label=label,
+                description=description,
+                target_tss=target_tss,
+                intensity=intensity,
+                icon=icon,
+            )
+        )
+
+    # 8. Build summary
+    if readiness == "red":
+        summary = (
+            "Your recovery is low. This week should focus on rest and easy movement. "
+            "Avoid high-intensity sessions until recovery improves. "
+            "Prioritize sleep (8+ hours), hydration, and nutrition."
+        )
+    elif readiness == "yellow":
+        summary = (
+            "Moderate recovery allows a balanced week. Mix easy endurance rides with "
+            "one quality session mid-week. Keep Saturday's long ride controlled. "
+            "Listen to your body — if fatigue builds, swap a hard day for recovery."
+        )
+    else:
+        if current_tsb is not None and current_tsb > 15:
+            summary = (
+                "You're fresh and ready for a quality training week. "
+                "Include threshold and VO2max work to maximize fitness gains. "
+                "Your TSB indicates you can handle higher intensity — take advantage of it."
+            )
+        elif current_tsb is not None and current_tsb < -15:
+            summary = (
+                "Good recovery but accumulating fatigue. Focus on endurance and tempo "
+                "rather than all-out efforts. A solid week of Zone 2-3 work will build "
+                "fitness without overreaching."
+            )
+        else:
+            summary = (
+                "Strong recovery and balanced training load. You can handle a mix of "
+                "endurance, tempo, and one high-intensity session. "
+                "Aim for consistency over heroics."
+            )
+
+    return SuggestedCycleResponse(
+        readiness=readiness,
+        readiness_message=readiness_msg,
+        current_tsb=round(current_tsb, 1) if current_tsb is not None else None,
+        current_ctl=round(current_ctl, 1) if current_ctl is not None else None,
+        current_atl=round(current_atl, 1) if current_atl is not None else None,
+        latest_recovery=round(latest_recovery, 1)
+        if latest_recovery is not None
+        else None,
+        latest_hrv=round(latest_hrv, 1) if latest_hrv is not None else None,
+        days=days,
+        summary=summary,
+    )

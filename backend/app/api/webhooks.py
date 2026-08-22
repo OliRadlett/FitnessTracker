@@ -58,7 +58,9 @@ async def strava_webhook_event(
     """
     raw_body = await request.body()
 
-    if not _verify_strava_signature(raw_body, request.headers.get("x-hub-signature-256")):
+    if not _verify_strava_signature(
+        raw_body, request.headers.get("x-hub-signature-256")
+    ):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     body = await request.json()

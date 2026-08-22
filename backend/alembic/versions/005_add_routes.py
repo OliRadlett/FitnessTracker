@@ -60,7 +60,9 @@ def upgrade() -> None:
     # Create indexes only if they don't exist
     op.execute("CREATE INDEX IF NOT EXISTS ix_routes_sport_type ON routes (sport_type)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_routes_user_id ON routes (user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_route_sources_route_id ON route_sources (route_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_route_sources_route_id ON route_sources (route_id)"
+    )
 
 
 def downgrade() -> None:

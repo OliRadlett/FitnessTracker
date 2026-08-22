@@ -62,7 +62,9 @@ def _map_wahoo_sport_type(wahoo_type: str | None) -> str:
     return _WAHOO_SPORT_TYPE_MAP.get(wahoo_type.lower(), wahoo_type.lower())
 
 
-async def get_wahoo_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthConnection | None:
+async def get_wahoo_connection(
+    db: AsyncSession, user_id: uuid.UUID
+) -> OAuthConnection | None:
     """Get the Wahoo OAuth connection for a user."""
     result = await db.execute(
         select(OAuthConnection).where(
@@ -73,14 +75,18 @@ async def get_wahoo_connection(db: AsyncSession, user_id: uuid.UUID) -> OAuthCon
     return result.scalar_one_or_none()
 
 
-async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
+async def refresh_if_needed(
+    db: AsyncSession, connection: OAuthConnection
+) -> OAuthConnection:
     """Refresh the access token if it's expired."""
     if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
         if not connection.refresh_token:
             raise ValueError("No refresh token available")
         token_data = await wahoo_client.refresh_access_token(connection.refresh_token)
         connection.access_token = token_data["access_token"]
-        connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
+        connection.refresh_token = token_data.get(
+            "refresh_token", connection.refresh_token
+        )
         if "expires_in" in token_data:
             connection.token_expires_at = datetime.now(UTC) + timedelta(
                 seconds=int(token_data["expires_in"])
@@ -130,7 +136,9 @@ async def sync_wahoo_activities(
     while len(synced) < limit:
         try:
             workouts = await wahoo_client.get_workouts(
-                connection.access_token, page=page, per_page=50,
+                connection.access_token,
+                page=page,
+                per_page=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Wahoo workouts page {page}: {e}")
@@ -166,10 +174,16 @@ async def sync_wahoo_activities(
 
             # Parse workout data
             name = workout.get("name", "Wahoo Workout")
-            sport_type = _map_wahoo_sport_type(workout.get("workout_type") or workout.get("sport_type"))
+            sport_type = _map_wahoo_sport_type(
+                workout.get("workout_type") or workout.get("sport_type")
+            )
 
             # Parse start date — Wahoo may use "starts" or "start_date"
-            starts_raw = workout.get("starts") or workout.get("start_date") or workout.get("created_at")
+            starts_raw = (
+                workout.get("starts")
+                or workout.get("start_date")
+                or workout.get("created_at")
+            )
             if not starts_raw:
                 logger.warning(f"Skipping Wahoo workout {workout_id}: no start date")
                 continue
@@ -190,22 +204,35 @@ async def sync_wahoo_activities(
             distance_meters = workout.get("distance") or workout.get("distance_meters")
 
             # Power data
-            average_power = _safe_float(workout.get("average_power") or workout.get("avg_power"))
-            normalized_power = _safe_float(workout.get("normalized_power") or workout.get("weighted_average_power"))
+            average_power = _safe_float(
+                workout.get("average_power") or workout.get("avg_power")
+            )
+            normalized_power = _safe_float(
+                workout.get("normalized_power") or workout.get("weighted_average_power")
+            )
 
             # HR data
-            average_heartrate = _safe_float(workout.get("average_heartrate") or workout.get("avg_heartrate"))
+            average_heartrate = _safe_float(
+                workout.get("average_heartrate") or workout.get("avg_heartrate")
+            )
             max_heartrate = _safe_float(workout.get("max_heartrate"))
 
             # Other metrics
-            elevation_gain = _safe_float(workout.get("elevation_gain") or workout.get("total_elevation_gain"))
-            average_speed = _safe_float(workout.get("average_speed") or workout.get("avg_speed"))
+            elevation_gain = _safe_float(
+                workout.get("elevation_gain") or workout.get("total_elevation_gain")
+            )
+            average_speed = _safe_float(
+                workout.get("average_speed") or workout.get("avg_speed")
+            )
             calories = _safe_float(workout.get("calories") or workout.get("kcal"))
 
             # Use merge engine to detect duplicates from other providers
             safe_distance = _safe_float(distance_meters)
             duplicate = await find_duplicate_activity(
-                db, user_id, sport_type, start_date,
+                db,
+                user_id,
+                sport_type,
+                start_date,
                 int(duration_seconds) if duration_seconds else None,
                 safe_distance,
             )
@@ -226,13 +253,22 @@ async def sync_wahoo_activities(
             if duplicate:
                 # Enrich the existing Strava activity with Wahoo data
                 await merge_activity(
-                    db, duplicate, new_data, "wahoo", workout_id, raw_data=workout,
+                    db,
+                    duplicate,
+                    new_data,
+                    "wahoo",
+                    workout_id,
+                    raw_data=workout,
                 )
                 synced.append(duplicate)
-                logger.info(f"Enriched activity '{duplicate.name}' with Wahoo workout {workout_id}")
+                logger.info(
+                    f"Enriched activity '{duplicate.name}' with Wahoo workout {workout_id}"
+                )
             else:
                 # No matching Strava activity found — skip (don't create standalone Wahoo activity)
-                logger.debug(f"Skipping Wahoo workout {workout_id} ({name}): no matching Strava activity")
+                logger.debug(
+                    f"Skipping Wahoo workout {workout_id} ({name}): no matching Strava activity"
+                )
 
             if len(synced) >= limit:
                 break
@@ -255,7 +291,9 @@ async def sync_wahoo_activities(
     for activity in synced:
         await link_activity_to_route(db, activity)
 
-    logger.info(f"Wahoo activity sync complete for user {user_id}: {len(synced)} synced/merged")
+    logger.info(
+        f"Wahoo activity sync complete for user {user_id}: {len(synced)} synced/merged"
+    )
     return synced
 
 
@@ -287,7 +325,9 @@ async def sync_wahoo_routes(
     while synced_count < limit:
         try:
             routes = await wahoo_client.get_routes(
-                connection.access_token, page=page, per_page=50,
+                connection.access_token,
+                page=page,
+                per_page=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Wahoo routes page {page}: {e}")
@@ -322,7 +362,8 @@ async def sync_wahoo_routes(
                 # Try to fetch detailed route for GPS data
                 try:
                     detail = await wahoo_client.get_route_detail(
-                        connection.access_token, int(route_id),
+                        connection.access_token,
+                        int(route_id),
                     )
                     points_data = detail.get("points", [])
                     route_data = detail  # Use the detailed data
@@ -348,14 +389,20 @@ async def sync_wahoo_routes(
                     polyline = wahoo_points_to_polyline(coords)
                     # Extract elevation profile from coords (may have 3rd element)
                     if coords and len(coords[0]) >= 3:
-                        elevation_profile = extract_elevation_profile_from_wahoo_points(coords)
+                        elevation_profile = extract_elevation_profile_from_wahoo_points(
+                            coords
+                        )
                 elif isinstance(points_data[0], list):
                     polyline = wahoo_points_to_polyline(points_data)
                     # Extract elevation profile from point arrays
                     if points_data and len(points_data[0]) >= 3:
-                        elevation_profile = extract_elevation_profile_from_wahoo_points(points_data)
+                        elevation_profile = extract_elevation_profile_from_wahoo_points(
+                            points_data
+                        )
                 else:
-                    logger.warning(f"Skipping Wahoo route {route_id}: unknown point format")
+                    logger.warning(
+                        f"Skipping Wahoo route {route_id}: unknown point format"
+                    )
                     continue
             except (ValueError, IndexError) as e:
                 logger.warning(f"Skipping Wahoo route {route_id}: {e}")
@@ -364,11 +411,16 @@ async def sync_wahoo_routes(
             if distance <= 0:
                 distance = polyline_total_distance(polyline)
 
-            elevation_gain = route_data.get("ascent", 0) or route_data.get("elevation_gain", 0) or None
+            elevation_gain = (
+                route_data.get("ascent", 0)
+                or route_data.get("elevation_gain", 0)
+                or None
+            )
             estimated_time = route_data.get("estimated_time", 0) or None
 
             await create_or_merge_route(
-                db, user_id,
+                db,
+                user_id,
                 name=name,
                 sport_type="cycling",  # Wahoo routes are cycling by default
                 distance_meters=distance,
@@ -387,5 +439,7 @@ async def sync_wahoo_routes(
         if len(routes) < 50:
             break
 
-    logger.info(f"Wahoo route sync complete for user {user_id}: {synced_count} synced, {merged_count} merged")
+    logger.info(
+        f"Wahoo route sync complete for user {user_id}: {synced_count} synced, {merged_count} merged"
+    )
     return synced_count, merged_count

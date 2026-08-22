@@ -118,7 +118,9 @@ def _sleep_efficiency_signal(sleep_logs: list[SleepLog]) -> float:
     Uses exponential weighting (2-day half-life) so a single bad
     night has meaningful impact on the score.
     """
-    efficiencies = [l.sleep_efficiency for l in sleep_logs if l.sleep_efficiency is not None]
+    efficiencies = [
+        l.sleep_efficiency for l in sleep_logs if l.sleep_efficiency is not None
+    ]
     if not efficiencies:
         return 0.0
 
@@ -155,8 +157,7 @@ def _volume_spike_signal(
     """
     # Pair and filter to active prior weeks only
     active_volumes = [
-        vol for vol, active in zip(prior_week_volumes, prior_week_active)
-        if active
+        vol for vol, active in zip(prior_week_volumes, prior_week_active) if active
     ]
 
     # Minimum history gate
@@ -317,6 +318,7 @@ async def analyze_overtraining(
 
     # Get TSB from activities
     from app.services.cycling import compute_training_load, get_daily_tss
+
     end_date = date.today()
     start_date = end_date - timedelta(days=49)
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)
@@ -370,8 +372,7 @@ async def analyze_overtraining(
         # 30-day baseline for comparison
         cutoff_30d = date.today() - timedelta(days=30)
         baseline_result = await db.execute(
-            select(func.avg(DailyMetric.resting_hr))
-            .where(
+            select(func.avg(DailyMetric.resting_hr)).where(
                 DailyMetric.user_id == user_id,
                 DailyMetric.resting_hr.isnot(None),
                 DailyMetric.metric_date >= cutoff_30d,
@@ -418,8 +419,7 @@ async def analyze_injury_risk(
 
         # Lifting volume
         result = await db.execute(
-            select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0))
-            .where(
+            select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0)).where(
                 LiftingSession.user_id == user_id,
                 LiftingSession.session_date >= week_start,
                 LiftingSession.session_date < week_end,
@@ -429,22 +429,22 @@ async def analyze_injury_risk(
 
         # Check for ANY activity (lifting OR cardio) in this week
         act_result = await db.execute(
-            select(func.count(Activity.id))
-            .where(
+            select(func.count(Activity.id)).where(
                 Activity.user_id == user_id,
                 Activity.start_date >= week_start,
                 Activity.start_date < week_end,
             )
         )
         lift_result = await db.execute(
-            select(func.count(LiftingSession.id))
-            .where(
+            select(func.count(LiftingSession.id)).where(
                 LiftingSession.user_id == user_id,
                 LiftingSession.session_date >= week_start,
                 LiftingSession.session_date < week_end,
             )
         )
-        has_activity = (int(act_result.scalar() or 0) + int(lift_result.scalar() or 0)) > 0
+        has_activity = (
+            int(act_result.scalar() or 0) + int(lift_result.scalar() or 0)
+        ) > 0
         week_active.append(has_activity)
 
     current_week_vol = week_volumes[0] if week_volumes else 0
@@ -487,7 +487,9 @@ async def analyze_injury_risk(
                 break
 
     # Compute signals
-    volume_s = _volume_spike_signal(current_week_vol, prior_week_vols, prior_week_actives)
+    volume_s = _volume_spike_signal(
+        current_week_vol, prior_week_vols, prior_week_actives
+    )
     rest_s = _rest_day_signal(consecutive)
 
     score = volume_s * 0.55 + rest_s * 0.45
@@ -501,9 +503,13 @@ async def analyze_injury_risk(
     }
 
     # Compute volume change for evidence
-    active_vols = [vol for vol, active in zip(prior_week_vols, prior_week_actives) if active]
+    active_vols = [
+        vol for vol, active in zip(prior_week_vols, prior_week_actives) if active
+    ]
     avg_prior = sum(active_vols) / len(active_vols) if active_vols else 0
-    volume_change_pct = ((current_week_vol - avg_prior) / avg_prior * 100) if avg_prior > 0 else 0
+    volume_change_pct = (
+        ((current_week_vol - avg_prior) / avg_prior * 100) if avg_prior > 0 else 0
+    )
 
     evidence = {
         "Volume Spike": f"{'✅' if volume_s == 0 else '⚠️'} Signal score: {volume_s:.0f}/100",
@@ -566,8 +572,7 @@ async def analyze_illness(
 
     # Get 30-day baseline for respiratory rate
     result = await db.execute(
-        select(func.avg(DailyMetric.respiratory_rate))
-        .where(
+        select(func.avg(DailyMetric.respiratory_rate)).where(
             DailyMetric.user_id == user_id,
             DailyMetric.respiratory_rate.isnot(None),
             DailyMetric.metric_date >= cutoff_30d,
@@ -582,8 +587,7 @@ async def analyze_illness(
     # Count meaningful training days in past 3 days (lifting OR cardio >30 min)
     cutoff_3d = date.today() - timedelta(days=3)
     act_result = await db.execute(
-        select(func.count(Activity.id))
-        .where(
+        select(func.count(Activity.id)).where(
             Activity.user_id == user_id,
             Activity.start_date >= cutoff_3d,
             Activity.duration_seconds > 1800,  # >30 min
@@ -592,8 +596,7 @@ async def analyze_illness(
     cardio_meaningful = int(act_result.scalar() or 0)
 
     lift_result = await db.execute(
-        select(func.count(LiftingSession.id))
-        .where(
+        select(func.count(LiftingSession.id)).where(
             LiftingSession.user_id == user_id,
             LiftingSession.session_date >= cutoff_3d,
         )
@@ -621,7 +624,9 @@ async def analyze_illness(
     sleep_logs = list(result.scalars().all())
     sleep_s = _sleep_efficiency_signal(sleep_logs)
 
-    fatigue_s = _unexplained_fatigue_signal(recovery_values, recent_meaningful_training_days)
+    fatigue_s = _unexplained_fatigue_signal(
+        recovery_values, recent_meaningful_training_days
+    )
     recovery_illness_s = _recovery_illness_signal(recovery_values)
 
     # Weighted composite — physiology focused
@@ -638,10 +643,7 @@ async def analyze_illness(
     else:
         # Redistribute RR's 20% proportionally to the other 80%
         raw_total = (
-            recovery_illness_s * 0.25
-            + hrv_s * 0.25
-            + sleep_s * 0.15
-            + fatigue_s * 0.15
+            recovery_illness_s * 0.25 + hrv_s * 0.25 + sleep_s * 0.15 + fatigue_s * 0.15
         )
         score = raw_total / 0.80 * 100
 
@@ -676,8 +678,7 @@ async def analyze_illness(
     if resting_hr_values:
         current_rhr = resting_hr_values[-1]
         baseline_rhr_result = await db.execute(
-            select(func.avg(DailyMetric.resting_hr))
-            .where(
+            select(func.avg(DailyMetric.resting_hr)).where(
                 DailyMetric.user_id == user_id,
                 DailyMetric.resting_hr.isnot(None),
                 DailyMetric.metric_date >= cutoff_30d,

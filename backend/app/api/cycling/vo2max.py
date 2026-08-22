@@ -45,7 +45,10 @@ async def get_vo2max_estimate(
     """
     result = await estimate_vo2max(db, current_user.id, days)
     if not result:
-        raise HTTPException(status_code=404, detail="Insufficient data to estimate VO2max. Need cycling activities with power streams or heart rate data.")
+        raise HTTPException(
+            status_code=404,
+            detail="Insufficient data to estimate VO2max. Need cycling activities with power streams or heart rate data.",
+        )
 
     return Vo2maxResponse(
         vo2max=result.vo2max,
@@ -65,10 +68,15 @@ async def get_vo2max_history(
     """Get VO2max trend over time from monthly power data snapshots."""
     history = await compute_vo2max_history(db, current_user.id, months=months)
 
-    data = [Vo2maxHistoryPoint(date=h["date"], vo2max=h["vo2max"], method=h["method"]) for h in history]
+    data = [
+        Vo2maxHistoryPoint(date=h["date"], vo2max=h["vo2max"], method=h["method"])
+        for h in history
+    ]
 
     current_vo2max = data[-1].vo2max if data else None
-    current_classification = _classify_vo2max(current_vo2max) if current_vo2max else None
+    current_classification = (
+        _classify_vo2max(current_vo2max) if current_vo2max else None
+    )
 
     return Vo2maxHistoryResponse(
         data=data,
@@ -83,7 +91,9 @@ async def get_vo2max_history(
 @router.get("/decoupling", response_model=DecouplingHistoryResponse)
 async def get_decoupling_history(
     days: int = Query(90, ge=7, le=365, description="Lookback period in days"),
-    min_duration: int = Query(60, ge=20, le=600, description="Minimum ride duration in minutes"),
+    min_duration: int = Query(
+        60, ge=20, le=600, description="Minimum ride duration in minutes"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -92,7 +102,9 @@ async def get_decoupling_history(
     Decoupling measures aerobic fitness — how much power:HR ratio declines
     in the second half of a ride. <5% = excellent, 5-8% = acceptable, >8% = aerobic deficiency.
     """
-    history = await compute_decoupling_history(db, current_user.id, days=days, min_duration_minutes=min_duration)
+    history = await compute_decoupling_history(
+        db, current_user.id, days=days, min_duration_minutes=min_duration
+    )
 
     data = [
         DecouplingActivityPoint(
@@ -112,6 +124,7 @@ async def get_decoupling_history(
     if data:
         avg_pct = round(sum(d.decoupling_pct for d in data) / len(data), 1)
         from app.services.cycling import _classify_decoupling
+
         classification = _classify_decoupling(avg_pct)
 
     return DecouplingHistoryResponse(
@@ -135,7 +148,10 @@ async def get_decoupling_for_activity(
 
     result = await compute_decoupling_for_activity(db, act_uuid)
     if not result:
-        raise HTTPException(status_code=404, detail="No power and heart rate stream data available for this activity")
+        raise HTTPException(
+            status_code=404,
+            detail="No power and heart rate stream data available for this activity",
+        )
 
     return DecouplingSingleResponse(
         decoupling_pct=result.decoupling_pct,

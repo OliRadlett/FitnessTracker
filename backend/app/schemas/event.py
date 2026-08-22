@@ -37,6 +37,7 @@ class EventRead(EventBase):
 
 class EventWithCountdown(EventRead):
     """Event with countdown and taper info."""
+
     days_until: int = 0
     taper_start_date: date | None = None
     days_until_taper: int | None = None

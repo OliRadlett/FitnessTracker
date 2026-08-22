@@ -51,12 +51,16 @@ def compute_hr_zones_from_lthr(lthr: float) -> list[dict]:
 
     zones = []
     for zone_id, zone_name, lower_pct, upper_pct in LTHR_HR_ZONES:
-        zones.append({
-            "zone": zone_id,
-            "zone_name": zone_name,
-            "lower_bound_hr": round(lthr * lower_pct),
-            "upper_bound_hr": round(lthr * upper_pct) if upper_pct < 5.0 else round(lthr * 1.3),
-        })
+        zones.append(
+            {
+                "zone": zone_id,
+                "zone_name": zone_name,
+                "lower_bound_hr": round(lthr * lower_pct),
+                "upper_bound_hr": round(lthr * upper_pct)
+                if upper_pct < 5.0
+                else round(lthr * 1.3),
+            }
+        )
     return zones
 
 
@@ -76,8 +80,7 @@ async def compute_hr_zones_from_streams(
     cutoff = date.today() - timedelta(days=days)
 
     result = await db.execute(
-        select(Activity.id)
-        .where(
+        select(Activity.id).where(
             Activity.user_id == user_id,
             Activity.average_heartrate.isnot(None),
             Activity.start_date >= cutoff,
@@ -89,8 +92,7 @@ async def compute_hr_zones_from_streams(
         return []
 
     result = await db.execute(
-        select(ActivityStream)
-        .where(
+        select(ActivityStream).where(
             ActivityStream.activity_id.in_(activity_ids),
             ActivityStream.stream_type == "heartrate",
         )
@@ -123,14 +125,16 @@ async def compute_hr_zones_from_streams(
     zones = []
     for zone_id, zone_name, lower, upper in HR_ZONES:
         time_s = zone_times.get(zone_id, 0)
-        zones.append({
-            "zone": zone_id,
-            "zone_name": zone_name,
-            "lower_bound_hr": round(lthr * lower),
-            "upper_bound_hr": round(lthr * upper),
-            "time_seconds": time_s,
-            "percentage": round(time_s / total_time * 100, 1),
-        })
+        zones.append(
+            {
+                "zone": zone_id,
+                "zone_name": zone_name,
+                "lower_bound_hr": round(lthr * lower),
+                "upper_bound_hr": round(lthr * upper),
+                "time_seconds": time_s,
+                "percentage": round(time_s / total_time * 100, 1),
+            }
+        )
 
     return zones
 
@@ -151,8 +155,7 @@ async def compute_power_zones_from_streams(
     cutoff = date.today() - timedelta(days=days)
 
     result = await db.execute(
-        select(Activity.id)
-        .where(
+        select(Activity.id).where(
             Activity.user_id == user_id,
             Activity.sport_type == "cycling",
             Activity.average_power.isnot(None),
@@ -165,8 +168,7 @@ async def compute_power_zones_from_streams(
         return []
 
     result = await db.execute(
-        select(ActivityStream)
-        .where(
+        select(ActivityStream).where(
             ActivityStream.activity_id.in_(activity_ids),
             ActivityStream.stream_type == "watts",
         )
@@ -201,13 +203,15 @@ async def compute_power_zones_from_streams(
     zones = []
     for zone_id, zone_name, lower, upper in POWER_ZONES:
         time_s = zone_times.get(zone_id, 0)
-        zones.append({
-            "zone": zone_id,
-            "zone_name": zone_name,
-            "lower_bound_watts": round(ftp * lower, 1),
-            "upper_bound_watts": round(ftp * upper, 1),
-            "time_seconds": time_s,
-            "percentage": round(time_s / total_time * 100, 1),
-        })
+        zones.append(
+            {
+                "zone": zone_id,
+                "zone_name": zone_name,
+                "lower_bound_watts": round(ftp * lower, 1),
+                "upper_bound_watts": round(ftp * upper, 1),
+                "time_seconds": time_s,
+                "percentage": round(time_s / total_time * 100, 1),
+            }
+        )
 
     return zones

@@ -96,7 +96,9 @@ async def test_user(db_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture
-async def test_cycling_profile(db_session: AsyncSession, test_user: User) -> CyclingProfile:
+async def test_cycling_profile(
+    db_session: AsyncSession, test_user: User
+) -> CyclingProfile:
     """Insert a ``CyclingProfile`` with known FTP and weight."""
     profile = CyclingProfile(
         user_id=test_user.id,
@@ -147,7 +149,9 @@ async def test_activity(db_session: AsyncSession, test_user: User) -> Activity:
 
 
 @pytest_asyncio.fixture
-async def test_lifting_session(db_session: AsyncSession, test_user: User) -> LiftingSession:
+async def test_lifting_session(
+    db_session: AsyncSession, test_user: User
+) -> LiftingSession:
     """Insert a ``LiftingSession`` with three working sets of Back Squat."""
     session = LiftingSession(
         user_id=test_user.id,
@@ -204,8 +208,8 @@ async def test_sleep_log(db_session: AsyncSession, test_user: User) -> SleepLog:
         sleep_date=date.today() - timedelta(days=1),
         source="whoop",
         total_sleep_seconds=28800,  # 8 hours
-        deep_sleep_seconds=5400,    # 90 min
-        rem_sleep_seconds=7200,     # 120 min
+        deep_sleep_seconds=5400,  # 90 min
+        rem_sleep_seconds=7200,  # 120 min
         light_sleep_seconds=16200,  # 270 min
         sleep_efficiency=92.0,
         sleep_start=datetime.now(UTC) - timedelta(hours=10),
@@ -343,7 +347,9 @@ async def test_ftp_history(db_session: AsyncSession, test_user: User) -> FtpHist
 
 
 @pytest_asyncio.fixture
-async def test_personal_record(db_session: AsyncSession, test_user: User) -> PersonalRecord:
+async def test_personal_record(
+    db_session: AsyncSession, test_user: User
+) -> PersonalRecord:
     """Insert a ``PersonalRecord`` entry."""
     pr = PersonalRecord(
         user_id=test_user.id,
@@ -360,7 +366,9 @@ async def test_personal_record(db_session: AsyncSession, test_user: User) -> Per
 
 
 @pytest_asyncio.fixture
-async def test_multiple_activities(db_session: AsyncSession, test_user: User) -> list[Activity]:
+async def test_multiple_activities(
+    db_session: AsyncSession, test_user: User
+) -> list[Activity]:
     """Insert 5 cycling activities spread over the last 30 days with varying TSS/power/distance."""
     activities = []
     for i in range(5):

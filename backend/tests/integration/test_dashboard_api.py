@@ -23,7 +23,11 @@ class TestDashboardSummary:
     """GET /api/v1/dashboard/summary — weekly summary with volume, sessions, TSS, distance."""
 
     async def test_returns_weekly_volume_sessions_tss_distance(
-        self, client, test_activity, test_lifting_session, test_daily_metric,
+        self,
+        client,
+        test_activity,
+        test_lifting_session,
+        test_daily_metric,
     ):
         """Summary returns correct weekly volume, sessions, TSS, and distance."""
         resp = await client.get("/api/v1/dashboard/summary")
@@ -42,7 +46,10 @@ class TestDashboardSummary:
         assert data["weekly_distance_meters"] >= 0
 
     async def test_rest_day_suggestion_with_low_recovery(
-        self, client, test_user, db_session,
+        self,
+        client,
+        test_user,
+        db_session,
     ):
         """Rest day suggestion triggers with low recovery scores."""
         from app.models.daily_metric import DailyMetric
@@ -71,19 +78,24 @@ class TestDashboardSummary:
         assert any("Recovery" in r or "recovery" in r for r in rest["reasons"])
 
     async def test_rest_day_suggestion_with_consecutive_training_days(
-        self, client, test_user, db_session,
+        self,
+        client,
+        test_user,
+        db_session,
     ):
         """Rest day suggestion triggers with 6+ consecutive training days."""
         from app.models.activity import Activity
 
-        # Insert activities for the last 7 days
+        # Insert activities for the last 7 days (including today)
+        # Use date.today() to match the dashboard logic which uses date.today()
+        today = date.today()
         for i in range(7):
             activity = Activity(
                 user_id=test_user.id,
                 source="strava",
                 sport_type="cycling",
                 name=f"Day {i} Ride",
-                start_date=datetime.now(UTC) - timedelta(days=i),
+                start_date=datetime.combine(today - timedelta(days=i), datetime.min.time(), tzinfo=UTC),
                 duration_seconds=3600,
                 distance_meters=40_000.0,
                 average_power=200.0,
@@ -138,7 +150,9 @@ class TestDashboardToday:
 class TestDashboardWeekly:
     """GET /api/v1/dashboard/weekly-report — weekly report with correct aggregations."""
 
-    async def test_returns_weekly_report_structure(self, client, test_activity, test_lifting_session):
+    async def test_returns_weekly_report_structure(
+        self, client, test_activity, test_lifting_session
+    ):
         """Weekly report returns the expected structure with data."""
         resp = await client.get("/api/v1/dashboard/weekly-report")
         assert resp.status_code == 200
@@ -168,7 +182,9 @@ class TestDashboardWeekly:
 class TestDashboardYearly:
     """GET /api/v1/dashboard/yearly-summary/{year} — yearly highlights."""
 
-    async def test_returns_yearly_summary_structure(self, client, test_activity, test_lifting_session):
+    async def test_returns_yearly_summary_structure(
+        self, client, test_activity, test_lifting_session
+    ):
         """Yearly summary returns the expected structure."""
         year = date.today().year
         resp = await client.get(f"/api/v1/dashboard/yearly-summary/{year}")

@@ -103,7 +103,9 @@ def token_expiry_date(token: str) -> datetime | None:
 # ── Connection helpers ────────────────────────────────────────────────────
 
 
-async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OAuthConnection:
+async def refresh_if_needed(
+    db: AsyncSession, connection: OAuthConnection
+) -> OAuthConnection:
     """Refresh the Whoop access token if it's expired.
 
     Uses the OAuth2 refresh_token grant (same as Strava/Wahoo/Komoot).
@@ -119,6 +121,7 @@ async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OA
         )
 
     from app.config import get_settings
+
     settings = get_settings()
 
     redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/whoop/callback"
@@ -146,7 +149,9 @@ async def refresh_if_needed(db: AsyncSession, connection: OAuthConnection) -> OA
         )
     except Exception as e:
         logger.error(f"Whoop token refresh failed for user {connection.user_id}: {e}")
-        raise ValueError(f"Failed to refresh Whoop token: {e}. Please reconnect Whoop from Settings.")
+        raise ValueError(
+            f"Failed to refresh Whoop token: {e}. Please reconnect Whoop from Settings."
+        )
 
     connection.access_token = token_data["access_token"]
     connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
@@ -187,7 +192,9 @@ async def validate_and_store_token(
     """
     # Check expiry locally first
     if is_token_expired(token):
-        raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
+        raise ValueError(
+            "Whoop token is expired. Please reconnect via OAuth in Settings."
+        )
 
     # Validate against Whoop API
     try:
@@ -302,7 +309,7 @@ async def sync_whoop_cycles(
 
         calories = round(kilojoule * 0.239006, 1) if kilojoule else None
 
-        # Fetch recovery data for this cycle
+        # Fetch recovery data for this cycle with retry
         recovery_score = None
         hrv_ms = None
         resting_hr = float(avg_hr) if avg_hr else None
@@ -310,23 +317,41 @@ async def sync_whoop_cycles(
 
         cycle_id = cycle.get("id")
         if cycle_id:
-            try:
-                import asyncio
-                await asyncio.sleep(0.1)  # Rate limit: 100ms between recovery fetches
-                recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
-                if recovery and recovery.get("score_state") == "SCORED":
-                    rec_score = recovery.get("score", {})
-                    recovery_score = rec_score.get("recovery_score")
-                    hrv_ms = rec_score.get("hrv_rmssd_milli")
-                    rr = rec_score.get("resting_heart_rate")
-                    if rr is not None:
-                        resting_hr = float(rr)
-                    respiratory_rate = rec_score.get("respiratory_rate")
-            except Exception as e:
-                err_str = str(e).lower()
-                if "401" in err_str or "expired" in err_str:
-                    raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
-                logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
+            import asyncio
+
+            for _retry in range(3):
+                try:
+                    await asyncio.sleep(
+                        0.3
+                    )  # Rate limit: 300ms between recovery fetches
+                    recovery = await whoop_client.get_recovery_for_cycle(
+                        token, cycle_id
+                    )
+                    if recovery and recovery.get("score_state") == "SCORED":
+                        rec_score = recovery.get("score", {})
+                        recovery_score = rec_score.get("recovery_score")
+                        hrv_ms = rec_score.get("hrv_rmssd_milli")
+                        rr = rec_score.get("resting_heart_rate")
+                        if rr is not None:
+                            resting_hr = float(rr)
+                        respiratory_rate = rec_score.get("respiratory_rate")
+                    break  # Success or no data — move on
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "401" in err_str or "expired" in err_str:
+                        raise ValueError(
+                            "Whoop token is expired. Please reconnect via OAuth in Settings."
+                        )
+                    if "429" in err_str or "rate" in err_str:
+                        logger.warning(
+                            f"Rate limited fetching recovery for cycle {cycle_id}, retry {_retry + 1}/3"
+                        )
+                        await asyncio.sleep(2.0 * (_retry + 1))  # Backoff: 2s, 4s, 6s
+                        continue
+                    logger.warning(
+                        f"Failed to fetch recovery for cycle {cycle_id}: {e}"
+                    )
+                    break  # Non-rate-limit error — don't retry
 
         # Merge recovery data into cycle raw_data for reference
         cycle_with_recovery = {**cycle}
@@ -385,10 +410,67 @@ async def sync_whoop_cycles(
         if metric:
             synced.append(metric)
 
+    # Second pass: fill in missing recovery data for existing DailyMetric records
+    # This catches days where recovery fetch previously failed (rate limit, network, etc.)
+    missing_recovery_result = await db.execute(
+        select(DailyMetric).where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.source == "whoop",
+            DailyMetric.recovery_score.is_(None),
+            DailyMetric.raw_data.isnot(None),
+        )
+    )
+    missing_records = list(missing_recovery_result.scalars().all())
+    backfilled = 0
+    for dm in missing_records:
+        if not dm.raw_data:
+            continue
+        cycle_id = dm.raw_data.get("id")
+        if not cycle_id:
+            continue
+        try:
+            import asyncio
+
+            await asyncio.sleep(0.3)
+            recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+            if recovery and recovery.get("score_state") == "SCORED":
+                rec_score = recovery.get("score", {})
+                rec_recovery = rec_score.get("recovery_score")
+                rec_hrv = rec_score.get("hrv_rmssd_milli")
+                rec_rhr = rec_score.get("resting_heart_rate")
+                rec_rr = rec_score.get("respiratory_rate")
+                if rec_recovery is not None:
+                    dm.recovery_score = rec_recovery
+                if rec_hrv is not None:
+                    dm.hrv_ms = rec_hrv
+                if rec_rhr is not None:
+                    dm.resting_hr = float(rec_rhr)
+                if rec_rr is not None:
+                    dm.respiratory_rate = rec_rr
+                # Update raw_data with recovery info
+                dm.raw_data = {
+                    **dm.raw_data,
+                    "_recovery": {
+                        "recovery_score": rec_recovery,
+                        "hrv_rmssd_milli": rec_hrv,
+                        "resting_heart_rate": rec_rhr,
+                        "respiratory_rate": rec_rr,
+                    },
+                }
+                backfilled += 1
+        except Exception as e:
+            err_str = str(e).lower()
+            if "401" in err_str or "expired" in err_str:
+                raise ValueError(
+                    "Whoop token is expired. Please reconnect via OAuth in Settings."
+                )
+            logger.debug(f"Backfill recovery failed for cycle {cycle_id}: {e}")
+            continue
+
     await db.flush()
     logger.info(
         f"Whoop cycle+recovery sync complete for user {user_id}: "
-        f"{len(synced)} daily metrics synced/updated"
+        f"{len(synced)} daily metrics synced/updated, {backfilled} missing recoveries backfilled"
     )
     return synced
 
@@ -403,14 +485,17 @@ async def sync_whoop_sleep(
 ) -> list[SleepLog]:
     """Fetch Whoop sleep data and upsert into SleepLog.
 
+    Handles both Whoop v2 (nested stage_summary) and v1 (flat score) formats.
+
     For each sleep record:
     - sleep_date = record.start date
-    - total_sleep_seconds = score.total_sleep_time_milli / 1000
-    - deep_sleep_seconds = score.slow_wave_sleep_milli / 1000
-    - rem_sleep_seconds = score.rem_sleep_milli / 1000
-    - light_sleep_seconds = score.light_sleep_milli / 1000
-    - awake_seconds = score.awake_time_milli / 1000
-    - sleep_efficiency = score.sleep_efficiency
+    - total_sleep_seconds = stage_summary.total_sleep_time_milli / 1000
+      (computed from deep+rem+light if missing, or from bounds minus awake)
+    - deep_sleep_seconds = stage_summary.total_slow_wave_sleep_time_milli / 1000
+    - rem_sleep_seconds = stage_summary.total_rem_sleep_time_milli / 1000
+    - light_sleep_seconds = stage_summary.total_light_sleep_time_milli / 1000
+    - awake_seconds = stage_summary.total_awake_time_milli / 1000
+    - sleep_efficiency = score.sleep_efficiency_percentage
     - sleep_start = record.start
     - sleep_end = record.end
     - raw_data = full record
@@ -432,7 +517,9 @@ async def sync_whoop_sleep(
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            logger.warning(f"Whoop sleep API not available (404) for user {user_id}. Sleep data requires updated API access.")
+            logger.warning(
+                f"Whoop sleep API not available (404) for user {user_id}. Sleep data requires updated API access."
+            )
             return []
         raise ValueError(f"Failed to fetch Whoop sleep data: {e}")
     except Exception as e:
@@ -457,24 +544,72 @@ async def sync_whoop_sleep(
 
         try:
             sleep_start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            sleep_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")) if end_str else None
+            sleep_end = (
+                datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                if end_str
+                else None
+            )
             sleep_date = sleep_start.date()
         except (ValueError, AttributeError):
             continue
 
-        # Map score fields
-        total_milli = score.get("total_sleep_time_milli")
-        deep_milli = score.get("slow_wave_sleep_milli")
-        rem_milli = score.get("rem_sleep_milli")
-        light_milli = score.get("light_sleep_milli")
-        awake_milli = score.get("awake_time_milli")
-        efficiency = score.get("sleep_efficiency")
+        # Map score fields — Whoop v2 nests stage data under score.stage_summary,
+        # while v1 / older payloads had flat keys at the score level.
+        stage_summary = score.get("stage_summary", {})
+
+        # Prefer v2 nested keys, fall back to v1 flat keys
+        total_milli = stage_summary.get("total_sleep_time_milli") or score.get(
+            "total_sleep_time_milli"
+        )
+        deep_milli = (
+            stage_summary.get("total_slow_wave_sleep_time_milli")
+            or stage_summary.get("slow_wave_sleep_milli")
+            or score.get("slow_wave_sleep_milli")
+        )
+        rem_milli = (
+            stage_summary.get("total_rem_sleep_time_milli")
+            or stage_summary.get("rem_sleep_milli")
+            or score.get("rem_sleep_milli")
+        )
+        light_milli = (
+            stage_summary.get("total_light_sleep_time_milli")
+            or stage_summary.get("light_sleep_milli")
+            or score.get("light_sleep_milli")
+        )
+        awake_milli = (
+            stage_summary.get("total_awake_time_milli")
+            or stage_summary.get("awake_time_milli")
+            or score.get("awake_time_milli")
+        )
+        # v2 uses sleep_efficiency_percentage, v1 used sleep_efficiency
+        efficiency = score.get("sleep_efficiency_percentage") or score.get(
+            "sleep_efficiency"
+        )
 
         total_sleep_seconds = int(total_milli / 1000) if total_milli else None
         deep_sleep_seconds = int(deep_milli / 1000) if deep_milli else None
         rem_sleep_seconds = int(rem_milli / 1000) if rem_milli else None
         light_sleep_seconds = int(light_milli / 1000) if light_milli else None
         awake_seconds = int(awake_milli / 1000) if awake_milli else None
+
+        # If total_sleep_time_milli is missing (v2 doesn't always include it),
+        # compute from individual stage durations
+        if total_sleep_seconds is None and any(
+            v is not None
+            for v in [deep_sleep_seconds, rem_sleep_seconds, light_sleep_seconds]
+        ):
+            total_sleep_seconds = (
+                (deep_sleep_seconds or 0)
+                + (rem_sleep_seconds or 0)
+                + (light_sleep_seconds or 0)
+            )
+
+        # Final fallback: compute from sleep_start / sleep_end bounds minus awake time
+        if total_sleep_seconds is None and sleep_start and sleep_end:
+            total_in_bed = int((sleep_end - sleep_start).total_seconds())
+            awake = awake_seconds or 0
+            if total_in_bed > awake:
+                total_sleep_seconds = total_in_bed - awake
 
         # Upsert using unique constraint (user_id, sleep_date, source)
         stmt = (
@@ -543,7 +678,9 @@ async def sync_whoop_sleep(
                     .on_conflict_do_update(
                         index_elements=["user_id", "metric_date", "source"],
                         set_={
-                            "sleep_duration_minutes": round(total_sleep_seconds / 60, 1),
+                            "sleep_duration_minutes": round(
+                                total_sleep_seconds / 60, 1
+                            ),
                             "sleep_efficiency": efficiency,
                             "updated_at": datetime.now(UTC),
                         },
@@ -552,7 +689,9 @@ async def sync_whoop_sleep(
                 await db.execute(stmt)
 
     await db.flush()
-    logger.info(f"Whoop sleep sync complete for user {user_id}: {len(synced)} sleep records")
+    logger.info(
+        f"Whoop sleep sync complete for user {user_id}: {len(synced)} sleep records"
+    )
     return synced
 
 
@@ -597,7 +736,9 @@ async def sync_whoop_workouts(
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            logger.warning(f"Whoop workout API not available (404) for user {user_id}. Workout data requires updated API access.")
+            logger.warning(
+                f"Whoop workout API not available (404) for user {user_id}. Workout data requires updated API access."
+            )
             return []
         raise ValueError(f"Failed to fetch Whoop workout data: {e}")
     except Exception as e:
@@ -656,7 +797,10 @@ async def sync_whoop_workouts(
 
         # Use merge engine to find matching Strava activity
         duplicate = await find_duplicate_activity(
-            db, user_id, sport_type, start_date,
+            db,
+            user_id,
+            sport_type,
+            start_date,
             duration_seconds,
             None,  # Whoop doesn't provide distance
         )
@@ -671,7 +815,12 @@ async def sync_whoop_workouts(
 
             # Merge into the existing Strava activity
             await merge_activity(
-                db, duplicate, new_data, "whoop", workout_id, raw_data=workout,
+                db,
+                duplicate,
+                new_data,
+                "whoop",
+                workout_id,
+                raw_data=workout,
             )
             enriched.append(duplicate)
             logger.info(
@@ -685,7 +834,9 @@ async def sync_whoop_workouts(
             )
 
     await db.flush()
-    logger.info(f"Whoop workout enrichment complete for user {user_id}: {len(enriched)} enriched")
+    logger.info(
+        f"Whoop workout enrichment complete for user {user_id}: {len(enriched)} enriched"
+    )
     return enriched
 
 
@@ -737,14 +888,16 @@ def compute_sleep_consistency(
     if len(bedtimes_minutes) < 2:
         return {
             "score": 100.0,
-            "avg_bedtime": _minutes_to_time_str(bedtimes_minutes[0] % 1440) if bedtimes_minutes else None,
+            "avg_bedtime": _minutes_to_time_str(bedtimes_minutes[0] % 1440)
+            if bedtimes_minutes
+            else None,
             "std_minutes": 0,
             "days_analyzed": len(bedtimes_minutes),
         }
 
     avg = sum(bedtimes_minutes) / len(bedtimes_minutes)
     variance = sum((m - avg) ** 2 for m in bedtimes_minutes) / len(bedtimes_minutes)
-    std_minutes = variance ** 0.5
+    std_minutes = variance**0.5
 
     # Score: 0 std = 100, 120+ min std = 0
     score = max(0, 100 - (std_minutes / 120) * 100)
@@ -784,8 +937,9 @@ def compute_sleep_debt(
     count = 0
 
     for log in sleep_logs:
-        if log.total_sleep_seconds:
-            hours = log.total_sleep_seconds / 3600
+        effective = log.effective_total_sleep_seconds
+        if effective:
+            hours = effective / 3600
             total_sleep_hours += hours
             count += 1
             if hours < needed_hours:
@@ -874,7 +1028,12 @@ def suggest_optimal_bedtime(
             {
                 "date": log.sleep_date.isoformat(),
                 "bedtime": _minutes_to_time_str(
-                    (log.sleep_start.hour * 60 + log.sleep_start.minute + (1440 if log.sleep_start.hour < 12 else 0)) % 1440
+                    (
+                        log.sleep_start.hour * 60
+                        + log.sleep_start.minute
+                        + (1440 if log.sleep_start.hour < 12 else 0)
+                    )
+                    % 1440
                 ),
                 "recovery_score": score,
             }
@@ -905,7 +1064,9 @@ async def sync_whoop_weight(
     try:
         body = await whoop_client.get_body_measurements(connection.access_token)
     except Exception as e:
-        logger.warning(f"Failed to fetch Whoop body measurements for user {user_id}: {e}")
+        logger.warning(
+            f"Failed to fetch Whoop body measurements for user {user_id}: {e}"
+        )
         return None
 
     weight_kg = body.get("weight_kilogram")
@@ -1033,6 +1194,7 @@ async def backfill_whoop_data(
         if cycle_id:
             try:
                 import asyncio
+
                 await asyncio.sleep(0.1)  # Rate limit: 100ms between recovery fetches
                 recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
                 if recovery and recovery.get("score_state") == "SCORED":
@@ -1046,7 +1208,9 @@ async def backfill_whoop_data(
             except Exception as e:
                 err_str = str(e).lower()
                 if "401" in err_str or "expired" in err_str:
-                    raise ValueError("Whoop token is expired. Please reconnect via OAuth in Settings.")
+                    raise ValueError(
+                        "Whoop token is expired. Please reconnect via OAuth in Settings."
+                    )
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
 
         cycle_with_recovery = {**cycle}
@@ -1120,7 +1284,9 @@ async def backfill_whoop_data(
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            logger.warning(f"Whoop sleep API not available (404) for user {user_id} backfill")
+            logger.warning(
+                f"Whoop sleep API not available (404) for user {user_id} backfill"
+            )
             sleep_records = []
         else:
             raise ValueError(f"Failed to fetch Whoop sleep data: {e}")
@@ -1143,23 +1309,68 @@ async def backfill_whoop_data(
 
         try:
             sleep_start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            sleep_end = datetime.fromisoformat(end_str.replace("Z", "+00:00")) if end_str else None
+            sleep_end = (
+                datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                if end_str
+                else None
+            )
             sleep_date = sleep_start.date()
         except (ValueError, AttributeError):
             continue
 
-        total_milli = score.get("total_sleep_time_milli")
-        deep_milli = score.get("slow_wave_sleep_milli")
-        rem_milli = score.get("rem_sleep_milli")
-        light_milli = score.get("light_sleep_milli")
-        awake_milli = score.get("awake_time_milli")
-        efficiency = score.get("sleep_efficiency")
+        # Map score fields — handle both v2 (nested stage_summary) and v1 (flat)
+        stage_summary = score.get("stage_summary", {})
+
+        total_milli = stage_summary.get("total_sleep_time_milli") or score.get(
+            "total_sleep_time_milli"
+        )
+        deep_milli = (
+            stage_summary.get("total_slow_wave_sleep_time_milli")
+            or stage_summary.get("slow_wave_sleep_milli")
+            or score.get("slow_wave_sleep_milli")
+        )
+        rem_milli = (
+            stage_summary.get("total_rem_sleep_time_milli")
+            or stage_summary.get("rem_sleep_milli")
+            or score.get("rem_sleep_milli")
+        )
+        light_milli = (
+            stage_summary.get("total_light_sleep_time_milli")
+            or stage_summary.get("light_sleep_milli")
+            or score.get("light_sleep_milli")
+        )
+        awake_milli = (
+            stage_summary.get("total_awake_time_milli")
+            or stage_summary.get("awake_time_milli")
+            or score.get("awake_time_milli")
+        )
+        efficiency = score.get("sleep_efficiency_percentage") or score.get(
+            "sleep_efficiency"
+        )
 
         total_sleep_seconds = int(total_milli / 1000) if total_milli else None
         deep_sleep_seconds = int(deep_milli / 1000) if deep_milli else None
         rem_sleep_seconds = int(rem_milli / 1000) if rem_milli else None
         light_sleep_seconds = int(light_milli / 1000) if light_milli else None
         awake_seconds = int(awake_milli / 1000) if awake_milli else None
+
+        # Compute total from stages if missing
+        if total_sleep_seconds is None and any(
+            v is not None
+            for v in [deep_sleep_seconds, rem_sleep_seconds, light_sleep_seconds]
+        ):
+            total_sleep_seconds = (
+                (deep_sleep_seconds or 0)
+                + (rem_sleep_seconds or 0)
+                + (light_sleep_seconds or 0)
+            )
+
+        # Fallback: compute from sleep bounds minus awake
+        if total_sleep_seconds is None and sleep_start and sleep_end:
+            total_in_bed = int((sleep_end - sleep_start).total_seconds())
+            awake = awake_seconds or 0
+            if total_in_bed > awake:
+                total_sleep_seconds = total_in_bed - awake
 
         # Upsert sleep log
         existing = await db.execute(
@@ -1239,7 +1450,9 @@ async def backfill_whoop_data(
         )
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            logger.warning(f"Whoop workout API not available (404) for user {user_id} backfill")
+            logger.warning(
+                f"Whoop workout API not available (404) for user {user_id} backfill"
+            )
             workouts = []
         else:
             raise ValueError(f"Failed to fetch Whoop workout data: {e}")
@@ -1294,7 +1507,10 @@ async def backfill_whoop_data(
         calories_w = round(kilojoule * 0.239006, 1) if kilojoule else None
 
         duplicate = await find_duplicate_activity(
-            db, user_id, sport_type, start_date_dt,
+            db,
+            user_id,
+            sport_type,
+            start_date_dt,
             duration_seconds,
             None,
         )
@@ -1306,7 +1522,12 @@ async def backfill_whoop_data(
                 "calories": float(calories_w) if calories_w else None,
             }
             await merge_activity(
-                db, duplicate, new_data, "whoop", workout_id, raw_data=workout,
+                db,
+                duplicate,
+                new_data,
+                "whoop",
+                workout_id,
+                raw_data=workout,
             )
             synced_workouts += 1
 
@@ -1375,7 +1596,9 @@ async def backfill_whoop_chunked(
     for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
         # Pause between chunks to respect Whoop rate limits
         if i > 1:
-            logger.info(f"Whoop backfill: waiting {_CHUNK_DELAY_SECONDS}s before chunk {i}/{total_chunks}")
+            logger.info(
+                f"Whoop backfill: waiting {_CHUNK_DELAY_SECONDS}s before chunk {i}/{total_chunks}"
+            )
             await asyncio.sleep(_CHUNK_DELAY_SECONDS)
 
         logger.info(
@@ -1384,8 +1607,11 @@ async def backfill_whoop_chunked(
         )
         try:
             result = await backfill_whoop_data(
-                db, user_id, months=0,
-                start_dt=chunk_start, end_dt=chunk_end,
+                db,
+                user_id,
+                months=0,
+                start_dt=chunk_start,
+                end_dt=chunk_end,
             )
         except Exception as e:
             logger.error(f"Whoop backfill chunk {i} failed: {e}")

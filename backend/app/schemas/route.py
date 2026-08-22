@@ -47,6 +47,7 @@ class RouteRead(BaseModel):
 
 class RouteSummary(BaseModel):
     """Lightweight route summary for list views (no polyline)."""
+
     model_config = {"from_attributes": True}
 
     id: uuid.UUID
@@ -76,6 +77,7 @@ class RouteSummary(BaseModel):
 
 class RouteCreate(BaseModel):
     """Create a route from GPX data or encoded polyline."""
+
     name: str
     sport_type: str = "cycling"
     gpx_data: str | None = Field(None, description="GPX XML string")

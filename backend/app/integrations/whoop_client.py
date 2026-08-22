@@ -172,7 +172,9 @@ class WhoopClient:
                         backoff *= _BACKOFF_MULTIPLIER
                         continue
                     else:
-                        logger.error(f"Whoop rate limit exceeded after {_MAX_RETRIES} retries on {endpoint}")
+                        logger.error(
+                            f"Whoop rate limit exceeded after {_MAX_RETRIES} retries on {endpoint}"
+                        )
                         resp.raise_for_status()
 
                 resp.raise_for_status()
@@ -205,8 +207,12 @@ class WhoopClient:
     ) -> list[dict]:
         """Fetch all cycles with automatic pagination."""
         return await self._paginated_get(
-            access_token, "/developer/v2/cycle",
-            start=start, end=end, max_records=max_records, label="cycles",
+            access_token,
+            "/developer/v2/cycle",
+            start=start,
+            end=end,
+            max_records=max_records,
+            label="cycles",
         )
 
     # ── Recovery ───────────────────────────────────────────────────────────
@@ -249,10 +255,13 @@ class WhoopClient:
     ) -> dict:
         """Fetch sleep activities (paginated).
 
-        Each record: {"id": int, "start": str, "end": str, "score_state": str,
-                       "score": {"total_sleep_time_milli": int, "sleep_efficiency": float,
-                                 "slow_wave_sleep_milli": int, "rem_sleep_milli": int,
-                                 "light_sleep_milli": int, "awake_time_milli": int}}
+        Each record: {"id": str, "start": str, "end": str, "score_state": str,
+                       "score": {"stage_summary": {"total_in_bed_time_milli": int,
+                                                    "total_awake_time_milli": int,
+                                                    "total_light_sleep_time_milli": int,
+                                                    "total_slow_wave_sleep_time_milli": int,
+                                                    "total_rem_sleep_time_milli": int},
+                                 "sleep_efficiency_percentage": float}}
 
         Returns: {"records": [...], "next_token": str | None}
         """
@@ -281,8 +290,12 @@ class WhoopClient:
     ) -> list[dict]:
         """Fetch all sleep activities with automatic pagination."""
         return await self._paginated_get(
-            access_token, "/developer/v2/activity/sleep",
-            start=start, end=end, max_records=max_records, label="sleep activities",
+            access_token,
+            "/developer/v2/activity/sleep",
+            start=start,
+            end=end,
+            max_records=max_records,
+            label="sleep activities",
         )
 
     # ── Workout activities ─────────────────────────────────────────────────
@@ -327,10 +340,13 @@ class WhoopClient:
     ) -> list[dict]:
         """Fetch all workout activities with automatic pagination."""
         return await self._paginated_get(
-            access_token, "/developer/v2/activity/workout",
-            start=start, end=end, max_records=max_records, label="workout activities",
+            access_token,
+            "/developer/v2/activity/workout",
+            start=start,
+            end=end,
+            max_records=max_records,
+            label="workout activities",
         )
-
 
     # ── Token refresh ─────────────────────────────────────────────────────
 

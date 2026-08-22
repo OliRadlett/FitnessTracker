@@ -21,7 +21,9 @@ def upgrade() -> None:
 
     # From migration 010: route_id on activities
     op.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS route_id UUID")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_activities_route_id ON activities(route_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_activities_route_id ON activities(route_id)"
+    )
 
     # From migration 009: activity_sources table
     op.execute("""
@@ -36,10 +38,14 @@ def upgrade() -> None:
             CONSTRAINT uq_activity_source_provider UNIQUE (provider, provider_activity_id)
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_activity_sources_activity_id ON activity_sources(activity_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_activity_sources_activity_id ON activity_sources(activity_id)"
+    )
 
     # From migration 008: created_at on lifting_sets
-    op.execute("ALTER TABLE lifting_sets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL")
+    op.execute(
+        "ALTER TABLE lifting_sets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL"
+    )
 
 
 def downgrade() -> None:

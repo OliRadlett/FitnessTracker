@@ -62,7 +62,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         recent_load = training_load[-28:] if training_load else []
         # Convert date objects to ISO strings for JSON serialization
         stats["training_load"] = [
-            {**entry, "date": entry["date"].isoformat()} if isinstance(entry.get("date"), date) else entry
+            {**entry, "date": entry["date"].isoformat()}
+            if isinstance(entry.get("date"), date)
+            else entry
             for entry in recent_load
         ]
         if training_load:
@@ -117,7 +119,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     try:
         weekly_summaries = []
         for week_offset in range(4):
-            week_start = today - timedelta(days=today.weekday()) - timedelta(weeks=week_offset)
+            week_start = (
+                today - timedelta(days=today.weekday()) - timedelta(weeks=week_offset)
+            )
             week_end = week_start + timedelta(days=6)
             # Clamp to today
             week_end = min(week_end, today)
@@ -126,11 +130,16 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
                 select(
                     func.count(Activity.id).label("ride_count"),
                     func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
-                    func.coalesce(func.sum(Activity.distance_meters), 0.0).label("total_distance_m"),
-                    func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_duration_s"),
-                    func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label("total_elevation_m"),
-                )
-                .where(
+                    func.coalesce(func.sum(Activity.distance_meters), 0.0).label(
+                        "total_distance_m"
+                    ),
+                    func.coalesce(func.sum(Activity.duration_seconds), 0).label(
+                        "total_duration_s"
+                    ),
+                    func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label(
+                        "total_elevation_m"
+                    ),
+                ).where(
                     Activity.user_id == user_id,
                     Activity.sport_type == "cycling",
                     Activity.start_date >= week_start,
@@ -138,15 +147,17 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
                 )
             )
             row = result.one()
-            weekly_summaries.append({
-                "week_start": str(week_start),
-                "week_end": str(week_end),
-                "ride_count": row.ride_count,
-                "total_tss": round(float(row.total_tss), 1),
-                "total_distance_km": round(float(row.total_distance_m) / 1000, 1),
-                "total_duration_hours": round(int(row.total_duration_s) / 3600, 1),
-                "total_elevation_m": round(float(row.total_elevation_m), 1),
-            })
+            weekly_summaries.append(
+                {
+                    "week_start": str(week_start),
+                    "week_end": str(week_end),
+                    "ride_count": row.ride_count,
+                    "total_tss": round(float(row.total_tss), 1),
+                    "total_distance_km": round(float(row.total_distance_m) / 1000, 1),
+                    "total_duration_hours": round(int(row.total_duration_s) / 3600, 1),
+                    "total_elevation_m": round(float(row.total_elevation_m), 1),
+                }
+            )
         stats["weekly_summaries"] = list(reversed(weekly_summaries))  # oldest first
     except Exception as e:
         logger.warning("Failed to compute weekly summaries: %s", e)
@@ -213,7 +224,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
     # 8. Decoupling trends
     try:
-        decoupling = await compute_decoupling_history(db, user_id, days=28, min_duration_minutes=60)
+        decoupling = await compute_decoupling_history(
+            db, user_id, days=28, min_duration_minutes=60
+        )
         stats["decoupling_trends"] = [
             {
                 "date": str(d.get("date", "")),
@@ -267,7 +280,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             select(
                 week_trunc.label("week_start"),
                 func.count(LiftingSession.id).label("session_count"),
-                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("total_volume"),
+                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
+                    "total_volume"
+                ),
             )
             .where(
                 LiftingSession.user_id == user_id,
@@ -348,8 +363,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         efficiencies = []
         for sl in sleep_logs:
             entry: dict = {"date": str(sl.sleep_date)}
-            if sl.total_sleep_seconds is not None:
-                hours = round(sl.total_sleep_seconds / 3600, 1)
+            effective = sl.effective_total_sleep_seconds
+            if effective is not None:
+                hours = round(effective / 3600, 1)
                 entry["sleep_hours"] = hours
                 durations.append(hours)
             if sl.sleep_efficiency is not None:
@@ -361,8 +377,12 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
         stats["sleep_trends"] = {
             "entries": sleep_data[-28:],  # last 28 entries max
-            "avg_sleep_hours": round(sum(durations) / len(durations), 1) if durations else None,
-            "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 1) if efficiencies else None,
+            "avg_sleep_hours": round(sum(durations) / len(durations), 1)
+            if durations
+            else None,
+            "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 1)
+            if efficiencies
+            else None,
             "nights_tracked": len(sleep_data),
         }
     except Exception as e:
@@ -387,7 +407,11 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         stats["weight_trend"] = {
             "entries": weight_data,
             "latest_kg": weight_data[-1]["weight_kg"] if weight_data else None,
-            "change_kg": round(weight_data[-1]["weight_kg"] - weight_data[0]["weight_kg"], 1) if len(weight_data) >= 2 else None,
+            "change_kg": round(
+                weight_data[-1]["weight_kg"] - weight_data[0]["weight_kg"], 1
+            )
+            if len(weight_data) >= 2
+            else None,
         }
     except Exception as e:
         logger.warning("Failed to get weight trend: %s", e)
@@ -524,7 +548,7 @@ Be specific, reference actual numbers from the data, and provide science-backed 
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=2048,
+                max_output_tokens=4096,
                 http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
             ),
         )
@@ -532,15 +556,30 @@ Be specific, reference actual numbers from the data, and provide science-backed 
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
             logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError("AI analysis rate limit exceeded. Please try again in a few minutes.") from e
+            raise ValueError(
+                "AI analysis rate limit exceeded. Please try again in a few minutes."
+            ) from e
         if "timeout" in error_msg or "deadline" in error_msg:
             logger.error("Gemini API timeout: %s", e)
-            raise ValueError("AI analysis timed out. The service may be overloaded — please try again.") from e
+            raise ValueError(
+                "AI analysis timed out. The service may be overloaded — please try again."
+            ) from e
         logger.error("Gemini API call failed: %s", e)
         raise ValueError(f"AI analysis failed: {e!s}") from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
+
+    # Log if response was truncated due to token limit
+    try:
+        if response.candidates and response.candidates[0].finish_reason:
+            finish = str(response.candidates[0].finish_reason)
+            if "MAX" in finish.upper():
+                logger.warning(
+                    "Gemini cycling analysis truncated (finish_reason=%s)", finish
+                )
+    except Exception:
+        pass
 
     return response.text
 
@@ -604,8 +643,12 @@ async def compile_activity_context(
         "sport_type": activity.sport_type,
         "start_date": activity.start_date.isoformat() if activity.start_date else None,
         "duration_seconds": activity.duration_seconds,
-        "distance_meters": round(activity.distance_meters, 1) if activity.distance_meters else None,
-        "elevation_gain_meters": round(activity.elevation_gain_meters, 1) if activity.elevation_gain_meters else None,
+        "distance_meters": round(activity.distance_meters, 1)
+        if activity.distance_meters
+        else None,
+        "elevation_gain_meters": round(activity.elevation_gain_meters, 1)
+        if activity.elevation_gain_meters
+        else None,
         "average_power": activity.average_power,
         "max_power": activity.max_power if hasattr(activity, "max_power") else None,
         "normalized_power": activity.normalized_power,
@@ -640,8 +683,14 @@ async def compile_activity_context(
             # Last 7 days for context
             recent = training_load[-7:]
             training_context["recent_tsb_trend"] = [
-                {"date": entry["date"].isoformat() if isinstance(entry["date"], date) else str(entry["date"]),
-                 "tsb": entry["tsb"], "ctl": entry["ctl"], "atl": entry["atl"]}
+                {
+                    "date": entry["date"].isoformat()
+                    if isinstance(entry["date"], date)
+                    else str(entry["date"]),
+                    "tsb": entry["tsb"],
+                    "ctl": entry["ctl"],
+                    "atl": entry["atl"],
+                }
                 for entry in recent
             ]
     except Exception as e:
@@ -681,7 +730,9 @@ async def compile_activity_context(
                 "name": r.name,
                 "date": r.start_date.isoformat() if r.start_date else None,
                 "duration_seconds": r.duration_seconds,
-                "distance_meters": round(r.distance_meters, 1) if r.distance_meters else None,
+                "distance_meters": round(r.distance_meters, 1)
+                if r.distance_meters
+                else None,
                 "tss": r.tss,
                 "average_power": r.average_power,
             }
@@ -722,11 +773,13 @@ async def compile_activity_context(
         logger.warning("Failed to get recovery data for activity context: %s", e)
         training_context["recent_recovery"] = []
 
-    return _make_json_serializable({
-        "activity_summary": activity_summary,
-        "static_analysis": static_analysis,
-        "training_context": training_context,
-    })
+    return _make_json_serializable(
+        {
+            "activity_summary": activity_summary,
+            "static_analysis": static_analysis,
+            "training_context": training_context,
+        }
+    )
 
 
 async def analyze_activity_with_gemini(context: dict) -> str:
@@ -796,7 +849,7 @@ Be specific and reference actual numbers from the data. Keep the total response 
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=1536,
+                max_output_tokens=4096,
                 http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
             ),
         )
@@ -804,15 +857,29 @@ Be specific and reference actual numbers from the data. Keep the total response 
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
             logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError("AI analysis rate limit exceeded. Please try again in a few minutes.") from e
+            raise ValueError(
+                "AI analysis rate limit exceeded. Please try again in a few minutes."
+            ) from e
         if "timeout" in error_msg or "deadline" in error_msg:
             logger.error("Gemini API timeout: %s", e)
-            raise ValueError("AI analysis timed out. The service may be overloaded — please try again.") from e
+            raise ValueError(
+                "AI analysis timed out. The service may be overloaded — please try again."
+            ) from e
         logger.error("Gemini API call failed: %s", e)
         raise ValueError(f"AI analysis failed: {e!s}") from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
+
+    try:
+        if response.candidates and response.candidates[0].finish_reason:
+            finish = str(response.candidates[0].finish_reason)
+            if "MAX" in finish.upper():
+                logger.warning(
+                    "Gemini activity analysis truncated (finish_reason=%s)", finish
+                )
+    except Exception:
+        pass
 
     return response.text
 
@@ -926,21 +993,25 @@ async def compile_lifting_session_context(
             (brzycki_1rm(s.weight_kg, s.reps) for s in sorted_sets if s.reps > 0),
             default=0,
         )
-        session_summary["exercises"].append({
-            "name": exercise_name,
-            "sets": [
-                {
-                    "set_number": s.set_number,
-                    "weight_kg": s.weight_kg,
-                    "reps": s.reps,
-                    "rpe": s.rpe,
-                    "estimated_1rm": round(brzycki_1rm(s.weight_kg, s.reps), 1) if s.reps > 0 else None,
-                }
-                for s in sorted_sets
-            ],
-            "volume_kg": round(ex_volume, 1),
-            "top_estimated_1rm": round(top_1rm, 1) if top_1rm > 0 else None,
-        })
+        session_summary["exercises"].append(
+            {
+                "name": exercise_name,
+                "sets": [
+                    {
+                        "set_number": s.set_number,
+                        "weight_kg": s.weight_kg,
+                        "reps": s.reps,
+                        "rpe": s.rpe,
+                        "estimated_1rm": round(brzycki_1rm(s.weight_kg, s.reps), 1)
+                        if s.reps > 0
+                        else None,
+                    }
+                    for s in sorted_sets
+                ],
+                "volume_kg": round(ex_volume, 1),
+                "top_estimated_1rm": round(top_1rm, 1) if top_1rm > 0 else None,
+            }
+        )
 
     # 3. Static analysis
     static_analysis = await analyze_lifting_session(db, user_id, session_id)
@@ -988,12 +1059,14 @@ async def compile_lifting_session_context(
         prs = result.scalars().all()
         pr_by_exercise: dict[str, list[dict]] = defaultdict(list)
         for pr in prs:
-            pr_by_exercise[pr.exercise_name].append({
-                "weight_kg": pr.weight_kg,
-                "reps": pr.reps,
-                "estimated_1rm": pr.estimated_1rm,
-                "achieved_date": str(pr.achieved_date),
-            })
+            pr_by_exercise[pr.exercise_name].append(
+                {
+                    "weight_kg": pr.weight_kg,
+                    "reps": pr.reps,
+                    "estimated_1rm": pr.estimated_1rm,
+                    "achieved_date": str(pr.achieved_date),
+                }
+            )
         lifting_context["personal_records"] = dict(pr_by_exercise)
     except Exception as e:
         logger.warning("Failed to get PRs for lifting context: %s", e)
@@ -1047,11 +1120,13 @@ async def compile_lifting_session_context(
         logger.warning("Failed to get recovery data for lifting context: %s", e)
         lifting_context["recent_recovery"] = []
 
-    return _make_json_serializable({
-        "session_summary": session_summary,
-        "static_analysis": static_analysis,
-        "lifting_context": lifting_context,
-    })
+    return _make_json_serializable(
+        {
+            "session_summary": session_summary,
+            "static_analysis": static_analysis,
+            "lifting_context": lifting_context,
+        }
+    )
 
 
 async def analyze_lifting_session_with_gemini(context: dict) -> str:
@@ -1122,7 +1197,7 @@ Be specific and reference actual numbers from the data. Keep the total response 
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=1536,
+                max_output_tokens=4096,
                 http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
             ),
         )
@@ -1130,15 +1205,29 @@ Be specific and reference actual numbers from the data. Keep the total response 
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
             logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError("AI analysis rate limit exceeded. Please try again in a few minutes.") from e
+            raise ValueError(
+                "AI analysis rate limit exceeded. Please try again in a few minutes."
+            ) from e
         if "timeout" in error_msg or "deadline" in error_msg:
             logger.error("Gemini API timeout: %s", e)
-            raise ValueError("AI analysis timed out. The service may be overloaded — please try again.") from e
+            raise ValueError(
+                "AI analysis timed out. The service may be overloaded — please try again."
+            ) from e
         logger.error("Gemini API call failed: %s", e)
         raise ValueError(f"AI analysis failed: {e!s}") from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
+
+    try:
+        if response.candidates and response.candidates[0].finish_reason:
+            finish = str(response.candidates[0].finish_reason)
+            if "MAX" in finish.upper():
+                logger.warning(
+                    "Gemini lifting analysis truncated (finish_reason=%s)", finish
+                )
+    except Exception:
+        pass
 
     return response.text
 
@@ -1213,7 +1302,9 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         hrv_values = [m.hrv_ms for m in metrics]
         stats["hrv_trends"] = {
             "entries": hrv_data,
-            "avg_hrv_ms": round(sum(hrv_values) / len(hrv_values), 1) if hrv_values else None,
+            "avg_hrv_ms": round(sum(hrv_values) / len(hrv_values), 1)
+            if hrv_values
+            else None,
             "latest_hrv_ms": hrv_values[-1] if hrv_values else None,
             "min_hrv_ms": min(hrv_values) if hrv_values else None,
             "max_hrv_ms": max(hrv_values) if hrv_values else None,
@@ -1234,11 +1325,15 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             .order_by(DailyMetric.metric_date)
         )
         metrics = result.scalars().all()
-        rhr_data = [{"date": str(m.metric_date), "resting_hr": m.resting_hr} for m in metrics]
+        rhr_data = [
+            {"date": str(m.metric_date), "resting_hr": m.resting_hr} for m in metrics
+        ]
         rhr_values = [m.resting_hr for m in metrics]
         stats["resting_hr_trends"] = {
             "entries": rhr_data,
-            "avg_resting_hr": round(sum(rhr_values) / len(rhr_values), 1) if rhr_values else None,
+            "avg_resting_hr": round(sum(rhr_values) / len(rhr_values), 1)
+            if rhr_values
+            else None,
             "latest_resting_hr": rhr_values[-1] if rhr_values else None,
         }
     except Exception as e:
@@ -1264,7 +1359,9 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         recovery_values = [m.recovery_score for m in metrics]
         stats["recovery_scores"] = {
             "entries": recovery_data,
-            "avg_recovery": round(sum(recovery_values) / len(recovery_values), 1) if recovery_values else None,
+            "avg_recovery": round(sum(recovery_values) / len(recovery_values), 1)
+            if recovery_values
+            else None,
             "latest_recovery": recovery_values[-1] if recovery_values else None,
         }
     except Exception as e:
@@ -1290,7 +1387,9 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         rr_values = [m.respiratory_rate for m in metrics]
         stats["respiratory_rate_trends"] = {
             "entries": rr_data,
-            "avg_respiratory_rate": round(sum(rr_values) / len(rr_values), 2) if rr_values else None,
+            "avg_respiratory_rate": round(sum(rr_values) / len(rr_values), 2)
+            if rr_values
+            else None,
             "latest_respiratory_rate": rr_values[-1] if rr_values else None,
         }
     except Exception as e:
@@ -1313,8 +1412,9 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         efficiencies = []
         for sl in sleep_logs:
             entry: dict = {"date": str(sl.sleep_date)}
-            if sl.total_sleep_seconds is not None:
-                hours = round(sl.total_sleep_seconds / 3600, 1)
+            effective = sl.effective_total_sleep_seconds
+            if effective is not None:
+                hours = round(effective / 3600, 1)
                 entry["sleep_hours"] = hours
                 durations.append(hours)
             if sl.sleep_efficiency is not None:
@@ -1327,8 +1427,12 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             sleep_data.append(entry)
         stats["sleep_trends"] = {
             "entries": sleep_data[-28:],
-            "avg_sleep_hours": round(sum(durations) / len(durations), 1) if durations else None,
-            "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 1) if efficiencies else None,
+            "avg_sleep_hours": round(sum(durations) / len(durations), 1)
+            if durations
+            else None,
+            "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 1)
+            if efficiencies
+            else None,
             "nights_tracked": len(sleep_data),
         }
     except Exception as e:
@@ -1353,7 +1457,11 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         stats["weight_trend"] = {
             "entries": weight_data,
             "latest_kg": weight_data[-1]["weight_kg"] if weight_data else None,
-            "change_kg": round(weight_data[-1]["weight_kg"] - weight_data[0]["weight_kg"], 1) if len(weight_data) >= 2 else None,
+            "change_kg": round(
+                weight_data[-1]["weight_kg"] - weight_data[0]["weight_kg"], 1
+            )
+            if len(weight_data) >= 2
+            else None,
         }
     except Exception as e:
         logger.warning("Failed to get weight trend: %s", e)
@@ -1398,13 +1506,14 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         )
         metrics = result.scalars().all()
         strain_data = [
-            {"date": str(m.metric_date), "strain": m.strain}
-            for m in metrics
+            {"date": str(m.metric_date), "strain": m.strain} for m in metrics
         ]
         strain_values = [m.strain for m in metrics]
         stats["strain_trends"] = {
             "entries": strain_data,
-            "avg_strain": round(sum(strain_values) / len(strain_values), 1) if strain_values else None,
+            "avg_strain": round(sum(strain_values) / len(strain_values), 1)
+            if strain_values
+            else None,
             "max_strain": max(strain_values) if strain_values else None,
         }
     except Exception as e:
@@ -1481,7 +1590,7 @@ Be specific, reference actual numbers from the data. Keep the total response und
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=2048,
+                max_output_tokens=4096,
                 http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
             ),
         )
@@ -1489,15 +1598,29 @@ Be specific, reference actual numbers from the data. Keep the total response und
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
             logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError("AI analysis rate limit exceeded. Please try again in a few minutes.") from e
+            raise ValueError(
+                "AI analysis rate limit exceeded. Please try again in a few minutes."
+            ) from e
         if "timeout" in error_msg or "deadline" in error_msg:
             logger.error("Gemini API timeout: %s", e)
-            raise ValueError("AI analysis timed out. The service may be overloaded — please try again.") from e
+            raise ValueError(
+                "AI analysis timed out. The service may be overloaded — please try again."
+            ) from e
         logger.error("Gemini API call failed: %s", e)
         raise ValueError(f"AI analysis failed: {e!s}") from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
+
+    try:
+        if response.candidates and response.candidates[0].finish_reason:
+            finish = str(response.candidates[0].finish_reason)
+            if "MAX" in finish.upper():
+                logger.warning(
+                    "Gemini health analysis truncated (finish_reason=%s)", finish
+                )
+    except Exception:
+        pass
 
     return response.text
 
@@ -1586,7 +1709,9 @@ async def compile_event_stats(
             # Recent 14 days trend
             stats["recent_tsb_trend"] = [
                 {
-                    "date": entry["date"].isoformat() if isinstance(entry["date"], date) else str(entry["date"]),
+                    "date": entry["date"].isoformat()
+                    if isinstance(entry["date"], date)
+                    else str(entry["date"]),
                     "tsb": entry["tsb"],
                     "ctl": entry["ctl"],
                     "atl": entry["atl"],
@@ -1632,7 +1757,9 @@ async def compile_event_stats(
                 "name": r.name,
                 "date": r.start_date.isoformat() if r.start_date else None,
                 "duration_seconds": r.duration_seconds,
-                "distance_meters": round(r.distance_meters, 1) if r.distance_meters else None,
+                "distance_meters": round(r.distance_meters, 1)
+                if r.distance_meters
+                else None,
                 "tss": r.tss,
                 "average_power": r.average_power,
             }
@@ -1741,7 +1868,7 @@ Be specific, reference actual numbers from the data. Tailor advice to the days-u
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=2048,
+                max_output_tokens=4096,
                 http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
             ),
         )
@@ -1749,15 +1876,29 @@ Be specific, reference actual numbers from the data. Tailor advice to the days-u
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
             logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError("AI analysis rate limit exceeded. Please try again in a few minutes.") from e
+            raise ValueError(
+                "AI analysis rate limit exceeded. Please try again in a few minutes."
+            ) from e
         if "timeout" in error_msg or "deadline" in error_msg:
             logger.error("Gemini API timeout: %s", e)
-            raise ValueError("AI analysis timed out. The service may be overloaded — please try again.") from e
+            raise ValueError(
+                "AI analysis timed out. The service may be overloaded — please try again."
+            ) from e
         logger.error("Gemini API call failed: %s", e)
         raise ValueError(f"AI analysis failed: {e!s}") from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
+
+    try:
+        if response.candidates and response.candidates[0].finish_reason:
+            finish = str(response.candidates[0].finish_reason)
+            if "MAX" in finish.upper():
+                logger.warning(
+                    "Gemini event analysis truncated (finish_reason=%s)", finish
+                )
+    except Exception:
+        pass
 
     return response.text
 

@@ -28,7 +28,9 @@ class TestAnalyzeOvertraining:
     """analyze_overtraining() — detects overtraining from high TSB + low recovery."""
 
     async def test_detects_overtraining_from_low_recovery(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Detects overtraining when recovery is consistently low and TSB is negative."""
         from app.services.health_analysis import analyze_overtraining
@@ -72,7 +74,9 @@ class TestAnalyzeOvertraining:
         assert "evidence" in result
 
     async def test_returns_none_severity_when_data_is_normal(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Returns 'none' severity when all metrics are normal."""
         from app.services.health_analysis import analyze_overtraining
@@ -98,7 +102,9 @@ class TestAnalyzeOvertraining:
         assert result["score"] == 0.0
 
     async def test_returns_none_when_insufficient_data(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Returns 'none' severity when less than 3 days of data."""
         from app.services.health_analysis import analyze_overtraining
@@ -126,7 +132,9 @@ class TestAnalyzeInjuryRisk:
     """analyze_injury_risk() — detects injury risk from volume spikes."""
 
     async def test_detects_injury_risk_from_volume_spike(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Detects injury risk when current week volume is much higher than prior weeks."""
         from app.services.health_analysis import analyze_injury_risk
@@ -165,7 +173,9 @@ class TestAnalyzeInjuryRisk:
         assert result["score"] >= 0
 
     async def test_returns_none_severity_when_volume_is_stable(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Returns 'none' severity when volume is stable."""
         from app.services.health_analysis import analyze_injury_risk
@@ -198,7 +208,9 @@ class TestAnalyzeIllness:
     """analyze_illness() — detects illness from elevated resting HR + low HRV."""
 
     async def test_detects_illness_from_elevated_resting_hr_and_low_hrv(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Detects illness risk when resting HR is elevated and HRV is low."""
         from app.services.health_analysis import analyze_illness
@@ -223,9 +235,9 @@ class TestAnalyzeIllness:
                 metric_date=date.today() - timedelta(days=i),
                 source="whoop",
                 recovery_score=30.0,  # Low
-                hrv_ms=30.0,          # Low
-                resting_hr=70.0,      # Elevated
-                respiratory_rate=18.0, # Elevated
+                hrv_ms=30.0,  # Low
+                resting_hr=70.0,  # Elevated
+                respiratory_rate=18.0,  # Elevated
             )
             db_session.add(metric)
         await db_session.flush()
@@ -237,7 +249,9 @@ class TestAnalyzeIllness:
         assert result["score"] >= 0
 
     async def test_returns_none_severity_when_healthy(
-        self, db_session, test_user,
+        self,
+        db_session,
+        test_user,
     ):
         """Returns 'none' severity when all metrics are normal."""
         from app.services.health_analysis import analyze_illness

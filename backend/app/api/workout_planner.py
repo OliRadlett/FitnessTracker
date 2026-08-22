@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.workout_planner import (
+    RouteMatchItem,
     RouteMatchRequest,
     RouteMatchResponse,
     WorkoutPlanRequest,
@@ -153,8 +154,27 @@ async def match_routes_endpoint(
         max_results=payload.max_results,
     )
 
+    match_items = [
+        RouteMatchItem(
+            route_id=m.route_id,
+            route_name=m.route_name,
+            distance_meters=m.distance_meters,
+            elevation_gain_meters=m.elevation_gain_meters,
+            is_loop=m.is_loop,
+            match_score=m.match_score,
+            avg_tss=m.avg_tss,
+            avg_power=m.avg_power,
+            avg_hr=m.avg_hr,
+            avg_duration_min=m.avg_duration_min,
+            ride_count=m.ride_count,
+            is_estimated=m.is_estimated,
+            confidence=m.confidence,
+        )
+        for m in result.matches
+    ]
+
     return RouteMatchResponse(
-        matches=result.matches,
+        matches=match_items,
         workout_target=_targets_to_response(targets),
     )
 

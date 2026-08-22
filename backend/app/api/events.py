@@ -52,9 +52,7 @@ async def list_events(
 ):
     """List all events, optionally only upcoming ones."""
     query = (
-        select(Event)
-        .where(Event.user_id == current_user.id)
-        .order_by(Event.event_date)
+        select(Event).where(Event.user_id == current_user.id).order_by(Event.event_date)
     )
     if upcoming_only:
         query = query.where(Event.event_date >= date.today())
@@ -87,7 +85,10 @@ async def create_event(
 ):
     """Create a new event."""
     if data.event_type not in VALID_EVENT_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid event_type. Must be one of: {', '.join(VALID_EVENT_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event_type. Must be one of: {', '.join(VALID_EVENT_TYPES)}",
+        )
 
     event = Event(
         user_id=current_user.id,

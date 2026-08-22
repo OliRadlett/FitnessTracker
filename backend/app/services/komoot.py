@@ -114,7 +114,9 @@ def _extract_surface_profile(surface_data: dict) -> dict[str, float] | None:
         for item in surfaces:
             if isinstance(item, dict):
                 name = item.get("type") or item.get("name", "unknown")
-                pct = item.get("percentage") or item.get("share") or item.get("value", 0)
+                pct = (
+                    item.get("percentage") or item.get("share") or item.get("value", 0)
+                )
                 # Normalize to 0-1 range if it looks like a percentage (0-100)
                 if isinstance(pct, (int, float)) and pct > 1.0:
                     pct = pct / 100.0
@@ -176,7 +178,9 @@ async def _enrich_and_create_route(
     if not tour_id:
         return False, False
 
-    provider_route_id = f"{provider_id_prefix}{tour_id}" if provider_id_prefix else tour_id
+    provider_route_id = (
+        f"{provider_id_prefix}{tour_id}" if provider_id_prefix else tour_id
+    )
 
     # Fetch full coordinates from the /coordinates/ endpoint
     # The tour list/detail doesn't include coordinate data — must fetch separately
@@ -188,12 +192,16 @@ async def _enrich_and_create_route(
         logger.warning(f"Failed to fetch coordinates for tour {tour_id}: {e}")
 
     if not trackpoints or len(trackpoints) < 2:
-        logger.warning(f"Skipping Komoot tour {tour_id}: no coordinate data ({len(trackpoints)} points)")
+        logger.warning(
+            f"Skipping Komoot tour {tour_id}: no coordinate data ({len(trackpoints)} points)"
+        )
         return False, False
 
     polyline = _build_polyline_from_trackpoints(trackpoints)
     if not polyline:
-        logger.warning(f"Skipping Komoot tour {tour_id}: could not build polyline from trackpoints")
+        logger.warning(
+            f"Skipping Komoot tour {tour_id}: could not build polyline from trackpoints"
+        )
         return False, False
 
     # Extract surface data from tour summary (available in list/detail response)
@@ -214,7 +222,9 @@ async def _enrich_and_create_route(
                 if surface_profile:
                     logger.info(f"Tour {tour_id}: surface data = {surface_profile}")
 
-    name = tour_data.get("name", "Komoot Tour" if not is_planned_route else "Komoot Route")
+    name = tour_data.get(
+        "name", "Komoot Tour" if not is_planned_route else "Komoot Route"
+    )
     distance = tour_data.get("distance", 0) or 0  # meters
     elevation_up = tour_data.get("elevation_up", 0) or 0
     duration = tour_data.get("duration", 0) or 0  # seconds
@@ -235,7 +245,9 @@ async def _enrich_and_create_route(
 
     # Check if this was merged (existing source found)
     existing_source = await db.execute(
-        select(Route).join(Route.sources).where(
+        select(Route)
+        .join(Route.sources)
+        .where(
             Route.user_id == user_id,
             Route.sources.any(provider="komoot", provider_route_id=provider_route_id),  # type: ignore
         )
@@ -243,7 +255,8 @@ async def _enrich_and_create_route(
     was_existing = existing_source.scalar_one_or_none() is not None
 
     await create_or_merge_route(
-        db, user_id,
+        db,
+        user_id,
         name=name,
         sport_type=sport_type,
         distance_meters=distance,
@@ -258,7 +271,7 @@ async def _enrich_and_create_route(
         raw_data=raw_data,
     )
 
-    logger.info(f"Synced Komoot tour {tour_id}: '{name}' ({distance/1000:.1f}km)")
+    logger.info(f"Synced Komoot tour {tour_id}: '{name}' ({distance / 1000:.1f}km)")
     return True, was_existing
 
 
@@ -294,7 +307,9 @@ async def sync_komoot_routes(
     while synced_count < limit:
         try:
             tours = await komoot_client.get_tours(
-                user_id=komoot_user_id, page=page, limit=50,
+                user_id=komoot_user_id,
+                page=page,
+                limit=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Komoot tours page {page}: {e}")
@@ -317,7 +332,9 @@ async def sync_komoot_routes(
                 logger.warning(f"Failed to fetch Komoot tour detail {tour_id}: {e}")
 
             synced, was_existing = await _enrich_and_create_route(
-                db, user_id, tour,
+                db,
+                user_id,
+                tour,
                 is_planned_route=False,
             )
             if synced:
@@ -334,7 +351,9 @@ async def sync_komoot_routes(
     while True:
         try:
             routes = await komoot_client.get_routes(
-                user_id=komoot_user_id, page=page, limit=50,
+                user_id=komoot_user_id,
+                page=page,
+                limit=50,
             )
         except Exception as e:
             logger.error(f"Failed to fetch Komoot routes page {page}: {e}")
@@ -356,7 +375,9 @@ async def sync_komoot_routes(
                 logger.warning(f"Failed to fetch Komoot route detail {route_id}: {e}")
 
             synced, was_existing = await _enrich_and_create_route(
-                db, user_id, route_data,
+                db,
+                user_id,
+                route_data,
                 is_planned_route=True,
                 provider_id_prefix="route_",
             )
@@ -369,5 +390,7 @@ async def sync_komoot_routes(
         if len(routes) < 50:
             break
 
-    logger.info(f"Komoot sync complete for user {user_id}: {synced_count} synced, {merged_count} merged")
+    logger.info(
+        f"Komoot sync complete for user {user_id}: {synced_count} synced, {merged_count} merged"
+    )
     return synced_count, merged_count

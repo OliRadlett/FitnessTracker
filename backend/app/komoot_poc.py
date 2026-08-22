@@ -47,20 +47,22 @@ def test_endpoint(url, auth_type="none", token="", method="GET", json_body=None)
     try:
         with httpx.Client(timeout=15, follow_redirects=True) as client:
             if method == "POST":
-                resp = client.post(url, headers=headers(auth_type, token), json=json_body)
+                resp = client.post(
+                    url, headers=headers(auth_type, token), json=json_body
+                )
             else:
                 resp = client.get(url, headers=headers(auth_type, token))
-            
+
             content_type = resp.headers.get("content-type", "")
             body_preview = resp.text[:500]
-            
+
             result = {
                 "url": url,
                 "status": resp.status_code,
                 "content_type": content_type,
                 "body_preview": body_preview,
             }
-            
+
             if "json" in content_type:
                 try:
                     data = resp.json()
@@ -73,10 +75,14 @@ def test_endpoint(url, auth_type="none", token="", method="GET", json_body=None)
                                 if isinstance(v, list):
                                     result[f"embedded_{k}_count"] = len(v)
                                     if v:
-                                        result[f"embedded_{k}_first_keys"] = list(v[0].keys())[:15] if isinstance(v[0], dict) else str(v[0])[:100]
+                                        result[f"embedded_{k}_first_keys"] = (
+                                            list(v[0].keys())[:15]
+                                            if isinstance(v[0], dict)
+                                            else str(v[0])[:100]
+                                        )
                 except Exception:
                     pass
-            
+
             return result
     except Exception as e:
         return {"url": url, "error": str(e)}
@@ -112,14 +118,22 @@ def main():
     session_token = None
     for base in BASE_URLS:
         url = f"{base}/account/v1/session"
-        result = test_endpoint(url, method="POST", json_body={"email": EMAIL, "password": PASSWORD})
-        print(f"  {base}/account/v1/session → {result.get('status', result.get('error', '?'))}")
+        result = test_endpoint(
+            url, method="POST", json_body={"email": EMAIL, "password": PASSWORD}
+        )
+        print(
+            f"  {base}/account/v1/session → {result.get('status', result.get('error', '?'))}"
+        )
         if result.get("status") in (200, 201):
             print(f"    Keys: {result.get('keys', '?')}")
             print(f"    Body: {result.get('body_preview', '')[:200]}")
             try:
                 data = json.loads(result.get("body_preview", "{}"))
-                session_token = data.get("token") or data.get("access_token") or data.get("session_token")
+                session_token = (
+                    data.get("token")
+                    or data.get("access_token")
+                    or data.get("session_token")
+                )
             except Exception:
                 pass
     print()
@@ -131,7 +145,9 @@ def main():
     for base in BASE_URLS:
         url = f"{base}/users/{USER_ID}/tours/?limit=1"
         result = test_endpoint(url, auth_type="basic")
-        print(f"  {base}/users/{USER_ID}/tours/ → {result.get('status', result.get('error', '?'))}")
+        print(
+            f"  {base}/users/{USER_ID}/tours/ → {result.get('status', result.get('error', '?'))}"
+        )
         if result.get("status") == 200:
             print(f"    Keys: {result.get('keys', '?')}")
             print(f"    Embedded keys: {result.get('embedded_keys', '?')}")
@@ -149,7 +165,9 @@ def main():
         for base in BASE_URLS:
             url = f"{base}/users/{USER_ID}/tours/?limit=1"
             result = test_endpoint(url, auth_type="bearer", token=session_token)
-            print(f"  {base}/users/{USER_ID}/tours/ → {result.get('status', result.get('error', '?'))}")
+            print(
+                f"  {base}/users/{USER_ID}/tours/ → {result.get('status', result.get('error', '?'))}"
+            )
             if result.get("status") == 200:
                 print(f"    Keys: {result.get('keys', '?')}")
         print()
@@ -202,12 +220,16 @@ def main():
             if "embedded_items_count" in result:
                 print(f"    Items count: {result['embedded_items_count']}")
                 if result["embedded_items_count"] > 0:
-                    print(f"    First item keys: {result.get('embedded_items_first_keys', '?')}")
+                    print(
+                        f"    First item keys: {result.get('embedded_items_first_keys', '?')}"
+                    )
                     # Print first item details
                     try:
                         data = json.loads(result.get("body_preview", "{}"))
                         first = data["_embedded"]["items"][0]
-                        print(f"    First item: id={first.get('id')}, name={first.get('name')}, sport={first.get('sport')}, distance={first.get('distance')}")
+                        print(
+                            f"    First item: id={first.get('id')}, name={first.get('name')}, sport={first.get('sport')}, distance={first.get('distance')}"
+                        )
                     except Exception:
                         pass
     print()

@@ -84,43 +84,68 @@ OAUTH_PROVIDERS: dict[str, dict] = {
 
 def get_authorize_url(provider: str, redirect_uri: str) -> str:
     """Build the OAuth authorize URL for the given provider."""
+    import urllib.parse
+
     cfg = OAUTH_PROVIDERS[provider]
     client_id = cfg["client_id"]()
     scopes = cfg["scopes"]
 
     if provider == "google":
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope={scopes}&access_type=offline&prompt=consent"
+        params = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": scopes,
+                "access_type": "offline",
+                "prompt": "consent",
+            }
         )
+        return f"{cfg['authorize_url']}?{params}"
     elif provider == "github":
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&scope={scopes}"
+        params = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": scopes,
+            }
         )
+        return f"{cfg['authorize_url']}?{params}"
     elif provider == "strava":
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope={scopes}&approval_prompt=auto"
+        params = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": scopes,
+                "approval_prompt": "auto",
+            }
         )
+        return f"{cfg['authorize_url']}?{params}"
     elif provider == "wahoo":
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope={scopes.replace(' ', '+')}"
+        params = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": scopes,
+            }
         )
+        return f"{cfg['authorize_url']}?{params}"
     elif provider == "whoop":
         import secrets
+
         state = secrets.token_hex(8)  # 16 chars, meets Whoop's 8-char minimum
-        return (
-            f"{cfg['authorize_url']}?"
-            f"client_id={client_id}&redirect_uri={redirect_uri}"
-            f"&response_type=code&scope={scopes.replace(' ', '+')}"
-            f"&state={state}"
+        params = urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": scopes,
+                "state": state,
+            }
         )
+        return f"{cfg['authorize_url']}?{params}"
     raise ValueError(f"Unsupported provider: {provider}")
 
 
@@ -133,11 +158,13 @@ async def exchange_code_for_user(
     """Exchange OAuth code for tokens, find or create user. Returns (user, is_new)."""
     from fastapi import HTTPException as _HTTPException
     from fastapi import status as _status
+
     cfg = OAUTH_PROVIDERS[provider]
     client_id = cfg["client_id"]()
     client_secret = cfg["client_secret"]()
 
     import logging
+
     logger = logging.getLogger(__name__)
 
     # Exchange code for token
@@ -153,12 +180,18 @@ async def exchange_code_for_user(
             },
             headers={"Accept": "application/json"},
         )
-        logger.info(f"Token exchange response from {provider}: status={token_resp.status_code}, headers={dict(token_resp.headers)}, body={token_resp.text[:500]}")
+        logger.info(
+            f"Token exchange response from {provider}: status={token_resp.status_code}, headers={dict(token_resp.headers)}, body={token_resp.text[:500]}"
+        )
         try:
             token_data = token_resp.json()
         except Exception:
-            logger.error(f"Failed to parse token response as JSON from {provider}: status={token_resp.status_code}, body={token_resp.text[:500]}")
-            raise ValueError(f"Token exchange failed for {provider}: HTTP {token_resp.status_code}, body={token_resp.text[:200]}")
+            logger.error(
+                f"Failed to parse token response as JSON from {provider}: status={token_resp.status_code}, body={token_resp.text[:500]}"
+            )
+            raise ValueError(
+                f"Token exchange failed for {provider}: HTTP {token_resp.status_code}, body={token_resp.text[:200]}"
+            )
 
     access_token = token_data.get("access_token")
     if not access_token:
@@ -202,10 +235,18 @@ async def exchange_code_for_user(
         lastname = userinfo.get("lastname", "")
         name = f"{firstname} {lastname}".strip() or "Komoot User"
         email = f"komoot_{provider_user_id}@komoot.local"
-        avatar_url = userinfo.get("picture", {}).get("url") if isinstance(userinfo.get("picture"), dict) else None
+        avatar_url = (
+            userinfo.get("picture", {}).get("url")
+            if isinstance(userinfo.get("picture"), dict)
+            else None
+        )
     elif provider == "wahoo":
         provider_user_id = str(userinfo.get("id", ""))
-        name = userinfo.get("name", "") or f"{userinfo.get('first', '')} {userinfo.get('last', '')}".strip() or "Wahoo User"
+        name = (
+            userinfo.get("name", "")
+            or f"{userinfo.get('first', '')} {userinfo.get('last', '')}".strip()
+            or "Wahoo User"
+        )
         email = userinfo.get("email") or f"wahoo_{provider_user_id}@wahoo.local"
         avatar_url = None
     elif provider == "whoop":
@@ -285,20 +326,28 @@ async def get_current_user(
 ) -> User:
     """FastAPI dependency that extracts the current user from JWT."""
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
 
     token_data = decode_access_token(credentials.credentials)
     if token_data is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
 
     try:
         user_id = uuid.UUID(token_data.sub)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload"
+        )
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
 
     return user

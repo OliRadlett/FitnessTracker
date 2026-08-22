@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 # ── User ──────────────────────────────────────────────────────────────────────
 
+
 class UserBase(BaseModel):
     email: str
     name: str
@@ -26,6 +27,7 @@ class UserCreate(BaseModel):
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────
 
+
 class OAuthConnectionRead(BaseModel):
     id: uuid.UUID
     provider: str
@@ -37,10 +39,12 @@ class OAuthConnectionRead(BaseModel):
 
 class OAuthCallbackState(BaseModel):
     """Encrypted state passed through the OAuth flow."""
+
     redirect_uri: str | None = None
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
+
 
 class TokenPayload(BaseModel):
     sub: str  # user UUID as string
@@ -54,6 +58,7 @@ class TokenResponse(BaseModel):
 
 
 # ── Auth response ─────────────────────────────────────────────────────────────
+
 
 class AuthResponse(BaseModel):
     user: UserRead

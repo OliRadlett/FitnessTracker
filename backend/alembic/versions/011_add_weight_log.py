@@ -25,12 +25,22 @@ def upgrade() -> None:
         op.create_table(
             "weight_logs",
             sa.Column("id", UUID(as_uuid=True), primary_key=True),
-            sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column(
+                "user_id",
+                UUID(as_uuid=True),
+                sa.ForeignKey("users.id", ondelete="CASCADE"),
+                nullable=False,
+                index=True,
+            ),
             sa.Column("date", sa.Date, nullable=False, index=True),
             sa.Column("weight_kilogram", sa.Float, nullable=False),
             sa.Column("source", sa.String(50), nullable=False),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-            sa.UniqueConstraint("user_id", "date", "source", name="uq_weight_log_user_date_source"),
+            sa.Column(
+                "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+            ),
+            sa.UniqueConstraint(
+                "user_id", "date", "source", name="uq_weight_log_user_date_source"
+            ),
         )
 
 

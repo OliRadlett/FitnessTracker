@@ -65,10 +65,14 @@ class TestPrsCsvExport:
 class TestWeeklyReportPdf:
     """GET /api/v1/export/weekly-report/{week_start} — generates PDF."""
 
-    async def test_generates_weekly_pdf(self, client, test_activity, test_lifting_session):
+    async def test_generates_weekly_pdf(
+        self, client, test_activity, test_lifting_session
+    ):
         """Weekly report generates a PDF."""
         week_start = date.today() - timedelta(days=date.today().weekday())
-        resp = await client.get(f"/api/v1/export/weekly-report/{week_start.isoformat()}")
+        resp = await client.get(
+            f"/api/v1/export/weekly-report/{week_start.isoformat()}"
+        )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/pdf"
         # PDF should start with %PDF
@@ -78,7 +82,9 @@ class TestWeeklyReportPdf:
 class TestMonthlyReportPdf:
     """GET /api/v1/export/monthly-report/{month} — generates PDF."""
 
-    async def test_generates_monthly_pdf(self, client, test_activity, test_lifting_session):
+    async def test_generates_monthly_pdf(
+        self, client, test_activity, test_lifting_session
+    ):
         """Monthly report generates a PDF."""
         month = date.today().strftime("%Y-%m")
         resp = await client.get(f"/api/v1/export/monthly-report/{month}")

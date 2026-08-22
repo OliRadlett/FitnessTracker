@@ -75,7 +75,9 @@ class TestCyclingProfile:
 class TestTrainingLoad:
     """GET /api/v1/cycling/training-load — CTL/ATL/TSB computation."""
 
-    async def test_training_load_returns_data_structure(self, client, test_cycling_profile):
+    async def test_training_load_returns_data_structure(
+        self, client, test_cycling_profile
+    ):
         """Even with minimal data, the endpoint returns the expected structure."""
         resp = await client.get("/api/v1/cycling/training-load", params={"days": 30})
         assert resp.status_code == 200
@@ -90,7 +92,9 @@ class TestTrainingLoad:
         assert isinstance(data["current_atl"], (int, float))
         assert isinstance(data["current_tsb"], (int, float))
 
-    async def test_training_load_with_activity_data(self, client, test_activity, test_cycling_profile):
+    async def test_training_load_with_activity_data(
+        self, client, test_activity, test_cycling_profile
+    ):
         """With a TSS-bearing activity, CTL/ATL should be > 0."""
         resp = await client.get("/api/v1/cycling/training-load", params={"days": 30})
         assert resp.status_code == 200
@@ -121,7 +125,9 @@ class TestPowerCurve:
             assert "duration_seconds" in point
             assert "best_power_watts" in point
 
-    async def test_power_curve_with_stream_data(self, client, test_activity, test_cycling_profile):
+    async def test_power_curve_with_stream_data(
+        self, client, test_activity, test_cycling_profile
+    ):
         """With power stream data, at least some buckets should have values."""
         resp = await client.get("/api/v1/cycling/power-curve", params={"days": 90})
         assert resp.status_code == 200
@@ -147,7 +153,9 @@ class TestFtpEstimation:
         assert resp.status_code == 400
         assert "No power stream data" in resp.json()["detail"]
 
-    async def test_estimate_ftp_with_power_data(self, client, test_activity, test_cycling_profile):
+    async def test_estimate_ftp_with_power_data(
+        self, client, test_activity, test_cycling_profile
+    ):
         """With power stream data, FTP estimation returns a structured response."""
         resp = await client.post(
             "/api/v1/cycling/estimate-ftp",
@@ -189,7 +197,9 @@ class TestMetricsSummary:
         # Benchmark fields
         assert "ftp_wkg_benchmark" in data
 
-    async def test_metrics_with_activity(self, client, test_activity, test_cycling_profile):
+    async def test_metrics_with_activity(
+        self, client, test_activity, test_cycling_profile
+    ):
         """With activity data, metrics should reflect the rides."""
         resp = await client.get("/api/v1/cycling/metrics-summary")
         assert resp.status_code == 200
@@ -243,7 +253,9 @@ class TestPowerZones:
         assert resp.status_code == 400
         assert "FTP not set" in resp.json()["detail"]
 
-    async def test_power_zones_returns_structure(self, client, test_cycling_profile, test_activity):
+    async def test_power_zones_returns_structure(
+        self, client, test_cycling_profile, test_activity
+    ):
         """With FTP and power stream data, returns zone distribution."""
         resp = await client.get("/api/v1/cycling/power-zones", params={"days": 30})
         assert resp.status_code == 200

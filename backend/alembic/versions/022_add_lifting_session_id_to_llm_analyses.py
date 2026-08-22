@@ -4,6 +4,7 @@ Revision ID: 022
 Revises: 021
 Create Date: 2026-08-21
 """
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 

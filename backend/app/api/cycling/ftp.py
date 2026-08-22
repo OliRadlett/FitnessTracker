@@ -77,7 +77,9 @@ async def create_ftp_history_entry(
 @router.post("/estimate-ftp", response_model=FtpEstimateResponse)
 async def estimate_ftp(
     days: int = Query(90, ge=30, le=365),
-    accept: bool = Query(False, description="If true, automatically save the estimate as the user's FTP"),
+    accept: bool = Query(
+        False, description="If true, automatically save the estimate as the user's FTP"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -154,13 +156,22 @@ async def estimate_ftp(
 
 @router.post("/backfill-streams")
 async def backfill_streams(
-    days: int = Query(90, ge=7, le=365),
-    limit: int = Query(20, ge=1, le=100),
-    force: bool = Query(False, description="Delete existing streams and re-fetch at high resolution"),
+    days: int = Query(
+        3650,
+        ge=7,
+        le=3650,
+        description="Lookback period in days (default: 10 years = all)",
+    ),
+    limit: int = Query(
+        500, ge=1, le=1000, description="Max activities to process per call"
+    ),
+    force: bool = Query(
+        False, description="Delete existing streams and re-fetch at high resolution"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Fetch power streams for existing cycling activities that are missing them.
+    """Fetch streams for ALL existing cycling activities that are missing them.
 
     This is useful for backfilling stream data for activities that were synced
     before the stream-fetching feature was added.
@@ -172,47 +183,55 @@ async def backfill_streams(
 
     cutoff = date.today() - timedelta(days=days)
 
-    # Find cycling activities with average_power
+    # Find ALL cycling activities from Strava (not just those with power)
     result = await db.execute(
         select(Activity.id, Activity.provider_activity_id)
         .where(
             Activity.user_id == current_user.id,
             Activity.sport_type == "cycling",
             Activity.source == "strava",
-            Activity.average_power.isnot(None),
             Activity.start_date >= cutoff,
             Activity.provider_activity_id.isnot(None),
         )
         .order_by(Activity.start_date.desc())
-        .limit(limit * 3)  # fetch extra to filter
+        .limit(limit)
     )
     all_activities = result.all()
 
     activity_ids = [row[0] for row in all_activities]
     if not activity_ids:
-        return {"backfilled": 0, "total_checked": 0, "message": "No cycling activities with power data found."}
+        return {
+            "backfilled": 0,
+            "total_checked": 0,
+            "message": "No cycling activities found.",
+        }
 
     if force:
         # Force mode: re-fetch all activities (delete old streams per-activity after success)
-        need_streams = [(row[0], row[1]) for row in all_activities][:limit]
+        need_streams = [(row[0], row[1]) for row in all_activities]
     else:
-        # Filter to those without watts stream
+        # Filter to those without any stream data
         result = await db.execute(
             select(ActivityStream.activity_id)
             .where(
                 ActivityStream.activity_id.in_(activity_ids),
-                ActivityStream.stream_type == "watts",
             )
+            .distinct()
         )
         already_have_streams = set(result.scalars().all())
 
         need_streams = [
-            (row[0], row[1]) for row in all_activities
+            (row[0], row[1])
+            for row in all_activities
             if row[0] not in already_have_streams
-        ][:limit]
+        ]
 
         if not need_streams:
-            return {"backfilled": 0, "total_checked": len(all_activities), "message": "All activities already have stream data."}
+            return {
+                "backfilled": 0,
+                "total_checked": len(all_activities),
+                "message": "All activities already have stream data.",
+            }
 
     # Get Strava connection
     connection = await get_strava_connection(db, current_user.id)
@@ -255,7 +274,10 @@ async def backfill_streams(
             backfilled += 1
         except Exception as e:
             import logging
-            logging.getLogger(__name__).warning(f"Stream backfill failed for activity {provider_id}: {e}")
+
+            logging.getLogger(__name__).warning(
+                f"Stream backfill failed for activity {provider_id}: {e}"
+            )
             continue  # Skip activities that fail
 
     await db.flush()

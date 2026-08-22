@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession
+from app.models.sleep import SleepLog
 from app.models.user import User
 from app.schemas.activity import (
     ActivityCalendarEntry,
@@ -23,13 +24,16 @@ from app.schemas.activity import (
     DailyMetricSummary,
     LinkedLiftingSessionSummary,
     RideAnalysisResponse,
+    SleepLogSummary,
 )
 from app.services.auth import get_current_user
 
 router = APIRouter()
 
 
-def _build_linked_session_summary(activity: Activity) -> LinkedLiftingSessionSummary | None:
+def _build_linked_session_summary(
+    activity: Activity,
+) -> LinkedLiftingSessionSummary | None:
     """Build a linked lifting session summary from the activity's relationship."""
     ls = activity.lifting_session
     if ls is None:
@@ -201,13 +205,45 @@ async def get_activities_calendar(
             strain=dm.strain,
             sleep_duration_minutes=dm.sleep_duration_minutes,
             sleep_efficiency=dm.sleep_efficiency,
+            resting_hr=dm.resting_hr,
+            respiratory_rate=dm.respiratory_rate,
         )
         for d, dm in metrics_by_date.items()
+    ]
+
+    # Fetch sleep logs for the date range
+    sl_result = await db.execute(
+        select(SleepLog)
+        .where(
+            SleepLog.user_id == current_user.id,
+            SleepLog.sleep_date >= start_date,
+            SleepLog.sleep_date <= end_date,
+        )
+        .order_by(SleepLog.sleep_date)
+    )
+    sleep_logs_raw = list(sl_result.scalars().all())
+
+    sleep_log_entries = [
+        SleepLogSummary(
+            id=sl.id,
+            sleep_date=sl.sleep_date,
+            source=sl.source,
+            total_sleep_seconds=sl.total_sleep_seconds,
+            deep_sleep_seconds=sl.deep_sleep_seconds,
+            rem_sleep_seconds=sl.rem_sleep_seconds,
+            light_sleep_seconds=sl.light_sleep_seconds,
+            awake_seconds=sl.awake_seconds,
+            sleep_efficiency=sl.sleep_efficiency,
+            sleep_start=sl.sleep_start,
+            sleep_end=sl.sleep_end,
+        )
+        for sl in sleep_logs_raw
     ]
 
     return CalendarDayData(
         activities=activity_entries,
         daily_metrics=daily_metric_entries,
+        sleep_logs=sleep_log_entries,
     )
 
 
@@ -263,7 +299,9 @@ async def get_activity_streams(
 
 @router.post("/backfill")
 async def backfill_activities(
-    max_pages: int = Query(50, ge=1, le=200, description="Max Strava API pages to fetch"),
+    max_pages: int = Query(
+        50, ge=1, le=200, description="Max Strava API pages to fetch"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -307,17 +345,21 @@ async def backfill_route_links(
 
 class MergeThresholdResult(BaseModel):
     """Result of a merge-threshold analysis scan."""
+
     threshold: float
     total_activities: int
     total_pairs_scored: int
     pairs_above_threshold: int
     likely_merges: int
     potential_false_positives: int
-    pairs: list[dict] = Field(default_factory=list, description="Detailed pair scores (top matches)")
+    pairs: list[dict] = Field(
+        default_factory=list, description="Detailed pair scores (top matches)"
+    )
 
 
 class MergePairDetail(BaseModel):
     """Detail about a scored activity pair."""
+
     activity_a_id: str
     activity_a_name: str
     activity_a_source: str
@@ -338,7 +380,9 @@ class MergePairDetail(BaseModel):
 
 @router.get("/merge-analysis")
 async def analyze_merge_thresholds(
-    threshold: float = Query(0.60, ge=0.0, le=1.0, description="Merge threshold to test"),
+    threshold: float = Query(
+        0.60, ge=0.0, le=1.0, description="Merge threshold to test"
+    ),
     days: int = Query(90, ge=7, le=365, description="Lookback period in days"),
     limit: int = Query(100, ge=10, le=500, description="Max activities to scan"),
     db: AsyncSession = Depends(get_db),
@@ -399,7 +443,9 @@ async def analyze_merge_thresholds(
             dur_s = _duration_score(a.duration_seconds, b.duration_seconds)
             dist_s = _distance_score(a.distance_meters, b.distance_meters)
 
-            score = (date_s * 0.50) + (sport_s * 0.20) + (dur_s * 0.15) + (dist_s * 0.15)
+            score = (
+                (date_s * 0.50) + (sport_s * 0.20) + (dur_s * 0.15) + (dist_s * 0.15)
+            )
 
             if score >= threshold:
                 pairs_above += 1
@@ -408,7 +454,13 @@ async def analyze_merge_thresholds(
                 # Same source + different name + score < 0.85 → likely different activities
                 # Different source + same-ish data → likely true duplicate
                 is_false_positive = False
-                if a.source == b.source and a.name != b.name and score < 0.85 or a.sport_type != b.sport_type and score < 0.70:
+                if (
+                    a.source == b.source
+                    and a.name != b.name
+                    and score < 0.85
+                    or a.sport_type != b.sport_type
+                    and score < 0.70
+                ):
                     is_false_positive = True
 
                 if is_false_positive:
@@ -416,24 +468,26 @@ async def analyze_merge_thresholds(
                 else:
                     likely_merges += 1
 
-                scored_pairs.append({
-                    "activity_a_id": str(a.id),
-                    "activity_a_name": a.name,
-                    "activity_a_source": a.source,
-                    "activity_a_sport": a.sport_type,
-                    "activity_a_date": a.start_date.isoformat(),
-                    "activity_b_id": str(b.id),
-                    "activity_b_name": b.name,
-                    "activity_b_source": b.source,
-                    "activity_b_sport": b.sport_type,
-                    "activity_b_date": b.start_date.isoformat(),
-                    "score": round(score, 3),
-                    "date_score": round(date_s, 3),
-                    "sport_score": round(sport_s, 3),
-                    "duration_score": round(dur_s, 3),
-                    "distance_score": round(dist_s, 3),
-                    "likely_false_positive": is_false_positive,
-                })
+                scored_pairs.append(
+                    {
+                        "activity_a_id": str(a.id),
+                        "activity_a_name": a.name,
+                        "activity_a_source": a.source,
+                        "activity_a_sport": a.sport_type,
+                        "activity_a_date": a.start_date.isoformat(),
+                        "activity_b_id": str(b.id),
+                        "activity_b_name": b.name,
+                        "activity_b_source": b.source,
+                        "activity_b_sport": b.sport_type,
+                        "activity_b_date": b.start_date.isoformat(),
+                        "score": round(score, 3),
+                        "date_score": round(date_s, 3),
+                        "sport_score": round(sport_s, 3),
+                        "duration_score": round(dur_s, 3),
+                        "distance_score": round(dist_s, 3),
+                        "likely_false_positive": is_false_positive,
+                    }
+                )
 
     # Sort scored pairs by score descending, limit to top 50 for response
     scored_pairs.sort(key=lambda p: p["score"], reverse=True)
@@ -471,7 +525,9 @@ async def import_gpx(
     try:
         gpx_text = raw.decode("utf-8")
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File must be valid UTF-8 encoded GPX XML")
+        raise HTTPException(
+            status_code=400, detail="File must be valid UTF-8 encoded GPX XML"
+        )
 
     try:
         parsed = parse_gpx(gpx_text, include_timestamps=True)
@@ -486,8 +542,10 @@ async def import_gpx(
     total_distance = 0.0
     for i in range(1, len(points)):
         total_distance += haversine_distance(
-            points[i - 1][0], points[i - 1][1],
-            points[i][0], points[i][1],
+            points[i - 1][0],
+            points[i - 1][1],
+            points[i][0],
+            points[i][1],
         )
 
     # Compute elevation gain
@@ -569,7 +627,11 @@ async def import_fit(
     gps_lons = streams.get("position_long", [])
     encoded_polyline = None
     if gps_lats and gps_lons and len(gps_lats) == len(gps_lons):
-        points = [(lat, lng) for lat, lng in zip(gps_lats, gps_lons) if lat is not None and lng is not None]
+        points = [
+            (lat, lng)
+            for lat, lng in zip(gps_lats, gps_lons)
+            if lat is not None and lng is not None
+        ]
         if points:
             encoded_polyline = encode_polyline(points)
 
@@ -589,7 +651,9 @@ async def import_fit(
         average_speed=session.get("average_speed"),
         average_cadence=session.get("average_cadence"),
         calories=session.get("calories"),
-        raw_data={"map": {"summary_polyline": encoded_polyline}} if encoded_polyline else None,
+        raw_data={"map": {"summary_polyline": encoded_polyline}}
+        if encoded_polyline
+        else None,
     )
     db.add(activity)
     await db.flush()
@@ -717,4 +781,3 @@ async def trigger_activity_ai_analysis(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")
-

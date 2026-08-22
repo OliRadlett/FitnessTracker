@@ -61,7 +61,9 @@ def calculate_intensity_factor(normalized_power: float, ftp: float) -> float | N
     return round(normalized_power / ftp, 3)
 
 
-def calculate_variability_index(normalized_power: float, avg_power: float) -> float | None:
+def calculate_variability_index(
+    normalized_power: float, avg_power: float
+) -> float | None:
     """VI = NP / AP. Lower is better (more steady)."""
     if not avg_power or avg_power <= 0 or not normalized_power:
         return None
@@ -91,7 +93,7 @@ def compute_normalized_power(power_data: list[float]) -> float | None:
     if not rolling:
         return None
 
-    return round((sum(v ** 4 for v in rolling) / len(rolling)) ** 0.25, 1)
+    return round((sum(v**4 for v in rolling) / len(rolling)) ** 0.25, 1)
 
 
 def calculate_vam(elevation_gain_m: float, duration_seconds: int) -> float | None:

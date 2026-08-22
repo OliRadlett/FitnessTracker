@@ -27,7 +27,10 @@ class TestRouteDeduplication:
     """Route deduplication — same polyline → same route."""
 
     async def test_same_polyline_returns_existing_route(
-        self, db_session, test_user, test_route,
+        self,
+        db_session,
+        test_user,
+        test_route,
     ):
         """Creating a route with the same polyline returns the existing route."""
         from app.services.route_service import find_duplicate_route
@@ -47,7 +50,10 @@ class TestRouteDeduplication:
         assert duplicate.id == test_route.id
 
     async def test_different_polyline_returns_none(
-        self, db_session, test_user, test_route,
+        self,
+        db_session,
+        test_user,
+        test_route,
     ):
         """Creating a route with a different polyline returns None."""
         from app.services.route_service import find_duplicate_route

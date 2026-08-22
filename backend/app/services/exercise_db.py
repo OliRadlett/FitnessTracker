@@ -385,7 +385,9 @@ def search_exercises(query: str, limit: int = 10) -> list[dict[str, str]]:
 
     # Also check aliases for matches
     for alias, canonical in _ALIASES.items():
-        if query_lower in alias and canonical not in [e["name"] for e in exact + starts_with + contains]:
+        if query_lower in alias and canonical not in [
+            e["name"] for e in exact + starts_with + contains
+        ]:
             cat = get_category(canonical)
             contains.append({"name": canonical, "category": cat})
 

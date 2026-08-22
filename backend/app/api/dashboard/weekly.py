@@ -25,6 +25,7 @@ router = APIRouter()
 def _safe_agg(val, default=0.0):
     """Convert a SQL aggregation result to a safe float, guarding against NaN/Inf."""
     import math
+
     if val is None:
         return default
     try:
@@ -44,7 +45,9 @@ def _week_bounds(offset_weeks: int = 0) -> tuple[date, date]:
 
 @router.get("/weekly-report", response_model=WeeklyReport)
 async def weekly_report(
-    weeks_back: int = Query(0, ge=0, le=12, description="0 = current week, 1 = last week, etc."),
+    weeks_back: int = Query(
+        0, ge=0, le=12, description="0 = current week, 1 = last week, etc."
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -57,8 +60,10 @@ async def weekly_report(
         select(
             func.count(LiftingSession.id),
             func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0),
+        ).where(
+            LiftingSession.user_id == uid,
+            LiftingSession.session_date.between(monday, sunday),
         )
-        .where(LiftingSession.user_id == uid, LiftingSession.session_date.between(monday, sunday))
     )
     row = result.one()
     lifting_sessions = int(row[0] or 0)
@@ -69,8 +74,7 @@ async def weekly_report(
         select(
             func.count(Activity.id),
             func.coalesce(func.sum(Activity.tss), 0.0),
-        )
-        .where(
+        ).where(
             Activity.user_id == uid,
             Activity.start_date >= monday,
             Activity.start_date <= sunday,
@@ -86,8 +90,9 @@ async def weekly_report(
         select(
             func.avg(DailyMetric.recovery_score),
             func.avg(DailyMetric.hrv_ms),
+        ).where(
+            DailyMetric.user_id == uid, DailyMetric.metric_date.between(monday, sunday)
         )
-        .where(DailyMetric.user_id == uid, DailyMetric.metric_date.between(monday, sunday))
     )
     row = result.one()
     avg_recovery = _safe_agg(row[0], default=None)
@@ -95,16 +100,16 @@ async def weekly_report(
 
     # Avg sleep
     result = await db.execute(
-        select(func.avg(SleepLog.total_sleep_seconds))
-        .where(SleepLog.user_id == uid, SleepLog.sleep_date.between(monday, sunday))
+        select(func.avg(SleepLog.total_sleep_seconds)).where(
+            SleepLog.user_id == uid, SleepLog.sleep_date.between(monday, sunday)
+        )
     )
     avg_sleep_secs = _safe_agg(result.scalar(), default=None)
     avg_sleep_hours = round(avg_sleep_secs / 3600, 1) if avg_sleep_secs else None
 
     # New PRs
     result = await db.execute(
-        select(func.count(PersonalRecord.id))
-        .where(
+        select(func.count(PersonalRecord.id)).where(
             PersonalRecord.user_id == uid,
             PersonalRecord.achieved_date.between(monday, sunday),
         )
@@ -176,8 +181,12 @@ async def whoop_weekly_summary(
             return "down"
         return "stable"
 
-    cur_recovery = [m.recovery_score for m in current_week if m.recovery_score is not None]
-    prev_recovery = [m.recovery_score for m in prev_week if m.recovery_score is not None]
+    cur_recovery = [
+        m.recovery_score for m in current_week if m.recovery_score is not None
+    ]
+    prev_recovery = [
+        m.recovery_score for m in prev_week if m.recovery_score is not None
+    ]
     avg_recovery = _avg(cur_recovery)
     prev_avg_recovery = _avg(prev_recovery)
 
@@ -186,19 +195,32 @@ async def whoop_weekly_summary(
     total_strain = round(sum(cur_strain), 1) if cur_strain else None
     prev_total_strain = round(sum(prev_strain), 1) if prev_strain else None
 
-    cur_sleep = [m.sleep_duration_minutes for m in current_week if m.sleep_duration_minutes is not None]
-    prev_sleep = [m.sleep_duration_minutes for m in prev_week if m.sleep_duration_minutes is not None]
+    cur_sleep = [
+        m.sleep_duration_minutes
+        for m in current_week
+        if m.sleep_duration_minutes is not None
+    ]
+    prev_sleep = [
+        m.sleep_duration_minutes
+        for m in prev_week
+        if m.sleep_duration_minutes is not None
+    ]
     avg_sleep_hours = round(_avg(cur_sleep) / 60, 1) if _avg(cur_sleep) else None
     prev_avg_sleep_hours = round(_avg(prev_sleep) / 60, 1) if _avg(prev_sleep) else None
 
     # Best/worst recovery day
-    best_day = max(current_week, key=lambda m: m.recovery_score or 0) if cur_recovery else None
-    worst_day = min(current_week, key=lambda m: m.recovery_score or 200) if cur_recovery else None
+    best_day = (
+        max(current_week, key=lambda m: m.recovery_score or 0) if cur_recovery else None
+    )
+    worst_day = (
+        min(current_week, key=lambda m: m.recovery_score or 200)
+        if cur_recovery
+        else None
+    )
 
     # Sleep consistency
     sleep_result = await db.execute(
-        select(SleepLog)
-        .where(
+        select(SleepLog).where(
             SleepLog.user_id == uid,
             SleepLog.sleep_start.isnot(None),
             SleepLog.sleep_date.between(monday, sunday),
@@ -206,6 +228,7 @@ async def whoop_weekly_summary(
     )
     sleep_logs = list(sleep_result.scalars().all())
     from app.services.whoop import compute_sleep_consistency
+
     consistency = compute_sleep_consistency(sleep_logs, window_days=7)
 
     return {
@@ -221,11 +244,15 @@ async def whoop_weekly_summary(
         "best_recovery_day": {
             "date": best_day.metric_date.isoformat(),
             "score": best_day.recovery_score,
-        } if best_day else None,
+        }
+        if best_day
+        else None,
         "worst_recovery_day": {
             "date": worst_day.metric_date.isoformat(),
             "score": worst_day.recovery_score,
-        } if worst_day else None,
+        }
+        if worst_day
+        else None,
         "days_with_data": len(current_week),
     }
 
@@ -240,9 +267,9 @@ async def monthly_summary(
     uid = current_user.id
     today = date.today()
     # Start from the first day of (months-1) months ago
-    start_month = (today.replace(day=1) - timedelta(days=1))
+    start_month = today.replace(day=1) - timedelta(days=1)
     for _ in range(months - 2):
-        start_month = (start_month.replace(day=1) - timedelta(days=1))
+        start_month = start_month.replace(day=1) - timedelta(days=1)
     start_date = start_month.replace(day=1)
 
     # Lifting volume + sessions per month
@@ -250,7 +277,9 @@ async def monthly_summary(
         select(
             func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
             func.count(LiftingSession.id).label("sessions"),
-            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("volume"),
+            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
+                "volume"
+            ),
         )
         .where(
             LiftingSession.user_id == uid,
@@ -261,7 +290,10 @@ async def monthly_summary(
     )
     lifting_by_month: dict[str, dict] = {}
     for row in result.all():
-        lifting_by_month[row.month] = {"sessions": int(row.sessions), "volume": _safe_agg(row.volume)}
+        lifting_by_month[row.month] = {
+            "sessions": int(row.sessions),
+            "volume": _safe_agg(row.volume),
+        }
 
     # Activity (cardio) stats per month — Strava as source of truth
     result = await db.execute(
@@ -374,7 +406,9 @@ async def training_streaks(
     # Lifting dates
     lifting_dates_result = await db.execute(
         select(LiftingSession.session_date)
-        .where(LiftingSession.user_id == uid, LiftingSession.session_date >= one_year_ago)
+        .where(
+            LiftingSession.user_id == uid, LiftingSession.session_date >= one_year_ago
+        )
         .distinct()
     )
     training_dates: set[date] = set(lifting_dates_result.scalars().all())
@@ -382,7 +416,11 @@ async def training_streaks(
     # Activity dates (Strava as source of truth)
     activity_dates_result = await db.execute(
         select(func.date(Activity.start_date).label("d"))
-        .where(Activity.user_id == uid, Activity.source != "wahoo", Activity.start_date >= one_year_ago)
+        .where(
+            Activity.user_id == uid,
+            Activity.source != "wahoo",
+            Activity.start_date >= one_year_ago,
+        )
         .distinct()
     )
     for row in activity_dates_result.all():
@@ -432,9 +470,9 @@ async def training_streaks(
     weekly_consistency_pct = round((weeks_with_data / 12) * 100, 1)
 
     # Monthly sessions for last 6 months
-    six_months_ago = (today.replace(day=1) - timedelta(days=1))
+    six_months_ago = today.replace(day=1) - timedelta(days=1)
     for _ in range(4):
-        six_months_ago = (six_months_ago.replace(day=1) - timedelta(days=1))
+        six_months_ago = six_months_ago.replace(day=1) - timedelta(days=1)
     start_month = six_months_ago.replace(day=1)
 
     monthly_result = await db.execute(
@@ -442,22 +480,32 @@ async def training_streaks(
             func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
             func.count(LiftingSession.id).label("count"),
         )
-        .where(LiftingSession.user_id == uid, LiftingSession.session_date >= start_month)
+        .where(
+            LiftingSession.user_id == uid, LiftingSession.session_date >= start_month
+        )
         .group_by("month")
         .order_by("month")
     )
-    lifting_by_month: dict[str, int] = {row.month: int(row.count) for row in monthly_result.all()}
+    lifting_by_month: dict[str, int] = {
+        row.month: int(row.count) for row in monthly_result.all()
+    }
 
     activity_monthly_result = await db.execute(
         select(
             func.to_char(Activity.start_date, "YYYY-MM").label("month"),
             func.count(Activity.id).label("count"),
         )
-        .where(Activity.user_id == uid, Activity.source != "wahoo", Activity.start_date >= start_month)
+        .where(
+            Activity.user_id == uid,
+            Activity.source != "wahoo",
+            Activity.start_date >= start_month,
+        )
         .group_by("month")
         .order_by("month")
     )
-    activity_by_month: dict[str, int] = {row.month: int(row.count) for row in activity_monthly_result.all()}
+    activity_by_month: dict[str, int] = {
+        row.month: int(row.count) for row in activity_monthly_result.all()
+    }
 
     monthly_sessions = []
     current = start_month

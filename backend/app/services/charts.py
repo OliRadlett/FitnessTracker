@@ -39,6 +39,7 @@ class ChartSeries:
 @dataclass
 class ReferenceArea:
     """A colored background zone on a chart (e.g. TSB overtrained zone)."""
+
     y1: float
     y2: float
     color: str = "#3b82f6"
@@ -96,7 +97,9 @@ class ChartService:
             chart_type="line",
             title="Power Curve",
             labels=[b[0] for b in sorted_buckets],
-            series=[ChartSeries(name="Best Power (W)", data=[b[1] for b in sorted_buckets])],
+            series=[
+                ChartSeries(name="Best Power (W)", data=[b[1] for b in sorted_buckets])
+            ],
             x_label="Duration",
             y_label="Power (W)",
         )
@@ -159,21 +162,34 @@ class ChartService:
         tss_values = [float(r.total_tss or 0) for r in rows]
         if tss_values:
             avg_tss = sum(tss_values) / len(tss_values)
-            insights.append(f"Average weekly TSS: {avg_tss:.0f}. {'Building well.' if avg_tss > 300 else 'Good base level.' if avg_tss > 150 else 'Light training — consider increasing if building fitness.'}")
+            insights.append(
+                f"Average weekly TSS: {avg_tss:.0f}. {'Building well.' if avg_tss > 300 else 'Good base level.' if avg_tss > 150 else 'Light training — consider increasing if building fitness.'}"
+            )
             if len(tss_values) >= 4:
                 recent_4 = sum(tss_values[-4:]) / 4
-                prior_4 = sum(tss_values[-8:-4]) / 4 if len(tss_values) >= 8 else avg_tss
+                prior_4 = (
+                    sum(tss_values[-8:-4]) / 4 if len(tss_values) >= 8 else avg_tss
+                )
                 if prior_4 > 0:
                     change = (recent_4 - prior_4) / prior_4 * 100
                     if change > 15:
-                        insights.append(f"Recent 4-week average ({recent_4:.0f}) is {change:.0f}% higher than the prior 4 weeks — volume is increasing.")
+                        insights.append(
+                            f"Recent 4-week average ({recent_4:.0f}) is {change:.0f}% higher than the prior 4 weeks — volume is increasing."
+                        )
                     elif change < -15:
-                        insights.append(f"Recent 4-week average ({recent_4:.0f}) is {abs(change):.0f}% lower — volume is tapering or recovery period.")
+                        insights.append(
+                            f"Recent 4-week average ({recent_4:.0f}) is {abs(change):.0f}% lower — volume is tapering or recovery period."
+                        )
 
         return ChartData(
             chart_type="bar",
             title="Weekly TSS",
-            labels=[r.week_start.strftime("%Y-%m-%d") if hasattr(r.week_start, "strftime") else str(r.week_start) for r in rows],
+            labels=[
+                r.week_start.strftime("%Y-%m-%d")
+                if hasattr(r.week_start, "strftime")
+                else str(r.week_start)
+                for r in rows
+            ],
             series=[ChartSeries(name="TSS", data=tss_values)],
             x_label="Week",
             y_label="TSS",
@@ -200,7 +216,11 @@ class ChartService:
             chart_type="line",
             title=f"Estimated 1RM — {exercise_name}",
             labels=[pr.achieved_date.isoformat() for pr in prs],
-            series=[ChartSeries(name="Est. 1RM (kg)", data=[pr.estimated_1rm or 0 for pr in prs])],
+            series=[
+                ChartSeries(
+                    name="Est. 1RM (kg)", data=[pr.estimated_1rm or 0 for pr in prs]
+                )
+            ],
             x_label="Date",
             y_label="1RM (kg)",
         )
@@ -209,7 +229,9 @@ class ChartService:
 
     async def weekly_volume(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
         cutoff = date.today() - timedelta(weeks=weeks)
-        week_start = func.date_trunc("week", LiftingSession.session_date).label("week_start")
+        week_start = func.date_trunc("week", LiftingSession.session_date).label(
+            "week_start"
+        )
 
         result = await self.db.execute(
             select(
@@ -233,19 +255,32 @@ class ChartService:
             recent = vol_values[-1]
             if len(vol_values) >= 4:
                 recent_4 = sum(vol_values[-4:]) / 4
-                prior_4 = sum(vol_values[-8:-4]) / 4 if len(vol_values) >= 8 else avg_vol
+                prior_4 = (
+                    sum(vol_values[-8:-4]) / 4 if len(vol_values) >= 8 else avg_vol
+                )
                 if prior_4 > 0:
                     change = (recent_4 - prior_4) / prior_4 * 100
                     if change > 20:
-                        insights.append(f"Volume spike: recent 4-week average ({recent_4:.0f}kg) is {change:.0f}% above prior period. Monitor for injury risk.")
+                        insights.append(
+                            f"Volume spike: recent 4-week average ({recent_4:.0f}kg) is {change:.0f}% above prior period. Monitor for injury risk."
+                        )
                     elif change < -20:
-                        insights.append(f"Volume has decreased {abs(change):.0f}% — deload or taper period.")
-            insights.append(f"Latest week: {recent:.0f}kg. Average: {avg_vol:.0f}kg/week.")
+                        insights.append(
+                            f"Volume has decreased {abs(change):.0f}% — deload or taper period."
+                        )
+            insights.append(
+                f"Latest week: {recent:.0f}kg. Average: {avg_vol:.0f}kg/week."
+            )
 
         return ChartData(
             chart_type="bar",
             title="Weekly Lifting Volume",
-            labels=[r.week_start.strftime("%Y-%m-%d") if hasattr(r.week_start, "strftime") else str(r.week_start) for r in rows],
+            labels=[
+                r.week_start.strftime("%Y-%m-%d")
+                if hasattr(r.week_start, "strftime")
+                else str(r.week_start)
+                for r in rows
+            ],
             series=[ChartSeries(name="Volume (kg)", data=vol_values)],
             x_label="Week",
             y_label="Volume (kg)",
@@ -277,10 +312,16 @@ class ChartService:
             if len(hrv_values) >= 7:
                 recent_7 = sum(hrv_values[-7:]) / 7
                 if recent_7 > avg_hrv * 1.05:
-                    insights.append(f"7-day HRV average ({recent_7:.0f}ms) is above your overall average ({avg_hrv:.0f}ms) — good recovery status.")
+                    insights.append(
+                        f"7-day HRV average ({recent_7:.0f}ms) is above your overall average ({avg_hrv:.0f}ms) — good recovery status."
+                    )
                 elif recent_7 < avg_hrv * 0.9:
-                    insights.append(f"7-day HRV average ({recent_7:.0f}ms) is below your baseline ({avg_hrv:.0f}ms) — may indicate stress or incomplete recovery.")
-            insights.append(f"Current HRV: {recent:.0f}ms. Overall average: {avg_hrv:.0f}ms.")
+                    insights.append(
+                        f"7-day HRV average ({recent_7:.0f}ms) is below your baseline ({avg_hrv:.0f}ms) — may indicate stress or incomplete recovery."
+                    )
+            insights.append(
+                f"Current HRV: {recent:.0f}ms. Overall average: {avg_hrv:.0f}ms."
+            )
 
         return ChartData(
             chart_type="line",
@@ -312,7 +353,9 @@ class ChartService:
             title="Recovery vs Strain",
             labels=[m.metric_date.isoformat() for m in metrics],
             series=[
-                ChartSeries(name="Recovery %", data=[m.recovery_score for m in metrics]),
+                ChartSeries(
+                    name="Recovery %", data=[m.recovery_score for m in metrics]
+                ),
                 ChartSeries(name="Strain", data=[m.strain for m in metrics]),
             ],
             x_label="Date",
@@ -373,7 +416,9 @@ class ChartService:
 
     # ── Sleep quality trend ───────────────────────────────────────────────────
 
-    async def sleep_quality_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+    async def sleep_quality_trend(
+        self, user_id: uuid.UUID, days: int = 90
+    ) -> ChartData:
         cutoff = date.today() - timedelta(days=days)
 
         result = await self.db.execute(
@@ -389,8 +434,9 @@ class ChartService:
         total_hours = []
         efficiencies = []
         for log in logs:
-            if log.total_sleep_seconds:
-                total_hours.append(round(log.total_sleep_seconds / 3600, 1))
+            effective = log.effective_total_sleep_seconds
+            if effective:
+                total_hours.append(round(effective / 3600, 1))
             else:
                 total_hours.append(None)
             efficiencies.append(log.sleep_efficiency)
@@ -427,26 +473,42 @@ class ChartService:
             if first["ctl"] > 0:
                 ctl_change = (current["ctl"] - first["ctl"]) / first["ctl"] * 100
                 if ctl_change > 10:
-                    insights.append(f"CTL has increased {ctl_change:.0f}% over the analysis period — fitness is building well.")
+                    insights.append(
+                        f"CTL has increased {ctl_change:.0f}% over the analysis period — fitness is building well."
+                    )
                 elif ctl_change < -10:
-                    insights.append(f"CTL has declined {abs(ctl_change):.0f}% — fitness is detraining. Consider increasing volume.")
+                    insights.append(
+                        f"CTL has declined {abs(ctl_change):.0f}% — fitness is detraining. Consider increasing volume."
+                    )
                 else:
-                    insights.append(f"CTL is stable ({current['ctl']:.0f}). Maintain current training consistency.")
+                    insights.append(
+                        f"CTL is stable ({current['ctl']:.0f}). Maintain current training consistency."
+                    )
             if current["tsb"] < -30:
-                insights.append(f"TSB is {current['tsb']:.0f} — significant fatigue accumulated. Consider a recovery day or easy week.")
+                insights.append(
+                    f"TSB is {current['tsb']:.0f} — significant fatigue accumulated. Consider a recovery day or easy week."
+                )
             elif current["tsb"] > 25:
-                insights.append(f"TSB is +{current['tsb']:.0f} — well-rested and fresh. Good time for a hard effort or race.")
+                insights.append(
+                    f"TSB is +{current['tsb']:.0f} — well-rested and fresh. Good time for a hard effort or race."
+                )
             elif -10 <= current["tsb"] <= 10:
-                insights.append(f"TSB is {current['tsb']:.0f} — in the sweet spot for balanced training.")
+                insights.append(
+                    f"TSB is {current['tsb']:.0f} — in the sweet spot for balanced training."
+                )
 
         # TSB zone coloring: red (overtrained, TSB < -30), green (fresh, TSB > 5), blue (neutral)
         tsb_values = [d["tsb"] for d in load_data]
         tsb_min = min(tsb_values) if tsb_values else -100
         tsb_max = max(tsb_values) if tsb_values else 100
         reference_areas = [
-            ReferenceArea(y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained"),
+            ReferenceArea(
+                y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained"
+            ),
             ReferenceArea(y1=-30, y2=5, color="#3b82f6", opacity=0.04, label="Neutral"),
-            ReferenceArea(y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh"),
+            ReferenceArea(
+                y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh"
+            ),
         ]
 
         return ChartData(
@@ -454,9 +516,21 @@ class ChartService:
             title="Training Load (CTL / ATL / TSB)",
             labels=labels,
             series=[
-                ChartSeries(name="CTL (Fitness)", data=[d["ctl"] for d in load_data], color="#22c55e"),
-                ChartSeries(name="ATL (Fatigue)", data=[d["atl"] for d in load_data], color="#ef4444"),
-                ChartSeries(name="TSB (Form)", data=[d["tsb"] for d in load_data], color="#3b82f6"),
+                ChartSeries(
+                    name="CTL (Fitness)",
+                    data=[d["ctl"] for d in load_data],
+                    color="#22c55e",
+                ),
+                ChartSeries(
+                    name="ATL (Fatigue)",
+                    data=[d["atl"] for d in load_data],
+                    color="#ef4444",
+                ),
+                ChartSeries(
+                    name="TSB (Form)",
+                    data=[d["tsb"] for d in load_data],
+                    color="#3b82f6",
+                ),
             ],
             x_label="Date",
             y_label="Load (TSS/day)",
@@ -495,13 +569,19 @@ class ChartService:
             if first_ftp > 0:
                 change_pct = (latest_ftp - first_ftp) / first_ftp * 100
                 direction = "improved" if change_pct > 0 else "declined"
-                insights.append(f"FTP has {direction} from {first_ftp}W to {latest_ftp}W ({change_pct:+.1f}%) over {len(entries)} recorded changes.")
+                insights.append(
+                    f"FTP has {direction} from {first_ftp}W to {latest_ftp}W ({change_pct:+.1f}%) over {len(entries)} recorded changes."
+                )
 
         return ChartData(
             chart_type="line",
             title="FTP History",
             labels=[e.effective_date.isoformat() for e in entries],
-            series=[ChartSeries(name="FTP (W)", data=[e.ftp_watts for e in entries], color="#f59e0b")],
+            series=[
+                ChartSeries(
+                    name="FTP (W)", data=[e.ftp_watts for e in entries], color="#f59e0b"
+                )
+            ],
             x_label="Date",
             y_label="FTP (W)",
             insights=insights,
@@ -525,11 +605,17 @@ class ChartService:
         if 1200 in best_power and 300 in best_power:
             ratio = best_power[1200] / best_power[300]
             if ratio > 0.85:
-                insights.append(f"Strong endurance profile — 20min power ({best_power[1200]}W) is {ratio*100:.0f}% of 5min power ({best_power[300]}W). Good aerobic efficiency.")
+                insights.append(
+                    f"Strong endurance profile — 20min power ({best_power[1200]}W) is {ratio * 100:.0f}% of 5min power ({best_power[300]}W). Good aerobic efficiency."
+                )
             elif ratio < 0.75:
-                insights.append(f"Anaerobic-leaning profile — 20min power ({best_power[1200]}W) is {ratio*100:.0f}% of 5min power ({best_power[300]}W). Consider more endurance work.")
+                insights.append(
+                    f"Anaerobic-leaning profile — 20min power ({best_power[1200]}W) is {ratio * 100:.0f}% of 5min power ({best_power[300]}W). Consider more endurance work."
+                )
         if 5 in best_power:
-            insights.append(f"Peak sprint power: {best_power[5]}W (5s). {'Excellent neuromuscular power.' if best_power[5] > 1000 else 'Room to develop sprint power.'}")
+            insights.append(
+                f"Peak sprint power: {best_power[5]}W (5s). {'Excellent neuromuscular power.' if best_power[5] > 1000 else 'Room to develop sprint power.'}"
+            )
 
         return ChartData(
             chart_type="line",
@@ -556,7 +642,9 @@ class ChartService:
                 y_label="Time",
             )
 
-        zones = await compute_power_zones_from_streams(self.db, user_id, profile.ftp_watts, days)
+        zones = await compute_power_zones_from_streams(
+            self.db, user_id, profile.ftp_watts, days
+        )
 
         labels = [f"{z['zone']} - {z['zone_name']}" for z in zones]
         data = [round(z["time_seconds"] / 60, 1) for z in zones]  # minutes
@@ -569,11 +657,17 @@ class ChartService:
             z4_pct = next((z["percentage"] for z in zones if z["zone"] == "Z4"), 0)
             z5_pct = next((z["percentage"] for z in zones if z["zone"] == "Z5"), 0)
             if z2_pct > 40:
-                insights.append(f"{z2_pct:.0f}% of ride time in Z2 (Endurance) — good aerobic base building.")
+                insights.append(
+                    f"{z2_pct:.0f}% of ride time in Z2 (Endurance) — good aerobic base building."
+                )
             if z4_pct > 20:
-                insights.append(f"{z4_pct:.0f}% in Z4 (Threshold) — significant high-intensity work. Ensure adequate recovery.")
+                insights.append(
+                    f"{z4_pct:.0f}% in Z4 (Threshold) — significant high-intensity work. Ensure adequate recovery."
+                )
             if z5_pct > 15:
-                insights.append(f"{z5_pct:.0f}% in Z5 (VO2max) — strong intensity distribution for fitness gains.")
+                insights.append(
+                    f"{z5_pct:.0f}% in Z5 (VO2max) — strong intensity distribution for fitness gains."
+                )
 
         return ChartData(
             chart_type="bar",
@@ -587,7 +681,9 @@ class ChartService:
 
     # ── HR Zone Distribution chart ────────────────────────────────────────────
 
-    async def hr_zone_distribution(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+    async def hr_zone_distribution(
+        self, user_id: uuid.UUID, days: int = 30
+    ) -> ChartData:
         """Heart rate zone distribution as a bar chart (LTHR-based)."""
 
         result = await self.db.execute(
@@ -618,13 +714,21 @@ class ChartService:
             z4_pct = next((z["percentage"] for z in zones if z["zone"] == "Z4"), 0)
             z5_pct = next((z["percentage"] for z in zones if z["zone"] == "Z5"), 0)
             if z2_pct > 40:
-                insights.append(f"{z2_pct:.0f}% of time in Z2 (Endurance) — solid aerobic base work.")
+                insights.append(
+                    f"{z2_pct:.0f}% of time in Z2 (Endurance) — solid aerobic base work."
+                )
             if z4_pct > 20:
-                insights.append(f"{z4_pct:.0f}% in Z4 (Threshold) — significant tempo work. Monitor recovery.")
+                insights.append(
+                    f"{z4_pct:.0f}% in Z4 (Threshold) — significant tempo work. Monitor recovery."
+                )
             if z5_pct > 15:
-                insights.append(f"{z5_pct:.0f}% in Z5 (VO2max) — high-intensity efforts for fitness gains.")
+                insights.append(
+                    f"{z5_pct:.0f}% in Z5 (VO2max) — high-intensity efforts for fitness gains."
+                )
             total_minutes = sum(data)
-            insights.append(f"Total tracked time: {total_minutes:.0f} min across {len(zones)} zones (LTHR: {profile.lactate_threshold_hr:.0f} bpm).")
+            insights.append(
+                f"Total tracked time: {total_minutes:.0f} min across {len(zones)} zones (LTHR: {profile.lactate_threshold_hr:.0f} bpm)."
+            )
 
         return ChartData(
             chart_type="bar",
@@ -661,7 +765,13 @@ class ChartService:
             chart_type="bar",
             title="Daily TSS",
             labels=[str(r.day) for r in rows],
-            series=[ChartSeries(name="TSS", data=[float(r.total_tss or 0) for r in rows], color="#3b82f6")],
+            series=[
+                ChartSeries(
+                    name="TSS",
+                    data=[float(r.total_tss or 0) for r in rows],
+                    color="#3b82f6",
+                )
+            ],
             x_label="Date",
             y_label="TSS",
         )
@@ -718,11 +828,17 @@ class ChartService:
             if first_1rm > 0:
                 change = (latest_1rm - first_1rm) / first_1rm * 100
                 if change > 5:
-                    insights.append(f"Estimated 1RM has increased {change:.1f}% ({first_1rm:.0f}kg → {latest_1rm:.0f}kg) — strength is progressing.")
+                    insights.append(
+                        f"Estimated 1RM has increased {change:.1f}% ({first_1rm:.0f}kg → {latest_1rm:.0f}kg) — strength is progressing."
+                    )
                 elif change < -5:
-                    insights.append(f"Estimated 1RM has declined {abs(change):.1f}% — consider a deload or program change.")
+                    insights.append(
+                        f"Estimated 1RM has declined {abs(change):.1f}% — consider a deload or program change."
+                    )
                 else:
-                    insights.append(f"Estimated 1RM is stable at {latest_1rm:.0f}kg. Consider progressive overload to continue building.")
+                    insights.append(
+                        f"Estimated 1RM is stable at {latest_1rm:.0f}kg. Consider progressive overload to continue building."
+                    )
 
         return ChartData(
             chart_type="line",
@@ -736,7 +852,7 @@ class ChartService:
             y_label="kg",
             insights=insights,
         )
-    
+
         # ── Power curve comparison (two time periods) ────────────────────────────
 
     async def power_curve_comparison(
@@ -766,7 +882,9 @@ class ChartService:
         data_a = []
         data_b = []
         for dur in all_durations:
-            label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+            label = next(
+                (lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s"
+            )
             labels.append(label)
             data_a.append(curve_a.get(dur))
             data_b.append(curve_b.get(dur))
@@ -783,17 +901,24 @@ class ChartService:
                     b_val = curve_b[dur]
                     if b_val > 0:
                         pct = (a_val - b_val) / b_val * 100
-                        label = next((lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur), f"{dur}s")
+                        label = next(
+                            (lbl for sec, lbl in POWER_DURATION_BUCKETS if sec == dur),
+                            f"{dur}s",
+                        )
                         if pct > 3:
                             improvements.append(f"{label}: +{pct:.1f}%")
                         elif pct < -3:
                             declines.append(f"{label}: {pct:.1f}%")
                 if improvements:
-                    insights.append(f"Recent ({days}d) vs baseline ({days_b}d) improvements: {', '.join(improvements)}")
+                    insights.append(
+                        f"Recent ({days}d) vs baseline ({days_b}d) improvements: {', '.join(improvements)}"
+                    )
                 if declines:
                     insights.append(f"Declines vs baseline: {', '.join(declines)}")
                 if not improvements and not declines:
-                    insights.append(f"Power output is stable between {days}d and {days_b}d windows.")
+                    insights.append(
+                        f"Power output is stable between {days}d and {days_b}d windows."
+                    )
 
         return ChartData(
             chart_type="line",
@@ -838,7 +963,11 @@ class ChartService:
         for m in metrics:
             next_day = m.metric_date + timedelta(days=1)
             next_metric = metric_by_date.get(next_day)
-            if next_metric and next_metric.recovery_score is not None and m.strain is not None:
+            if (
+                next_metric
+                and next_metric.recovery_score is not None
+                and m.strain is not None
+            ):
                 recovery = next_metric.recovery_score
                 if recovery >= 67:
                     color = "#22c55e"
@@ -873,10 +1002,14 @@ class ChartService:
         insights = []
         if green:
             avg_green_strain = sum(s for s, _ in green) / len(green)
-            insights.append(f"When strain stays below {avg_green_strain:.0f}, recovery tends to stay above 67% — your optimal zone.")
+            insights.append(
+                f"When strain stays below {avg_green_strain:.0f}, recovery tends to stay above 67% — your optimal zone."
+            )
         if red:
             avg_red_strain = sum(s for s, _ in red) / len(red)
-            insights.append(f"Strain above {avg_red_strain:.0f} often leads to recovery below 34% — consider limiting high-strain days.")
+            insights.append(
+                f"Strain above {avg_red_strain:.0f} often leads to recovery below 34% — consider limiting high-strain days."
+            )
 
         return ChartData(
             chart_type="scatter",
@@ -890,7 +1023,9 @@ class ChartService:
 
     # ── Recovery vs Performance correlation (scatter) ────────────────────────
 
-    async def recovery_vs_performance(self, user_id: uuid.UUID, days: int = 60) -> ChartData:
+    async def recovery_vs_performance(
+        self, user_id: uuid.UUID, days: int = 60
+    ) -> ChartData:
         """Scatter plot: x-axis = recovery score, y-axis = next-day performance metric.
 
         Performance = lifting volume (kg) for strength days, or TSS for cycling days.
@@ -959,18 +1094,22 @@ class ChartService:
         if lifting_points:
             # Sort lifting points for their own series
             lifting_sorted = sorted(lifting_points, key=lambda p: p[0])
-            series_list.append(ChartSeries(
-                name="Lifting Volume (kg)",
-                data=[p[1] for p in lifting_sorted],
-                color="#8b5cf6",
-            ))
+            series_list.append(
+                ChartSeries(
+                    name="Lifting Volume (kg)",
+                    data=[p[1] for p in lifting_sorted],
+                    color="#8b5cf6",
+                )
+            )
         if tss_points:
             tss_sorted = sorted(tss_points, key=lambda p: p[0])
-            series_list.append(ChartSeries(
-                name="Cycling TSS",
-                data=[p[1] for p in tss_sorted],
-                color="#3b82f6",
-            ))
+            series_list.append(
+                ChartSeries(
+                    name="Cycling TSS",
+                    data=[p[1] for p in tss_sorted],
+                    color="#3b82f6",
+                )
+            )
 
         # Use the larger dataset's recovery values as labels (x-axis)
         if len(lifting_points) >= len(tss_points):
@@ -1035,7 +1174,9 @@ class ChartService:
 
         # Personal baseline (±1 std dev from mean)
         mean_hrv = sum(hrv_values) / len(hrv_values)
-        std_hrv = (sum((v - mean_hrv) ** 2 for v in hrv_values) / len(hrv_values)) ** 0.5
+        std_hrv = (
+            sum((v - mean_hrv) ** 2 for v in hrv_values) / len(hrv_values)
+        ) ** 0.5
 
         return ChartData(
             chart_type="line",
@@ -1097,7 +1238,9 @@ class ChartService:
                 direction = "increased" if change > 0 else "decreased"
                 weeks = len(weights) / 7 if len(weights) > 7 else 1
                 rate = abs(change) / weeks
-                insights.append(f"Weight has {direction} {abs(change):.1f}kg over {len(weights)} days ({rate:.2f}kg/week). {'Healthy pace.' if rate < 0.5 else 'Rapid change — monitor closely.'}")
+                insights.append(
+                    f"Weight has {direction} {abs(change):.1f}kg over {len(weights)} days ({rate:.2f}kg/week). {'Healthy pace.' if rate < 0.5 else 'Rapid change — monitor closely.'}"
+                )
             else:
                 insights.append(f"Weight is stable at {latest_w:.1f}kg.")
 
@@ -1116,14 +1259,20 @@ class ChartService:
 
     # ── Training Load Balance ───────────────────────────────────────────────
 
-    async def training_load_balance(self, user_id: uuid.UUID, weeks: int = 4) -> ChartData:
+    async def training_load_balance(
+        self, user_id: uuid.UUID, weeks: int = 4
+    ) -> ChartData:
         """Stacked area chart: Strava TSS + lifting volume per week.
 
         Shows how different training modalities contribute to total load.
         """
         cutoff = date.today() - timedelta(weeks=weeks)
-        week_start_activity = func.date_trunc("week", Activity.start_date).label("week_start")
-        week_start_lifting = func.date_trunc("week", LiftingSession.session_date).label("week_start")
+        week_start_activity = func.date_trunc("week", Activity.start_date).label(
+            "week_start"
+        )
+        week_start_lifting = func.date_trunc("week", LiftingSession.session_date).label(
+            "week_start"
+        )
 
         # TSS per week (from activities)
         tss_result = await self.db.execute(
@@ -1145,7 +1294,9 @@ class ChartService:
         lift_result = await self.db.execute(
             select(
                 week_start_lifting,
-                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label("total_volume"),
+                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
+                    "total_volume"
+                ),
             )
             .where(
                 LiftingSession.user_id == user_id,
@@ -1154,7 +1305,10 @@ class ChartService:
             .group_by(week_start_lifting)
             .order_by(week_start_lifting)
         )
-        lift_map = {r.week_start: round(float(r.total_volume or 0) / 100, 1) for r in lift_result.all()}
+        lift_map = {
+            r.week_start: round(float(r.total_volume or 0) / 100, 1)
+            for r in lift_result.all()
+        }
 
         # Whoop strain per week (sum of daily strain)
         strain_result = await self.db.execute(
@@ -1170,19 +1324,38 @@ class ChartService:
             .group_by(func.date_trunc("week", DailyMetric.metric_date))
             .order_by(func.date_trunc("week", DailyMetric.metric_date))
         )
-        strain_map = {r.week_start: float(r.total_strain or 0) for r in strain_result.all()}
+        strain_map = {
+            r.week_start: float(r.total_strain or 0) for r in strain_result.all()
+        }
 
         # Merge all weeks
-        all_weeks = sorted(set(list(tss_map.keys()) + list(lift_map.keys()) + list(strain_map.keys())))
+        all_weeks = sorted(
+            set(list(tss_map.keys()) + list(lift_map.keys()) + list(strain_map.keys()))
+        )
 
         return ChartData(
             chart_type="area",
             title="Training Load Balance",
-            labels=[w.strftime("%Y-%m-%d") if hasattr(w, "strftime") else str(w) for w in all_weeks],
+            labels=[
+                w.strftime("%Y-%m-%d") if hasattr(w, "strftime") else str(w)
+                for w in all_weeks
+            ],
             series=[
-                ChartSeries(name="Cycling TSS", data=[tss_map.get(w, 0) for w in all_weeks], color="#3b82f6"),
-                ChartSeries(name="Lifting Volume (÷100)", data=[lift_map.get(w, 0) for w in all_weeks], color="#8b5cf6"),
-                ChartSeries(name="Whoop Strain", data=[strain_map.get(w, 0) for w in all_weeks], color="#f97316"),
+                ChartSeries(
+                    name="Cycling TSS",
+                    data=[tss_map.get(w, 0) for w in all_weeks],
+                    color="#3b82f6",
+                ),
+                ChartSeries(
+                    name="Lifting Volume (÷100)",
+                    data=[lift_map.get(w, 0) for w in all_weeks],
+                    color="#8b5cf6",
+                ),
+                ChartSeries(
+                    name="Whoop Strain",
+                    data=[strain_map.get(w, 0) for w in all_weeks],
+                    color="#f97316",
+                ),
             ],
             x_label="Week",
             y_label="Load Units",
@@ -1233,11 +1406,23 @@ class ChartService:
 
         training_dates = activity_dates | lifting_dates
 
-        rest_recoveries = [m.recovery_score for m in metrics if m.metric_date not in training_dates]
-        training_recoveries = [m.recovery_score for m in metrics if m.metric_date in training_dates]
+        rest_recoveries = [
+            m.recovery_score for m in metrics if m.metric_date not in training_dates
+        ]
+        training_recoveries = [
+            m.recovery_score for m in metrics if m.metric_date in training_dates
+        ]
 
-        avg_rest = round(sum(rest_recoveries) / len(rest_recoveries), 1) if rest_recoveries else 0
-        avg_training = round(sum(training_recoveries) / len(training_recoveries), 1) if training_recoveries else 0
+        avg_rest = (
+            round(sum(rest_recoveries) / len(rest_recoveries), 1)
+            if rest_recoveries
+            else 0
+        )
+        avg_training = (
+            round(sum(training_recoveries) / len(training_recoveries), 1)
+            if training_recoveries
+            else 0
+        )
 
         return ChartData(
             chart_type="bar",
@@ -1281,31 +1466,47 @@ class ChartService:
             if first > 0:
                 change = latest - first
                 classification = _classify_vo2max(latest)
-                insights.append(f"Current VO2max: {latest:.1f} ml/kg/min ({classification}).")
+                insights.append(
+                    f"Current VO2max: {latest:.1f} ml/kg/min ({classification})."
+                )
                 if abs(change) > 1:
                     direction = "improved" if change > 0 else "declined"
-                    insights.append(f"VO2max has {direction} by {abs(change):.1f} ml/kg/min over the analysis period.")
+                    insights.append(
+                        f"VO2max has {direction} by {abs(change):.1f} ml/kg/min over the analysis period."
+                    )
                 else:
-                    insights.append("VO2max is stable. Consistent aerobic training will drive improvement.")
+                    insights.append(
+                        "VO2max is stable. Consistent aerobic training will drive improvement."
+                    )
         elif vo2_values:
             classification = _classify_vo2max(vo2_values[-1])
-            insights.append(f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification}).")
+            insights.append(
+                f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification})."
+            )
 
         # Add classification reference areas
         reference_areas = [
             ReferenceArea(y1=0, y2=35, color="#ef4444", opacity=0.06, label="Poor"),
-            ReferenceArea(y1=35, y2=45, color="#f97316", opacity=0.06, label="Below Avg"),
+            ReferenceArea(
+                y1=35, y2=45, color="#f97316", opacity=0.06, label="Below Avg"
+            ),
             ReferenceArea(y1=45, y2=55, color="#eab308", opacity=0.06, label="Average"),
             ReferenceArea(y1=55, y2=65, color="#22c55e", opacity=0.06, label="Good"),
-            ReferenceArea(y1=65, y2=75, color="#3b82f6", opacity=0.06, label="Excellent"),
-            ReferenceArea(y1=75, y2=100, color="#8b5cf6", opacity=0.06, label="Superior"),
+            ReferenceArea(
+                y1=65, y2=75, color="#3b82f6", opacity=0.06, label="Excellent"
+            ),
+            ReferenceArea(
+                y1=75, y2=100, color="#8b5cf6", opacity=0.06, label="Superior"
+            ),
         ]
 
         return ChartData(
             chart_type="line",
             title="VO2max Trend",
             labels=labels,
-            series=[ChartSeries(name="VO2max (ml/kg/min)", data=vo2_values, color="#22c55e")],
+            series=[
+                ChartSeries(name="VO2max (ml/kg/min)", data=vo2_values, color="#22c55e")
+            ],
             x_label="Date",
             y_label="VO2max (ml/kg/min)",
             insights=insights,
@@ -1331,7 +1532,12 @@ class ChartService:
                 y_label="Decoupling %",
             )
 
-        labels = [h["date"].strftime("%Y-%m-%d") if hasattr(h["date"], "strftime") else str(h["date"]) for h in history]
+        labels = [
+            h["date"].strftime("%Y-%m-%d")
+            if hasattr(h["date"], "strftime")
+            else str(h["date"])
+            for h in history
+        ]
         dec_values = [h["decoupling_pct"] for h in history]
 
         # Color points by classification
@@ -1349,20 +1555,30 @@ class ChartService:
         insights = []
         avg_dec = sum(dec_values) / len(dec_values)
         classification = _classify_decoupling(avg_dec)
-        insights.append(f"Average decoupling: {avg_dec:.1f}% ({classification}) across {len(dec_values)} rides.")
+        insights.append(
+            f"Average decoupling: {avg_dec:.1f}% ({classification}) across {len(dec_values)} rides."
+        )
         if len(dec_values) >= 3:
             recent_3 = sum(dec_values[-3:]) / 3
             if recent_3 < 5:
                 insights.append("Recent decoupling is excellent — strong aerobic base.")
             elif recent_3 < 8:
-                insights.append("Recent decoupling is acceptable. More long Zone 2 rides would improve aerobic fitness.")
+                insights.append(
+                    "Recent decoupling is acceptable. More long Zone 2 rides would improve aerobic fitness."
+                )
             else:
-                insights.append("Recent decoupling is high — focus on aerobic base building with long Zone 2 rides.")
+                insights.append(
+                    "Recent decoupling is high — focus on aerobic base building with long Zone 2 rides."
+                )
 
         reference_areas = [
             ReferenceArea(y1=0, y2=5, color="#22c55e", opacity=0.08, label="Excellent"),
-            ReferenceArea(y1=5, y2=8, color="#eab308", opacity=0.08, label="Acceptable"),
-            ReferenceArea(y1=8, y2=30, color="#ef4444", opacity=0.08, label="Aerobic Deficiency"),
+            ReferenceArea(
+                y1=5, y2=8, color="#eab308", opacity=0.08, label="Acceptable"
+            ),
+            ReferenceArea(
+                y1=8, y2=30, color="#ef4444", opacity=0.08, label="Aerobic Deficiency"
+            ),
         ]
 
         return ChartData(
@@ -1399,7 +1615,16 @@ class ChartService:
 
     @staticmethod
     def _bucket_order(bucket: str) -> int:
-        order = {"30s": 0, "1min": 1, "5min": 2, "10min": 3, "20min": 4, "30min": 5, "60min": 6, "60min+": 7}
+        order = {
+            "30s": 0,
+            "1min": 1,
+            "5min": 2,
+            "10min": 3,
+            "20min": 4,
+            "30min": 5,
+            "60min": 6,
+            "60min+": 7,
+        }
         return order.get(bucket, 99)
 
     # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
@@ -1428,7 +1653,11 @@ class ChartService:
         actual_weekly: dict[str, float] = {}
         for row in result.all():
             if row[0]:
-                wk = row[0].date().isoformat() if hasattr(row[0], "date") else str(row[0])
+                wk = (
+                    row[0].date().isoformat()
+                    if hasattr(row[0], "date")
+                    else str(row[0])
+                )
                 actual_weekly[wk] = float(row[1] or 0)
 
         # Planned weekly TSS from active/completed plans
@@ -1448,16 +1677,26 @@ class ChartService:
         for plan in plans:
             for day in plan.days:
                 if day.day_date >= start_date:
-                    wk = (day.day_date - timedelta(days=day.day_date.weekday())).isoformat()
-                    planned_weekly[wk] = planned_weekly.get(wk, 0) + (day.planned_tss or 0)
+                    wk = (
+                        day.day_date - timedelta(days=day.day_date.weekday())
+                    ).isoformat()
+                    planned_weekly[wk] = planned_weekly.get(wk, 0) + (
+                        day.planned_tss or 0
+                    )
                     plan_types[wk] = plan.plan_type
 
         BLOCK_COLORS = {
-            "base": "#3b82f6", "build": "#f59e0b", "peak": "#ef4444",
-            "taper": "#8b5cf6", "recovery": "#22c55e", "custom": "#6b7280",
+            "base": "#3b82f6",
+            "build": "#f59e0b",
+            "peak": "#ef4444",
+            "taper": "#8b5cf6",
+            "recovery": "#22c55e",
+            "custom": "#6b7280",
         }
 
-        all_weeks = sorted(set(list(actual_weekly.keys()) + list(planned_weekly.keys())))
+        all_weeks = sorted(
+            set(list(actual_weekly.keys()) + list(planned_weekly.keys()))
+        )
         labels, actual_data, planned_data, colors = [], [], [], []
         for wk in all_weeks:
             labels.append(wk)
@@ -1472,11 +1711,17 @@ class ChartService:
             if avg_p > 0:
                 ratio = avg_a / avg_p
                 if ratio > 1.15:
-                    insights.append(f"You're averaging {ratio:.0%} of planned volume — consider scaling back.")
+                    insights.append(
+                        f"You're averaging {ratio:.0%} of planned volume — consider scaling back."
+                    )
                 elif ratio < 0.85:
-                    insights.append(f"You're completing {ratio:.0%} of planned volume — room to increase.")
+                    insights.append(
+                        f"You're completing {ratio:.0%} of planned volume — room to increase."
+                    )
                 else:
-                    insights.append(f"Volume is well-aligned with plan ({ratio:.0%} of target).")
+                    insights.append(
+                        f"Volume is well-aligned with plan ({ratio:.0%} of target)."
+                    )
 
         return ChartData(
             chart_type="bar",
@@ -1490,4 +1735,3 @@ class ChartService:
             y_label="TSS",
             insights=insights,
         )
-

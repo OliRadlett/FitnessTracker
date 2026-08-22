@@ -40,10 +40,10 @@ def _make_cache_key(prefix: str, *args, **kwargs) -> str:
     for a in args:
         if isinstance(a, (str, int, float, bool, type(None))):
             serializable_args.append(a)
-        elif hasattr(a, 'hex'):  # UUID
+        elif hasattr(a, "hex"):  # UUID
             serializable_args.append(str(a))
     for k, v in sorted(kwargs.items()):
-        if isinstance(v, (str, int, float, bool, type(None))) or hasattr(v, 'hex'):
+        if isinstance(v, (str, int, float, bool, type(None))) or hasattr(v, "hex"):
             serializable_args.append(f"{k}={v}")
 
     key_data = json.dumps(serializable_args, sort_keys=True, default=str)
@@ -61,6 +61,7 @@ def cached(ttl: int = 120, key_prefix: str = ""):
     The decorated function must be async. The first two positional args
     are assumed to be (db, user_id) and are used to build the cache key.
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -88,7 +89,9 @@ def cached(ttl: int = 120, key_prefix: str = ""):
                 logger.debug("Cache write failed for %s: %s", cache_key, e)
 
             return result
+
         return wrapper
+
     return decorator
 
 

@@ -553,8 +553,8 @@ def _print_urls() -> None:
     print(f"    Frontend:   {C.colourise(C.UNDERLINE, FRONTEND_URL)}")
     print(f"    Backend:    {C.colourise(C.UNDERLINE, BACKEND_HEALTH_URL.replace('/health', ''))}")
     print(f"    Swagger UI: {C.colourise(C.UNDERLINE, BACKEND_HEALTH_URL.replace('/health', '/docs'))}")
-    print(f"    PostgreSQL: localhost:5432")
-    print(f"    Redis:      localhost:6379")
+    print("    PostgreSQL: localhost:5432")
+    print("    Redis:      localhost:6379")
     print()
 
 
