@@ -134,6 +134,8 @@ jobs:
             export REGISTRY="${{ env.REGISTRY }}"
             export IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
             export GITHUB_SHA="${{ github.sha }}"
+            # Write IMAGE_NAME to .env file for docker compose (append, don't overwrite)
+            echo "IMAGE_NAME=$IMAGE_NAME" >> .env
             set -euo pipefail
 
             cd /opt/fitness-tracker
