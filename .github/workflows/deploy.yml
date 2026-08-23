@@ -129,10 +129,10 @@ jobs:
           script_stop: true
           timeout: 30m
           command_timeout: 20m
-          envs: REGISTRY,IMAGE_NAME_LOWER,GITHUB_SHA
+          envs: REGISTRY,GITHUB_SHA
           script: |
             export REGISTRY="${{ env.REGISTRY }}"
-            export IMAGE_NAME="${{ env.IMAGE_NAME_LOWER }}"
+            export IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
             export GITHUB_SHA="${{ github.sha }}"
             set -euo pipefail
 
