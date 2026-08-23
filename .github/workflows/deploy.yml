@@ -25,6 +25,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME_LOWER: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -51,7 +52,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}/backend
           tags: |
             type=sha
             type=ref,event=branch
@@ -71,7 +72,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}/frontend
           tags: |
             type=sha
             type=ref,event=branch
@@ -91,7 +92,7 @@ jobs:
         id: meta-worker
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}/worker
           tags: |
             type=sha
             type=ref,event=branch
@@ -125,10 +126,10 @@ jobs:
           script_stop: true
           timeout: 30m
           command_timeout: 20m
-          envs: REGISTRY,IMAGE_NAME,GITHUB_SHA
+          envs: REGISTRY,IMAGE_NAME_LOWER,GITHUB_SHA
           script: |
             export REGISTRY="${{ env.REGISTRY }}"
-            export IMAGE_NAME="${{ env.IMAGE_NAME }}"
+            export IMAGE_NAME="${{ env.IMAGE_NAME_LOWER }}"
             export GITHUB_SHA="${{ github.sha }}"
             set -euo pipefail
 
