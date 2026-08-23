@@ -138,6 +138,8 @@ jobs:
 
             echo "▸ Generating production Caddyfile (without tls internal)…"
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
+            # Unset DRONE_SSH_PREV_COMMAND_EXIT_CODE to prevent it from leaking into heredoc
+            unset DRONE_SSH_PREV_COMMAND_EXIT_CODE
             cat > infra/Caddyfile <<'CADDYEOF'
             {
                 email admin@example.com
