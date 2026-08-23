@@ -24,7 +24,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: oliradlett/fitnesstracker
 
 jobs:
   build-and-push:
@@ -51,12 +50,12 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          images: ${{ env.REGISTRY }}/oliradlett/fitnesstracker/backend
           tags: |
             type=sha
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
- 
+
       - name: Build and push backend
         uses: docker/build-push-action@v5
         with:
@@ -66,17 +65,17 @@ jobs:
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
- 
+
       - name: Extract metadata for frontend
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          images: ${{ env.REGISTRY }}/oliradlett/fitnesstracker/frontend
           tags: |
             type=sha
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
- 
+
       - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
@@ -86,17 +85,17 @@ jobs:
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
- 
+
       - name: Extract metadata for worker/beat (same as backend)
         id: meta-worker
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          images: ${{ env.REGISTRY }}/oliradlett/fitnesstracker/worker
           tags: |
             type=sha
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
- 
+
       - name: Build and push worker (same image as backend)
         uses: docker/build-push-action@v5
         with:
@@ -128,11 +127,7 @@ jobs:
           envs: REGISTRY,GITHUB_SHA
           script: |
             export REGISTRY="${{ env.REGISTRY }}"
-            export IMAGE_NAME="oliradlett/fitnesstracker"
             export GITHUB_SHA="${{ github.sha }}"
-            # Ensure .env has the correct lowercase IMAGE_NAME (overwrite any existing)
-            sed -i '/^IMAGE_NAME=/d' .env 2>/dev/null || true
-            echo "IMAGE_NAME=$IMAGE_NAME" >> .env
             set -euo pipefail
 
             cd /opt/fitness-tracker

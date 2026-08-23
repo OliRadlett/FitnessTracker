@@ -8,28 +8,27 @@
 # with production equivalents (optimized builds, HTTPS via Caddy, no debug).
 #
 # Images are built in GitHub Actions and pushed to GHCR. This file uses pre-built images.
-# Set REGISTRY and IMAGE_NAME env vars (or use .env) to override.
-# Example: REGISTRY=ghcr.io IMAGE_NAME=your-org/fitness-tracker
+# Hardcoded to oliradlett/fitnesstracker to avoid case-sensitivity issues.
 
 services:
   backend:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/backend:latest
+    image: ghcr.io/oliradlett/fitnesstracker/backend:latest
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     volumes: []
     restart: unless-stopped
 
   worker:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/worker:latest
+    image: ghcr.io/oliradlett/fitnesstracker/worker:latest
     volumes: []
     restart: unless-stopped
 
   beat:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/worker:latest
+    image: ghcr.io/oliradlett/fitnesstracker/worker:latest
     volumes: []
     restart: unless-stopped
 
   frontend:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-${COMPOSE_PROJECT_NAME}}/frontend:latest
+    image: ghcr.io/oliradlett/fitnesstracker/frontend:latest
     command: ["node", "server.js"]
     entrypoint: ""
     volumes: []
