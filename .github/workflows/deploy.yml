@@ -84,8 +84,6 @@ jobs:
           no_cache: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract metadata for worker/beat (same as backend)
         id: meta-worker
@@ -141,7 +139,7 @@ jobs:
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
             # Unset DRONE_SSH_PREV_COMMAND_EXIT_CODE to prevent it from leaking into heredoc
             unset DRONE_SSH_PREV_COMMAND_EXIT_CODE
-            cat > infra/Caddyfile <<'CADDYEOF'
+            cat > infra/Caddyfile <<CADDYEOF
             {
                 email admin@example.com
             }
