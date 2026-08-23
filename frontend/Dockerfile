@@ -22,6 +22,8 @@ ENV NODE_ENV=production
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# Verify server.js exists in the final image
+RUN test -f /app/server.js && echo "OK: server.js present in runner" || (echo "ERROR: server.js missing from runner" && exit 1)
 EXPOSE 3000
 ENV PORT=3000
 CMD ["node", "server.js"]

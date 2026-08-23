@@ -54,7 +54,7 @@ jobs:
           tags: |
             type=sha
             type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push backend
         uses: docker/build-push-action@v5
@@ -74,7 +74,7 @@ jobs:
           tags: |
             type=sha
             type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
@@ -93,7 +93,7 @@ jobs:
           tags: |
             type=sha
             type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push worker (same image as backend)
         uses: docker/build-push-action@v5
