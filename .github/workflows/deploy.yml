@@ -134,7 +134,8 @@ jobs:
             export REGISTRY="${{ env.REGISTRY }}"
             export IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
             export GITHUB_SHA="${{ github.sha }}"
-            # Write IMAGE_NAME to .env file for docker compose (append, don't overwrite)
+            # Ensure .env has the correct lowercase IMAGE_NAME (overwrite any existing)
+            sed -i '/^IMAGE_NAME=/d' .env 2>/dev/null || true
             echo "IMAGE_NAME=$IMAGE_NAME" >> .env
             set -euo pipefail
 
