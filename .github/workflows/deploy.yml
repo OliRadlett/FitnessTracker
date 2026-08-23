@@ -165,6 +165,10 @@ jobs:
                 }
             }
             CADDYEOF
+            # Strip any stray lines that leaked into the Caddyfile (e.g. env vars from SSH action)
+            grep -vE '^[A-Z_]+=' infra/Caddyfile > infra/Caddyfile.tmp && mv infra/Caddyfile.tmp infra/Caddyfile
+            echo "▸ Caddyfile validated:"
+            cat infra/Caddyfile
 
             echo "▸ Logging in to GHCR…"
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
