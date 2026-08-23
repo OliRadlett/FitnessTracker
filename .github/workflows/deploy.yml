@@ -138,7 +138,7 @@ jobs:
 
             echo "▸ Generating production Caddyfile (without tls internal)…"
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
-            cat > infra/Caddyfile <<CADDYEOF
+            cat > infra/Caddyfile <<'CADDYEOF'
             {
                 email admin@example.com
             }
