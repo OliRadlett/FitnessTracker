@@ -205,6 +205,7 @@ export function TodayTab({
           subtitle="Whoop strain (0-21)"
           color={(todaySummary.latest_strain ?? 0) >= 14 ? 'text-warning' : (todaySummary.latest_strain ?? 0) >= 10 ? 'text-yellow-400' : 'text-green-400'}
           icon="💪"
+          tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
         />
         <MetricCard
           label="Active Alerts"
@@ -212,6 +213,7 @@ export function TodayTab({
           subtitle="Health warnings"
           color={todaySummary.active_alerts > 0 ? 'text-warning' : 'text-green-400'}
           icon="🔔"
+          tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies. Check the Weekly tab for details."
         />
       </div>
 
@@ -256,6 +258,7 @@ export function TodayTab({
             subtitle="Training Stress Score"
             color="text-blue-400"
             icon="⚡"
+            tooltip="Training Stress Score — composite measure of workout difficulty based on intensity and duration. 100 TSS = 1 hour at FTP. Higher means harder."
           />
           <MetricCard
             label="Volume Today"
@@ -263,6 +266,7 @@ export function TodayTab({
             subtitle="Lifting volume"
             color="text-purple-400"
             icon="🏋️"
+            tooltip="Total lifting volume (sets × reps × weight) for today. Track progressive overload by comparing week-to-week."
           />
           <MetricCard
             label="Distance"
@@ -270,6 +274,7 @@ export function TodayTab({
             subtitle="Cardio distance"
             color="text-green-400"
             icon="🚴"
+            tooltip="Total distance from all cardio activities today (cycling, running, etc.)."
           />
           <MetricCard
             label="Duration"
@@ -277,6 +282,7 @@ export function TodayTab({
             subtitle="Training time"
             color="text-slate-300"
             icon="⏱️"
+            tooltip="Total elapsed time across all activities and lifting sessions today."
           />
         </div>
       </div>
@@ -302,6 +308,7 @@ export function TodayTab({
               subtitle="42-day chronic load"
               color="text-blue-400"
               icon="📈"
+              tooltip="Chronic Training Load — long-term fitness as a 42-day exponentially weighted average of TSS. Higher = fitter. Typical range: 30-150. Builds slowly over weeks."
             />
             <MetricCard
               label="ATL (Fatigue)"
@@ -309,6 +316,7 @@ export function TodayTab({
               subtitle="7-day acute load"
               color="text-orange-400"
               icon="🔥"
+              tooltip="Acute Training Load — short-term fatigue as a 7-day exponentially weighted average of TSS. Spikes after hard days, drops quickly with rest."
             />
             <MetricCard
               label="TSB (Form)"
@@ -326,6 +334,7 @@ export function TodayTab({
                 : 'text-blue-400'
               }
               icon="⚖️"
+              tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
             />
           </div>
         </div>
@@ -508,8 +517,8 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
       {day.weather && (
         <div className="text-right shrink-0">
           <span className="text-2xl">{weatherEmoji(day.weather.conditions)}</span>
-          {day.weather.temperature_c != null && (
-            <p className="text-xs text-muted mt-1">{Math.round(day.weather.temperature_c)}°C</p>
+          {day.weather.temp_max != null && (
+            <p className="text-xs text-muted mt-1">{Math.round(day.weather.temp_max)}°C</p>
           )}
           {day.bad_weather && (
             <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">

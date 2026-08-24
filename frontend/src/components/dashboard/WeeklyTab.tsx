@@ -198,6 +198,7 @@ export function WeeklyTab({
               : 'text-green-400'
             }
             icon="💪"
+            tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
           />
           <MetricCard
             label="Active Alerts"
@@ -205,6 +206,7 @@ export function WeeklyTab({
             subtitle="Health warnings"
             color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-green-400'}
             icon="🔔"
+            tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies."
           />
         </div>
       )}
@@ -223,6 +225,7 @@ export function WeeklyTab({
                 subtitle={`${summary?.weekly_sessions ?? 0} lifting sessions`}
                 color="text-accent"
                 icon="🏋️"
+                tooltip="Total lifting volume (sets × reps × weight) this week. Track progressive overload by comparing week-to-week."
               />
               <MetricCard
                 label="Distance"
@@ -230,6 +233,7 @@ export function WeeklyTab({
                 subtitle="Cycling, running, etc."
                 color="text-green-400"
                 icon="🚴"
+                tooltip="Total cardio distance this week across all activities."
               />
               <MetricCard
                 label="TSS"
@@ -237,6 +241,7 @@ export function WeeklyTab({
                 subtitle="Training Stress Score"
                 color="text-blue-400"
                 icon="⚡"
+                tooltip="Weekly Training Stress Score — composite measure of workout difficulty. 100 TSS = 1 hour at FTP. Aim for consistent weekly TSS with periodic recovery weeks."
               />
               {!hasReadiness && (
                 <MetricCard
@@ -245,6 +250,7 @@ export function WeeklyTab({
                   subtitle={summary?.latest_hrv_ms ? `HRV: ${summary.latest_hrv_ms.toFixed(0)}ms` : 'No data'}
                   color={(summary?.latest_recovery ?? 0) >= 70 ? 'text-positive' : 'text-warning'}
                   icon="❤️"
+                  tooltip="Whoop recovery score (0-100%). Green (70%+): ready to train hard. Yellow (50-69%): moderate. Red (<50%): consider rest."
                 />
               )}
               <MetricCard
@@ -257,6 +263,7 @@ export function WeeklyTab({
                   : 'text-green-400'
                 }
                 icon="💪"
+                tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out."
               />
               <MetricCard
                 label="Alerts"
@@ -264,6 +271,7 @@ export function WeeklyTab({
                 subtitle="Health warnings"
                 color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-muted'}
                 icon="🔔"
+                tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies."
               />
             </>
           )}
@@ -417,6 +425,7 @@ export function WeeklyTab({
               subtitle={streaks.current_streak_days > 0 ? 'Keep it going!' : 'Start training today'}
               color="text-orange-400"
               icon="🔥"
+              tooltip="Consecutive days with at least one training session. Consistency is key to long-term progress."
             />
             <MetricCard
               label="Longest Streak"
@@ -424,6 +433,7 @@ export function WeeklyTab({
               subtitle="All-time record"
               color="text-yellow-400"
               icon="🏆"
+              tooltip="Your all-time record for consecutive training days."
             />
             <MetricCard
               label="Weekly Consistency"
@@ -435,6 +445,7 @@ export function WeeklyTab({
                 : 'text-red-400'
               }
               icon="📊"
+              tooltip="Percentage of weeks where you completed 3+ training sessions. 75%+ is excellent consistency."
             />
             <MetricCard
               label="This Month"
@@ -446,6 +457,7 @@ export function WeeklyTab({
               subtitle="Total sessions"
               color="text-blue-400"
               icon="📅"
+              tooltip="Total training sessions completed this month across all activities."
             />
           </div>
 

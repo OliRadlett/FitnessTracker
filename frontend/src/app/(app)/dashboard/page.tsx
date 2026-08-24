@@ -240,7 +240,15 @@ export default function DashboardPage() {
 
       {/* ── Tab Content ──────────────────────────────────────────────────────── */}
       {activeTab === 'today' && (
-        <TodayTab todaySummary={todaySummary} isLoading={todayLoading} />
+        <TodayTab
+          todaySummary={todaySummary}
+          isLoading={todayLoading}
+          summary={summary}
+          readiness={readiness}
+          hasReadiness={!!hasReadiness}
+          respiratoryRate={respiratoryRate}
+          upcomingEvents={upcomingEvents}
+        />
       )}
 
       {activeTab === 'weekly' && (

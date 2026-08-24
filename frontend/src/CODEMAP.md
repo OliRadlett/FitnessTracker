@@ -6,16 +6,16 @@
 
 | Route | File | Description |
 |-------|------|-------------|
-| `/dashboard` | `dashboard/page.tsx` | Main dashboard — Today/Weekly/Monthly tabs, goals, alerts, LLM analysis |
+| `/dashboard` | `dashboard/page.tsx` | Main dashboard — Today/Weekly/Monthly tabs. **Today**: rest-day banner, readiness strip, today's planned workout (from active training plan), KPI grid, form trend chart (CTL/ATL/TSB), side-by-side activities + lifting cards. **Weekly**: readiness, events, KPIs, charts, streaks, goals, AI analysis. **Monthly**: summary cards + year-in-review |
 | `/training` | `training/page.tsx` | Training plans, events, periodization chart; segmented view toggle (**Plan Builder \| This Week** — WeeklyView) above the main pane when a plan is selected |
 | `/activities` | `activities/page.tsx` | Activity list with filters, merge analysis |
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting |
 | `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B) |
 | `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates. Live Lift entry banner + Whoop-unmatched warning (live sessions with `started_at`/`ended_at`, no `whoop_strain`, ended >3h ago) |
-| `/goals` | `goals/page.tsx` | Dedicated goals page — Active/Achieved/Expired/All tabs, goal cards with progress + alignment badges, create modal (metric-registry-driven), detail modal with check-in chart + edit/delete/reactivate |
+| `/goals` | `goals/page.tsx` | Dedicated goals page — Active/Achieved/Expired/All tabs, goal cards with progress + alignment badges, **ProjectionCard summary strip (Phase 7)** for active goals with target dates, create modal (metric-registry-driven), detail modal with check-in chart + projection line + edit/delete/reactivate |
 | `/lifting/live` | `lifting/live/page.tsx` | **Live Lift** — mobile-first live session tracker. Pre-start (focus/program/warmup template) → active workout (`LiveWorkout`: steppers w/ smart prefill from last set or last-session reference, count-up since-last-set pill, 1-tap logging, double-tap undo, Wake Lock, PR toasts) → finish sheet (RPE/notes). Local-first: state persisted to localStorage every mutation, background syncer lazily creates the remote session then pushes sets/deletes, flushes on reconnect/foreground; resume/discard prompt after crash |
 | `/routes` | `routes/page.tsx` | Route management, map view, GPX upload/download |
-| `/wiki` | `wiki/page.tsx` | In-app wiki — features, glossary, science |
+| `/wiki` | `wiki/page.tsx` | In-app wiki — 10 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. Sticky sidebar nav with IntersectionObserver scroll highlighting |
 | `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences |
 
 ## API Clients (`lib/api/`)
@@ -31,6 +31,7 @@
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
 | `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes` |
 | `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
+| `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`), `getTsbProjection` (`GET /tsb/{planId}?days=N`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TsbProjectionResponse`, `TrendInfo`, `ProjectionPoint`, `TsbProjectionPoint` |
 | `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |
 | `nutrition.ts` | `/api/v1/nutrition/` | `createFuelPlan`, `getFuelPlan`, `getFuelPlanForActivity`, `updateFuelPlanActuals`, `deleteFuelPlan` (`types/nutrition.ts`: `RideFuelPlan`, `FuelScheduleEntry`, `CreateFuelPlanPayload`, `FuelActualsUpdatePayload`) |
 | `weather.ts` | `/api/v1/weather/` | `getCurrentWeather`, `getForecast`, `getActivityWeather` — 404 → `null` (no location set / untagged); takes backend JWT explicitly since `apiFetch` can't distinguish 404s (`types/weather.ts`: `CurrentWeather`, `ForecastResponse`, `ForecastDay`, `ActivityWeather`) |
@@ -107,6 +108,7 @@
 ### `dashboard/` — Dashboard tab sections
 | Component | Purpose |
 |-----------|---------|
+| `RestDayBanner` | Rest-day suggestion banner — TSB/recovery/consecutive-days triptych + reasons list; shared by Today + Weekly tabs |
 | `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
 | `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
@@ -115,13 +117,14 @@
 | Component | Purpose |
 |-----------|---------|
 | `GoalCreateModal` | Create-goal modal driven by `GET /goals/metrics` — metric select (label+unit), dynamic filter inputs (exercise autocomplete, sport select), target value, optional target date, notes |
-| `GoalDetailModal` | Full goal detail — check-in history Recharts line chart with target reference line, manual check-in form, edit mode (target/date/notes/filter), delete with confirmation, reactivate when expired/abandoned |
+| `GoalDetailModal` | Full goal detail — check-in history Recharts line chart with target reference line + projection line (Phase 7, dashed), projection badge/info section, manual check-in form, edit mode (target/date/notes/filter), delete with confirmation, reactivate when expired/abandoned |
+| `ProjectionCard` | Compact projection summary strip (Phase 7) — shown on goals page for active goals with target dates; each goal shows metric label, badge (On Track/At Risk/Unlikely), projected date; click opens GoalDetailModal |
 
 ### `training/` — Training plan components
 | Component | Purpose |
 |-----------|---------|
 | `PlanBuilder` | Full plan builder (Phase 5A): empty state (scratch/template creation w/ event taper select), plan header (inline rename, badges, event link/unlink, Activate/Delete), week tabs + "All" per-week summary, 7-col day cards with sport-aware expandable editors (cycle: power/zone; strength: focus/RPE/exercise list via `ExerciseAutocomplete` + computed volume), HTML5 drag-to-swap dates, sticky unsaved-changes footer. Edits accumulate locally keyed by `day_date`; Save PATCHes the FULL days array (backend upserts by date and deletes missing dates — never send partial days). Keyed by plan id from training page to reset state on plan switch |
-| `WeeklyView` | Weekly planning view (Phase 5B, sibling of PlanBuilder — toggle "This Week" on training page): Monday-aligned week navigation (week math mirrors backend: `week1 = start − weekday(start)`), readiness strip (CTL/ATL/TSB + recommended-zone dot), **conformity summary strip (Phase 5C, `['plan-conformity', planId]` staleTime 60s)** — overall % big number, trend arrow (↑/↓/→), per-sport chips from the viewed week's `by_sport`, warning-tinted patterns box, "Link activities" button (`POST /link-activities`); 7 responsive day cards with weather emoji + bad-weather chips, actual activity/lifting summaries in green blocks, `ConformityBadge` status per day (done/pending/missed; rest hidden), expandable panel with planned-exercise table + route matches ("Assign" → single-day PATCH `{planned_route_id}`) + quick-edit (duration/TSS/notes) + `DayConformityPanel`. Queries `['plan-week', planId, week]`; edits use targeted `updatePlanDay` PATCHes and invalidate week + both conformity queries — unlike PlanBuilder's full-array saves |
+| `WeeklyView` | Weekly planning view (Phase 5B, sibling of PlanBuilder — toggle "This Week" on training page): Monday-aligned week navigation (week math mirrors backend: `week1 = start − weekday(start)`), readiness strip (CTL/ATL/TSB + recommended-zone dot), **conformity summary strip (Phase 5C, `['plan-conformity', planId]` staleTime 60s)** — overall % big number, trend arrow (↑/↓/→), per-sport chips from the viewed week's `by_sport`, warning-tinted patterns box, "Link activities" button (`POST /link-activities`); **TSB projection strip (Phase 7, `['tsb-projection', planId]` — event-linked plans only)** — race-day TSB + freshness assessment; 7 responsive day cards with weather emoji + bad-weather chips, actual activity/lifting summaries in green blocks, `ConformityBadge` status per day (done/pending/missed; rest hidden), expandable panel with planned-exercise table + route matches ("Assign" → single-day PATCH `{planned_route_id}`) + quick-edit (duration/TSS/notes) + `DayConformityPanel`. Queries `['plan-week', planId, week]`; edits use targeted `updatePlanDay` PATCHes and invalidate week + both conformity queries — unlike PlanBuilder's full-array saves |
 | `ConformityBadge` | Tiny inline day-status badge (Phase 5C): done → green dot + %, partial → yellow, missed → muted-red "Missed", extra → blue "Extra", pending → gray "—", rest → renders nothing; tooltip = classification when present (optional `title` override used by WeeklyView's heuristic labels) |
 | `DayConformityPanel` | Expanded plan-vs-actual detail for one day (Phase 5C): lazy `['day-conformity', dayId]` query fetched only while mounted (WeeklyView expanded panel), header badge + classification, weighted component table (humanized metric labels, planned → actual with units W/kg/min/%, deviation colored red-over/blue-under, weight %, component-score mini bar), "→" deviation notes in warning color, loading skeleton rows, status-appropriate empty message ("Not yet logged" / "Nothing planned") |
 | `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
@@ -132,6 +135,7 @@
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
 | `utils.ts` | `formatDuration`, `formatDistance`, `weatherEmoji` (conditions → emoji mapping shared by weather UI) |
+| `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic
 | File | Purpose |

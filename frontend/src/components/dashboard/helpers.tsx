@@ -33,21 +33,34 @@ export function getGreeting(): string {
 
 /* ── Compact Metric Card ────────────────────────────────────────────────── */
 
-export function MetricCard({ label, value, subtitle, color, icon }: {
+export function MetricCard({ label, value, subtitle, color, icon, tooltip, trend }: {
   label: string;
   value: string | number;
   subtitle?: string;
   color: string;
   icon?: string;
+  tooltip?: string;
+  trend?: 'up' | 'down' | 'stable' | null;
 }) {
   return (
-    <div className="bg-surface rounded-xl border border-surface-light/50 p-4 hover:border-surface-light transition-colors">
+    <div className="bg-surface rounded-xl border border-surface-light/50 p-4 hover:border-surface-light transition-colors group relative">
       <div className="flex items-center gap-2 mb-2">
         {icon && <span className="text-base">{icon}</span>}
         <p className="text-xs font-medium text-muted uppercase tracking-wider">{label}</p>
+        {tooltip && (
+          <span className="text-muted/50 text-[10px] cursor-help" title={tooltip}>ⓘ</span>
+        )}
       </div>
-      <p className={`text-2xl font-bold ${color} leading-none`}>{value}</p>
+      <div className="flex items-baseline gap-2">
+        <p className={`text-2xl font-bold ${color} leading-none`}>{value}</p>
+        <TrendArrow trend={trend} />
+      </div>
       {subtitle && <p className="text-xs text-muted mt-1.5">{subtitle}</p>}
+      {tooltip && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-xs text-slate-200 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
+          {tooltip}
+        </div>
+      )}
     </div>
   );
 }
