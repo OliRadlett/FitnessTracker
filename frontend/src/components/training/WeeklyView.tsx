@@ -22,7 +22,7 @@ import type {
   UpdateTrainingPlanDayPayload,
   Event,
 } from '@/lib/api';
-import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities } from '@/lib/api';
+import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, getTsbProjection } from '@/lib/api';
 import { formatDuration, weatherEmoji } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
@@ -201,6 +201,14 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     queryFn: () => getPlanConformity(plan.id, undefined, token),
     staleTime: 60_000,
     enabled: !!token,
+  });
+
+  // Phase 7 — TSB projection for event-linked plans.
+  const tsbProjectionQuery = useQuery({
+    queryKey: ['tsb-projection', plan.id],
+    queryFn: () => getTsbProjection(authFetch, plan.id, 14),
+    staleTime: 5 * 60_000,
+    enabled: !!token && !!plan.event_id,
   });
 
   const invalidateWeeks = () => {
