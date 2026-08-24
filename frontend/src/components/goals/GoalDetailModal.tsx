@@ -257,9 +257,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                       color: '#fff',
                     }}
                     labelFormatter={(d) => new Date(String(d)).toLocaleDateString()}
-                    formatter={(value: number | string) => [
+                    formatter={(value: number | string, name: string) => [
                       `${Number(value).toFixed(1)}${unit ? ` ${unit}` : ''}`,
-                      'Value',
+                      name === 'projected' ? 'Projection' : 'Value',
                     ]}
                   />
                   <ReferenceLine
@@ -279,7 +279,20 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                     stroke="#38bdf8"
                     strokeWidth={2}
                     dot={{ r: 3, fill: '#38bdf8' }}
+                    connectNulls={false}
                   />
+                  {hasProjectionLine && (
+                    <Line
+                      type="monotone"
+                      dataKey="projected"
+                      stroke="#38bdf8"
+                      strokeOpacity={0.5}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      connectNulls={false}
+                    />
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -289,6 +302,11 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             </p>
           )}
         </div>
+
+        {/* Projection section (Phase 7) */}
+        {projection && (
+          <ProjectionSection projection={projection} />
+        )}
 
         {/* Manual check-in form */}
         {!editing && goal.status === 'active' && (
@@ -477,6 +495,66 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Projection section (Phase 7) ──────────────────────────────────────────
+
+const BADGE_STYLES: Record<string, string> = {
+  'On Track': 'bg-green-500/20 text-green-400 border-green-500/30',
+  'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  'Unlikely': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'Not enough data': 'bg-muted/20 text-muted border-muted/30',
+};
+
+function ProjectionSection({ projection }: { projection: GoalProjectionResponse }) {
+  const { badge, projection: proj, target_date } = projection;
+  const badgeStyle = BADGE_STYLES[badge] ?? BADGE_STYLES['Not enough data'];
+
+  // Determine if projected date overshoots target
+  let missDays: number | null = null;
+  if (proj?.projected_date && target_date) {
+    const projTime = new Date(proj.projected_date).getTime();
+    const targetTime = new Date(target_date).getTime();
+    if (projTime > targetTime) {
+      missDays = Math.ceil((projTime - targetTime) / 86_400_000);
+    }
+  }
+
+  return (
+    <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2">
+      <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Projection</h4>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
+          {badge}
+        </span>
+        {proj ? (
+          missDays !== null ? (
+            <span className="text-xs text-warning">
+              At current pace, target missed by {missDays} day{missDays === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">
+              Projected to reach target:{' '}
+              <span className="text-white font-medium">
+                {new Date(proj.projected_date).toLocaleDateString()}
+              </span>{' '}
+              ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
+            </span>
+          )
+        ) : (
+          <span className="text-xs text-muted italic">Not enough data to project</span>
+        )}
+      </div>
+      {projection.trend && (
+        <p className="text-[11px] text-muted">
+          Trend: {(projection.trend.slope_per_week >= 0 ? '+' : '')}
+          {projection.trend.slope_per_week.toFixed(2)}/week
+          {' · '}R² = {projection.trend.r_squared.toFixed(2)}
+          {' · '}{projection.trend.data_points} data points
+        </p>
+      )}
     </div>
   );
 }
