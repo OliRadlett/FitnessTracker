@@ -7,6 +7,7 @@ import type { Goal } from '@/lib/api';
 import { GoalCard } from '@/components/ui/GoalCard';
 import { GoalCreateModal } from '@/components/goals/GoalCreateModal';
 import { GoalDetailModal } from '@/components/goals/GoalDetailModal';
+import { ProjectionCard } from '@/components/goals/ProjectionCard';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
 
@@ -105,6 +106,9 @@ export default function GoalsPage() {
           </p>
         </div>
       )}
+
+      {/* ── Projection summary (Phase 7) ─────────────────────────────────── */}
+      {tab === 'active' && <ProjectionCard onSelectGoal={setSelectedGoal} />}
 
       {/* ── Modals ──────────────────────────────────────────────────────────── */}
       {showCreate && <GoalCreateModal onClose={() => setShowCreate(false)} />}
