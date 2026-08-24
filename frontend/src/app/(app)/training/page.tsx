@@ -7,16 +7,18 @@ import type {
   TrainingPlan,
   TrainingPlanSummary,
   TrainingPlanDay,
+  CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
+  UpdateTrainingPlanPayload,
   Event,
   CreateEventPayload,
   ChartData,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
+import { WeeklyView } from '@/components/training/WeeklyView';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 
@@ -43,10 +45,37 @@ const BLOCK_TYPE_EMOJI: Record<string, string> = {
   custom: '⚙️',
 };
 
+/**
+ * Map a local day to the PATCH payload. IMPORTANT: only include fields the
+ * builder manages — the backend upserts by day_date and DELETES dates missing
+ * from the array (so we always send ALL days), while untouched columns
+ * (activity_id, lifting_session_id, planned_route_id) are preserved because
+ * they are omitted here.
+ */
+function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
+  return {
+    day_date: d.day_date,
+    sport: d.sport,
+    planned_type: d.planned_type,
+    planned_tss: d.planned_tss,
+    planned_duration_min: d.planned_duration_min,
+    workout_description: d.workout_description,
+    planned_focus: d.planned_focus ?? null,
+    planned_exercises: d.planned_exercises ?? null,
+    planned_volume_kg: d.planned_volume_kg,
+    planned_rpe: d.planned_rpe,
+    planned_power_watts: d.planned_power_watts,
+    planned_zone: d.planned_zone,
+    notes: d.notes,
+    completed: d.completed,
+  };
+}
+
 export default function TrainingPage() {
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [view, setView] = useState<'builder' | 'week'>('builder');
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventForm, setEventForm] = useState<CreateEventPayload>({
     name: '',
@@ -92,35 +121,45 @@ export default function TrainingPage() {
     },
   });
 
+  const createPlanMutation = useMutation({
+    mutationFn: (payload: CreateTrainingPlanPayload) =>
+      authFetch<TrainingPlan>('/api/v1/training-plans', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (plan) => {
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      setSelectedPlanId(plan.id);
+    },
+  });
+
   const saveDaysMutation = useMutation({
     mutationFn: ({ planId, days }: { planId: string; days: TrainingPlanDay[] }) =>
       authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          days: days.map(d => ({
-            day_date: d.day_date,
-            planned_tss: d.planned_tss,
-            planned_duration_min: d.planned_duration_min,
-            planned_type: d.planned_type,
-            notes: d.notes,
-          })),
-        }),
+        body: JSON.stringify({ days: days.map(toDayPayload) }),
       }),
-    onSuccess: () => {
+    onSuccess: (_, { planId }) => {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['training-plan', selectedPlanId] });
+      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
     },
   });
 
-  const activateMutation = useMutation({
-    mutationFn: (planId: string) =>
+  const updatePlanMutation = useMutation({
+    mutationFn: ({
+      planId,
+      payload,
+    }: {
+      planId: string;
+      payload: UpdateTrainingPlanPayload;
+    }) =>
       authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'active' }),
+        body: JSON.stringify(payload),
       }),
-    onSuccess: () => {
+    onSuccess: (_, { planId }) => {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['training-plan', selectedPlanId] });
+      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
     },
   });
 
@@ -153,12 +192,6 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
-
-  const handleSaveDays = (days: TrainingPlanDay[]) => {
-    if (selectedPlanId) {
-      saveDaysMutation.mutate({ planId: selectedPlanId, days });
-    }
-  };
 
   return (
     <div className="space-y-8">
@@ -323,41 +356,48 @@ export default function TrainingPage() {
           </Card>
         </div>
 
-        {/* Right: Plan Builder */}
+        {/* Right: Plan Builder / Weekly View — keyed by plan id so state resets when switching plans */}
         <div className="lg:col-span-2">
+          {selectedPlanId && (
+            <div className="flex items-center gap-1 mb-4 p-1 rounded-lg bg-surface-light/30 w-fit">
+              {(
+                [
+                  { key: 'builder', label: 'Plan Builder' },
+                  { key: 'week', label: 'This Week' },
+                ] as const
+              ).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setView(key)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    view === key ? 'bg-accent text-white' : 'text-muted hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {planLoading && selectedPlanId ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" />
             </div>
+          ) : view === 'week' && selectedPlan ? (
+            <WeeklyView key={selectedPlanId} plan={selectedPlan} events={events} />
           ) : (
-            <>
-              <PlanBuilder
-                plan={selectedPlan || undefined}
-                onSave={handleSaveDays}
-                onGenerate={(payload) => generateMutation.mutate(payload)}
-                isSaving={saveDaysMutation.isPending}
-              />
-              {selectedPlan && (
-                <div className="mt-4 flex gap-2">
-                  {selectedPlan.status === 'draft' && (
-                    <button
-                      onClick={() => activateMutation.mutate(selectedPlan.id)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-                    >
-                      ▶️ Activate Plan
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this plan?')) deletePlanMutation.mutate(selectedPlan.id);
-                    }}
-                    className="px-4 py-2 bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg text-sm font-medium hover:bg-red-600/30 transition-colors"
-                  >
-                    🗑️ Delete
-                  </button>
-                </div>
-              )}
-            </>
+            <PlanBuilder
+              key={selectedPlanId ?? 'empty'}
+              plan={selectedPlan || undefined}
+              events={events}
+              onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
+              onGeneratePlan={(payload) => generateMutation.mutate(payload)}
+              onUpdatePlan={(planId, payload) => updatePlanMutation.mutate({ planId, payload })}
+              onSaveDays={(planId, days) => saveDaysMutation.mutate({ planId, days })}
+              onDeletePlan={(planId) => deletePlanMutation.mutate(planId)}
+              isSaving={saveDaysMutation.isPending}
+              isCreating={createPlanMutation.isPending}
+              isGenerating={generateMutation.isPending}
+            />
           )}
         </div>
       </div>

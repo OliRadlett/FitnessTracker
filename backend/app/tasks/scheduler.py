@@ -114,6 +114,7 @@ def sync_all_strava_activities() -> dict:
             linked_count = 0
             route_linked_count = 0
             weather_tagged_count = 0
+            plan_day_linked_count = 0
             for conn in connections:
                 try:
                     activities = await sync_activities(db, conn.user_id)
@@ -132,6 +133,18 @@ def sync_all_strava_activities() -> dict:
                 except Exception as e:
                     logger.warning(
                         f"Weather tagging failed for user {conn.user_id}: {e}",
+                        exc_info=True,
+                    )
+
+                # Auto-link activities/lifting sessions to training-plan days
+                try:
+                    from app.services.conformity import link_activities_to_plan_days
+
+                    plan_linked = await link_activities_to_plan_days(db, conn.user_id)
+                    plan_day_linked_count += plan_linked
+                except Exception as e:
+                    logger.warning(
+                        f"Plan-day linking failed for user {conn.user_id}: {e}",
                         exc_info=True,
                     )
 
@@ -180,6 +193,7 @@ def sync_all_strava_activities() -> dict:
                 "linked_sessions": linked_count,
                 "route_linked": route_linked_count,
                 "weather_tagged": weather_tagged_count,
+                "plan_day_linked": plan_day_linked_count,
                 "users_processed": len(connections) + len(wahoo_connections),
             }
 

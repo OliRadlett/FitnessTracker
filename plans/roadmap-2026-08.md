@@ -8,22 +8,20 @@ Agreed plan for the feature list in `prompt.txt`. Worked through collaboratively
 
 ## ⚠️ SESSION HANDOFF — READ THIS FIRST (updated 2026-08-24)
 
-**Status: Phases 1 & 2 COMPLETE. Next up: Phase 3 (Ride Fueling).**
+**Status: Phases 1–5 COMPLETE (5A+5B+5C). Next up: Phase 6 (Semantic Goals), then 7–9 (need planning).**
 
-Completed and verified this session:
-- **Phase 1**: VO2max ACSM formula fix (BUG-049), Whoop respiratory-rate/backfill/retry/gap-detection fixes (BUG-050), provider SVG icons on activities page, BUG-039/043/044 quick wins. All in `docs/BUGS.md`.
-- **Phase 2**: Full weakness/deficiency feature — backend (`services/deficiency.py`, `api/deficiency.py` at `/api/v1/deficiency?weeks=8`, `schemas/deficiency.py`, registered in main.py), frontend (`lib/api/deficiency.ts`, `types/deficiency.ts`, `DeficiencyCard.tsx` on dashboard WeeklyTab + lifting page), 43 unit tests passing, tsc + vitest green.
+**Uncommitted**: Phases 3–5 work was committed/pushed through Phase 4 (`9306773`); Phase 5
+(5A/5B/5C) is committed separately — check `git log`. Migrations 025–027 need
+`python fittrack.py migrate` on deployment.
 
-**Uncommitted**: ALL of the above work is uncommitted in the working tree (user has not requested commits). Check `git status` first — per AGENTS.md, only commit files from your own session; ask before committing these.
+Key implementation notes for future sessions:
+- Training-plan day saves send the FULL days array (backend deletes dates missing from payload)
+- `services/conformity.py::link_activities_to_plan_days` uses `populate_existing=True` (identity-map staleness)
+- `SuggestedCycleCard.tsx` + `WorkoutPlanner.tsx`: WorkoutPlanner still standalone on training page;
+  SuggestedCycleCard now orphaned (removed from cycling page, file kept)
+- Frontend API clients: some take explicit `token` param (weather/conformity) due to 404-as-null needs
 
-**To resume Phase 3**, read the Phase 3 spec below. Implementation order:
-1. `backend/app/models/nutrition.py` — RideFuelPlan model
-2. Alembic migration — check latest revision head first (⚠️ Pitfall #8: chain is 001…013→014(surface)→015…→024; number sequentially)
-3. `schemas/nutrition.py`, `services/nutrition.py` (fuel schedule generation), `api/nutrition.py` (CRUD), register router in main.py
-4. Frontend: `lib/api/nutrition.ts`, `types/nutrition.ts`, barrel exports, `FuelPlanCard.tsx`, integrate into activities page detail + training page planned rides
-5. Update CODEMAPs + this doc
-
-Phases 4–6 are fully specced below and approved. Phases 7–9 need planning discussion with the user before implementation.
+Phases 7–9 are sketches only — plan them with the user before implementing.
 
 ---
 
@@ -217,55 +215,41 @@ Display-only — never modifies plans.
 
 Context: three disconnected systems today — SuggestedCycleCard (cycling page, read-only), WorkoutPlanner (route matching, no persistence), PlanBuilder (buggy grid). Overhaul unifies them. **Strength training integrated throughout.**
 
-### 5A. Plan Builder Full Redesign (full rewrite chosen)
-- Creation: blank plan OR template
-- Week tabs instead of one giant grid
-- Day cards expandable: type, duration, TSS, notes, workout description, linked activity, mark-as-completed checkbox
-- Drag-and-drop reorder within/between weeks
-- Sport-aware day editor:
-  - Cycle: power/HR/route targets
-  - Strength: focus selector, exercise list editor (reuse ExerciseAutocomplete), sets×reps×weight, auto-computed target volume, target RPE
-  - Rest
-- Template generation produces mixed weeks matching suggested-cycle logic (Tue/Thu strength, Mon/Wed/Fri/Sat rides, Sun rest)
+### 5A. Plan Builder Full Redesign — **DONE**
 
-Model changes on TrainingPlanDay:
-```
-sport ("cycle"|"strength"|"rest"), planned_focus, planned_exercises JSONB,
-planned_volume_kg, planned_rpe, planned_power_watts, planned_zone,
-planned_route_id, workout_description, lifting_session_id FK
-```
-Backend: extract `_generate_plan_days` into `services/training_plan.py`; FIX destructive save (delete+recreate destroys completed/activity_id) with proper upsert.
+Implemented: TrainingPlanDay sport fields (`sport`, `workout_description`, `planned_focus`,
+`planned_exercises` JSONB, `planned_volume_kg`, `planned_rpe`, `planned_power_watts`,
+`planned_zone`, `planned_route_id`, `lifting_session_id`) + `TrainingPlan.event_id`;
+migration `027_add_training_day_sport_fields.py`; new `services/training_plan.py`
+(non-destructive day upsert by day_date, mixed-week generation, event clamp + linear
+100%→40% taper); thin router; PlanBuilder full rewrite (week tabs, sport-aware editors,
+exercise autocomplete rows, drag-swap dates, sticky save bar, stale-state fix).
+16 integration tests incl. destructive-save regression test.
+NOTE: saves send the FULL days array — backend deletes dates missing from payload.
 
-Event-plan linkage: `event_id` FK on TrainingPlan; plan end date auto = event_date − taper_days; auto-taper phase generation.
+### 5B. Weekly Planning (new weekly view) — **DONE**
 
-Files: model update, new service, API update, schemas, rewrite `PlanBuilder.tsx`, new `StrengthDayEditor.tsx`.
+Implemented: `GET /training-plans/{id}/week/{n}?include_weather=` (Monday-aligned weeks,
+readiness strip, per-day weather + bad-weather flags, actual activity/lifting summaries,
+route matches for cycle days via WorkoutPlanner reuse) and
+`PATCH /training-plans/{id}/days/{dayId}` (targeted single-day update).
+Frontend `WeeklyView.tsx` on training page (Plan Builder | This Week toggle): week nav,
+day cards w/ weather + warnings + actuals + ConformityBadge, expandable day panel with
+route assignment and quick-edit, "Link activities" button.
+SuggestedCycleCard removed from cycling page (component file kept, now orphaned).
 
-### 5B. Weekly Planning (new weekly view)
-- WeeklyView: 7-day grid for current week of active plan, week navigation prev/next
-- Day cards show by sport:
-  - Cycle: weather + bad-weather badge, route matches inline (WorkoutPlanner logic reused)
-  - Strength: exercise summary, readiness indicator, warmup template suggestion
-  - Actual side: linked activity/LiftingSession stats + conformity badge
-- Detail panel: targets, hourly weather, route options w/ "Assign to this day", actual results, notes
-- "Commit to this week" persists planned week with assignments (absorbs SuggestedCycleCard commit concept; SuggestedCycleCard removed from cycling page)
-- Backend: `GET /training-plans/{id}/week/{n}`, `POST /training-plans/{id}/commit-week`
+### 5C. Planned Cycle Conformity — **DONE**
 
-### 5C. Planned Cycle Conformity
-Flow: commit planned cycle (HR/power/route/exercises) → activity syncs → auto-link → conformity score.
-
-Auto-linking: extend existing ±1-day activity-lifting matching to also fill TrainingPlanDay.activity_id / lifting_session_id.
-
-**Cycle conformity weights:** Duration 25%, Power 30%, HR 15%, TSS 20%, Route 10%.
-Score = Σ `1 − abs(planned−actual)/planned` weighted; route = 100% same/50% different/0% unplanned.
-Classification: ≥90 Excellent, 70–89 Good, 50–69 Partial deviation, <50 Significant.
-
-**Strength conformity weights:** Volume 35%, exercises completed 30%, duration 15%, RPE ±1 = full 10%, focus match 10%.
-Deviation text e.g. "82% of planned squat volume".
-
-Weekly aggregate: overall adherence %, trend vs previous weeks, patterns. Dual-mode ConformityCard.
-
-Endpoints: `GET /training-plans/{id}/conformity`, `GET /training-plans/{id}/day/{day_id}/conformity`.
-Service: `services/conformity.py`.
+Implemented: `services/conformity.py` — cycle scoring (Duration .25/Power .30/TSS .20/Route .10,
+weights renormalized over present components; no planned_hr column so HR skipped) +
+strength scoring (Volume .35 capped at 120% over-performance / exercises-completed .30 /
+duration .15 / RPE ±1 full score .10 / focus match .10); classification ≥90 Excellent /
+≥70 Good / ≥50 Partial / else Significant; deviation sentences >8% deviation;
+`GET /{plan_id}/conformity` weekly aggregate w/ trend + pattern heuristics,
+`GET /{plan_id}/days/{day_id}/conformity`, `POST /{plan_id}/link-activities` +
+auto-linking hook in the Strava sync celery task (⚠️ uses populate_existing to avoid
+identity-map staleness). Frontend: ConformityBadge on day cards, DayConformityPanel
+in expanded view, weekly conformity strip (overall %, trend arrow, per-sport chips, patterns).
 
 Dependencies: 4→5B (weather); 5A→5B→5C.
 

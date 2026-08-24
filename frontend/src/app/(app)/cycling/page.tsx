@@ -20,7 +20,6 @@ import type {
   Vo2maxResponse,
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
-  SuggestedCycleResponse,
 } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
@@ -30,7 +29,6 @@ import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
-import { SuggestedCycleCard } from '@/components/cycling/SuggestedCycleCard';
 
 export default function CyclingPage() {
   const { authFetch } = useAuthFetch();
@@ -90,7 +88,7 @@ export default function CyclingPage() {
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
-    queryKey: ['chart-stream-power-curve'],
+    queryKey: ['chart-stream-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
     staleTime: 300_000,
   });
@@ -104,14 +102,14 @@ export default function CyclingPage() {
   });
 
   const { data: chartPowerZones } = useQuery<ChartData>({
-    queryKey: ['chart-power-zones'],
+    queryKey: ['chart-power-zones', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
     enabled: !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
   const { data: chartDailyTss } = useQuery<ChartData>({
-    queryKey: ['chart-daily-tss'],
+    queryKey: ['chart-daily-tss', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
     staleTime: 120_000,
   });
@@ -142,7 +140,7 @@ export default function CyclingPage() {
   });
 
   const { data: chartHrZones } = useQuery<ChartData>({
-    queryKey: ['chart-hr-zones'],
+    queryKey: ['chart-hr-zones', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
     enabled: !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
@@ -161,7 +159,7 @@ export default function CyclingPage() {
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
-    queryKey: ['chart-vo2max-trend'],
+    queryKey: ['chart-vo2max-trend', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
     staleTime: 600_000,
   });
@@ -173,21 +171,15 @@ export default function CyclingPage() {
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
-    queryKey: ['chart-decoupling-trend'],
+    queryKey: ['chart-decoupling-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
     staleTime: 600_000,
   });
 
   const { data: chartWeightTrend } = useQuery<ChartData>({
-    queryKey: ['chart-weight-trend'],
+    queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
     staleTime: 300_000,
-  });
-
-  const { data: suggestedCycle, isLoading: suggestedCycleLoading } = useQuery<SuggestedCycleResponse>({
-    queryKey: ['suggested-cycle'],
-    queryFn: () => authFetch<SuggestedCycleResponse>('/api/v1/cycling/suggested-cycle'),
-    staleTime: 600_000,
   });
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -331,9 +323,6 @@ export default function CyclingPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Cycling</h1>
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
-
-      {/* Suggested Training Cycle */}
-      <SuggestedCycleCard data={suggestedCycle} isLoading={suggestedCycleLoading} />
 
       {/* Profile Editor */}
       <ProfileEditor

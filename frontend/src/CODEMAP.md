@@ -7,10 +7,10 @@
 | Route | File | Description |
 |-------|------|-------------|
 | `/dashboard` | `dashboard/page.tsx` | Main dashboard — Today/Weekly/Monthly tabs, goals, alerts, LLM analysis |
-| `/training` | `training/page.tsx` | Training plans, events, periodization chart |
+| `/training` | `training/page.tsx` | Training plans, events, periodization chart; segmented view toggle (**Plan Builder \| This Week** — WeeklyView) above the main pane when a plan is selected |
 | `/activities` | `activities/page.tsx` | Activity list with filters, merge analysis |
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting |
-| `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max |
+| `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B) |
 | `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates |
 | `/routes` | `routes/page.tsx` | Route management, map view, GPX upload/download |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — features, glossary, science |
@@ -32,7 +32,8 @@
 | `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |
 | `nutrition.ts` | `/api/v1/nutrition/` | `createFuelPlan`, `getFuelPlan`, `getFuelPlanForActivity`, `updateFuelPlanActuals`, `deleteFuelPlan` (`types/nutrition.ts`: `RideFuelPlan`, `FuelScheduleEntry`, `CreateFuelPlanPayload`, `FuelActualsUpdatePayload`) |
 | `weather.ts` | `/api/v1/weather/` | `getCurrentWeather`, `getForecast`, `getActivityWeather` — 404 → `null` (no location set / untagged); takes backend JWT explicitly since `apiFetch` can't distinguish 404s (`types/weather.ts`: `CurrentWeather`, `ForecastResponse`, `ForecastDay`, `ActivityWeather`) |
-| `trainingPlans.ts` | `/api/v1/training-plans/` | `fetchPlans`, `createPlan`, `generatePlan` |
+| `trainingPlans.ts` | `/api/v1/training-plans/` | `fetchPlans`, `createPlan`, `generatePlan`, `getPlanWeek` (Phase 5B: `GET /{id}/week/{n}?include_weather`), `updatePlanDay` (Phase 5B: targeted single-day `PATCH /{id}/days/{dayId}`) — weekly types in `types/training.ts`: `TrainingWeekResponse`, `TrainingWeekDay`, `DayWeather`, `BadWeather`, `WeekActualActivity`, `WeekActualLiftingSession`, `WeekRouteMatchEntry`, `WeekReadiness`, `UpdateTrainingPlanDayPayload` |
+| `conformity.ts` | `/api/v1/training-plans/` | Phase 5C conformity: `getPlanConformity` (`GET /{id}/conformity?weeks=N`), `getDayConformity` (`GET /{id}/days/{dayId}/conformity`), `linkPlanActivities` (`POST /{id}/link-activities`) — types in `types/conformity.ts`: `PlanConformityResponse`, `WeekConformity`, `DayConformityResponse`, `ConformityComponent`, `DayConformityStatus`, `LinkActivitiesResponse` |
 | `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `auth.ts` | — | NextAuth config, `authOptions`, JWT/session callbacks |
@@ -72,6 +73,7 @@
 | `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
 | `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) |
+| `SuggestedCycleCard` | ⚠️ **Orphaned/unused** since Phase 5B — removed from cycling page (route matching absorbed by `training/WeeklyView`); file + `suggested-cycle` client/types kept for potential reuse. No component renders it and the `'suggested-cycle'` query no longer runs |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -106,7 +108,10 @@
 ### `training/` — Training plan components
 | Component | Purpose |
 |-----------|---------|
-| `PlanBuilder` | Weekly calendar plan builder |
+| `PlanBuilder` | Full plan builder (Phase 5A): empty state (scratch/template creation w/ event taper select), plan header (inline rename, badges, event link/unlink, Activate/Delete), week tabs + "All" per-week summary, 7-col day cards with sport-aware expandable editors (cycle: power/zone; strength: focus/RPE/exercise list via `ExerciseAutocomplete` + computed volume), HTML5 drag-to-swap dates, sticky unsaved-changes footer. Edits accumulate locally keyed by `day_date`; Save PATCHes the FULL days array (backend upserts by date and deletes missing dates — never send partial days). Keyed by plan id from training page to reset state on plan switch |
+| `WeeklyView` | Weekly planning view (Phase 5B, sibling of PlanBuilder — toggle "This Week" on training page): Monday-aligned week navigation (week math mirrors backend: `week1 = start − weekday(start)`), readiness strip (CTL/ATL/TSB + recommended-zone dot), **conformity summary strip (Phase 5C, `['plan-conformity', planId]` staleTime 60s)** — overall % big number, trend arrow (↑/↓/→), per-sport chips from the viewed week's `by_sport`, warning-tinted patterns box, "Link activities" button (`POST /link-activities`); 7 responsive day cards with weather emoji + bad-weather chips, actual activity/lifting summaries in green blocks, `ConformityBadge` status per day (done/pending/missed; rest hidden), expandable panel with planned-exercise table + route matches ("Assign" → single-day PATCH `{planned_route_id}`) + quick-edit (duration/TSS/notes) + `DayConformityPanel`. Queries `['plan-week', planId, week]`; edits use targeted `updatePlanDay` PATCHes and invalidate week + both conformity queries — unlike PlanBuilder's full-array saves |
+| `ConformityBadge` | Tiny inline day-status badge (Phase 5C): done → green dot + %, partial → yellow, missed → muted-red "Missed", extra → blue "Extra", pending → gray "—", rest → renders nothing; tooltip = classification when present (optional `title` override used by WeeklyView's heuristic labels) |
+| `DayConformityPanel` | Expanded plan-vs-actual detail for one day (Phase 5C): lazy `['day-conformity', dayId]` query fetched only while mounted (WeeklyView expanded panel), header badge + classification, weighted component table (humanized metric labels, planned → actual with units W/kg/min/%, deviation colored red-over/blue-under, weight %, component-score mini bar), "→" deviation notes in warning color, loading skeleton rows, status-appropriate empty message ("Not yet logged" / "Nothing planned") |
 | `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
 | `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
 

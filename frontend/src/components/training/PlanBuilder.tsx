@@ -1,195 +1,424 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import type { TrainingPlan, TrainingPlanDay, GeneratePlanPayload } from '@/lib/api';
+/**
+ * PlanBuilder — Phase 5A redesign.
+ *
+ * Structure: empty state (scratch / template creation) → plan header
+ * (inline-editable name, badges, event link, Activate/Delete) → week tabs
+ * with an "All" overview → 7-column day-card grid with expandable editors,
+ * HTML5 drag-and-drop date swapping, and a sticky unsaved-changes footer.
+ *
+ * Save model: edits accumulate locally (keyed by day_date); Save PATCHes the
+ * FULL days array — the backend upserts by day_date and DELETES any dates
+ * missing from the payload, so partial saves must never be sent.
+ */
 
-const DAY_TYPES = ['rest', 'easy', 'moderate', 'hard', 'race'] as const;
+import React, { useState, useEffect, useMemo } from 'react';
+import type {
+  TrainingPlan,
+  TrainingPlanDay,
+  GeneratePlanPayload,
+  CreateTrainingPlanPayload,
+  UpdateTrainingPlanPayload,
+  PlannedExercise,
+  PlanSport,
+  PlanDayType,
+  Event,
+} from '@/lib/api';
+import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+
+// ─── Constants ────────────────────────────────────────────────────────────
+
+const DAY_TYPES: PlanDayType[] = ['rest', 'easy', 'moderate', 'hard', 'race'];
+
 const DAY_TYPE_COLORS: Record<string, string> = {
-  rest: 'bg-gray-700 border-gray-600 text-gray-400',
-  easy: 'bg-green-900/40 border-green-700/50 text-green-300',
-  moderate: 'bg-blue-900/40 border-blue-700/50 text-blue-300',
-  hard: 'bg-orange-900/40 border-orange-700/50 text-orange-300',
-  race: 'bg-red-900/40 border-red-700/50 text-red-300',
-};
-const DAY_TYPE_EMOJI: Record<string, string> = {
-  rest: '😴',
-  easy: '🚶',
-  moderate: '🏃',
-  hard: '🔥',
-  race: '🏁',
+  rest: 'bg-gray-800/60 border-gray-600/50 text-gray-400',
+  easy: 'bg-green-900/30 border-green-700/40 text-green-300',
+  moderate: 'bg-blue-900/30 border-blue-700/40 text-blue-300',
+  hard: 'bg-orange-900/30 border-orange-700/40 text-orange-300',
+  race: 'bg-red-900/30 border-red-700/40 text-red-300',
 };
 
-interface PlanBuilderProps {
-  plan?: TrainingPlan;
-  onSave: (days: TrainingPlanDay[]) => void;
-  onGenerate: (payload: GeneratePlanPayload) => void;
-  isSaving?: boolean;
+const SPORT_EMOJI: Record<string, string> = {
+  cycle: '🚴',
+  strength: '🏋️',
+  rest: '😴',
+};
+
+const FOCUS_OPTIONS = [
+  { value: 'squat', label: 'Squat' },
+  { value: 'bench', label: 'Bench' },
+  { value: 'deadlift', label: 'Deadlift' },
+  { value: 'overhead_press', label: 'Overhead Press' },
+  { value: 'accessories', label: 'Accessories' },
+  { value: 'full_body', label: 'Full Body' },
+] as const;
+
+const TEMPLATE_OPTIONS = [
+  { value: 'base', label: 'Base — Steady foundation' },
+  { value: 'build', label: 'Build — Progressive overload' },
+  { value: 'peak', label: 'Peak — High intensity' },
+  { value: 'taper', label: 'Taper — Pre-event reduction' },
+  { value: 'recovery', label: 'Recovery — Active rest' },
+] as const;
+
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  active: 'bg-green-500/20 text-green-400 border-green-500/30',
+  completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  archived: 'bg-gray-500/20 text-gray-500 border-gray-500/30',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return toDateStr(d);
+}
+
+function diffDays(a: string, b: string): number {
+  return Math.round(
+    (new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) /
+      86400000,
+  );
 }
 
 function getWeekDates(startDate: string, weekIndex: number): string[] {
-  const start = new Date(startDate);
-  start.setDate(start.getDate() + weekIndex * 7);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    return d.toISOString().split('T')[0];
-  });
+  const weekStart = addDays(startDate, weekIndex * 7);
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+}
+
+function getTotalWeeks(startDate?: string, endDate?: string): number {
+  if (!startDate || !endDate) return 1;
+  return Math.max(1, Math.ceil((diffDays(startDate, endDate) + 1) / 7));
 }
 
 function getDayOfWeek(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short' });
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    weekday: 'short',
+  });
 }
 
-export function PlanBuilder({ plan, onSave, onGenerate, isSaving }: PlanBuilderProps) {
-  const [showGenerate, setShowGenerate] = useState(false);
-  const [generateForm, setGenerateForm] = useState<GeneratePlanPayload>({
-    name: '',
-    template_type: 'build',
-    weeks: 4,
-    start_date: new Date().toISOString().split('T')[0],
-    base_tss: 300,
-  });
+/** Σ weight × reps × sets across exercises with a target weight. */
+export function computedVolumeKg(exercises?: PlannedExercise[] | null): number | null {
+  if (!exercises || exercises.length === 0) return null;
+  const total = exercises.reduce(
+    (sum, ex) => sum + (ex.weight_kg ?? 0) * (ex.reps || 0) * (ex.sets || 0),
+    0,
+  );
+  return total > 0 ? Math.round(total) : null;
+}
 
-  // Local editable copy of days for drag interactions
-  const [days, setDays] = useState<TrainingPlanDay[]>(plan?.days ?? []);
-
-  // Compute weeks from plan dates
-  const startDate = plan?.start_date || generateForm.start_date;
-  const endDate = plan?.end_date || '';
-  const totalDays = plan ? Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1 : generateForm.weeks! * 7;
-  const totalWeeks = Math.ceil(totalDays / 7);
-
-  const updateDay = useCallback((dateStr: string, field: keyof TrainingPlanDay, value: string | number | boolean | undefined) => {
-    setDays(prev => {
-      const existing = prev.find(d => d.day_date === dateStr);
-      if (existing) {
-        return prev.map(d => d.day_date === dateStr ? { ...d, [field]: value } : d);
-      }
-      return [...prev, {
-        id: `temp-${dateStr}`,
-        plan_id: plan?.id || '',
-        day_date: dateStr,
-        planned_type: field === 'planned_type' ? (value as string) : 'rest',
-        planned_tss: field === 'planned_tss' ? (value as number) : undefined,
-        planned_duration_min: field === 'planned_duration_min' ? (value as number) : undefined,
-        completed: false,
-        created_at: new Date().toISOString(),
-      } as TrainingPlanDay];
-    });
-  }, [plan?.id]);
-
-  const handleGenerate = () => {
-    onGenerate(generateForm);
-    setShowGenerate(false);
+/** Blank day used when the user edits a date that has no persisted record yet. */
+function blankDay(dateStr: string, planId: string): TrainingPlanDay {
+  return {
+    id: `draft-${dateStr}`,
+    plan_id: planId,
+    day_date: dateStr,
+    sport: 'rest',
+    planned_type: 'rest',
+    completed: false,
   };
+}
 
-  const handleSave = () => {
-    onSave(days);
-  };
+const inputCls =
+  'w-full px-2 py-1.5 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent';
+const labelCls = 'block text-xs text-muted mb-1';
 
-  // Weekly TSS summary
-  const weekSummaries = Array.from({ length: totalWeeks }, (_, wi) => {
-    const weekDates = getWeekDates(startDate, wi);
-    const weekDays = days.filter(d => weekDates.includes(d.day_date));
-    const totalTss = weekDays.reduce((sum, d) => sum + (d.planned_tss || 0), 0);
-    const totalDuration = weekDays.reduce((sum, d) => sum + (d.planned_duration_min || 0), 0);
-    const trainingDays = weekDays.filter(d => d.planned_type !== 'rest').length;
-    return { weekIndex: wi, totalTss, totalDuration, trainingDays };
-  });
+// ─── Props ────────────────────────────────────────────────────────────────
 
-  if (!plan && !showGenerate) {
+interface PlanBuilderProps {
+  /** Keyed by plan id from the parent so switching plans resets all state. */
+  plan?: TrainingPlan;
+  events?: Event[];
+  onCreatePlan: (payload: CreateTrainingPlanPayload) => void;
+  onGeneratePlan: (payload: GeneratePlanPayload) => void;
+  onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) => void;
+  onSaveDays: (planId: string, days: TrainingPlanDay[]) => void;
+  onDeletePlan: (planId: string) => void;
+  isSaving?: boolean;
+  isCreating?: boolean;
+  isGenerating?: boolean;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────
+
+export function PlanBuilder({
+  plan,
+  events = [],
+  onCreatePlan,
+  onGeneratePlan,
+  onUpdatePlan,
+  onSaveDays,
+  onDeletePlan,
+  isSaving,
+  isCreating,
+  isGenerating,
+}: PlanBuilderProps) {
+  const [createMode, setCreateMode] = useState<'none' | 'scratch' | 'template'>('none');
+
+  // ── Empty state ─────────────────────────────────────────────────────
+  if (!plan) {
     return (
-      <div className="space-y-6">
-        <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
-          <p className="text-4xl mb-4">📋</p>
-          <h3 className="text-lg font-semibold text-white mb-2">No Training Plan</h3>
-          <p className="text-muted mb-6">Create a plan from scratch or generate one from a template.</p>
-          <div className="flex justify-center gap-4">
-            <button
-              onClick={() => setShowGenerate(true)}
-              className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
-            >
-              ⚡ Auto-Generate Plan
-            </button>
-          </div>
-        </div>
-      </div>
+      <EmptyState
+        mode={createMode}
+        setMode={setCreateMode}
+        events={events}
+        onCreatePlan={onCreatePlan}
+        onGeneratePlan={onGeneratePlan}
+        isCreating={isCreating}
+        isGenerating={isGenerating}
+      />
     );
   }
 
-  if (showGenerate) {
+  return (
+    <PlanEditor
+      key={plan.id}
+      plan={plan}
+      events={events}
+      onUpdatePlan={onUpdatePlan}
+      onSaveDays={onSaveDays}
+      onDeletePlan={onDeletePlan}
+      isSaving={isSaving}
+    />
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  mode: 'none' | 'scratch' | 'template';
+  setMode: (m: 'none' | 'scratch' | 'template') => void;
+  events: Event[];
+  onCreatePlan: (payload: CreateTrainingPlanPayload) => void;
+  onGeneratePlan: (payload: GeneratePlanPayload) => void;
+  isCreating?: boolean;
+  isGenerating?: boolean;
+}
+
+const todayStr = toDateStr(new Date());
+
+function EmptyState({
+  mode,
+  setMode,
+  events,
+  onCreatePlan,
+  onGeneratePlan,
+  isCreating,
+  isGenerating,
+}: EmptyStateProps) {
+  const [scratchForm, setScratchForm] = useState({
+    name: '',
+    start_date: todayStr,
+    weeks: 4,
+  });
+  const [templateForm, setTemplateForm] = useState<GeneratePlanPayload>({
+    name: '',
+    template_type: 'build',
+    weeks: 4,
+    start_date: todayStr,
+    base_tss: 300,
+    event_id: undefined,
+  });
+
+  const handleCreateScratch = () => {
+    onCreatePlan({
+      name: scratchForm.name.trim(),
+      start_date: scratchForm.start_date,
+      end_date: addDays(scratchForm.start_date, scratchForm.weeks * 7 - 1),
+      plan_type: 'custom',
+      status: 'draft',
+    });
+  };
+
+  const handleGenerate = () => {
+    onGeneratePlan({ ...templateForm, name: templateForm.name.trim() });
+  };
+
+  if (mode === 'scratch') {
     return (
       <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">⚡ Generate Training Plan</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm text-muted mb-1">Plan Name</label>
+        <h3 className="text-lg font-semibold text-white mb-4">📝 Start From Scratch</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="md:col-span-3">
+            <label className={labelCls}>Plan Name</label>
             <input
               type="text"
-              value={generateForm.name}
-              onChange={e => setGenerateForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Build Phase"
-              className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white focus:outline-none focus:border-accent"
+              autoFocus
+              value={scratchForm.name}
+              onChange={(e) => setScratchForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Autumn Strength Block"
+              className={inputCls}
             />
           </div>
           <div>
-            <label className="block text-sm text-muted mb-1">Template Type</label>
-            <select
-              value={generateForm.template_type}
-              onChange={e => setGenerateForm(f => ({ ...f, template_type: e.target.value }))}
-              className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white focus:outline-none focus:border-accent"
-            >
-              <option value="base">Base — Steady foundation</option>
-              <option value="build">Build — Progressive overload</option>
-              <option value="peak">Peak — High intensity</option>
-              <option value="taper">Taper — Pre-event reduction</option>
-              <option value="recovery">Recovery — Active rest</option>
-            </select>
+            <label className={labelCls}>Start Date</label>
+            <input
+              type="date"
+              value={scratchForm.start_date}
+              onChange={(e) => setScratchForm((f) => ({ ...f, start_date: e.target.value }))}
+              className={inputCls}
+            />
           </div>
           <div>
-            <label className="block text-sm text-muted mb-1">Weeks</label>
+            <label className={labelCls}>Weeks</label>
             <input
               type="number"
               min={1}
               max={24}
-              value={generateForm.weeks}
-              onChange={e => setGenerateForm(f => ({ ...f, weeks: parseInt(e.target.value) || 4 }))}
-              className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white focus:outline-none focus:border-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-muted mb-1">Start Date</label>
-            <input
-              type="date"
-              value={generateForm.start_date}
-              onChange={e => setGenerateForm(f => ({ ...f, start_date: e.target.value }))}
-              className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white focus:outline-none focus:border-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-muted mb-1">Base Weekly TSS</label>
-            <input
-              type="number"
-              min={50}
-              max={1500}
-              step={25}
-              value={generateForm.base_tss}
-              onChange={e => setGenerateForm(f => ({ ...f, base_tss: parseFloat(e.target.value) || 300 }))}
-              className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white focus:outline-none focus:border-accent"
+              value={scratchForm.weeks}
+              onChange={(e) =>
+                setScratchForm((f) => ({ ...f, weeks: parseInt(e.target.value) || 4 }))
+              }
+              className={inputCls}
             />
           </div>
         </div>
         <div className="flex gap-3">
           <button
-            onClick={handleGenerate}
-            disabled={!generateForm.name}
-            className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+            onClick={handleCreateScratch}
+            disabled={!scratchForm.name.trim() || !scratchForm.start_date || isCreating}
+            className="px-6 py-2.5 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
           >
-            Generate Plan
+            {isCreating ? 'Creating...' : 'Create Empty Plan'}
           </button>
           <button
-            onClick={() => setShowGenerate(false)}
-            className="px-6 py-3 bg-surface-light text-muted rounded-lg font-medium hover:text-white transition-colors"
+            onClick={() => setMode('none')}
+            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'template') {
+    const linkedEvent = events.find((e) => e.id === templateForm.event_id);
+    return (
+      <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
+        <h3 className="text-lg font-semibold text-white mb-1">⚡ Use Template</h3>
+        <p className="text-sm text-muted mb-4">
+          Mixed weeks: Sun rest · Tue strength (squat-focus) · Thu bench/deadlift rotation ·
+          Mon/Wed/Fri/Sat rides.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className={labelCls}>Plan Name</label>
+            <input
+              type="text"
+              autoFocus
+              value={templateForm.name}
+              onChange={(e) =>
+                setTemplateForm((f) => ({ ...f, name: e.target.value }))
+              }
+              placeholder="e.g. Build Phase"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Template</label>
+            <select
+              value={templateForm.template_type}
+              onChange={(e) =>
+                setTemplateForm((f) => ({ ...f, template_type: e.target.value }))
+              }
+              className={inputCls}
+            >
+              {TEMPLATE_OPTIONS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Weeks</label>
+            <input
+              type="number"
+              min={1}
+              max={24}
+              value={templateForm.weeks}
+              onChange={(e) =>
+                setTemplateForm((f) => ({ ...f, weeks: parseInt(e.target.value) || 4 }))
+              }
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Start Date</label>
+            <input
+              type="date"
+              value={templateForm.start_date}
+              onChange={(e) =>
+                setTemplateForm((f) => ({ ...f, start_date: e.target.value }))
+              }
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Base Weekly TSS</label>
+            <input
+              type="number"
+              min={50}
+              max={1500}
+              step={25}
+              value={templateForm.base_tss}
+              onChange={(e) =>
+                setTemplateForm((f) => ({
+                  ...f,
+                  base_tss: parseFloat(e.target.value) || 300,
+                }))
+              }
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Taper for Event (optional)</label>
+            <select
+              value={templateForm.event_id ?? ''}
+              onChange={(e) =>
+                setTemplateForm((f) => ({
+                  ...f,
+                  event_id: e.target.value || undefined,
+                }))
+              }
+              className={inputCls}
+            >
+              <option value="">No event</option>
+              {events.map((evt) => (
+                <option key={evt.id} value={evt.id}>
+                  🏁 {evt.name} ({evt.event_date})
+                </option>
+              ))}
+            </select>
+            {linkedEvent && (
+              <p className="text-xs text-muted mt-1">
+                Plan will taper over the final {linkedEvent.taper_days} days before{' '}
+                {linkedEvent.event_date}.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleGenerate}
+            disabled={!templateForm.name.trim() || isGenerating}
+            className="px-6 py-2.5 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+          >
+            {isGenerating ? 'Generating...' : 'Generate Plan'}
+          </button>
+          <button
+            onClick={() => setMode('none')}
+            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-white transition-colors"
           >
             Cancel
           </button>
@@ -199,110 +428,781 @@ export function PlanBuilder({ plan, onSave, onGenerate, isSaving }: PlanBuilderP
   }
 
   return (
-    <div className="space-y-6">
-      {/* Plan Header */}
-      {plan && (
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white">{plan.name}</h2>
-            {plan.description && <p className="text-muted text-sm mt-1">{plan.description}</p>}
+    <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
+      <p className="text-4xl mb-4">📋</p>
+      <h3 className="text-lg font-semibold text-white mb-2">No Plan Selected</h3>
+      <p className="text-muted mb-6">Select a plan on the left, or create a new one.</p>
+      <div className="flex flex-col sm:flex-row justify-center gap-3">
+        <button
+          onClick={() => setMode('scratch')}
+          className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
+        >
+          📝 Start From Scratch
+        </button>
+        <button
+          onClick={() => setMode('template')}
+          className="px-6 py-3 bg-surface-light text-white rounded-lg font-medium hover:bg-surface-light/70 transition-colors"
+        >
+          ⚡ Use Template
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Plan Editor ──────────────────────────────────────────────────────────
+
+interface PlanEditorProps {
+  plan: TrainingPlan;
+  events: Event[];
+  onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) => void;
+  onSaveDays: (planId: string, days: TrainingPlanDay[]) => void;
+  onDeletePlan: (planId: string) => void;
+  isSaving?: boolean;
+}
+
+function PlanEditor({
+  plan,
+  events,
+  onUpdatePlan,
+  onSaveDays,
+  onDeletePlan,
+  isSaving,
+}: PlanEditorProps) {
+  // Local editable copy of ALL days — re-initialised whenever the plan object
+  // changes (parent also keys this component by plan id).
+  const [days, setDays] = useState<TrainingPlanDay[]>(() =>
+    (plan.days ?? []).map((d) => ({ ...d })),
+  );
+  const [dirtyDates, setDirtyDates] = useState<Set<string>>(new Set());
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<number | 'all'>(0);
+  const [nameDraft, setNameDraft] = useState(plan.name);
+  const [draggingDate, setDraggingDate] = useState<string | null>(null);
+  const [dropTargetDate, setDropTargetDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDays((plan.days ?? []).map((d) => ({ ...d })));
+    setDirtyDates(new Set());
+    setNameDraft(plan.name);
+    setExpandedDate(null);
+  }, [plan]);
+
+  const linkedEvent = useMemo(
+    () => events.find((e) => e.id === plan.event_id),
+    [events, plan.event_id],
+  );
+
+  const totalWeeks = useMemo(
+    () => getTotalWeeks(plan.start_date, plan.end_date),
+    [plan.start_date, plan.end_date],
+  );
+
+  const daysByDate = useMemo(() => {
+    const map = new Map<string, TrainingPlanDay>();
+    for (const d of days) map.set(d.day_date, d);
+    return map;
+  }, [days]);
+
+  const weekSummaries = useMemo(
+    () =>
+      Array.from({ length: totalWeeks }, (_, wi) => {
+        const dates = getWeekDates(plan.start_date, wi);
+        const weekDays = dates
+          .map((dt) => daysByDate.get(dt))
+          .filter((d): d is TrainingPlanDay => !!d);
+        return {
+          weekIndex: wi,
+          totalTss: Math.round(
+            weekDays.reduce((sum, d) => sum + (d.planned_tss || 0), 0),
+          ),
+          rides: weekDays.filter((d) => d.sport === 'cycle').length,
+          strength: weekDays.filter((d) => d.sport === 'strength').length,
+          rest: dates.filter((dt) => {
+            const d = daysByDate.get(dt);
+            return !d || d.sport === 'rest';
+          }).length,
+        };
+      }),
+    [totalWeeks, plan.start_date, daysByDate],
+  );
+
+  // ── Editing ─────────────────────────────────────────────────────────
+
+  const markDirty = (dateStr: string) => {
+    setDirtyDates((prev) => {
+      if (prev.has(dateStr)) return prev;
+      const next = new Set(prev);
+      next.add(dateStr);
+      return next;
+    });
+  };
+
+  const updateDayFields = (dateStr: string, patch: Partial<TrainingPlanDay>) => {
+    setDays((prev) => {
+      const idx = prev.findIndex((d) => d.day_date === dateStr);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...patch };
+        return next;
+      }
+      return [...prev, { ...blankDay(dateStr, plan.id), ...patch }];
+    });
+    markDirty(dateStr);
+  };
+
+  /** Toggle completed — accumulates like other edits and persists on Save
+   * (the backend cannot accept `completed` through PATCH today, see notes). */
+  const toggleCompleted = (dateStr: string) => {
+    const day = daysByDate.get(dateStr);
+    updateDayFields(dateStr, { completed: !(day?.completed ?? false) });
+  };
+
+  /** Drag-and-drop: swapping dates between two slots (move if target empty). */
+  const handleDropOn = (targetDate: string) => {
+    const sourceDate = draggingDate;
+    setDraggingDate(null);
+    setDropTargetDate(null);
+    if (!sourceDate || sourceDate === targetDate) return;
+
+    const source = daysByDate.get(sourceDate);
+    const target = daysByDate.get(targetDate);
+    if (!source && !target) return;
+
+    setDays((prev) =>
+      prev.map((d) => {
+        if (source && d.day_date === sourceDate) return { ...d, day_date: targetDate };
+        if (!source && d.day_date === targetDate) return { ...d, day_date: sourceDate };
+        if (target && d.day_date === targetDate) return { ...d, day_date: sourceDate };
+        return d;
+      }),
+    );
+    markDirty(targetDate);
+    markDirty(sourceDate);
+    // Keep the open editor attached to the moved day
+    if (expandedDate === sourceDate) setExpandedDate(targetDate);
+    else if (target && expandedDate === targetDate) setExpandedDate(sourceDate);
+  };
+
+  const commitName = () => {
+    const trimmed = nameDraft.trim();
+    if (trimmed && trimmed !== plan.name) {
+      onUpdatePlan(plan.id, { name: trimmed });
+    } else {
+      setNameDraft(plan.name);
+    }
+  };
+
+  const discardChanges = () => {
+    setDays((plan.days ?? []).map((d) => ({ ...d })));
+    setDirtyDates(new Set());
+  };
+
+  const saveAll = () => {
+    onSaveDays(plan.id, days);
+  };
+
+  const activeDates =
+    activeTab === 'all' ? [] : getWeekDates(plan.start_date, activeTab);
+
+  return (
+    <div className="space-y-4 pb-16">
+      {/* Header */}
+      <div className="bg-surface rounded-xl border border-surface-light/50 p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <input
+              type="text"
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              title="Click to rename"
+              className="w-full bg-transparent border border-transparent rounded-lg px-2 py-0.5 -ml-2 text-xl font-bold text-white hover:border-surface-light focus:outline-none focus:border-accent"
+            />
+            <div className="flex flex-wrap items-center gap-2 mt-1 px-0.5">
+              <span className="text-xs px-2 py-0.5 rounded-full border bg-accent/10 border-accent/30 text-accent capitalize">
+                {plan.plan_type}
+              </span>
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[plan.status]} capitalize`}
+              >
+                {plan.status}
+              </span>
+              <span className="text-xs text-muted">
+                📅 {plan.start_date} → {plan.end_date}
+              </span>
+              {linkedEvent ? (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-purple-500/20 border-purple-500/30 text-purple-300">
+                  🏁 {linkedEvent.name}
+                  <button
+                    onClick={() => onUpdatePlan(plan.id, { event_id: null })}
+                    title="Unlink event"
+                    className="hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
+            {plan.status === 'draft' && (
+              <button
+                onClick={() => onUpdatePlan(plan.id, { status: 'active' })}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                ▶️ Activate
+              </button>
+            )}
             <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+              onClick={() => {
+                if (confirm(`Delete plan "${plan.name}"? This cannot be undone.`)) {
+                  onDeletePlan(plan.id);
+                }
+              }}
+              className="px-3 py-1.5 bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg text-sm font-medium hover:bg-red-600/30 transition-colors"
             >
-              {isSaving ? 'Saving...' : '💾 Save Changes'}
+              🗑️ Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Week tabs */}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'all'
+              ? 'bg-accent text-white'
+              : 'bg-surface-light/40 text-muted hover:text-white'
+          }`}
+        >
+          All
+        </button>
+        {Array.from({ length: totalWeeks }, (_, wi) => (
+          <button
+            key={wi}
+            onClick={() => setActiveTab(wi)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === wi
+                ? 'bg-accent text-white'
+                : 'bg-surface-light/40 text-muted hover:text-white'
+            }`}
+          >
+            Week {wi + 1}
+          </button>
+        ))}
+      </div>
+
+      {/* All-tab: per-week summary cards */}
+      {activeTab === 'all' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {weekSummaries.map((ws) => (
+            <button
+              key={ws.weekIndex}
+              onClick={() => setActiveTab(ws.weekIndex)}
+              className="bg-surface rounded-lg border border-surface-light/50 p-3 text-left hover:border-accent/40 transition-colors"
+            >
+              <p className="text-xs text-muted mb-1 font-semibold uppercase tracking-wider">
+                Week {ws.weekIndex + 1}
+              </p>
+              <p className="text-lg font-bold text-white">
+                {ws.totalTss} <span className="text-xs font-normal text-muted">TSS</span>
+              </p>
+              <p className="text-xs text-muted mt-1">
+                🚴 {ws.rides} · 🏋️ {ws.strength} · 😴 {ws.rest}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Week view: day cards */}
+      {activeTab !== 'all' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+            {activeDates.map((dateStr) => {
+              const day = daysByDate.get(dateStr);
+              const ptype = day?.planned_type ?? 'rest';
+              const sport = day?.sport ?? 'rest';
+              const isExpanded = expandedDate === dateStr;
+              const isDropTarget = dropTargetDate === dateStr && draggingDate !== null;
+              const volume = computedVolumeKg(day?.planned_exercises);
+              return (
+                <div
+                  key={dateStr}
+                  draggable
+                  onDragStart={() => setDraggingDate(dateStr)}
+                  onDragEnd={() => {
+                    setDraggingDate(null);
+                    setDropTargetDate(null);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggingDate && draggingDate !== dateStr) {
+                      setDropTargetDate(dateStr);
+                    }
+                  }}
+                  onDragLeave={() =>
+                    setDropTargetDate((prev) => (prev === dateStr ? null : prev))
+                  }
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleDropOn(dateStr);
+                  }}
+                  onClick={() => setExpandedDate(isExpanded ? null : dateStr)}
+                  className={`rounded-lg border p-2 min-h-[104px] cursor-grab active:cursor-grabbing transition-shadow ${
+                    DAY_TYPE_COLORS[ptype]
+                  } ${
+                    isDropTarget
+                      ? 'ring-2 ring-accent border-accent shadow-lg'
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <span className="text-xs font-semibold">{getDayOfWeek(dateStr)}</span>{' '}
+                      <span className="text-[10px] opacity-75">{dateStr.slice(5)}</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCompleted(dateStr);
+                      }}
+                      title={day?.completed ? 'Marked complete' : 'Mark complete'}
+                      className={`w-5 h-5 rounded-full border text-[10px] leading-none flex items-center justify-center transition-colors ${
+                        day?.completed
+                          ? 'bg-positive/80 border-positive text-white'
+                          : 'border-current/40 opacity-50 hover:opacity-100'
+                      }`}
+                    >
+                      ✓
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-base">{SPORT_EMOJI[sport]}</span>
+                    {day?.planned_focus && sport === 'strength' && (
+                      <span className="text-[10px] uppercase tracking-wide opacity-75">
+                        {(day.planned_focus as string).replace('_', ' ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 text-[10px] opacity-90">
+                    <span className="capitalize">{ptype}</span>
+                    {day?.planned_tss != null && <span>· {Math.round(day.planned_tss)} TSS</span>}
+                    {day?.planned_duration_min != null && (
+                      <span>· {day.planned_duration_min}m</span>
+                    )}
+                    {volume != null && <span>· {volume}kg</span>}
+                  </div>
+
+                  {dirtyDates.has(dateStr) && (
+                    <span className="block mt-1 text-[9px] text-warning">● unsaved</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Expanded day editor (only one open) */}
+          {expandedDate && (
+            <DayEditor
+              key={expandedDate}
+              dateStr={expandedDate}
+              day={
+                daysByDate.get(expandedDate) ?? blankDay(expandedDate, plan.id)
+              }
+              onPatch={(patch) => updateDayFields(expandedDate, patch)}
+              onClose={() => setExpandedDate(null)}
+            />
+          )}
+
+          <div className="flex flex-wrap gap-3 pt-1">
+            <span className="text-[10px] text-muted">
+              Tip: drag a day onto another slot to swap dates.
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* Sticky unsaved-changes footer */}
+      {dirtyDates.size > 0 && (
+        <div className="sticky bottom-0 z-10 -mx-1 px-1">
+          <div className="bg-surface border border-surface-light rounded-xl shadow-lg p-3 flex items-center justify-between gap-3">
+            <span className="text-sm text-warning font-medium">
+              ● Unsaved changes ({dirtyDates.size} day{dirtyDates.size > 1 ? 's' : ''})
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={discardChanges}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm text-muted hover:text-white disabled:opacity-50"
+              >
+                Discard
+              </button>
+              <button
+                onClick={saveAll}
+                disabled={isSaving}
+                className="px-5 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : '💾 Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Day Editor ───────────────────────────────────────────────────────────
+
+interface DayEditorProps {
+  dateStr: string;
+  day: TrainingPlanDay;
+  onPatch: (patch: Partial<TrainingPlanDay>) => void;
+  onClose: () => void;
+}
+
+function DayEditor({ dateStr, day, onPatch, onClose }: DayEditorProps) {
+  const isRest = day.sport === 'rest';
+  const isStrength = day.sport === 'strength';
+  const volume = computedVolumeKg(day.planned_exercises);
+
+  const patchExercise = (idx: number, patch: Partial<PlannedExercise>) => {
+    const list = [...(day.planned_exercises ?? [])];
+    list[idx] = { ...list[idx], ...patch };
+    onPatch({ planned_exercises: list });
+  };
+
+  const removeExercise = (idx: number) => {
+    onPatch({
+      planned_exercises: (day.planned_exercises ?? []).filter((_, i) => i !== idx),
+    });
+  };
+
+  const addExercise = () => {
+    onPatch({
+      planned_exercises: [
+        ...(day.planned_exercises ?? []),
+        { exercise: '', sets: 3, reps: 8, weight_kg: null, rpe: null },
+      ],
+    });
+  };
+
+  return (
+    <div className="bg-surface rounded-xl border border-accent/30 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-white">
+          Edit {getDayOfWeek(dateStr)} {dateStr}
+        </h4>
+        <button onClick={onClose} className="text-muted hover:text-white text-sm px-1">
+          ✕
+        </button>
+      </div>
+
+      {/* Sport */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <label className={labelCls}>Sport</label>
+          <select
+            value={day.sport}
+            onChange={(e) => {
+              const sport = e.target.value as PlanSport;
+              if (sport === 'rest') {
+                onPatch({ sport, planned_type: 'rest' });
+              } else if (sport === 'strength' && day.sport !== 'strength') {
+                onPatch({ sport, planned_focus: day.planned_focus ?? 'squat' });
+              } else {
+                onPatch({ sport });
+              }
+            }}
+            className={inputCls}
+          >
+            <option value="rest">😴 Rest</option>
+            <option value="cycle">🚴 Cycle</option>
+            <option value="strength">🏋️ Strength</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Type</label>
+          <select
+            value={day.planned_type}
+            disabled={isRest}
+            onChange={(e) =>
+              onPatch({ planned_type: e.target.value as PlanDayType })
+            }
+            className={`${inputCls} disabled:opacity-50`}
+          >
+            {DAY_TYPES.map((dt) => (
+              <option key={dt} value={dt} className="capitalize">
+                {dt}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!isStrength && (
+          <div>
+            <label className={labelCls}>Duration (min)</label>
+            <input
+              type="number"
+              min={0}
+              value={day.planned_duration_min ?? ''}
+              onChange={(e) =>
+                onPatch({
+                  planned_duration_min: e.target.value === '' ? null : parseInt(e.target.value),
+                })
+              }
+              className={inputCls}
+            />
+          </div>
+        )}
+        {!isRest && !isStrength && (
+          <div>
+            <label className={labelCls}>TSS</label>
+            <input
+              type="number"
+              min={0}
+              value={day.planned_tss ?? ''}
+              onChange={(e) =>
+                onPatch({
+                  planned_tss: e.target.value === '' ? null : parseFloat(e.target.value),
+                })
+              }
+              className={inputCls}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Cycle extras */}
+      {day.sport === 'cycle' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={labelCls}>Power (W)</label>
+            <input
+              type="number"
+              min={0}
+              value={day.planned_power_watts ?? ''}
+              onChange={(e) =>
+                onPatch({
+                  planned_power_watts:
+                    e.target.value === '' ? null : parseFloat(e.target.value),
+                })
+              }
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Zone</label>
+            <input
+              type="text"
+              list="plan-zone-options"
+              maxLength={10}
+              placeholder="Z1–Z7"
+              value={day.planned_zone ?? ''}
+              onChange={(e) => onPatch({ planned_zone: e.target.value || null })}
+              className={inputCls}
+            />
+            <datalist id="plan-zone-options">
+              {['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7'].map((z) => (
+                <option key={z} value={z} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className={labelCls}>Route</label>
+            <input
+              type="text"
+              disabled
+              placeholder="Route assignment coming in weekly view"
+              className={`${inputCls} opacity-50 cursor-not-allowed`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Strength extras */}
+      {isStrength && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className={labelCls}>Focus</label>
+              <select
+                value={day.planned_focus ?? 'squat'}
+                onChange={(e) => onPatch({ planned_focus: e.target.value })}
+                className={inputCls}
+              >
+                {FOCUS_OPTIONS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Duration (min)</label>
+              <input
+                type="number"
+                min={0}
+                value={day.planned_duration_min ?? ''}
+                onChange={(e) =>
+                  onPatch({
+                    planned_duration_min:
+                      e.target.value === '' ? null : parseInt(e.target.value),
+                  })
+                }
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Target RPE</label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={0.5}
+                value={day.planned_rpe ?? ''}
+                onChange={(e) =>
+                  onPatch({
+                    planned_rpe: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })
+                }
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          {/* Exercise list */}
+          <div className="space-y-2">
+            <label className={labelCls}>
+              Exercises{volume != null && (
+                <span className="ml-2 normal-case text-muted">
+                  Target volume ≈ {volume.toLocaleString()} kg
+                </span>
+              )}
+            </label>
+            {(day.planned_exercises ?? []).map((ex, idx) => (
+              <div
+                key={idx}
+                className="grid grid-cols-6 sm:grid-cols-12 gap-1.5 items-center"
+              >
+                <div className="col-span-6 sm:col-span-4">
+                  <ExerciseAutocomplete
+                    value={ex.exercise}
+                    onChange={(v) => patchExercise(idx, { exercise: v })}
+                    placeholder="Exercise"
+                    className="w-full bg-background border border-surface-light text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  aria-label="Sets"
+                  value={ex.sets}
+                  onChange={(e) =>
+                    patchExercise(idx, { sets: parseInt(e.target.value) || 1 })
+                  }
+                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  aria-label="Reps"
+                  value={ex.reps}
+                  onChange={(e) =>
+                    patchExercise(idx, { reps: parseInt(e.target.value) || 1 })
+                  }
+                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  step={2.5}
+                  aria-label="Weight kg"
+                  placeholder="kg"
+                  value={ex.weight_kg ?? ''}
+                  onChange={(e) =>
+                    patchExercise(idx, {
+                      weight_kg: e.target.value === '' ? null : parseFloat(e.target.value),
+                    })
+                  }
+                  className="col-span-2 sm:col-span-2 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  aria-label="RPE"
+                  placeholder="RPE"
+                  value={ex.rpe ?? ''}
+                  onChange={(e) =>
+                    patchExercise(idx, {
+                      rpe: e.target.value === '' ? null : parseFloat(e.target.value),
+                    })
+                  }
+                  className="col-span-2 sm:col-span-2 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                />
+                <button
+                  onClick={() => removeExercise(idx)}
+                  title="Remove exercise"
+                  className="col-span-6 sm:col-span-2 text-xs text-muted hover:text-red-400 py-1"
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={addExercise}
+              className="text-xs text-accent hover:text-accent/80 font-medium"
+            >
+              + Add exercise
             </button>
           </div>
         </div>
       )}
 
-      {/* Weekly Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {weekSummaries.map(ws => (
-          <div key={ws.weekIndex} className="bg-surface rounded-lg border border-surface-light/50 p-3 text-center">
-            <p className="text-xs text-muted mb-1">Week {ws.weekIndex + 1}</p>
-            <p className="text-lg font-bold text-white">{Math.round(ws.totalTss)}</p>
-            <p className="text-xs text-muted">TSS</p>
-            <p className="text-xs text-muted mt-1">{ws.trainingDays} days · {ws.totalDuration}min</p>
-          </div>
-        ))}
+      {/* Descriptions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Workout Description</label>
+          <textarea
+            rows={2}
+            maxLength={1000}
+            value={day.workout_description ?? ''}
+            onChange={(e) =>
+              onPatch({ workout_description: e.target.value || null })
+            }
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Notes</label>
+          <textarea
+            rows={2}
+            value={day.notes ?? ''}
+            onChange={(e) => onPatch({ notes: e.target.value || null })}
+            className={inputCls}
+          />
+        </div>
       </div>
 
-      {/* Weekly Calendar Grid */}
-      {Array.from({ length: totalWeeks }, (_, wi) => {
-        const weekDates = getWeekDates(startDate, wi);
-        return (
-          <div key={wi} className="bg-surface rounded-xl border border-surface-light/50 p-4">
-            <h3 className="text-sm font-semibold text-muted mb-3 uppercase tracking-wider">
-              Week {wi + 1}
-            </h3>
-            <div className="grid grid-cols-7 gap-2">
-              {weekDates.map(dateStr => {
-                const day = days.find(d => d.day_date === dateStr);
-                const ptype = day?.planned_type || 'rest';
-                return (
-                  <div
-                    key={dateStr}
-                    className={`rounded-lg border p-2 min-h-[100px] ${DAY_TYPE_COLORS[ptype]}`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium">{getDayOfWeek(dateStr)}</span>
-                      <span className="text-sm">{DAY_TYPE_EMOJI[ptype]}</span>
-                    </div>
-                    <p className="text-xs opacity-75 mb-2">{dateStr.slice(5)}</p>
-
-                    {/* Type selector */}
-                    <select
-                      value={ptype}
-                      onChange={e => updateDay(dateStr, 'planned_type', e.target.value)}
-                      className="w-full text-xs bg-transparent border-0 p-0 focus:outline-none cursor-pointer mb-1"
-                    >
-                      {DAY_TYPES.map(dt => (
-                        <option key={dt} value={dt} className="bg-background text-white">
-                          {DAY_TYPE_EMOJI[dt]} {dt}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* TSS input */}
-                    {ptype !== 'rest' && (
-                      <div className="space-y-1">
-                        <input
-                          type="number"
-                          placeholder="TSS"
-                          value={day?.planned_tss ?? ''}
-                          onChange={e => updateDay(dateStr, 'planned_tss', parseFloat(e.target.value) || 0)}
-                          className="w-full text-xs bg-transparent border border-current/20 rounded px-1 py-0.5 focus:outline-none"
-                        />
-                        <input
-                          type="number"
-                          placeholder="min"
-                          value={day?.planned_duration_min ?? ''}
-                          onChange={e => updateDay(dateStr, 'planned_duration_min', parseInt(e.target.value) || 0)}
-                          className="w-full text-xs bg-transparent border border-current/20 rounded px-1 py-0.5 focus:outline-none"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3">
-        {DAY_TYPES.map(dt => (
-          <div key={dt} className="flex items-center gap-1.5">
-            <span>{DAY_TYPE_EMOJI[dt]}</span>
-            <span className="text-xs text-muted capitalize">{dt}</span>
-          </div>
-        ))}
-      </div>
+      <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
+        <input
+          type="checkbox"
+          checked={day.completed}
+          onChange={() => onPatch({ completed: !day.completed })}
+          className="accent-green-500"
+        />
+        Completed
+      </label>
     </div>
   );
 }
