@@ -22,7 +22,9 @@ import type {
   UpdateTrainingPlanDayPayload,
   Event,
 } from '@/lib/api';
-import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, getTsbProjection } from '@/lib/api';
+import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities } from '@/lib/api';
+import { apiFetch } from '@/lib/api/fetch';
+import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
@@ -206,7 +208,12 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   // Phase 7 — TSB projection for event-linked plans.
   const tsbProjectionQuery = useQuery({
     queryKey: ['tsb-projection', plan.id],
-    queryFn: () => getTsbProjection(authFetch, plan.id, 14),
+    queryFn: () =>
+      apiFetch<TsbProjectionResponse>(
+        `/api/v1/projections/tsb/${plan.id}?days=14`,
+        {},
+        token,
+      ),
     staleTime: 5 * 60_000,
     enabled: !!token && !!plan.event_id,
   });
@@ -409,6 +416,40 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           )}
         </div>
       )}
+
+      {/* TSB projection strip (Phase 7) — event-linked plans only */}
+      {tsbProjectionQuery.data && (() => {
+        const tsb = tsbProjectionQuery.data;
+        const assessment = tsb.freshness_assessment;
+        const raceDayTsb = tsb.race_day_tsb;
+        const assessmentColor = assessment === 'Optimal freshness'
+          ? 'text-positive'
+          : assessment === 'Neutral'
+            ? 'text-white'
+            : assessment === 'Slightly fatigued'
+              ? 'text-warning'
+              : 'text-red-400';
+        return (
+          <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-surface-light/20 border border-surface-light/40">
+            <span className="text-xs font-medium text-muted uppercase tracking-wide">Race TSB</span>
+            {raceDayTsb != null && (
+              <span className={`text-sm font-semibold ${tsbColor(raceDayTsb)}`}>
+                {raceDayTsb >= 0 ? '+' : ''}{raceDayTsb.toFixed(1)}
+              </span>
+            )}
+            {assessment && (
+              <span className={`text-xs font-medium ${assessmentColor}`}>
+                — {assessment}
+              </span>
+            )}
+            {tsb.event_date && (
+              <span className="text-[10px] text-muted ml-auto">
+                {tsb.event_date}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Loading / error states */}
       {weekQuery.isLoading && (
