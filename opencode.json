@@ -1,0 +1,76 @@
+﻿{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "references": {
+    "backend-api": {
+      "path": "backend/app/api/CODEMAP.md",
+      "description": "Backend API routes and endpoints reference"
+    },
+    "backend-models": {
+      "path": "backend/app/models/CODEMAP.md",
+      "description": "SQLAlchemy models and relationships"
+    },
+    "backend-services": {
+      "path": "backend/app/services/CODEMAP.md",
+      "description": "Service layer business logic functions"
+    },
+    "backend-schemas": {
+      "path": "backend/app/schemas/CODEMAP.md",
+      "description": "Pydantic request/response schemas"
+    },
+    "frontend": {
+      "path": "frontend/src/CODEMAP.md",
+      "description": "Frontend pages, components, API clients, patterns"
+    },
+    "algorithms": {
+      "path": "docs/algorithms.md",
+      "description": "Scoring algorithms, TSS/CTL/ATL formulas, VO2max, decoupling, encryption"
+    },
+    "bugs": {
+      "path": "docs/BUGS.md",
+      "description": "Known bugs and issues reference"
+    },
+    "deploy": {
+      "path": "docs/DEPLOY.md",
+      "description": "Deployment and infrastructure instructions"
+    },
+    "plans": {
+      "path": "plans",
+      "description": "Active planning docs — phase-7, issues, features"
+    },
+    "opencode": {
+      "path": "docs/OPENCODE.md",
+      "description": "OpenCode TUI configuration, commands, skills, agents, and workflows"
+    }
+  },
+  "shell": "pwsh",
+  "snapshot": true,
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+  "formatter": {
+    "ruff": {
+      "command": ["ruff", "format", "$FILE"],
+      "extensions": [".py"]
+    }
+  },
+  "watcher": {
+    "ignore": ["node_modules/**", "dist/**", ".git/**", "backups/**", "*.egg-info/**", "__pycache__/**"]
+  },
+  "permission": {
+    "bash": {
+      "python fittrack.py *": "allow",
+      "docker compose *": "allow",
+      "npm *": "allow",
+      "npx *": "allow",
+      "pip *": "allow",
+      "alembic *": "allow",
+      "ruff *": "allow",
+      "uvicorn *": "allow",
+      "git *": "allow",
+      "*": "ask"
+    }
+  }
+}

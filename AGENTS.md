@@ -13,15 +13,37 @@ Read only the sections relevant to your task:
 | Integration/sync | Architecture, Key Algorithms, Celery Tasks, Critical Pitfalls |
 | Database/model | Database, Conventions>Backend, Critical Pitfalls |
 | Debugging | Critical Pitfalls, Development Lessons, Agent Efficiency Rules |
+| Production issues (SSH) | Critical Pitfalls, Agent Efficiency Rules (use `@production` agent) |
 | New feature planning | Overview, Architecture, Planned/Incomplete |
+| OpenCode TUI/config | @opencode (docs/OPENCODE.md) |
 
 ## Agent Efficiency Rules
 
-1. **Stop after 2 failed attempts**: If the same fix fails twice, describe what you tried, what error you saw, and what you're unsure about. Ask the user.
-2. **Don't read files speculatively**: Only read files needed for the current task. Use CODEMAP files for orientation.
-3. **One question, not a loop**: If unsure about user intent, ask once. Don't assume then debug your assumption.
-4. **Check AGENTS.md first**: Before reading multiple files, check if this file already answers your question.
-5. **Prefer small changes**: Make one change, verify it works, then proceed. Don't batch changes and debug.
+1. **Only commit files from this session**: Do not commit files worked on by another session. Let each session commit its own files when ready. `git add` only the files you modified.
+2. **Stand down if another session is using git**: If the git index changes unexpectedly between your commands (files you didn't stage appear staged, your staged files disappear, or staging doesn't match what you just ran), another session is concurrently manipulating git. **Stop all git operations immediately**, tell the user, and retry only after they confirm the other session is done. Never fight over the index.
+3. **Stop after 2 failed attempts**: If the same fix fails twice, describe what you tried, what error you saw, and what you're unsure about. Ask the user.
+4. **Don't read files speculatively**: Only read files needed for the current task. Use CODEMAP files for orientation.
+5. **One question, not a loop**: If unsure about user intent, ask once. Don't assume then debug your assumption.
+6. **Check AGENTS.md first**: Before reading multiple files, check if this file already answers your question.
+7. **Prefer small changes**: Make one change, verify it works, then proceed. Don't batch changes and debug.
+8. **No code changes on production**: Never make code changes directly on the production server or on the production branch (`prod` — only this branch auto-deploys; `main` does not). All changes go through feature branches and PRs; hotfixes are made locally and deployed via the normal pipeline.
+9. **Keep documentation up to date**: When changing the codebase, update the relevant docs in the same change — `AGENTS.md`, CODEMAP files, `docs/*.md`, and `plans/`. Stale docs mislead future sessions.
+
+## Subagent Delegation Rules
+
+Delegate to specialized agents when the task clearly fits their domain:
+
+| When to Delegate | Agent | Example Prompt |
+|-----------------|-------|----------------|
+| Backend API/service changes | `@backend` | "Add a new endpoint for X following the pattern in @backend/app/api/activities.py" |
+| Frontend component/page changes | `@frontend` | "Create a new settings page following the pattern in @frontend/src/app/(app)/settings/" |
+| Debugging errors/logs | `@debugger` | "The Strava sync is failing with 401 — investigate token refresh in @backend/app/integrations/strava_client.py" |
+| OAuth/integration/sync issues | `@sync-engineer` | "Whoop token refresh is broken — check @backend/app/services/whoop.py and @backend/app/integrations/whoop_client.py" |
+| Production issues (SSH) | `@production` | "Users reporting 500 errors — check backend logs on the Droplet and verify DB connectivity" |
+
+**When NOT to delegate**: Quick single-file edits, AGENTS.md updates, config changes, or tasks under 3 tool calls. Just do it directly.
+
+**Delegation pattern**: Always include the specific files/paths to investigate in the prompt.
 
 ## Overview
 
@@ -126,10 +148,11 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
-11. **`fittrack.py` dev mode only**: Does NOT auto-include `docker-compose.prod.yml`. Use `--prod` flag for production overrides
+11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
 12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
+15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
 12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
@@ -164,3 +187,12 @@ python fittrack.py migrate         # Apply migrations
 ```
 
 Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.
+
+## OpenCode TUI Tips
+
+- **Paste on Windows**: `Ctrl+V` doesn't work in TUI on Windows. Use **right-click** to paste (enabled by default in Windows Terminal). Alternatively, use the OpenCode Desktop app which handles `Ctrl+V` correctly.
+- **Multiline input**: Use `Shift+Enter` (requires Windows Terminal config — already set up).
+- **File references**: Use `@filename` to include file context in prompts.
+- **Quick commands**: Use `!command` to run shell commands and include output.
+- **Plan mode**: Press `Tab` to switch to Plan mode for analysis without changes.
+- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, or `@production` in prompts to delegate to specialized agents.
