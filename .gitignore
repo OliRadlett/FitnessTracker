@@ -43,3 +43,7 @@ frontend/test-results/
 frontend/e2e/screenshots/
 frontend/playwright-report/
 frontend/e2e/.auth/
+
+# Local dev overrides (dev.oliradlett.co.uk Strava workaround)
+docker-compose.override.yml
+infra/Caddyfile.local
