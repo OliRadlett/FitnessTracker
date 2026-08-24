@@ -7,7 +7,7 @@
 | `auth.py` | `/auth/` | `POST /sync-user`, `GET /oauth/{provider}/authorize`, `GET /oauth/{provider}/callback` |
 | `connections.py` | `/connections/` | `GET /`, `DELETE /{id}`, `POST /{id}/sync` |
 | `activities.py` | `/activities/` | `GET /` (list+filter), `GET /calendar`, `GET /{id}`, `GET /{id}/streams`, `GET /{id}/analysis`, `GET/POST /{id}/ai-analysis` |
-| `lifting.py` | `/lifting/` | Sessions CRUD, sets CRUD, PRs, volume trends, warmup templates, activity linking, `GET /sessions/{id}/analysis`, `GET/POST /sessions/{id}/ai-analysis` |
+| `lifting.py` | `/lifting/` | Sessions CRUD (`GET /sessions/active` = unfinished live-tracked session for `/lifting/live` resume; registered BEFORE `/{session_id}` so "active" isn't parsed as UUID), sets CRUD, PRs, volume trends, warmup templates, activity linking, `GET /sessions/{id}/analysis`, `GET/POST /sessions/{id}/ai-analysis`. Session create accepts `started_at`, PATCH accepts `started_at`/`ended_at` (live flow) |
 | `routes.py` | `/routes/` | Route CRUD, filtering, GPX download/upload, sync, merge, duplicates |
 | `cycling/` | `/cycling/` | Profile, FTP history, training load, power curve/zones, metrics, FTP estimation, backfill |
 | `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data |

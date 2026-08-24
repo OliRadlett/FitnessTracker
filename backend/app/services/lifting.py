@@ -66,6 +66,7 @@ async def create_session(
         duration_seconds=data.duration_seconds,
         rpe_session=data.rpe_session,
         notes=data.notes,
+        started_at=data.started_at,
     )
     db.add(session)
     await db.flush()
@@ -146,6 +147,31 @@ async def list_sessions(
         query.order_by(LiftingSession.session_date.desc()).limit(limit).offset(offset)
     )
     return list(result.scalars().all())
+
+
+async def get_active_session(
+    db: AsyncSession, user_id: uuid.UUID
+) -> LiftingSession | None:
+    """Latest live-tracked session that hasn't been finished (for resume flow).
+
+    Only sessions created via the live tracker have ``started_at`` set, so
+    legacy/manual sessions never appear active.
+    """
+    result = await db.execute(
+        select(LiftingSession)
+        .options(
+            selectinload(LiftingSession.sets),
+            selectinload(LiftingSession.linked_activity),
+        )
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.started_at.is_not(None),
+            LiftingSession.ended_at.is_(None),
+        )
+        .order_by(LiftingSession.started_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def update_session(

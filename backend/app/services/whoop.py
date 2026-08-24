@@ -35,6 +35,8 @@ _WHOOP_SPORT_MAP: dict[str, str] = {
     "swimming": "swimming",
     "weightlifting": "strength",
     "strength_training": "strength",
+    "strength_trainer": "strength",
+    "powerlifting": "strength",
     "yoga": "other",
     "walking": "walking",
     "hiking": "hiking",
@@ -726,6 +728,74 @@ async def sync_whoop_sleep(
 # ── Workout enrichment ─────────────────────────────────────────────────────
 
 
+async def match_whoop_workout_to_lifting_session(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    workout_id: str,
+    workout_start: datetime,
+    workout_end: datetime | None,
+    strain: float | None,
+    avg_hr: float | None,
+    max_hr: float | None,
+    kilojoule: float | None,
+) -> bool:
+    """Attach a strength Whoop workout to a live-tracked LiftingSession.
+
+    Matches on time overlap (>= 50% of the shorter window). Used when no
+    Strava activity matched — live sessions have no Strava counterpart, so
+    without this rule their strain/HR data would be silently dropped.
+    """
+    from app.models.lifting import LiftingSession
+
+    if workout_end is None or workout_end <= workout_start:
+        return False
+
+    result = await db.execute(
+        select(LiftingSession).where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.started_at.is_not(None),
+            LiftingSession.ended_at.is_not(None),
+            LiftingSession.whoop_workout_id.is_(None),
+            LiftingSession.started_at < workout_end,
+            LiftingSession.ended_at > workout_start,
+        )
+    )
+    candidates = result.scalars().all()
+
+    best: LiftingSession | None = None
+    best_fraction = 0.0
+    workout_duration = (workout_end - workout_start).total_seconds()
+
+    for session in candidates:
+        assert session.started_at is not None and session.ended_at is not None
+        overlap_start = max(session.started_at, workout_start)
+        overlap_end = min(session.ended_at, workout_end)
+        overlap = (overlap_end - overlap_start).total_seconds()
+        if overlap <= 0:
+            continue
+        session_duration = (session.ended_at - session.started_at).total_seconds()
+        denominator = min(session_duration, workout_duration) or 1.0
+        fraction = overlap / denominator
+        if fraction >= 0.5 and fraction > best_fraction:
+            best = session
+            best_fraction = fraction
+
+    if best is None:
+        return False
+
+    best.whoop_strain = strain
+    best.whoop_avg_hr = int(avg_hr) if avg_hr else None
+    best.whoop_max_hr = int(max_hr) if max_hr else None
+    best.whoop_kilojoules = kilojoule
+    best.whoop_workout_id = workout_id
+    await db.flush()
+    logger.info(
+        f"Attached Whoop workout {workout_id} to lifting session {best.id} "
+        f"(overlap {best_fraction:.0%}, strain={strain})"
+    )
+    return True
+
+
 async def sync_whoop_workouts(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -807,6 +877,7 @@ async def sync_whoop_workouts(
 
         # Duration in seconds
         end_str = workout.get("end")
+        end_date: datetime | None = None
         duration_seconds = None
         if start_str and end_str:
             try:
@@ -856,10 +927,26 @@ async def sync_whoop_workouts(
                 f"(strain={strain})"
             )
         else:
-            # No matching Strava activity — skip (don't create standalone Whoop activity)
-            logger.debug(
-                f"Skipping Whoop workout {workout_id} ({sport_name}): no matching Strava activity"
-            )
+            # No matching Strava activity — skip standalone creation, but if
+            # this is a strength workout try to attach it to a live-tracked
+            # LiftingSession (time-overlap match).
+            attached = False
+            if sport_type == "strength":
+                attached = await match_whoop_workout_to_lifting_session(
+                    db,
+                    user_id,
+                    workout_id,
+                    start_date,
+                    end_date,
+                    strain,
+                    avg_hr,
+                    max_hr,
+                    kilojoule,
+                )
+            if not attached:
+                logger.debug(
+                    f"Skipping Whoop workout {workout_id} ({sport_name}): no matching Strava activity"
+                )
 
     await db.flush()
     logger.info(
@@ -1630,10 +1717,12 @@ async def backfill_whoop_data(
             continue
 
         end_str = workout.get("end")
+        workout_end_dt: datetime | None = None
         duration_seconds = None
         if start_str and end_str:
             try:
                 end_date = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                workout_end_dt = end_date
                 duration_seconds = int((end_date - start_date_dt).total_seconds())
             except (ValueError, AttributeError):
                 pass
@@ -1669,6 +1758,20 @@ async def backfill_whoop_data(
                 raw_data=workout,
             )
             synced_workouts += 1
+        elif sport_type == "strength":
+            attached = await match_whoop_workout_to_lifting_session(
+                db,
+                user_id,
+                workout_id,
+                start_date_dt,
+                workout_end_dt,
+                strain,
+                avg_hr,
+                max_hr,
+                kilojoule,
+            )
+            if attached:
+                synced_workouts += 1
 
     await db.flush()
     logger.info(

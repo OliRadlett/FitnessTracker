@@ -53,6 +53,7 @@ class LiftingSessionBase(BaseModel):
 
 class LiftingSessionCreate(LiftingSessionBase):
     sets: list[LiftingSetCreate] = []
+    started_at: datetime | None = None
 
 
 class LiftingSessionUpdate(BaseModel):
@@ -62,6 +63,8 @@ class LiftingSessionUpdate(BaseModel):
     duration_seconds: int | None = None
     rpe_session: float | None = None
     notes: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
 
 
 class LiftingSessionLink(BaseModel):
@@ -93,6 +96,12 @@ class LiftingSessionRead(LiftingSessionBase):
     total_volume_kg: float | None = None
     sets: list[LiftingSetRead] = []
     linked_activity: LinkedActivityRead | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    whoop_strain: float | None = None
+    whoop_avg_hr: int | None = None
+    whoop_max_hr: int | None = None
+    whoop_kilojoules: float | None = None
     created_at: datetime
     updated_at: datetime
 

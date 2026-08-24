@@ -5,6 +5,7 @@ import type {
   PersonalRecord,
   AddSetPayload,
   CreateSessionPayload,
+  UpdateSessionPayload,
   LinkSessionPayload,
   WarmupTemplate,
   CreateWarmupTemplatePayload,
@@ -17,6 +18,20 @@ import type {
 
 export async function getLiftingSessions(): Promise<LiftingSession[]> {
   return apiFetch<LiftingSession[]>('/api/v1/lifting/sessions');
+}
+
+export async function getActiveLiftingSession(): Promise<LiftingSession | null> {
+  return apiFetch<LiftingSession | null>('/api/v1/lifting/sessions/active');
+}
+
+export async function updateLiftingSession(
+  id: string,
+  payload: UpdateSessionPayload
+): Promise<LiftingSession> {
+  return apiFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createLiftingSession(payload: CreateSessionPayload): Promise<LiftingSession> {
@@ -34,6 +49,12 @@ export async function addSetToSession(sessionId: string, payload: AddSetPayload)
   return apiFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteLiftingSet(setId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/lifting/sets/${setId}`, {
+    method: 'DELETE',
   });
 }
 

@@ -92,6 +92,18 @@ async def list_sessions(
     )
 
 
+@router.get("/sessions/active", response_model=LiftingSessionRead | None)
+async def get_active_session(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Latest unfinished live-tracked session (started via /lifting/live), or null."""
+    session = await lifting_service.get_active_session(db, current_user.id)
+    if not session:
+        return None
+    return LiftingSessionRead.model_validate(session)
+
+
 @router.get("/sessions/{session_id}", response_model=LiftingSessionRead)
 async def get_session(
     session_id: uuid.UUID,

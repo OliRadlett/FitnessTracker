@@ -34,6 +34,19 @@ class LiftingSession(Base):
     total_volume_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_session: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Live-session tracking (set only by /lifting/live flow)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Whoop workout enrichment via time-overlap match (sync_whoop_workouts)
+    whoop_strain: Mapped[float | None] = mapped_column(Float, nullable=True)
+    whoop_avg_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    whoop_max_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    whoop_kilojoules: Mapped[float | None] = mapped_column(Float, nullable=True)
+    whoop_workout_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

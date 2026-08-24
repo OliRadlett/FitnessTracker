@@ -10,7 +10,8 @@
 | `komoot.py` | Komoot route sync | `sync_komoot_routes()` |
 | `merge_service.py` | Activity dedup/merge engine, activity↔route linking | `find_duplicate_activity()`, `merge_activity()`, `link_activity_to_route()` |
 | `route_service.py` | Route CRUD, dedup/merge (proximity + distance + name + shape scoring) | `create_or_merge_route()`, `get_routes()`, `delete_route()` |
-| `lifting.py` | Session/set CRUD, PR detection (Brzycki), volume calculation, activity linking | `create_session()`, `add_set()`, `_check_and_record_pr()` |
+| `lifting.py` | Session/set CRUD, PR detection (Brzycki), volume calculation, activity linking, live-session support (`get_active_session()` = latest `started_at IS NOT NULL AND ended_at IS NULL`) | `create_session()`, `get_active_session()`, `add_set()`, `_check_and_record_pr()` |
+| `whoop.py` | Whoop sync — cycles/recovery, sleep, weight, workout enrichment. Strength workouts with no Strava match are attached to live-tracked LiftingSessions by time overlap (`match_whoop_workout_to_lifting_session()`, ≥50% of shorter window; dedup via `whoop_workout_id`); used by both `sync_whoop_workouts()` and backfill | `sync_whoop_cycles()`, `sync_whoop_sleep()`, `sync_whoop_workouts()`, `match_whoop_workout_to_lifting_session()`, `backfill_whoop_data()` |
 | `exercise_db.py` | Built-in exercise database with aliases, normalisation, categorisation | `normalise_exercise_name()`, `search_exercises()` |
 | `cycling.py` | TSS calc, CTL/ATL/TSB, power curve from streams, power zones, FTP estimation | `compute_training_load()`, `compute_power_curve_from_streams()`, `auto_compute_tss_for_activity()` |
 | `charts.py` | Chart generation — queries DB, returns ChartData dataclasses | `ChartService` class with methods per chart type |

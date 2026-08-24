@@ -15,6 +15,12 @@ export interface LiftingSession {
   notes?: string;
   sets: LiftingSet[];
   linked_activity?: LinkedActivity | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  whoop_strain?: number | null;
+  whoop_avg_hr?: number | null;
+  whoop_max_hr?: number | null;
+  whoop_kilojoules?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +68,8 @@ export interface UpdateSessionPayload {
   duration_seconds?: number;
   rpe_session?: number;
   notes?: string;
+  started_at?: string | null;
+  ended_at?: string | null;
 }
 
 export interface ExerciseSuggestion {
@@ -122,6 +130,7 @@ export interface CreateSessionPayload {
   duration_seconds?: number;
   rpe_session?: number;
   notes?: string;
+  started_at?: string;
   sets?: AddSetPayload[];
 }
 

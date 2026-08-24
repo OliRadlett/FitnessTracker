@@ -11,7 +11,8 @@
 | `/activities` | `activities/page.tsx` | Activity list with filters, merge analysis |
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting |
 | `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B) |
-| `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates |
+| `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates. Live Lift entry banner + Whoop-unmatched warning (live sessions with `started_at`/`ended_at`, no `whoop_strain`, ended >3h ago) |
+| `/lifting/live` | `lifting/live/page.tsx` | **Live Lift** — mobile-first live session tracker. Pre-start (focus/program/warmup template) → active workout (`LiveWorkout`: steppers w/ smart prefill from last set or last-session reference, count-up since-last-set pill, 1-tap logging, double-tap undo, Wake Lock, PR toasts) → finish sheet (RPE/notes). Local-first: state persisted to localStorage every mutation, background syncer lazily creates the remote session then pushes sets/deletes, flushes on reconnect/foreground; resume/discard prompt after crash |
 | `/routes` | `routes/page.tsx` | Route management, map view, GPX upload/download |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — features, glossary, science |
 | `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences |
@@ -24,7 +25,7 @@
 | `types.ts` | — | Barrel re-exports from `types/` domain modules |
 | `types/llm.ts` | — | `LlmAnalysis`, `LlmAnalysisSummary` interfaces |
 | `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis` |
-| `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `addSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
+| `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `getActiveSession`, `updateSession`, `addSet`, `deleteSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
 | `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
 | `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes` |
@@ -84,6 +85,7 @@
 | `LiftingAnalysisCard` | Post-session analysis card |
 | `SessionAiAnalysisCard` | Per-session AI lifting analysis (on-demand Gemini) |
 | `LinkActivityModal` | Link activity to lifting session |
+| `LiveWorkout` | Active-session UI for `/lifting/live` — header (elapsed timer from `started_at` timestamp, volume/sets, count-up since-last-set pill, sync status), exercise autocomplete + recent chips, weight/reps steppers (`Stepper`, tap-target ≥44px, configurable step size cycled ±1/2.5/5kg persisted in localStorage), optional RPE dots + warm-up toggle, last-session reference line (`reference.ts` map), set log with double-tap undo, bottom LOG SET button (debounced), inline PR toasts via `detectPr()` (Brzycki e1RM vs stored PRs) |
 | `ManualPRForm` | Manual PR entry form |
 | `WarmupTemplateManager` | Warmup template CRUD |
 
@@ -120,6 +122,12 @@
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
 | `utils.ts` | `formatDuration`, `formatDistance`, `weatherEmoji` (conditions → emoji mapping shared by weather UI) |
+
+### `lib/lifting/` — Live session logic
+| File | Purpose |
+|------|---------|
+| `useLiveSession.ts` | Local-first live-session state hook. Persists full state to localStorage (`fittrack-live-session`) on every change; background syncer lazily POSTs the remote session (with accumulated sets) on first flush, then pushes unsynced sets / pending deletes; never blocks logging on network — failures stay queued and retry on `online`/`visibilitychange`; finish flow PATCHes `ended_at` and clears storage; exposes `logSet`/`undoLastSet`/`requestFinish`/`discardSession` |
+| `reference.ts` | Session-start reference data: `buildLastSessionMap` (exercise â†’ most recent sets), `recentExerciseNames`, `detectPr` (Brzycki e1RM vs stored PRs + today's sets), `brzycki1rm` |
 
 ## Patterns
 

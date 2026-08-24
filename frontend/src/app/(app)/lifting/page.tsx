@@ -346,6 +346,56 @@ export default function LiftingPage() {
         </div>
       </div>
 
+      {/* Live Lift entry point */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
+        <div>
+          <p className="text-white font-semibold">⚡ Track a session live</p>
+          <p className="text-sm text-muted">
+            Log sets as you lift — one tap per set, works offline, Whoop strain attaches automatically.
+          </p>
+        </div>
+        <a
+          href="/lifting/live"
+          className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-background font-bold rounded-xl transition-colors whitespace-nowrap"
+        >
+          Start Live Session
+        </a>
+      </div>
+
+      {/* Whoop unmatched-session warning (live sessions only) */}
+      {(() => {
+        const THREE_H = 3 * 60 * 60 * 1000;
+        const unmatched = (sessions ?? []).filter(
+          (s) =>
+            s.started_at &&
+            s.ended_at &&
+            !s.whoop_strain &&
+            Date.now() - new Date(s.ended_at).getTime() > THREE_H
+        );
+        if (unmatched.length === 0) return null;
+        const latest = unmatched[0];
+        const start = new Date(latest.started_at!).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const end = new Date(latest.ended_at!).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        return (
+          <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl text-sm">
+            <p className="text-warning font-semibold">
+              ⚠ No Whoop workout matched{' '}
+              {unmatched.length > 1 ? `${unmatched.length} recent live sessions` : 'a recent live session'}
+            </p>
+            <p className="text-muted mt-1">
+              If you wore your Whoop, add the activity in the Whoop app with the exact
+              time range ({start}–{end}) and it will attach after the next sync.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Readiness Indicator */}
       {readiness && readiness.readiness !== 'unknown' && (
         <ReadinessIndicator
