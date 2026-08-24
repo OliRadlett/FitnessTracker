@@ -77,7 +77,11 @@ export default function SettingsPage() {
     // the authorize navigation itself stays relative (Caddy routes /api/v1).
     const origin = window.location.origin;
     const callbackUrl = `${origin}/api/v1/auth/oauth/${provider}/callback`;
-    window.location.href = `/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+    // The backend resolves the user from the state parameter (a JWT) in the
+    // callback — without it, connecting fails with "Could not identify
+    // authenticated user".
+    const state = session?.backendToken ? `&state=${encodeURIComponent(session.backendToken)}` : '';
+    window.location.href = `/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}${state}`;
   }
 
   async function handleExport(apiPath: string, filename: string) {
