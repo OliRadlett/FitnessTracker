@@ -57,7 +57,13 @@ export const authOptions: NextAuthOptions = {
         try {
           const res = await fetch(`${API_BASE_URL}/api/v1/auth/sync-user`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              // Backend requires this to issue JWTs (BUG-003 protection)
+              ...(process.env.INTERNAL_API_SECRET
+                ? { 'X-Internal-Secret': process.env.INTERNAL_API_SECRET }
+                : {}),
+            },
             body: JSON.stringify({
               email: token.email,
               name: token.name || '',
