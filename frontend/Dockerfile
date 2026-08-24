@@ -26,4 +26,7 @@ COPY --from=builder /app/.next/static ./.next/static
 RUN test -f /app/server.js && echo "OK: server.js present in runner" || (echo "ERROR: server.js missing from runner" && exit 1)
 EXPOSE 3000
 ENV PORT=3000
-CMD ["node", "server.js"]
+# Override node:20-slim's docker-entrypoint.sh to avoid shell-form CMD mangling.
+# Using ENTRYPOINT with exec-form ensures CMD args are passed directly to node.
+ENTRYPOINT ["node", "server.js"]
+CMD []

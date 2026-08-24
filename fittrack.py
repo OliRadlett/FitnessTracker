@@ -239,10 +239,12 @@ def use_prod(enabled: bool = True) -> None:
 def _compose_file_args() -> list[str]:
     """Return ``-f`` flags for docker compose.
 
-    Only includes ``docker-compose.prod.yml`` when production mode has been
-    explicitly enabled via :func:`use_prod` (or the ``--prod`` CLI flag).
-    Auto-including the prod file breaks local development because it removes
-    volume mounts and hot-reload.
+    In dev mode (default), includes ``docker-compose.dev.yml`` which adds the
+    hot-reload command for frontend (npm install && npm run dev).
+
+    In production mode (``--prod`` flag), includes ``docker-compose.prod.yml``
+    instead, which uses pre-built GHCR images and lets the Dockerfile's CMD
+    handle the frontend command (node server.js).
     """
     root = _project_root()
     args = ["-f", str(root / "docker-compose.yml")]
@@ -250,6 +252,10 @@ def _compose_file_args() -> list[str]:
         prod = root / "docker-compose.prod.yml"
         if prod.is_file():
             args += ["-f", str(prod)]
+    else:
+        dev = root / "docker-compose.dev.yml"
+        if dev.is_file():
+            args += ["-f", str(dev)]
     return args
 
 

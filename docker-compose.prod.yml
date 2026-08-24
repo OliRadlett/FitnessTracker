@@ -29,8 +29,6 @@ services:
 
   frontend:
     image: ghcr.io/oliradlett/fitnesstracker/frontend:latest
-    command: ["node", "server.js"]
-    entrypoint: ""
     volumes: []
     restart: unless-stopped
 

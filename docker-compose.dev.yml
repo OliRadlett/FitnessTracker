@@ -1,0 +1,8 @@
+# Development overrides — automatically included by fittrack.py in dev mode.
+# Adds hot-reload command for frontend (npm install && npm run dev).
+# Not used in production (--prod flag).
+
+services:
+  frontend:
+    entrypoint: ""
+    command: sh -c "npm install && npm run dev"
