@@ -7,12 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const PUBLIC_URL = process.env.NEXT_PUBLIC_PUBLIC_URL || 'https://localhost';
 const BASE_PATH = '/fittrack';
-
-// Providers that require HTTPS for OAuth callbacks
-const HTTPS_PROVIDERS = ['wahoo', 'whoop'];
 
 const integrations = [
   {
@@ -76,10 +71,13 @@ export default function SettingsPage() {
   }
 
   function handleConnect(provider: string) {
-    // Providers that require HTTPS for OAuth callbacks
-    const baseUrl = HTTPS_PROVIDERS.includes(provider) ? PUBLIC_URL : API_BASE_URL;
-    const callbackUrl = `${baseUrl}/api/v1/auth/oauth/${provider}/callback`;
-    window.location.href = `${API_BASE_URL}/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+    // Build OAuth URLs from the runtime origin — NEXT_PUBLIC_* vars are baked
+    // in at build time and must not be relied on here (Pitfall #4).
+    // Callbacks must be absolute so providers accept them for token exchange;
+    // the authorize navigation itself stays relative (Caddy routes /api/v1).
+    const origin = window.location.origin;
+    const callbackUrl = `${origin}/api/v1/auth/oauth/${provider}/callback`;
+    window.location.href = `/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}`;
   }
 
   async function handleExport(apiPath: string, filename: string) {
