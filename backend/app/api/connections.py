@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -94,6 +95,15 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Strava token refresh failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Strava.",
+            )
     elif connection.provider == "komoot":
         try:
             from app.services.komoot import sync_komoot_routes
@@ -107,6 +117,15 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Komoot sync failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Komoot.",
+            )
     elif connection.provider == "wahoo":
         try:
             from app.services.wahoo import sync_wahoo_activities, sync_wahoo_routes
@@ -123,6 +142,15 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Wahoo token refresh failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Wahoo.",
+            )
     elif connection.provider == "whoop":
         try:
             from app.services.whoop import (
@@ -146,6 +174,15 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Whoop token refresh failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Whoop.",
+            )
     else:
         raise HTTPException(
             status_code=400,
