@@ -180,7 +180,7 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 
             echo "▸ Verifying frontend image contains server.js…"
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --entrypoint "" frontend test -f /app/server.js
+            docker run --rm --entrypoint sh ghcr.io/oliradlett/fitnesstracker/frontend:latest -c "test -f /app/server.js && echo OK: server.js present"
 
             echo "▸ Stopping services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down --timeout 30
