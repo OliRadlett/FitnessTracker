@@ -160,15 +160,49 @@ Caddy will automatically obtain a Let's Encrypt certificate for your domain. For
 
 > **Note**: Do NOT edit the Caddyfile directly — the deploy workflow (`git reset --hard`) overwrites it on every deploy. All domain configuration is via the `DOMAIN` env var.
 
-## 8. Configure Google OAuth
+## 8. Configure OAuth providers
+
+### 8.1 Callback URL matrix
+
+Register these in each provider's developer console:
+
+| Provider | Production callback | Dev callback (`dev.oliradlett.co.uk`) |
+|----------|--------------------|---------------------------------------|
+| Google (NextAuth) | `https://oliradlett.co.uk/fittrack/api/auth/callback/google` | `https://dev.oliradlett.co.uk/fittrack/api/auth/callback/google` |
+| GitHub (NextAuth) | `https://oliradlett.co.uk/fittrack/api/auth/callback/github` | `https://dev.oliradlett.co.uk/fittrack/api/auth/callback/github` |
+| Strava | `https://oliradlett.co.uk/api/v1/auth/oauth/strava/callback` | covered automatically — see 8.2 |
+| Whoop | `https://oliradlett.co.uk/api/v1/auth/oauth/whoop/callback` | `https://dev.oliradlett.co.uk/api/v1/auth/oauth/whoop/callback` |
+| Wahoo | `https://oliradlett.co.uk/api/v1/auth/oauth/wahoo/callback` | `https://dev.oliradlett.co.uk/api/v1/auth/oauth/wahoo/callback` |
+
+Strava webhooks: `https://oliradlett.co.uk/api/v1/webhooks/strava`
+
+### 8.2 Google OAuth
 
 1. Go to [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials).
 2. Create an **OAuth 2.0 Client ID** (Web application).
-3. Set **Authorized redirect URIs**:
-   ```
-   https://oliradlett.co.uk/fittrack/api/auth/callback/google
-   ```
+3. Set **Authorized redirect URIs** to both Google rows from the matrix above.
 4. Copy the **Client ID** and **Client Secret** into your `.env`.
+
+### 8.3 Strava — one app covers dev and prod
+
+Strava allows only **one API application per account** with a single
+**Authorization Callback Domain**. Set that domain to the bare domain
+(no scheme, no path):
+
+```
+oliradlett.co.uk
+```
+
+Strava suffix-matches redirect URIs against it, so `dev.oliradlett.co.uk`
+callbacks are accepted without any second account or manual domain toggling.
+
+Local development uses a hosts-file alias + local TLS instead of touching
+this registration — see `docs/RUNNING.md` ("OAuth on local dev") or the
+gitignored `infra/Caddyfile.local` / `docker-compose.override.yml` pair.
+
+> ⚠️ NextAuth v4 builds `redirect_uri` as `<NEXTAUTH_URL>/callback/<provider>`
+> — `NEXTAUTH_URL` must include `/api/auth`, otherwise Google returns
+> `redirect_uri_mismatch`.
 
 ## 9. Build and Start
 

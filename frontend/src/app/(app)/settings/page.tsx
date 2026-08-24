@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
@@ -109,6 +110,49 @@ export default function SettingsPage() {
 
   const [syncing, setSyncing] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [homeLat, setHomeLat] = useState<string>('');
+  const [homeLng, setHomeLng] = useState<string>('');
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationResult, setLocationResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const profile = await authFetch<{ home_lat?: number | null; home_lng?: number | null }>(
+          '/api/v1/cycling/profile'
+        );
+        if (profile.home_lat != null) setHomeLat(String(profile.home_lat));
+        if (profile.home_lng != null) setHomeLng(String(profile.home_lng));
+      } catch {
+        // Profile not loaded — inputs stay empty
+      }
+    }
+    loadProfile();
+  }, [authFetch]);
+
+  async function handleSaveLocation() {
+    const lat = parseFloat(homeLat);
+    const lng = parseFloat(homeLng);
+    if (Number.isNaN(lat) || lat < -90 || lat > 90 || Number.isNaN(lng) || lng < -180 || lng > 180) {
+      setLocationResult('Error: latitude must be -90..90 and longitude -180..180');
+      return;
+    }
+    setSavingLocation(true);
+    setLocationResult(null);
+    try {
+      await authFetch('/api/v1/cycling/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ home_lat: lat, home_lng: lng }),
+      });
+      setLocationResult('Location saved');
+      queryClient.invalidateQueries({ queryKey: ['weather'] });
+    } catch (err) {
+      setLocationResult(`Error: ${err instanceof Error ? err.message : 'Save failed'}`);
+    } finally {
+      setSavingLocation(false);
+    }
+  }
+
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
   const [whoopBackfilling, setWhoopBackfilling] = useState(false);
@@ -179,6 +223,47 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Home Location */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Home Location</CardTitle>
+        </CardHeader>
+        <div className="px-6 pb-6">
+          <p className="text-sm text-muted mb-4">
+            Latitude and longitude used for weather forecasts (e.g. 51.5074, -0.1278).
+            Falls back to your most recent cycling activity when unset.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={homeLat}
+              onChange={(e) => setHomeLat(e.target.value)}
+              placeholder="Latitude"
+              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent"
+            />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={homeLng}
+              onChange={(e) => setHomeLng(e.target.value)}
+              placeholder="Longitude"
+              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent"
+            />
+            <button
+              onClick={handleSaveLocation}
+              disabled={savingLocation}
+              className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {savingLocation ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+          {locationResult && (
+            <p className="mt-3 text-sm text-muted">{locationResult}</p>
+          )}
+        </div>
+      </Card>
+
       {/* Integrations */}
       <Card>
         <CardHeader>
@@ -217,12 +302,12 @@ export default function SettingsPage() {
                 <div className="flex gap-2">
                   {(integration as { basicAuth?: boolean }).basicAuth ? (
                     // Basic Auth integrations (e.g. Komoot) — configured via .env, synced from Routes page
-                    <a
+                    <Link
                       href="/routes"
                       className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors"
                     >
                       Sync Routes
-                    </a>
+                    </Link>
                   ) : isConnected ? (
                     <>
                       <button

@@ -92,6 +92,14 @@ class TrainingPlanDay(Base):
         ForeignKey("lifting_sessions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    warmup_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warmup_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    session_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # push, pull, legs, upper, lower, full_body
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -108,3 +116,4 @@ class TrainingPlanDay(Base):
     activity: Mapped["Activity | None"] = relationship()  # type: ignore[name-defined]
     planned_route: Mapped["Route | None"] = relationship()  # type: ignore[name-defined]
     lifting_session: Mapped["LiftingSession | None"] = relationship()  # type: ignore[name-defined]
+    warmup_template: Mapped["WarmupTemplate | None"] = relationship()  # type: ignore[name-defined]

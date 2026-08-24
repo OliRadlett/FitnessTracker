@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   TrainingPlan,
   TrainingPlanDay,
@@ -24,6 +25,12 @@ import type {
   PlanSport,
   PlanDayType,
   Event,
+} from '@/lib/api';
+import {
+  getWarmupTemplates,
+  getLiftingSessions,
+  copySessionToPlanDay,
+  copyPlanDayToDate,
 } from '@/lib/api';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 
@@ -51,6 +58,16 @@ const FOCUS_OPTIONS = [
   { value: 'deadlift', label: 'Deadlift' },
   { value: 'overhead_press', label: 'Overhead Press' },
   { value: 'accessories', label: 'Accessories' },
+  { value: 'full_body', label: 'Full Body' },
+] as const;
+
+const SESSION_TYPES = [
+  { value: '', label: 'None' },
+  { value: 'push', label: 'Push' },
+  { value: 'pull', label: 'Pull' },
+  { value: 'legs', label: 'Legs' },
+  { value: 'upper', label: 'Upper' },
+  { value: 'lower', label: 'Lower' },
   { value: 'full_body', label: 'Full Body' },
 ] as const;
 
@@ -791,6 +808,11 @@ function PlanEditor({
                         {(day.planned_focus as string).replace('_', ' ')}
                       </span>
                     )}
+                    {day?.session_type && sport === 'strength' && (
+                      <span className="text-[10px] uppercase tracking-wide opacity-75 ml-1">
+                        ({day.session_type})
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1 text-[10px] opacity-90">
@@ -818,8 +840,13 @@ function PlanEditor({
               day={
                 daysByDate.get(expandedDate) ?? blankDay(expandedDate, plan.id)
               }
+              planId={plan.id}
               onPatch={(patch) => updateDayFields(expandedDate, patch)}
               onClose={() => setExpandedDate(null)}
+              onRefreshPlan={() => {
+                // Re-fetch the plan from the parent
+                onSaveDays(plan.id, days);
+              }}
             />
           )}
 
@@ -866,14 +893,55 @@ function PlanEditor({
 interface DayEditorProps {
   dateStr: string;
   day: TrainingPlanDay;
+  planId: string;
   onPatch: (patch: Partial<TrainingPlanDay>) => void;
   onClose: () => void;
+  onRefreshPlan: () => void;
 }
 
-function DayEditor({ dateStr, day, onPatch, onClose }: DayEditorProps) {
+function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: DayEditorProps) {
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
+  const queryClient = useQueryClient();
+
+  const { data: warmupTemplates } = useQuery({
+    queryKey: ['warmup-templates'],
+    queryFn: () => getWarmupTemplates(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: liftingSessions } = useQuery({
+    queryKey: ['lifting-sessions'],
+    queryFn: () => getLiftingSessions(),
+    enabled: isStrength,
+    staleTime: 60 * 1000,
+  });
+
+  const selectedWarmup = warmupTemplates?.find((wt) => wt.id === day.warmup_template_id);
+
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [duplicateDate, setDuplicateDate] = useState('');
+
+  const handleCopySession = async () => {
+    if (!selectedSessionId) return;
+    await copySessionToPlanDay(planId, day.id, selectedSessionId);
+    setShowSessionPicker(false);
+    setSelectedSessionId('');
+    queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+    onRefreshPlan();
+  };
+
+  const handleDuplicateDay = async () => {
+    if (!duplicateDate) return;
+    await copyPlanDayToDate(planId, day.id, duplicateDate);
+    setShowDuplicatePicker(false);
+    setDuplicateDate('');
+    queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+    onRefreshPlan();
+  };
 
   const patchExercise = (idx: number, patch: Partial<PlannedExercise>) => {
     const list = [...(day.planned_exercises ?? [])];
@@ -902,10 +970,90 @@ function DayEditor({ dateStr, day, onPatch, onClose }: DayEditorProps) {
         <h4 className="text-sm font-semibold text-white">
           Edit {getDayOfWeek(dateStr)} {dateStr}
         </h4>
-        <button onClick={onClose} className="text-muted hover:text-white text-sm px-1">
-          ✕
-        </button>
+        <div className="flex items-center gap-1">
+          {isStrength && (
+            <>
+              <button
+                onClick={() => {
+                  setShowSessionPicker(!showSessionPicker);
+                  setShowDuplicatePicker(false);
+                }}
+                title="Copy exercises from a past session"
+                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
+              >
+                📋 Copy Session
+              </button>
+              <button
+                onClick={() => {
+                  setShowDuplicatePicker(!showDuplicatePicker);
+                  setShowSessionPicker(false);
+                }}
+                title="Duplicate this day to another date"
+                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
+              >
+                📅 Duplicate
+              </button>
+            </>
+          )}
+          <button onClick={onClose} className="text-muted hover:text-white text-sm px-1">
+            ✕
+          </button>
+        </div>
       </div>
+
+      {showSessionPicker && isStrength && (
+        <div className="flex items-center gap-2 p-2 bg-background rounded-lg border border-surface-light">
+          <select
+            value={selectedSessionId}
+            onChange={(e) => setSelectedSessionId(e.target.value)}
+            className={`${inputCls} flex-1`}
+          >
+            <option value="">Select a session...</option>
+            {(liftingSessions ?? []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.session_date} — {s.focus ?? 'No focus'} ({s.sets.length} sets)
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleCopySession}
+            disabled={!selectedSessionId}
+            className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+          >
+            Copy
+          </button>
+          <button
+            onClick={() => setShowSessionPicker(false)}
+            className="text-muted hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {showDuplicatePicker && isStrength && (
+        <div className="flex items-center gap-2 p-2 bg-background rounded-lg border border-surface-light">
+          <input
+            type="date"
+            value={duplicateDate}
+            onChange={(e) => setDuplicateDate(e.target.value)}
+            className={`${inputCls} flex-1`}
+          />
+          <button
+            onClick={handleDuplicateDay}
+            disabled={!duplicateDate}
+            className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+          >
+            Duplicate
+          </button>
+          <button
+            onClick={() => setShowDuplicatePicker(false)}
+            className="text-muted hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Sport */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1047,6 +1195,18 @@ function DayEditor({ dateStr, day, onPatch, onClose }: DayEditorProps) {
               </select>
             </div>
             <div>
+              <label className={labelCls}>Session Type</label>
+              <select
+                value={day.session_type ?? ''}
+                onChange={(e) => onPatch({ session_type: e.target.value || null })}
+                className={inputCls}
+              >
+                {SESSION_TYPES.map((st) => (
+                  <option key={st.value} value={st.value}>{st.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className={labelCls}>Duration (min)</label>
               <input
                 type="number"
@@ -1077,6 +1237,32 @@ function DayEditor({ dateStr, day, onPatch, onClose }: DayEditorProps) {
                 className={inputCls}
               />
             </div>
+          </div>
+
+          {/* Warmup Template */}
+          <div>
+            <label className={labelCls}>Warmup Template</label>
+            <select
+              value={day.warmup_template_id ?? ''}
+              onChange={(e) => onPatch({ warmup_template_id: e.target.value || null })}
+              className={inputCls}
+            >
+              <option value="">No warmup</option>
+              {warmupTemplates?.map((wt) => (
+                <option key={wt.id} value={wt.id}>
+                  {wt.name}{wt.exercise_name ? ` (${wt.exercise_name})` : ''}
+                </option>
+              ))}
+            </select>
+            {selectedWarmup && selectedWarmup.steps.length > 0 && (
+              <div className="mt-1.5 space-y-0.5">
+                {selectedWarmup.steps.map((s) => (
+                  <p key={s.step_number} className="text-[10px] text-muted">
+                    {s.step_number}. {s.weight_kg}kg × {s.reps} reps{s.notes ? ` — ${s.notes}` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Exercise list */}

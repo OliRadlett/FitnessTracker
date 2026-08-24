@@ -1,6 +1,7 @@
 """Training Plans API — thin router delegating to services.training_plan."""
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -260,3 +261,61 @@ async def generate_plan(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _plan_to_read(plan)
+
+
+# ── Copy endpoints ────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{plan_id}/days/{day_id}/copy-from-session/{session_id}",
+    response_model=TrainingPlanDayRead,
+)
+async def copy_from_session(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Copy exercises from a past lifting session into a training plan day.
+
+    Groups non-warmup sets by exercise and populates planned_exercises.
+    Sets planned_focus from the session if the day doesn't have one.
+    """
+    try:
+        day = await plan_service.copy_session_to_plan_day(
+            db, current_user.id, plan_id, day_id, session_id
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanDayRead.model_validate(day)
+
+
+@router.post(
+    "/{plan_id}/days/{source_day_id}/copy-to-date/{target_date}",
+    response_model=TrainingPlanDayRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def copy_day_to_date(
+    plan_id: uuid.UUID,
+    source_day_id: uuid.UUID,
+    target_date: date,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Copy a plan day's exercises to a new date within the same plan.
+
+    Creates a new day at the target date with the same planned fields
+    (exercises, focus, sport, type, warmup template, session type, etc.).
+    """
+    try:
+        day = await plan_service.copy_plan_day(
+            db, current_user.id, plan_id, source_day_id, target_date
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanDayRead.model_validate(day)

@@ -17,7 +17,12 @@ from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity
 from app.models.event import Event
-from app.models.lifting import LiftingSession
+from app.models.lifting import (
+    LiftingSession,
+    LiftingSet,
+    WarmupTemplate,
+    WarmupTemplateStep,
+)
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.schemas.training_plan import (
     ActualActivity,
@@ -32,6 +37,8 @@ from app.schemas.training_plan import (
     TrainingPlanUpdate,
     TrainingWeekDay,
     TrainingWeekResponse,
+    WarmupStepRead,
+    WarmupTemplateRead,
     WeekReadiness,
     WeekRouteMatch,
 )
@@ -756,6 +763,17 @@ async def get_plan_week(
         )
         lifting_sessions = {s.id: s for s in result.scalars().all()}
 
+    # ── Warmup templates — batched lookup ─────────────────────────────────
+    warmup_ids = {d.warmup_template_id for d in week_days if d.warmup_template_id}
+    warmup_templates: dict[uuid.UUID, WarmupTemplate] = {}
+    if warmup_ids:
+        result = await db.execute(
+            select(WarmupTemplate)
+            .where(WarmupTemplate.id.in_(warmup_ids))
+            .options(selectinload(WarmupTemplate.steps))
+        )
+        warmup_templates = {t.id: t for t in result.scalars().all()}
+
     # ── Route matches — cycle days with a planned duration only ────────────
     route_matches_by_day: dict[uuid.UUID, list[WeekRouteMatch]] = {}
     cycle_days = [
@@ -872,6 +890,11 @@ async def get_plan_week(
                 actual_activity=actual_activity,
                 actual_lifting_session=actual_lifting,
                 route_matches=route_matches_by_day.get(day.id),
+                warmup_template=_build_warmup_read(
+                    warmup_templates.get(day.warmup_template_id)
+                )
+                if day.warmup_template_id
+                else None,
             )
         )
 
@@ -883,3 +906,139 @@ async def get_plan_week(
         readiness=readiness,
         days=entries,
     )
+
+
+# ── Warmup template helper ───────────────────────────────────────────────
+
+
+def _build_warmup_read(template: WarmupTemplate | None) -> WarmupTemplateRead | None:
+    """Convert a WarmupTemplate ORM object to the read schema."""
+    if template is None:
+        return None
+    return WarmupTemplateRead(
+        id=template.id,
+        name=template.name,
+        exercise_name=template.exercise_name,
+        steps=[
+            WarmupStepRead(
+                step_number=s.step_number,
+                weight_kg=s.weight_kg,
+                reps=s.reps,
+                notes=s.notes,
+            )
+            for s in (template.steps or [])
+        ],
+    )
+
+
+# ── Copy session to plan day ─────────────────────────────────────────────
+
+
+async def copy_session_to_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    session_id: uuid.UUID,
+) -> TrainingPlanDay:
+    """Copy exercises from a past lifting session into a plan day's planned_exercises.
+
+    Groups non-warmup sets by exercise name, counts sets, and uses the max weight
+    from the session for each exercise.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    day = next((d for d in plan.days if d.id == day_id), None)
+    if day is None:
+        raise ValueError("Training plan day not found")
+
+    # Load the lifting session with its sets
+    result = await db.execute(
+        select(LiftingSession)
+        .where(LiftingSession.id == session_id, LiftingSession.user_id == user_id)
+        .options(selectinload(LiftingSession.sets))
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise ValueError("Lifting session not found")
+
+    # Group non-warmup sets by exercise name
+    exercise_groups: dict[str, list[LiftingSet]] = {}
+    for s in session.sets:
+        if s.is_warmup:
+            continue
+        exercise_groups.setdefault(s.exercise_name, []).append(s)
+
+    planned_exercises: list[dict] = []
+    for exercise_name, sets in exercise_groups.items():
+        planned_exercises.append(
+            {
+                "exercise": exercise_name,
+                "sets": len(sets),
+                "reps": sets[0].reps,
+                "weight_kg": max(s.weight_kg for s in sets),
+                "rpe": max((s.rpe for s in sets if s.rpe is not None), default=None),
+            }
+        )
+
+    day.planned_exercises = planned_exercises
+    if not day.planned_focus and session.focus:
+        day.planned_focus = session.focus
+
+    await db.flush()
+    return day
+
+
+async def copy_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    source_day_id: uuid.UUID,
+    target_date: date,
+) -> TrainingPlanDay:
+    """Copy a plan day's exercises to a new date within the same plan.
+
+    Creates a new TrainingPlanDay with the same planned_exercises, focus,
+    sport, type, and other planned fields, but on the target_date.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    source = next((d for d in plan.days if d.id == source_day_id), None)
+    if source is None:
+        raise ValueError("Source training plan day not found")
+
+    # Check target date is within plan range
+    if target_date < plan.start_date or target_date > plan.end_date:
+        raise ValueError("Target date is outside the plan range")
+
+    # Check if a day already exists at the target date
+    existing = next((d for d in plan.days if d.day_date == target_date), None)
+    if existing:
+        raise ValueError("A plan day already exists at the target date")
+
+    new_day = TrainingPlanDay(
+        plan_id=plan.id,
+        day_date=target_date,
+        sport=source.sport,
+        planned_tss=source.planned_tss,
+        planned_duration_min=source.planned_duration_min,
+        planned_type=source.planned_type,
+        workout_description=source.workout_description,
+        planned_focus=source.planned_focus,
+        planned_exercises=source.planned_exercises,
+        planned_volume_kg=source.planned_volume_kg,
+        planned_rpe=source.planned_rpe,
+        planned_power_watts=source.planned_power_watts,
+        planned_zone=source.planned_zone,
+        planned_route_id=source.planned_route_id,
+        warmup_template_id=source.warmup_template_id,
+        session_type=source.session_type,
+        notes=source.notes,
+    )
+    db.add(new_day)
+    await db.flush()
+    return new_day

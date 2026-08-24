@@ -73,3 +73,25 @@ export async function updatePlanDay(
     token
   );
 }
+
+export async function copySessionToPlanDay(
+  planId: string,
+  dayId: string,
+  sessionId: string
+): Promise<TrainingPlanDay> {
+  return apiFetch<TrainingPlanDay>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/copy-from-session/${sessionId}`,
+    { method: 'POST' }
+  );
+}
+
+export async function copyPlanDayToDate(
+  planId: string,
+  sourceDayId: string,
+  targetDate: string
+): Promise<TrainingPlanDay> {
+  return apiFetch<TrainingPlanDay>(
+    `/api/v1/training-plans/${planId}/days/${sourceDayId}/copy-to-date/${targetDate}`,
+    { method: 'POST' }
+  );
+}

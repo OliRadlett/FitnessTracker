@@ -1,33 +1,80 @@
-// ─── Goals ───────────────────────────────────────────────────────────────
+// ─── Goals (Phase 6 — semantic metrics) ──────────────────────────────────
 
+export type GoalStatus = 'active' | 'achieved' | 'expired' | 'abandoned';
+
+/**
+ * Enriched goal from GET /goals — semantic metric + service-layer computed
+ * fields (direction / alignment / progress / display metadata).
+ */
 export interface Goal {
   id: string;
   user_id: string;
-  goal_type: string;
+  metric: string;
+  /** e.g. {"exercise": "Back Squat"} or {"sport": "cycling"} */
+  filter_json?: Record<string, string> | null;
+  starting_value?: number | null;
   target_value: number;
-  current_value?: number;
-  target_date?: string;
-  status: 'active' | 'achieved' | 'expired';
-  notes?: string;
+  current_value?: number | null;
+  target_date?: string | null;
+  status: GoalStatus;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
+  // ── Enrichment (GoalEnriched) ──
+  direction?: 'increase' | 'decrease' | null;
+  alignment_pct?: number | null;
+  progress_pct?: number | null;
+  metric_label?: string | null;
+  metric_unit?: string | null;
 }
 
 export interface CreateGoalPayload {
-  goal_type: string;
+  metric: string;
   target_value: number;
-  current_value?: number;
-  target_date?: string;
-  notes?: string;
+  filter_json?: Record<string, string> | null;
+  target_date?: string | null;
+  notes?: string | null;
 }
 
 export interface UpdateGoalPayload {
-  goal_type?: string;
+  metric?: string;
   target_value?: number;
-  current_value?: number;
-  target_date?: string;
-  status?: string;
-  notes?: string;
+  filter_json?: Record<string, string> | null;
+  target_date?: string | null;
+  status?: GoalStatus;
+  notes?: string | null;
+}
+
+export interface GoalCheckIn {
+  id: string;
+  goal_id: string;
+  check_in_date: string;
+  value: number;
+  alignment_pct?: number | null;
+  note?: string | null;
+  source: 'auto' | 'manual';
+  created_at: string;
+}
+
+export interface GoalCheckInPayload {
+  value: number;
+  note?: string | null;
+}
+
+/** Registry entry from GET /goals/metrics — drives dynamic goal forms. */
+export interface MetricInfo {
+  key: string;
+  label: string;
+  unit: string;
+  requires_filter?: string[] | null;
+  optional_filter?: string[] | null;
+  default_direction: 'increase' | 'decrease';
+}
+
+export interface ReactivateResponse {
+  id: string;
+  status: string;
+  message: string;
 }
 
 // ─── Training Plans ───────────────────────────────────────────────────────
@@ -61,6 +108,7 @@ export interface TrainingPlanDay {
   planned_type: PlanDayType;
   workout_description?: string | null;
   planned_focus?: PlanFocus | string | null;
+  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_volume_kg?: number | null;
   planned_rpe?: number | null;
@@ -68,6 +116,7 @@ export interface TrainingPlanDay {
   planned_zone?: string | null;
   planned_route_id?: string | null;
   lifting_session_id?: string | null;
+  warmup_template_id?: string | null;
   notes?: string | null;
   activity_id?: string | null;
   completed: boolean;
@@ -120,6 +169,7 @@ export interface CreateTrainingPlanDayPayload {
   planned_type?: string;
   workout_description?: string | null;
   planned_focus?: string | null;
+  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_volume_kg?: number | null;
   planned_rpe?: number | null;
@@ -200,6 +250,20 @@ export interface WeekRouteMatchEntry {
   ride_count: number;
 }
 
+export interface WarmupStepRead {
+  step_number: number;
+  weight_kg: number;
+  reps: number;
+  notes?: string | null;
+}
+
+export interface WarmupTemplateRead {
+  id: string;
+  name: string;
+  exercise_name?: string | null;
+  steps: WarmupStepRead[];
+}
+
 /** CTL/ATL/TSB snapshot with a recommended intensity ceiling for the week. */
 export interface WeekReadiness {
   tsb: number;
@@ -215,6 +279,7 @@ export interface TrainingWeekDay extends TrainingPlanDay {
   actual_activity?: WeekActualActivity | null;
   actual_lifting_session?: WeekActualLiftingSession | null;
   route_matches?: WeekRouteMatchEntry[] | null;
+  warmup_template?: WarmupTemplateRead | null;
 }
 
 /** One Monday-based week of a plan — GET /training-plans/{id}/week/{n}. */
@@ -235,11 +300,13 @@ export interface UpdateTrainingPlanDayPayload {
   planned_type?: string;
   workout_description?: string | null;
   planned_focus?: string | null;
+  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_rpe?: number | null;
   planned_power_watts?: number | null;
   planned_zone?: string | null;
   planned_route_id?: string | null;
+  warmup_template_id?: string | null;
   notes?: string | null;
   completed?: boolean;
 }

@@ -40,6 +40,10 @@ class TrainingPlanDayBase(BaseModel):
     planned_zone: str | None = Field(None, max_length=10)
     planned_route_id: uuid.UUID | None = None
     lifting_session_id: uuid.UUID | None = None
+    warmup_template_id: uuid.UUID | None = None
+    session_type: str | None = Field(
+        None, max_length=20
+    )  # push, pull, legs, upper, lower, full_body
     notes: str | None = None
     # Client-settable completion toggle; activity_id stays server-managed.
     completed: bool | None = None
@@ -84,6 +88,10 @@ class TrainingPlanDayUpdate(BaseModel):
     planned_power_watts: float | None = None
     planned_zone: str | None = Field(None, max_length=10)
     planned_route_id: uuid.UUID | None = None
+    warmup_template_id: uuid.UUID | None = None
+    session_type: str | None = Field(
+        None, max_length=20
+    )  # push, pull, legs, upper, lower, full_body
     notes: str | None = Field(None, max_length=500)
     completed: bool | None = None
 
@@ -139,6 +147,22 @@ class ActualLiftingSession(BaseModel):
     total_volume_kg: float | None = None
 
 
+class WarmupStepRead(BaseModel):
+    step_number: int
+    weight_kg: float
+    reps: int
+    notes: str | None = None
+    model_config = {"from_attributes": True}
+
+
+class WarmupTemplateRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    exercise_name: str | None = None
+    steps: list[WarmupStepRead] = []
+    model_config = {"from_attributes": True}
+
+
 class WeekRouteMatch(BaseModel):
     """Compact route match for inline display on cycle day cards."""
 
@@ -167,6 +191,7 @@ class TrainingWeekDay(TrainingPlanDayRead):
     actual_activity: ActualActivity | None = None
     actual_lifting_session: ActualLiftingSession | None = None
     route_matches: list[WeekRouteMatch] | None = None
+    warmup_template: WarmupTemplateRead | None = None
 
 
 class TrainingWeekResponse(BaseModel):
