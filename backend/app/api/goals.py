@@ -1,241 +1,208 @@
-"""Goals API — CRUD for training goals with progress computation."""
+"""Goals API — thin CRUD over the semantic-goals service layer (Phase 6).
+
+Status transitions run uniformly through ``services.goals.update_goal_status``
+on every read/write path — there is no GET-list side effect any more.
+"""
+
+from __future__ import annotations
 
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.activity import Activity
-from app.models.cycling import CyclingProfile
 from app.models.goal import Goal
-from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.user import User
-from app.models.weight import WeightLog
-from app.schemas.goal import GoalCreate, GoalRead, GoalUpdate
+from app.schemas.goal import (
+    GoalCheckInCreate,
+    GoalCheckInRead,
+    GoalCreate,
+    GoalEnriched,
+    GoalRead,
+    GoalUpdate,
+    MetricInfo,
+    ReactivateResponse,
+)
 from app.services.auth import get_current_user
+from app.services.goal_metrics import (
+    METRIC_REGISTRY,
+    list_metrics,
+    validate_metric_filters,
+)
+from app.services.goals import (
+    alignment_pct,
+    compute_goal_state,
+    derive_direction,
+    list_check_ins,
+    reactivate_goal,
+    record_manual_check_in,
+)
 
 router = APIRouter()
 
-# Supported goal types and how to compute current_value
-GOAL_TYPES = {
-    "ftp_target",
-    "weight_target",
-    "weekly_sessions",
-    "1rm_target",
-    "distance_target",
-}
+VALID_STATUSES = {"active", "achieved", "expired", "abandoned"}
 
 
-async def _compute_current_value(
-    db: AsyncSession, user_id: uuid.UUID, goal: Goal
-) -> float | None:
-    """Compute the current value for a goal based on its type."""
-    today = date.today()
+def _enrich(goal: Goal, state: dict | None, today: date) -> GoalEnriched:
+    """Build the enriched read model (direction/alignment/progress/units)."""
+    direction = state["direction"] if state else derive_direction(goal)
+    current = goal.current_value
 
-    if goal.goal_type == "ftp_target":
-        result = await db.execute(
-            select(CyclingProfile.ftp_watts).where(CyclingProfile.user_id == user_id)
-        )
-        ftp = result.scalar_one_or_none()
-        return float(ftp) if ftp else None
-
-    elif goal.goal_type == "weight_target":
-        result = await db.execute(
-            select(WeightLog.weight_kilogram)
-            .where(WeightLog.user_id == user_id)
-            .order_by(WeightLog.date.desc())
-            .limit(1)
-        )
-        weight = result.scalar_one_or_none()
-        return float(weight) if weight else None
-
-    elif goal.goal_type == "weekly_sessions":
-        # Count sessions in the last 7 days (lifting + cardio)
-        from datetime import timedelta
-
-        week_ago = today - timedelta(days=7)
-        result = await db.execute(
-            select(LiftingSession.id).where(
-                LiftingSession.user_id == user_id,
-                LiftingSession.session_date >= week_ago,
+    progress_pct: float | None = None
+    if current is not None and goal.starting_value is not None:
+        span = goal.target_value - goal.starting_value
+        if span != 0:
+            progress_pct = round(
+                max(0.0, min(100.0, (current - goal.starting_value) / span * 100)), 1
             )
-        )
-        lifting_count = len(result.scalars().all())
 
-        result = await db.execute(
-            select(Activity.id).where(
-                Activity.user_id == user_id,
-                Activity.start_date >= week_ago,
-                Activity.source != "wahoo",
-            )
-        )
-        activity_count = len(result.scalars().all())
-
-        return float(lifting_count + activity_count)
-
-    elif goal.goal_type == "1rm_target":
-        # Use notes field to store exercise name for 1rm targets
-        exercise_name = goal.notes
-        if not exercise_name:
-            return None
-        result = await db.execute(
-            select(PersonalRecord.estimated_1rm)
-            .where(
-                PersonalRecord.user_id == user_id,
-                PersonalRecord.exercise_name == exercise_name,
-                PersonalRecord.record_type == "1rm",
-            )
-            .order_by(PersonalRecord.estimated_1rm.desc())
-            .limit(1)
-        )
-        best = result.scalar_one_or_none()
-        return float(best) if best else None
-
-    elif goal.goal_type == "distance_target":
-        # Total distance this month (km converted to the target unit)
-        from datetime import timedelta
-
-        month_start = today.replace(day=1)
-        result = await db.execute(
-            select(Activity.distance_meters).where(
-                Activity.user_id == user_id,
-                Activity.source != "wahoo",
-                Activity.start_date >= month_start,
-            )
-        )
-        distances = result.scalars().all()
-        total_km = sum((d or 0) for d in distances) / 1000
-        return round(total_km, 1)
-
-    return None
+    definition = METRIC_REGISTRY.get(goal.metric)
+    enriched = GoalEnriched.model_validate(goal)
+    enriched.direction = direction
+    enriched.alignment_pct = state["alignment_pct"] if state else None
+    if enriched.alignment_pct is None and current is not None:
+        enriched.alignment_pct = alignment_pct(goal, current, today)
+    enriched.progress_pct = progress_pct
+    enriched.metric_label = definition.label if definition else None
+    enriched.metric_unit = definition.unit if definition else None
+    return enriched
 
 
-@router.get("", response_model=list[GoalRead])
+async def _get_owned_goal(goal_id: uuid.UUID, db: AsyncSession, user: User) -> Goal:
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id, Goal.user_id == user.id)
+    )
+    goal = result.scalar_one_or_none()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return goal
+
+
+# ── Metrics registry (registered before /{goal_id} routes) ───────────────────
+
+
+@router.get("/metrics", response_model=list[MetricInfo])
+async def get_metrics(
+    _current_user: User = Depends(get_current_user),
+):
+    """List all available semantic metrics — drives dynamic goal forms."""
+    return [MetricInfo(**m) for m in list_metrics()]
+
+
+# ── CRUD ─────────────────────────────────────────────────────────────────────
+
+
+@router.get("", response_model=list[GoalEnriched])
 async def list_goals(
-    status_filter: str | None = None,
+    status_filter: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all goals for the current user, optionally filtered by status."""
+    """List goals for the current user with refreshed state + enrichment."""
+    today = date.today()
     query = select(Goal).where(Goal.user_id == current_user.id)
     if status_filter:
+        if status_filter not in VALID_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status_filter. Must be one of: "
+                f"{', '.join(sorted(VALID_STATUSES))}",
+            )
         query = query.where(Goal.status == status_filter)
     query = query.order_by(Goal.created_at.desc())
     result = await db.execute(query)
     goals = list(result.scalars().all())
 
-    # Auto-update current values
+    enriched = []
     for goal in goals:
-        current = await _compute_current_value(db, current_user.id, goal)
-        if current is not None:
-            goal.current_value = current
-            # Auto-mark as achieved
-            if goal.status == "active" and current >= goal.target_value:
-                goal.status = "achieved"
-            # Auto-expire if past target date
-            if (
-                goal.target_date
-                and goal.status == "active"
-                and date.today() > goal.target_date
-            ):
-                if current < goal.target_value:
-                    goal.status = "expired"
+        state = await compute_goal_state(db, current_user.id, goal, today)
+        enriched.append(_enrich(goal, state, today))
 
+    # get_db handles commit; flush keeps transitions within the request txn
     await db.flush()
-    for g in goals:
-        await db.refresh(g)
-    return [GoalRead.model_validate(g) for g in goals]
+    return enriched
 
 
-@router.post("", response_model=GoalRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=GoalEnriched, status_code=status.HTTP_201_CREATED)
 async def create_goal(
     data: GoalCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new training goal."""
-    if data.goal_type not in GOAL_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}",
-        )
+    """Create a goal against a semantic metric; snapshots starting_value."""
+    error = validate_metric_filters(data.metric, data.filter_json)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
 
     goal = Goal(
         user_id=current_user.id,
-        goal_type=data.goal_type,
+        metric=data.metric,
+        filter_json=data.filter_json,
         target_value=data.target_value,
-        current_value=data.current_value,
         target_date=data.target_date,
         notes=data.notes,
+        status="active",
     )
     db.add(goal)
     await db.flush()
 
-    # Compute initial current value
-    current = await _compute_current_value(db, current_user.id, goal)
-    if current is not None:
-        goal.current_value = current
+    # Resolve + snapshot starting_value at creation time
+    today = date.today()
+    await compute_goal_state(db, current_user.id, goal, today)
 
     await db.flush()
-    # Refresh to load server-default columns (created_at, updated_at, status)
-    # before Pydantic validation — avoids MissingGreenlet lazy-load error.
     await db.refresh(goal)
-    return GoalRead.model_validate(goal)
+    return _enrich(goal, None, today)
 
 
-@router.get("/{goal_id}", response_model=GoalRead)
+@router.get("/{goal_id}", response_model=GoalEnriched)
 async def get_goal(
     goal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id, Goal.user_id == current_user.id)
-    )
-    goal = result.scalar_one_or_none()
-    if not goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
-
-    # Refresh current value
-    current = await _compute_current_value(db, current_user.id, goal)
-    if current is not None:
-        goal.current_value = current
-
+    today = date.today()
+    goal = await _get_owned_goal(goal_id, db, current_user)
+    state = await compute_goal_state(db, current_user.id, goal, today)
     await db.flush()
     await db.refresh(goal)
-    return GoalRead.model_validate(goal)
+    return _enrich(goal, state, today)
 
 
-@router.patch("/{goal_id}", response_model=GoalRead)
+@router.patch("/{goal_id}", response_model=GoalEnriched)
 async def update_goal(
     goal_id: uuid.UUID,
     data: GoalUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id, Goal.user_id == current_user.id)
-    )
-    goal = result.scalar_one_or_none()
-    if not goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
+    today = date.today()
+    goal = await _get_owned_goal(goal_id, db, current_user)
 
-    update_data = data.model_dump(exclude_unset=True)
-    if "goal_type" in update_data and update_data["goal_type"] not in GOAL_TYPES:
+    updates = data.model_dump(exclude_unset=True)
+    if "metric" in updates and updates["metric"] not in METRIC_REGISTRY:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid goal_type. Must be one of: {', '.join(GOAL_TYPES)}",
+            detail=f"Unknown metric {updates['metric']!r}. Must be one of: "
+            f"{', '.join(METRIC_REGISTRY)}",
         )
 
-    for field, value in update_data.items():
+    for field, value in updates.items():
         setattr(goal, field, value)
 
+    # Revalidate filters after a metric/filter change
+    if {"metric", "filter_json"} & updates.keys():
+        error = validate_metric_filters(goal.metric, goal.filter_json)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+
+    await compute_goal_state(db, current_user.id, goal, today)
     await db.flush()
     await db.refresh(goal)
-    return GoalRead.model_validate(goal)
+    return _enrich(goal, None, today)
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -244,12 +211,64 @@ async def delete_goal(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id, Goal.user_id == current_user.id)
-    )
-    goal = result.scalar_one_or_none()
-    if not goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
-
+    goal = await _get_owned_goal(goal_id, db, current_user)
     await db.delete(goal)
     await db.flush()
+
+
+# ── Check-ins ────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{goal_id}/checkins",
+    response_model=GoalCheckInRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_check_in(
+    goal_id: uuid.UUID,
+    data: GoalCheckInCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a manual check-in (value + optional note)."""
+    try:
+        check_in = await record_manual_check_in(
+            db, current_user.id, goal_id, data.value, data.note
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await db.flush()
+    return GoalCheckInRead.model_validate(check_in)
+
+
+@router.get("/{goal_id}/checkins", response_model=list[GoalCheckInRead])
+async def get_check_ins(
+    goal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Check-in history for a goal, oldest first."""
+    await _get_owned_goal(goal_id, db, current_user)
+    check_ins = await list_check_ins(db, current_user.id, goal_id)
+    return [GoalCheckInRead.model_validate(c) for c in check_ins]
+
+
+# ── Lifecycle ────────────────────────────────────────────────────────────────
+
+
+@router.post("/{goal_id}/reactivate", response_model=ReactivateResponse)
+async def reactivate(
+    goal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bring an expired/abandoned goal back to active and recompute state."""
+    try:
+        goal = await reactivate_goal(db, current_user.id, goal_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ReactivateResponse(
+        id=goal.id, status=goal.status, message="Goal reactivated"
+    )

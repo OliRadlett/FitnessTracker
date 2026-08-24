@@ -12,6 +12,7 @@
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting |
 | `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B) |
 | `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates. Live Lift entry banner + Whoop-unmatched warning (live sessions with `started_at`/`ended_at`, no `whoop_strain`, ended >3h ago) |
+| `/goals` | `goals/page.tsx` | Dedicated goals page — Active/Achieved/Expired/All tabs, goal cards with progress + alignment badges, create modal (metric-registry-driven), detail modal with check-in chart + edit/delete/reactivate |
 | `/lifting/live` | `lifting/live/page.tsx` | **Live Lift** — mobile-first live session tracker. Pre-start (focus/program/warmup template) → active workout (`LiveWorkout`: steppers w/ smart prefill from last set or last-session reference, count-up since-last-set pill, 1-tap logging, double-tap undo, Wake Lock, PR toasts) → finish sheet (RPE/notes). Local-first: state persisted to localStorage every mutation, background syncer lazily creates the remote session then pushes sets/deletes, flushes on reconnect/foreground; resume/discard prompt after crash |
 | `/routes` | `routes/page.tsx` | Route management, map view, GPX upload/download |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — features, glossary, science |
@@ -50,7 +51,7 @@
 | `Skeleton` | Loading skeleton primitives (metric, chart, row) |
 | `EmptyState` | Empty state with icon, title, CTA button |
 | `ErrorBoundary` | React error boundary with retry |
-| `GoalCard` | Goal display with progress bar + GoalForm |
+| `GoalCard` | Goal display with progress bar, alignment badge, direction-aware fill |
 | `PRCelebration` | Animated PR celebration toast |
 | `ReadinessIndicator` | Training readiness gauge |
 | `PageLoadingBar` | Top loading bar for route transitions |
@@ -59,7 +60,9 @@
 ### `charts/` — Data visualization
 | Component | Purpose |
 |-----------|---------|
-| `Chart` | Generic Recharts wrapper — line, bar, scatter, area, pie. Renders `ChartData` from backend |
+| `Chart` | Generic Recharts wrapper — line, bar, scatter, area, pie + CSS-grid calendar heatmap. Renders `ChartData` from backend. Unit-aware tooltips, date tick formatting, adaptive dots, secondary Y axis (`y_axis`), built-in empty state via `hasData()` |
+| `ChartBody` | Tri-state chart body — loading spinner / empty message / Chart |
+| `ChartCard` | Card wrapper with title, header actions slot, and ChartBody |
 
 ### `cycling/` — Cycling-specific
 | Component | Purpose |
@@ -105,7 +108,14 @@
 | Component | Purpose |
 |-----------|---------|
 | `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
+| `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
+
+### `goals/` — Goal management
+| Component | Purpose |
+|-----------|---------|
+| `GoalCreateModal` | Create-goal modal driven by `GET /goals/metrics` — metric select (label+unit), dynamic filter inputs (exercise autocomplete, sport select), target value, optional target date, notes |
+| `GoalDetailModal` | Full goal detail — check-in history Recharts line chart with target reference line, manual check-in form, edit mode (target/date/notes/filter), delete with confirmation, reactivate when expired/abandoned |
 
 ### `training/` — Training plan components
 | Component | Purpose |
@@ -127,7 +137,7 @@
 | File | Purpose |
 |------|---------|
 | `useLiveSession.ts` | Local-first live-session state hook. Persists full state to localStorage (`fittrack-live-session`) on every change; background syncer lazily POSTs the remote session (with accumulated sets) on first flush, then pushes unsynced sets / pending deletes; never blocks logging on network — failures stay queued and retry on `online`/`visibilitychange`; finish flow PATCHes `ended_at` and clears storage; exposes `logSet`/`undoLastSet`/`requestFinish`/`discardSession` |
-| `reference.ts` | Session-start reference data: `buildLastSessionMap` (exercise â†’ most recent sets), `recentExerciseNames`, `detectPr` (Brzycki e1RM vs stored PRs + today's sets), `brzycki1rm` |
+| `reference.ts` | Session-start reference data: `buildLastSessionMap` (exercise → most recent sets), `recentExerciseNames`, `detectPr` (Brzycki e1RM vs stored PRs + today's sets), `brzycki1rm` |
 
 ## Patterns
 

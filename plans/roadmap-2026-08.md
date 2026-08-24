@@ -8,10 +8,10 @@ Agreed plan for the feature list in `prompt.txt`. Worked through collaboratively
 
 ## ⚠️ SESSION HANDOFF — READ THIS FIRST (updated 2026-08-24)
 
-**Status: Phases 1–5 COMPLETE (5A+5B+5C). Next up: Phase 6 (Semantic Goals), then 7–9 (need planning).**
+**Status: Phases 1–5 COMPLETE (5A+5B+5C). Phase 6 BACKEND DONE (semantic metrics + check-ins); Phase 6 FRONTEND (dedicated Goals page) still pending. Then 7–9 (need planning).**
 
 **Uncommitted**: Phases 3–5 work was committed/pushed through Phase 4 (`9306773`); Phase 5
-(5A/5B/5C) is committed separately — check `git log`. Migrations 025–027 need
+(5A/5B/5C) is committed separately — check `git log`. Migrations 025–029 need
 `python fittrack.py migrate` on deployment.
 
 Key implementation notes for future sessions:
@@ -20,6 +20,11 @@ Key implementation notes for future sessions:
 - `SuggestedCycleCard.tsx` + `WorkoutPlanner.tsx`: WorkoutPlanner still standalone on training page;
   SuggestedCycleCard now orphaned (removed from cycling page, file kept)
 - Frontend API clients: some take explicit `token` param (weather/conformity) due to 404-as-null needs
+- Phase 6 backend (2026-08-24): Goal model reworked (`metric`/`filter_json`/`starting_value`,
+  `goal_type` DROPPED, new `goal_checkins` table, migration **029**). Registry:
+  `services/goal_metrics.py`; state/transitions/check-ins: `services/goals.py`.
+  ⚠️ Frontend `lib/api/goals.ts` still posts legacy `goal_type` — must be updated with the
+  dedicated Goals page. Direction derived start-vs-target; reactivate suppresses re-expiry.
 
 Phases 7–9 are sketches only — plan them with the user before implementing.
 
@@ -255,7 +260,22 @@ Dependencies: 4→5B (weather); 5A→5B→5C.
 
 ---
 
-## Phase 6: Semantic Goals & Data-Driven Check-ins
+## Phase 6: Semantic Goals & Data-Driven Check-ins — **DONE**
+
+Implemented: Goal model rework (metric/filter_json/starting_value, goal_type dropped),
+GoalCheckIn model, migration `029_semantic_goals.py` (data-maps 5 legacy goal_types →
+metric keys, parses 1rm exercise from notes into filter_json, backfills starting_value
+lazily), `services/goal_metrics.py` (13-metric registry with resolvers reusing existing
+services), `services/goals.py` (direction derived from starting_value vs target — no
+column, alignment_pct 0–200 clamped, status transitions on all read/write paths incl.
+abandoned terminal, check-in CRUD with duplicate-today skip), weekly Celery task
+`record_goal_checkins` Mon 6AM UTC, rewritten thin API router with enriched GET list +
+`GET /goals/metrics` for dynamic forms + check-in/reactivate endpoints.
+Frontend: dedicated `/goals` page (Active/Achieved/Expired/All tabs), GoalCreateModal
+(metric-registry-driven dynamic form), GoalDetailModal (Recharts check-in history +
+manual check-in + edit/delete/reactivate), updated GoalCard (direction-aware progress,
+alignment badge), compact top-3 on dashboard, Goals sidebar entry.
+58 goal tests + 31 integration tests; full suite 526 passed.
 
 ### Semantic Metric Registry (replaces goal_type + notes-overloading)
 `Goal` model rework:

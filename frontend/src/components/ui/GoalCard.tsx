@@ -1,48 +1,103 @@
 'use client';
 
-import React, { useState } from 'react';
-import type { Goal, CreateGoalPayload } from '@/lib/api';
-import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import React from 'react';
+import type { Goal } from '@/lib/api';
 
-// ── Goal Type Config ─────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-const GOAL_TYPE_LABELS: Record<string, string> = {
-  ftp_target: 'FTP Target (W)',
-  weight_target: 'Body Weight (kg)',
-  weekly_sessions: 'Weekly Sessions',
-  '1rm_target': '1RM Target (kg)',
-  distance_target: 'Monthly Distance (km)',
-};
+/** Icon per metric keyword — best-effort visual hint. */
+function metricIcon(goal: Goal): string {
+  const m = goal.metric;
+  if (m.includes('ftp')) return '⚡';
+  if (m === 'body_weight') return '⚖️';
+  if (m.includes('1rm')) return '🏋️';
+  if (m.includes('sessions')) return '📅';
+  if (m.includes('distance')) return '🚴';
+  if (m.includes('tss')) return '📈';
+  if (m.includes('vo2max')) return '🫁';
+  if (m.includes('bw_ratio')) return '💪';
+  if (m.includes('big3')) return '🏆';
+  if (m === 'resting_hr') return '❤️';
+  if (m === 'hrv_ms') return '🫀';
+  return '🎯';
+}
 
-const GOAL_TYPE_ICONS: Record<string, string> = {
-  ftp_target: '⚡',
-  weight_target: '⚖️',
-  weekly_sessions: '📅',
-  '1rm_target': '🏋️',
-  distance_target: '🚴',
+/** Human-readable filter context, e.g. "Back Squat" or "cycling". */
+export function goalFilterLabel(goal: Goal): string | null {
+  const f = goal.filter_json;
+  if (!f) return null;
+  return f.exercise || f.sport || null;
+}
+
+/**
+ * Direction-aware progress fill (%):
+ * - increase: how far current has moved from start toward target
+ * - decrease: distance covered from start DOWN toward target
+ * Prefers backend-computed `progress_pct`; falls back to local computation.
+ */
+export function goalProgressPct(goal: Goal): number {
+  if (goal.progress_pct !== undefined && goal.progress_pct !== null) {
+    return Math.max(0, Math.min(100, goal.progress_pct));
+  }
+  const start = goal.starting_value;
+  const current = goal.current_value;
+  if (start === undefined || start === null || current === undefined || current === null) {
+    return 0;
+  }
+  const span = goal.target_value - start;
+  if (span === 0) return 0;
+  const raw = ((current - start) / span) * 100;
+  return Math.max(0, Math.min(100, raw));
+}
+
+export interface AlignmentBadgeInfo {
+  label: string;
+  className: string;
+}
+
+/**
+ * Alignment badge when the goal has a target_date and an alignment score.
+ * ≥100 ahead · ≥85 on track · >0 behind · negative regressing.
+ * Returns null when there is no target_date/alignment — plain % is shown instead.
+ */
+export function goalAlignmentBadge(goal: Goal): AlignmentBadgeInfo | null {
+  if (!goal.target_date || goal.alignment_pct === undefined || goal.alignment_pct === null) {
+    return null;
+  }
+  const a = goal.alignment_pct;
+  if (a >= 100) return { label: 'Ahead', className: 'bg-green-500/20 text-green-400' };
+  if (a >= 85) return { label: 'On track', className: 'bg-accent/20 text-accent' };
+  if (a > 0) return { label: 'Behind', className: 'bg-warning/20 text-warning' };
+  return { label: 'Regressing', className: 'bg-red-500/20 text-red-400' };
+}
+
+const STATUS_BADGES: Record<string, { label: string; className: string }> = {
+  active: { label: 'Active', className: 'bg-accent/20 text-accent' },
+  achieved: { label: '✅ Achieved', className: 'bg-green-500/20 text-green-400' },
+  expired: { label: 'Expired', className: 'bg-red-500/20 text-red-400' },
+  abandoned: { label: 'Abandoned', className: 'bg-muted/30 text-muted' },
 };
 
 // ── Goal Card ────────────────────────────────────────────────────────────
 
 export function GoalCard({
   goal,
-  onAchieve,
-  onDelete,
+  onClick,
 }: {
   goal: Goal;
-  onAchieve?: () => void;
-  onDelete?: () => void;
+  onClick?: () => void;
 }) {
-  const progress = goal.target_value > 0 && goal.current_value !== undefined && goal.current_value !== null
-    ? Math.min(100, (goal.current_value / goal.target_value) * 100)
-    : 0;
-
+  const progress = goalProgressPct(goal);
   const isAchieved = goal.status === 'achieved';
   const isExpired = goal.status === 'expired';
-  const icon = GOAL_TYPE_ICONS[goal.goal_type] || '🎯';
-  const label = GOAL_TYPE_LABELS[goal.goal_type] || goal.goal_type;
+  const statusBadge = STATUS_BADGES[goal.status] ?? STATUS_BADGES.active;
+  const alignmentBadge = goalAlignmentBadge(goal);
+  const icon = metricIcon(goal);
+  const label = goal.metric_label || goal.metric;
+  const filterLabel = goalFilterLabel(goal);
+  const unit = goal.metric_unit ? ` ${goal.metric_unit}` : '';
 
-  const statusColor = isAchieved
+  const cardColor = isAchieved
     ? 'border-green-500/30 bg-green-500/5'
     : isExpired
     ? 'border-red-500/20 bg-red-500/5'
@@ -54,44 +109,34 @@ export function GoalCard({
     ? 'bg-red-500/60'
     : 'bg-accent';
 
+  const hasCurrentValue = goal.current_value !== undefined && goal.current_value !== null;
+
   return (
-    <div className={`rounded-xl border p-4 ${statusColor} transition-colors`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left rounded-xl border p-4 ${cardColor} transition-colors hover:border-accent/40 w-full`}
+    >
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{icon}</span>
-          <div>
-            <p className="text-sm font-medium text-white">{label}</p>
-            {goal.notes && goal.goal_type === '1rm_target' && (
-              <p className="text-xs text-accent">{goal.notes}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg" aria-hidden="true">{icon}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-white truncate">{label}</p>
+            {filterLabel && <p className="text-xs text-accent truncate">{filterLabel}</p>}
+            {!filterLabel && goal.notes && (
+              <p className="text-xs text-muted truncate">{goal.notes}</p>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isAchieved && (
-            <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">
-              ✅ Achieved
+        <div className="flex items-center gap-1.5 shrink-0">
+          {alignmentBadge && (
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${alignmentBadge.className}`}>
+              {alignmentBadge.label}
             </span>
           )}
-          {isExpired && (
-            <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">
-              Expired
-            </span>
-          )}
-          {goal.status === 'active' && (
-            <span className="text-xs px-2 py-0.5 rounded bg-accent/20 text-accent font-medium">
-              Active
-            </span>
-          )}
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              className="text-muted hover:text-warning transition-colors text-xs"
-              aria-label="Delete goal"
-              title="Delete goal"
-            >
-              🗑️
-            </button>
-          )}
+          <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusBadge.className}`}>
+            {statusBadge.label}
+          </span>
         </div>
       </div>
 
@@ -99,9 +144,9 @@ export function GoalCard({
       <div className="mb-2">
         <div className="flex justify-between text-xs mb-1">
           <span className="text-muted">
-            {goal.current_value !== undefined && goal.current_value !== null
-              ? `${goal.current_value.toFixed(1)} / ${goal.target_value.toFixed(1)}`
-              : `Target: ${goal.target_value.toFixed(1)}`}
+            {hasCurrentValue
+              ? `${goal.current_value!.toFixed(1)}${unit} / ${goal.target_value.toFixed(1)}${unit}`
+              : `Target: ${goal.target_value.toFixed(1)}${unit}`}
           </span>
           <span className="text-muted font-medium">{progress.toFixed(0)}%</span>
         </div>
@@ -116,124 +161,16 @@ export function GoalCard({
       {/* Target date */}
       {goal.target_date && (
         <p className="text-xs text-muted">
-          {isExpired ? 'Expired' : 'Due'}: {new Date(goal.target_date).toLocaleDateString()}
+          {isExpired ? 'Expired' : 'Due'}:{' '}
+          {new Date(goal.target_date).toLocaleDateString()}
+          {alignmentBadge && goal.alignment_pct !== null && goal.alignment_pct !== undefined && (
+            <span className="ml-1">· {Math.round(goal.alignment_pct)}% aligned</span>
+          )}
+          {!alignmentBadge && (
+            <span className="ml-1">· {progress.toFixed(0)}%</span>
+          )}
         </p>
       )}
-
-      {/* Manual achieve button for active goals */}
-      {goal.status === 'active' && onAchieve && progress >= 100 && (
-        <button
-          onClick={onAchieve}
-          className="mt-2 w-full text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg py-1.5 transition-colors font-medium"
-        >
-          🎉 Mark as Achieved
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Goal Form ────────────────────────────────────────────────────────────
-
-export function GoalForm({
-  onSubmit,
-  onCancel,
-  isPending,
-}: {
-  onSubmit: (data: CreateGoalPayload) => void;
-  onCancel: () => void;
-  isPending: boolean;
-}) {
-  const [goalType, setGoalType] = useState('weekly_sessions');
-  const [targetValue, setTargetValue] = useState('');
-  const [targetDate, setTargetDate] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!targetValue) return;
-    onSubmit({
-      goal_type: goalType,
-      target_value: parseFloat(targetValue),
-      target_date: targetDate || undefined,
-      notes: notes || undefined,
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="p-4 bg-surface-light/20 rounded-lg space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-muted mb-1">Goal Type *</label>
-          <select
-            value={goalType}
-            onChange={(e) => setGoalType(e.target.value)}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            {Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-muted mb-1">Target Value *</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            value={targetValue}
-            onChange={(e) => setTargetValue(e.target.value)}
-            placeholder={
-              goalType === 'weekly_sessions' ? 'e.g. 5'
-              : goalType === 'ftp_target' ? 'e.g. 250'
-              : goalType === 'weight_target' ? 'e.g. 80'
-              : goalType === '1rm_target' ? 'e.g. 140'
-              : 'e.g. 500'
-            }
-            required
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-muted mb-1">Target Date (optional)</label>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
-        {goalType === '1rm_target' && (
-          <div>
-            <label className="block text-xs text-muted mb-1">Exercise Name *</label>
-            <ExerciseAutocomplete
-              value={notes}
-              onChange={setNotes}
-              placeholder="e.g. Bench Press"
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-        >
-          {isPending ? 'Creating...' : 'Create Goal'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-muted hover:text-white text-sm transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    </button>
   );
 }
