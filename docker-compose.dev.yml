@@ -1,8 +1,32 @@
-# Development overrides — automatically included by fittrack.py in dev mode.
-# Adds hot-reload command for frontend (npm install && npm run dev).
+﻿# Development overrides â€” automatically included by fittrack.py in dev mode.
+# Adds hot-reload: source bind mounts + npm install && npm run dev for frontend.
+#
+# IMPORTANT: dev volume mounts live here, NOT in the base file. Docker Compose
+# cannot clear base volumes via an override (`volumes: []` does not unset them),
+# so keeping the base volume-free guarantees production runs baked image
+# contents only.
 # Not used in production (--prod flag).
 
 services:
+  backend:
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+
+  worker:
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+
+  beat:
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+
   frontend:
     entrypoint: ""
     command: sh -c "npm install && npm run dev"
+    volumes:
+      - ./frontend:/app
+      - frontend_next:/app/.next
+      - frontend_node_modules:/app/node_modules

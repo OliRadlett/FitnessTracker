@@ -1,35 +1,36 @@
-# Production overrides — use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+﻿# Production overrides â€” use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # NOTE: fittrack.py does NOT auto-include this file. Use the --prod flag:
 #   python fittrack.py --prod up
 #   ./start.sh --prod up
 #
-# These overrides replace dev-friendly settings (hot-reload, debug, exposed ports)
-# with production equivalents (optimized builds, HTTPS via Caddy, no debug).
+# These overrides replace dev-friendly settings with production equivalents
+# (pre-built GHCR images, no hot-reload, restart policies).
 #
-# Images are built in GitHub Actions and pushed to GHCR. This file uses pre-built images.
+# IMPORTANT: this file intentionally does NOT define command/entrypoint/volumes.
+# Docker Compose v2.18 cannot clear base values via overrides (exec-form command
+# gets mangled; `volumes: []` does not unset). The base file stays volume-free;
+# dev mounts live in docker-compose.dev.yml. Frontend runs via the image's
+# ENTRYPOINT ["node", "server.js"] (see frontend/Dockerfile).
+#
+# Images are built in GitHub Actions and pushed to GHCR.
 # Hardcoded to oliradlett/fitnesstracker to avoid case-sensitivity issues.
 
 services:
   backend:
     image: ghcr.io/oliradlett/fitnesstracker/backend:latest
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
-    volumes: []
     restart: unless-stopped
 
   worker:
     image: ghcr.io/oliradlett/fitnesstracker/worker:latest
-    volumes: []
     restart: unless-stopped
 
   beat:
     image: ghcr.io/oliradlett/fitnesstracker/worker:latest
-    volumes: []
     restart: unless-stopped
 
   frontend:
     image: ghcr.io/oliradlett/fitnesstracker/frontend:latest
-    volumes: []
     restart: unless-stopped
 
   caddy:
