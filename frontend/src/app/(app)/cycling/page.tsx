@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type {
@@ -36,6 +36,14 @@ export default function CyclingPage() {
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
   const [loadDays, setLoadDays] = useState(90);
+  const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
+
+  // Cleanup timeouts on unmount (BUG-026)
+  useEffect(() => {
+    return () => {
+      saveTimeoutRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
   // ── Queries ─────────────────────────────────────────────────────────────
   const { data: profile, isLoading: profileLoading } = useQuery<CyclingProfile>({
@@ -204,11 +212,11 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['ftp-history'] });
       queryClient.invalidateQueries({ queryKey: ['chart-ftp-history'] });
       setSaveMessage('Profile saved!');
-      setTimeout(() => setSaveMessage(null), 3000);
+      saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
     onError: (error: Error) => {
       setSaveMessage(`Error: ${error.message}`);
-      setTimeout(() => setSaveMessage(null), 5000);
+      saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
 
@@ -232,11 +240,11 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['ftp-history'] });
       queryClient.invalidateQueries({ queryKey: ['chart-ftp-history'] });
       setSaveMessage('FTP estimated and saved!');
-      setTimeout(() => setSaveMessage(null), 3000);
+      saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
     onError: (error: Error) => {
       setSaveMessage(`Error: ${error.message}`);
-      setTimeout(() => setSaveMessage(null), 5000);
+      saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
 

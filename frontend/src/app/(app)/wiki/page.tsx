@@ -233,7 +233,7 @@ export default function WikiPage() {
                   ].map((f) => (
                     <li key={f} className="flex items-start gap-2">
                       <span className="text-positive mt-0.5" aria-hidden="true">✓</span>
-                      <span dangerouslySetInnerHTML={{ __html: f }} />
+                      <span>{f}</span>
                     </li>
                   ))}
                 </ul>

@@ -123,17 +123,27 @@ async def list_sessions(
     user_id: uuid.UUID,
     limit: int = 50,
     offset: int = 0,
+    session_date: str | None = None,
 ) -> list[LiftingSession]:
-    result = await db.execute(
+    query = (
         select(LiftingSession)
         .options(
             selectinload(LiftingSession.sets),
             selectinload(LiftingSession.linked_activity),
         )
         .where(LiftingSession.user_id == user_id)
-        .order_by(LiftingSession.session_date.desc())
-        .limit(limit)
-        .offset(offset)
+    )
+    if session_date:
+        from datetime import date as _date
+
+        try:
+            filter_date = _date.fromisoformat(session_date)
+        except ValueError:
+            filter_date = None
+        if filter_date:
+            query = query.where(LiftingSession.session_date == filter_date)
+    result = await db.execute(
+        query.order_by(LiftingSession.session_date.desc()).limit(limit).offset(offset)
     )
     return list(result.scalars().all())
 
@@ -499,7 +509,8 @@ async def _recalculate_pr_after_set_change(
         .where(
             LiftingSession.user_id == user_id,
             LiftingSet.exercise_name == exercise_name,
-            LiftingSet.is_warmup == False,
+            LiftingSet.is_warmup.is_(False),
+            LiftingSet.reps < 37,  # BUG-029: guard against division by zero in Brzycki
         )
         .order_by(
             # Order by estimated 1RM descending (best first)
@@ -785,7 +796,7 @@ async def cleanup_orphaned_prs(
             .where(
                 LiftingSession.user_id == user_id,
                 LiftingSet.exercise_name == pr.exercise_name,
-                LiftingSet.is_warmup == False,
+                LiftingSet.is_warmup.is_(False),
             )
             .order_by((LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc())
             .limit(1)

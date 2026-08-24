@@ -116,6 +116,11 @@ async def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     for key, value in data.model_dump(exclude_unset=True).items():
+        if key == "event_type" and value not in VALID_EVENT_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid event_type. Must be one of: {', '.join(VALID_EVENT_TYPES)}",
+            )
         setattr(event, key, value)
 
     await db.commit()

@@ -797,7 +797,7 @@ class ChartService:
             .where(
                 LiftingSession.user_id == user_id,
                 LiftingSet.exercise_name == exercise_name,
-                LiftingSet.is_warmup == False,
+                LiftingSet.is_warmup.is_(False),
                 LiftingSession.session_date >= cutoff,
             )
             .order_by(LiftingSession.session_date)

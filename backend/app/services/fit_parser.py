@@ -28,15 +28,8 @@ _SPORT_MAP: dict[int, str] = {
 }
 
 
-def _safe_float(value: Any) -> float | None:
-    """Convert a FIT field value to float, returning None for invalid / missing."""
-    if value is None:
-        return None
-    try:
-        v = float(value)
-        return None if (math.isnan(v) or math.isinf(v)) else v
-    except (TypeError, ValueError):
-        return None
+# BUG-032: Use shared utility instead of local duplicate
+from app.utils import safe_float as _safe_float
 
 
 def _safe_int(value: Any) -> int | None:

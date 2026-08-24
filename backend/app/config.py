@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # Database backup
     backup_dir: str = "/backups"
 
+    # Internal API secret — protects endpoints like /sync-user from anonymous access
+    internal_api_secret: str = ""
+
     # Merge / dedup thresholds
     activity_merge_threshold: float = (
         0.60  # lowered from 0.65 to reduce false negatives

@@ -23,17 +23,8 @@ logger = logging.getLogger(__name__)
 
 # ── NaN / Inf guard ─────────────────────────────────────────────────────────
 
-
-def _safe_float(value, default=None):
-    """Return *default* if *value* is None, NaN, or Inf."""
-    if value is None:
-        return default
-    try:
-        v = float(value)
-        return default if (math.isnan(v) or math.isinf(v)) else v
-    except (TypeError, ValueError):
-        return default
-
+# BUG-032: Use shared utility instead of local duplicate
+from app.utils import safe_float as _safe_float
 
 # ── Sport type mapping ───────────────────────────────────────────────────────
 

@@ -315,7 +315,13 @@ async def upload_gpx(
     if not file.filename or not file.filename.lower().endswith(".gpx"):
         raise HTTPException(status_code=400, detail="File must be a .gpx file")
 
+    # BUG-017: Limit file size to 50MB
+    MAX_FILE_SIZE = 50 * 1024 * 1024
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413, detail="File too large. Maximum size is 50MB."
+        )
     try:
         gpx_text = content.decode("utf-8")
     except UnicodeDecodeError:

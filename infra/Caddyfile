@@ -8,11 +8,8 @@
 
 {$DOMAIN:localhost} {
     # Frontend — Next.js basePath is /fittrack
-    handle /fittrack {
-        reverse_proxy frontend:3000
-    }
-
-    handle /fittrack/* {
+    # /fittrack* matches /fittrack, /fittrack/, /fittrack/dashboard, etc.
+    handle /fittrack* {
         reverse_proxy frontend:3000
     }
 
@@ -21,7 +18,7 @@
     redir @nextauth /fittrack{uri} permanent
 
     # Backend API
-    handle /api/v1/* {
+    handle /api/v1* {
         reverse_proxy backend:8000
     }
 

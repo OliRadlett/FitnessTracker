@@ -1,6 +1,7 @@
 """Celery tasks — scheduler.py with Redis broker, Beat schedule."""
 
 import logging
+from datetime import UTC
 
 from celery import Celery
 from celery.schedules import crontab
@@ -669,7 +670,7 @@ def backup_database() -> dict:
     import glob
     import os
     import subprocess
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from app.config import get_settings
 
@@ -677,7 +678,7 @@ def backup_database() -> dict:
     backup_dir = settings.backup_dir
     os.makedirs(backup_dir, exist_ok=True)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"fittrack_backup_{timestamp}.sql.gz"
     filepath = os.path.join(backup_dir, filename)
 
@@ -755,7 +756,7 @@ def backup_database() -> dict:
         return {"status": "failed", "error": str(e)}
 
     # Clean up backups older than 30 days
-    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     deleted_count = 0
     for old_backup in glob.glob(os.path.join(backup_dir, "fittrack_backup_*.sql.gz")):
         try:

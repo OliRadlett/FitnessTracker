@@ -35,6 +35,19 @@ def decode_access_token(token: str) -> TokenPayload | None:
         return None
 
 
+def get_current_user_id(token: str) -> uuid.UUID | None:
+    """Extract user ID from a JWT token string. Returns None on failure."""
+    import uuid as _uuid
+
+    token_data = decode_access_token(token)
+    if token_data is None:
+        return None
+    try:
+        return _uuid.UUID(token_data.sub)
+    except (ValueError, AttributeError):
+        return None
+
+
 # ── OAuth provider configs ────────────────────────────────────────────────────
 
 OAUTH_PROVIDERS: dict[str, dict] = {
@@ -82,8 +95,12 @@ OAUTH_PROVIDERS: dict[str, dict] = {
 }
 
 
-def get_authorize_url(provider: str, redirect_uri: str) -> str:
-    """Build the OAuth authorize URL for the given provider."""
+def get_authorize_url(provider: str, redirect_uri: str, state: str | None = None) -> str:
+    """Build the OAuth authorize URL for the given provider.
+
+    If *state* is provided it is passed through to the provider so the callback
+    can correlate the request (BUG-002 / BUG-018).
+    """
     import urllib.parse
 
     cfg = OAUTH_PROVIDERS[provider]
@@ -91,61 +108,60 @@ def get_authorize_url(provider: str, redirect_uri: str) -> str:
     scopes = cfg["scopes"]
 
     if provider == "google":
-        params = urllib.parse.urlencode(
-            {
-                "client_id": client_id,
-                "redirect_uri": redirect_uri,
-                "response_type": "code",
-                "scope": scopes,
-                "access_type": "offline",
-                "prompt": "consent",
-            }
-        )
-        return f"{cfg['authorize_url']}?{params}"
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+            "access_type": "offline",
+            "prompt": "consent",
+        }
+        if state:
+            params["state"] = state
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     elif provider == "github":
-        params = urllib.parse.urlencode(
-            {
-                "client_id": client_id,
-                "redirect_uri": redirect_uri,
-                "scope": scopes,
-            }
-        )
-        return f"{cfg['authorize_url']}?{params}"
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scopes,
+        }
+        if state:
+            params["state"] = state
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     elif provider == "strava":
-        params = urllib.parse.urlencode(
-            {
-                "client_id": client_id,
-                "redirect_uri": redirect_uri,
-                "response_type": "code",
-                "scope": scopes,
-                "approval_prompt": "auto",
-            }
-        )
-        return f"{cfg['authorize_url']}?{params}"
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+            "approval_prompt": "auto",
+        }
+        if state:
+            params["state"] = state
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     elif provider == "wahoo":
-        params = urllib.parse.urlencode(
-            {
-                "client_id": client_id,
-                "redirect_uri": redirect_uri,
-                "response_type": "code",
-                "scope": scopes,
-            }
-        )
-        return f"{cfg['authorize_url']}?{params}"
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+        }
+        if state:
+            params["state"] = state
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     elif provider == "whoop":
         import secrets
 
-        state = secrets.token_hex(8)  # 16 chars, meets Whoop's 8-char minimum
-        params = urllib.parse.urlencode(
-            {
-                "client_id": client_id,
-                "redirect_uri": redirect_uri,
-                "response_type": "code",
-                "scope": scopes,
-                "state": state,
-            }
-        )
-        return f"{cfg['authorize_url']}?{params}"
+        # Use the provided state or generate a random one for Whoop's minimum requirement
+        whoop_state = state or secrets.token_hex(8)
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+            "state": whoop_state,
+        }
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     raise ValueError(f"Unsupported provider: {provider}")
 
 

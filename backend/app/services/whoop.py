@@ -1372,28 +1372,24 @@ async def backfill_whoop_data(
             if total_in_bed > awake:
                 total_sleep_seconds = total_in_bed - awake
 
-        # Upsert sleep log
-        existing = await db.execute(
-            select(SleepLog).where(
-                SleepLog.user_id == user_id,
-                SleepLog.sleep_date == sleep_date,
-                SleepLog.source == "whoop",
-            )
+        # BUG-035: Use upsert instead of select+update/insert to avoid race conditions
+        sleep_log = SleepLog(
+            user_id=user_id,
+            sleep_date=sleep_date,
+            source="whoop",
+            total_sleep_seconds=total_sleep_seconds,
+            deep_sleep_seconds=deep_sleep_seconds,
+            rem_sleep_seconds=rem_sleep_seconds,
+            light_sleep_seconds=light_sleep_seconds,
+            awake_seconds=awake_seconds,
+            sleep_efficiency=efficiency,
+            sleep_start=sleep_start,
+            sleep_end=sleep_end,
+            raw_data=record,
         )
-        existing_log = existing.scalar_one_or_none()
-
-        if existing_log:
-            existing_log.total_sleep_seconds = total_sleep_seconds
-            existing_log.deep_sleep_seconds = deep_sleep_seconds
-            existing_log.rem_sleep_seconds = rem_sleep_seconds
-            existing_log.light_sleep_seconds = light_sleep_seconds
-            existing_log.awake_seconds = awake_seconds
-            existing_log.sleep_efficiency = efficiency
-            existing_log.sleep_start = sleep_start
-            existing_log.sleep_end = sleep_end
-            existing_log.raw_data = record
-        else:
-            sleep_log = SleepLog(
+        await db.execute(
+            pg_insert(SleepLog)
+            .values(
                 user_id=user_id,
                 sleep_date=sleep_date,
                 source="whoop",
@@ -1407,7 +1403,21 @@ async def backfill_whoop_data(
                 sleep_end=sleep_end,
                 raw_data=record,
             )
-            db.add(sleep_log)
+            .on_conflict_do_update(
+                index_elements=["user_id", "sleep_date", "source"],
+                set_={
+                    "total_sleep_seconds": total_sleep_seconds,
+                    "deep_sleep_seconds": deep_sleep_seconds,
+                    "rem_sleep_seconds": rem_sleep_seconds,
+                    "light_sleep_seconds": light_sleep_seconds,
+                    "awake_seconds": awake_seconds,
+                    "sleep_efficiency": efficiency,
+                    "sleep_start": sleep_start,
+                    "sleep_end": sleep_end,
+                    "raw_data": record,
+                },
+            )
+        )
 
         synced_sleep += 1
 
@@ -1623,7 +1633,7 @@ async def backfill_whoop_chunked(
                 **agg,
             }
             continue
-        await db.commit()
+        # BUG-036: Removed explicit db.commit() — let get_db handle it
 
         agg["synced_cycles"] += result["synced_cycles"]
         agg["synced_sleep"] += result["synced_sleep"]

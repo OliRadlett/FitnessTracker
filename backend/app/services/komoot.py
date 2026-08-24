@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.komoot_client import komoot_client
-from app.models.route import Route
+from app.models.route import Route, RouteSource
 from app.services.polyline_utils import (
     encode_polyline,
     komoot_coordinate_array_to_polyline,
@@ -249,7 +249,10 @@ async def _enrich_and_create_route(
         .join(Route.sources)
         .where(
             Route.user_id == user_id,
-            Route.sources.any(provider="komoot", provider_route_id=provider_route_id),  # type: ignore
+            Route.sources.any(
+                RouteSource.provider == "komoot",  # BUG-033: proper filter syntax
+                RouteSource.provider_route_id == provider_route_id,
+            ),
         )
     )
     was_existing = existing_source.scalar_one_or_none() is not None

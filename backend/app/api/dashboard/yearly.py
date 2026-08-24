@@ -314,7 +314,7 @@ async def yearly_summary(
             LiftingSession.user_id == uid,
             LiftingSession.session_date >= year_start,
             LiftingSession.session_date <= effective_end,
-            LiftingSet.is_warmup == False,
+            LiftingSet.is_warmup.is_(False),
         )
         .order_by(LiftingSet.weight_kg.desc())
         .limit(1)

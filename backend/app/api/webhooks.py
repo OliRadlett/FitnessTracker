@@ -21,7 +21,7 @@ def _verify_strava_signature(payload_body: bytes, signature_header: str | None) 
     if not signature_header:
         return False
 
-    expected = hmac.new(
+    expected = hmac.HMAC(
         key=settings.strava_client_secret.encode("utf-8"),
         msg=payload_body,
         digestmod=hashlib.sha256,

@@ -521,7 +521,13 @@ async def import_gpx(
     from app.services.gpx import parse_gpx
     from app.services.polyline_utils import encode_polyline, haversine_distance
 
+    # BUG-017: Limit file size to 50MB
+    MAX_FILE_SIZE = 50 * 1024 * 1024
     raw = await file.read()
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413, detail="File too large. Maximum size is 50MB."
+        )
     try:
         gpx_text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -612,7 +618,13 @@ async def import_fit(
     from app.services.fit_parser import parse_fit_file
     from app.services.polyline_utils import encode_polyline
 
+    # BUG-017: Limit file size to 50MB
+    MAX_FILE_SIZE = 50 * 1024 * 1024
     raw = await file.read()
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413, detail="File too large. Maximum size is 50MB."
+        )
 
     try:
         parsed = parse_fit_file(raw)

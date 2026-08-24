@@ -50,9 +50,9 @@ apt update && apt upgrade -y
 # Install Docker
 curl -fsSL https://get.docker.com | sh
 
-# Ensure Python 3.10+ (required by start.sh / fittrack.py)
-apt install -y python3
-python3 --version   # should be 3.10+
+# Ensure Python 3.12+ (required by start.sh / fittrack.py)
+apt install -y python3 python3-pip
+python3 --version   # should be 3.12+
 
 # Verify
 docker --version

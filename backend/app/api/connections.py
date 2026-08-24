@@ -205,6 +205,9 @@ async def backfill_whoop(
                     exc_info=True,
                 )
                 yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
+            finally:
+                # BUG-020: Ensure session is closed even on client disconnect
+                await stream_db.close()
 
     return StreamingResponse(
         event_stream(),

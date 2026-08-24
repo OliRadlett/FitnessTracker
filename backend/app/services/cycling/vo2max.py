@@ -358,10 +358,17 @@ def compute_decoupling_from_streams(
 async def compute_decoupling_for_activity(
     db: AsyncSession,
     activity_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
 ) -> DecouplingResult | None:
-    """Compute decoupling for a single activity by loading its power + HR streams."""
+    """Compute decoupling for a single activity by loading its power + HR streams.
+
+    If *user_id* is provided, verifies the activity belongs to that user (BUG-008).
+    """
     # Get the activity
-    result = await db.execute(select(Activity).where(Activity.id == activity_id))
+    query = select(Activity).where(Activity.id == activity_id)
+    if user_id is not None:
+        query = query.where(Activity.user_id == user_id)
+    result = await db.execute(query)
     activity = result.scalar_one_or_none()
     if not activity:
         return None

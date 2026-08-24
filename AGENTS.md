@@ -57,7 +57,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (25 tables, UUID PKs)
+## Database (23 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -77,12 +77,14 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | Task | Schedule | Notes |
 |------|----------|-------|
 | `sync_all_strava_activities` | 30 min | Also syncs Wahoo, backfills route links |
+| `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
-| `cleanup_old_data` | Weekly Sun 3AM | Streams older than 90 days |
+| `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
+| `backfill_streams_for_all_activities` | Not scheduled | On-demand only — backfills missing activity streams |
 
 All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 
@@ -121,12 +123,16 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Does NOT auto-include `docker-compose.prod.yml`. Use `--prod` flag for production overrides
 12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
+14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
+12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
+13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
+14. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
 
 ## Development Lessons
 
@@ -134,7 +140,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 2. **Verify migrations**: `alembic downgrade <prev>` + `alembic upgrade head` before committing
 3. **Check logs after sync/service changes**: `python fittrack.py logs backend --tail 30`
 4. **Quick backend checks**: `python fittrack.py exec backend python -c "from app.models.activity import Activity; print(Activity.__table__.columns.keys())"`
-5. **OAuth callbacks need `user_id`**: Callback runs server-side without session — look up user explicitly
+5. **OAuth callbacks need `user_id`**: Callback runs server-side without session — look up user explicitly via JWT state parameter
 
 ## Planned / Incomplete
 

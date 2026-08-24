@@ -517,7 +517,7 @@ export default function LiftingPage() {
                       <input
                         type="date"
                         defaultValue={sessionDetail.session_date}
-                        onChange={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { session_date: e.target.value } })}
+                        onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { session_date: e.target.value } })}
                         className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                     </div>

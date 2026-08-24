@@ -27,9 +27,12 @@ def _get_fernet() -> Fernet:
     """Return a singleton Fernet instance derived from the app secret key."""
     global _fernet
     if _fernet is None:
+        import hashlib
+
         settings = get_settings()
-        # Derive a 32-byte key from secret_key, then base64-encode for Fernet.
-        raw = settings.secret_key[:32].encode().ljust(32, b"=")
+        # Derive a 32-byte key via SHA-256 for consistent entropy regardless of
+        # input length (BUG-011: replaces truncation + '=' padding).
+        raw = hashlib.sha256(settings.secret_key.encode("utf-8")).digest()
         _fernet = Fernet(base64.urlsafe_b64encode(raw))
     return _fernet
 

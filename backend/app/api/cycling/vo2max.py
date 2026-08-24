@@ -146,7 +146,7 @@ async def get_decoupling_for_activity(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid activity ID")
 
-    result = await compute_decoupling_for_activity(db, act_uuid)
+    result = await compute_decoupling_for_activity(db, act_uuid, user_id=current_user.id)
     if not result:
         raise HTTPException(
             status_code=404,

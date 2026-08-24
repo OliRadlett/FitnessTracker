@@ -40,16 +40,27 @@ class SyncUserResponse(BaseModel):
 @router.post("/sync-user", response_model=SyncUserResponse)
 async def sync_user(
     body: SyncUserRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create or find a user from NextAuth session data and return a backend JWT.
 
     This bridges NextAuth (frontend) with the backend user system.
     Called by NextAuth's signIn callback after successful OAuth.
+    Protected by X-Internal-Secret header to prevent anonymous JWT issuance.
     """
     from app.config import get_settings as _get_settings
 
     _s = _get_settings()
+
+    # Require internal API secret to prevent anonymous JWT issuance (BUG-003)
+    internal_secret = request.headers.get("x-internal-secret")
+    if not internal_secret or internal_secret != _s.internal_api_secret:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing or invalid internal API secret.",
+        )
+
     if not _s.is_email_allowed(body.email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -105,8 +116,14 @@ async def sync_user(
 async def oauth_authorize(
     provider: str,
     redirect_uri: str = Query(default=None, description="Callback URL"),
+    state: str = Query(default=None, description="Opaque state token (e.g. JWT) passed through to callback"),
 ):
-    """Redirect the user to the OAuth provider's authorize page."""
+    """Redirect the user to the OAuth provider's authorize page.
+
+    Accepts an optional ``state`` parameter which is passed through to the
+    callback.  The frontend should send a signed JWT here so the callback can
+    identify the authenticated user (BUG-002 / BUG-018).
+    """
     from app.config import get_settings
 
     settings = get_settings()
@@ -118,7 +135,7 @@ async def oauth_authorize(
     if not redirect_uri and provider in ("strava", "whoop", "wahoo"):
         redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
 
-    url = get_authorize_url(provider, redirect_uri)
+    url = get_authorize_url(provider, redirect_uri, state=state)
     return RedirectResponse(url=url)
 
 
@@ -128,6 +145,7 @@ async def oauth_callback(
     provider: str,
     code: str = Query(...),
     redirect_uri: str = Query(default=None),
+    state: str = Query(default=None, description="State parameter from authorize step (contains JWT)"),
     db: AsyncSession = Depends(get_db),
 ):
     """Handle OAuth callback, exchange code for tokens, create/find user.
@@ -135,6 +153,10 @@ async def oauth_callback(
     For fitness integrations (strava, whoop, wahoo): exchanges code for tokens,
     saves connection to the current user, redirects to frontend.
     For app auth (google, github): exchanges code, creates/finds user, returns JSON.
+
+    The ``state`` parameter should contain a JWT passed from the frontend via
+    the authorize step.  This is used to identify the authenticated user when
+    creating the OAuth connection (BUG-002, BUG-018).
     """
     import logging as _logging
 
@@ -189,13 +211,14 @@ async def oauth_callback(
                     token_data = token_resp.json()
                 except Exception:
                     return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error=Whoop+HTTP+{token_resp.status_code}+{token_resp.text[:100]}"
+                        url=f"{_frontend_url}/settings?error={provider.title()}+HTTP+{token_resp.status_code}+{token_resp.text[:100]}"
                     )
 
             access_token = token_data.get("access_token")
             if not access_token:
                 _logger.error(
-                    "Whoop token exchange failed: status=%s, response=%s",
+                    "%s token exchange failed: status=%s, response=%s",
+                    provider.title(),
                     token_resp.status_code,
                     token_data,
                 )
@@ -205,7 +228,7 @@ async def oauth_callback(
                 import urllib.parse as _urlparse
 
                 return RedirectResponse(
-                    url=f"{_frontend_url}/settings?error=Whoop+token+exchange+failed:+{_urlparse.quote(str(error_detail))}"
+                    url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed:+{_urlparse.quote(str(error_detail))}"
                 )
 
             refresh_token = token_data.get("refresh_token")
@@ -231,13 +254,13 @@ async def oauth_callback(
 
                 if userinfo_resp.status_code != 200:
                     return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error=Whoop+userinfo+HTTP+{userinfo_resp.status_code}+{userinfo_resp.text[:80]}"
+                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+HTTP+{userinfo_resp.status_code}+{userinfo_resp.text[:80]}"
                     )
                 try:
                     userinfo = userinfo_resp.json()
                 except Exception:
                     return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error=Whoop+userinfo+invalid+JSON"
+                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+invalid+JSON"
                     )
 
             # Extract provider user ID
@@ -248,14 +271,35 @@ async def oauth_callback(
             else:
                 provider_user_id = str(userinfo.get("id", ""))
 
-            # Find existing connection or create new one for the most recent user
+            # Find existing connection or create new one for the authenticated user
             from sqlalchemy import select as _select
 
             from app.models.user import OAuthConnection, User
 
-            # Check if connection already exists
+            # Resolve the authenticated user from the state parameter (JWT)
+            target_user = None
+            if state:
+                try:
+                    from app.services.auth import get_current_user_id
+
+                    target_user_id = get_current_user_id(state)
+                    if target_user_id:
+                        user_result = await db.execute(
+                            _select(User).where(User.id == target_user_id)
+                        )
+                        target_user = user_result.scalar_one_or_none()
+                except Exception:
+                    pass  # Invalid JWT — fall through to error
+
+            if not target_user:
+                return RedirectResponse(
+                    url=f"{_frontend_url}/settings?error=Could+not+identify+authenticated+user.+Please+log+in+and+try+again."
+                )
+
+            # Check if connection already exists for THIS user (BUG-021: filter by user_id)
             conn_result = await db.execute(
                 _select(OAuthConnection).where(
+                    OAuthConnection.user_id == target_user.id,
                     OAuthConnection.provider == provider,
                     OAuthConnection.provider_user_id == provider_user_id,
                 )
@@ -270,21 +314,6 @@ async def oauth_callback(
                 if token_expires:
                     connection.token_expires_at = token_expires
             else:
-                # Get the current authenticated user from the session cookie
-                # The frontend should include the JWT in the redirect, but since
-                # this is a server-side redirect, we look up the user by checking
-                # if there's an existing Google/GitHub OAuthConnection with a valid token.
-                # For safety, we require that the user already exists (has logged in via NextAuth).
-                # We look for the most recent user who has an app-level OAuth connection.
-                user_result = await db.execute(
-                    _select(User).order_by(User.created_at.desc()).limit(1)
-                )
-                target_user = user_result.scalar_one_or_none()
-                if not target_user:
-                    return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error=No+user+found.+Please+log+in+first."
-                    )
-
                 connection = OAuthConnection(
                     user_id=target_user.id,
                     provider=provider,

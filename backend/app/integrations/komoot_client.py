@@ -45,6 +45,9 @@ class KomootClient:
         self._session_token: str | None = None
         self._session_token_expires: float = 0.0
         self._user_id: str | None = None
+        # Basic Auth token cache (BUG-038: initialized to prevent AttributeError)
+        self._basic_token: str | None = None
+        self._basic_token_expires: float = 0.0
 
     # ── Shared headers ────────────────────────────────────────────────────────
 

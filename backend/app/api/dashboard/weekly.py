@@ -79,6 +79,7 @@ async def weekly_report(
             Activity.start_date >= monday,
             Activity.start_date <= sunday,
             Activity.sport_type.in_(["cycling", "running", "swimming"]),
+            Activity.source != "wahoo",  # BUG-034: exclude standalone Wahoo activities
         )
     )
     row = result.one()
@@ -266,11 +267,10 @@ async def monthly_summary(
     """Get training stats aggregated by month for the last N months."""
     uid = current_user.id
     today = date.today()
-    # Start from the first day of (months-1) months ago
-    start_month = today.replace(day=1) - timedelta(days=1)
-    for _ in range(months - 2):
-        start_month = start_month.replace(day=1) - timedelta(days=1)
-    start_date = start_month.replace(day=1)
+    # Start from the first day of the earliest month needed
+    start_date = today.replace(day=1)
+    for _ in range(months - 1):
+        start_date = (start_date - timedelta(days=1)).replace(day=1)
 
     # Lifting volume + sessions per month
     result = await db.execute(
@@ -434,7 +434,7 @@ async def training_streaks(
 
     # Current streak: count consecutive days from today (or yesterday if no training today)
     current_streak = 0
-    check_date = today
+    check_date = sorted_dates[0]
     # Allow streak to continue if trained today or yesterday
     if sorted_dates[0] < today - timedelta(days=1):
         current_streak = 0

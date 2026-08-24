@@ -41,12 +41,12 @@ export async function mergeRoutes(primaryId: string, duplicateId: string): Promi
   });
 }
 
-export async function downloadRouteGpx(routeId: string, routeName: string, authFetchFn: <T>(path: string, options?: RequestInit) => Promise<T>): Promise<void> {
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const token = (authFetchFn as unknown as { __token?: string }).__token;
+export async function downloadRouteGpx(routeId: string, routeName: string, token?: string): Promise<void> {
+  // Use relative URL — Caddy proxy or Next.js rewrite handles routing to backend.
+  // Do NOT use NEXT_PUBLIC_API_URL here (see AGENTS.md Critical Pitfall #4).
 
   // Use fetch directly for blob response
-  const response = await fetch(`${API_BASE_URL}/api/v1/routes/${routeId}/gpx`, {
+  const response = await fetch(`/api/v1/routes/${routeId}/gpx`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     credentials: 'include',
   });

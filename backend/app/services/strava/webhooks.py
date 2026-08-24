@@ -160,10 +160,22 @@ async def _handle_activity_update(
     db: AsyncSession, strava_athlete_id: int, activity_id: int, updates: dict
 ) -> None:
     """Handle activity update webhook."""
+    # Verify activity belongs to the user who owns this Strava connection (BUG-009)
+    conn_result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.provider == "strava",
+            OAuthConnection.provider_user_id == str(strava_athlete_id),
+        )
+    )
+    connection = conn_result.scalar_one_or_none()
+    if not connection:
+        return
+
     result = await db.execute(
         select(Activity).where(
             Activity.source == "strava",
             Activity.provider_activity_id == str(activity_id),
+            Activity.user_id == connection.user_id,
         )
     )
     activity = result.scalar_one_or_none()
@@ -179,10 +191,22 @@ async def _handle_activity_delete(
     db: AsyncSession, strava_athlete_id: int, activity_id: int
 ) -> None:
     """Handle activity deletion webhook."""
+    # Verify activity belongs to the user who owns this Strava connection (BUG-009)
+    conn_result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.provider == "strava",
+            OAuthConnection.provider_user_id == str(strava_athlete_id),
+        )
+    )
+    connection = conn_result.scalar_one_or_none()
+    if not connection:
+        return
+
     result = await db.execute(
         select(Activity).where(
             Activity.source == "strava",
             Activity.provider_activity_id == str(activity_id),
+            Activity.user_id == connection.user_id,
         )
     )
     activity = result.scalar_one_or_none()

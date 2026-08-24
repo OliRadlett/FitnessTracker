@@ -62,7 +62,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     loadConnections();
-  }, []);
+  }, [authFetch]);
 
   async function loadConnections() {
     try {

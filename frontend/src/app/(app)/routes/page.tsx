@@ -60,7 +60,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function RoutesPage() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<RouteFilters>({});
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -111,11 +111,7 @@ export default function RoutesPage() {
   // GPX download
   async function handleDownloadGpx(routeId: string, routeName: string) {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const session = await import('next-auth/react').then(m => m.getSession());
-      const token = session?.backendToken;
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/routes/${routeId}/gpx`, {
+      const response = await fetch(`/api/v1/routes/${routeId}/gpx`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
@@ -145,11 +141,7 @@ export default function RoutesPage() {
     formData.append('file', file);
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const session = await import('next-auth/react').then(m => m.getSession());
-      const token = session?.backendToken;
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/routes/upload-gpx`, {
+      const response = await fetch('/api/v1/routes/upload-gpx', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
