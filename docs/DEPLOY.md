@@ -109,7 +109,10 @@ ALLOWED_EMAILS=you@gmail.com
 # Must be empty string — clients use relative URLs via Caddy proxy
 NEXT_PUBLIC_API_URL=
 NEXT_PUBLIC_PUBLIC_URL=https://oliradlett.co.uk
-NEXTAUTH_URL=https://oliradlett.co.uk/fittrack
+# ⚠️ MUST include /api/auth — NextAuth v4 appends only /callback/<provider>
+# to this value when building OAuth redirect_uri. Without it, Google returns
+# redirect_uri_mismatch (see troubleshooting table below).
+NEXTAUTH_URL=https://oliradlett.co.uk/fittrack/api/auth
 NEXTAUTH_SECRET=<generate-a-strong-secret>        # openssl rand -base64 48
 INTERNAL_API_URL=http://backend:8000
 
