@@ -80,7 +80,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (23 tables, UUID PKs)
+## Database (24 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -103,6 +103,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
+| `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today) |
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
@@ -137,6 +138,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 - **Adding a new page**: Create `app/(app)/yourpage/page.tsx` (`'use client'`), add nav item in [`Sidebar.tsx`](frontend/src/components/Sidebar.tsx:8), add API client in `lib/api/`
 - **Adding a new API client**: Create `lib/api/yourDomain.ts`, export functions using `useAuthFetch`, add barrel export in `lib/api/index.ts`
 - **Auth flow**: [`signIn` callback](frontend/src/lib/auth.ts) syncs with backend in `jwt` callback → `token.backendToken` → `session.backendToken` → [`useAuthFetch`](frontend/src/lib/api/fetch.ts:84) injects Bearer header
+- **Local dev OAuth**: browse `https://dev.oliradlett.co.uk/fittrack` (hosts file → 127.0.0.1). Backed by gitignored `infra/Caddyfile.local` + `docker-compose.override.yml` (local TLS via Caddy internal CA, root cert installed in Windows store). Strava suffix-matches its single callback domain so one app serves dev + prod. Start the stack via `python fittrack.py up` — a bare `docker compose up` omits `docker-compose.dev.yml`, producing a mount-less frontend that serves stale chunks
 
 ## Critical Pitfalls
 
@@ -147,7 +149,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→head
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
@@ -192,7 +194,7 @@ Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Cele
 
 ## OpenCode TUI Tips
 
-- **Paste on Windows**: `Ctrl+V` doesn't work in TUI on Windows. Use **right-click** to paste (enabled by default in Windows Terminal). Alternatively, use the OpenCode Desktop app which handles `Ctrl+V` correctly.
+- **Paste on Windows**: `Ctrl+V` works — bound explicitly to Windows Terminal's paste action (`{ "id": "Terminal.PasteFromClipboard", "keys": ["ctrl+v", "ctrl+shift+v"] }` in settings.json). WT's paste inserts clipboard text via bracketed paste, which opencode handles. Do NOT unbind ctrl+v — passing the raw key through to opencode does not work. Alternatively, use the OpenCode Desktop app.
 - **Multiline input**: Use `Shift+Enter` (requires Windows Terminal config — already set up).
 - **File references**: Use `@filename` to include file context in prompts.
 - **Quick commands**: Use `!command` to run shell commands and include output.

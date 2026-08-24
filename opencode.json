@@ -38,6 +38,10 @@
       "path": "plans",
       "description": "Active planning docs — phase-7, issues, features"
     },
+    "running": {
+      "path": "docs/RUNNING.md",
+      "description": "How to run commands, services, tests, lint, and migrations (shell, fittrack.py, verification)"
+    },
     "opencode": {
       "path": "docs/OPENCODE.md",
       "description": "OpenCode TUI configuration, commands, skills, agents, and workflows"

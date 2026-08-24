@@ -13,16 +13,17 @@ import type {
   HealthAnalysisResult,
   TrainingStreaks,
   Goal,
-  CreateGoalPayload,
   Event,
   YearlySummary,
   LlmAnalysis,
   DeficiencyResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { Chart, ChartBody } from '@/components/charts/Chart';
+import { useQuery } from '@tanstack/react-query';
+import { useAuthFetch } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
-import { SkeletonMetric, SkeletonChart } from '@/components/ui/Skeleton';
+import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { LlmAnalysisCard } from '@/components/cycling/LlmAnalysisCard';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
@@ -49,13 +50,6 @@ interface WeeklyTabProps {
   recentSessions: LiftingSession[];
   streaks: TrainingStreaks | undefined;
   goals: Goal[] | undefined;
-  showGoalForm: boolean;
-  setShowGoalForm: (show: boolean) => void;
-  onCreateGoal: (payload: CreateGoalPayload) => void;
-  isCreatingGoal: boolean;
-  onAchieveGoal: (goalId: string) => void;
-  onDeleteGoal: (goalId: string) => void;
-  goalError?: string | null;
   deficiency: DeficiencyResponse | undefined;
   deficiencyLoading?: boolean;
   monthlySummary: MonthlySummaryItem[] | undefined;
@@ -94,13 +88,6 @@ export function WeeklyTab({
   recentSessions,
   streaks,
   goals,
-  showGoalForm,
-  setShowGoalForm,
-  onCreateGoal,
-  isCreatingGoal,
-  onAchieveGoal,
-  onDeleteGoal,
-  goalError,
   deficiency,
   deficiencyLoading,
   monthlySummary,
@@ -120,6 +107,20 @@ export function WeeklyTab({
   onDownloadReport,
   getCurrentMonday,
 }: WeeklyTabProps) {
+  const { authFetch } = useAuthFetch();
+
+  const { data: hrvChart, isLoading: hrvLoading } = useQuery<ChartData>({
+    queryKey: ['chart-hrv-trend-detailed', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/hrv_trend_detailed?days=90'),
+    staleTime: 300_000,
+  });
+
+  const { data: heatmapChart, isLoading: heatmapLoading } = useQuery<ChartData>({
+    queryKey: ['chart-consistency-heatmap', 182],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/consistency_heatmap?days=182'),
+    staleTime: 300_000,
+  });
+
   return (
     <div className="space-y-8">
       {/* ── Rest Day Suggestion / Training Readiness ─────────────────────────── */}
@@ -358,15 +359,12 @@ export function WeeklyTab({
         <div>
           <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Training Load</h2>
           <Card>
-            {tssLoading ? (
-              <SkeletonChart height={300} />
-            ) : weeklyTss ? (
-              <Chart data={weeklyTss} height={300} />
-            ) : (
-              <div className="h-80 flex items-center justify-center text-muted">
-                No TSS data available
-              </div>
-            )}
+            <ChartBody
+              isLoading={tssLoading}
+              data={weeklyTss}
+              emptyMessage="No TSS data available"
+              height={300}
+            />
           </Card>
         </div>
 
@@ -378,6 +376,32 @@ export function WeeklyTab({
             <Chart data={strainVsRecovery} height={300} />
           </Card>
         )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>HRV Trend</CardTitle>
+            </CardHeader>
+            <ChartBody
+              isLoading={hrvLoading}
+              data={hrvChart}
+              emptyMessage="No HRV data available. Sync Whoop to populate."
+              height={260}
+            />
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Training Consistency</CardTitle>
+            </CardHeader>
+            <ChartBody
+              isLoading={heatmapLoading}
+              data={heatmapChart}
+              emptyMessage="No training data available yet"
+              height={260}
+            />
+          </Card>
+        </div>
       </div>
 
       {/* ── Recent Activity ──────────────────────────────────────────────────── */}
@@ -501,16 +525,7 @@ export function WeeklyTab({
       )}
 
       {/* ── Goals ───────────────────────────────────────────────────────── */}
-      <GoalsSection
-        goals={goals}
-        showGoalForm={showGoalForm}
-        setShowGoalForm={setShowGoalForm}
-        onCreateGoal={onCreateGoal}
-        isCreatingGoal={isCreatingGoal}
-        onAchieveGoal={onAchieveGoal}
-        onDeleteGoal={onDeleteGoal}
-        goalError={goalError}
-      />
+      <GoalsSection goals={goals} />
 
       {/* ── Weakness / Deficiency Analysis ───────────────────────────────── */}
       <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />

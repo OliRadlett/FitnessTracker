@@ -80,6 +80,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.refresh_weather_forecasts",
         "schedule": crontab(hour=5, minute=0),
     },
+    # Weekly goal check-ins (Monday 6 AM UTC)
+    "record-goal-checkins": {
+        "task": "app.tasks.scheduler.record_goal_checkins",
+        "schedule": crontab(hour=6, minute=0, day_of_week=1),
+    },
 }
 
 
@@ -911,6 +916,57 @@ def refresh_weather_forecasts() -> dict:
                 "users_total": len(users),
                 "forecasts_refreshed": refreshed,
                 "users_without_location": no_location,
+            }
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.record_goal_checkins")
+def record_goal_checkins() -> dict:
+    """Weekly goal check-in snapshot (Monday 6 AM UTC).
+
+    For every user, snapshots each ACTIVE goal's metric value into
+    ``goal_checkins`` (source="auto") with the alignment score at that moment.
+    Goals that already have a check-in for today are skipped. Per-user
+    failures are logged and skipped so one bad goal never kills the loop.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import async_session_factory
+    from app.models.goal import Goal
+    from app.models.user import User
+    from app.services.goals import record_all_check_ins
+
+    async def _run():
+        async with async_session_factory() as db:
+            users_result = await db.execute(select(User))
+            users = list(users_result.scalars().all())
+            checkins_recorded = 0
+            goals_active = 0
+
+            for user in users:
+                try:
+                    active = await db.execute(
+                        select(Goal.id).where(
+                            Goal.user_id == user.id, Goal.status == "active"
+                        )
+                    )
+                    goals_active += len(list(active.scalars().all()))
+                    recorded = await record_all_check_ins(db, user.id)
+                    checkins_recorded += recorded
+                except Exception as e:
+                    logger.warning(
+                        f"Goal check-ins failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+
+            await db.commit()
+            return {
+                "users_total": len(users),
+                "goals_active": goals_active,
+                "checkins_recorded": checkins_recorded,
             }
 
     return asyncio.run(_run())

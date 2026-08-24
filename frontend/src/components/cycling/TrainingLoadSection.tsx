@@ -1,9 +1,11 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { ChartData, TrainingLoadResponse } from '@/lib/api';
+import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { ChartBody } from '@/components/charts/Chart';
 
 interface TrainingLoadSectionProps {
   trainingLoad: TrainingLoadResponse | undefined;
@@ -20,6 +22,20 @@ export function TrainingLoadSection({
   loadDays,
   setLoadDays,
 }: TrainingLoadSectionProps) {
+  const { authFetch } = useAuthFetch();
+
+  const { data: rampRateChart, isLoading: rampLoading } = useQuery<ChartData>({
+    queryKey: ['chart-ramp-rate', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/ramp_rate?weeks=16'),
+    staleTime: 300_000,
+  });
+
+  const { data: loadBalanceChart, isLoading: loadBalanceLoading } = useQuery<ChartData>({
+    queryKey: ['chart-training-load-balance', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/training_load_balance?weeks=16'),
+    staleTime: 300_000,
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -42,16 +58,31 @@ export function TrainingLoadSection({
           </div>
         </div>
       </CardHeader>
-      {isLoading ? (
-        <div className="h-80 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-        </div>
-      ) : chartTrainingLoad ? (
-        <Chart data={chartTrainingLoad} height={320} />
-      ) : (
-        <div className="h-80 flex items-center justify-center text-muted">
-          No training load data available. Set your FTP and sync activities.
-        </div>
+      <ChartBody
+        isLoading={isLoading}
+        data={chartTrainingLoad}
+        emptyMessage="No training load data available. Set your FTP and sync activities."
+        height={320}
+      />
+
+      {trainingLoad && (
+        <>
+          <h4 className="text-sm font-medium text-muted mt-6 mb-2">Ramp Rate — Weekly CTL Change</h4>
+          <ChartBody
+            isLoading={rampLoading}
+            data={rampRateChart}
+            emptyMessage="No ramp rate data available yet"
+            height={240}
+          />
+
+          <h4 className="text-sm font-medium text-muted mt-6 mb-2">Load Balance — TSS vs Lifting vs Strain</h4>
+          <ChartBody
+            isLoading={loadBalanceLoading}
+            data={loadBalanceChart}
+            emptyMessage="No load balance data available yet"
+            height={240}
+          />
+        </>
       )}
     </Card>
   );

@@ -1,9 +1,11 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { ChartData, PowerCurveResponse, PowerZonesResponse, HrZonesResponse, PowerVsHrResponse } from '@/lib/api';
+import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { Chart, ChartBody } from '@/components/charts/Chart';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
 import { PowerZonesDisplay } from '@/components/cycling/PowerZonesDisplay';
 import { HRZonesDisplay } from '@/components/cycling/HRZonesDisplay';
@@ -43,6 +45,20 @@ export function PowerCurveSection({
   chartDailyTss,
   chartWeightTrend,
 }: PowerCurveSectionProps) {
+  const { authFetch } = useAuthFetch();
+
+  const { data: wkgChart, isLoading: wkgLoading } = useQuery<ChartData>({
+    queryKey: ['chart-wkg-power-curve', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/wkg_power_curve?days=90'),
+    staleTime: 300_000,
+  });
+
+  const { data: percentileChart, isLoading: percentileLoading } = useQuery<ChartData>({
+    queryKey: ['chart-power-duration-percentile', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/power_duration_percentile?days=90'),
+    staleTime: 300_000,
+  });
+
   // Power vs HR chart data
   const powerVsHrChart: ChartData | null = powerVsHr?.data?.length
     ? {
@@ -137,13 +153,11 @@ export function PowerCurveSection({
             </div>
           </div>
         </CardHeader>
-        {chartPowerComparison && chartPowerComparison.labels.length > 0 ? (
-          <Chart data={chartPowerComparison} height={300} />
-        ) : (
-          <div className="h-60 flex items-center justify-center text-muted text-sm">
-            No power data available for comparison. Fetch streams from Strava first.
-          </div>
-        )}
+        <ChartBody
+          data={chartPowerComparison}
+          emptyMessage="No power data available for comparison. Fetch streams from Strava first."
+          height={300}
+        />
       </Card>
 
       {/* HR Zones + Weight Trend */}
@@ -181,13 +195,11 @@ export function PowerCurveSection({
           <CardHeader>
             <CardTitle>Body Weight Trend (90 days)</CardTitle>
           </CardHeader>
-          {chartWeightTrend && chartWeightTrend.labels.length > 0 ? (
-            <Chart data={chartWeightTrend} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted text-sm">
-              No weight data available. Log weight in settings or sync from Whoop.
-            </div>
-          )}
+          <ChartBody
+            data={chartWeightTrend}
+            emptyMessage="No weight data available. Log weight in settings or sync from Whoop."
+            height={280}
+          />
         </Card>
       </div>
 
@@ -197,26 +209,49 @@ export function PowerCurveSection({
           <CardHeader>
             <CardTitle>Daily TSS (30 days)</CardTitle>
           </CardHeader>
-          {chartDailyTss ? (
-            <Chart data={chartDailyTss} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted">
-              No TSS data available
-            </div>
-          )}
+          <ChartBody
+            data={chartDailyTss}
+            emptyMessage="No TSS data available"
+            height={280}
+          />
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle>Power vs Heart Rate (90 days)</CardTitle>
           </CardHeader>
-          {powerVsHrChart ? (
-            <Chart data={powerVsHrChart} height={280} />
-          ) : (
-            <div className="h-60 flex items-center justify-center text-muted">
-              No power/HR data available
-            </div>
-          )}
+          <ChartBody
+            data={powerVsHrChart}
+            emptyMessage="No power/HR data available"
+            height={280}
+          />
+        </Card>
+      </div>
+
+      {/* W/kg Curve + Percentile Comparison */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Power Curve — W/kg (90 days)</CardTitle>
+          </CardHeader>
+          <ChartBody
+            isLoading={wkgLoading}
+            data={wkgChart}
+            emptyMessage="Fetch streams and log body weight to see your W/kg curve"
+            height={280}
+          />
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Power Profile vs Population Norms</CardTitle>
+          </CardHeader>
+          <ChartBody
+            isLoading={percentileLoading}
+            data={percentileChart}
+            emptyMessage="Fetch streams and log body weight to compare against population norms"
+            height={280}
+          />
         </Card>
       </div>
     </>

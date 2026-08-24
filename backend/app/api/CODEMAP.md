@@ -10,11 +10,11 @@
 | `lifting.py` | `/lifting/` | Sessions CRUD (`GET /sessions/active` = unfinished live-tracked session for `/lifting/live` resume; registered BEFORE `/{session_id}` so "active" isn't parsed as UUID), sets CRUD, PRs, volume trends, warmup templates, activity linking, `GET /sessions/{id}/analysis`, `GET/POST /sessions/{id}/ai-analysis`. Session create accepts `started_at`, PATCH accepts `started_at`/`ended_at` (live flow) |
 | `routes.py` | `/routes/` | Route CRUD, filtering, GPX download/upload, sync, merge, duplicates |
 | `cycling/` | `/cycling/` | Profile, FTP history, training load, power curve/zones, metrics, FTP estimation, backfill |
-| `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data |
+| `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data; required params → 422, stream-heavy charts Redis-cached 5 min |
 | `dashboard/` | `/dashboard/` | `GET /summary`, `GET /weekly-report`, `GET /today` |
 | `webhooks.py` | `/webhooks/` | `GET /strava` (challenge), `POST /strava` (event receiver) |
 | `export.py` | `/export/` | Data export endpoints |
-| `training_plans.py` | `/training-plans/` | Plan CRUD, `POST /generate` (template-based auto-generation) |
+| `training_plans.py` | `/training-plans/` | Thin router → `services/training_plan.py`. Plan CRUD, `POST /generate` (mixed-week template: rest Sun, strength Tue/Thu, cycle rides), `event_id` on POST/PATCH links event + auto-taper; PATCH days are non-destructive upsert by `day_date`; `GET /{plan_id}/week/{n}` (weekly view: Monday-aligned weeks, readiness CTL/ATL/TSB, weather + bad-weather badges, actual activity/lifting summaries, route matches on cycle days; `include_weather` query), `PATCH /{plan_id}/days/{day_id}` (targeted single-day partial update) |
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `GET/POST /{id}/ai-analysis` |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |
 | `metrics.py` | `/metrics/` | Health metrics CRUD, health analysis, `GET/POST /health-ai-analysis` |
@@ -22,3 +22,5 @@
 | `nutrition.py` | `/nutrition/` | Ride fuel plans: `POST /fuel-plan` (generate from activity_id or planned_duration_min/planned_if), `GET/PATCH/DELETE /fuel-plan/{id}` (PATCH logs actuals), `GET /fuel-plan/activity/{activity_id}` |
 | `llm_analysis.py` | `/cycling/llm-analysis/` | `GET /latest`, `POST /on-demand`, `GET /history` |
 | `weather.py` | `/weather/` | Open-Meteo integration: `GET /current`, `GET /forecast` (days 1–7), `GET /historical` (start/end dates), `POST /tag-activity/{id}`, `GET /for-activity/{id}` — lat/lng optional (falls back to user home location); provider failures → 503 |
+| `goals.py` | `/goals/` | Semantic goals (Phase 6) — thin router over `services/goals.py` + `services/goal_metrics.py`. `GET /` (`status_filter`, items enriched with direction/alignment_pct/progress_pct/metric label+unit), `POST /` (validates metric in registry + required filters, snapshots `starting_value`), `GET /metrics` (registry listing for dynamic forms), `GET/PATCH/DELETE /{id}`, `POST/GET /{id}/checkins`, `POST /{id}/reactivate`. Status transitions run on every read/write path via `update_goal_status` |
+| `projections.py` | `/projections/` | Phase 7 — projections & success prediction. `GET /goal/{goal_id}` (trend, projected date, badge, history, projection_line), `GET /metric/{metric_key}?months=6&filter_json={}` (trend for any registry metric), `GET /tsb/{plan_id}?days=14` (event-linked TSB trajectory only; 400 if no event linked) |

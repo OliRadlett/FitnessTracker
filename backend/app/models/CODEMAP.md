@@ -13,8 +13,8 @@
 | `sleep.py` | `SleepLog` | Sleep stages, efficiency |
 | `health_alert.py` | `HealthAlert` | Overtraining/illness/injury with JSONB evidence |
 | `weight.py` | `WeightLog` | Weight tracking per day |
-| `goal.py` | `Goal` | Training goals with auto-computed progress |
-| `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day optionally links to Activity |
+| `goal.py` | `Goal`, `GoalCheckIn` | Semantic goals (Phase 6): `metric` key → registry in `services/goal_metrics.py`, `filter_json` (e.g. exercise/sport), `starting_value` snapshot (direction derived start-vs-target, no column), cached `current_value`; status active/achieved/expired/abandoned. Goal has many CheckIns (`check_in_date`, value, alignment_pct, source auto/manual) |
+| `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day: `sport` (cycle/strength/rest), planned focus/exercises/volume/RPE/power/zone/route targets, optionally links Activity + LiftingSession; Plan optionally links Event (`event_id`) for auto-taper |
 | `event.py` | `Event` | Race/ride/lift events with taper config |
 | `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |

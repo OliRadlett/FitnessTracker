@@ -474,7 +474,7 @@ I need to debug a production issue. @ssh-production-debugger guide me through th
 | `Tab` | Switch agent (Build ↔ Plan) |
 | `Ctrl+T` | Cycle model variants |
 | `Shift+Enter` | Multiline input |
-| `Right-click` | Paste (Windows) |
+| `Ctrl+V` / `Shift+Insert` | Paste (Windows) |
 
 ### Slash Commands
 
@@ -496,7 +496,9 @@ I need to debug a production issue. @ssh-production-debugger guide me through th
 ## Troubleshooting
 
 ### Paste not working on Windows
-- Use **right-click** instead of `Ctrl+V`
+- `Ctrl+V` is fixed: explicitly bound to Windows Terminal's paste action (`"Terminal.PasteFromClipboard"` with `["ctrl+v", "ctrl+shift+v"]` in `keybindings`). WT's paste inserts clipboard text via bracketed paste, which opencode handles
+- Do NOT unbind ctrl+v to "pass it through" — opencode cannot act on the raw key; only WT's paste action works
+- Right-click cannot be bound to paste (no `mouse` property in current WT actions)
 - Or use OpenCode Desktop app
 
 ### Commands not auto-allowed

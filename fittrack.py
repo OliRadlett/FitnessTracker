@@ -403,18 +403,19 @@ def _get_service_statuses() -> list[ServiceStatus]:
         else:
             healthy = False
 
-        # Format ports
+        # Format ports (dedupe — Docker reports IPv4 and IPv6 bindings separately)
         ports_raw: list[dict[str, Any]] = c.get("Publishers") or []
         port_parts: list[str] = []
+        seen_ports: set[str] = set()
         expected_port = SERVICE_DEFS[svc].get("port")
         for p in ports_raw:
             published: int = p.get("PublishedPort", 0)
             target: int = p.get("TargetPort", 0)
             if published and target:
-                if expected_port and str(published) == expected_port:
-                    port_parts.append(f":{published}")
-                else:
-                    port_parts.append(f":{published}->{target}")
+                part = f":{published}" if (expected_port and str(published) == expected_port) else f":{published}->{target}"
+                if part not in seen_ports:
+                    seen_ports.add(part)
+                    port_parts.append(part)
 
         port_display = ", ".join(port_parts) if port_parts else (expected_port or "")
 
@@ -481,28 +482,30 @@ def _probe_startup_states(statuses: list[ServiceStatus]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 HEADER_ART = r"""
-  _____ _ _   _____             _
- |  ___(_) | |_   _|__ __ _ __| | __
- | |_  | | |   | |/ -_) _` / _` |/ /
- |  _| |_|_|   |_|\___\__,_\__,_|\_\
- |_|            Service Manager
+   _______ __ ______                __
+  / ____(_) //_  __/________ ______/ /__
+ / /_  / / __// / / ___/ __ `/ ___/ //_
+/ __/ / / /_ / / /  / /_/ / /__/ ,<
+/_/   /_/\__//_/ /_/   \__,_/\___/_/|_|
+
 """
 
 
 def _print_banner() -> None:
     print(C.colourise(C.CYAN + C.BOLD, HEADER_ART))
+    print(C.colourise(C.DIM + C.BOLD, "  ┃ Service Manager — FitTrack development toolkit\n"))
 
 
 def _health_label(s: ServiceStatus) -> str:
     """Return a coloured health indicator string for *s*."""
     if s.state == "running":
         if s.healthy:
-            return C.colourise(C.GREEN, "â— healthy")
+            return C.colourise(C.GREEN, "● healthy")
         if s.health == "starting":
-            return C.colourise(C.YELLOW, "â— starting")
+            return C.colourise(C.YELLOW, "◐ starting")
         if s.health == "unhealthy":
             return C.colourise(C.RED, "✗ unhealthy")
-        return C.colourise(C.GREEN, "â— up")
+        return C.colourise(C.GREEN, "● up")
     if s.state in ("exited", "dead"):
         return C.colourise(C.RED, "○ down")
     if s.state == "not created":
@@ -572,7 +575,7 @@ def _print_summary(statuses: list[ServiceStatus]) -> None:
     if healthy == total:
         print(C.colourise(C.GREEN + C.BOLD, f"  [OK] All {total} services running and healthy"))
     elif running > 0:
-        print(C.colourise(C.YELLOW + C.BOLD, f"  â— {running}/{total} running, {healthy}/{total} healthy"))
+        print(C.colourise(C.YELLOW + C.BOLD, f"  ◐ {running}/{total} running, {healthy}/{total} healthy"))
     else:
         print(C.colourise(C.RED + C.BOLD, "  ✗ All services down"))
     print()
@@ -603,10 +606,26 @@ def _ensure_docker() -> bool:
     return True
 
 
+def _validate_services(services: list[str]) -> list[str]:
+    """Return the subset of *services* that are known; warn about unknown ones."""
+    valid = [s for s in services if s in SERVICE_DEFS]
+    for s in services:
+        if s not in SERVICE_DEFS:
+            print(C.colourise(
+                C.RED,
+                f"  ✗ Unknown service: '{s}'. Valid services: {', '.join(ALL_SERVICES)}",
+            ))
+    return valid
+
+
 def cmd_up(services: list[str] | None = None, build: bool = False) -> None:
     """Start services."""
     if not _ensure_env() or not _ensure_docker():
         return
+    if services is not None:
+        services = _validate_services(services)
+        if not services:
+            return
 
     print(C.colourise(C.CYAN + C.BOLD, "\n  Starting FitTrack services...\n"))
 
@@ -622,21 +641,23 @@ def cmd_up(services: list[str] | None = None, build: bool = False) -> None:
         return
 
     print(C.colourise(C.YELLOW, "  Waiting for services to become healthy...\n"))
-    _wait_for_healthy(timeout=60)
+    _wait_for_healthy(timeout=60, services=services)
 
 
 def cmd_down(services: list[str] | None = None) -> None:
     """Stop services.  Specific services → ``compose stop``; all → ``compose down``."""
     if not _ensure_docker():
         return
+    if services is not None:
+        services = _validate_services(services)
+        if not services:
+            return
 
     print(C.colourise(C.YELLOW, "\n  Stopping services...\n"))
-    if services:
-        # Only stop named containers (don't remove networks / volumes)
-        _compose("stop", *services)
-    else:
-        # Full teardown
-        _compose("down")
+    result = (_compose("stop", *services) if services else _compose("down"))
+    if result.returncode != 0:
+        print(C.colourise(C.RED, "  ✗ Failed to stop services."))
+        return
     print(C.colourise(C.GREEN, "  [OK] Services stopped.\n"))
 
 
@@ -644,15 +665,19 @@ def cmd_restart(services: list[str] | None = None) -> None:
     """Restart services."""
     if not _ensure_docker():
         return
+    if services is not None:
+        services = _validate_services(services)
+        if not services:
+            return
 
     print(C.colourise(C.CYAN, "\n  Restarting services...\n"))
-    if services:
-        _compose("restart", *services)
-    else:
-        _compose("restart")
+    result = (_compose("restart", *services) if services else _compose("restart"))
+    if result.returncode != 0:
+        print(C.colourise(C.RED, "  ✗ Restart failed."))
+        return
     print(C.colourise(C.GREEN, "  [OK] Restart complete.\n"))
 
-    _wait_for_healthy(timeout=60)
+    _wait_for_healthy(timeout=60, services=services)
 
 
 def cmd_build(services: list[str] | None = None) -> None:
@@ -811,7 +836,7 @@ def cmd_backup(output: str | None = None) -> None:
     if use_gzip:
         # pg_dump | gzip inside the db container — binary output, no text decode
         result = subprocess.run(
-            ["docker", "compose", "exec", "-T", "db", "sh", "-c",
+            ["docker", "compose", *_compose_file_args(), "exec", "-T", "db", "sh", "-c",
              "pg_dump -U ${POSTGRES_USER:-fittrack} ${POSTGRES_DB:-fittrack} | gzip"],
             cwd=_project_root(),
             capture_output=True,
@@ -827,8 +852,8 @@ def cmd_backup(output: str | None = None) -> None:
         Path(output).write_bytes(result.stdout)
     else:
         result = subprocess.run(
-            ["docker", "compose", "exec", "-T", "db",
-             "pg_dump", "-U", "fittrack", "fittrack"],
+            ["docker", "compose", *_compose_file_args(), "exec", "-T", "db",
+             "sh", "-c", "pg_dump -U ${POSTGRES_USER:-fittrack} ${POSTGRES_DB:-fittrack}"],
             cwd=_project_root(),
             capture_output=True,
             text=True,
@@ -961,6 +986,7 @@ def cmd_monitor(interval: int = 5) -> None:
         sys.stdout.flush()
 
     print(C.colourise(C.CYAN + C.BOLD, HEADER_ART))
+    print(C.colourise(C.DIM + C.BOLD, "  ┃ Service Manager — FitTrack development toolkit\n"))
     print(C.colourise(C.DIM, f"  Refreshing every {interval}s — press Ctrl+C to exit"))
     print()
 
@@ -1018,7 +1044,7 @@ def cmd_monitor(interval: int = 5) -> None:
         if healthy_count == total:
             summary = C.colourise(C.GREEN + C.BOLD, f"  [OK] All {total} services running and healthy")
         elif running > 0:
-            summary = C.colourise(C.YELLOW + C.BOLD, f"  â— {running}/{total} running, {healthy_count}/{total} healthy")
+            summary = C.colourise(C.YELLOW + C.BOLD, f"  ◐ {running}/{total} running, {healthy_count}/{total} healthy")
         else:
             summary = C.colourise(C.RED + C.BOLD, "  ✗ All services down")
         lines.append(summary)
@@ -1049,27 +1075,36 @@ def cmd_monitor(interval: int = 5) -> None:
     print(C.colourise(C.CYAN, "\n  Monitoring stopped.\n"))
 
 
-def _wait_for_healthy(timeout: int = 60) -> None:
-    """Block until all services are healthy, showing per-service startup status."""
-    statuses = _get_service_statuses()
-    statuses = _run_http_health_checks(statuses)
+def _wait_for_healthy(timeout: int = 60, services: list[str] | None = None) -> None:
+    """Block until services are healthy, showing per-service startup status.
 
-    if all(s.healthy for s in statuses):
+    *services* restricts the check to a subset (e.g. only those just started);
+    ``None`` means all services.
+    """
+    watch = [s for s in (services or ALL_SERVICES) if s in SERVICE_DEFS]
+
+    def _watched(statuses: list[ServiceStatus]) -> list[ServiceStatus]:
+        return [s for s in statuses if s.name in watch]
+
+    statuses = _run_http_health_checks(_get_service_statuses())
+    watched = _watched(statuses)
+
+    if all(s.healthy for s in watched):
         print(C.colourise(C.GREEN, "  [OK] All services are ready."))
         _print_urls()
         return
 
-    spinner = "â ‹â ™â ¹â ¸â ¼â ´â ¦â §â ‡â "
+    spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     start = time.time()
     idx = 0
     last_lines_count = 0
 
     while time.time() - start < timeout:
-        statuses = _get_service_statuses()
-        statuses = _run_http_health_checks(statuses)
-        startup_states = _probe_startup_states(statuses)
+        statuses = _run_http_health_checks(_get_service_statuses())
+        watched = _watched(statuses)
+        startup_states = _probe_startup_states(watched)
 
-        if all(s.healthy for s in statuses):
+        if all(s.healthy for s in watched):
             # Clear previous output
             if last_lines_count > 0:
                 sys.stdout.write(f"\033[{last_lines_count}A\033[J")
@@ -1082,13 +1117,13 @@ def _wait_for_healthy(timeout: int = 60) -> None:
 
         # Build per-service status lines
         lines: list[str] = []
-        for s in statuses:
+        for s in watched:
             if s.healthy:
-                status_str = C.colourise(C.GREEN, "â— healthy")
+                status_str = C.colourise(C.GREEN, "● healthy")
             elif s.name in startup_states:
-                status_str = C.colourise(C.YELLOW, f"â— {startup_states[s.name]}")
+                status_str = C.colourise(C.YELLOW, f"◐ {startup_states[s.name]}")
             elif s.state == "running":
-                status_str = C.colourise(C.YELLOW, "â— starting...")
+                status_str = C.colourise(C.YELLOW, "◐ starting...")
             elif s.state in ("exited", "dead"):
                 status_str = C.colourise(C.RED, "✗ down")
             else:
@@ -1144,7 +1179,7 @@ def _print_menu() -> None:
         print(f"{key_str} {cmd_str} {desc}")
     print()
     print(C.colourise(C.DIM, "  Per-service: type a command + service name"))
-    print(C.colourise(C.DIM, "  e.g.:  up backend  |  logs frontend  |  restart redis"))
+    print(C.colourise(C.DIM, "  e.g.:  up backend  |  logs frontend  |  restart redis  |  exec backend bash"))
     print(C.colourise(C.DIM, f"  Services: {', '.join(ALL_SERVICES)}"))
     print()
     print(C.colourise(C.CYAN + C.BOLD, "  [q]") + C.colourise(C.WHITE + C.BOLD, "  quit        ") + "Exit")
@@ -1193,6 +1228,11 @@ def _interactive_menu() -> None:
             cmd_reset()
         elif cmd in ("9", "logs", "log"):
             cmd_logs(cmd_args or None)
+        elif cmd == "exec":
+            if len(cmd_args) < 2:
+                print(C.colourise(C.RED, "  Usage: exec <service> <command...>"))
+            else:
+                cmd_exec(cmd_args[0], cmd_args[1:])
         elif cmd in ("b", "backup"):
             cmd_backup(cmd_args[0] if cmd_args else None)
         elif cmd in ("r", "restore"):
@@ -1278,10 +1318,10 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("migrate", help="Run database migrations")
 
     # reset
-    subparsers.add_parser("reset", help="Full teardown, rebuild, and restart with fresh migrations (wipes DB)")
+    subparsers.add_parser("reset", help="Full teardown, rebuild, and restart with migrations (DB preserved)")
 
     # exec
-    p_exec = subparsers.add_parser("exec", help="Execute a command in a running container")
+    p_exec = subparsers.add_parser("exec", help="Execute a command in a new container (run --rm)")
     p_exec.add_argument("service", help="Service name")
     p_exec.add_argument("exec_command", nargs=argparse.REMAINDER, help="Command to execute")
 

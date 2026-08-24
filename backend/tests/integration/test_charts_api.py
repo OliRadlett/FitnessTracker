@@ -69,3 +69,66 @@ class TestWeightTrendChart:
         data = resp.json()
         assert data["chart_type"] is not None
         assert isinstance(data["labels"], list)
+
+
+# ── Param Validation ─────────────────────────────────────────────────────
+
+
+class TestChartParamValidation:
+    """Required registry params must return 422, not 500."""
+
+    async def test_missing_exercise_name_returns_422(self, client):
+        resp = await client.get("/api/v1/charts/estimated_1rm_history")
+        assert resp.status_code == 422
+
+    async def test_missing_exercise_name_progress_returns_422(self, client):
+        resp = await client.get("/api/v1/charts/exercise_progress")
+        assert resp.status_code == 422
+
+    async def test_unknown_chart_returns_404(self, client):
+        resp = await client.get("/api/v1/charts/nonexistent_chart")
+        assert resp.status_code == 404
+
+
+# ── New Intelligence Charts ──────────────────────────────────────────────
+
+
+class TestNewCharts:
+    """Ramp rate, W/kg curve, percentile profile, heatmap, sleep, strength."""
+
+    async def test_ramp_rate(self, client, test_multiple_activities):
+        resp = await client.get("/api/v1/charts/ramp_rate?weeks=16")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "bar"
+        assert isinstance(data["reference_areas"], list)
+
+    async def test_wkg_power_curve(self, client, test_multiple_activities):
+        resp = await client.get("/api/v1/charts/wkg_power_curve?days=90")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+
+    async def test_power_duration_percentile(self, client, test_multiple_activities):
+        resp = await client.get("/api/v1/charts/power_duration_percentile?days=90")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["series"]) >= 3  # percentile curves
+
+    async def test_consistency_heatmap(self, client, test_multiple_activities):
+        resp = await client.get("/api/v1/charts/consistency_heatmap?days=60")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "heatmap"
+
+    async def test_sleep_consistency(self, client):
+        resp = await client.get("/api/v1/charts/sleep_consistency?days=30")
+        assert resp.status_code == 200
+
+    async def test_strength_balance(self, client):
+        resp = await client.get("/api/v1/charts/strength_balance")
+        assert resp.status_code == 200
+
+    async def test_training_load_balance(self, client, test_multiple_activities):
+        resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
+        assert resp.status_code == 200

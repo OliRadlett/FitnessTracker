@@ -25,7 +25,10 @@ Strava (3) > Wahoo (2) > Komoot (1). Lower-priority only fills NULL fields. Stra
 
 ## Chart System
 
-Backend registry [`CHART_REGISTRY`](../backend/app/api/charts.py) → [`ChartService`](../backend/app/services/charts.py) → frontend [`Chart`](../frontend/src/components/charts/Chart.tsx) renders Recharts. Charts include: training_load, ftp_history, power_curve, power_zones, daily_tss, exercise_progress, strain_vs_recovery, hrv_trend, weight_trend, vo2max_trend, decoupling_trend, hr_zone_distribution, periodization. Reference areas supported for zone coloring.
+Backend registry [`CHART_REGISTRY`](../backend/app/api/charts.py) → [`ChartService`](../backend/app/services/charts.py) → frontend [`Chart`](../frontend/src/components/charts/Chart.tsx) renders Recharts (line, bar, scatter, area, pie + custom CSS-grid heatmap). Charts include: training_load, ftp_history, stream_power_curve, power_curve_comparison, wkg_power_curve, power_duration_percentile, power_zones, daily_tss, weekly_tss, ramp_rate, exercise_progress, strength_balance, strain_vs_recovery, hrv_trend_detailed, sleep_consistency, rest_day_analysis, weight_trend, vo2max_trend, decoupling_trend, hr_zone_distribution, consistency_heatmap, training_load_balance, periodization. Reference areas supported for zone coloring (per-axis via `y_axis`). Series may target a secondary Y axis (`y_axis: "right"`). Required registry params return 422 when missing; stream-heavy charts are Redis-cached for 5 min.
+
+- **Power profile norms**: static Coggan-style W/kg percentile table ([`power_profile.py`](../backend/app/services/cycling/power_profile.py)) with linear interpolation across durations (5s–60min); used by `power_duration_percentile`.
+- **Ramp rate**: weekly ΔCTL with safe bands — optimal build +3 to +8 CTL/wk, >8 flagged as risky ramp.
 
 ## Specialised Algorithms
 

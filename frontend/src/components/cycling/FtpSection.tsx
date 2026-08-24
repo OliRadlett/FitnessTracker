@@ -3,7 +3,7 @@
 import React from 'react';
 import type { ChartData, FtpHistoryEntry, FtpEstimate, BackfillFtpResult, LifetimePBsResponse, CyclingProfile } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { ChartBody } from '@/components/charts/Chart';
 
 interface FtpSectionProps {
   profile: CyclingProfile | undefined;
@@ -56,13 +56,11 @@ export function FtpSection({
             </span>
           )}
         </div>
-        {chartFtpHistory && chartFtpHistory.labels.length > 0 ? (
-          <Chart data={chartFtpHistory} height={250} />
-        ) : (
-          <div className="h-40 flex items-center justify-center text-muted text-sm">
-            No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.
-          </div>
-        )}
+        <ChartBody
+          data={chartFtpHistory}
+          emptyMessage='No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.'
+          height={250}
+        />
         {ftpHistory && ftpHistory.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">

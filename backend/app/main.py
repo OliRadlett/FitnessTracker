@@ -201,6 +201,7 @@ from app.api.lifting import router as lifting_router
 from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
 from app.api.nutrition import router as nutrition_router
+from app.api.projections import router as projections_router
 from app.api.routes import router as routes_router
 from app.api.training_plans import router as training_plans_router
 from app.api.weather import router as weather_router
@@ -225,6 +226,9 @@ app.include_router(
     deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"]
 )
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])
+app.include_router(
+    projections_router, prefix="/api/v1/projections", tags=["projections"]
+)
 app.include_router(
     training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"]
 )

@@ -18,7 +18,7 @@ import type {
   DeficiencyResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LinkActivityModal } from '@/components/lifting/LinkActivityModal';
@@ -136,6 +136,12 @@ export default function LiftingPage() {
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
     staleTime: 60_000,  // 1 min
+  });
+
+  const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
+    queryKey: ['chart-strength-balance'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
+    staleTime: 300_000,
   });
 
   const { data: sessionDetail } = useQuery<LiftingSession>({
@@ -804,15 +810,23 @@ export default function LiftingPage() {
       {/* Volume Trend */}
       <Card>
         <CardHeader><CardTitle>Volume Trend</CardTitle></CardHeader>
-        {volumeLoading ? (
-          <div className="h-80 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-          </div>
-        ) : volumeChart ? (
-          <Chart data={volumeChart} height={320} />
-        ) : (
-          <div className="h-80 flex items-center justify-center text-muted">No volume data available</div>
-        )}
+        <ChartBody
+          isLoading={volumeLoading}
+          data={volumeChart}
+          emptyMessage="No volume data available"
+          height={320}
+        />
+      </Card>
+
+      {/* Strength Balance */}
+      <Card>
+        <CardHeader><CardTitle>Strength Balance</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={strengthBalanceLoading}
+          data={strengthBalanceChart}
+          emptyMessage="Log lifts with estimated 1RM to see your strength balance"
+          height={280}
+        />
       </Card>
 
       {/* Exercise Progress */}

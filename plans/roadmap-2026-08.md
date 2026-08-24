@@ -326,15 +326,91 @@ POST /goals/{id}/reactivate
 
 ---
 
-## Phase 7: Projections & Success Prediction *(to be detailed after Phase 6)*
+## Phase 7: Projections & Success Prediction
 
-Linear regression trends (FTP/weight/VO2max), success probability per goal (builds on Phase 6 check-in history), TSB trajectory projection for events, projection charts on goals page.
+### Regression Engine (`services/projections.py`)
+- `linear_regression(points: list[(date, float)]) -> (slope_per_day, intercept, r_squared, n)` — OLS on day-offsets, pure function
+- `project_to_target(metric_history, target_value, direction) -> {projected_date, days_remaining, confidence}` — extrapolates trend to target crossing; confidence from r² × data-point-count
+- `success_badge(goal, checkins, today) -> str` — **badge only** (no percentage): "On Track" / "At Risk" / "Unlikely" / "Not enough data"; derived from: is slope heading toward target?, projected_date vs target_date, data sufficiency (n≥4 = good, n<2 = low)
+- **12-week regression window** per goal; ≥4 data points required else "Not enough data"
+- `tsb_projection(plan, ctl_atl_today, days_ahead) -> list[{date, tsb}]` — **event-linked plans only**: project CTL/ATL forward using planned TSS from training plan days; TSB = CTL - ATL; shows freshness on race day
 
-## Phase 8: Activities & Routes Page Overhauls *(to be detailed)*
-8A Activities: filtering, visualizations, weekly summary redesign. 8B Routes: comparison, surface/elevation improvements, recommendations.
+### Endpoints
+```
+GET /api/v1/projections/goal/{goal_id}   — trend, projection, badge, history, projection_line
+GET /api/v1/projections/metric/{key}?months=6  — trend for any registry metric
+GET /api/v1/projections/tsb/{plan_id}?days=14  — event-linked TSB trajectory only
+```
 
-## Phase 9: Wiki Expansion & Strength Videos *(to be detailed)*
-Wiki sections for new features; video URL/upload on LiftingSession + PRs; video display component.
+### Frontend
+- GoalDetailModal: dashed projection line extending from last check-in to projected date + badge
+- ProjectionCard on goals page: per active goal with target_date — badge + projected date
+- Event-linked plan: race-day freshness callout ("TSB +15 on race day — optimal freshness")
+
+### Tests
+Pure regression math (known slopes, 1-point edge, flat trend, perfect correlation), badge boundaries, TSB projection with mock plan TSS.
+
+---
+
+## Phase 8A: Activities Page Overhaul
+
+### Backend (`api/activities.py` GET `/`)
+New query params: `q` (name ILIKE), `min_distance`/`max_distance` (meters), `min_duration`/`max_duration` (seconds), `min_tss`/`max_tss`, `sport_types` (multi-select).
+
+### Frontend
+- Full filter row + sort dropdown (date/distance/duration/TSS/avg power, asc/desc) — matches routes page pattern
+- **Stream-overlay comparison**: tick 2 activities → overlaid power/HR stream charts + stat deltas table
+- **Stats view mode** (third tab alongside List/Week): monthly distance bars, sport breakdown pie, weekly TSS chart
+- Redesigned weekly summary with mini bar charts
+
+---
+
+## Phase 8B: Routes Page Overhaul
+
+### Backend (`api/routes.py`)
+- `surface_type` filter (from surface_profile JSONB)
+- `GET /routes/{id}/history` — all activities on this route with time/distance/power, personal bests
+
+### Frontend
+- **Difficulty badge**: computed from elevation_gain/distance ratio + surface roughness (Easy/Moderate/Hard/Extreme)
+- **Route comparison**: pick 2 routes → overlaid elevation profiles + comparison table
+- **Route history**: per-route section showing all rides, PB time, trend chart
+- **Map browse**: clustered Leaflet map view toggle (alternative to list)
+- Surface type filter dropdown
+
+---
+
+## Phase 9: Wiki Expansion (build) + Strength Video System (spec-only)
+
+### Wiki — BUILD
+Add 5 new sections to `wiki/page.tsx`: Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections.
+
+### Video System — SPEC ONLY (not implemented this cycle)
+
+**Storage: Cloudflare R2** (S3-compatible, 10 GB free, zero egress fees).
+
+**Model** (`LiftVideo`, migration 030):
+```
+id, user_id FK, url str(500) | None          # external link mode
+storage_key str(500) | None                  # R2/S3 mode (mutually exclusive with url)
+source_type ("youtube"|"vimeo"|"link"|"upload")
+mime_type, size_bytes, duration_seconds | None
+title, exercise_name | None, notes | None
+session_id FK | None, personal_record_id FK | None
+created_at
+```
+
+**Upload flow (presigned PUT)**:
+1. `POST /lifting/videos/upload-url {filename, size_bytes, mime_type}` → validates mime ∈ {video/mp4, video/quicktime, video/webm}, size ≤ 250 MB → generates object key `videos/{user_id}/{uuid}.{ext}` → returns presigned PUT URL (15 min) + pending video_id
+2. Client uploads directly to R2 (bypasses server bandwidth)
+3. `POST /lifting/videos {storage_key, title?, exercise_name?, session_id?, pr_id?}` → creates row
+
+**Playback flow (presigned GET)**:
+- `GET /lifting/videos/{id}/stream-url` → 5-min presigned GET → native HTML5 `<video>` element
+
+**Config** (graceful degradation): `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` — if unset, upload returns 501; URL-only mode (YouTube/Vimeo embeds + link cards) still works.
+
+**Frontend spec**: VideoEmbed component (iframe for YouTube/Vimeo, `<video>` for uploads, link card otherwise); add-video per session + PR chips; Video Bank page (`/videos`) with exercise/date/source filters + player modal.
 
 ---
 
@@ -357,3 +433,14 @@ Wiki sections for new features; video URL/upload on LiftingSession + PRs; video 
 | Strength training | Integrated across 5A/5B/5C |
 | Goal direction | No direction column — derive from starting_value vs target |
 | Check-in cadence | Weekly |
+| Projection style | Badge only (On Track / At Risk / Unlikely) — no false-precision percentage |
+| Regression window | 12 weeks, ≥4 points required |
+| TSB projection | Event-linked plans only |
+| Metric chart projections | Goals only first; FTP/weight/VO2max charts later if useful |
+| Activities filters | Full filter set + sort (matching routes page pattern) |
+| Activity comparison | Stream-overlay (pick 2 rides, overlaid power/HR) |
+| Activities stats | Stats view mode (monthly bars, sport pie, weekly TSS) |
+| Routes scope | All: history/PBs, difficulty badge, comparison, map browse, surface filter |
+| Video storage | Cloudflare R2 (S3-compatible, 10 GB free, zero egress) |
+| Video scope | Spec-only this cycle; wiki sections built |
+| Video model | LiftVideo with url XOR storage_key; session + PR attachment; Video Bank page |

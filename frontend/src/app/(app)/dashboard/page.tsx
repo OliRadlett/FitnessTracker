@@ -16,7 +16,6 @@ import type {
   HealthAnalysisResult,
   TrainingStreaks,
   Goal,
-  CreateGoalPayload,
   Event,
   YearlySummary,
   TodaySummary,
@@ -37,7 +36,6 @@ export default function DashboardPage() {
   const currentYear = new Date().getFullYear();
   const [analysisResults, setAnalysisResults] = useState<HealthAnalysisResult[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showGoalForm, setShowGoalForm] = useState(false);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [activeTab, setActiveTab] = useState<'today' | 'weekly' | 'monthly'>('today');
 
@@ -56,7 +54,7 @@ export default function DashboardPage() {
   });
 
   const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
-    queryKey: ['chart-weekly-tss'],
+    queryKey: ['chart-weekly-tss', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_tss?weeks=12'),
     staleTime: 300_000,
   });
@@ -92,7 +90,7 @@ export default function DashboardPage() {
   });
 
   const { data: strainVsRecovery } = useQuery<ChartData>({
-    queryKey: ['chart-strain-vs-recovery'],
+    queryKey: ['chart-strain-vs-recovery', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strain_vs_recovery?days=30'),
     staleTime: 300_000,
   });
@@ -146,42 +144,6 @@ export default function DashboardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['llm-analysis'] }),
   });
 
-  const [goalError, setGoalError] = useState<string | null>(null);
-
-  const createGoalMutation = useMutation({
-    mutationFn: (payload: CreateGoalPayload) =>
-      authFetch<Goal>('/api/v1/goals', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['goals'] });
-      setShowGoalForm(false);
-      setGoalError(null);
-    },
-    onError: (err: Error) => {
-      setGoalError(err.message || 'Failed to create goal');
-    },
-  });
-
-  const achieveGoalMutation = useMutation({
-    mutationFn: (goalId: string) =>
-      authFetch<Goal>(`/api/v1/goals/${goalId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'achieved' }),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goals'] }),
-  });
-
-  const deleteGoalMutation = useMutation({
-    mutationFn: (goalId: string) =>
-      authFetch<void>(`/api/v1/goals/${goalId}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goals'] }),
-  });
-
-  /* ── Handlers ──────────────────────────────────────────────────────────── */
-
-  const recentSessions = sessions?.slice(0, 5) ?? [];
-  const hasReadiness = readiness && readiness.readiness !== 'unknown';
-  const hasWhoop = whoopWeekly && whoopWeekly.days_with_data > 0;
-
   const analyzeMutation = useMutation({
     mutationFn: () =>
       authFetch<{ analysis_results: HealthAnalysisResult[] }>('/api/v1/metrics/health-alerts/analyze', { method: 'POST' }),
@@ -198,6 +160,12 @@ export default function DashboardPage() {
     setIsAnalyzing(true);
     analyzeMutation.mutate();
   };
+
+  /* ── Derived values ─────────────────────────────────────────────────────── */
+
+  const recentSessions = sessions?.slice(0, 5) ?? [];
+  const hasReadiness = readiness && readiness.readiness !== 'unknown';
+  const hasWhoop = whoopWeekly && whoopWeekly.days_with_data > 0;
 
   async function handleDownloadReport(apiPath: string, filename: string) {
     try {
@@ -294,13 +262,6 @@ export default function DashboardPage() {
           recentSessions={recentSessions}
           streaks={streaks}
           goals={goals}
-          showGoalForm={showGoalForm}
-          setShowGoalForm={setShowGoalForm}
-          onCreateGoal={(data) => createGoalMutation.mutate(data)}
-          isCreatingGoal={createGoalMutation.isPending}
-          onAchieveGoal={(id) => achieveGoalMutation.mutate(id)}
-          onDeleteGoal={(id) => deleteGoalMutation.mutate(id)}
-          goalError={goalError}
           deficiency={deficiency}
           deficiencyLoading={deficiencyLoading}
           monthlySummary={monthlySummary}

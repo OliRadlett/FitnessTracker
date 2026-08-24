@@ -1,5 +1,7 @@
 """Chart API — Generic GET /{chart_name} endpoint."""
 
+import json
+import logging
 from dataclasses import asdict
 from typing import Any
 
@@ -9,22 +11,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.services.auth import get_current_user
+from app.services.cache import _get_redis, _make_cache_key
 from app.services.charts import ChartService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Registry of available chart methods and their required params
+# Stream-heavy charts cached in Redis (short TTL; data changes only on sync)
+CACHED_CHARTS: set[str] = {
+    "training_load",
+    "stream_power_curve",
+    "power_zones",
+    "hr_zone_distribution",
+    "power_curve_comparison",
+}
+CHART_CACHE_TTL = 300  # seconds
+
+# Registry of available chart methods and their params.
+# `required` lists params that must be supplied — missing ones return 422.
+#
+# Charts not currently rendered by the frontend are kept as API surface
+# for future use: sleep_quality_trend, whoop_strain_trend,
+# recovery_vs_performance, estimated_1rm_history, weekly_volume.
+# Superseded duplicates (power_curve, ftp_over_time, hrv_trend,
+# recovery_vs_strain) were removed — use stream_power_curve, ftp_history,
+# hrv_trend_detailed and strain_vs_recovery instead.
 CHART_REGISTRY: dict[str, dict[str, Any]] = {
-    "power_curve": {"method": "power_curve", "params": ["days"]},
-    "ftp_over_time": {"method": "ftp_over_time", "params": []},
     "weekly_tss": {"method": "weekly_tss", "params": ["weeks"]},
     "estimated_1rm_history": {
         "method": "estimated_1rm_history",
         "params": ["exercise_name"],
+        "required": ["exercise_name"],
     },
     "weekly_volume": {"method": "weekly_volume", "params": ["weeks"]},
-    "hrv_trend": {"method": "hrv_trend", "params": ["days"]},
-    "recovery_vs_strain": {"method": "recovery_vs_strain", "params": ["days"]},
     "sleep_quality_trend": {"method": "sleep_quality_trend", "params": ["days"]},
     "whoop_strain_trend": {"method": "whoop_strain_trend", "params": ["days"]},
     # Cycling charts
@@ -37,6 +57,7 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "exercise_progress": {
         "method": "exercise_progress",
         "params": ["exercise_name", "weeks"],
+        "required": ["exercise_name"],
     },
     "power_curve_comparison": {
         "method": "power_curve_comparison",
@@ -57,6 +78,16 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "decoupling_trend": {"method": "decoupling_trend", "params": ["days"]},
     # Training plan periodization
     "periodization": {"method": "periodization", "params": ["weeks"]},
+    # New intelligence charts
+    "ramp_rate": {"method": "ramp_rate", "params": ["weeks"]},
+    "wkg_power_curve": {"method": "wkg_power_curve", "params": ["days"]},
+    "power_duration_percentile": {
+        "method": "power_duration_percentile",
+        "params": ["days"],
+    },
+    "consistency_heatmap": {"method": "consistency_heatmap", "params": ["days"]},
+    "sleep_consistency": {"method": "sleep_consistency", "params": ["days"]},
+    "strength_balance": {"method": "strength_balance", "params": []},
 }
 
 
@@ -95,22 +126,44 @@ async def get_chart(
     service = ChartService(db)
     method = getattr(service, chart_info["method"])
 
+    # Enforce required params before calling the service method
+    provided: dict[str, Any] = {
+        "days": days,
+        "weeks": weeks,
+        "months": months,
+        "exercise_name": exercise_name,
+        "days_b": days_b,
+    }
+    missing_required = [
+        p for p in chart_info.get("required", []) if provided.get(p) is None
+    ]
+    if missing_required:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Chart '{chart_name}' requires parameter(s): {', '.join(missing_required)}",
+        )
+
     # Build kwargs from provided query params
     kwargs: dict[str, Any] = {"user_id": current_user.id}
-    if days is not None and "days" in chart_info["params"]:
-        kwargs["days"] = days
-    if weeks is not None and "weeks" in chart_info["params"]:
-        kwargs["weeks"] = weeks
-    if months is not None and "months" in chart_info["params"]:
-        kwargs["months"] = months
-    if exercise_name is not None and "exercise_name" in chart_info["params"]:
-        kwargs["exercise_name"] = exercise_name
-    if days_b is not None and "days_b" in chart_info["params"]:
-        kwargs["days_b"] = days_b
+    for param_name, value in provided.items():
+        if value is not None and param_name in chart_info["params"]:
+            kwargs[param_name] = value
+
+    # Try Redis cache for expensive charts (keyed per user + params)
+    cache_key = None
+    if chart_name in CACHED_CHARTS:
+        try:
+            cache_key = _make_cache_key(f"chart:{chart_name}", *kwargs.values())
+            r = _get_redis()
+            cached_val = await r.get(cache_key)
+            if cached_val is not None:
+                return json.loads(cached_val)
+        except Exception as e:
+            logger.debug("Chart cache read failed for %s: %s", chart_name, e)
 
     chart_data = await method(**kwargs)
 
-    return {
+    payload = {
         "chart_type": chart_data.chart_type,
         "title": chart_data.title,
         "labels": chart_data.labels,
@@ -120,3 +173,12 @@ async def get_chart(
         "insights": chart_data.insights,
         "reference_areas": [asdict(r) for r in chart_data.reference_areas],
     }
+
+    if cache_key is not None:
+        try:
+            r = _get_redis()
+            await r.setex(cache_key, CHART_CACHE_TTL, json.dumps(payload))
+        except Exception as e:
+            logger.debug("Chart cache write failed for %s: %s", chart_name, e)
+
+    return payload

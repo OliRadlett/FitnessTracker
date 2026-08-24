@@ -18,6 +18,7 @@ export interface ChartSeries {
   name: string;
   data: (number | null)[];
   color?: string;
+  y_axis?: 'left' | 'right';
 }
 
 export interface ReferenceArea {
@@ -26,10 +27,11 @@ export interface ReferenceArea {
   color?: string;
   opacity?: number;
   label?: string;
+  y_axis?: 'left' | 'right';
 }
 
 export interface ChartData {
-  chart_type: 'line' | 'bar' | 'scatter' | 'area' | 'pie';
+  chart_type: 'line' | 'bar' | 'scatter' | 'area' | 'pie' | 'heatmap';
   title: string;
   labels: string[];
   series: ChartSeries[];

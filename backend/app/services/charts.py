@@ -12,6 +12,7 @@ from app.models.cycling import CyclingProfile
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
+from app.models.weight import WeightLog
 from app.services.cycling import (
     POWER_DURATION_BUCKETS,
     _classify_decoupling,
@@ -34,6 +35,7 @@ class ChartSeries:
     name: str
     data: list[float | int | None] = field(default_factory=list)
     color: str | None = None
+    y_axis: str = "left"  # "left" or "right" (secondary axis)
 
 
 @dataclass
@@ -45,6 +47,7 @@ class ReferenceArea:
     color: str = "#3b82f6"
     opacity: float = 0.08
     label: str = ""
+    y_axis: str = "left"  # which Y axis ("left"/"right") the zone scales to
 
 
 @dataclass
@@ -69,72 +72,6 @@ class ChartService:
         self.db = db
 
     # ── Power curve (best power at each duration) ─────────────────────────────
-
-    async def power_curve(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
-        cutoff = date.today() - timedelta(days=days)
-
-        result = await self.db.execute(
-            select(Activity)
-            .where(
-                Activity.user_id == user_id,
-                Activity.average_power.isnot(None),
-                Activity.start_date >= cutoff,
-            )
-            .order_by(Activity.average_power.desc())
-        )
-        activities = list(result.scalars().all())
-
-        # Group by duration buckets
-        buckets: dict[str, float] = {}
-        for act in activities:
-            if act.duration_seconds and act.average_power:
-                bucket = self._duration_bucket(act.duration_seconds)
-                if bucket not in buckets or act.average_power > buckets[bucket]:
-                    buckets[bucket] = act.average_power
-
-        sorted_buckets = sorted(buckets.items(), key=lambda x: self._bucket_order(x[0]))
-        return ChartData(
-            chart_type="line",
-            title="Power Curve",
-            labels=[b[0] for b in sorted_buckets],
-            series=[
-                ChartSeries(name="Best Power (W)", data=[b[1] for b in sorted_buckets])
-            ],
-            x_label="Duration",
-            y_label="Power (W)",
-        )
-
-    # ── FTP over time ─────────────────────────────────────────────────────────
-
-    async def ftp_over_time(self, user_id: uuid.UUID) -> ChartData:
-        """FTP estimated from best 20-min power × 0.95."""
-        result = await self.db.execute(
-            select(Activity)
-            .where(
-                Activity.user_id == user_id,
-                Activity.sport_type == "cycling",
-                Activity.duration_seconds.between(1080, 1320),  # ~18-22 min
-                Activity.average_power.isnot(None),
-            )
-            .order_by(Activity.start_date)
-        )
-        activities = list(result.scalars().all())
-
-        labels = []
-        data = []
-        for act in activities:
-            if act.average_power:
-                labels.append(act.start_date.strftime("%Y-%m-%d"))
-                data.append(round(act.average_power * 0.95, 1))
-
-        return ChartData(
-            chart_type="line",
-            title="FTP Over Time",
-            labels=labels,
-            series=[ChartSeries(name="Estimated FTP (W)", data=data)],
-            x_label="Date",
-            y_label="FTP (W)",
-        )
 
     # ── Weekly TSS ─────────────────────────────────────────────────────────────
 
@@ -287,81 +224,6 @@ class ChartService:
             insights=insights,
         )
 
-    # ── HRV trend ─────────────────────────────────────────────────────────────
-
-    async def hrv_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
-        cutoff = date.today() - timedelta(days=days)
-
-        result = await self.db.execute(
-            select(DailyMetric)
-            .where(
-                DailyMetric.user_id == user_id,
-                DailyMetric.hrv_ms.isnot(None),
-                DailyMetric.metric_date >= cutoff,
-            )
-            .order_by(DailyMetric.metric_date)
-        )
-        metrics = list(result.scalars().all())
-
-        # Generate insights
-        insights = []
-        hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
-        if hrv_values:
-            avg_hrv = sum(hrv_values) / len(hrv_values)
-            recent = hrv_values[-1]
-            if len(hrv_values) >= 7:
-                recent_7 = sum(hrv_values[-7:]) / 7
-                if recent_7 > avg_hrv * 1.05:
-                    insights.append(
-                        f"7-day HRV average ({recent_7:.0f}ms) is above your overall average ({avg_hrv:.0f}ms) — good recovery status."
-                    )
-                elif recent_7 < avg_hrv * 0.9:
-                    insights.append(
-                        f"7-day HRV average ({recent_7:.0f}ms) is below your baseline ({avg_hrv:.0f}ms) — may indicate stress or incomplete recovery."
-                    )
-            insights.append(
-                f"Current HRV: {recent:.0f}ms. Overall average: {avg_hrv:.0f}ms."
-            )
-
-        return ChartData(
-            chart_type="line",
-            title="HRV Trend",
-            labels=[m.metric_date.isoformat() for m in metrics],
-            series=[ChartSeries(name="HRV (ms)", data=[m.hrv_ms for m in metrics])],
-            x_label="Date",
-            y_label="HRV (ms)",
-            insights=insights,
-        )
-
-    # ── Recovery vs Strain ────────────────────────────────────────────────────
-
-    async def recovery_vs_strain(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
-        cutoff = date.today() - timedelta(days=days)
-
-        result = await self.db.execute(
-            select(DailyMetric)
-            .where(
-                DailyMetric.user_id == user_id,
-                DailyMetric.metric_date >= cutoff,
-            )
-            .order_by(DailyMetric.metric_date)
-        )
-        metrics = list(result.scalars().all())
-
-        return ChartData(
-            chart_type="line",
-            title="Recovery vs Strain",
-            labels=[m.metric_date.isoformat() for m in metrics],
-            series=[
-                ChartSeries(
-                    name="Recovery %", data=[m.recovery_score for m in metrics]
-                ),
-                ChartSeries(name="Strain", data=[m.strain for m in metrics]),
-            ],
-            x_label="Date",
-            y_label="Score",
-        )
-
     # ── Whoop strain trend ─────────────────────────────────────────────────────
 
     async def whoop_strain_trend(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
@@ -497,17 +359,23 @@ class ChartService:
                     f"TSB is {current['tsb']:.0f} — in the sweet spot for balanced training."
                 )
 
-        # TSB zone coloring: red (overtrained, TSB < -30), green (fresh, TSB > 5), blue (neutral)
+        # TSB zone coloring on the right (form) axis:
+        # red (overtrained, TSB < -30), green (fresh, TSB > 5), blue (neutral)
         tsb_values = [d["tsb"] for d in load_data]
         tsb_min = min(tsb_values) if tsb_values else -100
         tsb_max = max(tsb_values) if tsb_values else 100
         reference_areas = [
             ReferenceArea(
-                y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained"
+                y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained",
+                y_axis="right",
             ),
-            ReferenceArea(y1=-30, y2=5, color="#3b82f6", opacity=0.04, label="Neutral"),
             ReferenceArea(
-                y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh"
+                y1=-30, y2=5, color="#3b82f6", opacity=0.04, label="Neutral",
+                y_axis="right",
+            ),
+            ReferenceArea(
+                y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh",
+                y_axis="right",
             ),
         ]
 
@@ -530,6 +398,7 @@ class ChartService:
                     name="TSB (Form)",
                     data=[d["tsb"] for d in load_data],
                     color="#3b82f6",
+                    y_axis="right",
                 ),
             ],
             x_label="Date",
@@ -1311,9 +1180,12 @@ class ChartService:
         }
 
         # Whoop strain per week (sum of daily strain)
+        week_start_strain = func.date_trunc(
+            "week", DailyMetric.metric_date
+        ).label("week_start")
         strain_result = await self.db.execute(
             select(
-                func.date_trunc("week", DailyMetric.metric_date).label("week_start"),
+                week_start_strain,
                 func.coalesce(func.sum(DailyMetric.strain), 0.0).label("total_strain"),
             )
             .where(
@@ -1321,8 +1193,8 @@ class ChartService:
                 DailyMetric.strain.isnot(None),
                 DailyMetric.metric_date >= cutoff,
             )
-            .group_by(func.date_trunc("week", DailyMetric.metric_date))
-            .order_by(func.date_trunc("week", DailyMetric.metric_date))
+            .group_by(week_start_strain)
+            .order_by(week_start_strain)
         )
         strain_map = {
             r.week_start: float(r.total_strain or 0) for r in strain_result.all()
@@ -1592,40 +1464,367 @@ class ChartService:
             reference_areas=reference_areas,
         )
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
+    # ── Ramp rate (weekly CTL change) ──────────────────────────────────────────
 
-    @staticmethod
-    def _duration_bucket(seconds: int) -> str:
-        if seconds <= 30:
-            return "30s"
-        elif seconds <= 60:
-            return "1min"
-        elif seconds <= 300:
-            return "5min"
-        elif seconds <= 600:
-            return "10min"
-        elif seconds <= 1200:
-            return "20min"
-        elif seconds <= 1800:
-            return "30min"
-        elif seconds <= 3600:
-            return "60min"
-        else:
-            return "60min+"
+    async def ramp_rate(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
+        """Week-over-week CTL change with safe-ramp reference bands."""
+        end_date = date.today()
+        start_date = end_date - timedelta(weeks=weeks, days=42)
 
-    @staticmethod
-    def _bucket_order(bucket: str) -> int:
-        order = {
-            "30s": 0,
-            "1min": 1,
-            "5min": 2,
-            "10min": 3,
-            "20min": 4,
-            "30min": 5,
-            "60min": 6,
-            "60min+": 7,
+        daily_tss_map = await get_daily_tss(self.db, user_id, start_date, end_date)
+        load_data = compute_training_load(
+            daily_tss_map, end_date, lookback_days=weeks * 7 + 42
+        )
+
+        # CTL at the end of each ISO week (dates are ascending, so last wins)
+        weekly_ctl: dict[date, float] = {}
+        for d in load_data:
+            iso_year, iso_week, _ = d["date"].isocalendar()
+            weekly_ctl[date.fromisocalendar(iso_year, iso_week, 1)] = d["ctl"]
+
+        week_starts = sorted(weekly_ctl.keys())
+        labels: list[str] = []
+        deltas: list[float | None] = []
+        for i in range(1, len(week_starts)):
+            labels.append(week_starts[i].isoformat())
+            deltas.append(round(weekly_ctl[week_starts[i]] - weekly_ctl[week_starts[i - 1]], 1))
+
+        values = [d for d in deltas if d is not None]
+        lo = min(values) if values else -10.0
+        hi = max(values) if values else 10.0
+        reference_areas = [
+            ReferenceArea(y1=lo, y2=-2, color="#ef4444", opacity=0.06, label="Detraining"),
+            ReferenceArea(y1=-2, y2=3, color="#3b82f6", opacity=0.04, label="Maintenance"),
+            ReferenceArea(y1=3, y2=8, color="#22c55e", opacity=0.06, label="Optimal build"),
+            ReferenceArea(y1=8, y2=hi, color="#f59e0b", opacity=0.08, label="Risky ramp"),
+        ]
+
+        insights = []
+        if values:
+            latest = values[-1]
+            if latest < -2:
+                insights.append(
+                    f"CTL dropped {abs(latest):.0f} points this week — fitness is detraining."
+                )
+            elif latest > 8:
+                insights.append(
+                    f"CTL rose {latest:.0f} points this week — above the safe ramp rate (+3 to +8/wk). Injury risk increases."
+                )
+            elif latest >= 3:
+                insights.append(
+                    f"CTL rose {latest:.0f} points this week — inside the optimal build band (+3 to +8/wk)."
+                )
+            else:
+                insights.append(
+                    f"CTL changed {latest:+.0f} points this week — roughly maintenance pace."
+                )
+
+        return ChartData(
+            chart_type="bar",
+            title="Ramp Rate (Weekly CTL Change)",
+            labels=labels,
+            series=[ChartSeries(name="Δ CTL / week", data=deltas)],
+            x_label="Week",
+            y_label="CTL change",
+            insights=insights,
+            reference_areas=reference_areas,
+        )
+
+    # ── W/kg power curve ───────────────────────────────────────────────────────
+
+    async def _latest_body_weight(self, user_id: uuid.UUID) -> float | None:
+        result = await self.db.execute(
+            select(WeightLog.weight_kilogram)
+            .where(WeightLog.user_id == user_id)
+            .order_by(WeightLog.date.desc())
+            .limit(1)
+        )
+        row = result.first()
+        if row and row.weight_kilogram:
+            return float(row.weight_kilogram)
+
+        profile = await get_or_create_cycling_profile(self.db, user_id)
+        return profile.weight_kg
+
+    async def wkg_power_curve(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """Best-effort power curve normalized by body weight."""
+        best = await compute_power_curve_from_streams(self.db, user_id, days)
+        weight = await self._latest_body_weight(user_id)
+
+        available = [(sec, label) for sec, label in POWER_DURATION_BUCKETS if sec in best]
+        labels = [label for _, label in available]
+
+        if weight:
+            data = [round(best[sec] / weight, 2) for sec, _ in available]
+            return ChartData(
+                chart_type="line",
+                title=f"Power Curve — W/kg ({days} days)",
+                labels=labels,
+                series=[ChartSeries(name="Best Power (W/kg)", data=data)],
+                x_label="Duration",
+                y_label="Power (W/kg)",
+                insights=[
+                    f"Normalized by body weight of {weight:.1f} kg.",
+                ],
+            )
+
+        data = [best[sec] for sec, _ in available]
+        return ChartData(
+            chart_type="line",
+            title=f"Power Curve ({days} days)",
+            labels=labels,
+            series=[ChartSeries(name="Best Power (W)", data=data)],
+            x_label="Duration",
+            y_label="Power (W)",
+            insights=[
+                "Log your body weight to see this curve normalized to W/kg.",
+            ],
+        )
+
+    # ── Power-duration percentile comparison ────────────────────────────────────
+
+    async def power_duration_percentile(
+        self, user_id: uuid.UUID, days: int = 90
+    ) -> ChartData:
+        """Your best efforts (W/kg) against approximate population norms."""
+        from app.services.cycling.power_profile import (
+            POWER_PROFILE_WKG,
+            PROFILE_DURATIONS,
+            percentile_wkg_at,
+        )
+
+        best = await compute_power_curve_from_streams(self.db, user_id, days)
+        weight = await self._latest_body_weight(user_id)
+
+        duration_labels = {
+            sec: label for sec, label in POWER_DURATION_BUCKETS
         }
-        return order.get(bucket, 99)
+        labels = [duration_labels.get(sec, f"{sec}s") for sec in PROFILE_DURATIONS]
+        colors = {"50": "#94a3b8", "75": "#3b82f6", "90": "#8b5cf6"}
+
+        series = [
+            ChartSeries(name="50th %ile", data=[percentile_wkg_at(s, 50) for s in PROFILE_DURATIONS], color=colors["50"]),
+            ChartSeries(name="75th %ile", data=[percentile_wkg_at(s, 75) for s in PROFILE_DURATIONS], color=colors["75"]),
+            ChartSeries(name="90th %ile", data=[percentile_wkg_at(s, 90) for s in PROFILE_DURATIONS], color=colors["90"]),
+        ]
+        insights: list[str] = []
+
+        if weight and best:
+            you_data = [
+                round(best[sec] / weight, 2) if sec in best else None
+                for sec in PROFILE_DURATIONS
+            ]
+            series.insert(0, ChartSeries(name="You (W/kg)", data=you_data, color="#22c55e"))
+
+            # Classify the 20-min effort against the norms
+            ref_sec = 1200
+            if ref_sec in best:
+                your_wkg = best[ref_sec] / weight
+                achieved = max(
+                    p for p in POWER_PROFILE_WKG[ref_sec]
+                    if your_wkg >= POWER_PROFILE_WKG[ref_sec][p] * 0.97
+                ) if your_wkg >= POWER_PROFILE_WKG[ref_sec][25] * 0.97 else None
+                if achieved:
+                    insights.append(
+                        f"Your 20-min best ({your_wkg:.2f} W/kg) sits around the {achieved}th percentile."
+                    )
+                else:
+                    insights.append(
+                        f"Your 20-min best is {your_wkg:.2f} W/kg — below the 25th percentile norm."
+                    )
+        else:
+            insights.append(
+                "Body weight required for percentile comparison — log your weight to enable it."
+            )
+
+        return ChartData(
+            chart_type="line",
+            title="Power Profile vs Population Norms",
+            labels=labels,
+            series=series,
+            x_label="Duration",
+            y_label="Power (W/kg)",
+            insights=insights,
+        )
+
+    # ── Consistency heatmap (daily TSS calendar) ────────────────────────────────
+
+    async def consistency_heatmap(self, user_id: uuid.UUID, days: int = 182) -> ChartData:
+        """Daily TSS over the trailing window, rendered as a calendar heatmap."""
+        days = min(days, 365)
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+
+        daily = await get_daily_tss(self.db, user_id, start_date, end_date)
+
+        labels: list[str] = []
+        data: list[float] = []
+        current = start_date
+        while current <= end_date:
+            labels.append(current.isoformat())
+            data.append(round(daily.get(current, 0.0), 1))
+            current += timedelta(days=1)
+
+        active_days = sum(1 for v in data if v > 0)
+        longest_streak = streak = 0
+        for v in data:
+            streak = streak + 1 if v > 0 else 0
+            longest_streak = max(longest_streak, streak)
+
+        insights = []
+        if data:
+            pct = active_days / len(data) * 100
+            insights.append(
+                f"{active_days} training days out of {len(data)} ({pct:.0f}% consistency)."
+            )
+            if longest_streak >= 3:
+                insights.append(f"Longest active streak: {longest_streak} consecutive days.")
+
+        return ChartData(
+            chart_type="heatmap",
+            title="Training Consistency",
+            labels=labels,
+            series=[ChartSeries(name="TSS", data=data)],
+            x_label="Date",
+            y_label="TSS",
+            insights=insights,
+        )
+
+    # ── Sleep consistency ───────────────────────────────────────────────────────
+
+    async def sleep_consistency(self, user_id: uuid.UUID, days: int = 30) -> ChartData:
+        """Sleep midpoint and duration trend from Whoop sleep logs."""
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(SleepLog)
+            .where(
+                SleepLog.user_id == user_id,
+                SleepLog.sleep_date >= cutoff,
+                SleepLog.sleep_start.isnot(None),
+                SleepLog.sleep_end.isnot(None),
+            )
+            .order_by(SleepLog.sleep_date)
+        )
+        logs = list(result.scalars().all())
+
+        labels: list[str] = []
+        midpoints: list[float | None] = []
+        durations: list[float | None] = []
+        for log in logs:
+            delta = log.sleep_end - log.sleep_start
+            mid_dt = log.sleep_start + delta / 2
+            hour = mid_dt.hour + mid_dt.minute / 60
+            if hour < 12:
+                hour += 24  # bedtime convention: 01:00 plots after 23:00
+            labels.append(log.sleep_date.isoformat())
+            midpoints.append(round(hour, 2))
+            durations.append(round(delta.total_seconds() / 3600, 2))
+
+        insights = []
+        if midpoints:
+            avg_mid = sum(midpoints) / len(midpoints)
+            variance = sum((m - avg_mid) ** 2 for m in midpoints) / len(midpoints)
+            std = variance**0.5
+            avg_dur = sum(d for d in durations if d) / len(durations)
+            quality = "consistent" if std < 1.0 else "variable"
+            insights.append(
+                f"Average sleep midpoint {avg_mid % 24:.1f}h with ±{std:.1f}h variation — {quality} schedule."
+            )
+            insights.append(f"Average duration: {avg_dur:.1f}h per night.")
+
+        return ChartData(
+            chart_type="line",
+            title="Sleep Consistency",
+            labels=labels,
+            series=[
+                ChartSeries(name="Midpoint (h)", data=midpoints, color="#8b5cf6"),
+                ChartSeries(
+                    name="Duration (h)", data=durations, color="#06b6d4", y_axis="right"
+                ),
+            ],
+            x_label="Date",
+            y_label="Sleep midpoint (h)",
+            insights=insights,
+        )
+
+    # ── Lifting strength balance ────────────────────────────────────────────────
+
+    async def strength_balance(self, user_id: uuid.UUID) -> ChartData:
+        """Current estimated 1RM ratios across main lifts vs standard norms."""
+        result = await self.db.execute(
+            select(PersonalRecord)
+            .where(
+                PersonalRecord.user_id == user_id,
+                PersonalRecord.record_type == "1rm",
+                PersonalRecord.estimated_1rm.isnot(None),
+            )
+            .order_by(PersonalRecord.achieved_date)
+        )
+        records = list(result.scalars().all())
+
+        latest_1rm: dict[str, float] = {}
+        for rec in records:
+            if rec.estimated_1rm:
+                latest_1rm[rec.exercise_name.lower()] = rec.estimated_1rm
+
+        def find_lift(*keywords: str) -> tuple[str, float] | None:
+            for name, val in latest_1rm.items():
+                if any(kw in name for kw in keywords):
+                    return (name.title(), val)
+            return None
+
+        lifts = {
+            "Bench Press": find_lift("bench"),
+            "Deadlift": find_lift("deadlift"),
+            "Squat": find_lift("squat"),
+            "Overhead Press": find_lift("overhead press", "ohp", "shoulder press"),
+        }
+
+        present = {display: match for display, match in lifts.items() if match}
+        if not present:
+            return ChartData(
+                chart_type="bar",
+                title="Strength Balance",
+                labels=[],
+                series=[],
+                x_label="Lift",
+                y_label="Est. 1RM (kg)",
+                insights=["No estimated 1RM records found yet."],
+            )
+
+        labels = [display for display in present]
+        data = [match[1] for match in present.values()]
+
+        insights: list[str] = []
+        bench_val = present.get("Bench Press", (None, None))[1]
+        standards = {
+            "Squat": 1.5,
+            "Deadlift": 1.75,
+            "Overhead Press": 0.65,
+        }
+        if bench_val:
+            for lift_name, ratio in standards.items():
+                if lift_name in present:
+                    actual_ratio = present[lift_name][1] / bench_val
+                    if actual_ratio < ratio * 0.85:
+                        insights.append(
+                            f"{lift_name} is {ratio * 0.85 - actual_ratio:.2f}× bench below the standard {ratio}× ratio — consider extra focus."
+                        )
+                    elif actual_ratio > ratio * 1.15:
+                        insights.append(
+                            f"{lift_name} exceeds the standard {ratio}× bench ratio — a relative strength."
+                        )
+
+        return ChartData(
+            chart_type="bar",
+            title="Strength Balance (Estimated 1RM)",
+            labels=labels,
+            series=[ChartSeries(name="Est. 1RM (kg)", data=data, color="#f59e0b")],
+            x_label="Lift",
+            y_label="Est. 1RM (kg)",
+            insights=insights,
+        )
 
     # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
 

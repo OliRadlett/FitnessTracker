@@ -13,3 +13,5 @@ export * from './types/llm';
 export * from './types/deficiency';
 export * from './types/nutrition';
 export * from './types/weather';
+export * from './types/conformity';
+export * from './types/projections';

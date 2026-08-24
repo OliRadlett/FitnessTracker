@@ -13,8 +13,8 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useAuthFetch } from '@/lib/api';
-import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal } from '@/lib/api';
-import type { Goal, UpdateGoalPayload } from '@/lib/api';
+import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
+import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { goalProgressPct, goalAlignmentBadge } from '@/components/ui/GoalCard';
 
 const SPORT_OPTIONS = [
@@ -55,6 +55,13 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   const { data: checkIns, isLoading: checkInsLoading } = useQuery({
     queryKey: ['goal-checkins', goal.id],
     queryFn: () => getCheckIns(authFetch, goal.id),
+  });
+
+  const { data: projection } = useQuery({
+    queryKey: ['goal-projection', goal.id],
+    queryFn: () => getGoalProjection(authFetch, goal.id),
+    staleTime: 5 * 60_000,
+    enabled: goal.status === 'active',
   });
 
   const metricDef = useMemo(
@@ -113,16 +120,45 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   }, [onClose]);
 
   // ── Chart data ────────────────────────────────────────────────────────────
-  const chartData = useMemo(() => {
-    if (!checkIns || checkIns.length === 0) return [];
-    return [...checkIns]
+  // Merge check-in history with projection line into a unified dataset.
+  // Each point has: date, value (from check-ins), projected (from projection line).
+  const { chartData, hasProjectionLine } = useMemo(() => {
+    const historyPoints = (checkIns ?? [])
+      .slice()
       .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date))
-      .map((c) => ({
-        date: c.check_in_date,
-        value: c.value,
-        note: c.note,
-      }));
-  }, [checkIns]);
+      .map((c) => ({ date: c.check_in_date, value: c.value, note: c.note }));
+
+    const projLine = projection?.projection_line ?? [];
+    if (projLine.length === 0 || historyPoints.length === 0) {
+      return { chartData: historyPoints, hasProjectionLine: false };
+    }
+
+    // Build a map of projection values by date
+    const projMap = new Map<string, number>();
+    for (const p of projLine) {
+      projMap.set(p.date, p.value);
+    }
+
+    // Merge: all history dates + projection-only dates
+    const allDates = new Set<string>(historyPoints.map((h) => h.date));
+    for (const d of projMap.keys()) {
+      allDates.add(d);
+    }
+
+    const merged = [...allDates]
+      .sort()
+      .map((date) => {
+        const hist = historyPoints.find((h) => h.date === date);
+        return {
+          date,
+          value: hist?.value ?? null,
+          projected: projMap.get(date) ?? null,
+          note: hist?.note,
+        };
+      });
+
+    return { chartData: merged, hasProjectionLine: true };
+  }, [checkIns, projection]);
 
   const progress = goalProgressPct(goal);
   const alignmentBadge = goalAlignmentBadge(goal);

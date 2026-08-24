@@ -4,6 +4,7 @@ Open-Meteo is free and requires no API key. All external responses are
 normalized before storage so the cached JSON is exactly what the API returns.
 """
 
+import json
 import logging
 from datetime import UTC, date, datetime, timedelta
 
@@ -214,7 +215,7 @@ async def _fetch(url: str, params: dict) -> dict:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, json.JSONDecodeError) as e:
         logger.warning("Open-Meteo request failed (%s): %s", url, e)
         raise ValueError("Weather service unavailable") from e
 
@@ -374,7 +375,9 @@ async def get_current(db: AsyncSession, user_id, lat: float, lng: float) -> dict
     if cached is not None:
         return cached
 
-    payload = await _fetch(FORECAST_URL, {"current": _CURRENT_PARAMS})
+    payload = await _fetch(
+        FORECAST_URL, {"latitude": lat, "longitude": lng, "current": _CURRENT_PARAMS}
+    )
     data = _normalize_current(payload, round(lat, 2), round(lng, 2))
     await _store_cache(db, user_id, "current", lat, lng, data)
     return data
@@ -391,7 +394,13 @@ async def get_forecast(
         return sliced
 
     payload = await _fetch(
-        FORECAST_URL, {"daily": _DAILY_PARAMS, "forecast_days": days}
+        FORECAST_URL,
+        {
+            "latitude": lat,
+            "longitude": lng,
+            "daily": _DAILY_PARAMS,
+            "forecast_days": days,
+        },
     )
     data = _normalize_daily(payload, round(lat, 2), round(lng, 2))
     await _store_cache(db, user_id, "forecast", lat, lng, data)
@@ -420,7 +429,13 @@ async def get_historical(
     if end_date >= today - timedelta(days=ARCHIVE_LAG_DAYS):
         # Archive lags ~5 days — use the forecast endpoint's past window
         payload = await _fetch(
-            FORECAST_URL, {"daily": _DAILY_PARAMS, "past_days": ARCHIVE_LAG_DAYS}
+            FORECAST_URL,
+            {
+                "latitude": lat,
+                "longitude": lng,
+                "daily": _DAILY_PARAMS,
+                "past_days": ARCHIVE_LAG_DAYS,
+            },
         )
         full = _normalize_daily(payload, round(lat, 2), round(lng, 2))
         data = {
@@ -435,6 +450,8 @@ async def get_historical(
         payload = await _fetch(
             ARCHIVE_URL,
             {
+                "latitude": lat,
+                "longitude": lng,
                 "daily": _DAILY_PARAMS,
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),

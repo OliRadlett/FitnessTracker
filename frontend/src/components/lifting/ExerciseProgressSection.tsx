@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftingSession, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { ChartBody } from '@/components/charts/Chart';
 
 export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSession[] }) {
   const { authFetch } = useAuthFetch();
@@ -66,15 +66,12 @@ export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSessio
           </div>
         </div>
       </CardHeader>
-      {progressLoading ? (
-        <div className="h-80 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
-        </div>
-      ) : progressChart ? (
-        <Chart data={progressChart} height={320} />
-      ) : (
-        <div className="h-80 flex items-center justify-center text-muted">No progress data available for this exercise</div>
-      )}
+      <ChartBody
+        isLoading={progressLoading}
+        data={progressChart}
+        emptyMessage="No progress data available for this exercise"
+        height={320}
+      />
     </Card>
   );
 }

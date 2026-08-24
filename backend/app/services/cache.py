@@ -51,12 +51,16 @@ def _make_cache_key(prefix: str, *args, **kwargs) -> str:
     return f"fittrack:{prefix}:{key_hash}"
 
 
-def cached(ttl: int = 120, key_prefix: str = ""):
+def cached(ttl: int = 120, key_prefix: str = "", to_dict: Callable | None = None):
     """Decorator that caches async function results in Redis.
 
     Args:
         ttl: Cache time-to-live in seconds.
         key_prefix: Prefix for the cache key (e.g. "training-load").
+        to_dict: Optional converter applied to the result before storing
+            (e.g. ``dataclasses.asdict``). Required for dataclass results —
+            without it a cache hit returns a plain dict while a miss returns
+            the dataclass, producing inconsistent shapes.
 
     The decorated function must be async. The first two positional args
     are assumed to be (db, user_id) and are used to build the cache key.
@@ -84,7 +88,8 @@ def cached(ttl: int = 120, key_prefix: str = ""):
             # Store in cache
             try:
                 r = _get_redis()
-                await r.setex(cache_key, ttl, json.dumps(result, default=str))
+                payload = to_dict(result) if to_dict else result
+                await r.setex(cache_key, ttl, json.dumps(payload, default=str))
             except Exception as e:
                 logger.debug("Cache write failed for %s: %s", cache_key, e)
 

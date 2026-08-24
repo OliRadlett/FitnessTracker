@@ -14,6 +14,10 @@ from app.services.cycling.power_curve import (
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
 )
+from app.services.cycling.power_profile import (
+    POWER_PROFILE_WKG,
+    percentile_wkg_at,
+)
 from app.services.cycling.training_load import (
     ATL_DAYS,
     CTL_DAYS,

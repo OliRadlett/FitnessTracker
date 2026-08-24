@@ -29,15 +29,22 @@ param(
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $fittrack = Join-Path $scriptDir "fittrack.py"
 
-# Prefer python3, fall back to python
+# Prefer python3, fall back to python.
+# Use Get-Command (not try/catch) so Windows Store alias stubs don't pass —
+# they resolve as commands but fail to actually run Python.
 $python = $null
 foreach ($cmd in @("python3", "python")) {
-    try {
-        $null = & $cmd --version 2>&1
-        $python = $cmd
-        break
-    } catch {
-        # not found
+    $found = Get-Command $cmd -ErrorAction SilentlyContinue
+    if ($found) {
+        # Reject the Microsoft Store app execution alias (zero-byte stub)
+        if ($found.Source -and (Get-Item $found.Source -ErrorAction SilentlyContinue).Length -eq 0) {
+            continue
+        }
+        $null = & $cmd --version 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $python = $cmd
+            break
+        }
     }
 }
 

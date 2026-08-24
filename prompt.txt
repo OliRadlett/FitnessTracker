@@ -1,0 +1,23 @@
+Here is a list of features I would like to implement. We will plan these together
+
+Nutrition for cycling activities
+Semantic goals with data driven check ins, alignment and completion 
+Strength training videos linked to sessions and PBs
+Projections and goal alignment tracking/success prediction 
+Activities page overhaul 
+Routes page overhaul
+Training page overhaul (custom training plans, custom weekly planning+modifications, warn if a planned cycle has bad weather)
+Deficiency/opportunities
+Fix vo2max issues 
+Expand wiki
+Weather integration 
+Planned cycle: give me the option then commit to a planned cycle (HR, power, route etc) then when that cycle appears as an activity analyse conformity
+Fix broken wahoo logo, and add logos in required areas if the project.
+Further differentiation between large compound exercises and accessory movements
+Respiratory rate not working 
+Whoop data missing (whole days)
+Bug fixes and quality of life improvements 
+
+Split these features up into phases that make sense and where the quantity of changes isn't too high.
+
+As always this is a collaborative process. Ask questions, make suggestions, work with me until we have an agreed plan and then implement using subtasks where required.
