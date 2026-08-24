@@ -63,7 +63,7 @@ class LlmAnalysis(Base):
     )  # compiled stats sent to LLM
     analysis_text: Mapped[str] = mapped_column(Text, nullable=False)  # LLM response
     model_used: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="gemini-2.0-flash"
+        String(100), nullable=False, default="gemini-3.6-flash"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

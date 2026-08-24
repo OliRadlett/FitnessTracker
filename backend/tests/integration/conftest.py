@@ -155,7 +155,7 @@ async def test_lifting_session(
     """Insert a ``LiftingSession`` with three working sets of Back Squat."""
     session = LiftingSession(
         user_id=test_user.id,
-        session_date=date.today() - timedelta(days=1),
+        session_date=date.today() - timedelta(days=min(date.today().weekday(), 3)),
         focus="squat",
         duration_seconds=3600,
         rpe_session=7.5,
