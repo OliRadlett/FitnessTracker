@@ -15,6 +15,7 @@ Read only the sections relevant to your task:
 | Debugging | Critical Pitfalls, Development Lessons, Agent Efficiency Rules |
 | Production issues (SSH) | Critical Pitfalls, Agent Efficiency Rules (use `@production` agent) |
 | New feature planning | Overview, Architecture, Planned/Incomplete |
+| Running any command/tests | @running (docs/RUNNING.md) |
 | OpenCode TUI/config | @opencode (docs/OPENCODE.md) |
 
 ## Agent Efficiency Rules
@@ -101,6 +102,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `sync_all_strava_activities` | 30 min | Also syncs Wahoo, backfills route links |
 | `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
+| `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
@@ -142,7 +144,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 2. **NextAuth signIn timing**: [`pendingBackendToken`](frontend/src/lib/auth.ts:9) is fragile module-level state
 3. **`docker compose exec` doesn't work**: Use `docker compose run --rm <service>`
 4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
-5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`
+5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
 8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024

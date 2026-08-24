@@ -15,3 +15,6 @@
 | `event.py` | `EventCreate/Read/Update`, `EventWithCountdown` |
 | `workout_planner.py` | `WorkoutZone`, `ReadinessInfo`, `WorkoutZonesResponse`, `WorkoutPlanRequest/Response`, `RouteMatchRequest/Response` |
 | `llm_analysis.py` | `LlmAnalysisRead`, `LlmAnalysisSummary` |
+| `deficiency.py` | `WeaknessItem`, `DeficiencySummary`, `DeficiencyResponse` (weakness analysis contract) |
+| `nutrition.py` | `FuelPlanCreate`, `RideFuelPlanRead`, `FuelScheduleEntry`, `FuelPlanActualsUpdate` (ride fuel plan contract) |
+| `weather.py` | `CurrentWeatherResponse`, `ForecastDay`, `ForecastResponse`, `ActivityWeatherResponse`, `TagActivityResponse` (Open-Meteo normalized contract) |

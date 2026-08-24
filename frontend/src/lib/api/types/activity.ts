@@ -31,6 +31,9 @@ export interface Activity {
   tss?: number;
   calories?: number;
   rpe?: number;
+  weather_temperature?: number | null;
+  weather_conditions?: string | null;
+  weather_wind_speed_kmh?: number | null;
   linked_lifting_session?: LinkedLiftingSessionSummary;
   encoded_polyline?: string;
   sources?: ActivitySource[];

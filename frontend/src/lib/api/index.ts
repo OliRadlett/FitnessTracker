@@ -14,3 +14,6 @@ export * from './trainingPlans';
 export * from './events';
 export * from './llmAnalysis';
 export * from './workoutPlanner';
+export * from './deficiency';
+export * from './nutrition';
+export * from './weather';

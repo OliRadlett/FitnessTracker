@@ -17,6 +17,7 @@ import type {
   Event,
   YearlySummary,
   LlmAnalysis,
+  DeficiencyResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
@@ -28,6 +29,7 @@ import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 import { MetricCard, WhoopWeeklyCard, RespiratoryRateCard, ActivityRow, SessionRow, ListSkeleton } from './helpers';
 import { HealthAlertsSection } from './HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
+import { DeficiencyCard } from './DeficiencyCard';
 
 interface WeeklyTabProps {
   summary: DashboardSummary | undefined;
@@ -54,6 +56,8 @@ interface WeeklyTabProps {
   onAchieveGoal: (goalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
   goalError?: string | null;
+  deficiency: DeficiencyResponse | undefined;
+  deficiencyLoading?: boolean;
   monthlySummary: MonthlySummaryItem[] | undefined;
   selectedYear: number;
   setSelectedYear: React.Dispatch<React.SetStateAction<number>>;
@@ -97,6 +101,8 @@ export function WeeklyTab({
   onAchieveGoal,
   onDeleteGoal,
   goalError,
+  deficiency,
+  deficiencyLoading,
   monthlySummary,
   selectedYear,
   setSelectedYear,
@@ -505,6 +511,9 @@ export function WeeklyTab({
         onDeleteGoal={onDeleteGoal}
         goalError={goalError}
       />
+
+      {/* ── Weakness / Deficiency Analysis ───────────────────────────────── */}
+      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
 
       {/* ── Monthly Summary ──────────────────────────────────────────────── */}
       {monthlySummary && monthlySummary.length > 0 && (

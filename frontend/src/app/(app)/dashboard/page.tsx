@@ -21,9 +21,11 @@ import type {
   YearlySummary,
   TodaySummary,
   LlmAnalysis,
+  DeficiencyResponse,
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { getGreeting } from '@/components/dashboard/helpers';
+import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
@@ -131,6 +133,12 @@ export default function DashboardPage() {
     staleTime: 300_000,
   });
 
+  const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
+    queryKey: ['deficiency'],
+    queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
+    staleTime: 600_000,  // 10 min — expensive server-side computation
+  });
+
   /* ── Mutations ─────────────────────────────────────────────────────────── */
 
   const llmMutation = useMutation({
@@ -174,16 +182,21 @@ export default function DashboardPage() {
   const hasReadiness = readiness && readiness.readiness !== 'unknown';
   const hasWhoop = whoopWeekly && whoopWeekly.days_with_data > 0;
 
+  const analyzeMutation = useMutation({
+    mutationFn: () =>
+      authFetch<{ analysis_results: HealthAnalysisResult[] }>('/api/v1/metrics/health-alerts/analyze', { method: 'POST' }),
+    onSuccess: (data) => {
+      setAnalysisResults(data.analysis_results || []);
+      queryClient.invalidateQueries({ queryKey: ['health-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+    onError: () => setAnalysisResults([]),
+    onSettled: () => setIsAnalyzing(false),
+  });
+
   const handleAnalyze = () => {
     setIsAnalyzing(true);
-    authFetch<{ analysis_results: HealthAnalysisResult[] }>('/api/v1/metrics/health-alerts/analyze', { method: 'POST' })
-      .then((data) => {
-        setAnalysisResults(data.analysis_results || []);
-        queryClient.invalidateQueries({ queryKey: ['health-alerts'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      })
-      .catch(() => setAnalysisResults([]))
-      .finally(() => setIsAnalyzing(false));
+    analyzeMutation.mutate();
   };
 
   async function handleDownloadReport(apiPath: string, filename: string) {
@@ -218,23 +231,26 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8" aria-live="polite">
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">{getGreeting()} 👋</h1>
           <p className="text-muted mt-1">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-        {hasReadiness && (
-          <ReadinessIndicator
-            recoveryScore={readiness.recovery_score ?? undefined}
-            readiness={readiness.readiness}
-            hrvMs={readiness.hrv_ms ?? undefined}
-            restingHr={readiness.resting_hr ?? undefined}
-            message={readiness.message}
-            compact
-          />
-        )}
+        <div className="flex items-end gap-4">
+          <WeatherWidget />
+          {hasReadiness && (
+            <ReadinessIndicator
+              recoveryScore={readiness.recovery_score ?? undefined}
+              readiness={readiness.readiness}
+              hrvMs={readiness.hrv_ms ?? undefined}
+              restingHr={readiness.resting_hr ?? undefined}
+              message={readiness.message}
+              compact
+            />
+          )}
+        </div>
       </div>
 
       {/* ── Tab Navigation ───────────────────────────────────────────────────── */}
@@ -285,6 +301,8 @@ export default function DashboardPage() {
           onAchieveGoal={(id) => achieveGoalMutation.mutate(id)}
           onDeleteGoal={(id) => deleteGoalMutation.mutate(id)}
           goalError={goalError}
+          deficiency={deficiency}
+          deficiencyLoading={deficiencyLoading}
           monthlySummary={monthlySummary}
           selectedYear={selectedYear}
           setSelectedYear={setSelectedYear}

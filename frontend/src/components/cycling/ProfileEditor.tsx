@@ -24,6 +24,8 @@ export function ProfileEditor({
   const [ftp, setFtp] = useState('');
   const [weight, setWeight] = useState('');
   const [lthr, setLthr] = useState('');
+  const [homeLat, setHomeLat] = useState('');
+  const [homeLng, setHomeLng] = useState('');
   const [initialized, setInitialized] = useState(false);
 
   // Sync local state when profile loads (once)
@@ -32,6 +34,8 @@ export function ProfileEditor({
       if (profile.ftp_watts) setFtp(profile.ftp_watts.toString());
       if (profile.weight_kg) setWeight(profile.weight_kg.toString());
       if (profile.lactate_threshold_hr) setLthr(profile.lactate_threshold_hr.toString());
+      if (profile.home_lat != null) setHomeLat(profile.home_lat.toString());
+      if (profile.home_lng != null) setHomeLng(profile.home_lng.toString());
       setInitialized(true);
     }
   }, [profile, initialized]);
@@ -46,7 +50,7 @@ export function ProfileEditor({
       <CardHeader>
         <CardTitle>Cycling Profile</CardTitle>
       </CardHeader>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
         <div>
           <label className="block text-xs text-muted mb-1">FTP (watts)</label>
           <input
@@ -78,12 +82,36 @@ export function ProfileEditor({
             className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">Home Latitude</label>
+          <input
+            type="number"
+            step="any"
+            value={homeLat}
+            onChange={(e) => setHomeLat(e.target.value)}
+            placeholder="e.g. 51.5072"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">Home Longitude</label>
+          <input
+            type="number"
+            step="any"
+            value={homeLng}
+            onChange={(e) => setHomeLng(e.target.value)}
+            placeholder="e.g. -0.1276"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
         <button
           onClick={() => {
             const payload: CyclingProfileUpdate = {};
             if (ftp) payload.ftp_watts = parseFloat(ftp);
             if (weight) payload.weight_kg = parseFloat(weight);
             if (lthr) payload.lactate_threshold_hr = parseFloat(lthr);
+            if (homeLat) payload.home_lat = parseFloat(homeLat);
+            if (homeLng) payload.home_lng = parseFloat(homeLng);
             onSave(payload);
           }}
           disabled={isSaving}

@@ -15,6 +15,12 @@ class CyclingProfileRead(BaseModel):
     weight_kg: float | None = None
     lactate_threshold_hr: float | None = None
     auto_estimate_ftp: bool = False
+    home_lat: float | None = Field(
+        None, ge=-90, le=90, description="Home latitude for weather lookups"
+    )
+    home_lng: float | None = Field(
+        None, ge=-180, le=180, description="Home longitude for weather lookups"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -33,6 +39,12 @@ class CyclingProfileUpdate(BaseModel):
     )
     auto_estimate_ftp: bool | None = Field(
         None, description="Enable/disable weekly automatic FTP estimation"
+    )
+    home_lat: float | None = Field(
+        None, ge=-90, le=90, description="Home latitude for weather lookups"
+    )
+    home_lng: float | None = Field(
+        None, ge=-180, le=180, description="Home longitude for weather lookups"
     )
 
 

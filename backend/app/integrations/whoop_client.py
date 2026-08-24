@@ -18,6 +18,9 @@ import logging
 
 import httpx
 
+from app.config import get_settings
+from app.integrations.retry import retry_request
+
 logger = logging.getLogger(__name__)
 
 WHOOP_API_BASE = "https://api.prod.whoop.com"
@@ -33,6 +36,9 @@ class WhoopClient:
 
     def __init__(self, base_url: str = WHOOP_API_BASE):
         self.base_url = base_url
+        settings = get_settings()
+        self.client_id = settings.whoop_client_id
+        self.client_secret = settings.whoop_client_secret
 
     def _headers(self, access_token: str) -> dict:
         return {
@@ -47,14 +53,17 @@ class WhoopClient:
 
         Returns: {"user_id": int, "email": str, "first_name": str, "last_name": str}
         """
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/user/profile/basic",
-                headers=self._headers(access_token),
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/user/profile/basic",
+                    headers=self._headers(access_token),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     # ── Body measurements ────────────────────────────────────────────────
 
@@ -63,14 +72,17 @@ class WhoopClient:
 
         Returns: {"height_meter": float, "weight_kilogram": float, "max_heart_rate": int}
         """
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/user/measurement/body",
-                headers=self._headers(access_token),
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/user/measurement/body",
+                    headers=self._headers(access_token),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     # ── Cycles ───────────────────────────────────────────────────────────
 
@@ -99,29 +111,35 @@ class WhoopClient:
         if end:
             params["end"] = end
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/cycle",
-                headers=self._headers(access_token),
-                params=params,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/cycle",
+                    headers=self._headers(access_token),
+                    params=params,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_cycle_detail(self, access_token: str, cycle_id: int) -> dict:
         """Fetch a single cycle by ID.
 
         Returns: {"id": int, "user_id": int, "start": str, "end": str, "score": {...}, ...}
         """
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/cycle/{cycle_id}",
-                headers=self._headers(access_token),
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/cycle/{cycle_id}",
+                    headers=self._headers(access_token),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def _paginated_get(
         self,
@@ -222,11 +240,16 @@ class WhoopClient:
     ) -> dict | None:
         """Fetch recovery data for a specific cycle.
 
-        Returns: {"cycle_id": int, "recovery_score": float, "hrv_rmssd_milli": float,
-                  "resting_heart_rate": int, "respiratory_rate": float, "spo2_percentage": float}
+        Returns the raw Whoop API v2 response:
+            {"cycle_id": int, "score_state": str,
+             "score": {"recovery_score": float, "hrv_rmssd_milli": float,
+                       "resting_heart_rate": int, "respiratory_rate": float,
+                       "spo2_percentage": float}}
         Returns None if recovery is not yet computed (404).
+        Transient HTTP errors are retried by retry_request; remaining errors
+        are raised so callers can apply their own backoff/retry logic.
         """
-        try:
+        async def _fetch():
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
                     f"{self.base_url}/developer/v2/cycle/{cycle_id}/recovery",
@@ -234,15 +257,11 @@ class WhoopClient:
                     timeout=30,
                 )
                 if resp.status_code == 404:
-                    logger.debug(f"Recovery not yet computed for cycle {cycle_id}")
                     return None
                 resp.raise_for_status()
                 return resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise  # Token expired — propagate
-            logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
-            return None
+
+        return await retry_request(_fetch)
 
     # ── Sleep activities ───────────────────────────────────────────────────
 
@@ -271,15 +290,18 @@ class WhoopClient:
         if end:
             params["end"] = end
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/activity/sleep",
-                headers=self._headers(access_token),
-                params=params,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/activity/sleep",
+                    headers=self._headers(access_token),
+                    params=params,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_all_sleep_activities(
         self,
@@ -321,15 +343,18 @@ class WhoopClient:
         if end:
             params["end"] = end
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/developer/v2/activity/workout",
-                headers=self._headers(access_token),
-                params=params,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/developer/v2/activity/workout",
+                    headers=self._headers(access_token),
+                    params=params,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_all_workout_activities(
         self,
@@ -350,31 +375,20 @@ class WhoopClient:
 
     # ── Token refresh ─────────────────────────────────────────────────────
 
-    async def refresh_access_token(
-        self,
-        client_id: str,
-        client_secret: str,
-        refresh_token: str,
-        redirect_uri: str | None = None,
-    ) -> dict:
-        """Refresh an expired OAuth2 access token using a refresh token.
+    async def refresh_access_token(self, refresh_token: str) -> dict:
+        """Refresh an expired Whoop OAuth2 access token using a refresh token.
 
         Returns: {"access_token": str, "refresh_token": str, "expires_in": int, ...}
         """
-        data = {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "scope": "offline",
-        }
-        if redirect_uri:
-            data["redirect_uri"] = redirect_uri
-
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{self.base_url}/oauth/oauth2/token",
-                data=data,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
                 headers={"Accept": "application/json"},
                 timeout=30,
             )

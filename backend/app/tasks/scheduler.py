@@ -75,6 +75,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.weekly_llm_analysis",
         "schedule": crontab(hour=5, minute=0, day_of_week=0),
     },
+    # Refresh weather forecast caches daily at 5 AM UTC
+    "refresh-weather-forecasts": {
+        "task": "app.tasks.scheduler.refresh_weather_forecasts",
+        "schedule": crontab(hour=5, minute=0),
+    },
 }
 
 
@@ -108,6 +113,7 @@ def sync_all_strava_activities() -> dict:
             synced_count = 0
             linked_count = 0
             route_linked_count = 0
+            weather_tagged_count = 0
             for conn in connections:
                 try:
                     activities = await sync_activities(db, conn.user_id)
@@ -115,6 +121,18 @@ def sync_all_strava_activities() -> dict:
                 except Exception as e:
                     logger.error(
                         f"Failed to sync for user {conn.user_id}: {e}", exc_info=True
+                    )
+
+                # Tag recent activities with historical weather — must never fail the sync
+                try:
+                    from app.services.weather import tag_recent_activities
+
+                    tagged = await tag_recent_activities(db, conn.user_id)
+                    weather_tagged_count += tagged
+                except Exception as e:
+                    logger.warning(
+                        f"Weather tagging failed for user {conn.user_id}: {e}",
+                        exc_info=True,
                     )
 
                 # Backfill links for any remaining unlinked activities
@@ -161,6 +179,7 @@ def sync_all_strava_activities() -> dict:
                 "wahoo_synced_activities": wahoo_synced_count,
                 "linked_sessions": linked_count,
                 "route_linked": route_linked_count,
+                "weather_tagged": weather_tagged_count,
                 "users_processed": len(connections) + len(wahoo_connections),
             }
 
@@ -832,5 +851,52 @@ def backfill_streams_for_all_activities() -> dict:
     async def _run():
         async with async_session_factory() as db:
             return await _backfill_streams(db)
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.refresh_weather_forecasts")
+def refresh_weather_forecasts() -> dict:
+    """Refresh weather forecast caches for users with a resolvable home location.
+
+    Runs daily at 5 AM UTC. Per-user failures are logged and skipped so one
+    user's failure never kills the loop. Open-Meteo outages degrade to stale
+    caches rather than task failures.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import async_session_factory
+    from app.models.user import User
+    from app.services.weather import get_forecast, resolve_user_coords
+
+    async def _run():
+        async with async_session_factory() as db:
+            users_result = await db.execute(select(User))
+            users = list(users_result.scalars().all())
+            refreshed = 0
+            no_location = 0
+
+            for user in users:
+                try:
+                    coords = await resolve_user_coords(db, user.id)
+                    if coords is None:
+                        no_location += 1
+                        continue
+                    await get_forecast(db, user.id, coords[0], coords[1], days=7)
+                    refreshed += 1
+                except Exception as e:
+                    logger.warning(
+                        f"Weather forecast refresh failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+
+            await db.commit()
+            return {
+                "users_total": len(users),
+                "forecasts_refreshed": refreshed,
+                "users_without_location": no_location,
+            }
 
     return asyncio.run(_run())

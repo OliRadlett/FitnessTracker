@@ -193,14 +193,17 @@ from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
 from app.api.cycling import router as cycling_router
 from app.api.dashboard import router as dashboard_router
+from app.api.deficiency import router as deficiency_router
 from app.api.events import router as events_router
 from app.api.export import router as export_router
 from app.api.goals import router as goals_router
 from app.api.lifting import router as lifting_router
 from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
+from app.api.nutrition import router as nutrition_router
 from app.api.routes import router as routes_router
 from app.api.training_plans import router as training_plans_router
+from app.api.weather import router as weather_router
 from app.api.webhooks import router as webhooks_router
 from app.api.workout_planner import router as workout_planner_router
 
@@ -219,6 +222,10 @@ app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(
+    deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"]
+)
+app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])
+app.include_router(
     training_plans_router, prefix="/api/v1/training-plans", tags=["training-plans"]
 )
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
@@ -228,3 +235,4 @@ app.include_router(
 app.include_router(
     llm_analysis_router, prefix="/api/v1/cycling/llm-analysis", tags=["LLM Analysis"]
 )
+app.include_router(weather_router, prefix="/api/v1/weather", tags=["weather"])

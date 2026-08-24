@@ -61,6 +61,12 @@ async def update_cycling_profile(
     if payload.auto_estimate_ftp is not None:
         profile.auto_estimate_ftp = payload.auto_estimate_ftp
 
+    if payload.home_lat is not None:
+        profile.home_lat = payload.home_lat
+
+    if payload.home_lng is not None:
+        profile.home_lng = payload.home_lng
+
     await db.flush()
     await db.refresh(profile)
     return CyclingProfileRead.model_validate(profile)

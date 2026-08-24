@@ -12,16 +12,19 @@ from app.models.lifting import (
     WarmupTemplateStep,
 )
 from app.models.llm_analysis import LlmAnalysis
+from app.models.nutrition import RideFuelPlan
 from app.models.route import Route, RouteSource
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import OAuthConnection, User
+from app.models.weather import CachedWeather
 from app.models.weight import WeightLog
 
 __all__ = [
     "Activity",
     "ActivitySource",
     "ActivityStream",
+    "CachedWeather",
     "CyclingProfile",
     "DailyMetric",
     "Event",
@@ -33,6 +36,7 @@ __all__ = [
     "LlmAnalysis",
     "OAuthConnection",
     "PersonalRecord",
+    "RideFuelPlan",
     "Route",
     "RouteSource",
     "SleepLog",

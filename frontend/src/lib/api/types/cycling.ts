@@ -6,6 +6,8 @@ export interface CyclingProfile {
   ftp_watts?: number;
   weight_kg?: number;
   lactate_threshold_hr?: number;
+  home_lat?: number | null;
+  home_lng?: number | null;
   auto_estimate_ftp: boolean;
   created_at: string;
   updated_at: string;
@@ -15,6 +17,8 @@ export interface CyclingProfileUpdate {
   ftp_watts?: number;
   weight_kg?: number;
   lactate_threshold_hr?: number;
+  home_lat?: number | null;
+  home_lng?: number | null;
   auto_estimate_ftp?: boolean;
 }
 

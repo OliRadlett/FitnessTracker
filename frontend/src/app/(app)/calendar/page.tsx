@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { formatDuration } from '@/lib/utils';
 import type {
   ActivityCalendarEntry,
   Activity,
@@ -112,20 +113,46 @@ function isCyclingOrRunning(sportType: string): boolean {
   );
 }
 
-function formatDuration(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0) return `${hrs}h ${mins}m`;
-  return `${mins}m`;
-}
-
 function formatDistance(meters: number): string {
   const km = meters / 1000;
   return `${km.toFixed(1)} km`;
 }
 
-function formatStat(activity: ActivityCalendarEntry): string {
-  if (isStrengthType(activity.sport_type)) {
+function getRecoveryColor(score: number): string {
+  if (score >= 70) return 'text-green-400';
+  if (score >= 40) return 'text-yellow-400';
+  return 'text-red-400';
+}
+
+function getRecoveryBg(score: number): string {
+  if (score >= 70) return 'bg-green-500/15';
+  if (score >= 40) return 'bg-yellow-500/15';
+  return 'bg-red-500/15';
+}
+
+function DayMetricsBadges({ dm }: { dm: DailyMetricSummary }) {
+  const hasRecovery = dm.recovery_score != null;
+  const hasSleep = dm.sleep_duration_minutes != null;
+  if (!hasRecovery && !hasSleep) return null;
+  return (
+    <div className="flex gap-1 mb-0.5">
+      {hasRecovery && (
+        <span
+          className={`text-[9px] font-medium px-1 py-0.5 rounded ${getRecoveryBg(dm.recovery_score!)} ${getRecoveryColor(dm.recovery_score!)}`}
+        >
+          {Math.round(dm.recovery_score!)}%
+        </span>
+      )}
+      {hasSleep && (
+        <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+          {Math.round(dm.sleep_duration_minutes! / 60)}h
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatStat(activity: ActivityCalendarEntry): string {  if (isStrengthType(activity.sport_type)) {
     // Show focus if available, otherwise fall back to activity name
     if (activity.focus) {
       return activity.focus;
@@ -754,19 +781,6 @@ export default function CalendarPage() {
   const selectedDayMetric = metricsByDate.get(selectedDayKey);
   const selectedDaySleepLog = sleepLogsByDate.get(selectedDayKey);
 
-  // Helper to get recovery color class
-  const getRecoveryColor = (score: number): string => {
-    if (score >= 70) return 'text-green-400';
-    if (score >= 40) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const getRecoveryBg = (score: number): string => {
-    if (score >= 70) return 'bg-green-500/15';
-    if (score >= 40) return 'bg-yellow-500/15';
-    return 'bg-red-500/15';
-  };
-
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   return (
@@ -905,28 +919,9 @@ export default function CalendarPage() {
                     </div>
 
                     {/* Health metric badges (recovery, sleep) */}
-                    {metricsByDate.has(dateKey) && (() => {
-                      const dm = metricsByDate.get(dateKey)!;
-                      const hasRecovery = dm.recovery_score != null;
-                      const hasSleep = dm.sleep_duration_minutes != null;
-                      if (!hasRecovery && !hasSleep) return null;
-                      return (
-                        <div className="flex gap-1 mb-0.5">
-                          {hasRecovery && (
-                            <span
-                              className={`text-[9px] font-medium px-1 py-0.5 rounded ${getRecoveryBg(dm.recovery_score!)} ${getRecoveryColor(dm.recovery_score!)}`}
-                            >
-                              {Math.round(dm.recovery_score!)}%
-                            </span>
-                          )}
-                          {hasSleep && (
-                            <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
-                              {Math.round(dm.sleep_duration_minutes! / 60)}h
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {metricsByDate.has(dateKey) && (
+                      <DayMetricsBadges dm={metricsByDate.get(dateKey)!} />
+                    )}
 
                     {/* Activity badges */}
                     {dayActivities.length > 0 && (

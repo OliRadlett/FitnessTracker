@@ -15,6 +15,7 @@ import type {
   LinkedActivity,
   ReadinessResponse,
   LiftingAnalysis,
+  DeficiencyResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
@@ -30,6 +31,7 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
+import { DeficiencyCard } from '@/components/dashboard/DeficiencyCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,6 +154,12 @@ export default function LiftingPage() {
     queryKey: ['personal-records'],
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs'),
     staleTime: 300_000,  // 5 min — PRs change rarely
+  });
+
+  const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
+    queryKey: ['deficiency'],
+    queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
+    staleTime: 600_000,  // 10 min — expensive server-side computation
   });
 
   // ── PR Celebration Detection ────────────────────────────────────────────
@@ -739,6 +747,9 @@ export default function LiftingPage() {
           <p className="text-muted text-center py-8">No personal records yet</p>
         )}
       </Card>
+
+      {/* Weakness / Deficiency Analysis */}
+      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
 
       {/* Volume Trend */}
       <Card>

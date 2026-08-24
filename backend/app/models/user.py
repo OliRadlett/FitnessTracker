@@ -73,6 +73,9 @@ class User(Base):
     llm_analyses: Mapped[list["LlmAnalysis"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
+    fuel_plans: Mapped[list["RideFuelPlan"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):

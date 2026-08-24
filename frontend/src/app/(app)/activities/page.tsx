@@ -3,9 +3,12 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { formatDuration } from '@/lib/utils';
 import type { Activity, ActivityDetail, ChartData, ActivityFilters, ActivitySource, RideAnalysis } from '@/lib/api';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
+import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
+import { WeatherBadge } from '@/components/cycling/WeatherBadge';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(
@@ -19,15 +22,6 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDuration(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
-  if (mins > 0) return `${mins}m ${secs}s`;
-  return `${secs}s`;
-}
 
 function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(2)} km`;
@@ -43,11 +37,19 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const PROVIDER_ICONS: Record<string, string> = {
-  strava: '🚴',
-  komoot: '🗺️',
-  wahoo: '📊',
-  manual: '✏️',
+  strava: '/icons/strava.svg',
+  komoot: '/icons/komoot.svg',
+  wahoo: '/icons/wahoo.svg',
+  manual: '',
 };
+
+function ProviderIcon({ provider, size = 12 }: { provider: string; size?: number }) {
+  const src = PROVIDER_ICONS[provider];
+  if (src) {
+    return <img src={src} alt={`${provider} logo`} className="inline-block" style={{ width: size, height: size }} />;
+  }
+  return <span aria-hidden="true">✏️</span>;
+}
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
@@ -82,7 +84,7 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
           className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
           title={`${s.provider}: ${s.provider_name || s.provider_activity_id}`}
         >
-          {PROVIDER_ICONS[s.provider] || '🔗'} {s.provider}
+          <ProviderIcon provider={s.provider} /> {s.provider}
         </span>
       ))}
     </div>
@@ -159,6 +161,11 @@ function ActivityCard({
               {activity.route_name && (
                 <span className="ml-2 text-accent">📍 {activity.route_name}</span>
               )}
+              <WeatherBadge
+                temperature={activity.weather_temperature ?? null}
+                conditions={activity.weather_conditions ?? null}
+                wind_speed_kmh={activity.weather_wind_speed_kmh ?? null}
+              />
             </p>
           </div>
         </div>
@@ -254,6 +261,17 @@ function ActivityExpanded({
 
   return (
     <div className="mt-4 pt-4 border-t border-surface-light/50">
+      {/* Weather at activity time */}
+      {(activity.weather_temperature != null || activity.weather_conditions) && (
+        <div className="mb-3 text-sm text-muted">
+          <WeatherBadge
+            temperature={activity.weather_temperature ?? null}
+            conditions={activity.weather_conditions ?? null}
+            wind_speed_kmh={activity.weather_wind_speed_kmh ?? null}
+          />
+        </div>
+      )}
+
       {/* Route Map */}
       {activity.encoded_polyline && (
         <div className="mb-4">
@@ -296,6 +314,13 @@ function ActivityExpanded({
       {isCycling && (
         <div className="mt-4">
           <ActivityAiAnalysisCard activityId={activity.id} />
+        </div>
+      )}
+
+      {/* Ride Fuel Plan — cycling activities only */}
+      {isCycling && (
+        <div className="mt-4">
+          <FuelPlanCard activity={activity} />
         </div>
       )}
     </div>

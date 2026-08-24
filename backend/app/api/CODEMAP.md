@@ -18,4 +18,7 @@
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `GET/POST /{id}/ai-analysis` |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |
 | `metrics.py` | `/metrics/` | Health metrics CRUD, health analysis, `GET/POST /health-ai-analysis` |
+| `deficiency.py` | `/deficiency/` | `GET /` (`weeks` query, 4–26) — weakness analysis: strength standards, Big-3 ratios, push/pull balance, VO2max/FTP mismatch, decoupling, zone distribution |
+| `nutrition.py` | `/nutrition/` | Ride fuel plans: `POST /fuel-plan` (generate from activity_id or planned_duration_min/planned_if), `GET/PATCH/DELETE /fuel-plan/{id}` (PATCH logs actuals), `GET /fuel-plan/activity/{activity_id}` |
 | `llm_analysis.py` | `/cycling/llm-analysis/` | `GET /latest`, `POST /on-demand`, `GET /history` |
+| `weather.py` | `/weather/` | Open-Meteo integration: `GET /current`, `GET /forecast` (days 1–7), `GET /historical` (start/end dates), `POST /tag-activity/{id}`, `GET /for-activity/{id}` — lat/lng optional (falls back to user home location); provider failures → 503 |

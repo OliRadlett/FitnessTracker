@@ -45,14 +45,14 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend }: Vo2ma
                 <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
                 {vo2max.all_estimates.length > 1 && (
                   <p className="mt-1 text-xs">
-                    {vo2max.all_estimates.length} estimates available — showing highest.
+                    {vo2max.all_estimates.length} estimates available — showing most reliable.
                   </p>
                 )}
               </div>
             </div>
             {vo2maxHistory && vo2maxHistory.data.length > 1 && (
               <div className="mt-2 text-xs text-muted">
-                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min over {vo2maxHistory.data.length} months
+                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min ({new Date(vo2maxHistory.data[0].date).toLocaleDateString()} → {new Date(vo2maxHistory.data[vo2maxHistory.data.length - 1].date).toLocaleDateString()})
               </div>
             )}
           </>

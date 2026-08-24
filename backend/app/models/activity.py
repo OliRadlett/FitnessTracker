@@ -71,6 +71,14 @@ class Activity(Base):
     rpe: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )  # Rate of Perceived Exertion 1-10
+    # Weather snapshot at activity start (filled from Open-Meteo archive)
+    weather_temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weather_conditions: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    weather_wind_speed_kmh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weather_wind_direction: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # compass, e.g. "NW"
+    weather_precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

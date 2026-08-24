@@ -247,10 +247,10 @@
 - **Fix:** Initialize `self._basic_token` and `self._basic_token_expires` in `__init__`, or remove the dead method.
 
 ### BUG-039: `handleAnalyze` Uses Manual Promise Chain Instead of `useMutation`
-- **Status:** DEFERRED (frontend refactor)
-- **File:** `frontend/src/app/(app)/dashboard/page.tsx:177-187`
+- **Status:** FIXED
+- **File:** `frontend/src/app/(app)/dashboard/page.tsx`
 - **Issue:** Manages `setIsAnalyzing`, `.then()`, `.catch()`, `.finally()` instead of using React Query's `useMutation`. Inconsistent with every other mutation in the codebase.
-- **Fix:** Refactor to use `useMutation` like the `llmMutation` on line 136.
+- **Fix:** Refactored to `useMutation` (`analyzeMutation`) with `onSuccess`/`onError`/`onSettled`.
 
 ### BUG-040: 30+ Props Drilled into `WeeklyTab`
 - **Status:** DEFERRED (frontend refactor)
@@ -271,16 +271,16 @@
 - **Fix:** Replace with `{f}`.
 
 ### BUG-043: IIFE in JSX for Health Metric Badges
-- **Status:** DEFERRED (frontend refactor)
-- **File:** `frontend/src/app/(app)/calendar/page.tsx:908`
+- **Status:** FIXED
+- **File:** `frontend/src/app/(app)/calendar/page.tsx`
 - **Issue:** `{metricsByDate.has(dateKey) && (() => { ... })()}` uses an immediately-invoked function expression inside JSX. Runs on every render and can't be memoized.
-- **Fix:** Extract to a `DayMetricsBadges` component.
+- **Fix:** Extracted to a `DayMetricsBadges` component; moved `getRecoveryBg`/`getRecoveryColor` to module scope.
 
 ### BUG-044: `formatDuration` Inconsistency Between Pages
-- **Status:** DEFERRED (frontend refactor)
-- **File:** `frontend/src/app/(app)/calendar/page.tsx:115-120`
+- **Status:** FIXED
+- **File:** `frontend/src/app/(app)/calendar/page.tsx`, `frontend/src/app/(app)/activities/page.tsx`
 - **Issue:** Calendar `formatDuration` drops seconds (returns `{mins}m` when hrs=0), while activities page includes seconds (`{mins}m {secs}s`). Sub-minute activities show as `0m` in calendar.
-- **Fix:** Unify to a single shared `formatDuration` utility.
+- **Fix:** Created shared `formatDuration`/`formatDistance` in `frontend/src/lib/utils.ts`; calendar and activities now import it.
 
 ### BUG-045: Live Secrets in Working Directory `.env`
 - **Status:** DEFERRED (manual rotation required)
@@ -305,6 +305,18 @@
 - **File:** `infra/Caddyfile:2`
 - **Issue:** `email admin@example.com` is a placeholder. When deploying to a real domain, Caddy will attempt ACME challenges using this unreachable email. No certificate expiry warnings.
 - **Fix:** Use the actual domain owner's email in the deploy script.
+
+### BUG-049: VO2max ACSM Formula Double-Divides by Body Weight
+- **Status:** FIXED
+- **File:** `backend/app/services/cycling/vo2max.py`
+- **Issue:** `(10.8 * W) / kg + 7` already yields ml/kg/min, but code then did `(result * 1000) / kg` again — producing values ~470 that always failed the 20–90 sanity check. The power-based method (primary, confidence 0.7) never produced a result; all users only ever saw HR-based estimates.
+- **Fix:** Extracted `_acsm_vo2max()` helper with correct formula; fixed at all call sites (5-min, 8-min, history). Also: selection now prefers highest-confidence estimate instead of highest value; profile fetched once per estimate; history flags `weight_defaulted` when falling back to 75kg.
+
+### BUG-050: Whoop Respiratory Rate Backfill Misses Partial Recovery Records
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py`, `backend/app/integrations/whoop_client.py`
+- **Issue:** Recovery backfill pass only targeted `recovery_score IS NULL` — days where Whoop returned recovery_score but no respiratory_rate were permanently locked out of backfill. Additionally `get_recovery_for_cycle()` swallowed 500-series errors as `None`, and both `backfill_whoop_data()` and the sync second-pass had no retry logic (`logger.debug` hid failures in production).
+- **Fix:** Backfill queries now match `(recovery_score IS NULL) OR (respiratory_rate IS NULL)`; client raises transient errors so caller retry/backoff logic applies; 3x rate-limit retry loops added to all recovery backfill passes; failure logs upgraded to `warning`; gap detection warns on missing days within the synced range; stale flat-response docstring corrected to nested v2 shape.
 
 ---
 

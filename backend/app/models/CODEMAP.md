@@ -17,3 +17,4 @@
 | `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day optionally links to Activity |
 | `event.py` | `Event` | Race/ride/lift events with taper config |
 | `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
+| `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |

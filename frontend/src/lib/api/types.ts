@@ -10,3 +10,6 @@ export * from './types/health';
 export * from './types/dashboard';
 export * from './types/training';
 export * from './types/llm';
+export * from './types/deficiency';
+export * from './types/nutrition';
+export * from './types/weather';

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
+import { WeatherForecast } from '@/components/training/WeatherForecast';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -166,6 +167,9 @@ export default function TrainingPage() {
         <h1 className="text-2xl font-bold text-white">📋 Training Plans</h1>
         <p className="text-muted mt-1">Plan your training blocks, manage events, and track periodization.</p>
       </div>
+
+      {/* 7-Day Weather Forecast */}
+      <WeatherForecast />
 
       {/* Plans List + Plan Builder */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

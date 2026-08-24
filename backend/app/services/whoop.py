@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,7 +108,7 @@ async def refresh_if_needed(
 ) -> OAuthConnection:
     """Refresh the Whoop access token if it's expired.
 
-    Uses the OAuth2 refresh_token grant (same as Strava/Wahoo/Komoot).
+    Uses the OAuth2 refresh_token grant (same as Strava/Wahoo).
     Falls back gracefully if no refresh token is available.
     """
     if not is_token_expired(connection.access_token, connection.token_expires_at):
@@ -120,18 +120,9 @@ async def refresh_if_needed(
             "Please reconnect Whoop from Settings."
         )
 
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/whoop/callback"
-
     try:
         token_data = await whoop_client.refresh_access_token(
-            client_id=settings.whoop_client_id,
-            client_secret=settings.whoop_client_secret,
             refresh_token=connection.refresh_token,
-            redirect_uri=redirect_uri,
         )
     except httpx.HTTPStatusError as e:
         body = ""
@@ -412,11 +403,16 @@ async def sync_whoop_cycles(
 
     # Second pass: fill in missing recovery data for existing DailyMetric records
     # This catches days where recovery fetch previously failed (rate limit, network, etc.)
+    # OR where Whoop returned only partial score data (e.g. recovery_score present but
+    # respiratory_rate missing). Records matching either condition are retried.
     missing_recovery_result = await db.execute(
         select(DailyMetric).where(
             DailyMetric.user_id == user_id,
             DailyMetric.source == "whoop",
-            DailyMetric.recovery_score.is_(None),
+            or_(
+                DailyMetric.recovery_score.is_(None),
+                DailyMetric.respiratory_rate.is_(None),
+            ),
             DailyMetric.raw_data.isnot(None),
         )
     )
@@ -431,8 +427,26 @@ async def sync_whoop_cycles(
         try:
             import asyncio
 
-            await asyncio.sleep(0.3)
-            recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+            for _retry in range(3):
+                await asyncio.sleep(0.3)
+                try:
+                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+                    break  # Success (or None — no data) — move on
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "401" in err_str or "expired" in err_str:
+                        raise
+                    if "429" in err_str or "rate" in err_str:
+                        logger.warning(
+                            f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
+                        )
+                        await asyncio.sleep(2.0 * (_retry + 1))  # Backoff: 2s, 4s, 6s
+                        continue
+                    raise  # Non-rate-limit error — don't retry
+            else:
+                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
+                continue
+
             if recovery and recovery.get("score_state") == "SCORED":
                 rec_score = recovery.get("score", {})
                 rec_recovery = rec_score.get("recovery_score")
@@ -458,14 +472,28 @@ async def sync_whoop_cycles(
                     },
                 }
                 backfilled += 1
+        except ValueError:
+            raise
         except Exception as e:
-            err_str = str(e).lower()
-            if "401" in err_str or "expired" in err_str:
-                raise ValueError(
-                    "Whoop token is expired. Please reconnect via OAuth in Settings."
-                )
-            logger.debug(f"Backfill recovery failed for cycle {cycle_id}: {e}")
+            logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
             continue
+
+    # Gap detection: warn if there are days without data inside the synced range.
+    # Gaps can indicate missed cycles (device not worn, pagination truncation, etc.)
+    if synced:
+        synced_dates = sorted({m.metric_date for m in synced})
+        min_date, max_date = synced_dates[0], synced_dates[-1]
+        all_days = {
+            min_date + timedelta(days=i)
+            for i in range((max_date - min_date).days + 1)
+        }
+        gap_days = sorted(all_days - set(synced_dates))
+        if gap_days:
+            logger.warning(
+                f"Whoop cycle sync gap detection for user {user_id}: "
+                f"{len(gap_days)} days without cycle data between {min_date} and {max_date} "
+                f"(first few: {[str(d) for d in gap_days[:5]]})"
+            )
 
     await db.flush()
     logger.info(
@@ -1195,8 +1223,29 @@ async def backfill_whoop_data(
             try:
                 import asyncio
 
-                await asyncio.sleep(0.1)  # Rate limit: 100ms between recovery fetches
-                recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+                recovery = None
+                for _retry in range(3):
+                    await asyncio.sleep(0.3)  # Rate limit: 300ms between recovery fetches
+                    try:
+                        recovery = await whoop_client.get_recovery_for_cycle(
+                            token, cycle_id
+                        )
+                        break  # Success or no data — move on
+                    except Exception as e:
+                        err_str = str(e).lower()
+                        if "401" in err_str or "expired" in err_str:
+                            raise
+                        if "429" in err_str or "rate" in err_str:
+                            logger.warning(
+                                f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
+                            )
+                            await asyncio.sleep(2.0 * (_retry + 1))
+                            continue
+                        raise
+                else:
+                    logger.warning(
+                        f"Backfill recovery exhausted retries for cycle {cycle_id}"
+                    )
                 if recovery and recovery.get("score_state") == "SCORED":
                     rec_score = recovery.get("score", {})
                     recovery_score = rec_score.get("recovery_score")
@@ -1205,12 +1254,9 @@ async def backfill_whoop_data(
                     if rr is not None:
                         resting_hr = float(rr)
                     respiratory_rate = rec_score.get("respiratory_rate")
+            except ValueError:
+                raise
             except Exception as e:
-                err_str = str(e).lower()
-                if "401" in err_str or "expired" in err_str:
-                    raise ValueError(
-                        "Whoop token is expired. Please reconnect via OAuth in Settings."
-                    )
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
 
         cycle_with_recovery = {**cycle}
@@ -1272,6 +1318,89 @@ async def backfill_whoop_data(
         f"Whoop backfill: {synced_cycles} cycles synced for user {user_id} "
         f"(window {start_date} → {end_date or 'now'})"
     )
+
+    # Second pass: retry recovery fetches for records synced without complete
+    # recovery data (rate limits, transient errors). Mirrors sync_whoop_cycles().
+    import asyncio
+
+    missing_recovery_result = await db.execute(
+        select(DailyMetric).where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.source == "whoop",
+            or_(
+                DailyMetric.recovery_score.is_(None),
+                DailyMetric.respiratory_rate.is_(None),
+            ),
+            DailyMetric.raw_data.isnot(None),
+        )
+    )
+    missing_records = list(missing_recovery_result.scalars().all())
+    backfilled = 0
+    for dm in missing_records:
+        if not dm.raw_data:
+            continue
+        cycle_id = dm.raw_data.get("id")
+        if not cycle_id:
+            continue
+        try:
+            recovery = None
+            for _retry in range(3):
+                await asyncio.sleep(0.3)
+                try:
+                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+                    break
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "401" in err_str or "expired" in err_str:
+                        raise ValueError(
+                            "Whoop token is expired. Please reconnect via OAuth in Settings."
+                        )
+                    if "429" in err_str or "rate" in err_str:
+                        logger.warning(
+                            f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
+                        )
+                        await asyncio.sleep(2.0 * (_retry + 1))
+                        continue
+                    raise
+            else:
+                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
+                continue
+
+            if recovery and recovery.get("score_state") == "SCORED":
+                rec_score = recovery.get("score", {})
+                rec_recovery = rec_score.get("recovery_score")
+                rec_hrv = rec_score.get("hrv_rmssd_milli")
+                rec_rhr = rec_score.get("resting_heart_rate")
+                rec_rr = rec_score.get("respiratory_rate")
+                if rec_recovery is not None:
+                    dm.recovery_score = rec_recovery
+                if rec_hrv is not None:
+                    dm.hrv_ms = rec_hrv
+                if rec_rhr is not None:
+                    dm.resting_hr = float(rec_rhr)
+                if rec_rr is not None:
+                    dm.respiratory_rate = rec_rr
+                dm.raw_data = {
+                    **dm.raw_data,
+                    "_recovery": {
+                        "recovery_score": rec_recovery,
+                        "hrv_rmssd_milli": rec_hrv,
+                        "resting_heart_rate": rec_rhr,
+                        "respiratory_rate": rec_rr,
+                    },
+                }
+                backfilled += 1
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
+            continue
+
+    await db.flush()
+    if backfilled:
+        logger.info(
+            f"Whoop backfill: {backfilled} missing recoveries backfilled for user {user_id}"
+        )
 
     # ── 2. Backfill sleep ─────────────────────────────────────────────────
 

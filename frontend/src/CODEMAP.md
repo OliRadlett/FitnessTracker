@@ -29,6 +29,9 @@
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
 | `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes` |
 | `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
+| `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |
+| `nutrition.ts` | `/api/v1/nutrition/` | `createFuelPlan`, `getFuelPlan`, `getFuelPlanForActivity`, `updateFuelPlanActuals`, `deleteFuelPlan` (`types/nutrition.ts`: `RideFuelPlan`, `FuelScheduleEntry`, `CreateFuelPlanPayload`, `FuelActualsUpdatePayload`) |
+| `weather.ts` | `/api/v1/weather/` | `getCurrentWeather`, `getForecast`, `getActivityWeather` — 404 → `null` (no location set / untagged); takes backend JWT explicitly since `apiFetch` can't distinguish 404s (`types/weather.ts`: `CurrentWeather`, `ForecastResponse`, `ForecastDay`, `ActivityWeather`) |
 | `trainingPlans.ts` | `/api/v1/training-plans/` | `fetchPlans`, `createPlan`, `generatePlan` |
 | `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
@@ -63,10 +66,12 @@
 | `PowerCurveTable` | Power duration table |
 | `PowerZonesDisplay` | Power zone horizontal bars |
 | `HRZonesDisplay` | HR zone horizontal bars |
-| `ProfileEditor` | FTP/weight/LTHR editor |
+| `ProfileEditor` | FTP/weight/LTHR + home lat/lng editor (feeds weather location) |
 | `RideAnalysisCard` | Post-ride analysis card |
+| `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
 | `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
+| `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -92,16 +97,24 @@
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
 
+### `dashboard/` — Dashboard tab sections
+| Component | Purpose |
+|-----------|---------|
+| `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
+| `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
+
 ### `training/` — Training plan components
 | Component | Purpose |
 |-----------|---------|
 | `PlanBuilder` | Weekly calendar plan builder |
+| `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
 | `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
 
 ### `lib/` — Shared utilities
 | File | Purpose |
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
+| `utils.ts` | `formatDuration`, `formatDistance`, `weatherEmoji` (conditions → emoji mapping shared by weather UI) |
 
 ## Patterns
 

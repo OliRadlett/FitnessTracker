@@ -24,6 +24,11 @@ class Vo2maxEstimate:
     all_estimates: list[dict]  # individual estimates for transparency
 
 
+def _acsm_vo2max(power_watts: float, weight_kg: float) -> float:
+    """ACSM cycling equation: VO2 (ml/kg/min) = (10.8 × watts / kg) + 7."""
+    return (10.8 * power_watts) / weight_kg + 7.0
+
+
 def _classify_vo2max(vo2max: float) -> str:
     """Classify VO2max value into a fitness category.
 
@@ -52,16 +57,16 @@ async def estimate_vo2max(
     """Estimate VO2max from power and/or heart rate data.
 
     Method 1 (Power-based): Uses ACSM cycling formula:
-        VO2 (L/min) = (10.8 × watts) / body_mass_kg + 7
+        VO2 (ml/kg/min) = (10.8 × watts) / body_mass_kg + 7
         Uses best 5-min power as proxy for VO2max power.
-        Confidence: 0.7 if weight available, 0.5 without weight.
+        Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
 
     Method 2 (HR-based): Uses Uth formula:
         VO2max = 15.3 × (HRmax / HRrest)
         HRmax from max_heartrate on activities, HRrest from daily metrics.
         Confidence: 0.6
 
-    Returns the highest estimate with confidence level, or None if no data.
+    Returns the highest-confidence estimate with confidence level, or None if no data.
     """
     from app.services.cycling.power_curve import compute_power_curve_from_streams
     from app.services.cycling.training_load import get_or_create_cycling_profile
@@ -69,23 +74,22 @@ async def estimate_vo2max(
     estimates: list[tuple[float, float, str]] = []  # (vo2max, confidence, method)
 
     # ── Method 1: Power-based (ACSM) ──────────────────────────────────────
-    # Get best 5-min power from streams
+    # Get best 5-min / 8-min power from streams
     best_power = await compute_power_curve_from_streams(db, user_id, days)
     power_5min = best_power.get(300)
+    power_8min = best_power.get(480)
+
+    # Fetch profile once for all power-based estimates
+    profile: object | None = None
+    weight_kg: float | None = None
+    if (power_5min and power_5min > 0) or (power_8min and power_8min > 0):
+        profile = await get_or_create_cycling_profile(db, user_id)
+        weight_kg = getattr(profile, "weight_kg", None)
 
     if power_5min and power_5min > 0:
-        # Get weight from cycling profile
-        profile = await get_or_create_cycling_profile(db, user_id)
-        weight_kg = profile.weight_kg
-
         if weight_kg and weight_kg > 0:
             w_per_kg = power_5min / weight_kg
-            # ACSM cycling equation: VO2 (L/min) = 10.8 × W / body_mass + 7
-            # Convert to ml/kg/min: multiply by 1000 / body_mass
-            vo2_l_min = (10.8 * power_5min) / weight_kg + 7
-            # Wait — that's already in L/min for a person of that weight.
-            # To get ml/kg/min: (vo2_l_min * 1000) / weight_kg
-            vo2_ml_kg_min = (vo2_l_min * 1000) / weight_kg
+            vo2_ml_kg_min = _acsm_vo2max(power_5min, weight_kg)
 
             # Sanity check: VO2max between 20-90 ml/kg/min
             if 20 <= vo2_ml_kg_min <= 90:
@@ -99,10 +103,7 @@ async def estimate_vo2max(
         else:
             # Without weight, estimate from power alone using typical weight assumptions
             # Use 75kg as default — very rough
-            default_weight = 75.0
-            w_per_kg = power_5min / default_weight
-            vo2_l_min = (10.8 * power_5min) / default_weight + 7
-            vo2_ml_kg_min = (vo2_l_min * 1000) / default_weight
+            vo2_ml_kg_min = _acsm_vo2max(power_5min, 75.0)
             if 20 <= vo2_ml_kg_min <= 90:
                 estimates.append(
                     (
@@ -113,21 +114,16 @@ async def estimate_vo2max(
                 )
 
     # Also try best 8-min power as a secondary signal
-    power_8min = best_power.get(480)
-    if power_8min and power_8min > 0:
-        profile = await get_or_create_cycling_profile(db, user_id)
-        weight_kg = profile.weight_kg
-        if weight_kg and weight_kg > 0:
-            vo2_l_min = (10.8 * power_8min) / weight_kg + 7
-            vo2_ml_kg_min = (vo2_l_min * 1000) / weight_kg
-            if 20 <= vo2_ml_kg_min <= 90:
-                estimates.append(
-                    (
-                        round(vo2_ml_kg_min, 1),
-                        0.6,
-                        f"ACSM power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
-                    )
+    if power_8min and power_8min > 0 and weight_kg and weight_kg > 0:
+        vo2_ml_kg_min = _acsm_vo2max(power_8min, weight_kg)
+        if 20 <= vo2_ml_kg_min <= 90:
+            estimates.append(
+                (
+                    round(vo2_ml_kg_min, 1),
+                    0.6,
+                    f"ACSM power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
                 )
+            )
 
     # ── Method 2: HR-based (Uth formula) ──────────────────────────────────
     # HRmax: get the highest max_heartrate from recent activities
@@ -168,8 +164,9 @@ async def estimate_vo2max(
     if not estimates:
         return None
 
-    # Return the highest estimate
-    best = max(estimates, key=lambda e: e[0])
+    # Prefer the most reliable estimate (highest confidence); break ties by value.
+    # Picking purely by value biases the result upward via low-confidence methods.
+    best = max(estimates, key=lambda e: (e[1], e[0]))
     all_dicts = [
         {"vo2max": round(v, 1), "confidence": round(c, 2), "method": m}
         for v, c, m in estimates
@@ -196,6 +193,9 @@ async def compute_vo2max_history(
 
     today = date.today()
     history = []
+
+    profile = await get_or_create_cycling_profile(db, user_id)
+    profile_weight = getattr(profile, "weight_kg", None)
 
     for i in range(months, 0, -1):
         month_date = today.replace(day=1) - timedelta(days=(i - 1) * 30)
@@ -250,10 +250,12 @@ async def compute_vo2max_history(
         if best_5min <= 0:
             continue
 
-        profile = await get_or_create_cycling_profile(db, user_id)
-        weight_kg = profile.weight_kg or 75.0
-        vo2_l_min = (10.8 * best_5min) / weight_kg + 7
-        vo2_ml_kg_min = (vo2_l_min * 1000) / weight_kg
+        weight_kg = profile_weight
+        weight_defaulted = False
+        if not weight_kg or weight_kg <= 0:
+            weight_kg = 75.0
+            weight_defaulted = True
+        vo2_ml_kg_min = _acsm_vo2max(best_5min, weight_kg)
 
         if 20 <= vo2_ml_kg_min <= 90:
             history.append(
@@ -261,6 +263,7 @@ async def compute_vo2max_history(
                     "date": month_date,
                     "vo2max": round(vo2_ml_kg_min, 1),
                     "method": "power",
+                    "weight_defaulted": weight_defaulted,
                 }
             )
 
