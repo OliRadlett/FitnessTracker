@@ -45,7 +45,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
- 
+
       - name: Extract metadata for backend
         id: meta-backend
         uses: docker/metadata-action@v5
@@ -104,7 +104,7 @@ jobs:
           labels: ${{ steps.meta-worker.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
- 
+
   deploy:
     name: Deploy to DigitalOcean
     runs-on: ubuntu-latest
@@ -149,10 +149,15 @@ jobs:
             }
 
             ${DEPLOY_DOMAIN} {
-                handle /fittrack/* {
+                handle /fittrack* {
                     reverse_proxy frontend:3000
                 }
-                handle /api/v1/* {
+
+                # NextAuth error redirects omit basePath — catch and redirect (BUG-046)
+                @nextauth path /api/auth /api/auth/*
+                redir @nextauth /fittrack{uri} permanent
+
+                handle /api/v1* {
                     reverse_proxy backend:8000
                 }
                 handle /health {
@@ -173,6 +178,9 @@ jobs:
 
             echo "▸ Pulling pre-built images…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+
+            echo "▸ Verifying frontend image contains server.js…"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --entrypoint "" frontend test -f /app/server.js
 
             echo "▸ Stopping services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down --timeout 30
