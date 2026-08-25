@@ -36,10 +36,20 @@ interface StepperProps {
   onChange: (v: number) => void;
   step: number;
   min?: number;
-  decimals?: number;
 }
 
-function Stepper({ label, value, onChange, step, min = 0, decimals = 1 }: StepperProps) {
+function Stepper({ label, value, onChange, step, min = 0 }: StepperProps) {
+  // Draft buffer holds raw keystrokes while editing so intermediate states
+  // ("7", "72.", "0.") survive without being parsed away; commits happen on
+  // every parseable prefix so LOG SET always uses what's on screen.
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (raw: string) => {
+    const parsed = parseFloat(raw.replace(',', '.'));
+    if (!Number.isNaN(parsed)) onChange(Math.max(min, parsed));
+    setDraft(null);
+  };
+
   return (
     <div className="flex-1">
       <p className="text-xs uppercase tracking-wider text-muted mb-1.5 text-center">{label}</p>
@@ -47,7 +57,10 @@ function Stepper({ label, value, onChange, step, min = 0, decimals = 1 }: Steppe
         <button
           type="button"
           aria-label={`Decrease ${label}`}
-          onClick={() => onChange(Math.max(min, +(value - step).toFixed(2)))}
+          onClick={() => {
+            setDraft(null);
+            onChange(Math.max(min, +(value - step).toFixed(2)));
+          }}
           className="w-14 min-h-[56px] rounded-xl bg-surface-light text-white text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
         >
           −
@@ -55,17 +68,29 @@ function Stepper({ label, value, onChange, step, min = 0, decimals = 1 }: Steppe
         <input
           type="text"
           inputMode="decimal"
-          value={value}
+          value={draft ?? String(value)}
           onChange={(e) => {
-            const parsed = parseFloat(e.target.value.replace(',', '.'));
+            const raw = e.target.value;
+            setDraft(raw);
+            const parsed = parseFloat(raw.replace(',', '.'));
             if (!Number.isNaN(parsed)) onChange(Math.max(min, parsed));
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
           }}
           className="flex-1 min-h-[56px] w-full text-center bg-surface-light border border-surface-light/50 rounded-xl text-white text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           type="button"
           aria-label={`Increase ${label}`}
-          onClick={() => onChange(+(value + step).toFixed(2))}
+          onClick={() => {
+            setDraft(null);
+            onChange(+(value + step).toFixed(2));
+          }}
           className="w-14 min-h-[56px] rounded-xl bg-surface-light text-white text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
         >
           +
@@ -358,7 +383,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             step={stepSize}
             min={0}
           />
-          <Stepper label="Reps" value={reps} onChange={(v) => setReps(Math.max(1, Math.round(v)))} step={1} min={1} decimals={0} />
+          <Stepper label="Reps" value={reps} onChange={(v) => setReps(Math.max(1, Math.round(v)))} step={1} min={1} />
 
           <div className="flex items-center justify-between gap-2">
             <button

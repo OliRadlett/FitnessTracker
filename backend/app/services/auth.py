@@ -18,7 +18,7 @@ settings = get_settings()
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
 
 def create_access_token(user_id: uuid.UUID) -> str:

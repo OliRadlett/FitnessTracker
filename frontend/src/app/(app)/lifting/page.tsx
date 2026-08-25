@@ -37,6 +37,22 @@ import { DeficiencyCard } from '@/components/dashboard/DeficiencyCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** "17:02 – 18:15 · 1h 13m" for live-tracked sessions, or "" when times are absent */
+function formatSessionTimeRange(startedAt?: string | null, endedAt?: string | null, durationSeconds?: number | null): string {
+  if (!startedAt) return '';
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let range = fmt(startedAt);
+  if (endedAt) range += ` – ${fmt(endedAt)}`;
+  const duration =
+    durationSeconds ??
+    (endedAt
+      ? Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000))
+      : null);
+  if (duration && duration > 0) range += ` · ${formatDuration(duration)}`;
+  return range;
+}
+
 function buildVolumeChart(volumeData: VolumeTrendPoint[]): ChartData {
   return {
     chart_type: 'bar' as const,
@@ -491,6 +507,11 @@ export default function LiftingPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString()}</p>
+                    {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds) && (
+                      <p className="text-xs text-muted">
+                        🕐 {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds)}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-purple-400">{session.sets?.length ?? 0} sets</p>
@@ -522,6 +543,8 @@ export default function LiftingPage() {
                     <CardTitle>{sessionDetail.focus || 'Session Detail'}</CardTitle>
                     <p className="text-sm text-muted mt-1">
                       {new Date(sessionDetail.session_date).toLocaleDateString()}
+                      {formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds) &&
+                        ` · 🕐 ${formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds)}`}
                       {sessionDetail.notes && ` · ${sessionDetail.notes}`}
                     </p>
                   </div>

@@ -58,6 +58,19 @@ async def create_session(
     user_id: uuid.UUID,
     data: LiftingSessionCreate,
 ) -> LiftingSession:
+    # Idempotent creation from the live tracker: a retry or concurrent flush
+    # carrying the same live_key collapses onto the already-created session.
+    if data.live_key:
+        result = await db.execute(
+            select(LiftingSession).where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.live_key == data.live_key,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return await get_session(db, existing.id, user_id)  # type: ignore[return-value]
+
     session = LiftingSession(
         user_id=user_id,
         session_date=data.session_date,
@@ -67,6 +80,7 @@ async def create_session(
         rpe_session=data.rpe_session,
         notes=data.notes,
         started_at=data.started_at,
+        live_key=data.live_key,
     )
     db.add(session)
     await db.flush()
@@ -83,6 +97,7 @@ async def create_session(
             is_warmup=s.is_warmup,
             is_amrap=s.is_amrap,
             notes=s.notes,
+            client_id=s.client_id,
         )
         db.add(lifting_set)
 
@@ -324,6 +339,19 @@ async def add_set(
     if not session:
         return None
 
+    # Idempotent logging from the live tracker: a retry after a lost response
+    # returns the already-created set instead of duplicating it.
+    if data.client_id:
+        result = await db.execute(
+            select(LiftingSet).where(
+                LiftingSet.session_id == session_id,
+                LiftingSet.client_id == data.client_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return existing
+
     # Normalise exercise name
     normalised_name = normalise_exercise_name(data.exercise_name)
 
@@ -337,6 +365,7 @@ async def add_set(
         is_warmup=data.is_warmup,
         is_amrap=data.is_amrap,
         notes=data.notes,
+        client_id=data.client_id,
     )
     db.add(lifting_set)
 

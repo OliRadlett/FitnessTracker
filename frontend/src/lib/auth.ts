@@ -24,8 +24,29 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
   interface JWT {
     backendToken?: string;
+    /** Remembered from sign-in so silent refreshes can re-sync without `account` */
+    authProvider?: string;
+    authProviderId?: string;
+    backendSyncAttemptedAt?: number;
   }
 }
+
+/** Decode the `exp` claim from a backend JWT without verifying it. */
+function backendTokenExpiry(token?: string): number | null {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(
+      atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+    );
+    return typeof payload.exp === 'number' ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+// Refresh the backend token when it is missing, undecodable, or expiring soon.
+const REFRESH_MARGIN_S = 3 * 24 * 60 * 60; // refresh when <3 days remain
+const SYNC_RETRY_BACKOFF_S = 60 * 60; // at most one sync attempt per hour
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -53,7 +74,31 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account }: { token: JWT; account?: { provider: string; providerAccountId: string } | null }) {
       // On initial sign-in, sync user with backend and get a JWT.
       // The `account` param is only present on the first call after sign-in.
-      if (account && token.email) {
+      const nowS = Math.floor(Date.now() / 1000);
+      const lastAttempt = token.backendSyncAttemptedAt ?? 0;
+      const exp = backendTokenExpiry(token.backendToken);
+
+      if (account) {
+        token.authProvider = account.provider;
+        token.authProviderId = account.providerAccountId;
+      }
+      const provider = account?.provider ?? token.authProvider;
+      const providerUserId = account?.providerAccountId ?? token.authProviderId;
+
+      // The backend token outlives nothing — once it nears expiry every API
+      // call 401s and the user is forced to re-login. Silently mint a fresh
+      // one while the NextAuth session (30d) is still alive. Backoff keeps a
+      // failing backend from being hammered on every session check.
+      const needsRefresh =
+        !token.backendToken || exp === null || exp - nowS < REFRESH_MARGIN_S;
+      const canSync = Boolean(token.email && provider && providerUserId);
+
+      const shouldSync =
+        (account && canSync) ||
+        (needsRefresh && canSync && nowS - lastAttempt > SYNC_RETRY_BACKOFF_S);
+
+      if (shouldSync) {
+        if (!account) token.backendSyncAttemptedAt = nowS;
         try {
           const res = await fetch(`${API_BASE_URL}/api/v1/auth/sync-user`, {
             method: 'POST',
@@ -68,8 +113,8 @@ export const authOptions: NextAuthOptions = {
               email: token.email,
               name: token.name || '',
               avatar_url: token.picture || null,
-              provider: account.provider,
-              provider_user_id: account.providerAccountId,
+              provider,
+              provider_user_id: providerUserId,
             }),
           });
 

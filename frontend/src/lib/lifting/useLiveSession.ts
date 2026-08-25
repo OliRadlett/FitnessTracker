@@ -29,6 +29,8 @@ export interface LoggedSet {
 export interface LiveSessionState {
   phase: 'active' | 'finishing';
   sessionId: string | null;
+  /** Stable id generated at start — makes session creation idempotent server-side */
+  liveKey: string;
   startedAt: string;
   programName?: string;
   focus?: string;
@@ -56,10 +58,45 @@ function loadState(): LiveSessionState | null {
     if (!raw) return null;
     const state = JSON.parse(raw) as LiveSessionState;
     if (!state || typeof state.startedAt !== 'string') return null;
+    // States persisted before idempotency keys existed get one retroactively
+    if (!state.liveKey) state.liveKey = newClientId();
     return state;
   } catch {
     return null;
   }
+}
+
+/**
+ * Merge flush-progress (`working`, snapshotted when the flush began) into the
+ * freshest storage state. Logging a set while a request is in flight (or from
+ * another tab) mutates storage directly; saving `working` alone would clobber
+ * those mutations. Sync progress always wins for remoteIds; user data wins
+ * from storage.
+ */
+function mergeWithStorage(working: LiveSessionState): LiveSessionState {
+  const stored = loadState();
+  if (!stored || stored.startedAt !== working.startedAt) return working;
+
+  const workingById = new Map(working.sets.map((s) => [s.clientId, s]));
+  // Newest set data from storage; overlay any remoteId learned during the flush
+  const sets = stored.sets.map((s) => {
+    const w = workingById.get(s.clientId);
+    if (!w) return s;
+    return w.remoteId && !s.remoteId ? { ...s, remoteId: w.remoteId } : s;
+  });
+  // Sets the flush snapshot knew about but storage lost (defensive — should not happen)
+  for (const w of working.sets) {
+    if (!sets.some((s) => s.clientId === w.clientId)) sets.push(w);
+  }
+
+  return {
+    ...stored,
+    sessionId: working.sessionId ?? stored.sessionId,
+    sets,
+    pendingDeletes: Array.from(
+      new Set([...working.pendingDeletes, ...stored.pendingDeletes])
+    ),
+  };
 }
 
 function saveState(state: LiveSessionState | null) {
@@ -89,6 +126,7 @@ function toPayload(set: LoggedSet): AddSetPayload {
     rpe: set.rpe,
     is_warmup: set.is_warmup,
     is_amrap: set.is_amrap,
+    client_id: set.clientId,
   };
 }
 
@@ -130,6 +168,14 @@ export function useLiveSession(authFetch: AuthFetch) {
     syncingRef.current = true;
 
     let working = current;
+    // Fold sync progress into the freshest storage state (which may have been
+    // mutated mid-flight) and mirror it into React state. The extra spread
+    // guarantees a new reference so setState always re-renders.
+    const commit = () => {
+      working = { ...mergeWithStorage(working) };
+      setState(working);
+      saveState(working);
+    };
     try {
       // Step 1: create remote session if needed
       if (!working.sessionId) {
@@ -145,28 +191,30 @@ export function useLiveSession(authFetch: AuthFetch) {
           program_name: working.programName,
           focus: working.focus,
           started_at: working.startedAt,
+          live_key: working.liveKey,
           sets: working.sets.filter((s) => !s.remoteId).map(toPayload),
         });
-        working = {
-          ...working,
-          sessionId: created.id,
-          sets: working.sets.map((s) => ({ ...s, remoteId: s.remoteId ?? 'synced' })),
-        };
-        saveState(working);
+        // Map real remote ids via the echoed client_ids — never fake markers,
+        // so undoing one of these sets deletes it remotely. If the server had
+        // already created this session (retry/duplicate flush), the deduped
+        // response includes those sets too and they resolve here instead of
+        // being re-created.
+        for (const s of working.sets) {
+          if (!s.remoteId) {
+            s.remoteId = created.sets.find((r) => r.client_id === s.clientId)?.id ?? null;
+          }
+        }
+        commit();
       }
 
-      // Step 2: push unsynced sets individually
+      // Step 2: push unsynced sets individually (idempotent via client_id)
       const unsynced = working.sets.filter((s) => !s.remoteId);
       for (const set of unsynced) {
         try {
           const remote = await addSetToSession(authFetch, working.sessionId!, toPayload(set));
-          working = {
-            ...working,
-            sets: working.sets.map((s) =>
-              s.clientId === set.clientId ? { ...s, remoteId: remote.id } : s
-            ),
-          };
-          saveState(working);
+          const target = working.sets.find((s) => s.clientId === set.clientId);
+          if (target && !target.remoteId) target.remoteId = remote.id;
+          commit();
         } catch {
           throw new Error('add-set-failed');
         }
@@ -175,11 +223,8 @@ export function useLiveSession(authFetch: AuthFetch) {
       // Step 3: push pending deletes
       for (const remoteId of [...working.pendingDeletes]) {
         await deleteLiftingSet(authFetch, remoteId);
-        working = {
-          ...working,
-          pendingDeletes: working.pendingDeletes.filter((id) => id !== remoteId),
-        };
-        saveState(working);
+        working.pendingDeletes = working.pendingDeletes.filter((id) => id !== remoteId);
+        commit();
       }
 
       // Step 4: finish flow
@@ -242,6 +287,7 @@ export function useLiveSession(authFetch: AuthFetch) {
       const fresh: LiveSessionState = {
         phase: 'active',
         sessionId: null,
+        liveKey: newClientId(),
         startedAt: new Date().toISOString(),
         programName: opts.programName || undefined,
         focus: opts.focus || undefined,

@@ -36,6 +36,7 @@ export interface LiftingSet {
   is_warmup: boolean;
   is_amrap: boolean;
   notes?: string;
+  client_id?: string | null;
 }
 
 export interface PersonalRecord {
@@ -131,6 +132,7 @@ export interface CreateSessionPayload {
   rpe_session?: number;
   notes?: string;
   started_at?: string;
+  live_key?: string;
   sets?: AddSetPayload[];
 }
 
@@ -143,6 +145,7 @@ export interface AddSetPayload {
   is_warmup?: boolean;
   is_amrap?: boolean;
   notes?: string;
+  client_id?: string;
 }
 
 // ─── Session Analysis ──────────────────────────────────────────────────────

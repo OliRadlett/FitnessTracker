@@ -166,6 +166,8 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
 16. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
 17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
+18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
+19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
 
 ## Development Lessons
 

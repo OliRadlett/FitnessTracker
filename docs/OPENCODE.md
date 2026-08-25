@@ -314,6 +314,38 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 4. Plugin adds `"docker build *": "allow"` to config
 5. Next time, no prompt
 
+### `agent-progress`
+**Purpose**: Live progress snapshot of the running agent in the TUI sidebar.
+**Location**: `.opencode/plugins/agent-progress.tsx` (TUI plugin — separate target from server plugins; a single module can't be both)
+**Registered in**: `tui.json` under `"plugin": [...]` (required — the auto-glob only picks up `*.ts`/`*.js`, not `.tsx`)
+**Requires**: opencode >= 1.18.x (validated on 1.18.23). Uses the **undocumented TUI plugin API** (`@opencode-ai/plugin/tui`) — may break on opencode upgrades.
+**What it shows** (in the right sidebar, between Context and LSP):
+- Status line: working / idle / retrying / compacting
+- Running tool calls with titles (`◆ edit: backend/app/api/goals.py`)
+- Todo counter (`✓ 3/7 steps · current item`)
+- Latest assistant text/reasoning snippet
+- Warning line when a permission/question is awaiting input
+
+**How it works**:
+1. Registers a component into the `sidebar_content` slot via `api.slots.register({ order: 200, slots: {...} })`
+2. Reads reactive state from `api.state.session.{messages,status,todo,permission,question}` — no polling; Solid signals re-render automatically
+3. Renders nothing on fresh/empty sessions to avoid sidebar noise
+
+**Implementation notes**:
+- The host Babel-transforms external `.tsx` plugins with `babel-preset-solid` and aliases bare `solid-js` / `@opentui/solid` imports to its bundled copies — no local node_modules or tsconfig needed
+- Degrades silently if the API surface moves (feature-detects `api.slots`/`api.state`)
+- Tuning constants at top of file: snippet length, action title length, max shown tools
+
+### `agent-waiting`
+**Purpose**: Shows OTHER sessions (incl. subagents) blocked waiting for user input.
+**Location**: `.opencode/plugins/agent-waiting.tsx` (TUI plugin)
+**Registered in**: `tui.json` under `"plugin": [...]`
+**What it shows**: A `Waiting N` block at the top of the sidebar (order 50, above Context) listing each blocked session with `⚠` (permission) or `?` (question) markers; click a row to switch to that session via `client.tui.selectSession`.
+**How it works**:
+1. Discovers sessions via `client.session.list()`, filters by non-empty `state.session.permission(id)` / `state.session.question(id)`
+2. Reconciles instantly on `permission.*` / `question.*` / `session.*` bus events (`api.event.on`), plus a 20s safety interval
+3. Hides rows for the displayed session (its blockers already show in the Progress widget)
+
 ---
 
 ## Workflows
@@ -509,6 +541,12 @@ I need to debug a production issue. @ssh-production-debugger guide me through th
 - Verify `tui.json` has `attention.enabled: true`
 - Check Windows notification settings
 
+### Progress widget missing from sidebar
+- Restart opencode (plugins load once at startup)
+- Check `tui.json` still contains `"plugin": ["./.opencode/plugins/agent-progress.tsx"]`
+- Widget only renders after the first exchange in a session
+- If it vanished after an opencode upgrade: the TUI plugin API is undocumented and may have changed — see `.opencode/plugins/agent-progress.tsx` header notes
+
 ### Session list not showing all sessions
 - Use `Ctrl+X L` to open session list
 - Sessions are sorted by most recent
@@ -548,8 +586,10 @@ fitness-tracker/
 │   │   ├── add-chart/
 │   │   ├── add-integration/
 │   │   └── ssh-production-debugger/
-│   └── plugins/               # 1 plugin
-│       └── permission-promoter.js
+│   └── plugins/               # 3 plugins
+│       ├── permission-promoter.js
+│       ├── agent-progress.tsx
+│       └── agent-waiting.tsx
 └── docs/
     └── OPENCODE.md            # This file
 ```

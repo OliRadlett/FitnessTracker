@@ -33,6 +33,46 @@ def _make_json_serializable(obj):
     return obj
 
 
+async def _big_lift_pbs(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """All-time best estimated-1RM PR per big lift, with the date achieved.
+
+    Gives the LLM historical strength context even when the PBs are months old
+    (recent_prs only covers the last 4 weeks).
+    """
+    from app.services.exercise_db import BIG_3_ORDER
+
+    result = await db.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == user_id,
+            PersonalRecord.exercise_name.in_(BIG_3_ORDER),
+            PersonalRecord.record_type == "1rm",
+            PersonalRecord.estimated_1rm.isnot(None),
+        )
+    )
+    best: dict[str, PersonalRecord] = {}
+    for pr in result.scalars().all():
+        current = best.get(pr.exercise_name)
+        if current is None or (pr.estimated_1rm or 0) > (current.estimated_1rm or 0):
+            best[pr.exercise_name] = pr
+
+    pbs = []
+    for lift in BIG_3_ORDER:
+        pr = best.get(lift)
+        if pr is not None:
+            pbs.append(
+                {
+                    "exercise": pr.exercise_name,
+                    "weight_kg": pr.weight_kg,
+                    "reps": pr.reps,
+                    "estimated_1rm": round(pr.estimated_1rm, 1)
+                    if pr.estimated_1rm is not None
+                    else None,
+                    "date_achieved": str(pr.achieved_date),
+                }
+            )
+    return pbs
+
+
 async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """Compile a comprehensive JSON payload of the user's cycling stats for the last 4 weeks.
 
@@ -221,6 +261,13 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     except Exception as e:
         logger.warning("Failed to get recent PRs: %s", e)
         stats["recent_prs"] = []
+
+    # 7b. All-time big-lift PBs (historical strength context, any age)
+    try:
+        stats["big_lift_pbs"] = await _big_lift_pbs(db, user_id)
+    except Exception as e:
+        logger.warning("Failed to get big lift PBs: %s", e)
+        stats["big_lift_pbs"] = []
 
     # 8. Decoupling trends
     try:
@@ -522,6 +569,7 @@ Provide your analysis in the following structure:
 - How does lifting volume complement or interfere with cycling?
 - Are there signs of interference effect from dual-sport training?
 - Recommendations for balancing strength and endurance work
+- Reference big_lift_pbs (all-time best estimated 1RMs with dates achieved) as strength context, even if those PBs are months old — comment on whether recent lifting work is consistent with maintaining/building that strength
 
 ### Health & Wellness
 - Sleep quality and consistency trends
@@ -1072,6 +1120,13 @@ async def compile_lifting_session_context(
         logger.warning("Failed to get PRs for lifting context: %s", e)
         lifting_context["personal_records"] = {}
 
+    # All-time big-lift PBs (historical strength context, any age)
+    try:
+        lifting_context["big_lift_pbs"] = await _big_lift_pbs(db, user_id)
+    except Exception as e:
+        logger.warning("Failed to get big lift PBs for lifting context: %s", e)
+        lifting_context["big_lift_pbs"] = []
+
     # Volume trends (last 8 weeks)
     try:
         from app.services.lifting import get_volume_trends
@@ -1175,6 +1230,7 @@ Provide a detailed analysis of THIS specific lifting session in the following st
 - How close were the top sets to personal records?
 - Are there any exercises approaching a PR breakthrough?
 - Should the athlete attempt PRs soon or focus on volume?
+- Reference big_lift_pbs (all-time best estimated 1RMs with dates achieved) as strength context, even if those PBs are old — e.g. how current performance compares to the athlete's best squat/bench/deadlift
 
 ### Progressive Overload Assessment
 - How does this session compare to recent sessions for the same exercises?

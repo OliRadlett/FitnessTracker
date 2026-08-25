@@ -41,6 +41,9 @@ class LiftingSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Client-generated key for idempotent live-session creation (retries and
+    # concurrent flushes collapse onto the same session). NULL = manual session.
+    live_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Whoop workout enrichment via time-overlap match (sync_whoop_workouts)
     whoop_strain: Mapped[float | None] = mapped_column(Float, nullable=True)
     whoop_avg_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -86,6 +89,8 @@ class LiftingSet(Base):
     is_warmup: Mapped[bool] = mapped_column(Boolean, default=False)
     is_amrap: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Client-generated id for idempotent live-sync set logging. NULL = manual entry.
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

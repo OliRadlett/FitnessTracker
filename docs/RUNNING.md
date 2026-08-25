@@ -72,6 +72,9 @@ Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
 - `integration` — requires real PostgreSQL; the integration conftest creates its own test database (override via `TEST_DATABASE_URL` env var). Transactional rollback per test.
 - `cheap` / `expensive` / `smoke` — speed tiers for filtering.
 
+⚠️ Dev compose mounts only `backend/app` + `backend/alembic` — `tests/` is baked into the image, so container runs use stale tests after edits (see AGENTS.md pitfall #19). Run from the host instead:
+`$env:TEST_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"; python -m pytest backend/tests/ -q`
+
 pytest config: `asyncio_mode = "auto"` — async test functions need no decorator.
 
 Or use the OpenCode command: `/test` runs both suites.

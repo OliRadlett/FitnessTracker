@@ -68,12 +68,14 @@ function formatSeriesForChart(data: ChartData) {
     }));
   }
 
-  // Build chart data from labels + series data arrays
+  // Build chart data from labels + series data arrays.
+  // Missing points become null (not 0): lines stop after their last real
+  // value instead of plunging to zero, bars simply don't render.
   const labels = data.labels ?? [];
   return labels.map((label, i) => {
-    const point: Record<string, string | number> = { x: label };
+    const point: Record<string, string | number | null> = { x: label };
     data.series.forEach((s) => {
-      point[s.name] = s.data[i] ?? 0;
+      point[s.name] = s.data[i] ?? null;
     });
     return point;
   });

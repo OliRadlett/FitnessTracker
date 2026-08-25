@@ -6,7 +6,7 @@
 |------|-------------|
 | `auth.py` | `UserRead`, `OAuthConnectionRead`, `TokenPayload`, `AuthResponse` |
 | `activity.py` | `ActivityCreate/Read`, `ActivitySourceRead`, `ActivityStreamRead`, `LinkedLiftingSessionSummary`, `ActivityCalendarEntry`, `RideAnalysisResponse` |
-| `lifting.py` | `Session/Set Create/Read/Update`, `PersonalRecordCreate/Read`, `VolumeTrend`, `LinkActivity`, `LiftingAnalysisResponse` |
+| `lifting.py` | `Session/Set Create/Read/Update`, `PersonalRecordCreate/Read`, `VolumeTrend`, `LinkActivity`, `LiftingAnalysisResponse`. Live-sync fields: `LiftingSetCreate.client_id`, `LiftingSetRead.client_id`, `LiftingSessionCreate.live_key` |
 | `route.py` | `RouteRead/Summary/Create/Update`, `RouteSourceRead`, `MergeRequest`, `RouteHistoryResponse`, `RouteHistoryRide`, `RouteHistoryPersonalBest` |
 | `cycling.py` | `CyclingProfileRead/Update`, `FtpHistoryRead/Create`, `TrainingLoad`, `PowerCurve`, `PowerZones`, `CyclingMetricsSummary` |
 | `dashboard.py` | `DashboardSummary`, `WeeklyReport`, `RestDaySuggestion`, `TodaySummary`, `TodayActivitySummary`, `TodayLiftingSummary` |

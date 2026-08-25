@@ -18,7 +18,10 @@ class LiftingSetBase(BaseModel):
 
 
 class LiftingSetCreate(LiftingSetBase):
-    pass
+    """Optional client_id enables idempotent logging from the live tracker
+    (retries with the same client_id return the existing row)."""
+
+    client_id: str | None = None
 
 
 class LiftingSetUpdate(BaseModel):
@@ -35,6 +38,7 @@ class LiftingSetUpdate(BaseModel):
 class LiftingSetRead(LiftingSetBase):
     id: uuid.UUID
     session_id: uuid.UUID
+    client_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +58,8 @@ class LiftingSessionBase(BaseModel):
 class LiftingSessionCreate(LiftingSessionBase):
     sets: list[LiftingSetCreate] = []
     started_at: datetime | None = None
+    """Optional client-generated key for idempotent live-session creation."""
+    live_key: str | None = None
 
 
 class LiftingSessionUpdate(BaseModel):
