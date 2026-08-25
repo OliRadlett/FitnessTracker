@@ -429,7 +429,7 @@ export function WorkoutPlanner() {
             <label className="text-xs text-muted font-medium uppercase tracking-wider mb-2 block">
               Intensity Zone
             </label>
-            <div className="grid grid-cols-5 gap-1">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1">
               {zonesData.zones.map((z) => {
                 const isRecommended = readiness
                   ? parseInt(z.zone.slice(1)) <= parseInt(readiness.recommended_max_zone.slice(1))
@@ -460,7 +460,7 @@ export function WorkoutPlanner() {
             <label className="text-xs text-muted font-medium uppercase tracking-wider mb-2 block">
               Duration
             </label>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
               {DURATION_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}

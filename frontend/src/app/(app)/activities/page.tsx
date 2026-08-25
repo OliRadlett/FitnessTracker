@@ -18,6 +18,7 @@ const RouteMap = dynamic(
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Chart } from '@/components/charts/Chart';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -203,7 +204,7 @@ function ActivityCard({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-6 text-right">
+        <div className="flex items-center flex-wrap gap-6 text-right">
           {!isStrength && activity.distance_meters && (
             <div>
               <p className="text-sm text-slate-300">{fmtDistance(activity.distance_meters)}</p>
@@ -492,24 +493,8 @@ function CompareActivitiesModal({
   }, [activityA, activityB]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface border border-surface-light rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Compare Activities</h2>
-          <button
-            onClick={onClose}
-            className="text-muted hover:text-white transition-colors text-2xl leading-none"
-            aria-label="Close"
-          >
-            {'\u2715'}
-          </button>
-        </div>
+    <Modal open onClose={onClose} size="xl" aria-label="Compare Activities">
+      <ModalHeader title="Compare Activities" onClose={onClose} />
 
         {/* Activity names */}
         <div className="grid grid-cols-2 gap-4 mb-6">
@@ -578,8 +563,7 @@ function CompareActivitiesModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

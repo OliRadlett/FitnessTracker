@@ -47,7 +47,7 @@ export function DecouplingSection({ decoupling, chartDecouplingTrend }: Decoupli
               No decoupling chart data available
             </div>
           )}
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-muted">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-500"></span> {'<'}5% Excellent
             </div>

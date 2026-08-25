@@ -162,7 +162,8 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
           ) : (
             /* Components table */
             data.components.length > 0 && (
-              <table className="w-full text-[10px] text-muted">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px] text-muted">
                 <thead>
                   <tr className="text-left">
                     <th className="font-medium">Metric</th>
@@ -198,6 +199,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
                   ))}
                 </tbody>
               </table>
+              </div>
             )
           )}
 

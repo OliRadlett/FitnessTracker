@@ -8,6 +8,7 @@ import {
   getPersonalRecords,
   getWarmupTemplates,
 } from '@/lib/api';
+import { useAuthFetch } from '@/lib/api/fetch';
 import type { WarmupTemplate } from '@/lib/api/types';
 import { LiveWorkout } from '@/components/lifting/LiveWorkout';
 import {
@@ -21,11 +22,12 @@ const FOCUS_OPTIONS = ['squat', 'bench', 'deadlift', 'overhead_press', 'accessor
 
 export default function LiveLiftPage() {
   const live = useLiveSession();
+  const { authFetch } = useAuthFetch();
 
   // Reference data for prefill / last-session lines
   const { data: sessions } = useQuery({
     queryKey: ['lifting-sessions'],
-    queryFn: getLiftingSessions,
+    queryFn: () => getLiftingSessions(authFetch),
     staleTime: 60_000,
   });
   const { data: prs } = useQuery({
@@ -318,7 +320,7 @@ function FinishSheet({
       <div className="bg-surface rounded-t-2xl border-t border-surface-light/50 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
         <h2 className="text-lg font-bold text-white">Session summary</h2>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
           <div className="bg-surface-light/50 rounded-xl py-3">
             <p className="text-xl font-bold text-white">{formatDuration(durationSeconds)}</p>
             <p className="text-xs text-muted">Duration</p>

@@ -170,19 +170,19 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
 
       {/* Set rows */}
       <div className="space-y-2">
-        <div className="grid grid-cols-12 gap-2 text-xs text-muted font-medium px-1">
-          <div className="col-span-1">Set</div>
-          <div className="col-span-3">Weight (kg)</div>
-          <div className="col-span-2">Reps</div>
-          <div className="col-span-2">RPE</div>
-          <div className="col-span-3">Flags</div>
-          <div className="col-span-1"></div>
+        <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 text-xs text-muted font-medium px-1">
+          <div className="col-span-2 sm:col-span-1">Set</div>
+          <div className="sm:col-span-3">Weight (kg)</div>
+          <div className="sm:col-span-2">Reps</div>
+          <div className="sm:col-span-2">RPE</div>
+          <div className="sm:col-span-3">Flags</div>
+          <div className="col-span-2 sm:col-span-1"></div>
         </div>
 
         {sets.map((set, index) => (
-          <div key={index} className="grid grid-cols-12 gap-2 items-center">
-            <div className="col-span-1 text-sm text-muted text-center">{index + 1}</div>
-            <div className="col-span-3">
+          <div key={index} className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center">
+            <div className="col-span-2 sm:col-span-1 text-sm text-muted text-center">{index + 1}</div>
+            <div className="sm:col-span-3">
               <input
                 type="number"
                 step="0.5"
@@ -193,7 +193,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <input
                 type="number"
                 min="0"
@@ -203,7 +203,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <input
                 type="number"
                 step="0.5"
@@ -215,7 +215,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div className="col-span-3 flex items-center gap-2">
+            <div className="sm:col-span-3 flex items-center gap-2">
               <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                 <input
                   type="checkbox"
@@ -235,7 +235,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 AMRAP
               </label>
             </div>
-            <div className="col-span-1 flex justify-center">
+            <div className="col-span-2 sm:col-span-1 flex justify-center">
               {sets.length > 1 && (
                 <button
                   type="button"

@@ -19,6 +19,7 @@ import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 import { formatDuration } from '@/lib/utils';
 import { decodePolyline } from '@/lib/polyline';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 import {
   AreaChart,
   Area,
@@ -306,24 +307,17 @@ function CompareRoutesModal({
   const timeDelta = (routeA.estimated_time_seconds ?? 0) - (routeB.estimated_time_seconds ?? 0);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface rounded-xl border border-surface-light/50 shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-surface-light/50">
-          <h2 className="text-lg font-semibold text-white">Compare Routes</h2>
-          <button
-            onClick={onClose}
-            className="text-muted hover:text-white transition-colors text-xl leading-none"
-            aria-label="Close comparison"
-          >
-            {'\u2715'}
-          </button>
-        </div>
+    <Modal open onClose={onClose} size="xl" aria-label="Compare Routes">
+      <div className="flex items-center justify-between pb-4 mb-4 border-b border-surface-light/50">
+        <h2 className="text-lg font-semibold text-white">Compare Routes</h2>
+        <button
+          onClick={onClose}
+          className="text-muted hover:text-white transition-colors text-xl leading-none"
+          aria-label="Close comparison"
+        >
+          {'\u2715'}
+        </button>
+      </div>
 
         <div className="p-4 space-y-6">
           {/* Side-by-side header */}
@@ -475,8 +469,7 @@ function CompareRoutesModal({
             </table>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

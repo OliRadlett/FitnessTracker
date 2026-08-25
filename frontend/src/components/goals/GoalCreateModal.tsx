@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, createGoal } from '@/lib/api';
 import type { CreateGoalPayload } from '@/lib/api';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 const SPORT_OPTIONS = [
   { value: '', label: 'All sports' },
@@ -69,22 +70,8 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface rounded-xl border border-surface-light p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Create goal"
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">🎯 New Goal</h3>
-          <button onClick={onClose} className="text-muted hover:text-white text-xl" aria-label="Close">
-            ×
-          </button>
-        </div>
+    <Modal open onClose={onClose} size="sm" aria-label="Create goal">
+      <ModalHeader title="🎯 New Goal" onClose={onClose} />
 
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Metric */}
@@ -205,7 +192,6 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -58,6 +58,7 @@
 | `ReadinessIndicator` | Training readiness gauge |
 | `PageLoadingBar` | Top loading bar for route transitions |
 | `ExerciseAutocomplete` | Exercise name autocomplete input |
+| `Modal` | Responsive modal — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Includes `ModalHeader` sub-component |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -156,3 +157,5 @@
 - **Styling**: Tailwind with custom dark theme tokens. No CSS modules
 - **State**: Local `useState` for UI state. React Query for server state. No global state manager
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
+- **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
+- **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-first navigations, stale-while-revalidate static, network-first API GETs with cache fallback), `PwaRegister.tsx` (production-only SW registration)

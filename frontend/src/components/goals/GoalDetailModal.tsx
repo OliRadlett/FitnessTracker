@@ -16,6 +16,7 @@ import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { goalProgressPct, goalAlignmentBadge } from '@/components/ui/GoalCard';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 const SPORT_OPTIONS = [
   { value: '', label: 'All sports' },
@@ -183,28 +184,22 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div
-        className="bg-surface rounded-xl border border-surface-light p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Goal detail"
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <span aria-hidden="true">🎯</span>
-              <span className="truncate">{goal.metric_label || goal.metric}</span>
-            </h3>
-            {(goal.filter_json?.exercise || goal.filter_json?.sport) && (
-              <p className="text-xs text-accent">{goal.filter_json.exercise || goal.filter_json.sport}</p>
-            )}
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-white text-xl" aria-label="Close">
-            ×
-          </button>
+    <Modal open onClose={onClose} size="lg" aria-label="Goal detail">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <span aria-hidden="true">🎯</span>
+            <span className="truncate">{goal.metric_label || goal.metric}</span>
+          </h3>
+          {(goal.filter_json?.exercise || goal.filter_json?.sport) && (
+            <p className="text-xs text-accent">{goal.filter_json.exercise || goal.filter_json.sport}</p>
+          )}
         </div>
+        <button onClick={onClose} className="text-muted hover:text-white text-xl" aria-label="Close">
+          ×
+        </button>
+      </div>
 
         {/* Summary strip */}
         <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
@@ -494,8 +489,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             ⚠️ {reactivateMutation.isError ? 'Failed to reactivate goal' : 'Failed to delete goal'}
           </p>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

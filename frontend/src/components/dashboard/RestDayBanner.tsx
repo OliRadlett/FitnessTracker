@@ -20,7 +20,7 @@ export function RestDayBanner({ suggestion }: RestDayBannerProps) {
         <p className={`font-medium ${isWarning ? 'text-amber-200' : 'text-green-300'}`}>
           {isWarning ? 'Consider a rest day today' : 'Training readiness looks good'}
         </p>
-        <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div>
             <p className="text-muted uppercase tracking-wider">TSB (Form)</p>
             <p className={`font-mono font-bold ${

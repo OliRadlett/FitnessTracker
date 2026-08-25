@@ -4,6 +4,7 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, LiftingSession } from '@/lib/api';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 function formatDuration(seconds?: number | null): string {
   if (!seconds) return '—';
@@ -38,12 +39,8 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
   });
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-xl border border-surface-light p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Link Strava Activity</h3>
-          <button onClick={onClose} className="text-muted hover:text-white text-xl">×</button>
-        </div>
+    <Modal open onClose={onClose} size="sm" aria-label="Link Strava Activity">
+      <ModalHeader title="Link Strava Activity" onClose={onClose} />
         {isLoading ? (
           <div className="animate-pulse space-y-3">
             {[1, 2, 3].map((i) => (<div key={i} className="h-16 bg-surface-light rounded-lg"></div>))}
@@ -77,7 +74,6 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
           <p className="text-muted text-center py-8">No unlinked Strava strength activities found for this date range.</p>
         )}
         {linkMutation.isError && <p className="text-warning text-sm mt-3">Failed to link activity</p>}
-      </div>
-    </div>
+    </Modal>
   );
 }

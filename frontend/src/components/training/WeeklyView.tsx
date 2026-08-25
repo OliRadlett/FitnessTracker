@@ -774,6 +774,7 @@ function ExpandedPanel({
 
       {/* Strength exercise table */}
       {day.sport === 'strength' && day.planned_exercises && day.planned_exercises.length > 0 && (
+        <div className="overflow-x-auto">
         <table className="w-full text-[10px] text-muted">
           <thead>
             <tr className="text-left">
@@ -798,6 +799,7 @@ function ExpandedPanel({
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {/* Cycle power targets */}

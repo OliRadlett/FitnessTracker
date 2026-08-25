@@ -84,7 +84,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
           Unlink
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
         {activity.duration_seconds && (
           <div>
             <span className="text-muted">Duration</span>
@@ -729,7 +729,7 @@ export default function LiftingPage() {
             return (
               <div className="p-4 bg-surface-light/30 rounded-lg">
                 <p className="text-sm font-medium text-white mb-2">{pr.exercise_name}</p>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
                     <p className="text-xs text-muted">Weight</p>

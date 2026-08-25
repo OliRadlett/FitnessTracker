@@ -162,17 +162,17 @@ export function WarmupTemplateManager() {
           </div>
 
           <div className="space-y-2">
-            <div className="grid grid-cols-12 gap-2 text-xs text-muted font-medium px-1">
-              <div className="col-span-1">#</div>
-              <div className="col-span-4">Weight (kg)</div>
-              <div className="col-span-3">Reps</div>
-              <div className="col-span-3">Notes</div>
-              <div className="col-span-1"></div>
+            <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 text-xs text-muted font-medium px-1">
+              <div className="col-span-2 sm:col-span-1">#</div>
+              <div className="sm:col-span-4">Weight (kg)</div>
+              <div className="sm:col-span-3">Reps</div>
+              <div className="sm:col-span-3">Notes</div>
+              <div className="col-span-2 sm:col-span-1"></div>
             </div>
             {formSteps.map((step, index) => (
-              <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-1 text-sm text-muted text-center">{index + 1}</div>
-                <div className="col-span-4">
+              <div key={index} className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center">
+                <div className="col-span-2 sm:col-span-1 text-sm text-muted text-center">{index + 1}</div>
+                <div className="sm:col-span-4">
                   <input
                     type="number"
                     step="0.5"
@@ -183,7 +183,7 @@ export function WarmupTemplateManager() {
                     className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
-                <div className="col-span-3">
+                <div className="sm:col-span-3">
                   <input
                     type="number"
                     min="0"
@@ -193,7 +193,7 @@ export function WarmupTemplateManager() {
                     className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
-                <div className="col-span-3">
+                <div className="sm:col-span-3">
                   <input
                     type="text"
                     value={step.notes}
@@ -202,7 +202,7 @@ export function WarmupTemplateManager() {
                     className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
-                <div className="col-span-1 flex justify-center">
+                <div className="col-span-2 sm:col-span-1 flex justify-center">
                   {formSteps.length > 1 && (
                     <button type="button" onClick={() => removeStep(index)} className="text-muted hover:text-warning text-sm">×</button>
                   )}

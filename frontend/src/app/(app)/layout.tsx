@@ -37,7 +37,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <MobileMenuButton />
         <Sidebar />
         <main role="main" className="flex-1 overflow-auto">
-          <div className="p-4 md:p-8">
+          <div className="p-4 pt-16 md:p-8">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

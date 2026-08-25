@@ -137,6 +137,9 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
 - **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`
 - **Responsive sidebar**: Mobile hamburger menu via SidebarProvider context
+- **Responsive mobile**: Grids use `grid-cols-1 sm:grid-cols-N` pattern; `pt-16` clearance for fixed hamburger; calendar has mobile agenda view (`md:hidden`)
+- **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Use instead of hand-rolling modals
+- **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only
 - **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages
 - **File uploads**: [`apiUpload`](frontend/src/lib/api/fetch.ts) for multipart/form-data (GPX, FIT imports)
 - **Adding a new page**: Create `app/(app)/yourpage/page.tsx` (`'use client'`), add nav item in [`Sidebar.tsx`](frontend/src/components/Sidebar.tsx:8), add API client in `lib/api/`
