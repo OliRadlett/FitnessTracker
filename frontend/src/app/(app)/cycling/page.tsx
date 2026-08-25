@@ -259,7 +259,7 @@ export default function CyclingPage() {
 
   const backfillStreamsMutation = useMutation({
     mutationFn: () => authFetch<{ backfilled: number; total_checked: number; message?: string }>(
-      '/api/v1/cycling/backfill-streams?days=3650&limit=500&force=true',
+      '/api/v1/cycling/backfill-streams?days=90&limit=50',
       { method: 'POST' }
     ),
     onSuccess: (data) => {

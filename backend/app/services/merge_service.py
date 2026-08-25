@@ -294,12 +294,16 @@ def _extract_activity_polyline(activity: Activity) -> str | None:
 async def link_activity_to_route(
     db: AsyncSession,
     activity: Activity,
+    routes: list[Route] | None = None,
 ) -> bool:
     """Attempt to link an activity to a saved route using GPS data.
 
     Extracts the activity's polyline from raw_data, compares it against
     all user routes using the existing route_service scoring algorithm,
     and links if score >= activity_route_link_threshold.
+
+    If ``routes`` is provided, uses that list instead of querying the DB
+    (avoids N+1 when called in a loop for the same user).
 
     Returns True if a link was made.
     """
@@ -324,9 +328,10 @@ async def link_activity_to_route(
     start_lat, start_lng = points[0]
     end_lat, end_lng = points[-1]
 
-    # Fetch all user routes
-    result = await db.execute(select(Route).where(Route.user_id == activity.user_id))
-    routes = list(result.scalars().all())
+    # Fetch all user routes (or use pre-fetched list)
+    if routes is None:
+        result = await db.execute(select(Route).where(Route.user_id == activity.user_id))
+        routes = list(result.scalars().all())
 
     if not routes:
         return False
@@ -395,9 +400,13 @@ async def backfill_activity_route_links(
     )
     activities = list(result.scalars().all())
 
+    # Pre-fetch routes once to avoid N+1 queries
+    routes_result = await db.execute(select(Route).where(Route.user_id == user_id))
+    routes = list(routes_result.scalars().all())
+
     linked_count = 0
     for activity in activities:
-        if await link_activity_to_route(db, activity):
+        if await link_activity_to_route(db, activity, routes=routes):
             linked_count += 1
 
     return linked_count

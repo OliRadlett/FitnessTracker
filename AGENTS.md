@@ -99,19 +99,19 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 
 | Task | Schedule | Notes |
 |------|----------|-------|
-| `sync_all_strava_activities` | 30 min | Also syncs Wahoo, backfills route links |
-| `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight |
+| `sync_all_strava_activities` | 30 min | Incremental via `last_synced_at` watermark (−24h overlap). Also syncs Wahoo, backfills route links |
+| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to fetched date range |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today) |
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
-| `sync_all_routes` | 2 hours | All providers with dedup |
+| `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
-| `backfill_streams_for_all_activities` | Not scheduled | On-demand only — backfills missing activity streams |
+| `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
 
-All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
+All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts.
 
 ## Conventions
 
@@ -126,6 +126,7 @@ All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy.
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
 - **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
+- **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation — never import `async_session_factory` directly in tasks
 
 ### Frontend
 - **Client-side rendering**: All pages `'use client'` with React Query

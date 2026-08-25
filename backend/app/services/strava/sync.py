@@ -102,7 +102,7 @@ async def _create_activity_from_strava(
         sport_type=_map_strava_type(sa.get("sport_type", sa.get("type", "Unknown"))),
         name=sa.get("name", "Untitled"),
         start_date=datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00")),
-        duration_seconds=int(sa.get("moving_time", 0)),
+        duration_seconds=int(sa.get("moving_time") or 0),
         distance_meters=_safe_float(sa.get("distance")),
         elevation_gain_meters=_safe_float(sa.get("total_elevation_gain")),
         average_heartrate=_safe_float(sa.get("average_heartrate")),
@@ -210,7 +210,7 @@ async def sync_activities(
         # Parse activity data
         start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
         sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
-        duration_seconds = int(sa.get("moving_time", 0))
+        duration_seconds = int(sa.get("moving_time") or 0)
         distance_meters = sa.get("distance")
 
         # Use merge engine to detect duplicates from other providers
@@ -383,7 +383,7 @@ async def backfill_all_activities(
             sport_type = _map_strava_type(
                 sa.get("sport_type", sa.get("type", "Unknown"))
             )
-            duration_seconds = int(sa.get("moving_time", 0))
+            duration_seconds = int(sa.get("moving_time") or 0)
             distance_meters = sa.get("distance")
 
             duplicate = await find_duplicate_activity(
@@ -681,7 +681,7 @@ async def backfill_streams_for_all_activities(
                         db.add(stream)
                 backfilled += 1
             except Exception as e:
-                logger.debug(f"Failed to fetch streams for activity {activity.id}: {e}")
+                logger.warning(f"Failed to fetch streams for activity {activity.id}: {e}")
 
         # Commit per user to save progress
         await db.commit()

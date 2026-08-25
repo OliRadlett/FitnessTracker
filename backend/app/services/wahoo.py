@@ -123,6 +123,7 @@ async def sync_wahoo_activities(
 
     synced: list[Activity] = []
     page = 1
+    consecutive_known_pages = 0  # Early-exit counter
 
     while len(synced) < limit:
         try:
@@ -145,6 +146,7 @@ async def sync_wahoo_activities(
             logger.warning(f"Wahoo workouts response is not a list: {type(workouts)}")
             break
 
+        page_had_new = False
         for workout in workouts:
             if not isinstance(workout, dict):
                 logger.warning(f"Skipping non-dict workout: {type(workout)}")
@@ -252,6 +254,7 @@ async def sync_wahoo_activities(
                     raw_data=workout,
                 )
                 synced.append(duplicate)
+                page_had_new = True
                 logger.info(
                     f"Enriched activity '{duplicate.name}' with Wahoo workout {workout_id}"
                 )
@@ -262,6 +265,20 @@ async def sync_wahoo_activities(
                 )
 
             if len(synced) >= limit:
+                break
+
+        # Early-exit: if an entire page had no new workouts, we've likely
+        # reached the end of unseen data.  After 3 consecutive all-known
+        # pages, stop paginating to avoid re-walking full history every run.
+        if page_had_new:
+            consecutive_known_pages = 0
+        else:
+            consecutive_known_pages += 1
+            if consecutive_known_pages >= 3:
+                logger.info(
+                    f"Wahoo sync early-exit: {consecutive_known_pages} consecutive "
+                    f"pages with no new workouts for user {user_id}"
+                )
                 break
 
         page += 1

@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -237,10 +237,105 @@ async def validate_and_store_token(
 # ── Cycle + Recovery sync ──────────────────────────────────────────────────
 
 
+async def _backfill_missing_recovery(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    token: str,
+    date_min: date | None = None,
+    date_max: date | None = None,
+) -> int:
+    """Retry recovery fetches for DailyMetric records missing recovery_score.
+
+    Shared by sync_whoop_cycles (scheduled) and backfill_whoop_data (on-demand).
+    When date_min/date_max are provided, only records within that window are
+    retried — preventing the scheduled sync from re-scanning entire history.
+
+    Returns the number of records successfully backfilled.
+    """
+    import asyncio
+
+    conditions = [
+        DailyMetric.user_id == user_id,
+        DailyMetric.source == "whoop",
+        DailyMetric.recovery_score.is_(None),
+        DailyMetric.raw_data.isnot(None),
+    ]
+    if date_min is not None:
+        conditions.append(DailyMetric.metric_date >= date_min)
+    if date_max is not None:
+        conditions.append(DailyMetric.metric_date <= date_max)
+
+    missing_recovery_result = await db.execute(
+        select(DailyMetric).where(*conditions)
+    )
+    missing_records = list(missing_recovery_result.scalars().all())
+    backfilled = 0
+    for dm in missing_records:
+        if not dm.raw_data:
+            continue
+        cycle_id = dm.raw_data.get("id")
+        if not cycle_id:
+            continue
+        try:
+            recovery = None
+            for _retry in range(3):
+                await asyncio.sleep(0.3)
+                try:
+                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+                    break
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "401" in err_str or "expired" in err_str:
+                        raise
+                    if "429" in err_str or "rate" in err_str:
+                        logger.warning(
+                            f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
+                        )
+                        await asyncio.sleep(2.0 * (_retry + 1))
+                        continue
+                    raise
+            else:
+                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
+                continue
+
+            if recovery and recovery.get("score_state") == "SCORED":
+                rec_score = recovery.get("score", {})
+                rec_recovery = rec_score.get("recovery_score")
+                rec_hrv = rec_score.get("hrv_rmssd_milli")
+                rec_rhr = rec_score.get("resting_heart_rate")
+                rec_rr = rec_score.get("respiratory_rate")
+                if rec_recovery is not None:
+                    dm.recovery_score = rec_recovery
+                if rec_hrv is not None:
+                    dm.hrv_ms = rec_hrv
+                if rec_rhr is not None:
+                    dm.resting_hr = float(rec_rhr)
+                if rec_rr is not None:
+                    dm.respiratory_rate = rec_rr
+                dm.raw_data = {
+                    **dm.raw_data,
+                    "_recovery": {
+                        "recovery_score": rec_recovery,
+                        "hrv_rmssd_milli": rec_hrv,
+                        "resting_heart_rate": rec_rhr,
+                        "respiratory_rate": rec_rr,
+                    },
+                }
+                backfilled += 1
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
+            continue
+
+    return backfilled
+
+
 async def sync_whoop_cycles(
     db: AsyncSession,
     user_id: uuid.UUID,
     limit: int = 500,
+    start: str | None = None,
 ) -> list[DailyMetric]:
     """Sync Whoop cycle + recovery data into DailyMetric records.
 
@@ -267,6 +362,7 @@ async def sync_whoop_cycles(
     try:
         cycles = await whoop_client.get_all_cycles(
             token,
+            start=start,
             max_records=limit,
         )
     except Exception as e:
@@ -404,81 +500,21 @@ async def sync_whoop_cycles(
             synced.append(metric)
 
     # Second pass: fill in missing recovery data for existing DailyMetric records
-    # This catches days where recovery fetch previously failed (rate limit, network, etc.)
-    # OR where Whoop returned only partial score data (e.g. recovery_score present but
-    # respiratory_rate missing). Records matching either condition are retried.
-    missing_recovery_result = await db.execute(
-        select(DailyMetric).where(
-            DailyMetric.user_id == user_id,
-            DailyMetric.source == "whoop",
-            or_(
-                DailyMetric.recovery_score.is_(None),
-                DailyMetric.respiratory_rate.is_(None),
-            ),
-            DailyMetric.raw_data.isnot(None),
-        )
+    # within the date range of cycles fetched this run.  This catches days where
+    # recovery fetch previously failed (rate limit, network, etc.) without
+    # re-scanning the entire history every 30 minutes.
+    if synced:
+        synced_dates = sorted({m.metric_date for m in synced})
+        pass_min, pass_max = synced_dates[0], synced_dates[-1]
+    elif start:
+        pass_min = datetime.fromisoformat(start.replace("Z", "+00:00")).date()
+        pass_max = date.today()
+    else:
+        pass_min = pass_max = None
+
+    backfilled = await _backfill_missing_recovery(
+        db, user_id, token, date_min=pass_min, date_max=pass_max
     )
-    missing_records = list(missing_recovery_result.scalars().all())
-    backfilled = 0
-    for dm in missing_records:
-        if not dm.raw_data:
-            continue
-        cycle_id = dm.raw_data.get("id")
-        if not cycle_id:
-            continue
-        try:
-            import asyncio
-
-            for _retry in range(3):
-                await asyncio.sleep(0.3)
-                try:
-                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
-                    break  # Success (or None — no data) — move on
-                except Exception as e:
-                    err_str = str(e).lower()
-                    if "401" in err_str or "expired" in err_str:
-                        raise
-                    if "429" in err_str or "rate" in err_str:
-                        logger.warning(
-                            f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
-                        )
-                        await asyncio.sleep(2.0 * (_retry + 1))  # Backoff: 2s, 4s, 6s
-                        continue
-                    raise  # Non-rate-limit error — don't retry
-            else:
-                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
-                continue
-
-            if recovery and recovery.get("score_state") == "SCORED":
-                rec_score = recovery.get("score", {})
-                rec_recovery = rec_score.get("recovery_score")
-                rec_hrv = rec_score.get("hrv_rmssd_milli")
-                rec_rhr = rec_score.get("resting_heart_rate")
-                rec_rr = rec_score.get("respiratory_rate")
-                if rec_recovery is not None:
-                    dm.recovery_score = rec_recovery
-                if rec_hrv is not None:
-                    dm.hrv_ms = rec_hrv
-                if rec_rhr is not None:
-                    dm.resting_hr = float(rec_rhr)
-                if rec_rr is not None:
-                    dm.respiratory_rate = rec_rr
-                # Update raw_data with recovery info
-                dm.raw_data = {
-                    **dm.raw_data,
-                    "_recovery": {
-                        "recovery_score": rec_recovery,
-                        "hrv_rmssd_milli": rec_hrv,
-                        "resting_heart_rate": rec_rhr,
-                        "respiratory_rate": rec_rr,
-                    },
-                }
-                backfilled += 1
-        except ValueError:
-            raise
-        except Exception as e:
-            logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
-            continue
 
     # Gap detection: warn if there are days without data inside the synced range.
     # Gaps can indicate missed cycles (device not worn, pagination truncation, etc.)
@@ -512,6 +548,7 @@ async def sync_whoop_sleep(
     db: AsyncSession,
     user_id: uuid.UUID,
     limit: int = 500,
+    start: str | None = None,
 ) -> list[SleepLog]:
     """Fetch Whoop sleep data and upsert into SleepLog.
 
@@ -543,6 +580,7 @@ async def sync_whoop_sleep(
     try:
         sleep_records = await whoop_client.get_all_sleep_activities(
             token,
+            start=start,
             max_records=limit,
         )
     except httpx.HTTPStatusError as e:
@@ -800,6 +838,7 @@ async def sync_whoop_workouts(
     db: AsyncSession,
     user_id: uuid.UUID,
     limit: int = 500,
+    start: str | None = None,
 ) -> list:
     """Enrich existing Strava activities with Whoop workout data.
 
@@ -830,6 +869,7 @@ async def sync_whoop_workouts(
     try:
         workouts = await whoop_client.get_all_workout_activities(
             token,
+            start=start,
             max_records=limit,
         )
     except httpx.HTTPStatusError as e:
@@ -1407,81 +1447,12 @@ async def backfill_whoop_data(
     )
 
     # Second pass: retry recovery fetches for records synced without complete
-    # recovery data (rate limits, transient errors). Mirrors sync_whoop_cycles().
-    import asyncio
-
-    missing_recovery_result = await db.execute(
-        select(DailyMetric).where(
-            DailyMetric.user_id == user_id,
-            DailyMetric.source == "whoop",
-            or_(
-                DailyMetric.recovery_score.is_(None),
-                DailyMetric.respiratory_rate.is_(None),
-            ),
-            DailyMetric.raw_data.isnot(None),
-        )
+    # recovery data (rate limits, transient errors). Scoped to the backfill window.
+    backfilled = await _backfill_missing_recovery(
+        db, user_id, token,
+        date_min=start_date.date() if start_date else None,
+        date_max=end_date.date() if end_date else None,
     )
-    missing_records = list(missing_recovery_result.scalars().all())
-    backfilled = 0
-    for dm in missing_records:
-        if not dm.raw_data:
-            continue
-        cycle_id = dm.raw_data.get("id")
-        if not cycle_id:
-            continue
-        try:
-            recovery = None
-            for _retry in range(3):
-                await asyncio.sleep(0.3)
-                try:
-                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
-                    break
-                except Exception as e:
-                    err_str = str(e).lower()
-                    if "401" in err_str or "expired" in err_str:
-                        raise ValueError(
-                            "Whoop token is expired. Please reconnect via OAuth in Settings."
-                        )
-                    if "429" in err_str or "rate" in err_str:
-                        logger.warning(
-                            f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
-                        )
-                        await asyncio.sleep(2.0 * (_retry + 1))
-                        continue
-                    raise
-            else:
-                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
-                continue
-
-            if recovery and recovery.get("score_state") == "SCORED":
-                rec_score = recovery.get("score", {})
-                rec_recovery = rec_score.get("recovery_score")
-                rec_hrv = rec_score.get("hrv_rmssd_milli")
-                rec_rhr = rec_score.get("resting_heart_rate")
-                rec_rr = rec_score.get("respiratory_rate")
-                if rec_recovery is not None:
-                    dm.recovery_score = rec_recovery
-                if rec_hrv is not None:
-                    dm.hrv_ms = rec_hrv
-                if rec_rhr is not None:
-                    dm.resting_hr = float(rec_rhr)
-                if rec_rr is not None:
-                    dm.respiratory_rate = rec_rr
-                dm.raw_data = {
-                    **dm.raw_data,
-                    "_recovery": {
-                        "recovery_score": rec_recovery,
-                        "hrv_rmssd_milli": rec_hrv,
-                        "resting_heart_rate": rec_rhr,
-                        "respiratory_rate": rec_rr,
-                    },
-                }
-                backfilled += 1
-        except ValueError:
-            raise
-        except Exception as e:
-            logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
-            continue
 
     await db.flush()
     if backfilled:
@@ -1832,6 +1803,7 @@ async def backfill_whoop_chunked(
 
     total_chunks = len(chunks)
     agg = {"synced_cycles": 0, "synced_sleep": 0, "synced_workouts": 0}
+    chunks_failed = 0
 
     _CHUNK_DELAY_SECONDS = 5  # Pause between chunks to avoid Whoop rate limits
 
@@ -1856,6 +1828,7 @@ async def backfill_whoop_chunked(
                 end_dt=chunk_end,
             )
         except Exception as e:
+            chunks_failed += 1
             logger.error(f"Whoop backfill chunk {i} failed: {e}")
             yield {
                 "type": "error",
@@ -1886,12 +1859,14 @@ async def backfill_whoop_chunked(
     yield {
         "type": "complete",
         "total_chunks": total_chunks,
+        "chunks_failed": chunks_failed,
         "months": total_months,
         **agg,
         "detail": (
             f"Backfilled {agg['synced_cycles']} daily metrics, "
             f"{agg['synced_sleep']} sleep records, and "
             f"{agg['synced_workouts']} enriched workouts from Whoop "
-            f"(last {total_months} months, {total_chunks} chunks)"
+            f"(last {total_months} months, {total_chunks} chunks, "
+            f"{chunks_failed} failed)"
         ),
     }

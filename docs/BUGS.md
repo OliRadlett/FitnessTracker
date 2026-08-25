@@ -338,3 +338,73 @@
 
 ### Backlog
 11. BUG-031 through BUG-048 — Low severity / code quality
+
+---
+
+## SYNC JOBS AUDIT (2026-08-25)
+
+### BUG-051: Celery Tasks Crash with asyncpg Cross-Loop Pool Errors
+- **Status:** FIXED
+- **File:** `backend/app/database.py`, `backend/app/tasks/scheduler.py`
+- **Issue:** Module-level `async_session_factory` creates a connection pool bound to the first event loop. Each Celery task calls `asyncio.run()` which creates a new loop. Pooled connections from loop A get reused on loop B → `InterfaceError: another operation is in progress` / `Future attached to a different loop`. All main sync tasks (Strava/Wahoo/Whoop/routes) were failing.
+- **Fix:** Added `task_session()` context manager that creates a fresh engine per invocation. All tasks updated to use it.
+
+### BUG-052: `int(None)` Crash on Strava `moving_time`
+- **Status:** FIXED
+- **File:** `backend/app/services/strava/sync.py:105,213,386`, `backend/app/services/strava/webhooks.py:75`
+- **Issue:** `int(sa.get("moving_time", 0))` returns `None` when key exists with JSON null (manual/indoor entries). `int(None)` → `TypeError` kills the entire user sync.
+- **Fix:** Changed to `int(sa.get("moving_time") or 0)` at all 4 locations.
+
+### BUG-053: Whoop Sync Refetches Full History Every 30 Minutes
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py`, `backend/app/tasks/scheduler.py`
+- **Issue:** All Whoop sync functions passed no date filter, defaulting to limit=500 records. Every 30-min run fetched up to 500 cycles + 500 sleep + 500 workouts. Recovery second-pass had no date bound, re-scanning all history forever. Took 21+ minutes per run.
+- **Fix:** Added `last_synced_at` watermark to `OAuthConnection` (migration 031). Scheduler passes `start=` filters derived from watermark (−24h overlap). Recovery second-pass bounded to cycle dates fetched this run.
+
+### BUG-054: Wahoo Sync Walks Full History Every 30 Minutes
+- **Status:** FIXED
+- **File:** `backend/app/services/wahoo.py`
+- **Issue:** No date filter and skipped workouts don't count toward `limit`. After first run, every subsequent run paginates through entire workout history executing dedup queries per item.
+- **Fix:** Added early-exit: stops after 3 consecutive pages with no new workouts.
+
+### BUG-055: Komoot Routes Synced Per-User with Global Credentials
+- **Status:** FIXED
+- **File:** `backend/app/tasks/scheduler.py`
+- **Issue:** Komoot uses global Basic Auth credentials but the sync ran once per user in the route-sync loop. First user owns all routes; users 2..N perform full redundant API crawls creating nothing.
+- **Fix:** Moved Komoot sync outside the per-user loop — runs once using the first user for route ownership.
+
+### BUG-056: Orphaned Streams Backfill Task Never Scheduled
+- **Status:** FIXED
+- **File:** `backend/app/tasks/scheduler.py`
+- **Issue:** `backfill_streams_for_all_activities` task was registered but absent from `beat_schedule` and never dispatched. Dead code.
+- **Fix:** Added to beat schedule: weekly Saturday 3AM UTC. Upgraded DEBUG failure logs to WARNING.
+
+### BUG-057: Whoop Recovery Second-Pass Duplicated (Sync + Backfill)
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py`
+- **Issue:** Identical recovery second-pass logic copy-pasted in `sync_whoop_cycles` and `backfill_whoop_data`. Backfill copy was unbounded (no date filter) and used `or_(recovery_score IS NULL, respiratory_rate IS NULL)` making records permanently match.
+- **Fix:** Extracted shared `_backfill_missing_recovery()` helper. Both callers now use it with date bounds. Dropped `respiratory_rate IS NULL` disjunct from scheduled sync.
+
+### BUG-058: Whoop Backfill SSE Reports Success on Partial Failure
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py`
+- **Issue:** Failed chunks yielded `error` events but the stream still finished with `type:"complete"` and aggregate counts that silently omitted the failed chunk.
+- **Fix:** Added `chunks_failed` counter to the `complete` event. Detail message now includes failure count.
+
+### BUG-059: Cycling Page Streams Button Force-Refetches Everything
+- **Status:** FIXED
+- **File:** `frontend/src/app/(app)/cycling/page.tsx:262`
+- **Issue:** Hardcoded `force=true&days=3650&limit=500` — every click deleted and re-downloaded up to 500 streams instead of filling gaps.
+- **Fix:** Changed to `days=90&limit=50` (gap-fill mode, no force).
+
+### BUG-060: No Concurrency Guard on Backfill Endpoints
+- **Status:** FIXED
+- **File:** `backend/app/api/connections.py`, `backend/app/api/activities.py`, `backend/app/api/cycling/ftp.py`
+- **Issue:** Double-clicking or overlapping manual/Celery runs could produce redundant API load and race conditions.
+- **Fix:** Added Redis-based distributed locks (`redis_lock`) to Whoop backfill, Strava backfill, and streams backfill endpoints.
+
+### BUG-061: Route-Link Backfill N+1 Query
+- **Status:** FIXED
+- **File:** `backend/app/services/merge_service.py`
+- **Issue:** `backfill_activity_route_links` called `link_activity_to_route` per activity, which re-queried all user routes each time. O(A×R) queries.
+- **Fix:** Pre-fetch routes once and pass to `link_activity_to_route` via optional `routes` parameter.

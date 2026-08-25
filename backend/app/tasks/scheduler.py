@@ -85,6 +85,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.record_goal_checkins",
         "schedule": crontab(hour=6, minute=0, day_of_week=1),
     },
+    # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
+    "backfill-streams": {
+        "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
+        "schedule": crontab(hour=3, minute=0, day_of_week=6),
+    },
 }
 
 
@@ -99,18 +104,22 @@ def sync_all_strava_activities() -> dict:
     It imports the async sync logic and runs it in an event loop.
     After syncing, it also backfills activity-to-lifting links and
     syncs Wahoo activities for users with Wahoo connections.
+
+    Uses last_synced_at watermark to only fetch activities newer than
+    the last successful sync (minus 24h overlap for late-arriving edits).
     """
     import asyncio
+    from datetime import UTC, timedelta
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.user import OAuthConnection
     from app.services.merge_service import backfill_activity_route_links
     from app.services.strava import link_all_unlinked_activities, sync_activities
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             result = await db.execute(
                 select(OAuthConnection).where(OAuthConnection.provider == "strava")
             )
@@ -121,9 +130,20 @@ def sync_all_strava_activities() -> dict:
             weather_tagged_count = 0
             plan_day_linked_count = 0
             for conn in connections:
+                # Compute incremental window: watermark minus 24h overlap
+                after = None
+                if conn.last_synced_at:
+                    after = conn.last_synced_at - timedelta(hours=24)
+
                 try:
-                    activities = await sync_activities(db, conn.user_id)
+                    activities = await sync_activities(
+                        db, conn.user_id, after=after
+                    )
                     synced_count += len(activities)
+                    # Update watermark on success
+                    from datetime import datetime
+
+                    conn.last_synced_at = datetime.now(UTC)
                 except Exception as e:
                     logger.error(
                         f"Failed to sync for user {conn.user_id}: {e}", exc_info=True
@@ -185,6 +205,10 @@ def sync_all_strava_activities() -> dict:
 
                     activities = await sync_wahoo_activities(db, conn.user_id)
                     wahoo_synced_count += len(activities)
+                    # Update watermark on success
+                    from datetime import datetime
+
+                    conn.last_synced_at = datetime.now(UTC)
                 except Exception as e:
                     logger.error(
                         f"Failed to sync Wahoo activities for user {conn.user_id}: {e}",
@@ -221,7 +245,7 @@ def generate_health_alerts() -> dict:
 
     from sqlalchemy import func, select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.daily_metric import DailyMetric
     from app.models.health_alert import HealthAlert
     from app.models.user import User
@@ -233,7 +257,7 @@ def generate_health_alerts() -> dict:
     )
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             users_result = await db.execute(select(User))
             users = list(users_result.scalars().all())
             alerts_created = 0
@@ -406,11 +430,11 @@ def sync_all_routes() -> dict:
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.user import OAuthConnection
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             # Get unique users with any route-capable connection
             result = await db.execute(
                 select(OAuthConnection).where(
@@ -429,6 +453,25 @@ def sync_all_routes() -> dict:
             synced_total = 0
             merged_total = 0
 
+            # Komoot uses global Basic Auth — sync once, not per-user
+            from app.config import get_settings as _get_settings
+
+            _s = _get_settings()
+            if _s.komoot_email and _s.komoot_password and user_providers:
+                try:
+                    from app.services.komoot import sync_komoot_routes
+
+                    # Use the first user for route ownership
+                    first_user = next(iter(user_providers))
+                    count, merged = await sync_komoot_routes(db, first_user)
+                    synced_total += count
+                    merged_total += merged
+                except Exception as e:
+                    logger.error(
+                        f"Failed to sync Komoot routes: {e}",
+                        exc_info=True,
+                    )
+
             for user_id, providers in user_providers.items():
                 if "strava" in providers:
                     try:
@@ -440,23 +483,6 @@ def sync_all_routes() -> dict:
                     except Exception as e:
                         logger.error(
                             f"Failed to sync Strava routes for user {user_id}: {e}",
-                            exc_info=True,
-                        )
-
-                # Komoot uses Basic Auth (komoot_email/komoot_password in settings)
-                from app.config import get_settings as _get_settings
-
-                _s = _get_settings()
-                if _s.komoot_email and _s.komoot_password:
-                    try:
-                        from app.services.komoot import sync_komoot_routes
-
-                        count, merged = await sync_komoot_routes(db, user_id)
-                        synced_total += count
-                        merged_total += merged
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to sync Komoot routes for user {user_id}: {e}",
                             exc_info=True,
                         )
 
@@ -505,7 +531,7 @@ def auto_estimate_ftp_weekly() -> dict:
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.cycling import CyclingProfile, FtpHistory
     from app.services.cycling import (
         compute_power_curve_from_streams,
@@ -513,7 +539,7 @@ def auto_estimate_ftp_weekly() -> dict:
     )
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             # Find all users with auto_estimate_ftp enabled
             result = await db.execute(
                 select(CyclingProfile).where(
@@ -588,12 +614,15 @@ def sync_all_whoop_data() -> dict:
     It fetches Whoop cycles (with recovery), sleep data, and workout data.
     Workout enrichment matches to existing Strava activities.
     Auto-refreshes expired tokens when a refresh_token is available.
+
+    Uses last_synced_at watermark to only fetch recent data (minus 24h overlap).
     """
     import asyncio
+    from datetime import UTC, timedelta
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.user import OAuthConnection
     from app.services.whoop import (
         refresh_if_needed,
@@ -604,7 +633,7 @@ def sync_all_whoop_data() -> dict:
     )
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             result = await db.execute(
                 select(OAuthConnection).where(OAuthConnection.provider == "whoop")
             )
@@ -623,8 +652,15 @@ def sync_all_whoop_data() -> dict:
                     logger.warning(f"Skipping Whoop sync for user {conn.user_id}: {e}")
                     continue
 
+                # Compute incremental window: watermark minus 24h overlap
+                start = None
+                if conn.last_synced_at:
+                    start = (conn.last_synced_at - timedelta(hours=24)).strftime(
+                        "%Y-%m-%dT%H:%M:%S.000Z"
+                    )
+
                 try:
-                    metrics = await sync_whoop_cycles(db, conn.user_id)
+                    metrics = await sync_whoop_cycles(db, conn.user_id, start=start)
                     synced_cycles += len(metrics)
                 except ValueError as e:
                     if "expired" in str(e).lower():
@@ -639,7 +675,7 @@ def sync_all_whoop_data() -> dict:
                     )
 
                 try:
-                    sleep_logs = await sync_whoop_sleep(db, conn.user_id)
+                    sleep_logs = await sync_whoop_sleep(db, conn.user_id, start=start)
                     synced_sleep += len(sleep_logs)
                 except ValueError as e:
                     if "expired" in str(e).lower():
@@ -654,7 +690,7 @@ def sync_all_whoop_data() -> dict:
                     )
 
                 try:
-                    enriched = await sync_whoop_workouts(db, conn.user_id)
+                    enriched = await sync_whoop_workouts(db, conn.user_id, start=start)
                     synced_workouts += len(enriched)
                 except ValueError as e:
                     if "expired" in str(e).lower():
@@ -682,6 +718,11 @@ def sync_all_whoop_data() -> dict:
                         f"Whoop weight sync error for user {conn.user_id}: {e}",
                         exc_info=True,
                     )
+
+                # Update watermark on success
+                from datetime import datetime
+
+                conn.last_synced_at = datetime.now(UTC)
 
             await db.commit()
             return {
@@ -824,7 +865,7 @@ def weekly_llm_analysis() -> dict:
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.user import User
 
     settings = get_settings()
@@ -832,7 +873,7 @@ def weekly_llm_analysis() -> dict:
         return {"status": "skipped", "reason": "GEMINI_API_KEY not configured"}
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             result = await db.execute(select(User))
             users = list(result.scalars().all())
             analyzed = 0
@@ -862,13 +903,13 @@ def backfill_streams_for_all_activities() -> dict:
     """
     import asyncio
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.services.strava.sync import (
         backfill_streams_for_all_activities as _backfill_streams,
     )
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             return await _backfill_streams(db)
 
     return asyncio.run(_run())
@@ -886,12 +927,12 @@ def refresh_weather_forecasts() -> dict:
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.user import User
     from app.services.weather import get_forecast, resolve_user_coords
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             users_result = await db.execute(select(User))
             users = list(users_result.scalars().all())
             refreshed = 0
@@ -934,13 +975,13 @@ def record_goal_checkins() -> dict:
 
     from sqlalchemy import select
 
-    from app.database import async_session_factory
+    from app.database import task_session
     from app.models.goal import Goal
     from app.models.user import User
     from app.services.goals import record_all_check_ins
 
     async def _run():
-        async with async_session_factory() as db:
+        async with task_session() as db:
             users_result = await db.execute(select(User))
             users = list(users_result.scalars().all())
             checkins_recorded = 0

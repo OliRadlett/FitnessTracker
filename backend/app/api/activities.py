@@ -379,10 +379,17 @@ async def backfill_activities(
     not just the most recent 100.  Uses merge/dedup to avoid duplicates.
     This may take a while for accounts with many activities.
     """
+    from app.services.cache import redis_lock
     from app.services.strava import backfill_all_activities
 
-    result = await backfill_all_activities(db, current_user.id, max_pages=max_pages)
-    await db.commit()
+    try:
+        async with redis_lock(f"strava-backfill:{current_user.id}", ttl=3600):
+            result = await backfill_all_activities(db, current_user.id, max_pages=max_pages)
+            await db.commit()
+    except RuntimeError:
+        raise HTTPException(
+            status_code=409, detail="A Strava backfill is already in progress"
+        )
     return {
         "detail": f"Backfill complete: {result['synced']} synced, {result['skipped']} skipped across {result['pages']} pages",
         **result,

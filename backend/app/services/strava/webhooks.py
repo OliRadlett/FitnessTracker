@@ -72,7 +72,7 @@ async def _handle_activity_create(
 
     start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
     sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
-    duration_seconds = int(sa.get("moving_time", 0))
+    duration_seconds = int(sa.get("moving_time") or 0)
     distance_meters = sa.get("distance")
 
     # Use merge engine to detect duplicates from other providers

@@ -217,9 +217,19 @@ async def backfill_whoop(
         raise HTTPException(status_code=404, detail="No Whoop connection found")
 
     from app.database import async_session_factory
+    from app.services.cache import redis_lock
     from app.services.whoop import backfill_whoop_chunked
 
     user_id = current_user.id
+
+    # Prevent concurrent backfills for the same user
+    try:
+        lock = redis_lock(f"whoop-backfill:{user_id}", ttl=3600)
+        await lock.__aenter__()
+    except RuntimeError:
+        raise HTTPException(
+            status_code=409, detail="A Whoop backfill is already in progress"
+        )
 
     async def event_stream():
         # Create a dedicated session for the long-running stream.
@@ -245,6 +255,8 @@ async def backfill_whoop(
             finally:
                 # BUG-020: Ensure session is closed even on client disconnect
                 await stream_db.close()
+                # Release the concurrency lock
+                await lock.__aexit__(None, None, None)
 
     return StreamingResponse(
         event_stream(),

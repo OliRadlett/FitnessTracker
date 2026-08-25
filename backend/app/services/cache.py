@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -31,6 +32,28 @@ def _get_redis() -> aioredis.Redis:
     if _redis is None:
         _redis = aioredis.from_url(settings.redis_url)
     return _redis
+
+
+@asynccontextmanager
+async def redis_lock(name: str, ttl: int = 600):
+    """Distributed lock via Redis SET NX EX.
+
+    Usage:
+        async with redis_lock("whoop-backfill:user123"):
+            # only one caller runs this block at a time
+            ...
+
+    Raises RuntimeError if the lock is already held.
+    """
+    r = _get_redis()
+    key = f"lock:{name}"
+    acquired = await r.set(key, "1", nx=True, ex=ttl)
+    if not acquired:
+        raise RuntimeError(f"Lock '{name}' is already held")
+    try:
+        yield
+    finally:
+        await r.delete(key)
 
 
 def _make_cache_key(prefix: str, *args, **kwargs) -> str:
