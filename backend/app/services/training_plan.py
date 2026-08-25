@@ -715,6 +715,17 @@ async def update_plan_day(
     ):
         raise ValueError(f"Invalid planned_type: {updates['planned_type']}")
 
+    # Validate planned_route_id if provided (must exist and belong to user)
+    route_id = updates.get("planned_route_id")
+    if route_id is not None:
+        from app.models.route import Route
+
+        result = await db.execute(
+            select(Route).where(Route.id == route_id, Route.user_id == user_id)
+        )
+        if not result.scalar_one_or_none():
+            raise ValueError("Route not found or not owned by you")
+
     for key, value in updates.items():
         setattr(day, key, value)
     await db.flush()

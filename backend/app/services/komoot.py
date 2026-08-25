@@ -220,7 +220,17 @@ async def _enrich_and_create_route(
             if normalized:
                 surface_profile = _extract_surface_profile({"data": normalized})
                 if surface_profile:
-                    logger.info(f"Tour {tour_id}: surface data = {surface_profile}")
+                    logger.info(f"Tour {tour_id}: surface data from payload = {surface_profile}")
+
+    # Fallback: call Komoot's dedicated surface endpoint if payload lacked data
+    if not surface_profile:
+        try:
+            raw_surface = await komoot_client.get_surface(tour_id=tour_id)
+            surface_profile = _extract_surface_profile(raw_surface)
+            if surface_profile:
+                logger.info(f"Tour {tour_id}: surface data from API = {surface_profile}")
+        except Exception as e:
+            logger.debug(f"Tour {tour_id}: surface API fallback failed: {e}")
 
     name = tour_data.get(
         "name", "Komoot Tour" if not is_planned_route else "Komoot Route"
@@ -396,4 +406,50 @@ async def sync_komoot_routes(
     logger.info(
         f"Komoot sync complete for user {user_id}: {synced_count} synced, {merged_count} merged"
     )
+
+    # ── Backfill surface data for Komoot routes missing it ───────────────────
+    backfill_count = 0
+    try:
+        result = await db.execute(
+            select(Route)
+            .join(Route.sources)
+            .where(
+                Route.user_id == user_id,
+                Route.surface_profile.is_(None),
+                RouteSource.provider == "komoot",
+            )
+        )
+        routes_missing_surface = list(result.scalars().all())
+
+        for route in routes_missing_surface:
+            # Extract Komoot tour ID from the source's provider_route_id
+            source_result = await db.execute(
+                select(RouteSource.provider_route_id).where(
+                    RouteSource.route_id == route.id,
+                    RouteSource.provider == "komoot",
+                )
+            )
+            provider_route_id = source_result.scalar_one_or_none()
+            if not provider_route_id:
+                continue
+
+            # Strip "route_" prefix if present (planned routes)
+            tour_id = provider_route_id.removeprefix("route_")
+
+            try:
+                raw_surface = await komoot_client.get_surface(tour_id=tour_id)
+                surface_profile = _extract_surface_profile(raw_surface)
+                if surface_profile:
+                    route.surface_profile = surface_profile
+                    backfill_count += 1
+                    logger.info(f"Backfilled surface for route {route.id}: {surface_profile}")
+            except Exception as e:
+                logger.debug(f"Surface backfill failed for route {route.id}: {e}")
+
+        if backfill_count > 0:
+            await db.flush()
+            logger.info(f"Backfilled surface data for {backfill_count} Komoot routes")
+    except Exception as e:
+        logger.warning(f"Surface backfill pass failed: {e}")
+
     return synced_count, merged_count

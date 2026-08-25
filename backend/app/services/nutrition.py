@@ -310,11 +310,11 @@ async def update_fuel_plan_actuals(
     if not plan:
         return None
     if actual_pre is not None:
-        plan.actual_pre_ride_notes = actual_pre[:1000]
+        plan.actual_pre_ride_notes = actual_pre[:1000] if actual_pre else None
     if actual_during is not None:
-        plan.actual_during_notes = actual_during[:1000]
+        plan.actual_during_notes = actual_during[:1000] if actual_during else None
     if actual_post is not None:
-        plan.actual_post_ride_notes = actual_post[:1000]
+        plan.actual_post_ride_notes = actual_post[:1000] if actual_post else None
     plan.updated_at = datetime.now(UTC)
     await db.flush()
     await db.refresh(plan)

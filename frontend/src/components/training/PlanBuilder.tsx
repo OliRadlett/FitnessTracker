@@ -1186,7 +1186,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             <input
               type="text"
               disabled
-              placeholder="Route assignment coming in weekly view"
+              placeholder="Use Weekly View to assign routes"
               className={`${inputCls} opacity-50 cursor-not-allowed`}
             />
           </div>

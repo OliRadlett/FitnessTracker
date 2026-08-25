@@ -27,6 +27,16 @@ export async function deleteRoute(id: string): Promise<void> {
   return apiFetch<void>(`/api/v1/routes/${id}`, { method: 'DELETE' });
 }
 
+export async function updateRoute(
+  id: string,
+  data: { name?: string; sport_type?: string },
+): Promise<RouteData> {
+  return apiFetch<RouteData>(`/api/v1/routes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function syncRoutes(): Promise<RouteSyncResult[]> {
   return apiFetch<RouteSyncResult[]>('/api/v1/routes/sync', { method: 'POST' });
 }

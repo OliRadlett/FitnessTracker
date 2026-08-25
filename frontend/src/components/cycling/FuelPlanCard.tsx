@@ -29,7 +29,6 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
   const [duringNotes, setDuringNotes] = useState(plan.actual_during_notes ?? '');
   const [postNotes, setPostNotes] = useState(plan.actual_post_ride_notes ?? '');
 
-  // Re-sync local state when the plan is refetched/invalidated
   useEffect(() => {
     setPreNotes(plan.actual_pre_ride_notes ?? '');
     setDuringNotes(plan.actual_during_notes ?? '');
@@ -108,11 +107,12 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
 
   const enabled = !!activity?.id;
 
-  const { data: plan, isLoading, isError } = useQuery<RideFuelPlan | null>({
+  const { data: plan, isLoading, isError, error } = useQuery<RideFuelPlan | null>({
     queryKey: ['fuel-plan', activity?.id ?? 'none'],
     queryFn: () => authFetch<RideFuelPlan | null>(`/api/v1/nutrition/fuel-plan/activity/${activity!.id}`),
     enabled,
     staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
 
   const createMutation = useMutation({
@@ -126,18 +126,60 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      authFetch<void>(`/api/v1/nutrition/fuel-plan/${plan!.id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fuel-plan', activity?.id] });
+    },
+  });
+
   if (!enabled) return null;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🥤 Ride Fuel Plan</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Ride Fuel Plan</CardTitle>
+          {plan && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending}
+                className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('Delete this fuel plan?')) deleteMutation.mutate();
+                }}
+                disabled={deleteMutation.isPending}
+                className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
       </CardHeader>
 
       {isLoading && <SkeletonRow />}
 
       {isError && (
-        <p className="text-sm text-muted">Could not load fuel plan.</p>
+        <div className="space-y-2">
+          <p className="text-sm text-red-400">Could not load fuel plan.</p>
+          <p className="text-xs text-muted">{(error as Error)?.message || 'Unknown error'}</p>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+            className="px-4 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {createMutation.isPending ? 'Generating…' : 'Generate Fuel Plan'}
+          </button>
+        </div>
       )}
 
       {!isLoading && !isError && !plan && (
@@ -150,7 +192,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
             disabled={createMutation.isPending}
             className="px-4 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-lg transition-colors disabled:opacity-50"
           >
-            {createMutation.isPending ? 'Generating…' : '🥤 Generate Fuel Plan'}
+            {createMutation.isPending ? 'Generating…' : 'Generate Fuel Plan'}
           </button>
           {createMutation.isError && (
             <p className="text-xs text-red-400">Failed to generate fuel plan — try again.</p>
@@ -160,7 +202,6 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
 
       {!isLoading && !isError && plan && (
         <>
-          {/* Target summary */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
             <StatBadge label="Pre carbs" value={`${plan.pre_ride_carbs_g} g`} />
             <StatBadge label="Carbs/hr" value={`${plan.during_carbs_per_hour_g} g`} />
@@ -169,8 +210,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
             <StatBadge label="Recovery" value={`${plan.post_ride_carbs_g}g C / ${plan.post_ride_protein_g}g P`} />
           </div>
 
-          {/* Timeline */}
-          {plan.schedule.length > 0 && (
+          {plan.schedule && plan.schedule.length > 0 && (
             <div className="mb-6">
               <h4 className="text-sm font-medium text-muted mb-3">Fuelling Timeline</h4>
               <div className="space-y-3">
@@ -193,7 +233,6 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
             </div>
           )}
 
-          {/* Actuals logging */}
           <div className="mb-4">
             <ActualsEditor key={plan.id} plan={plan} />
           </div>

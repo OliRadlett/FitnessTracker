@@ -200,7 +200,7 @@ function RouteHistorySection({ routeId }: { routeId: string }) {
 
 export default function RoutesPage() {
   usePageTitle('Routes');
-  const { authFetch, token } = useAuthFetch();
+  const { authFetch, authFetchWithHeaders, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<RouteFilters>({});
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -213,9 +213,9 @@ export default function RoutesPage() {
   const [showCompareModal, setShowCompareModal] = useState(false);
 
   // Fetch route list
-  const { data: routes, isLoading } = useQuery<RouteSummary[]>({
+  const { data: routesData, isLoading } = useQuery<{ routes: RouteSummary[]; totalCount: number }>({
     queryKey: ['routes', filters],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== '' && value !== null) {
@@ -223,10 +223,15 @@ export default function RoutesPage() {
         }
       });
       const query = params.toString();
-      return authFetch<RouteSummary[]>(`/api/v1/routes/${query ? `?${query}` : ''}`);
+      const result = await authFetchWithHeaders<RouteSummary[]>(`/api/v1/routes/${query ? `?${query}` : ''}`);
+      const totalCount = parseInt(result.headers.get('X-Total-Count') || '0', 10);
+      return { routes: result.data, totalCount };
     },
     staleTime: 120_000,  // 2 min
   });
+
+  const routes = routesData?.routes;
+  const totalCount = routesData?.totalCount ?? 0;
 
   // Fetch selected route detail
   const { data: selectedRoute } = useQuery<RouteData>({
@@ -265,6 +270,23 @@ export default function RoutesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       setSelectedRouteId(null);
+    },
+  });
+
+  // Rename mutation
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const renameMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      authFetch(`/api/v1/routes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+      queryClient.invalidateQueries({ queryKey: ['route', selectedRouteId] });
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      setIsRenaming(false);
     },
   });
 
@@ -348,9 +370,9 @@ export default function RoutesPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-white mb-2">Saved Routes</h1>
-            {routes && routes.length > 0 && (
+            {routes && totalCount > 0 && (
               <span className="inline-flex items-center px-3 py-1 text-sm font-semibold bg-accent/20 text-accent rounded-full">
-                {routes.length} {routes.length === 1 ? 'route' : 'routes'}
+                {totalCount} {totalCount === 1 ? 'route' : 'routes'}
               </span>
             )}
           </div>
@@ -742,8 +764,60 @@ export default function RoutesPage() {
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <CardTitle>{selectedRoute.name}</CardTitle>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {isRenaming ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (renameValue.trim() && renameValue.trim() !== selectedRoute.name) {
+                              renameMutation.mutate({ id: selectedRoute.id, name: renameValue.trim() });
+                            } else {
+                              setIsRenaming(false);
+                            }
+                          }}
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                        >
+                          <input
+                            type="text"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            autoFocus
+                            className="flex-1 min-w-0 px-2 py-1 bg-background border border-accent rounded text-white text-lg font-bold focus:outline-none"
+                            onBlur={() => {
+                              if (!renameValue.trim() || renameValue.trim() === selectedRoute.name) {
+                                setIsRenaming(false);
+                              }
+                            }}
+                          />
+                          <button
+                            type="submit"
+                            className="text-xs text-accent hover:text-accent/80"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsRenaming(false)}
+                            className="text-xs text-muted hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <>
+                          <CardTitle>{selectedRoute.name}</CardTitle>
+                          <button
+                            onClick={() => {
+                              setRenameValue(selectedRoute.name);
+                              setIsRenaming(true);
+                            }}
+                            className="text-xs text-muted hover:text-accent transition-colors"
+                            aria-label="Rename route"
+                          >
+                            ✏️
+                          </button>
+                        </>
+                      )}
                       {(() => {
                         const diff = computeDifficulty(selectedRoute.elevation_gain_meters, selectedRoute.distance_meters);
                         return diff ? <DifficultyBadge level={diff} /> : null;

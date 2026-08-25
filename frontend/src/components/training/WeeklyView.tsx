@@ -28,6 +28,7 @@ import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
+import { RoutePickerModal } from './RoutePickerModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -250,6 +251,12 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const assignRoute = useMutation({
     mutationFn: ({ dayId, routeId }: { dayId: string; routeId: string }) =>
       updatePlanDay(authFetch, plan.id, dayId, { planned_route_id: routeId }),
+    onSuccess: invalidateWeeks,
+  });
+
+  const unassignRoute = useMutation({
+    mutationFn: (dayId: string) =>
+      updatePlanDay(authFetch, plan.id, dayId, { planned_route_id: null }),
     onSuccess: invalidateWeeks,
   });
 
@@ -510,10 +517,14 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
                 onAssignRoute={(routeId) =>
                   day && assignRoute.mutate({ dayId: day.id, routeId })
                 }
+                onUnassignRoute={() =>
+                  day && unassignRoute.mutate(day.id)
+                }
                 onQuickEdit={(payload) => day && quickEdit.mutate({ dayId: day.id, payload })}
                 busy={
                   toggleCompleted.isPending ||
                   assignRoute.isPending ||
+                  unassignRoute.isPending ||
                   quickEdit.isPending
                 }
               />
@@ -552,6 +563,7 @@ interface DayCardProps {
   onToggleExpand: () => void;
   onToggleCompleted: (completed: boolean) => void;
   onAssignRoute: (routeId: string) => void;
+  onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
   busy: boolean;
 }
@@ -568,6 +580,7 @@ function DayCard({
   onToggleExpand,
   onToggleCompleted,
   onAssignRoute,
+  onUnassignRoute,
   onQuickEdit,
   busy,
 }: DayCardProps) {
@@ -727,6 +740,7 @@ function DayCard({
               planId={planId}
               busy={busy}
               onAssignRoute={onAssignRoute}
+              onUnassignRoute={onUnassignRoute}
               onQuickEdit={onQuickEdit}
             />
           )}
@@ -743,17 +757,20 @@ function ExpandedPanel({
   planId,
   busy,
   onAssignRoute,
+  onUnassignRoute,
   onQuickEdit,
 }: {
   day: TrainingWeekDay;
   planId: string;
   busy: boolean;
   onAssignRoute: (routeId: string) => void;
+  onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
 }) {
   const [duration, setDuration] = useState(day.planned_duration_min?.toString() ?? '');
   const [tss, setTss] = useState(day.planned_tss?.toString() ?? '');
   const [notes, setNotes] = useState(day.notes ?? '');
+  const [showRoutePicker, setShowRoutePicker] = useState(false);
 
   const handleSave = () => {
     const payload: UpdateTrainingPlanDayPayload = {};
@@ -815,54 +832,77 @@ function ExpandedPanel({
         </p>
       )}
 
-      {/* Route matches (cycle days with duration only) */}
-      {day.sport === 'cycle' && day.route_matches && day.route_matches.length > 0 && (
+      {/* Route assignment (cycle days only) */}
+      {day.sport === 'cycle' && (
         <div className="space-y-1">
           <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
-            Route options
+            Route
           </p>
-          {day.planned_route_id && (
-            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30">
-              Route assigned ✓
-            </span>
-          )}
-          {day.route_matches.slice(0, 3).map((m: WeekRouteMatchEntry) => (
-            <div key={m.route_id} className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-white/90 truncate flex-1 min-w-0" title={m.name}>
-                {m.name}
-              </span>
-              <span className="text-muted shrink-0" title="Match score">
-                {toPercent(m.score)}
-              </span>
-              <span className="text-muted shrink-0" title="Confidence">
-                {toPercent(m.confidence)}
-              </span>
-              {m.estimated_tss != null && (
-                <span className="text-muted shrink-0" title="Estimated TSS">
-                  ~{Math.round(m.estimated_tss)}
-                </span>
-              )}
-              <span
-                className="text-muted shrink-0"
-                title={`${m.ride_count} ride${m.ride_count === 1 ? '' : 's'} on this route`}
-              >
-                ×{m.ride_count}
+          {day.planned_route_id ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30">
+                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned ✓'}
               </span>
               <button
-                onClick={() => onAssignRoute(m.route_id)}
-                disabled={busy}
-                className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                  m.route_id === day.planned_route_id
-                    ? 'bg-positive/20 text-positive'
-                    : 'bg-accent/20 text-accent hover:bg-accent/30'
-                }`}
+                onClick={() => setShowRoutePicker(true)}
+                className="text-[10px] text-accent hover:text-accent/80"
               >
-                {m.route_id === day.planned_route_id ? '✓' : 'Assign'}
+                Change
+              </button>
+              <button
+                onClick={onUnassignRoute}
+                disabled={busy}
+                className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-50"
+              >
+                Remove
               </button>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-1">
+              {day.route_matches && day.route_matches.length > 0 && (
+                <div className="space-y-1">
+                  {day.route_matches.slice(0, 3).map((m: WeekRouteMatchEntry) => (
+                    <div key={m.route_id} className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-white/90 truncate flex-1 min-w-0" title={m.name}>
+                        {m.name}
+                      </span>
+                      <span className="text-muted shrink-0" title="Match score">
+                        {toPercent(m.score)}
+                      </span>
+                      {m.estimated_tss != null && (
+                        <span className="text-muted shrink-0" title="Estimated TSS">
+                          ~{Math.round(m.estimated_tss)}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => onAssignRoute(m.route_id)}
+                        disabled={busy}
+                        className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
+                      >
+                        Assign
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => setShowRoutePicker(true)}
+                className="text-[10px] text-accent hover:text-accent/80"
+              >
+                🗺️ Browse all routes...
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      <RoutePickerModal
+        open={showRoutePicker}
+        onClose={() => setShowRoutePicker(false)}
+        onSelect={onAssignRoute}
+        onUnassign={onUnassignRoute}
+        currentRouteId={day.planned_route_id}
+      />
 
       {/* Notes */}
       {day.notes && !notes && <p className="text-[11px] text-muted italic">{day.notes}</p>}

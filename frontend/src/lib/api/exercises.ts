@@ -1,6 +1,7 @@
 import { useAuthFetch } from './fetch';
 
 export interface ExerciseEntry {
+  id: string;
   name: string;
   category: string;
 }

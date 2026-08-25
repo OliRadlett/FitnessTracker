@@ -3,12 +3,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { searchExercises, createExercise, deleteExercise } from '@/lib/api/exercises';
+import type { ExerciseEntry } from '@/lib/api/exercises';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-
-interface ExerciseEntry {
-  name: string;
-  category: string;
-}
 
 const CATEGORIES = [
   { value: 'big3', label: 'Big 3' },
@@ -30,25 +27,16 @@ export function ExerciseManager() {
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('accessory');
   const [newAliases, setNewAliases] = useState('');
-  const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategory, setEditCategory] = useState('');
 
   const { data: exercises, isLoading } = useQuery<ExerciseEntry[]>({
     queryKey: ['exercises-list', search],
-    queryFn: () =>
-      authFetch<ExerciseEntry[]>(
-        `/api/v1/lifting/exercises?q=${encodeURIComponent(search)}&limit=200`,
-      ),
+    queryFn: () => searchExercises(authFetch, search, 200),
     staleTime: 30_000,
   });
 
   const createMut = useMutation({
     mutationFn: (data: { name: string; category: string; aliases?: string[] }) =>
-      authFetch('/api/v1/lifting/exercises', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+      createExercise(authFetch, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exercises-list'] });
       setNewName('');
@@ -58,10 +46,7 @@ export function ExerciseManager() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (name: string) =>
-      authFetch(`/api/v1/lifting/exercises/${encodeURIComponent(name)}`, {
-        method: 'DELETE',
-      }),
+    mutationFn: (exerciseId: string) => deleteExercise(authFetch, exerciseId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exercises-list'] }),
   });
 
@@ -154,9 +139,9 @@ export function ExerciseManager() {
           <p className="text-sm text-muted">Loading...</p>
         ) : (
           <div className="space-y-1 max-h-96 overflow-y-auto">
-            {(exercises ?? []).map((ex, idx) => (
+            {(exercises ?? []).map((ex) => (
               <div
-                key={`${ex.name}-${idx}`}
+                key={ex.id}
                 className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-surface-light/30 group"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -169,6 +154,14 @@ export function ExerciseManager() {
                     {ex.category}
                   </span>
                 </div>
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete "${ex.name}"?`)) deleteMut.mutate(ex.id);
+                  }}
+                  className="text-xs text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-300"
+                >
+                  Delete
+                </button>
               </div>
             ))}
             {exercises && exercises.length === 0 && (

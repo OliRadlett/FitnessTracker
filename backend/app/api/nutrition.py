@@ -1,5 +1,6 @@
 """Nutrition API — ride fuel plan CRUD and generation."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,6 +21,7 @@ from app.services.nutrition import (
     update_fuel_plan_actuals,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -74,7 +76,11 @@ async def read_plan_for_activity(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Get the fuel plan for an activity (null if none exists)."""
-    plan = await get_plan_for_activity(db, user_id, activity_id)
+    try:
+        plan = await get_plan_for_activity(db, user_id, activity_id)
+    except Exception:
+        logger.exception("Failed to load fuel plan for activity %s", activity_id)
+        raise HTTPException(status_code=500, detail="Failed to load fuel plan")
     if not plan:
         return None
     return _with_schedule(plan)

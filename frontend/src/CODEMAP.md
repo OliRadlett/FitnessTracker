@@ -159,6 +159,7 @@
 | Component | Purpose |
 |-----------|---------|
 | `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
+| `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
 
 ### `lib/` — Shared utilities
 | File | Purpose |

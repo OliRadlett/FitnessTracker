@@ -70,10 +70,10 @@ class Settings(BaseSettings):
 
     # Merge / dedup thresholds
     activity_merge_threshold: float = (
-        0.60  # lowered from 0.65 to reduce false negatives
+        0.55  # lowered from 0.60 to catch near-identical rides from different devices
     )
     activity_route_link_threshold: float = 0.70
-    route_match_threshold: float = 0.60
+    route_match_threshold: float = 0.55  # lowered from 0.60 to catch same-route variants
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

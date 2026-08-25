@@ -436,3 +436,39 @@
 - **File:** `backend/app/services/projections.py:336-380`
 - **Issue:** History branches existed only for `ftp_watts`, `body_weight`, `resting_hr`, `hrv_ms`. For `estimated_1rm`, `weekly_tss`, `vo2max`, bw-ratios, `big3_total`, `weekly_sessions`, `monthly_distance_km` — silently returned `trend: null` despite having data.
 - **Fix:** Added history branches for all 13 metrics, reusing PersonalRecord queries (lifting metrics), activity aggregations (weekly/monthly), and `compute_vo2max_history` (VO2max).
+
+### BUG-066: Exercise Library Listing Fails (422)
+- **Status:** FIXED
+- **File:** `backend/app/api/lifting.py:283`
+- **Issue:** `GET /exercises` endpoint caps `limit` at `le=50` but frontend requests `limit=200` → 422 validation error. Listing never works; adding works because POST body is unvalidated dict.
+- **Fix:** Raised cap to `le=200`, default to 50. Also fixed delete mutation sending name instead of UUID, routed ExerciseManager through `lib/api/exercises.ts` helpers.
+
+### BUG-067: Recharts Brush Renders "undefined" and "NaN" on X-Axis
+- **Status:** FIXED
+- **File:** `frontend/src/components/charts/Chart.tsx:265-267, 351-354`
+- **Issue:** `<Brush>` added to line/area charts with >20 data points without `ariaLabel`, `startIndex`/`endIndex`, or `tickFormatter`. Recharts Brush with category XAxis emits literal "undefined" labels and NaN scale geometry. Affects ~11 charts.
+- **Fix:** Extracted `renderBrush()` helper with `ariaLabel="Zoom range"`, explicit `startIndex`/`endIndex`, and `tickFormatter` reusing `formatDateTick`. Also guarded pie percent NaN and tooltip labelFormatter undefined.
+
+### BUG-068: Nutrition Fuel Plan "Could not load fuel plan"
+- **Status:** INVESTIGATING (latent defects fixed)
+- **File:** `frontend/src/components/cycling/FuelPlanCard.tsx`, `backend/app/api/nutrition.py`
+- **Issue:** GET /fuel-plan/activity/{id} consistently errors. Root cause unclear from static analysis — needs live diagnosis (possible missing migration, auth edge, or serialization issue). Latent defects fixed: actuals clearing now works (empty string → null), regenerate/delete buttons added, error message now shows actual error detail, FuelPlanCard consolidated to use API helpers.
+- **Fix:** Added error logging to backend endpoint, improved frontend error display, fixed actuals clearing semantics, added regenerate/delete UI.
+
+### BUG-069: Surface Data Never Populated
+- **Status:** FIXED
+- **File:** `backend/app/services/komoot.py:207-223`, `backend/app/services/route_service.py:296-311`
+- **Issue:** Komoot's dedicated `/surface` endpoint (`komoot_client.get_surface()`) is never called by sync. Surface data only extracted from optional `summary.surfaces` payload field. Re-sync early-return in `create_or_merge_route` prevents backfill on existing routes.
+- **Fix:** Added `get_surface()` API fallback when payload lacks surface data. Added surface backfill pass at end of Komoot sync for existing routes missing `surface_profile`. Modified `create_or_merge_route` to fill `surface_profile` on existing routes when available.
+
+### BUG-070: Route Filtering Inconsistent
+- **Status:** FIXED
+- **File:** `backend/app/api/routes.py:51-179`, `frontend/src/app/(app)/routes/page.tsx:216-229`
+- **Issue:** `is_ridden` filter applied post-query after pagination → pages shrink unpredictably. `total_count` ignores `is_ridden`. `ride_count`/`last_ridden` sorting also post-query. Count badge shows `routes.length` instead of `X-Total-Count`.
+- **Fix:** Moved ride stats computation to SQL subquery with LEFT JOIN. `is_ridden` filter now in SQL. Sorting by `ride_count`/`last_ridden` now in SQL. Count badge uses `X-Total-Count` header via `authFetchWithHeaders`.
+
+### BUG-071: Merge Thresholds Too Strict
+- **Status:** FIXED
+- **File:** `backend/app/services/merge_service.py:135`, `backend/app/services/route_service.py:109`, `backend/app/config.py:72-76`
+- **Issue:** Activity merge: date proximity weighted 50% (too dominant). Route merge: proximity weighted 40% (too dominant) — a >1km start-point difference caps score at 0.60 (the threshold). Near-identical rides from different devices treated as separate.
+- **Fix:** Activity weights: date 40%, sport 20%, duration 20%, distance 20%. Route weights: proximity 25%, distance 25%, name 15%, shape 35%. Added 1-2km proximity tier (0.15). Lowered both thresholds from 0.60 to 0.55.

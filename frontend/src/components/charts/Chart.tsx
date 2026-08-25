@@ -226,7 +226,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         borderRadius: '8px',
         color: '#e2e8f0',
       }}
-      labelFormatter={isDateAxis ? (v) => formatDateFull(String(v)) : undefined}
+      labelFormatter={isDateAxis ? (v) => formatDateFull(String(v ?? '')) : undefined}
       formatter={(value: unknown, name: unknown) => [
         typeof value === 'number' ? `${value.toLocaleString()}${unit}` : String(value),
         String(name),
@@ -238,6 +238,22 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     data.series.length > 1 ? (
       <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
     ) : null;
+
+  const renderBrush = () => {
+    if (pointCount <= 20) return null;
+    return (
+      <Brush
+        dataKey="x"
+        height={30}
+        stroke="#334155"
+        fill="#1e293b"
+        ariaLabel="Zoom range"
+        startIndex={0}
+        endIndex={Math.max(pointCount - 1, 0)}
+        tickFormatter={isDateAxis ? (v: string) => formatDateTick(v, pointCount) : undefined}
+      />
+    );
+  };
 
   let chartContent: React.ReactNode;
 
@@ -262,9 +278,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
-            {pointCount > 20 && (
-              <Brush dataKey="x" height={30} stroke="#334155" fill="#1e293b" />
-            )}
+            {renderBrush()}
             {renderTooltip()}
             {renderLegend()}
             {data.series.map((s, i) => (
@@ -349,9 +363,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
-            {pointCount > 20 && (
-              <Brush dataKey="x" height={30} stroke="#334155" fill="#1e293b" />
-            )}
+            {renderBrush()}
             {renderTooltip()}
             {renderLegend()}
             {data.series.map((s, i) => (
@@ -384,7 +396,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               outerRadius={Math.min(height * 0.35, 150)}
               dataKey="value"
               nameKey="name"
-              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+              label={({ name, percent }) => Number.isFinite(percent) ? `${name} ${(percent * 100).toFixed(0)}%` : name}
             >
               {chartData.map((_, index) => (
                 <Cell

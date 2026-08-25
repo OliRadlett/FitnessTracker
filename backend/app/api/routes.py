@@ -38,16 +38,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Sort field mapping for routes
-ROUTE_SORT_FIELDS = {
-    "name": Route.name,
-    "distance": Route.distance_meters,
-    "elevation": Route.elevation_gain_meters,
-    "created_at": Route.created_at,
-    "updated_at": Route.updated_at,
-}
-
-
 @router.get("/", response_model=list[RouteSummary])
 async def list_routes(
     sport_type: str | None = Query(None),
@@ -78,8 +68,7 @@ async def list_routes(
     """List user's routes with optional filters, sort, and ride stats.
 
     Returns the route list with an X-Total-Count response header.
-    Note: is_ridden filter is applied post-query (computed field), so
-    total_count reflects SQL-level filters only.
+    Ride counts and last-ridden dates are computed via SQL subquery.
     """
     # Build base query
     base_filters = [Route.user_id == current_user.id]
@@ -100,76 +89,87 @@ async def list_routes(
     if surface_type:
         base_filters.append(Route.surface_profile.has_key(surface_type))
 
-    # Get total count (before pagination)
-    count_query = select(func.count(Route.id)).where(*base_filters)
-    if source:
-        count_query = count_query.join(Route.sources).where(
-            RouteSource.provider == source
+    # Subquery: ride count and last ridden date per route
+    ride_stats_subq = (
+        select(
+            Activity.route_id.label("stat_route_id"),
+            func.count(Activity.id).label("ride_count"),
+            func.max(Activity.start_date).label("last_ridden"),
         )
-    count_result = await db.execute(count_query)
-    total_count = int(count_result.scalar() or 0)
+        .where(Activity.user_id == current_user.id)
+        .group_by(Activity.route_id)
+        .subquery()
+    )
 
-    query = select(Route).options(selectinload(Route.sources)).where(*base_filters)
+    # Main query with LEFT JOIN to ride stats
+    query = (
+        select(
+            Route,
+            func.coalesce(ride_stats_subq.c.ride_count, 0).label("ride_count"),
+            ride_stats_subq.c.last_ridden.label("last_ridden"),
+        )
+        .outerjoin(ride_stats_subq, Route.id == ride_stats_subq.c.stat_route_id)
+        .options(selectinload(Route.sources))
+        .where(*base_filters)
+    )
 
     if source:
         query = query.join(Route.sources).where(RouteSource.provider == source)
 
-    # Apply sorting
-    if sort_by and sort_by in ROUTE_SORT_FIELDS:
-        sort_col = ROUTE_SORT_FIELDS[sort_by]
-        query = query.order_by(
-            desc(sort_col) if sort_order == "desc" else asc(sort_col)
-        )
+    # Apply is_ridden filter in SQL
+    if is_ridden is True:
+        query = query.where(ride_stats_subq.c.ride_count > 0)
+    elif is_ridden is False:
+        query = query.where(ride_stats_subq.c.ride_count.is_(None))
+
+    # Apply sorting in SQL (including computed fields)
+    sort_column_map = {
+        "name": Route.name,
+        "distance": Route.distance_meters,
+        "elevation": Route.elevation_gain_meters,
+        "created_at": Route.created_at,
+        "updated_at": Route.updated_at,
+        "ride_count": ride_stats_subq.c.ride_count,
+        "last_ridden": ride_stats_subq.c.last_ridden,
+    }
+    if sort_by and sort_by in sort_column_map:
+        sort_col = sort_column_map[sort_by]
+        # Handle NULLs for computed fields
+        if sort_by in ("ride_count", "last_ridden"):
+            nulls = "last" if sort_order == "desc" else "first"
+            query = query.order_by(
+                sort_col.asc().nullsfirst()
+                if sort_order == "asc"
+                else sort_col.desc().nullslast()
+            )
+        else:
+            query = query.order_by(
+                desc(sort_col) if sort_order == "desc" else asc(sort_col)
+            )
     else:
         query = query.order_by(Route.created_at.desc())
 
+    # Get total count (after all filters including is_ridden)
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
+    total_count = int(count_result.scalar() or 0)
+
+    # Apply pagination
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
-    routes = list(result.scalars().unique().all())
-
-    # Compute ride counts and last ridden dates for each route
-    route_ids = [r.id for r in routes]
-    if route_ids:
-        ride_stats = await db.execute(
-            select(
-                Activity.route_id,
-                func.count(Activity.id).label("ride_count"),
-                func.max(Activity.start_date).label("last_ridden"),
-            )
-            .where(
-                Activity.route_id.in_(route_ids),
-                Activity.user_id == current_user.id,
-            )
-            .group_by(Activity.route_id)
-        )
-        stats_map: dict[uuid.UUID, tuple[int, datetime | None]] = {
-            row.route_id: (row.ride_count, row.last_ridden) for row in ride_stats.all()
-        }
-    else:
-        stats_map = {}
+    rows = result.all()
 
     # Build response
     summaries = []
-    for r in routes:
-        summary = RouteSummary.model_validate(r)
-        ride_count, last_ridden = stats_map.get(r.id, (0, None))
+    for row in rows:
+        route = row[0]  # Route object
+        ride_count = int(row[1] or 0)
+        last_ridden = row[2]
+        summary = RouteSummary.model_validate(route)
         summary.ride_count = ride_count
         summary.is_ridden = ride_count > 0
         summary.last_ridden_date = last_ridden
         summaries.append(summary)
-
-    # Apply is_ridden filter (post-query since it's a computed field)
-    if is_ridden is not None:
-        summaries = [s for s in summaries if s.is_ridden == is_ridden]
-
-    # Sort by ride_count or last_ridden if requested (these are computed fields)
-    if sort_by == "ride_count":
-        summaries.sort(key=lambda s: s.ride_count, reverse=(sort_order == "desc"))
-    elif sort_by == "last_ridden":
-        summaries.sort(
-            key=lambda s: s.last_ridden_date or datetime.min,
-            reverse=(sort_order == "desc"),
-        )
 
     from fastapi.responses import JSONResponse
 

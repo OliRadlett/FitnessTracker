@@ -52,6 +52,8 @@ def _proximity_score(
         return 0.7
     elif start_dist < 1000 and end_dist < 1000:
         return 0.3
+    elif start_dist < 2000 and end_dist < 2000:
+        return 0.15
     else:
         return 0.0
 
@@ -106,7 +108,7 @@ def _compute_match_score(
     name = _name_score(new_name, existing.name)
     shape = shape_similarity(new_encoded_polyline, existing.encoded_polyline)
 
-    return (proximity * 0.40) + (distance * 0.30) + (name * 0.15) + (shape * 0.15)
+    return (proximity * 0.25) + (distance * 0.25) + (name * 0.15) + (shape * 0.35)
 
 
 # ── Core CRUD operations ─────────────────────────────────────────────────────
@@ -302,13 +304,17 @@ async def create_or_merge_route(
     if existing_source.scalar_one_or_none():
         logger.info(f"Route source already exists: {provider}/{provider_route_id}")
         source = existing_source.scalar_one_or_none()
-        # Return the parent route
+        # Return the parent route, filling surface_profile if missing
         result = await db.execute(
             select(Route)
             .options(selectinload(Route.sources))
             .where(Route.id == source.route_id)
         )
-        return result.scalar_one()
+        route = result.scalar_one()
+        if surface_profile and not route.surface_profile:
+            route.surface_profile = surface_profile
+            await db.flush()
+        return route
 
     # Compute geometry from polyline
     points = decode_polyline(encoded_polyline)

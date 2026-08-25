@@ -132,7 +132,7 @@ def _compute_activity_match_score(
     if sport_s == 0.0:
         return 0.0
 
-    return (date_s * 0.50) + (sport_s * 0.20) + (dur_s * 0.15) + (dist_s * 0.15)
+    return (date_s * 0.40) + (sport_s * 0.20) + (dur_s * 0.20) + (dist_s * 0.20)
 
 
 # ── Duplicate detection ──────────────────────────────────────────────────────

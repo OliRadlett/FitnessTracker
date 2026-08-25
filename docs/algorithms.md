@@ -6,10 +6,10 @@
 
 | Algorithm | Location | Threshold | Scoring |
 |-----------|----------|-----------|---------|
-| Activity merge (dedup) | [`merge_service.py`](../backend/app/services/merge_service.py) | `0.60` | date 50%, sport 20%, duration 15%, distance 15% |
+| Activity merge (dedup) | [`merge_service.py`](../backend/app/services/merge_service.py) | `0.55` | date 40%, sport 20%, duration 20%, distance 20% |
 | Activity↔Route link | [`merge_service.py`](../backend/app/services/merge_service.py) | `0.70` | proximity + distance + shape |
 | Activity↔Lifting link | [`strava.py`](../backend/app/services/strava.py) `_match_score()` | `0.55` | date 50%, duration 20%, exercise overlap 30% |
-| Route dedup | [`route_service.py`](../backend/app/services/route_service.py) | `0.60` | start/end 40%, distance 30%, name 15%, shape 15% |
+| Route dedup | [`route_service.py`](../backend/app/services/route_service.py) | `0.55` | proximity 25%, distance 25%, name 15%, shape 35% |
 | PR detection | [`lifting.py`](../backend/app/services/lifting.py) `_check_and_record_pr()` | Brzycki: `weight × (36/(37-reps))` | Updated in-place (one PR per exercise) |
 | Exercise normalisation | [`exercise_db.py`](../backend/app/services/exercise_db.py) | — | Canonical names, aliases, categories |
 | Workout zone matching | [`workout_planner.py`](../backend/app/services/workout_planner.py) | TSB-based readiness | 5 zones from FTP/LTHR, route scoring: TSS 35%, duration 25%, power 25%, HR 15% |

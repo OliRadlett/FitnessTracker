@@ -80,7 +80,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (27 tables, UUID PKs)
+## Database (28 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -165,6 +165,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
 16. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
+17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
 
 ## Development Lessons
 
