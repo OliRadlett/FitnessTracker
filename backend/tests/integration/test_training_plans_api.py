@@ -562,9 +562,11 @@ class TestGetPlanWeek:
         )
         assert resp.status_code == 200
         week = resp.json()
-        # Fixture creates 7 consecutive days starting today; depending on
-        # day-of-week the Monday-aligned week boundary may split them 6/1.
-        assert len(week["days"]) >= 6
+        # Fixture creates 7 consecutive days starting today; the
+        # Monday-aligned first week holds only the remainder of the current
+        # week (e.g. 5 days when today is a Wednesday).
+        expected_first_week = 7 - date.today().weekday()
+        assert len(week["days"]) == expected_first_week
         assert all(d["weather"] is None for d in week["days"])
 
 
@@ -766,7 +768,10 @@ class TestConformity:
         day = await self._add_cycle_day(
             db_session,
             test_training_plan.id,
-            day_date=date.today() - timedelta(days=1),  # matches test_activity date
+            # Anchor to the activity's UTC calendar date — the linker groups
+            # activities by start_date.date(), which lags local "yesterday"
+            # when running within an hour of UTC midnight.
+            day_date=test_activity.start_date.date(),
         )
 
         resp = await client.post(
