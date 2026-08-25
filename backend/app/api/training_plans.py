@@ -226,8 +226,8 @@ async def link_plan_activities(
     """Auto-link recent activities/lifting sessions to unlinked plan days.
 
     Cycle days match activities by calendar date (last 14 days); strength
-    days match lifting sessions by date, requiring a focus match when both
-    sides declare one.
+    days match lifting sessions by date, blocked only when both sides
+    declare focus vocabularies mapping to disjoint compatibility groups.
     """
     try:
         linked = await conformity_service.link_activities_to_plan_days(

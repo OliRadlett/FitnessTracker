@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.conformity import (
+    _focus_conflict,
     build_cycle_conformity,
     build_strength_conformity,
     classify_conformity,
@@ -254,9 +255,7 @@ class TestStrengthConformity:
         planned = {"planned_rpe": 8}
 
         within = build_strength_conformity(planned, fake_session(rpe_session=7), [])
-        rpe_within = next(
-            c for c in within["components"] if c["metric"] == "rpe"
-        )
+        rpe_within = next(c for c in within["components"] if c["metric"] == "rpe")
         assert rpe_within["component_score"] == pytest.approx(1.0)
 
         two_off = build_strength_conformity(planned, fake_session(rpe_session=6), [])
@@ -281,9 +280,7 @@ class TestStrengthConformity:
         mismatch = build_strength_conformity(
             {"planned_focus": "bench"}, fake_session(focus="squat day"), []
         )
-        focus_bad = next(
-            c for c in mismatch["components"] if c["metric"] == "focus"
-        )
+        focus_bad = next(c for c in mismatch["components"] if c["metric"] == "focus")
         assert focus_bad["component_score"] == 0.0
 
     def test_full_strength_day_renormalises_to_one(self):
@@ -305,7 +302,9 @@ class TestStrengthConformity:
             ["Back Squat"],
         )
         used = [
-            c["weight_used"] for c in result["components"] if c["weight_used"] is not None
+            c["weight_used"]
+            for c in result["components"]
+            if c["weight_used"] is not None
         ]
         assert len(used) == 5
         assert sum(used) == pytest.approx(1.0)
@@ -314,6 +313,43 @@ class TestStrengthConformity:
 
 
 # ── static shapes ───────────────────────────────────────────────────────────
+
+
+class TestFocusConflict:
+    """Auto-link focus guard: only known disjoint groups block a date match."""
+
+    def test_production_bug_pair_is_compatible(self):
+        # Planner vocabulary "bench" vs tracker vocabulary "Push" — this
+        # exact pair failed to link in production before the fix.
+        assert _focus_conflict("bench", "Push") is False
+
+    def test_compatible_groups_do_not_conflict(self):
+        assert _focus_conflict("squat", "Legs") is False
+        assert _focus_conflict("pull", "Back") is False
+        assert _focus_conflict("bench", "overhead_press") is False
+
+    def test_disjoint_known_groups_conflict(self):
+        assert _focus_conflict("push", "Legs") is True
+        assert _focus_conflict("squat", "Back") is True  # legs vs pull
+        assert _focus_conflict("bench", "legs") is True
+
+    def test_unknown_text_never_blocks(self):
+        assert _focus_conflict("Conditioning", "Push") is False
+        assert _focus_conflict("bench", "Circuits") is False
+
+    def test_missing_side_never_blocks(self):
+        assert _focus_conflict(None, "Push") is False
+        assert _focus_conflict("bench", None) is False
+        assert _focus_conflict(None, None) is False
+
+    def test_deadlift_matches_both_pull_and_legs(self):
+        assert _focus_conflict("deadlift", "Back") is False
+        assert _focus_conflict("deadlift", "Legs") is False
+        assert _focus_conflict("deadlift", "Push") is True
+
+    def test_normalises_case_spaces_and_hyphens(self):
+        assert _focus_conflict("Overhead Press", "OHP") is False
+        assert _focus_conflict("lower-body", "Legs") is False
 
 
 class TestShapes:

@@ -472,3 +472,18 @@
 - **File:** `backend/app/services/merge_service.py:135`, `backend/app/services/route_service.py:109`, `backend/app/config.py:72-76`
 - **Issue:** Activity merge: date proximity weighted 50% (too dominant). Route merge: proximity weighted 40% (too dominant) — a >1km start-point difference caps score at 0.60 (the threshold). Near-identical rides from different devices treated as separate.
 - **Fix:** Activity weights: date 40%, sport 20%, duration 20%, distance 20%. Route weights: proximity 25%, distance 25%, name 15%, shape 35%. Added 1-2km proximity tier (0.15). Lowered both thresholds from 0.60 to 0.55.
+
+---
+
+## OAUTH TOKEN HEALTH (2026-08-26)
+
+### BUG-072: Failed Token Refreshes Retry Forever With No User Signal
+- **Status:** OPEN (observed in prod 2026-08-26)
+- **Files:** `backend/app/tasks/scheduler.py` (per-provider sync loops), `backend/app/models/user.py:81` (`OAuthConnection`), `backend/app/integrations/*_client.py` (token refresh)
+- **Issue:** Strava + Wahoo token refreshes fail with `400 Bad Request` on `*/oauth/token` every sync run (tokens revoked/expired — e.g. password change or deauthorised app on provider side). The connection is never marked unhealthy: each 30-min beat task retries the dead refresh token indefinitely, syncing silently does nothing for that provider, and the user gets no indication anywhere that re-authorisation is needed. Sync appears "healthy" (task succeeds) while data goes stale.
+- **Fix (improvement plan):**
+  1. Add a health/status column to `OAuthConnection` (e.g. `status`: `active` | `needs_reauth`, plus `last_error_at`/`last_error`). Migration required.
+  2. In refresh handling, distinguish permanent vs transient failures: HTTP 400 with `invalid_grant`/`invalid_request` → set `status='needs_reauth'` and skip future syncs for that connection until re-authorised; network/5xx/rate-limit → retry with backoff as today.
+  3. Sync loops (`sync_all_strava_activities`, Wahoo, Whoop) filter out `needs_reauth` connections instead of attempting sync.
+  4. Surface it: Settings page shows "Reconnect" badge/banner per provider (GET /connections already lists them — add status); optionally a daily `generate_health_alert` check for stale sync + needs_reauth.
+  5. Re-authorisation flow resets status back to `active` in the OAuth callback.

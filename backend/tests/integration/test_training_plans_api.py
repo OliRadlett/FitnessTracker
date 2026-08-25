@@ -1,4 +1,4 @@
-﻿"""Integration tests for the Training Plans API (CRUD + generation).
+"""Integration tests for the Training Plans API (CRUD + generation).
 
 These tests exercise the full pipeline: HTTP â†’ FastAPI router â†’ service â†’ model â†’ database.
 No internal functions are mocked.
@@ -186,7 +186,9 @@ class TestUpdateTrainingPlan:
                 "days": [
                     {
                         "day_date": d["day_date"],
-                        "planned_tss": d["planned_tss"] + 5 if i == 0 else d["planned_tss"],
+                        "planned_tss": d["planned_tss"] + 5
+                        if i == 0
+                        else d["planned_tss"],
                         "sport": d.get("sport", "cycle"),
                         "planned_type": d["planned_type"],
                     }
@@ -276,9 +278,7 @@ class TestGenerateTrainingPlan:
 
         def day_at(week: int, dow: int) -> dict:
             target = start + timedelta(weeks=week, days=dow)
-            return next(
-                d for d in data["days"] if d["day_date"] == target.isoformat()
-            )
+            return next(d for d in data["days"] if d["day_date"] == target.isoformat())
 
         for week in range(2):
             sunday = day_at(week, 6)
@@ -334,9 +334,7 @@ class TestGenerateTrainingPlan:
 class TestEventLinkageAndTaper:
     """POST/PATCH with event_id â€” clamp end date and taper final days."""
 
-    async def test_event_link_clamps_end_date_and_tapers(
-        self, client, test_event
-    ):
+    async def test_event_link_clamps_end_date_and_tapers(self, client, test_event):
         """A plan extending past the event is clamped and tapered 100%â†’40%."""
         start = date.today()
         days = [
@@ -470,9 +468,7 @@ class TestGetPlanWeek:
     async def test_week_404_unknown_plan(self, client):
         import uuid
 
-        resp = await client.get(
-            f"/api/v1/training-plans/{uuid.uuid4()}/week/1"
-        )
+        resp = await client.get(f"/api/v1/training-plans/{uuid.uuid4()}/week/1")
         assert resp.status_code == 404
 
     async def test_actual_activity_present_when_linked(
@@ -698,8 +694,7 @@ class TestConformity:
         await db_session.flush()
 
         resp = await client.get(
-            f"/api/v1/training-plans/{test_training_plan.id}"
-            f"/days/{day.id}/conformity"
+            f"/api/v1/training-plans/{test_training_plan.id}/days/{day.id}/conformity"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -723,8 +718,7 @@ class TestConformity:
             planned_tss=90.0,
         )
         resp = await client.get(
-            f"/api/v1/training-plans/{test_training_plan.id}"
-            f"/days/{day.id}/conformity"
+            f"/api/v1/training-plans/{test_training_plan.id}/days/{day.id}/conformity"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -808,3 +802,132 @@ class TestConformity:
             f"/days/{uuid.uuid4()}/conformity"
         )
         assert resp.status_code == 404
+
+
+# ── Strength-day auto-linking ────────────────────────────────────────────────
+
+
+class TestLinkStrengthSessions:
+    """POST /link-activities — strength days match sessions by calendar date,
+    blocked only by known disjoint focus groups (planner lift-style vocabulary
+    vs tracker muscle-group vocabulary must not prevent linking)."""
+
+    async def _make_active_plan(self, db_session, user_id):
+        from datetime import timedelta as td
+
+        from app.models.training_plan import TrainingPlan
+
+        plan = TrainingPlan(
+            user_id=user_id,
+            name="Link Test Plan",
+            start_date=date.today() - td(days=7),
+            end_date=date.today() + td(weeks=4),
+            plan_type="custom",
+            status="active",
+        )
+        db_session.add(plan)
+        await db_session.flush()
+        return plan
+
+    async def _make_strength_day(self, db_session, plan_id, day_date, focus):
+        from app.models.training_plan import TrainingPlanDay
+
+        day = TrainingPlanDay(
+            plan_id=plan_id,
+            day_date=day_date,
+            sport="strength",
+            planned_type="moderate",
+            planned_focus=focus,
+        )
+        db_session.add(day)
+        await db_session.flush()
+        return day
+
+    async def _make_session(self, db_session, user_id, session_date, focus):
+        from app.models.lifting import LiftingSession
+
+        session = LiftingSession(
+            user_id=user_id,
+            session_date=session_date,
+            focus=focus,
+            total_volume_kg=5000.0,
+        )
+        db_session.add(session)
+        await db_session.flush()
+        return session
+
+    async def test_bench_day_links_push_session(self, client, test_user, db_session):
+        """The production bug: planner 'bench' vs session 'Push' on same date."""
+        from sqlalchemy import select
+
+        from app.models.training_plan import TrainingPlanDay
+
+        plan = await self._make_active_plan(db_session, test_user.id)
+        day = await self._make_strength_day(
+            db_session, plan.id, date.today() - timedelta(days=2), "bench"
+        )
+        session = await self._make_session(
+            db_session, test_user.id, date.today() - timedelta(days=2), "Push"
+        )
+
+        resp = await client.post(f"/api/v1/training-plans/{plan.id}/link-activities")
+        assert resp.status_code == 200
+        assert resp.json()["linked"] == 1
+
+        refreshed = (
+            (
+                await db_session.execute(
+                    select(TrainingPlanDay).where(TrainingPlanDay.id == day.id)
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert refreshed.lifting_session_id == session.id
+
+    async def test_disjoint_focus_blocks_linking(self, client, test_user, db_session):
+        """A known contradiction (bench day vs Legs session) stays unlinked."""
+        plan = await self._make_active_plan(db_session, test_user.id)
+        day = await self._make_strength_day(
+            db_session, plan.id, date.today() - timedelta(days=2), "bench"
+        )
+        await self._make_session(
+            db_session, test_user.id, date.today() - timedelta(days=2), "Legs"
+        )
+
+        resp = await client.post(f"/api/v1/training-plans/{plan.id}/link-activities")
+        assert resp.status_code == 200
+        assert resp.json()["linked"] == 0
+        await db_session.refresh(day)
+        assert day.lifting_session_id is None
+
+    async def test_unknown_free_text_focus_does_not_block(
+        self, client, test_user, db_session
+    ):
+        """Unrecognised focus labels fall back to the date match."""
+        from sqlalchemy import select
+
+        from app.models.training_plan import TrainingPlanDay
+
+        plan = await self._make_active_plan(db_session, test_user.id)
+        day = await self._make_strength_day(
+            db_session, plan.id, date.today() - timedelta(days=3), "Conditioning"
+        )
+        session = await self._make_session(
+            db_session, test_user.id, date.today() - timedelta(days=3), "Push"
+        )
+
+        resp = await client.post(f"/api/v1/training-plans/{plan.id}/link-activities")
+        assert resp.status_code == 200
+        assert resp.json()["linked"] == 1
+
+        refreshed = (
+            (
+                await db_session.execute(
+                    select(TrainingPlanDay).where(TrainingPlanDay.id == day.id)
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert refreshed.lifting_session_id == session.id

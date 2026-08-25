@@ -60,6 +60,59 @@ DEVIATION_THRESHOLD_PCT = 8.0
 # Auto-linking window: actuals up to this many days back are matched.
 LINK_LOOKBACK_DAYS = 14
 
+# Focus compatibility groups. The planner writes lift-style vocabulary
+# ("squat", "bench", "push", "pull", ...) while recorded sessions often carry
+# muscle-group vocabulary ("Push", "Back", "Legs"). A same-date match is only
+# blocked when both sides map into known *disjoint* groups; unrecognised or
+# missing text never blocks (free-form labels shouldn't prevent auto-linking).
+FOCUS_GROUPS: dict[str, set[str]] = {
+    # Pressing (chest/shoulders/triceps)
+    "push": {"push"},
+    "bench": {"push"},
+    "overhead_press": {"push"},
+    "ohp": {"push"},
+    "chest": {"push"},
+    "shoulders": {"push"},
+    # Hinge / back / biceps
+    "pull": {"pull"},
+    "back": {"pull"},
+    "row": {"pull"},
+    # Deadlift fits either split convention (pull day or leg day)
+    "deadlift": {"pull", "legs"},
+    # Squat pattern / lower body
+    "legs": {"legs"},
+    "squat": {"legs"},
+    "lower": {"legs"},
+    "lower_body": {"legs"},
+    "quads": {"legs"},
+    "hamstrings": {"legs"},
+    # Broad focuses are compatible with any strength session
+    "full_body": {"push", "pull", "legs"},
+    "upper": {"push", "pull"},
+    "accessories": {"push", "pull", "legs"},
+}
+
+
+def _focus_groups(raw: str | None) -> set[str] | None:
+    """Map a focus string to its compatibility group(s); None when unknown."""
+    if not raw:
+        return None
+    key = raw.strip().lower().replace(" ", "_").replace("-", "_")
+    return FOCUS_GROUPS.get(key)
+
+
+def _focus_conflict(planned_focus: str | None, actual_focus: str | None) -> bool:
+    """True only when both sides declare known-but-disjoint focus groups.
+
+    ``None``/unknown vocabulary on either side never conflicts — the calendar
+    date alone decides the match in that case.
+    """
+    planned_groups = _focus_groups(planned_focus)
+    actual_groups = _focus_groups(actual_focus)
+    if planned_groups is None or actual_groups is None:
+        return False
+    return not planned_groups & actual_groups
+
 
 # ── Pure scoring helpers ──────────────────────────────────────────────────
 
@@ -512,7 +565,9 @@ async def link_activities_to_plan_days(
     Matches within the last 14 days:
     - cycle days ↔ activities whose ``start_date.date() == day_date``
     - strength days ↔ lifting sessions on ``session_date == day_date``,
-      requiring ``focus == planned_focus`` when both sides set a focus.
+      blocked only when both sides declare focus vocabularies mapping to
+      disjoint compatibility groups (e.g. a planned ``bench`` day won't
+      take a ``Legs`` session; unknown/free-form text never blocks).
 
     Only *active* plans are processed (or the single given plan). Returns
     the number of links created; the caller owns the commit.
@@ -566,7 +621,10 @@ async def link_activities_to_plan_days(
         d.activity_id for plan in plans for d in plan.days if d.activity_id
     }
     used_session_ids: set[uuid.UUID] = {
-        d.lifting_session_id for plan in plans for d in plan.days if d.lifting_session_id
+        d.lifting_session_id
+        for plan in plans
+        for d in plan.days
+        if d.lifting_session_id
     }
 
     linked = 0
@@ -587,12 +645,8 @@ async def link_activities_to_plan_days(
                     s
                     for s in sessions_by_date.get(day.day_date, [])
                     if s.id not in used_session_ids
-                    # When both sides declare a focus it must match.
-                    and not (
-                        day.planned_focus
-                        and s.focus
-                        and day.planned_focus.lower() != s.focus.lower()
-                    )
+                    # Only a known focus contradiction blocks the match.
+                    and not _focus_conflict(day.planned_focus, s.focus)
                 ]
                 if candidates:
                     day.lifting_session_id = candidates[0].id
@@ -710,7 +764,10 @@ async def get_plan_conformity(
                         ):
                             cycle_power_devs_hard.append(comp["deviation_pct"])
                     for comp in result["components"]:
-                        if comp["metric"] == "duration" and comp["deviation_pct"] is not None:
+                        if (
+                            comp["metric"] == "duration"
+                            and comp["deviation_pct"] is not None
+                        ):
                             cycle_duration_devs.append(comp["deviation_pct"])
                 elif day.sport == "strength":
                     planned_vol = day.planned_volume_kg or 0
@@ -844,4 +901,3 @@ async def get_day_conformity(
         "planned_type": day.planned_type,
         **result,
     }
-

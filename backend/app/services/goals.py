@@ -85,7 +85,17 @@ def alignment_pct(goal: Goal, current: float, today: date) -> float | None:
     if goal.created_at is None:
         return None
 
-    created = goal.created_at.date()
+    # ``created_at`` is stored timezone-aware (UTC); convert to the host
+    # frame so it lines up with the caller-supplied ``today`` (local).
+    # Comparing raw UTC against a local ``date.today()`` made day zero last
+    # an extra hour past local midnight (or skip it entirely), flipping
+    # alignment between None and 0.0.
+    created_at = (
+        goal.created_at.astimezone()
+        if goal.created_at.tzinfo
+        else goal.created_at
+    )
+    created = created_at.date()
     total_span = (goal.target_date - created).days
     elapsed = (today - created).days
     if total_span <= 0 or elapsed <= 0:
