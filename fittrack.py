@@ -245,6 +245,10 @@ def _compose_file_args() -> list[str]:
     In production mode (``--prod`` flag), includes ``docker-compose.prod.yml``
     instead, which uses pre-built GHCR images and lets the Dockerfile's CMD
     handle the frontend command (node server.js).
+
+    Also includes ``docker-compose.override.yml`` if it exists (gitignored;
+    used for local dev TLS via Caddyfile.local).  Docker Compose auto-loads
+    this file only when no ``-f`` flags are given, so we must add it manually.
     """
     root = _project_root()
     args = ["-f", str(root / "docker-compose.yml")]
@@ -256,6 +260,10 @@ def _compose_file_args() -> list[str]:
         dev = root / "docker-compose.dev.yml"
         if dev.is_file():
             args += ["-f", str(dev)]
+    # Always include the override file if present (gitignored, local dev TLS)
+    override = root / "docker-compose.override.yml"
+    if override.is_file():
+        args += ["-f", str(override)]
     return args
 
 
