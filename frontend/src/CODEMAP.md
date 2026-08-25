@@ -110,6 +110,26 @@
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
 
+### `activities/` — Activity page components
+| Component | Purpose |
+|-----------|---------|
+| `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
+| `ActivityCard` | Activity list item card with sport badge, source badges, weather, compare checkbox, linked lifting indicator |
+| `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 selected activities |
+| `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
+
+### `routes/` — Route page components
+| Component | Purpose |
+|-----------|---------|
+| `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
+| `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
+
+### `calendar/` — Calendar page components
+| Component | Purpose |
+|-----------|---------|
+| `DayDetailPanel` | Selected day detail — recovery/sleep cards, activity details with stats grid, lifting session notes editor |
+| `CalendarAgendaView` | Mobile agenda list (phones only) — day rows with activity badges and recovery score |
+
 ### `dashboard/` — Dashboard tab sections
 | Component | Purpose |
 |-----------|---------|

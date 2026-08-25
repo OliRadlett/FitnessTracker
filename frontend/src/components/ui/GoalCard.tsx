@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import type { Goal } from '@/lib/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -27,6 +28,14 @@ export function goalFilterLabel(goal: Goal): string | null {
   const f = goal.filter_json;
   if (!f) return null;
   return f.exercise || f.sport || null;
+}
+
+/** Whether this goal relates to cycling metrics (FTP, power, VO2max). */
+function isCyclingMetric(goal: Goal): boolean {
+  const m = goal.metric.toLowerCase();
+  if (m.includes('ftp') || m.includes('power') || m.includes('vo2max')) return true;
+  const sport = goal.filter_json?.sport?.toLowerCase();
+  return sport === 'cycling';
 }
 
 /**
@@ -170,6 +179,20 @@ export function GoalCard({
             <span className="ml-1">· {progress.toFixed(0)}%</span>
           )}
         </p>
+      )}
+
+      {/* Cross-link to cycling page for cycling-related goals */}
+      {isCyclingMetric(goal) && (
+        <Link
+          href="/cycling"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+        >
+          View cycling stats
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
       )}
     </button>
   );
