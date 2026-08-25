@@ -16,119 +16,121 @@ import type {
   LlmAnalysis,
 } from './types';
 
-export async function getLiftingSessions(): Promise<LiftingSession[]> {
-  return apiFetch<LiftingSession[]>('/api/v1/lifting/sessions');
+type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
+
+export async function getLiftingSessions(authFetch: AuthFetch): Promise<LiftingSession[]> {
+  return authFetch<LiftingSession[]>('/api/v1/lifting/sessions');
 }
 
-export async function getActiveLiftingSession(): Promise<LiftingSession | null> {
-  return apiFetch<LiftingSession | null>('/api/v1/lifting/sessions/active');
+export async function getActiveLiftingSession(authFetch: AuthFetch): Promise<LiftingSession | null> {
+  return authFetch<LiftingSession | null>('/api/v1/lifting/sessions/active');
 }
 
 export async function updateLiftingSession(
+  authFetch: AuthFetch,
   id: string,
   payload: UpdateSessionPayload
 ): Promise<LiftingSession> {
-  return apiFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`, {
+  return authFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }
 
-export async function createLiftingSession(payload: CreateSessionPayload): Promise<LiftingSession> {
-  return apiFetch<LiftingSession>('/api/v1/lifting/sessions', {
+export async function createLiftingSession(authFetch: AuthFetch, payload: CreateSessionPayload): Promise<LiftingSession> {
+  return authFetch<LiftingSession>('/api/v1/lifting/sessions', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function getLiftingSession(id: string): Promise<LiftingSession> {
-  return apiFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`);
+export async function getLiftingSession(authFetch: AuthFetch, id: string): Promise<LiftingSession> {
+  return authFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`);
 }
 
-export async function addSetToSession(sessionId: string, payload: AddSetPayload): Promise<LiftingSet> {
-  return apiFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
+export async function addSetToSession(authFetch: AuthFetch, sessionId: string, payload: AddSetPayload): Promise<LiftingSet> {
+  return authFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteLiftingSet(setId: string): Promise<void> {
-  return apiFetch<void>(`/api/v1/lifting/sets/${setId}`, {
+export async function deleteLiftingSet(authFetch: AuthFetch, setId: string): Promise<void> {
+  return authFetch<void>(`/api/v1/lifting/sets/${setId}`, {
     method: 'DELETE',
   });
 }
 
-export async function getPersonalRecords(): Promise<PersonalRecord[]> {
-  return apiFetch<PersonalRecord[]>('/api/v1/lifting/prs');
+export async function getPersonalRecords(authFetch: AuthFetch): Promise<PersonalRecord[]> {
+  return authFetch<PersonalRecord[]>('/api/v1/lifting/prs');
 }
 
-export async function getVolumeTrends(weeks: number = 12): Promise<VolumeTrendResponse> {
-  return apiFetch<VolumeTrendResponse>(`/api/v1/lifting/volume-trends?weeks=${weeks}`);
+export async function getVolumeTrends(authFetch: AuthFetch, weeks: number = 12): Promise<VolumeTrendResponse> {
+  return authFetch<VolumeTrendResponse>(`/api/v1/lifting/volume-trends?weeks=${weeks}`);
 }
 
-export async function linkSession(sessionId: string, payload: LinkSessionPayload): Promise<LiftingSession> {
-  return apiFetch<LiftingSession>(`/api/v1/lifting/sessions/${sessionId}/link`, {
+export async function linkSession(authFetch: AuthFetch, sessionId: string, payload: LinkSessionPayload): Promise<LiftingSession> {
+  return authFetch<LiftingSession>(`/api/v1/lifting/sessions/${sessionId}/link`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
 }
 
-export async function getLinkableActivities(sessionId: string): Promise<Activity[]> {
-  return apiFetch<Activity[]>(`/api/v1/lifting/sessions/${sessionId}/linkable-activities`);
+export async function getLinkableActivities(authFetch: AuthFetch, sessionId: string): Promise<Activity[]> {
+  return authFetch<Activity[]>(`/api/v1/lifting/sessions/${sessionId}/linkable-activities`);
 }
 
-export async function backfillLinks(): Promise<{ linked_count: number }> {
-  return apiFetch<{ linked_count: number }>('/api/v1/lifting/backfill-links', {
+export async function backfillLinks(authFetch: AuthFetch): Promise<{ linked_count: number }> {
+  return authFetch<{ linked_count: number }>('/api/v1/lifting/backfill-links', {
     method: 'POST',
   });
 }
 
 // ─── Warmup Templates ────────────────────────────────────────────────────────
 
-export async function getWarmupTemplates(exerciseName?: string): Promise<WarmupTemplate[]> {
+export async function getWarmupTemplates(authFetch: AuthFetch, exerciseName?: string): Promise<WarmupTemplate[]> {
   const query = exerciseName ? `?exercise_name=${encodeURIComponent(exerciseName)}` : '';
-  return apiFetch<WarmupTemplate[]>(`/api/v1/lifting/warmup-templates${query}`);
+  return authFetch<WarmupTemplate[]>(`/api/v1/lifting/warmup-templates${query}`);
 }
 
-export async function getWarmupTemplate(id: string): Promise<WarmupTemplate> {
-  return apiFetch<WarmupTemplate>(`/api/v1/lifting/warmup-templates/${id}`);
+export async function getWarmupTemplate(authFetch: AuthFetch, id: string): Promise<WarmupTemplate> {
+  return authFetch<WarmupTemplate>(`/api/v1/lifting/warmup-templates/${id}`);
 }
 
-export async function createWarmupTemplate(payload: CreateWarmupTemplatePayload): Promise<WarmupTemplate> {
-  return apiFetch<WarmupTemplate>('/api/v1/lifting/warmup-templates', {
+export async function createWarmupTemplate(authFetch: AuthFetch, payload: CreateWarmupTemplatePayload): Promise<WarmupTemplate> {
+  return authFetch<WarmupTemplate>('/api/v1/lifting/warmup-templates', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function updateWarmupTemplate(id: string, payload: UpdateWarmupTemplatePayload): Promise<WarmupTemplate> {
-  return apiFetch<WarmupTemplate>(`/api/v1/lifting/warmup-templates/${id}`, {
+export async function updateWarmupTemplate(authFetch: AuthFetch, id: string, payload: UpdateWarmupTemplatePayload): Promise<WarmupTemplate> {
+  return authFetch<WarmupTemplate>(`/api/v1/lifting/warmup-templates/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteWarmupTemplate(id: string): Promise<void> {
-  return apiFetch<void>(`/api/v1/lifting/warmup-templates/${id}`, {
+export async function deleteWarmupTemplate(authFetch: AuthFetch, id: string): Promise<void> {
+  return authFetch<void>(`/api/v1/lifting/warmup-templates/${id}`, {
     method: 'DELETE',
   });
 }
 
 // ─── Session Analysis ────────────────────────────────────────────────────────
 
-export async function getLiftingAnalysis(sessionId: string): Promise<LiftingAnalysis> {
-  return apiFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${sessionId}/analysis`);
+export async function getLiftingAnalysis(authFetch: AuthFetch, sessionId: string): Promise<LiftingAnalysis> {
+  return authFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${sessionId}/analysis`);
 }
 
 // ─── Session AI Analysis ────────────────────────────────────────────────────
 
-export async function getSessionAiAnalysis(sessionId: string): Promise<LlmAnalysis | null> {
-  return apiFetch<LlmAnalysis | null>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`);
+export async function getSessionAiAnalysis(authFetch: AuthFetch, sessionId: string): Promise<LlmAnalysis | null> {
+  return authFetch<LlmAnalysis | null>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`);
 }
 
-export async function triggerSessionAiAnalysis(sessionId: string): Promise<LlmAnalysis> {
-  return apiFetch<LlmAnalysis>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`, {
+export async function triggerSessionAiAnalysis(authFetch: AuthFetch, sessionId: string): Promise<LlmAnalysis> {
+  return authFetch<LlmAnalysis>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`, {
     method: 'POST',
   });
 }
-

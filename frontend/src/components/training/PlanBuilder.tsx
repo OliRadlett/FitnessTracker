@@ -32,6 +32,7 @@ import {
   copySessionToPlanDay,
   copyPlanDayToDate,
 } from '@/lib/api';
+import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -899,16 +900,17 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
   const queryClient = useQueryClient();
+  const { authFetch } = useAuthFetch();
 
   const { data: warmupTemplates } = useQuery({
     queryKey: ['warmup-templates'],
-    queryFn: () => getWarmupTemplates(),
+    queryFn: () => getWarmupTemplates(authFetch),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: liftingSessions } = useQuery({
     queryKey: ['lifting-sessions'],
-    queryFn: () => getLiftingSessions(),
+    queryFn: () => getLiftingSessions(authFetch),
     enabled: isStrength,
     staleTime: 60 * 1000,
   });
@@ -925,7 +927,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
     if (!selectedSessionId || isDraft) return;
     setCopyError(null);
     try {
-      await copySessionToPlanDay(planId, day.id, selectedSessionId);
+      await copySessionToPlanDay(authFetch, planId, day.id, selectedSessionId);
       setShowSessionPicker(false);
       setSelectedSessionId('');
       onRefreshPlan();
@@ -938,7 +940,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
     if (!duplicateDate || isDraft) return;
     setCopyError(null);
     try {
-      await copyPlanDayToDate(planId, day.id, duplicateDate);
+      await copyPlanDayToDate(authFetch, planId, day.id, duplicateDate);
       setShowDuplicatePicker(false);
       setDuplicateDate('');
       onRefreshPlan();

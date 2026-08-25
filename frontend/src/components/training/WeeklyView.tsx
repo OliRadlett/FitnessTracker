@@ -183,7 +183,7 @@ interface WeeklyViewProps {
 }
 
 export function WeeklyView({ plan, events }: WeeklyViewProps) {
-  const { token } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const totalWeeks = useMemo(() => getTotalWeeks(plan), [plan]);
@@ -196,7 +196,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   // ── Query ───────────────────────────────────────────────────────────────
   const weekQuery = useQuery({
     queryKey: ['plan-week', plan.id, currentWeek],
-    queryFn: () => getPlanWeek(plan.id, currentWeek, { token }),
+    queryFn: () => getPlanWeek(authFetch, plan.id, currentWeek),
     staleTime: 60_000,
     enabled: !!token,
   });
@@ -243,13 +243,13 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   // ── Mutations ───────────────────────────────────────────────────────────
   const toggleCompleted = useMutation({
     mutationFn: ({ dayId, completed }: { dayId: string; completed: boolean }) =>
-      updatePlanDay(plan.id, dayId, { completed }, token),
+      updatePlanDay(authFetch, plan.id, dayId, { completed }),
     onSuccess: invalidateWeeks,
   });
 
   const assignRoute = useMutation({
     mutationFn: ({ dayId, routeId }: { dayId: string; routeId: string }) =>
-      updatePlanDay(plan.id, dayId, { planned_route_id: routeId }, token),
+      updatePlanDay(authFetch, plan.id, dayId, { planned_route_id: routeId }),
     onSuccess: invalidateWeeks,
   });
 
@@ -260,7 +260,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     }: {
       dayId: string;
       payload: UpdateTrainingPlanDayPayload;
-    }) => updatePlanDay(plan.id, dayId, payload, token),
+    }) => updatePlanDay(authFetch, plan.id, dayId, payload),
     onSuccess: invalidateWeeks,
   });
 

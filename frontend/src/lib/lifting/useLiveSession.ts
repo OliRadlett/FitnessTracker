@@ -9,6 +9,8 @@ import {
 } from '@/lib/api/lifting';
 import type { AddSetPayload } from '@/lib/api/types';
 
+type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface LoggedSet {
@@ -92,7 +94,7 @@ function toPayload(set: LoggedSet): AddSetPayload {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export function useLiveSession() {
+export function useLiveSession(authFetch: AuthFetch) {
   const [state, setState] = useState<LiveSessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [syncError, setSyncError] = useState(false);
@@ -138,7 +140,7 @@ export function useLiveSession() {
           setSyncError(false);
           return;
         }
-        const created = await createLiftingSession({
+        const created = await createLiftingSession(authFetch, {
           session_date: new Date(working.startedAt).toISOString().slice(0, 10),
           program_name: working.programName,
           focus: working.focus,
@@ -157,7 +159,7 @@ export function useLiveSession() {
       const unsynced = working.sets.filter((s) => !s.remoteId);
       for (const set of unsynced) {
         try {
-          const remote = await addSetToSession(working.sessionId!, toPayload(set));
+          const remote = await addSetToSession(authFetch, working.sessionId!, toPayload(set));
           working = {
             ...working,
             sets: working.sets.map((s) =>
@@ -172,7 +174,7 @@ export function useLiveSession() {
 
       // Step 3: push pending deletes
       for (const remoteId of [...working.pendingDeletes]) {
-        await deleteLiftingSet(remoteId);
+        await deleteLiftingSet(authFetch, remoteId);
         working = {
           ...working,
           pendingDeletes: working.pendingDeletes.filter((id) => id !== remoteId),
@@ -186,7 +188,7 @@ export function useLiveSession() {
           0,
           Math.round((Date.now() - new Date(working.startedAt).getTime()) / 1000)
         );
-        await updateLiftingSession(working.sessionId!, {
+        await updateLiftingSession(authFetch, working.sessionId!, {
           ended_at: new Date().toISOString(),
           duration_seconds: durationSeconds,
           rpe_session: working.rpe_session,
@@ -334,8 +336,8 @@ export function useLiveSession() {
         .filter((s) => s.remoteId && s.remoteId !== 'synced')
         .map((s) => s.remoteId!);
       try {
-        for (const id of ids) await deleteLiftingSet(id);
-        await updateLiftingSession(current.sessionId, { ended_at: new Date().toISOString(), notes: '(discarded)' });
+        for (const id of ids) await deleteLiftingSet(authFetch, id);
+        await updateLiftingSession(authFetch, current.sessionId, { ended_at: new Date().toISOString(), notes: '(discarded)' });
       } catch {
         // orphaned remote rows are acceptable; local state is authoritative
       }

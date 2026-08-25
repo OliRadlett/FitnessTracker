@@ -21,8 +21,8 @@ import { useLiveSession } from '@/lib/lifting/useLiveSession';
 const FOCUS_OPTIONS = ['squat', 'bench', 'deadlift', 'overhead_press', 'accessories'];
 
 export default function LiveLiftPage() {
-  const live = useLiveSession();
   const { authFetch } = useAuthFetch();
+  const live = useLiveSession(authFetch);
 
   // Reference data for prefill / last-session lines
   const { data: sessions } = useQuery({
@@ -32,12 +32,12 @@ export default function LiveLiftPage() {
   });
   const { data: prs } = useQuery({
     queryKey: ['prs'],
-    queryFn: getPersonalRecords,
+    queryFn: () => getPersonalRecords(authFetch),
     staleTime: 60_000,
   });
   const { data: templates } = useQuery({
     queryKey: ['warmup-templates'],
-    queryFn: () => getWarmupTemplates(),
+    queryFn: () => getWarmupTemplates(authFetch),
     staleTime: 300_000,
   });
 

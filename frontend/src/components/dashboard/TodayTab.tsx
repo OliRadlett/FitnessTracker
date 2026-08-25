@@ -76,7 +76,7 @@ export function TodayTab({
   // ── Active plan → today's planned workout ───────────────────────────────
   const { data: activePlans } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans', 'active'],
-    queryFn: () => getTrainingPlans('active'),
+    queryFn: () => getTrainingPlans(authFetch, 'active'),
     staleTime: 60_000,
   });
 
@@ -88,7 +88,7 @@ export function TodayTab({
 
   const { data: planWeek, isLoading: planWeekLoading } = useQuery<TrainingWeekResponse>({
     queryKey: ['plan-week', activePlan?.id, currentWeek],
-    queryFn: () => getPlanWeek(activePlan!.id, currentWeek),
+    queryFn: () => getPlanWeek(authFetch, activePlan!.id, currentWeek),
     staleTime: 60_000,
     enabled: !!activePlan,
   });
