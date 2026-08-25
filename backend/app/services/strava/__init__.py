@@ -11,6 +11,7 @@ from app.services.strava.linking import (
 )
 from app.services.strava.sync import (
     backfill_all_activities,
+    backfill_all_activities_stream,
     get_strava_connection,
     refresh_if_needed,
     sync_activities,

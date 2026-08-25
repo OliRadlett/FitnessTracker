@@ -1,10 +1,12 @@
 """Activity API — list/filter/get activities, calendar, backfill route links, merge analysis, file import."""
 
+import json
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Date, asc, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,8 @@ from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession
 from app.models.sleep import SleepLog
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 from app.schemas.activity import (
     ActivityCalendarEntry,
     ActivityRead,
@@ -370,30 +374,68 @@ async def backfill_activities(
     max_pages: int = Query(
         50, ge=1, le=200, description="Max Strava API pages to fetch"
     ),
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Backfill ALL historical Strava activities for the current user.
+    """Backfill ALL historical Strava activities. Returns SSE stream with progress.
 
-    Pages through the Strava API to fetch the complete activity history,
-    not just the most recent 100.  Uses merge/dedup to avoid duplicates.
-    This may take a while for accounts with many activities.
+    Events:
+        progress  — per-page (activities), per-5-activities (streams), once (linking)
+        page_error — non-fatal per-activity failure, continues
+        error      — fatal, stream ends
+        complete   — final summary
     """
+    from app.database import async_session_factory
+    from app.models.user import OAuthConnection
     from app.services.cache import redis_lock
-    from app.services.strava import backfill_all_activities
+    from app.services.strava import backfill_all_activities_stream
 
+    user_id = current_user.id
+
+    # Validate connection exists before starting the stream
+    result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.user_id == user_id,
+            OAuthConnection.provider == "strava",
+        )
+    )
+    connection = result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=404, detail="No Strava connection found")
+
+    # Prevent concurrent backfills for the same user
     try:
-        async with redis_lock(f"strava-backfill:{current_user.id}", ttl=3600):
-            result = await backfill_all_activities(db, current_user.id, max_pages=max_pages)
-            await db.commit()
+        lock = redis_lock(f"strava-backfill:{user_id}", ttl=3600)
+        await lock.__aenter__()
     except RuntimeError:
         raise HTTPException(
             status_code=409, detail="A Strava backfill is already in progress"
         )
-    return {
-        "detail": f"Backfill complete: {result['synced']} synced, {result['skipped']} skipped across {result['pages']} pages",
-        **result,
-    }
+
+    async def event_stream():
+        async with async_session_factory() as stream_db:
+            try:
+                async for event in backfill_all_activities_stream(
+                    stream_db, user_id, max_pages=max_pages
+                ):
+                    yield f"data: {json.dumps(event)}\n\n"
+            except ValueError as e:
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            except Exception as e:
+                logger.error(
+                    f"Strava backfill stream error for user {user_id}: {e}",
+                    exc_info=True,
+                )
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
+            finally:
+                await stream_db.close()
+                await lock.__aexit__(None, None, None)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/backfill-route-links")

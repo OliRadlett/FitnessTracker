@@ -305,18 +305,21 @@ async def sync_activities(
     return synced
 
 
-async def backfill_all_activities(
+async def backfill_all_activities_stream(
     db: AsyncSession,
     user_id: uuid.UUID,
     max_pages: int = 50,
-) -> dict:
-    """Backfill ALL historical Strava activities for a user.
+):
+    """Async generator — yields SSE progress dicts during Strava backfill.
 
-    Pages through the Strava API repeatedly until no more activities are
-    returned or ``max_pages`` is reached.  Uses the same merge/dedup
-    logic as :func:`sync_activities`.
+    Yields::
 
-    Returns a dict with counts: ``{"synced": N, "skipped": N, "pages": N}``.
+        {"type": "progress", "page": N, "max_pages": N, "synced": N, "skipped": N, "phase": "activities"}
+        {"type": "progress", "phase": "streams", "streams_fetched": N, "streams_total": N, ...}
+        {"type": "progress", "phase": "linking"}
+        {"type": "page_error", "detail": str, "page": N}   # non-fatal, continues
+        {"type": "error", "detail": str}                     # fatal, stream ends
+        {"type": "complete", "synced": N, "skipped": N, "pages": N, "streams_backfilled": N, "detail": str}
     """
     from app.services.merge_service import (
         find_duplicate_activity,
@@ -330,7 +333,8 @@ async def backfill_all_activities(
 
     connection = await get_strava_connection(db, user_id)
     if not connection:
-        raise ValueError("No Strava connection found")
+        yield {"type": "error", "detail": "No Strava connection found"}
+        return
 
     connection = await refresh_if_needed(db, connection)
 
@@ -352,78 +356,96 @@ async def backfill_all_activities(
         for sa in strava_activities:
             provider_id = str(sa["id"])
 
-            # Check if already synced via ActivitySource
-            existing_source = await _find_activity_source(db, provider_id)
-            if existing_source:
-                skipped_total += 1
-                continue
+            try:
+                # Check if already synced via ActivitySource
+                existing_source = await _find_activity_source(db, provider_id)
+                if existing_source:
+                    skipped_total += 1
+                    continue
 
-            # Legacy check
-            legacy = await db.execute(
-                select(Activity).where(
-                    Activity.source == "strava",
-                    Activity.provider_activity_id == provider_id,
+                # Legacy check
+                legacy = await db.execute(
+                    select(Activity).where(
+                        Activity.source == "strava",
+                        Activity.provider_activity_id == provider_id,
+                    )
                 )
-            )
-            existing_activity = legacy.scalar_one_or_none()
-            if existing_activity:
-                source = ActivitySource(
-                    activity_id=existing_activity.id,
-                    provider="strava",
-                    provider_activity_id=provider_id,
-                    provider_name=existing_activity.name,
-                    raw_data=sa,
+                existing_activity = legacy.scalar_one_or_none()
+                if existing_activity:
+                    source = ActivitySource(
+                        activity_id=existing_activity.id,
+                        provider="strava",
+                        provider_activity_id=provider_id,
+                        provider_name=existing_activity.name,
+                        raw_data=sa,
+                    )
+                    db.add(source)
+                    skipped_total += 1
+                    continue
+
+                # Parse and create
+                start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
+                sport_type = _map_strava_type(
+                    sa.get("sport_type", sa.get("type", "Unknown"))
                 )
-                db.add(source)
-                skipped_total += 1
-                continue
+                duration_seconds = int(sa.get("moving_time") or 0)
+                distance_meters = sa.get("distance")
 
-            # Parse and create
-            start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
-            sport_type = _map_strava_type(
-                sa.get("sport_type", sa.get("type", "Unknown"))
-            )
-            duration_seconds = int(sa.get("moving_time") or 0)
-            distance_meters = sa.get("distance")
+                duplicate = await find_duplicate_activity(
+                    db,
+                    user_id,
+                    sport_type,
+                    start_date,
+                    duration_seconds,
+                    distance_meters,
+                )
 
-            duplicate = await find_duplicate_activity(
-                db,
-                user_id,
-                sport_type,
-                start_date,
-                duration_seconds,
-                distance_meters,
-            )
+                if duplicate:
+                    new_data = {
+                        "name": sa.get("name"),
+                        "duration_seconds": duration_seconds,
+                        "distance_meters": _safe_float(distance_meters),
+                        "elevation_gain_meters": _safe_float(
+                            sa.get("total_elevation_gain")
+                        ),
+                        "average_heartrate": _safe_float(sa.get("average_heartrate")),
+                        "max_heartrate": _safe_float(sa.get("max_heartrate")),
+                        "average_power": _safe_float(sa.get("average_watts")),
+                        "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+                        "average_speed": _safe_float(sa.get("average_speed")),
+                        "average_cadence": _safe_float(sa.get("average_cadence")),
+                        "calories": _safe_float(sa.get("calories")),
+                    }
+                    await merge_activity(
+                        db, duplicate, new_data, "strava", provider_id, raw_data=sa
+                    )
+                    if sport_type == "cycling":
+                        synced_cycling.append((duplicate.id, int(provider_id)))
+                else:
+                    activity = await _create_activity_from_strava(
+                        db, sa, user_id, connection
+                    )
+                    if sport_type == "cycling":
+                        synced_cycling.append((activity.id, int(provider_id)))
 
-            if duplicate:
-                new_data = {
-                    "name": sa.get("name"),
-                    "duration_seconds": duration_seconds,
-                    "distance_meters": _safe_float(distance_meters),
-                    "elevation_gain_meters": _safe_float(
-                        sa.get("total_elevation_gain")
-                    ),
-                    "average_heartrate": _safe_float(sa.get("average_heartrate")),
-                    "max_heartrate": _safe_float(sa.get("max_heartrate")),
-                    "average_power": _safe_float(sa.get("average_watts")),
-                    "normalized_power": _safe_float(sa.get("weighted_average_watts")),
-                    "average_speed": _safe_float(sa.get("average_speed")),
-                    "average_cadence": _safe_float(sa.get("average_cadence")),
-                    "calories": _safe_float(sa.get("calories")),
+                synced_total += 1
+            except Exception as e:
+                yield {
+                    "type": "page_error",
+                    "detail": f"Activity {provider_id}: {e}",
+                    "page": page,
                 }
-                await merge_activity(
-                    db, duplicate, new_data, "strava", provider_id, raw_data=sa
-                )
-                if sport_type == "cycling":
-                    synced_cycling.append((duplicate.id, int(provider_id)))
-            else:
-                activity = await _create_activity_from_strava(
-                    db, sa, user_id, connection
-                )
-                if sport_type == "cycling":
-                    synced_cycling.append((activity.id, int(provider_id)))
+                continue
 
-            synced_total += 1
+        # Yield progress after each page
+        yield {
+            "type": "progress",
+            "page": page,
+            "max_pages": max_pages,
+            "synced": synced_total,
+            "skipped": skipped_total,
+            "phase": "activities",
+        }
 
         # Commit every 10 pages to persist partial progress
         if page % 10 == 0:
@@ -442,7 +464,7 @@ async def backfill_all_activities(
 
     # Fetch streams for newly synced cycling activities
     stream_count = 0
-    for activity_id, strava_id in synced_cycling:
+    for i, (activity_id, strava_id) in enumerate(synced_cycling):
         try:
             streams = await strava_client.get_activity_streams(
                 connection.access_token, strava_id
@@ -464,8 +486,27 @@ async def backfill_all_activities(
                     )
                     db.add(stream)
             stream_count += 1
-        except Exception:
-            pass  # Streams are optional — don't fail the backfill
+        except Exception as e:
+            yield {
+                "type": "page_error",
+                "detail": f"Stream fetch failed for activity {strava_id}: {e}",
+                "page": page,
+            }
+            continue
+
+        # Yield stream progress every 5 activities
+        if (i + 1) % 5 == 0 or i == len(synced_cycling) - 1:
+            yield {
+                "type": "progress",
+                "page": page,
+                "max_pages": max_pages,
+                "synced": synced_total,
+                "skipped": skipped_total,
+                "phase": "streams",
+                "streams_fetched": stream_count,
+                "streams_total": len(synced_cycling),
+            }
+
     if synced_cycling:
         logger.info(
             f"Backfilled streams for {stream_count} of {len(synced_cycling)} cycling activities"
@@ -473,6 +514,15 @@ async def backfill_all_activities(
     await db.flush()
 
     # Auto-link newly synced activities to lifting sessions and routes.
+    yield {
+        "type": "progress",
+        "page": page,
+        "max_pages": max_pages,
+        "synced": synced_total,
+        "skipped": skipped_total,
+        "phase": "linking",
+    }
+
     # Pre-fetch all candidate data in bulk to avoid N+1 queries.
     from app.models.route import Route
     from app.services.merge_service import _extract_activity_polyline
@@ -500,103 +550,120 @@ async def backfill_all_activities(
     all_activities = list(result.scalars().unique().all())
     activities = [a for a in all_activities if a.id not in linked_activity_ids]
 
-    if not activities:
-        return {
-            "synced": synced_total,
-            "skipped": skipped_total,
-            "pages": page - 1,
-            "streams_backfilled": stream_count,
-        }
-
-    # 3. Batch-fetch all unlinked lifting sessions with sets (for strength matching)
-    session_result = await db.execute(
-        select(LiftingSession)
-        .options(selectinload(LiftingSession.sets))
-        .where(
-            LiftingSession.user_id == user_id,
-            LiftingSession.activity_id.is_(None),
-        )
-    )
-    unlinked_sessions = list(session_result.scalars().all())
-    # Index by date for fast ±2 day lookups
-    sessions_by_date: dict[date, list] = defaultdict(list)
-    for s in unlinked_sessions:
-        sessions_by_date[s.session_date].append(s)
-
-    # 4. Batch-fetch all user routes (for route matching)
-    route_result = await db.execute(select(Route).where(Route.user_id == user_id))
-    all_routes = list(route_result.scalars().all())
-
-    # 5. Link activities using pre-fetched data (no per-activity DB queries)
-    for activity in activities:
-        # -- Strength activity → lifting session matching --
-        if activity.sport_type in STRENGTH_SPORT_TYPES and not activity.lifting_session:
-            activity_date = (
-                activity.start_date.date()
-                if activity.start_date.tzinfo
-                else activity.start_date.date()
+    if activities:
+        # 3. Batch-fetch all unlinked lifting sessions with sets (for strength matching)
+        session_result = await db.execute(
+            select(LiftingSession)
+            .options(selectinload(LiftingSession.sets))
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.activity_id.is_(None),
             )
-            candidates = []
-            for offset in range(-2, 3):
-                check_date = activity_date + timedelta(days=offset)
-                candidates.extend(sessions_by_date.get(check_date, []))
-            if candidates:
-                scored = [(s, _match_score(activity, s)) for s in candidates]
-                scored.sort(key=lambda x: x[1], reverse=True)
-                best_session, best_score = scored[0]
-                if best_score >= MATCH_THRESHOLD:
-                    best_session.activity_id = activity.id
-                    if not best_session.duration_seconds and activity.duration_seconds:
-                        best_session.duration_seconds = activity.duration_seconds
+        )
+        unlinked_sessions = list(session_result.scalars().all())
+        # Index by date for fast ±2 day lookups
+        sessions_by_date: dict[date, list] = defaultdict(list)
+        for s in unlinked_sessions:
+            sessions_by_date[s.session_date].append(s)
 
-        # -- GPS activity → route matching --
-        if activity.route_id is None and all_routes:
-            if activity.sport_type in ("cycling", "running", "walking", "hiking"):
-                polyline = _extract_activity_polyline(activity)
-                if polyline:
-                    points = decode_polyline(polyline)
-                    if points and len(points) >= 2:
-                        from app.config import get_settings as _gs
+        # 4. Batch-fetch all user routes (for route matching)
+        route_result = await db.execute(select(Route).where(Route.user_id == user_id))
+        all_routes = list(route_result.scalars().all())
 
-                        threshold = _gs().activity_route_link_threshold
-                        start_lat, start_lng = points[0]
-                        end_lat, end_lng = points[-1]
-                        best_route = None
-                        best_score = 0.0
-                        for route in all_routes:
-                            if route.sport_type != activity.sport_type and not (
-                                route.sport_type in ("cycling", "running")
-                                and activity.sport_type in ("cycling", "running")
-                            ):
-                                continue
-                            start_dist = haversine_distance(
-                                start_lat, start_lng, route.start_lat, route.start_lng
-                            )
-                            if start_dist > 5000:
-                                continue
-                            score = _compute_match_score(
-                                activity.distance_meters or 0,
-                                polyline,
-                                activity.name,
-                                start_lat,
-                                start_lng,
-                                end_lat,
-                                end_lng,
-                                route,
-                            )
-                            if score > best_score:
-                                best_score = score
-                                best_route = route
-                        if best_score >= threshold and best_route is not None:
-                            activity.route_id = best_route.id
+        # 5. Link activities using pre-fetched data (no per-activity DB queries)
+        for activity in activities:
+            # -- Strength activity → lifting session matching --
+            if activity.sport_type in STRENGTH_SPORT_TYPES and not activity.lifting_session:
+                activity_date = (
+                    activity.start_date.date()
+                    if activity.start_date.tzinfo
+                    else activity.start_date.date()
+                )
+                candidates = []
+                for offset in range(-2, 3):
+                    check_date = activity_date + timedelta(days=offset)
+                    candidates.extend(sessions_by_date.get(check_date, []))
+                if candidates:
+                    scored = [(s, _match_score(activity, s)) for s in candidates]
+                    scored.sort(key=lambda x: x[1], reverse=True)
+                    best_session, best_score = scored[0]
+                    if best_score >= MATCH_THRESHOLD:
+                        best_session.activity_id = activity.id
+                        if not best_session.duration_seconds and activity.duration_seconds:
+                            best_session.duration_seconds = activity.duration_seconds
+
+            # -- GPS activity → route matching --
+            if activity.route_id is None and all_routes:
+                if activity.sport_type in ("cycling", "running", "walking", "hiking"):
+                    polyline = _extract_activity_polyline(activity)
+                    if polyline:
+                        points = decode_polyline(polyline)
+                        if points and len(points) >= 2:
+                            from app.config import get_settings as _gs
+
+                            threshold = _gs().activity_route_link_threshold
+                            start_lat, start_lng = points[0]
+                            end_lat, end_lng = points[-1]
+                            best_route = None
+                            best_score = 0.0
+                            for route in all_routes:
+                                if route.sport_type != activity.sport_type and not (
+                                    route.sport_type in ("cycling", "running")
+                                    and activity.sport_type in ("cycling", "running")
+                                ):
+                                    continue
+                                start_dist = haversine_distance(
+                                    start_lat, start_lng, route.start_lat, route.start_lng
+                                )
+                                if start_dist > 5000:
+                                    continue
+                                score = _compute_match_score(
+                                    activity.distance_meters or 0,
+                                    polyline,
+                                    activity.name,
+                                    start_lat,
+                                    start_lng,
+                                    end_lat,
+                                    end_lng,
+                                    route,
+                                )
+                                if score > best_score:
+                                    best_score = score
+                                    best_route = route
+                            if best_score >= threshold and best_route is not None:
+                                activity.route_id = best_route.id
 
     await db.flush()
-    return {
+
+    yield {
+        "type": "complete",
         "synced": synced_total,
         "skipped": skipped_total,
         "pages": page - 1,
         "streams_backfilled": stream_count,
+        "detail": (
+            f"Backfill complete: {synced_total} synced, "
+            f"{skipped_total} skipped across {page - 1} pages, "
+            f"{stream_count} streams fetched"
+        ),
     }
+
+
+async def backfill_all_activities(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    max_pages: int = 50,
+) -> dict:
+    """Backfill ALL historical Strava activities for a user.
+
+    Convenience wrapper around :func:`backfill_all_activities_stream`
+    that consumes the generator and returns the final ``complete`` dict.
+    """
+    result = {}
+    async for event in backfill_all_activities_stream(db, user_id, max_pages):
+        if event["type"] == "complete":
+            result = event
+    return result
 
 
 async def backfill_streams_for_all_activities(

@@ -155,6 +155,15 @@ export default function SettingsPage() {
 
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
+  const [stravaBackfillProgress, setStravaBackfillProgress] = useState<{
+    page: number;
+    max_pages: number;
+    synced: number;
+    skipped: number;
+    phase: string;
+    streams_fetched?: number;
+    streams_total?: number;
+  } | null>(null);
   const [whoopBackfilling, setWhoopBackfilling] = useState(false);
   const [whoopBackfillResult, setWhoopBackfillResult] = useState<string | null>(null);
   const [whoopBackfillProgress, setWhoopBackfillProgress] = useState<{
@@ -396,17 +405,71 @@ export default function SettingsPage() {
               onClick={async () => {
                 setBackfilling(true);
                 setBackfillResult(null);
+                setStravaBackfillProgress(null);
                 try {
-                  const result = await authFetch<{ synced: number; skipped: number; pages: number; detail: string }>(
-                    '/api/v1/activities/backfill',
-                    { method: 'POST' }
-                  );
-                  setBackfillResult(result.detail);
+                  const headers: Record<string, string> = {};
+                  if (session?.backendToken) {
+                    headers['Authorization'] = `Bearer ${session.backendToken}`;
+                  }
+                  const response = await fetch('/api/v1/activities/backfill?max_pages=50', {
+                    method: 'POST',
+                    headers,
+                    credentials: 'include',
+                  });
+                  if (!response.ok) {
+                    const err = await response.json().catch(() => ({ detail: response.statusText }));
+                    throw new Error(err.detail || `Backfill failed: ${response.status}`);
+                  }
+
+                  const reader = response.body?.getReader();
+                  if (!reader) throw new Error('No response stream');
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                      if (!line.startsWith('data: ')) continue;
+                      try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.type === 'progress') {
+                          setStravaBackfillProgress({
+                            page: event.page,
+                            max_pages: event.max_pages,
+                            synced: event.synced,
+                            skipped: event.skipped,
+                            phase: event.phase,
+                            streams_fetched: event.streams_fetched,
+                            streams_total: event.streams_total,
+                          });
+                        } else if (event.type === 'complete') {
+                          setBackfillResult(event.detail);
+                          setStravaBackfillProgress(null);
+                        } else if (event.type === 'page_error') {
+                          console.warn('Strava backfill:', event.detail);
+                        } else if (event.type === 'error') {
+                          throw new Error(event.detail);
+                        }
+                      } catch (parseErr) {
+                        if (parseErr instanceof Error && parseErr.message !== 'No response stream') {
+                          throw parseErr;
+                        }
+                        console.warn('SSE event parse error:', parseErr);
+                      }
+                    }
+                  }
+
                   queryClient.invalidateQueries({ queryKey: ['activities'] });
                   queryClient.invalidateQueries({ queryKey: ['activities-calendar'] });
                   queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
                 } catch (err) {
                   setBackfillResult(`Error: ${err instanceof Error ? err.message : 'Backfill failed'}`);
+                  setStravaBackfillProgress(null);
                 } finally {
                   setBackfilling(false);
                 }
@@ -493,6 +556,34 @@ export default function SettingsPage() {
               {whoopBackfilling ? '⏳ Backfilling...' : '💤 Backfill Whoop History'}
             </button>
           </div>
+          {stravaBackfillProgress && (
+            <div className="mt-3">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex-1 bg-surface-light/30 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-orange-500 h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: stravaBackfillProgress.phase === 'activities'
+                        ? `${(stravaBackfillProgress.page / stravaBackfillProgress.max_pages) * 100}%`
+                        : stravaBackfillProgress.phase === 'streams' && stravaBackfillProgress.streams_total
+                          ? `${((stravaBackfillProgress.streams_fetched || 0) / stravaBackfillProgress.streams_total) * 100}%`
+                          : '100%'
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-muted whitespace-nowrap">
+                  {stravaBackfillProgress.phase === 'activities'
+                    ? `Page ${stravaBackfillProgress.page}/${stravaBackfillProgress.max_pages}`
+                    : stravaBackfillProgress.phase === 'streams'
+                      ? `Streams ${stravaBackfillProgress.streams_fetched || 0}/${stravaBackfillProgress.streams_total}`
+                      : 'Linking...'}
+                </span>
+              </div>
+              <p className="text-xs text-muted">
+                {stravaBackfillProgress.synced} synced · {stravaBackfillProgress.skipped} skipped
+              </p>
+            </div>
+          )}
           {backfillResult && (
             <p className="mt-3 text-sm text-muted">{backfillResult}</p>
           )}
