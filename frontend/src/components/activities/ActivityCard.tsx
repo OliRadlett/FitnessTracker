@@ -37,6 +37,9 @@ export function ActivityCard({
   showCompareCheckbox,
   isCompareSelected,
   onToggleCompare,
+  showBulkCheckbox,
+  isBulkSelected,
+  onToggleBulk,
 }: {
   activity: Activity;
   isSelected: boolean;
@@ -44,6 +47,9 @@ export function ActivityCard({
   showCompareCheckbox?: boolean;
   isCompareSelected?: boolean;
   onToggleCompare?: () => void;
+  showBulkCheckbox?: boolean;
+  isBulkSelected?: boolean;
+  onToggleBulk?: () => void;
 }) {
   const isStrength = STRENGTH_TYPES.includes(activity.sport_type);
 
@@ -54,7 +60,21 @@ export function ActivityCard({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {showCompareCheckbox && (
+          {showBulkCheckbox && (
+            <label
+              className="flex items-center"
+              onClick={(e) => e.stopPropagation()}
+              title="Select for bulk action"
+            >
+              <input
+                type="checkbox"
+                checked={isBulkSelected}
+                onChange={onToggleBulk}
+                className="w-4 h-4 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
+              />
+            </label>
+          )}
+          {showCompareCheckbox && !showBulkCheckbox && (
             <label
               className="flex items-center"
               onClick={(e) => e.stopPropagation()}

@@ -310,6 +310,53 @@ export default function ActivitiesPage() {
     ? displayActivities.length < totalCount
     : displayActivities.length % PAGE_SIZE === 0;
 
+  // ── Bulk actions state ──────────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+
+  const toggleBulkSelect = useCallback((id: string) => {
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllBulk = useCallback(() => {
+    setBulkSelected(new Set(displayActivities.map((a) => a.id)));
+  }, [displayActivities]);
+
+  const clearBulk = useCallback(() => {
+    setBulkSelected(new Set());
+    setSelectMode(false);
+  }, []);
+
+  const exportCsv = useCallback(() => {
+    const selected = displayActivities.filter((a) => bulkSelected.has(a.id));
+    if (selected.length === 0) return;
+
+    const headers = ['Name', 'Sport', 'Date', 'Distance (km)', 'Duration (s)', 'Avg Power', 'TSS'];
+    const rows = selected.map((a) => [
+      `"${(a.name || '').replace(/"/g, '""')}"`,
+      a.sport_type,
+      a.start_date,
+      a.distance_meters ? (a.distance_meters / 1000).toFixed(2) : '',
+      a.duration_seconds || '',
+      a.average_power || '',
+      a.tss ?? '',
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `activities-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [displayActivities, bulkSelected]);
+
   const { data: activityDetail } = useQuery<ActivityDetail>({
     queryKey: ['activity', selectedActivityId],
     queryFn: () => authFetch<ActivityDetail>(`/api/v1/activities/${selectedActivityId}`),
@@ -448,7 +495,8 @@ export default function ActivitiesPage() {
           <p className="text-muted">Browse and analyze your fitness activities</p>
         </div>
         {/* View Toggle */}
-        <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden" role="tablist" aria-label="Activity view mode">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden" role="tablist" aria-label="Activity view mode">
           <button
             onClick={() => setViewMode('list')}
             role="tab"
@@ -478,6 +526,17 @@ export default function ActivitiesPage() {
             }`}
           >
             Stats
+          </button>
+        </div>
+          <button
+            onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+              selectMode
+                ? 'bg-accent/20 text-accent border-accent/30'
+                : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
+            }`}
+          >
+            {selectMode ? 'Cancel' : 'Select'}
           </button>
         </div>
       </div>
@@ -761,9 +820,12 @@ export default function ActivitiesPage() {
                   activity={activity}
                   isSelected={selectedActivityId === activity.id}
                   onSelect={() => setSelectedActivityId(selectedActivityId === activity.id ? null : activity.id)}
-                  showCompareCheckbox={viewMode === 'list'}
+                  showCompareCheckbox={viewMode === 'list' && !selectMode}
                   isCompareSelected={selectedForComparison.has(activity.id)}
                   onToggleCompare={() => toggleCompare(activity.id)}
+                  showBulkCheckbox={selectMode}
+                  isBulkSelected={bulkSelected.has(activity.id)}
+                  onToggleBulk={() => toggleBulkSelect(activity.id)}
                 />
                 {selectedActivityId === activity.id && (
                   <ActivityExpanded activity={activity} activityDetail={activityDetail} />
@@ -812,6 +874,37 @@ export default function ActivitiesPage() {
             className="text-sm text-muted hover:text-white transition-colors"
           >
             Clear
+          </button>
+        </div>
+      )}
+
+      {/* Bulk actions floating bar */}
+      {selectMode && bulkSelected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium text-white">{bulkSelected.size} selected</span>
+          <button
+            onClick={selectAllBulk}
+            className="text-sm text-muted hover:text-white transition-colors"
+          >
+            Select All
+          </button>
+          <button
+            onClick={() => setBulkSelected(new Set())}
+            className="text-sm text-muted hover:text-white transition-colors"
+          >
+            Deselect All
+          </button>
+          <button
+            onClick={exportCsv}
+            className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors"
+          >
+            Export CSV
+          </button>
+          <button
+            onClick={clearBulk}
+            className="text-sm text-muted hover:text-white transition-colors"
+          >
+            Cancel
           </button>
         </div>
       )}
