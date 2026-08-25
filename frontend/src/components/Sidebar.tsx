@@ -26,6 +26,8 @@ interface SidebarContextValue {
   open: () => void;
   close: () => void;
   toggle: () => void;
+  isCollapsed: boolean;
+  toggleCollapse: () => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue>({
@@ -33,6 +35,8 @@ const SidebarContext = createContext<SidebarContextValue>({
   open: () => {},
   close: () => {},
   toggle: () => {},
+  isCollapsed: false,
+  toggleCollapse: () => {},
 });
 
 export function useSidebar() {
@@ -41,10 +45,35 @@ export function useSidebar() {
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
+
+  // Initialize collapsed state from localStorage (client-only)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('fittrack-sidebar-collapsed');
+      if (stored === 'true') {
+        setIsCollapsed(true);
+      }
+    } catch {
+      // localStorage unavailable (SSR or private browsing)
+    }
+  }, []);
+
+  const toggleCollapse = useCallback(() => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fittrack-sidebar-collapsed', String(next));
+      } catch {
+        // localStorage unavailable
+      }
+      return next;
+    });
+  }, []);
 
   // Close sidebar on route change (mobile)
   const pathname = usePathname();
@@ -76,7 +105,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [isOpen]);
 
   return (
-    <SidebarContext.Provider value={{ isOpen, open, close, toggle }}>
+    <SidebarContext.Provider value={{ isOpen, open, close, toggle, isCollapsed, toggleCollapse }}>
       {children}
     </SidebarContext.Provider>
   );
@@ -111,7 +140,7 @@ export function MobileMenuButton() {
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { isOpen, close } = useSidebar();
+  const { isOpen, close, isCollapsed, toggleCollapse } = useSidebar();
 
   return (
     <>
@@ -130,20 +159,24 @@ export function Sidebar() {
         role="navigation"
         aria-label="Main navigation"
         className={`
-          fixed inset-y-0 left-0 z-40 w-64 bg-surface border-r border-surface-light/50 flex flex-col min-h-screen
-          transform transition-transform duration-200 ease-in-out
+          fixed inset-y-0 left-0 z-40 bg-surface border-r border-surface-light/50 flex flex-col min-h-screen
+          transform transition-[width,transform] duration-200 ease-in-out
           md:static md:translate-x-0
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isCollapsed ? 'md:w-16' : 'md:w-64 w-64'}
         `}
       >
-        <div className="p-6 border-b border-surface-light/50">
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+        <div className={`border-b border-surface-light/50 ${isCollapsed ? 'md:px-2 md:py-4 md:flex md:justify-center p-6' : 'p-6'}`}>
+          <h1 className={`text-xl font-bold text-white flex items-center gap-2 ${isCollapsed ? 'md:hidden' : ''}`}>
             <span className="text-2xl" aria-hidden="true">💪</span>
             Fitness Tracker
           </h1>
+          {isCollapsed && (
+            <span className="hidden md:inline text-2xl" aria-hidden="true">💪</span>
+          )}
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className={`flex-1 p-4 space-y-1 ${isCollapsed ? 'md:px-2' : ''}`}>
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -151,22 +184,42 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                title={isCollapsed ? item.label : undefined}
+                className={`flex items-center rounded-lg text-sm font-medium transition-colors ${
+                  isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
+                } ${
                   isActive
                     ? 'bg-accent/20 text-accent border border-accent/30'
                     : 'text-muted hover:text-white hover:bg-surface-light/50'
                 }`}
               >
                 <span className="text-lg" aria-hidden="true">{item.icon}</span>
-                {item.label}
+                <span className={isCollapsed ? 'md:hidden' : ''}>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
+        {/* Collapse toggle — desktop only */}
+        <button
+          onClick={toggleCollapse}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="hidden md:flex items-center justify-center mx-2 mb-2 p-2 rounded-lg text-muted hover:text-white hover:bg-surface-light/50 transition-colors"
+        >
+          <svg
+            className={`w-5 h-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+
         {session?.user && (
-          <div className="p-4 border-t border-surface-light/50">
-            <div className="flex items-center gap-3 mb-3">
+          <div className={`border-t border-surface-light/50 ${isCollapsed ? 'md:px-2 md:py-3 p-4' : 'p-4'}`}>
+            <div className={`flex items-center gap-3 mb-3 ${isCollapsed ? 'md:justify-center md:mb-0' : ''}`}>
               {session.user.image && (
                 <img
                   src={session.user.image}
@@ -174,7 +227,7 @@ export function Sidebar() {
                   className="w-8 h-8 rounded-full"
                 />
               )}
-              <div className="flex-1 min-w-0">
+              <div className={`flex-1 min-w-0 ${isCollapsed ? 'md:hidden' : ''}`}>
                 <p className="text-sm font-medium text-white truncate">{session.user.name}</p>
                 <p className="text-xs text-muted truncate">{session.user.email}</p>
               </div>
@@ -182,9 +235,16 @@ export function Sidebar() {
             <button
               onClick={() => signOut()}
               aria-label="Sign out of your account"
-              className="w-full text-left px-3 py-2 text-sm text-muted hover:text-warning rounded-lg hover:bg-surface-light/50 transition-colors"
+              className={`w-full text-left text-sm text-muted hover:text-warning rounded-lg hover:bg-surface-light/50 transition-colors ${
+                isCollapsed ? 'md:flex md:justify-center md:py-2 px-3 py-2' : 'px-3 py-2'
+              }`}
             >
-              Sign out
+              <span className={isCollapsed ? 'md:hidden' : ''}>Sign out</span>
+              {isCollapsed && (
+                <svg className="hidden md:inline w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              )}
             </button>
           </div>
         )}

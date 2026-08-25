@@ -38,6 +38,49 @@ export default function CyclingPage() {
   const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
 
+  // ── Below-the-fold section visibility ───────────────────────────────────
+  const powerCurveRef = useRef<HTMLDivElement>(null);
+  const vo2maxRef = useRef<HTMLDivElement>(null);
+  const decouplingRef = useRef<HTMLDivElement>(null);
+  const ftpRef = useRef<HTMLDivElement>(null);
+  const [visibleSections, setVisibleSections] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const sections = [
+      { ref: powerCurveRef, name: 'powerCurve' },
+      { ref: vo2maxRef, name: 'vo2max' },
+      { ref: decouplingRef, name: 'decoupling' },
+      { ref: ftpRef, name: 'ftp' },
+    ];
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisibleSections((prev) => {
+          const next = new Set(prev);
+          for (const entry of entries) {
+            const section = sections.find((s) => s.ref.current === entry.target);
+            if (section) {
+              if (entry.isIntersecting) {
+                next.add(section.name);
+              }
+            }
+          }
+          // Only update if something changed
+          if (next.size !== prev.size || [...next].some((s) => !prev.has(s))) {
+            return next;
+          }
+          return prev;
+        });
+      },
+      { rootMargin: '200px' } // Start loading 200px before visible
+    );
+
+    for (const { ref } of sections) {
+      if (ref.current) observer.observe(ref.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+
   // Cleanup timeouts on unmount (BUG-026)
   useEffect(() => {
     return () => {
@@ -67,6 +110,7 @@ export default function CyclingPage() {
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -80,6 +124,7 @@ export default function CyclingPage() {
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
     queryKey: ['power-vs-hr'],
     queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -92,6 +137,7 @@ export default function CyclingPage() {
   const { data: chartPowerCurve } = useQuery<ChartData>({
     queryKey: ['chart-stream-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -100,6 +146,7 @@ export default function CyclingPage() {
   const { data: chartPowerComparison } = useQuery<ChartData>({
     queryKey: ['chart-power-comparison', comparisonDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -113,24 +160,28 @@ export default function CyclingPage() {
   const { data: chartDailyTss } = useQuery<ChartData>({
     queryKey: ['chart-daily-tss', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 120_000,
   });
 
   const { data: lifetimePBs } = useQuery<LifetimePBsResponse>({
     queryKey: ['lifetime-pbs'],
     queryFn: () => authFetch<LifetimePBsResponse>('/api/v1/cycling/lifetime-pbs'),
+    enabled: visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
   const { data: ftpHistory } = useQuery<FtpHistoryEntry[]>({
     queryKey: ['ftp-history'],
     queryFn: () => authFetch<FtpHistoryEntry[]>('/api/v1/cycling/ftp-history'),
+    enabled: visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
   const { data: chartFtpHistory } = useQuery<ChartData>({
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
+    enabled: visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
@@ -151,36 +202,42 @@ export default function CyclingPage() {
   const { data: vo2max } = useQuery<Vo2maxResponse>({
     queryKey: ['vo2max'],
     queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
+    enabled: visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
     queryKey: ['vo2max-history'],
     queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
+    enabled: visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
     queryKey: ['chart-vo2max-trend', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
+    enabled: visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
     queryKey: ['decoupling-history'],
     queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
+    enabled: visibleSections.has('decoupling'),
     staleTime: 600_000,
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
     queryKey: ['chart-decoupling-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
+    enabled: visibleSections.has('decoupling'),
     staleTime: 600_000,
   });
 
   const { data: chartWeightTrend } = useQuery<ChartData>({
     queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
+    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -389,11 +446,13 @@ export default function CyclingPage() {
       </div>
 
       {/* VO2max Section */}
-      <Vo2maxSection
-        vo2max={vo2max}
-        vo2maxHistory={vo2maxHistory}
-        chartVo2maxTrend={chartVo2maxTrend}
-      />
+      <div ref={vo2maxRef}>
+        <Vo2maxSection
+          vo2max={vo2max}
+          vo2maxHistory={vo2maxHistory}
+          chartVo2maxTrend={chartVo2maxTrend}
+        />
+      </div>
 
       {/* Recent Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -503,41 +562,47 @@ export default function CyclingPage() {
       </Card>
 
       {/* Power Curve Section */}
-      <PowerCurveSection
-        powerCurve={powerCurve}
-        chartPowerCurve={chartPowerCurve}
-        curveLoading={curveLoading}
-        powerZones={powerZones}
-        chartPowerZones={chartPowerZones}
-        zonesLoading={zonesLoading}
-        chartPowerComparison={chartPowerComparison}
-        comparisonDays={comparisonDays}
-        setComparisonDays={setComparisonDays}
-        hrZones={hrZones}
-        chartHrZones={chartHrZones}
-        hasLthr={!!profile?.lactate_threshold_hr}
-        powerVsHr={powerVsHr}
-        chartDailyTss={chartDailyTss}
-        chartWeightTrend={chartWeightTrend}
-      />
+      <div ref={powerCurveRef}>
+        <PowerCurveSection
+          powerCurve={powerCurve}
+          chartPowerCurve={chartPowerCurve}
+          curveLoading={curveLoading}
+          powerZones={powerZones}
+          chartPowerZones={chartPowerZones}
+          zonesLoading={zonesLoading}
+          chartPowerComparison={chartPowerComparison}
+          comparisonDays={comparisonDays}
+          setComparisonDays={setComparisonDays}
+          hrZones={hrZones}
+          chartHrZones={chartHrZones}
+          hasLthr={!!profile?.lactate_threshold_hr}
+          powerVsHr={powerVsHr}
+          chartDailyTss={chartDailyTss}
+          chartWeightTrend={chartWeightTrend}
+        />
+      </div>
 
       {/* Decoupling Section */}
-      <DecouplingSection
-        decoupling={decoupling}
-        chartDecouplingTrend={chartDecouplingTrend}
-      />
+      <div ref={decouplingRef}>
+        <DecouplingSection
+          decoupling={decoupling}
+          chartDecouplingTrend={chartDecouplingTrend}
+        />
+      </div>
 
       {/* FTP Section */}
-      <FtpSection
-        profile={profile}
-        ftpHistory={ftpHistory}
-        chartFtpHistory={chartFtpHistory}
-        lifetimePBs={lifetimePBs}
-        ftpEstimate={ftpEstimate}
-        backfillFtpResult={backfillFtpResult}
-        onBackfillFtp={() => backfillFtpHistoryMutation.mutate()}
-        isBackfillingFtp={backfillFtpHistoryMutation.isPending}
-      />
+      <div ref={ftpRef}>
+        <FtpSection
+          profile={profile}
+          ftpHistory={ftpHistory}
+          chartFtpHistory={chartFtpHistory}
+          lifetimePBs={lifetimePBs}
+          ftpEstimate={ftpEstimate}
+          backfillFtpResult={backfillFtpResult}
+          onBackfillFtp={() => backfillFtpHistoryMutation.mutate()}
+          isBackfillingFtp={backfillFtpHistoryMutation.isPending}
+        />
+      </div>
     </div>
   );
 }

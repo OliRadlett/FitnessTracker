@@ -83,6 +83,7 @@ export default function TrainingPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [view, setView] = useState<'builder' | 'week'>('builder');
   const [showEventForm, setShowEventForm] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState<CreateEventPayload>({
     name: '',
     event_date: '',
@@ -203,7 +204,7 @@ export default function TrainingPage() {
     <div className="space-y-8">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">📋 Training Plans</h1>
+        <h1 className="text-3xl font-bold text-white">📋 Training Plans</h1>
         <p className="text-muted mt-1">Plan your training blocks, manage events, and track periodization.</p>
       </div>
 
@@ -336,12 +337,33 @@ export default function TrainingPage() {
                     <span className="text-white font-medium text-sm">
                       {EVENT_TYPE_EMOJI[evt.event_type] || '📌'} {evt.name}
                     </span>
-                    <button
-                      onClick={() => deleteEventMutation.mutate(evt.id)}
-                      className="text-xs text-muted hover:text-warning"
-                    >
-                      ✕
-                    </button>
+                    {confirmingDeleteId === evt.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-warning">Confirm?</span>
+                        <button
+                          onClick={() => {
+                            deleteEventMutation.mutate(evt.id);
+                            setConfirmingDeleteId(null);
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300 font-medium"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setConfirmingDeleteId(null)}
+                          className="text-xs text-muted hover:text-white"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingDeleteId(evt.id)}
+                        className="text-xs text-muted hover:text-warning"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                   <p className="text-xs text-muted mt-1">
                     📅 {evt.event_date} · {evt.days_until === 0 ? 'Today!' : `${evt.days_until} days away`}

@@ -59,6 +59,9 @@
 | `PageLoadingBar` | Top loading bar for route transitions |
 | `ExerciseAutocomplete` | Exercise name autocomplete input |
 | `Modal` | Responsive modal — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Includes `ModalHeader` sub-component |
+| `TabGroup` | Accessible tab bar with ARIA tablist/tab/selected attributes |
+| `ProviderBadge` | Provider icon + color badge (strava, komoot, wahoo, manual). Exports `ProviderIcon`, `ProviderBadge`, `PROVIDER_COLORS` |
+| `MetricCard` | Unified metric card — supports simple trend strings (dashboard) and complex MetricTrend/benchmark (cycling). Icon, unit, tooltip, subtitle |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -159,3 +162,7 @@
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
 - **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-first navigations, stale-while-revalidate static, network-first API GETs with cache fallback), `PwaRegister.tsx` (production-only SW registration)
+- **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
+- **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
+- **Collapsible sidebar**: Desktop sidebar collapses to icon-only (`w-16`) via localStorage-persisted toggle. Mobile unaffected
+- **Chart zoom**: Recharts `Brush` on line/area charts when >20 data points (dark theme styled)

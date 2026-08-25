@@ -11,6 +11,7 @@ import {
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceArea as RechartsReferenceArea,
+  Brush,
 } from 'recharts';
 
 interface ChartProps {
@@ -261,6 +262,9 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
+            {pointCount > 20 && (
+              <Brush dataKey="x" height={30} stroke="#334155" fill="#1e293b" />
+            )}
             {renderTooltip()}
             {renderLegend()}
             {data.series.map((s, i) => (
@@ -345,6 +349,9 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
+            {pointCount > 20 && (
+              <Brush dataKey="x" height={30} stroke="#334155" fill="#1e293b" />
+            )}
             {renderTooltip()}
             {renderLegend()}
             {data.series.map((s, i) => (

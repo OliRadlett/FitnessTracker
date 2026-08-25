@@ -24,10 +24,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance } from '@/lib/utils';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { STRENGTH_TYPES } from '@/lib/sportUtils';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const STRENGTH_TYPES = ['weighttraining', 'workout', 'crossfit', 'strength_training'];
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];

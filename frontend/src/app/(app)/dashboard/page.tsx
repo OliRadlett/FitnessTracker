@@ -58,18 +58,21 @@ export default function DashboardPage() {
   const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
     queryKey: ['chart-weekly-tss', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_tss?weeks=12'),
+    enabled: activeTab === 'weekly',
     staleTime: 300_000,
   });
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
     queryKey: ['activities-recent'],
     queryFn: () => authFetch<Activity[]>('/api/v1/activities?limit=5'),
+    enabled: activeTab === 'weekly',
     staleTime: 60_000,
   });
 
   const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions-recent'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=5'),
+    enabled: activeTab === 'weekly',
     staleTime: 60_000,
   });
 
@@ -88,36 +91,42 @@ export default function DashboardPage() {
   const { data: whoopWeekly } = useQuery<WhoopWeeklySummary>({
     queryKey: ['whoop-weekly'],
     queryFn: () => authFetch<WhoopWeeklySummary>('/api/v1/dashboard/whoop-weekly'),
+    enabled: activeTab === 'weekly',
     staleTime: 300_000,
   });
 
   const { data: strainVsRecovery } = useQuery<ChartData>({
     queryKey: ['chart-strain-vs-recovery', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strain_vs_recovery?days=30'),
+    enabled: activeTab === 'weekly',
     staleTime: 300_000,
   });
 
   const { data: monthlySummary, isLoading: monthlyLoading } = useQuery<MonthlySummaryItem[]>({
     queryKey: ['monthly-summary'],
     queryFn: () => authFetch<MonthlySummaryItem[]>('/api/v1/dashboard/monthly-summary?months=6'),
+    enabled: activeTab === 'weekly' || activeTab === 'monthly',
     staleTime: 300_000,
   });
 
   const { data: streaks } = useQuery<TrainingStreaks>({
     queryKey: ['training-streaks'],
     queryFn: () => authFetch<TrainingStreaks>('/api/v1/dashboard/streaks'),
+    enabled: activeTab === 'weekly',
     staleTime: 300_000,
   });
 
   const { data: goals } = useQuery<Goal[]>({
     queryKey: ['goals'],
     queryFn: () => authFetch<Goal[]>('/api/v1/goals'),
+    enabled: activeTab === 'weekly',
     staleTime: 60_000,
   });
 
   const { data: yearlySummary, isLoading: yearlyLoading } = useQuery<YearlySummary>({
     queryKey: ['yearly-summary', selectedYear],
     queryFn: () => authFetch<YearlySummary>(`/api/v1/dashboard/yearly-summary/${selectedYear}`),
+    enabled: activeTab === 'weekly' || activeTab === 'monthly',
     staleTime: 300_000,
   });
 
@@ -130,12 +139,14 @@ export default function DashboardPage() {
   const { data: llmAnalysis, isLoading: llmLoading } = useQuery<LlmAnalysis | null>({
     queryKey: ['llm-analysis'],
     queryFn: () => authFetch<LlmAnalysis | null>('/api/v1/cycling/llm-analysis/latest'),
+    enabled: activeTab === 'weekly',
     staleTime: 300_000,
   });
 
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
     queryKey: ['deficiency'],
     queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
+    enabled: activeTab === 'weekly',
     staleTime: 600_000,  // 10 min — expensive server-side computation
   });
 

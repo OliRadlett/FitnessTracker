@@ -28,97 +28,15 @@ import {
   subMonths,
   isToday,
 } from 'date-fns';
-
-// ─── Sport type helpers ────────────────────────────────────────────────────
-
-function getSportColor(sportType: string): string {
-  const n = sportType.toLowerCase();
-  if (n.includes('cycl') || n.includes('bike')) return 'bg-blue-500';
-  if (n.includes('run')) return 'bg-green-500';
-  if (
-    n.includes('strength') ||
-    n.includes('weight') ||
-    n.includes('workout') ||
-    n.includes('lift')
-  )
-    return 'bg-purple-500';
-  if (n.includes('swim')) return 'bg-cyan-500';
-  if (n.includes('walk') || n.includes('hik')) return 'bg-amber-500';
-  return 'bg-gray-500';
-}
-
-function getSportTextColor(sportType: string): string {
-  const n = sportType.toLowerCase();
-  if (n.includes('cycl') || n.includes('bike')) return 'text-blue-400';
-  if (n.includes('run')) return 'text-green-400';
-  if (
-    n.includes('strength') ||
-    n.includes('weight') ||
-    n.includes('workout') ||
-    n.includes('lift')
-  )
-    return 'text-purple-400';
-  if (n.includes('swim')) return 'text-cyan-400';
-  if (n.includes('walk') || n.includes('hik')) return 'text-amber-400';
-  return 'text-gray-400';
-}
-
-function getSportBorderColor(sportType: string): string {
-  const n = sportType.toLowerCase();
-  if (n.includes('cycl') || n.includes('bike')) return 'border-blue-500/30';
-  if (n.includes('run')) return 'border-green-500/30';
-  if (
-    n.includes('strength') ||
-    n.includes('weight') ||
-    n.includes('workout') ||
-    n.includes('lift')
-  )
-    return 'border-purple-500/30';
-  if (n.includes('swim')) return 'border-cyan-500/30';
-  if (n.includes('walk') || n.includes('hik')) return 'border-amber-500/30';
-  return 'border-gray-500/30';
-}
-
-function getSportEmoji(sportType: string): string {
-  const n = sportType.toLowerCase();
-  if (n.includes('cycl') || n.includes('bike')) return '🚴';
-  if (n.includes('run')) return '🏃';
-  if (
-    n.includes('strength') ||
-    n.includes('weight') ||
-    n.includes('workout') ||
-    n.includes('lift')
-  )
-    return '🏋️';
-  if (n.includes('swim')) return '🏊';
-  if (n.includes('walk') || n.includes('hik')) return '🥾';
-  return '⚡';
-}
-
-function isStrengthType(sportType: string): boolean {
-  const n = sportType.toLowerCase();
-  return (
-    n.includes('strength') ||
-    n.includes('weight') ||
-    n.includes('workout') ||
-    n.includes('lift')
-  );
-}
-
-function isCyclingOrRunning(sportType: string): boolean {
-  const n = sportType.toLowerCase();
-  return (
-    n.includes('cycl') ||
-    n.includes('bike') ||
-    n.includes('run')
-  );
-}
-
-function getRecoveryColor(score: number): string {
-  if (score >= 70) return 'text-green-400';
-  if (score >= 40) return 'text-yellow-400';
-  return 'text-red-400';
-}
+import {
+  getSportColor,
+  getSportTextColor,
+  getSportBorderColor,
+  getSportEmoji,
+  isStrengthType,
+  isCyclingOrRunning,
+  getRecoveryColor,
+} from '@/lib/sportUtils';
 
 function getRecoveryBg(score: number): string {
   if (score >= 70) return 'bg-green-500/15';
