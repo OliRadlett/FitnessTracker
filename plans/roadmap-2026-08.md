@@ -6,27 +6,23 @@ Agreed plan for the feature list in `prompt.txt`. Worked through collaboratively
 
 ---
 
-## ⚠️ SESSION HANDOFF — READ THIS FIRST (updated 2026-08-24)
+## ⚠️ SESSION HANDOFF — READ THIS FIRST (updated 2026-08-25)
 
-**Status: Phases 1–5 COMPLETE (5A+5B+5C). Phase 6 BACKEND DONE (semantic metrics + check-ins); Phase 6 FRONTEND (dedicated Goals page) still pending. Then 7–9 (need planning).**
+**Status: Phases 1–9 COMPLETE (wiki built, video system spec-only). Roadmap fully executed.**
 
-**Uncommitted**: Phases 3–5 work was committed/pushed through Phase 4 (`9306773`); Phase 5
-(5A/5B/5C) is committed separately — check `git log`. Migrations 025–029 need
-`python fittrack.py migrate` on deployment.
+All phases committed and pushed to `main`. Migrations 025–029 pending deployment
+(`python fittrack.py migrate`). Video system (Phase 9) is specced but not built —
+see the Phase 9 section for the full Cloudflare R2 architecture spec.
 
-Key implementation notes for future sessions:
+Key implementation notes:
 - Training-plan day saves send the FULL days array (backend deletes dates missing from payload)
-- `services/conformity.py::link_activities_to_plan_days` uses `populate_existing=True` (identity-map staleness)
-- `SuggestedCycleCard.tsx` + `WorkoutPlanner.tsx`: WorkoutPlanner still standalone on training page;
-  SuggestedCycleCard now orphaned (removed from cycling page, file kept)
+- `services/conformity.py::link_activities_to_plan_days` uses `populate_existing=True`
+- `SuggestedCycleCard.tsx` orphaned (removed from cycling page, file kept)
 - Frontend API clients: some take explicit `token` param (weather/conformity) due to 404-as-null needs
-- Phase 6 backend (2026-08-24): Goal model reworked (`metric`/`filter_json`/`starting_value`,
-  `goal_type` DROPPED, new `goal_checkins` table, migration **029**). Registry:
-  `services/goal_metrics.py`; state/transitions/check-ins: `services/goals.py`.
-  ⚠️ Frontend `lib/api/goals.ts` still posts legacy `goal_type` — must be updated with the
-  dedicated Goals page. Direction derived start-vs-target; reactivate suppresses re-expiry.
 
-Phases 7–9 are sketches only — plan them with the user before implementing.
+Remaining work not in the roadmap: video system implementation, full nutrition tracking,
+Komoot client rework, new integrations (Garmin/TrainingPeaks/Zwift/Apple Health),
+full E2E tests (Playwright), frontend component tests (Vitest + RTL).
 
 ---
 
@@ -326,7 +322,15 @@ POST /goals/{id}/reactivate
 
 ---
 
-## Phase 7: Projections & Success Prediction
+## Phase 7: Projections & Success Prediction — **DONE**
+
+Implemented: `services/projections.py` (OLS linear regression, project_to_target,
+success_badge On Track/At Risk/Unlikely/Not enough data, TSB projection via EMA),
+`api/projections.py` (`GET /projections/goal/{id}`, `GET /projections/metric/{key}`,
+`GET /projections/tsb/{plan_id}` event-linked only), 29 unit + 9 integration tests.
+Frontend: projection line (dashed) + badge in GoalDetailModal, ProjectionCard strip
+on goals page (top 5 active goals with target_date), TSB race-day freshness callout
+in WeeklyView for event-linked plans. 12-week regression window, ≥4 points required.
 
 ### Regression Engine (`services/projections.py`)
 - `linear_regression(points: list[(date, float)]) -> (slope_per_day, intercept, r_squared, n)` — OLS on day-offsets, pure function
@@ -352,7 +356,19 @@ Pure regression math (known slopes, 1-point edge, flat trend, perfect correlatio
 
 ---
 
-## Phase 8A: Activities Page Overhaul
+## Phase 8A: Activities Page Overhaul — **DONE**
+
+Implemented: 9 new query params on GET /activities (q, min/max distance/duration/tss,
+sort_by, sort_order), stream-overlay comparison (pick 2 rides → overlaid power/HR +
+stat deltas modal), Stats view mode (monthly distance bars, sport pie, weekly TSS area),
+redesigned weekly summary with inline mini bars. 11 new integration tests.
+
+## Phase 8B: Routes Page Overhaul — **DONE**
+
+Implemented: surface_type filter (JSONB has_key), GET /routes/{id}/history with personal
+bests, difficulty badge (elevation/km → Easy/Moderate/Hard/Extreme), route comparison
+(overlaid elevation profiles + delta table), per-route history/PB section, Leaflet map
+browse view, surface type dropdown. 5 new integration tests.
 
 ### Backend (`api/activities.py` GET `/`)
 New query params: `q` (name ILIKE), `min_distance`/`max_distance` (meters), `min_duration`/`max_duration` (seconds), `min_tss`/`max_tss`, `sport_types` (multi-select).
@@ -382,7 +398,10 @@ New query params: `q` (name ILIKE), `min_distance`/`max_distance` (meters), `min
 
 ## Phase 9: Wiki Expansion (build) + Strength Video System (spec-only)
 
-### Wiki — BUILD
+### Wiki — **DONE**
+Added 5 new sections to `wiki/page.tsx`: Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. tsc + vitest green.
+
+### Video System — SPEC ONLY (not implemented this cycle)
 Add 5 new sections to `wiki/page.tsx`: Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections.
 
 ### Video System — SPEC ONLY (not implemented this cycle)
