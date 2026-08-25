@@ -20,6 +20,9 @@ from app.schemas.route import (
     DuplicatePair,
     MergeRequest,
     RouteCreate,
+    RouteHistoryPersonalBest,
+    RouteHistoryResponse,
+    RouteHistoryRide,
     RouteRead,
     RouteSummary,
     RouteSyncResult,
@@ -58,6 +61,10 @@ async def list_routes(
     min_elevation: float | None = Query(None, ge=0),
     max_elevation: float | None = Query(None, ge=0),
     q: str | None = Query(None),
+    surface_type: str | None = Query(
+        None,
+        description="Filter by surface type key in surface_profile JSONB (e.g. 'paved', 'gravel')",
+    ),
     sort_by: str | None = Query(
         None,
         description="name, distance, elevation, ride_count, last_ridden, created_at",
@@ -90,6 +97,8 @@ async def list_routes(
         base_filters.append(Route.elevation_gain_meters <= max_elevation)
     if q:
         base_filters.append(Route.name.ilike(f"%{q}%"))
+    if surface_type:
+        base_filters.append(Route.surface_profile.has_key(surface_type))
 
     # Get total count (before pagination)
     count_query = select(func.count(Route.id)).where(*base_filters)
@@ -198,6 +207,69 @@ async def get_route(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     return RouteRead.model_validate(route)
+
+
+@router.get("/{route_id}/history", response_model=RouteHistoryResponse)
+async def get_route_history(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get ride history for a route.
+
+    Returns all activities ridden on this route, ordered by date descending,
+    plus a personal best (shortest duration) summary.
+    """
+    # Verify route exists and belongs to user
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Fetch all activities on this route
+    result = await db.execute(
+        select(Activity)
+        .where(
+            Activity.route_id == route_id,
+            Activity.user_id == current_user.id,
+        )
+        .order_by(Activity.start_date.desc())
+    )
+    activities = list(result.scalars().all())
+
+    # Build ride list
+    rides = [
+        RouteHistoryRide(
+            activity_id=a.id,
+            date=a.start_date,
+            duration_seconds=a.duration_seconds,
+            distance_meters=a.distance_meters,
+            average_power=a.average_power,
+            tss=a.tss,
+        )
+        for a in activities
+    ]
+
+    # Find personal best (shortest duration > 0)
+    pb = None
+    valid_for_pb = [
+        a for a in activities if a.duration_seconds and a.duration_seconds > 0
+    ]
+    if valid_for_pb:
+        best = min(valid_for_pb, key=lambda a: a.duration_seconds)
+        pb = RouteHistoryPersonalBest(
+            activity_id=best.id,
+            date=best.start_date,
+            duration_seconds=best.duration_seconds,
+            average_power=best.average_power,
+        )
+
+    return RouteHistoryResponse(
+        route_id=route.id,
+        route_name=route.name,
+        total_rides=len(activities),
+        personal_best=pb,
+        rides=rides,
+    )
 
 
 @router.post("/", response_model=RouteRead)

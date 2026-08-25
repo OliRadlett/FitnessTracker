@@ -8,13 +8,13 @@
 |-------|------|-------------|
 | `/dashboard` | `dashboard/page.tsx` | Main dashboard — Today/Weekly/Monthly tabs. **Today**: rest-day banner, readiness strip, today's planned workout (from active training plan), KPI grid, form trend chart (CTL/ATL/TSB), side-by-side activities + lifting cards. **Weekly**: readiness, events, KPIs, charts, streaks, goals, AI analysis. **Monthly**: summary cards + year-in-review |
 | `/training` | `training/page.tsx` | Training plans, events, periodization chart; segmented view toggle (**Plan Builder \| This Week** — WeeklyView) above the main pane when a plan is selected |
-| `/activities` | `activities/page.tsx` | Activity list with filters, merge analysis |
+| `/activities` | `activities/page.tsx` | Activity list with advanced filters (text search, min/max distance/duration/TSS), sort dropdown, List/Week/Stats view toggle, stream-overlay comparison (pick 2 rides → overlaid power/HR charts + stats delta table), weekly summary with mini inline bars |
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting |
 | `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B) |
 | `/lifting` | `lifting/page.tsx` | Lifting sessions, PRs, exercise progress, warmup templates. Live Lift entry banner + Whoop-unmatched warning (live sessions with `started_at`/`ended_at`, no `whoop_strain`, ended >3h ago) |
 | `/goals` | `goals/page.tsx` | Dedicated goals page — Active/Achieved/Expired/All tabs, goal cards with progress + alignment badges, **ProjectionCard summary strip (Phase 7)** for active goals with target dates, create modal (metric-registry-driven), detail modal with check-in chart + projection line + edit/delete/reactivate |
 | `/lifting/live` | `lifting/live/page.tsx` | **Live Lift** — mobile-first live session tracker. Pre-start (focus/program/warmup template) → active workout (`LiveWorkout`: steppers w/ smart prefill from last set or last-session reference, count-up since-last-set pill, 1-tap logging, double-tap undo, Wake Lock, PR toasts) → finish sheet (RPE/notes). Local-first: state persisted to localStorage every mutation, background syncer lazily creates the remote session then pushes sets/deletes, flushes on reconnect/foreground; resume/discard prompt after crash |
-| `/routes` | `routes/page.tsx` | Route management, map view, GPX upload/download |
+| `/routes` | `routes/page.tsx` | Route management — **List/Map view toggle**, filtering (status, sport, source, **surface type**, route type, distance, elevation, sort, search), route list with **difficulty badges** (Easy/Moderate/Hard/Extreme from elevation/distance ratio), **compare checkboxes** (pick 2 → overlaid elevation profiles + stats delta modal), route detail (map, elevation, surface breakdown, **ride history with PB table**), GPX upload/download |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — 10 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. Sticky sidebar nav with IntersectionObserver scroll highlighting |
 | `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences |
 
@@ -29,7 +29,7 @@
 | `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `getActiveSession`, `updateSession`, `addSet`, `deleteSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
 | `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
-| `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes` |
+| `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes`, **`getRouteHistory`** (Phase 8B: `GET /{id}/history` — rides + PB) |
 | `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
 | `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`), `getTsbProjection` (`GET /tsb/{planId}?days=N`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TsbProjectionResponse`, `TrendInfo`, `ProjectionPoint`, `TsbProjectionPoint` |
 | `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |

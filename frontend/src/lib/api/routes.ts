@@ -5,6 +5,7 @@ import type {
   RouteFilters,
   RouteSyncResult,
   DuplicatePair,
+  RouteHistoryResponse,
 } from './types';
 
 export async function getRoutes(filters: RouteFilters = {}): Promise<RouteSummary[]> {
@@ -39,6 +40,10 @@ export async function mergeRoutes(primaryId: string, duplicateId: string): Promi
     method: 'POST',
     body: JSON.stringify({ primary_route_id: primaryId, duplicate_route_id: duplicateId }),
   });
+}
+
+export async function getRouteHistory(routeId: string): Promise<RouteHistoryResponse> {
+  return apiFetch<RouteHistoryResponse>(`/api/v1/routes/${routeId}/history`);
 }
 
 export async function downloadRouteGpx(routeId: string, routeName: string, token?: string): Promise<void> {

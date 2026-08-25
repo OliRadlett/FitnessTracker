@@ -11,6 +11,11 @@ const sections = [
   { id: 'glossary', label: 'Metrics Glossary', icon: '📖' },
   { id: 'science', label: 'Science & Research', icon: '🧪' },
   { id: 'maximizing-impact', label: 'Maximizing Impact', icon: '💡' },
+  { id: 'weakness-analysis', label: 'Weakness Analysis', icon: '⚖️' },
+  { id: 'ride-fueling', label: 'Ride Fueling', icon: '🍌' },
+  { id: 'weather-integration', label: 'Weather Integration', icon: '🌦️' },
+  { id: 'training-plans', label: 'Training Plans & Conformity', icon: '📋' },
+  { id: 'goals-projections', label: 'Goals & Projections', icon: '🎯' },
 ];
 
 // ── Glossary entries (alphabetical) ─────────────────────────────────────────
@@ -540,6 +545,362 @@ export default function WikiPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 6. Weakness Analysis ────────────────────────────── */}
+        <section id="weakness-analysis">
+          <Card>
+            <CardTitle>⚖️ Weakness Analysis</CardTitle>
+            <div className="space-y-6 text-sm text-muted leading-relaxed">
+              <p>
+                Weakness Analysis cross-examines your lifting and cycling data to identify{' '}
+                <strong className="text-white">imbalances, gaps, and areas for improvement</strong>. It compares
+                your performance across exercises, metrics, and time periods to surface actionable deficiencies.
+              </p>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Lifting Weakness Detection</h3>
+                <ul className="list-disc list-inside space-y-2">
+                  <li>
+                    <strong className="text-white">Big-3 Bodyweight Standards</strong> — Your squat, bench, and
+                    deadlift 1RM compared to published strength levels for your body weight. Classified as
+                    Untrained / Novice / Intermediate / Advanced / Elite.
+                  </li>
+                  <li>
+                    <strong className="text-white">Inter-Exercise Ratios</strong> — Ideal bench-to-squat ratio is{' '}
+                    <strong className="text-white">0.65–0.75</strong>. A ratio below 0.60 suggests upper-body
+                    weakness; above 0.80 may indicate limited squat development.
+                  </li>
+                  <li>
+                    <strong className="text-white">Push/Pull Volume Balance</strong> — Ideal ratio is{' '}
+                    <strong className="text-white">1.0–1.3</strong> (pull slightly exceeding push). Values above
+                    1.5 or below 0.8 flag muscular imbalance and potential injury risk.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Cycling Weakness Detection</h3>
+                <ul className="list-disc list-inside space-y-2">
+                  <li>
+                    <strong className="text-white">VO2max vs FTP Mismatch</strong> — If VO2max is high but FTP is
+                    low relative to it, you have untapped aerobic potential that structured threshold work can unlock.
+                  </li>
+                  <li>
+                    <strong className="text-white">Decoupling Classification</strong> —{' '}
+                    {'<'}5% = excellent aerobic base, 5–8% = acceptable, {'>'}8% = aerobic deficiency requiring
+                    longer endurance rides.
+                  </li>
+                  <li>
+                    <strong className="text-white">Power Zone Distribution</strong> — Analyses time-in-zone across
+                    recent rides. Excessive Z1 with minimal Z3+ suggests insufficient training intensity.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">How to Use</h3>
+                <p>
+                  Check the <strong className="text-white">DeficiencyCard</strong> on the dashboard (Weekly tab) and
+                  the lifting page. Items are ranked by severity: <strong className="text-white">Critical</strong>{' '}
+                  {'>'} <strong className="text-white">High</strong> {'>'} <strong className="text-white">Medium</strong> {'>'}{' '}
+                  <strong className="text-white">Low</strong>. Address critical and high items first. Thresholds are
+                  adjustable over time as your training evolves.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 7. Ride Fueling ──────────────────────────────────── */}
+        <section id="ride-fueling">
+          <Card>
+            <CardTitle>🍌 Ride Fueling</CardTitle>
+            <div className="space-y-6 text-sm text-muted leading-relaxed">
+              <p>
+                Proper fueling is critical for sustained cycling performance. FitTrack generates personalised fuel
+                plans based on ride duration, intensity, and your body weight.
+              </p>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Carbohydrate Targets by Duration & Intensity</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-surface-light/50">
+                        <th className="text-left py-2 pr-4 text-white font-medium">Duration</th>
+                        <th className="text-left py-2 pr-4 text-white font-medium">Carb Target</th>
+                        <th className="text-left py-2 text-white font-medium">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-muted">
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">{'<'} 60 min</td>
+                        <td className="py-2 pr-4">None required</td>
+                        <td className="py-2">Glycogen stores sufficient</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">60–120 min</td>
+                        <td className="py-2 pr-4">30–50 g/hr</td>
+                        <td className="py-2">Single source (glucose or fructose)</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">120–180 min</td>
+                        <td className="py-2 pr-4">50–70 g/hr</td>
+                        <td className="py-2">Mixed transport for better absorption</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">180–300 min</td>
+                        <td className="py-2 pr-4">60–90 g/hr</td>
+                        <td className="py-2">Train gut to tolerate higher intake</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-white">{">"} 300 min</td>
+                        <td className="py-2 pr-4">80–100 g/hr</td>
+                        <td className="py-2">Dual-source (2:1 glucose:fructose)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Hydration</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  <li><strong className="text-white">Fluid:</strong> 500–800 ml/hr, adjusted for intensity and temperature.</li>
+                  <li><strong className="text-white">Sodium:</strong> 300–900 mg/hr depending on sweat rate and conditions.</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Pre- & Post-Ride Nutrition</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>
+                    <strong className="text-white">Pre-ride (2 hr before):</strong> 1.5 g carbs per kg body weight.
+                    Low fibre, familiar foods.
+                  </li>
+                  <li>
+                    <strong className="text-white">Post-ride (within 30 min):</strong> 1.2 g carbs/kg + 0.3 g
+                    protein/kg to kickstart recovery and glycogen replenishment.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">How to Use</h3>
+                <p>
+                  Generate a fuel plan from any cycling activity's detail page via the{' '}
+                  <strong className="text-white">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
+                  during, post-ride) with specific products and quantities. Follow the schedule during your ride,
+                  then log your actual intake post-ride for tracking and plan refinement.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 8. Weather Integration ───────────────────────────── */}
+        <section id="weather-integration">
+          <Card>
+            <CardTitle>🌦️ Weather Integration</CardTitle>
+            <div className="space-y-6 text-sm text-muted leading-relaxed">
+              <p>
+                FitTrack integrates with <strong className="text-white">Open-Meteo</strong>, a free weather API
+                that requires no API key. Weather data is used for ride planning, activity tagging, and
+                bad-weather training adjustments.
+              </p>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Features</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>
+                    <strong className="text-white">Current Conditions Widget</strong> — Shown at the top of the
+                    dashboard with temperature, wind, and conditions for your home location.
+                  </li>
+                  <li>
+                    <strong className="text-white">7-Day Forecast</strong> — Displayed on the training page with
+                    bad-weather warning indicators for upcoming planned sessions.
+                  </li>
+                  <li>
+                    <strong className="text-white">Activity Weather Tags</strong> — Past activities are
+                    automatically tagged with historical weather data (temperature, wind, conditions) after Strava
+                    sync.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Setup</h3>
+                <p>
+                  Set your <strong className="text-white">home latitude and longitude</strong> in the Cycling
+                  Profile editor (Cycling page → Profile tab). This is the location used for current conditions
+                  and forecasts. Without a home location, weather features are disabled.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Bad-Weather Thresholds</h3>
+                <p>Activities and forecast days are flagged when any of these conditions are met:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Temperature {'<'}5°C or {'>'}32°C</li>
+                  <li>Wind speed {'>'}40 km/h</li>
+                  <li>Precipitation probability {'>'}50% or rainfall {'>'}2 mm</li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 9. Training Plans & Conformity ───────────────────── */}
+        <section id="training-plans">
+          <Card>
+            <CardTitle>📋 Training Plans & Conformity</CardTitle>
+            <div className="space-y-6 text-sm text-muted leading-relaxed">
+              <p>
+                Training plans let you structure your week with sport-aware day editors, drag-to-swap scheduling,
+                and automatic conformity scoring that measures how well your actual training matches the plan.
+              </p>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Plan Builder</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Create plans from scratch or from a template.</li>
+                  <li>
+                    <strong className="text-white">Week tabs</strong> with per-week summaries and an "All" overview.
+                  </li>
+                  <li>
+                    <strong className="text-white">Sport-aware day editors:</strong> cycling days have power/zone
+                    targets; strength days have focus area and exercise lists.
+                  </li>
+                  <li><strong className="text-white">Drag-to-swap</strong> days within a week for easy rescheduling.</li>
+                  <li>
+                    <strong className="text-white">Event linkage</strong> — connect a plan to an event for
+                    automatic taper calculation.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Weekly View</h3>
+                <p>
+                  A 7-day grid showing weather forecasts, route matches, actual activity summaries, and a readiness
+                  strip (CTL / ATL / TSB) for the selected week. Synced activities are automatically matched to
+                  planned days by date.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Conformity Scoring</h3>
+                <p>
+                  Each completed day is scored against its plan. Weights differ by sport:
+                </p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-surface-light/50">
+                        <th className="text-left py-2 pr-4 text-white font-medium">Component</th>
+                        <th className="text-left py-2 pr-4 text-white font-medium">Cycling Weight</th>
+                        <th className="text-left py-2 text-white font-medium">Strength Weight</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-muted">
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">Duration</td>
+                        <td className="py-2 pr-4">25%</td>
+                        <td className="py-2">15%</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">Power / Volume</td>
+                        <td className="py-2 pr-4">30%</td>
+                        <td className="py-2">35%</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">TSS / Exercises</td>
+                        <td className="py-2 pr-4">20%</td>
+                        <td className="py-2">30%</td>
+                      </tr>
+                      <tr className="border-b border-surface-light/30">
+                        <td className="py-2 pr-4 text-white">Route / RPE</td>
+                        <td className="py-2 pr-4">10%</td>
+                        <td className="py-2">10%</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-white">— / Focus</td>
+                        <td className="py-2 pr-4">—</td>
+                        <td className="py-2">10%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3">
+                  <strong className="text-white">Classification:</strong> ≥90% Excellent · ≥70% Good · ≥50% Partial · {'<'}50% Significant deviation
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Auto-Linking</h3>
+                <p>
+                  Synced activities are automatically matched to planned days by date. Use the "Link activities"
+                  button in the weekly view to force a re-match after manual imports or late syncs.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 10. Goals & Projections ──────────────────────────── */}
+        <section id="goals-projections">
+          <Card>
+            <CardTitle>🎯 Goals & Projections</CardTitle>
+            <div className="space-y-6 text-sm text-muted leading-relaxed">
+              <p>
+                Goals let you define specific training targets and track progress with data-driven weekly
+                check-ins, alignment scoring, and linear regression projections.
+              </p>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Supported Goal Metrics</h3>
+                <p>
+                  FTP, body weight, 1RM (any exercise), session count, distance, TSS, VO2max, big-3 ratios
+                  (bench/squat, deadlift/squat), resting heart rate, HRV, and more. Each metric has its own
+                  unit, direction, and filter options (e.g. specific exercise for 1RM goals).
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Direction & Alignment</h3>
+                <p>
+                  Goal direction (increase or decrease) is <strong className="text-white">automatically derived</strong>{' '}
+                  from your starting value versus your target — no manual setting required. The{' '}
+                  <strong className="text-white">alignment score</strong> is an on-track percentage calculated by
+                  comparing your actual progress against the expected progress based on elapsed time.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Projections</h3>
+                <p>
+                  FitTrack runs <strong className="text-white">linear regression</strong> on your 12-week check-in
+                  history to project when you'll reach your target. Each goal receives a status badge:
+                </p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li><strong className="text-positive">On Track</strong> — Projected to hit target before deadline.</li>
+                  <li><strong className="text-warning">At Risk</strong> — Progress is behind schedule but still possible.</li>
+                  <li><strong className="text-red-400">Unlikely</strong> — Current trajectory won't reach target in time.</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">TSB Projection</h3>
+                <p>
+                  For event-linked training plans, FitTrack projects your{' '}
+                  <strong className="text-white">Training Stress Balance on race day</strong>. This helps you
+                  plan taper timing so you arrive at your event fresh (positive TSB) without losing too much
+                  fitness. Shown in the Weekly View's TSB projection strip.
+                </p>
+              </div>
             </div>
           </Card>
         </section>

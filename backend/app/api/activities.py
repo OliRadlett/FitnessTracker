@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, asc, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -65,12 +65,35 @@ def _enrich_activity_read(activity: Activity) -> ActivityRead:
     return read
 
 
+ACTIVITY_SORT_FIELDS = {
+    "start_date": Activity.start_date,
+    "distance": Activity.distance_meters,
+    "duration": Activity.duration_seconds,
+    "tss": Activity.tss,
+    "average_power": Activity.average_power,
+}
+
+
 @router.get("")
 async def list_activities(
     sport_type: str | None = Query(None),
     source: str | None = Query(None),
     start_date_after: datetime | None = Query(None),
     start_date_before: datetime | None = Query(None),
+    q: str | None = Query(None, description="Search activity name (case-insensitive)"),
+    min_distance: float | None = Query(None, ge=0),
+    max_distance: float | None = Query(None, ge=0),
+    min_duration: int | None = Query(None, ge=0),
+    max_duration: int | None = Query(None, ge=0),
+    min_tss: float | None = Query(None, ge=0),
+    max_tss: float | None = Query(None, ge=0),
+    sort_by: str | None = Query(
+        None,
+        description="Sort field: start_date, distance, duration, tss, average_power",
+    ),
+    sort_order: str | None = Query(
+        "desc", pattern="^(asc|desc)$", description="Sort direction"
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -83,6 +106,33 @@ async def list_activities(
 
     Returns the activity list with an X-Total-Count response header.
     """
+    # Validate sort_by
+    if sort_by is not None and sort_by not in ACTIVITY_SORT_FIELDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid sort_by: '{sort_by}'. Must be one of: {', '.join(ACTIVITY_SORT_FIELDS)}",
+        )
+
+    # Validate min/max pairs
+    if (
+        min_distance is not None
+        and max_distance is not None
+        and min_distance > max_distance
+    ):
+        raise HTTPException(
+            status_code=422, detail="min_distance must be <= max_distance"
+        )
+    if (
+        min_duration is not None
+        and max_duration is not None
+        and min_duration > max_duration
+    ):
+        raise HTTPException(
+            status_code=422, detail="min_duration must be <= max_duration"
+        )
+    if min_tss is not None and max_tss is not None and min_tss > max_tss:
+        raise HTTPException(status_code=422, detail="min_tss must be <= max_tss")
+
     # Build base filter conditions (shared between count and data queries)
     base_filters = [
         Activity.user_id == current_user.id,
@@ -96,12 +146,30 @@ async def list_activities(
         base_filters.append(Activity.start_date >= start_date_after)
     if start_date_before:
         base_filters.append(Activity.start_date <= start_date_before)
+    if q:
+        base_filters.append(Activity.name.ilike(f"%{q}%"))
+    if min_distance is not None:
+        base_filters.append(Activity.distance_meters >= min_distance)
+    if max_distance is not None:
+        base_filters.append(Activity.distance_meters <= max_distance)
+    if min_duration is not None:
+        base_filters.append(Activity.duration_seconds >= min_duration)
+    if max_duration is not None:
+        base_filters.append(Activity.duration_seconds <= max_duration)
+    if min_tss is not None:
+        base_filters.append(Activity.tss >= min_tss)
+    if max_tss is not None:
+        base_filters.append(Activity.tss <= max_tss)
 
     # Get total count
     count_result = await db.execute(
         select(func.count(Activity.id)).where(*base_filters)
     )
     total_count = int(count_result.scalar() or 0)
+
+    # Determine sort order
+    sort_col = ACTIVITY_SORT_FIELDS.get(sort_by or "start_date", Activity.start_date)
+    order_clause = desc(sort_col) if (sort_order or "desc") == "desc" else asc(sort_col)
 
     # Fetch page of activities
     query = (
@@ -112,7 +180,7 @@ async def list_activities(
             selectinload(Activity.route),
         )
         .where(*base_filters)
-        .order_by(Activity.start_date.desc())
+        .order_by(order_clause)
         .limit(limit)
         .offset(offset)
     )

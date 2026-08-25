@@ -7,7 +7,7 @@
 | `auth.py` | `UserRead`, `OAuthConnectionRead`, `TokenPayload`, `AuthResponse` |
 | `activity.py` | `ActivityCreate/Read`, `ActivitySourceRead`, `ActivityStreamRead`, `LinkedLiftingSessionSummary`, `ActivityCalendarEntry`, `RideAnalysisResponse` |
 | `lifting.py` | `Session/Set Create/Read/Update`, `PersonalRecordCreate/Read`, `VolumeTrend`, `LinkActivity`, `LiftingAnalysisResponse` |
-| `route.py` | `RouteRead/Summary/Create/Update`, `RouteSourceRead`, `MergeRequest` |
+| `route.py` | `RouteRead/Summary/Create/Update`, `RouteSourceRead`, `MergeRequest`, `RouteHistoryResponse`, `RouteHistoryRide`, `RouteHistoryPersonalBest` |
 | `cycling.py` | `CyclingProfileRead/Update`, `FtpHistoryRead/Create`, `TrainingLoad`, `PowerCurve`, `PowerZones`, `CyclingMetricsSummary` |
 | `dashboard.py` | `DashboardSummary`, `WeeklyReport`, `RestDaySuggestion`, `TodaySummary`, `TodayActivitySummary`, `TodayLiftingSummary` |
 | `goal.py` | `GoalCreate` (metric + filter_json), `GoalUpdate`, `GoalRead`, `GoalEnriched` (adds direction/alignment_pct/progress_pct/metric_label/unit), `GoalCheckInCreate/Read`, `MetricInfo` (registry entry), `ReactivateResponse`; `status` is Literal active/achieved/expired/abandoned |

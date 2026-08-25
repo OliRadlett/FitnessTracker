@@ -101,6 +101,15 @@ export interface ActivityFilters {
   start_date_after?: string;
   start_date_before?: string;
   source?: string;
+  q?: string;
+  min_distance?: number;
+  max_distance?: number;
+  min_duration?: number;
+  max_duration?: number;
+  min_tss?: number;
+  max_tss?: number;
+  sort_by?: string;
+  sort_order?: string;
   limit?: number;
   offset?: number;
 }

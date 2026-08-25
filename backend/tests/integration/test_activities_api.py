@@ -64,6 +64,113 @@ class TestListActivities:
         assert resp.status_code == 200
         assert len(resp.json()) == 0
 
+    async def test_filter_by_q_name_search(self, client, test_activity):
+        """Filtering by q searches activity name case-insensitively."""
+        resp = await client.get("/api/v1/activities", params={"q": "morning"})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["name"] == "Morning Ride"
+
+        resp = await client.get("/api/v1/activities", params={"q": "nonexistent"})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
+
+    async def test_filter_by_distance_range(self, client, test_activity):
+        """Filtering by min_distance/max_distance returns matching activities."""
+        # Activity has distance_meters=50_000
+        resp = await client.get(
+            "/api/v1/activities", params={"min_distance": 40000, "max_distance": 60000}
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+        resp = await client.get("/api/v1/activities", params={"min_distance": 60000})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
+
+    async def test_filter_by_duration_range(self, client, test_activity):
+        """Filtering by min_duration/max_duration returns matching activities."""
+        # Activity has duration_seconds=3600
+        resp = await client.get(
+            "/api/v1/activities", params={"min_duration": 3000, "max_duration": 4000}
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+        resp = await client.get("/api/v1/activities", params={"min_duration": 5000})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
+
+    async def test_filter_by_tss_range(self, client, test_activity):
+        """Filtering by min_tss/max_tss returns matching activities."""
+        # Activity has tss=80
+        resp = await client.get(
+            "/api/v1/activities", params={"min_tss": 70, "max_tss": 90}
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+        resp = await client.get("/api/v1/activities", params={"min_tss": 100})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
+
+    async def test_sort_by_distance_desc(self, client, test_multiple_activities):
+        """Sorting by distance descending returns activities in correct order."""
+        resp = await client.get(
+            "/api/v1/activities", params={"sort_by": "distance", "sort_order": "desc"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
+        distances = [a["distance_meters"] for a in data]
+        assert distances == sorted(distances, reverse=True)
+
+    async def test_sort_by_tss_asc(self, client, test_multiple_activities):
+        """Sorting by tss ascending returns activities in correct order."""
+        resp = await client.get(
+            "/api/v1/activities", params={"sort_by": "tss", "sort_order": "asc"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
+        tss_values = [a["tss"] for a in data]
+        assert tss_values == sorted(tss_values)
+
+    async def test_sort_by_invalid_returns_422(self, client):
+        """Invalid sort_by value returns 422."""
+        resp = await client.get(
+            "/api/v1/activities", params={"sort_by": "invalid_field"}
+        )
+        assert resp.status_code == 422
+        assert "Invalid sort_by" in resp.json()["detail"]
+
+    async def test_min_distance_greater_than_max_returns_422(self, client):
+        """min_distance > max_distance returns 422."""
+        resp = await client.get(
+            "/api/v1/activities",
+            params={"min_distance": 100, "max_distance": 50},
+        )
+        assert resp.status_code == 422
+        assert "min_distance" in resp.json()["detail"]
+
+    async def test_min_duration_greater_than_max_returns_422(self, client):
+        """min_duration > max_duration returns 422."""
+        resp = await client.get(
+            "/api/v1/activities",
+            params={"min_duration": 100, "max_duration": 50},
+        )
+        assert resp.status_code == 422
+        assert "min_duration" in resp.json()["detail"]
+
+    async def test_min_tss_greater_than_max_returns_422(self, client):
+        """min_tss > max_tss returns 422."""
+        resp = await client.get(
+            "/api/v1/activities",
+            params={"min_tss": 100, "max_tss": 50},
+        )
+        assert resp.status_code == 422
+        assert "min_tss" in resp.json()["detail"]
+
 
 # ── Detail ────────────────────────────────────────────────────────────────
 

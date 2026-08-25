@@ -333,6 +333,55 @@ async def test_route(db_session: AsyncSession, test_user: User) -> Route:
 
 
 @pytest_asyncio.fixture
+async def test_route_with_surface(db_session: AsyncSession, test_user: User) -> Route:
+    """Insert a ``Route`` with a surface_profile JSONB field."""
+    encoded = "o}~mH~}xMz@z@z@z@z@z@"
+    route = Route(
+        user_id=test_user.id,
+        name="Gravel Adventure",
+        sport_type="cycling",
+        distance_meters=25000.0,
+        elevation_gain_meters=400.0,
+        encoded_polyline=encoded,
+        start_lat=51.5074,
+        start_lng=-0.1278,
+        end_lat=51.5074,
+        end_lng=-0.1278,
+        is_loop=False,
+        surface_profile={"paved": 60, "gravel": 30, "dirt": 10},
+    )
+    db_session.add(route)
+    await db_session.flush()
+    return route
+
+
+@pytest_asyncio.fixture
+async def test_route_activities(
+    db_session: AsyncSession, test_user: User, test_route: Route
+) -> list[Activity]:
+    """Insert 3 activities linked to the test route with varying durations."""
+    activities = []
+    for i, (days_ago, duration) in enumerate([(1, 3600), (7, 3000), (14, 4200)]):
+        activity = Activity(
+            user_id=test_user.id,
+            route_id=test_route.id,
+            source="strava",
+            sport_type="cycling",
+            name=f"Route Ride {i + 1}",
+            start_date=datetime.now(UTC) - timedelta(days=days_ago),
+            duration_seconds=duration,
+            distance_meters=15000.0,
+            average_power=200.0 + i * 10,
+            tss=70.0 + i * 10,
+            provider_activity_id=f"strava_route_{100 + i}",
+        )
+        db_session.add(activity)
+        activities.append(activity)
+    await db_session.flush()
+    return activities
+
+
+@pytest_asyncio.fixture
 async def test_ftp_history(db_session: AsyncSession, test_user: User) -> FtpHistory:
     """Insert a ``FtpHistory`` entry."""
     ftp = FtpHistory(

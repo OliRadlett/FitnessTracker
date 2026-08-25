@@ -129,3 +129,42 @@ class RouteSyncResult(BaseModel):
     synced_count: int
     merged_count: int
     new_count: int
+
+
+# ── Route History ────────────────────────────────────────────────────────────
+
+
+class RouteHistoryRide(BaseModel):
+    """A single ride on a route."""
+
+    model_config = {"from_attributes": True}
+
+    activity_id: uuid.UUID
+    date: datetime
+    duration_seconds: int | None = None
+    distance_meters: float | None = None
+    average_power: float | None = None
+    tss: float | None = None
+
+
+class RouteHistoryPersonalBest(BaseModel):
+    """Personal best ride on a route (shortest duration)."""
+
+    model_config = {"from_attributes": True}
+
+    activity_id: uuid.UUID
+    date: datetime
+    duration_seconds: int
+    average_power: float | None = None
+
+
+class RouteHistoryResponse(BaseModel):
+    """Route ride history with personal best."""
+
+    model_config = {"from_attributes": True}
+
+    route_id: uuid.UUID
+    route_name: str
+    total_rides: int
+    personal_best: RouteHistoryPersonalBest | None = None
+    rides: list[RouteHistoryRide] = []

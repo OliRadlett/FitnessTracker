@@ -56,6 +56,7 @@ export interface RouteSummary {
 export interface RouteFilters {
   sport_type?: string;
   source?: string;
+  surface_type?: string;
   is_loop?: boolean;
   is_ridden?: boolean;
   min_distance?: number;
@@ -67,6 +68,32 @@ export interface RouteFilters {
   sort_order?: string;
   limit?: number;
   offset?: number;
+}
+
+// ── Route History ────────────────────────────────────────────────────────────
+
+export interface RouteHistoryRide {
+  activity_id: string;
+  date: string;
+  duration_seconds: number | null;
+  distance_meters: number | null;
+  average_power: number | null;
+  tss: number | null;
+}
+
+export interface RouteHistoryPersonalBest {
+  activity_id: string;
+  date: string;
+  duration_seconds: number;
+  average_power: number | null;
+}
+
+export interface RouteHistoryResponse {
+  route_id: string;
+  route_name: string;
+  total_rides: number;
+  personal_best: RouteHistoryPersonalBest | null;
+  rides: RouteHistoryRide[];
 }
 
 export interface RouteSyncResult {
