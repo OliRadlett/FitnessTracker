@@ -29,8 +29,10 @@ import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function CyclingPage() {
+  usePageTitle('Cycling');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
   const [loadDays, setLoadDays] = useState(90);

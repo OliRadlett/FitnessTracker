@@ -3,7 +3,6 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import { formatDuration } from '@/lib/utils';
 import type { Activity, ActivityDetail, ChartData, ActivityFilters, ActivitySource, ActivityStream, RideAnalysis } from '@/lib/api';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
@@ -22,36 +21,13 @@ import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { formatDuration, formatDistance } from '@/lib/utils';
+import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDistance(meters: number): string {
-  return `${(meters / 1000).toFixed(2)} km`;
-}
-
 const STRENGTH_TYPES = ['weighttraining', 'workout', 'crossfit', 'strength_training'];
-
-const PROVIDER_COLORS: Record<string, string> = {
-  strava: 'bg-orange-500',
-  komoot: 'bg-green-600',
-  wahoo: 'bg-blue-500',
-  manual: 'bg-gray-500',
-};
-
-const PROVIDER_ICONS: Record<string, string> = {
-  strava: '/icons/strava.svg',
-  komoot: '/icons/komoot.svg',
-  wahoo: '/icons/wahoo.svg',
-  manual: '',
-};
-
-function ProviderIcon({ provider, size = 12 }: { provider: string; size?: number }) {
-  const src = PROVIDER_ICONS[provider];
-  if (src) {
-    return <img src={src} alt={`${provider} logo`} className="inline-block" style={{ width: size, height: size }} />;
-  }
-  return <span aria-hidden="true">✏️</span>;
-}
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
@@ -128,7 +104,7 @@ function SummaryStatsBar({ activities }: { activities: Activity[] }) {
         <p className="text-xs text-muted">Activities</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
-        <p className="text-lg font-bold text-green-400">{fmtDistance(stats.totalDistance)}</p>
+        <p className="text-lg font-bold text-green-400">{formatDistance(stats.totalDistance)}</p>
         <p className="text-xs text-muted">Total Distance</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
@@ -207,7 +183,7 @@ function ActivityCard({
         <div className="flex items-center flex-wrap gap-6 text-right">
           {!isStrength && activity.distance_meters && (
             <div>
-              <p className="text-sm text-slate-300">{fmtDistance(activity.distance_meters)}</p>
+              <p className="text-sm text-slate-300">{formatDistance(activity.distance_meters)}</p>
               <p className="text-xs text-muted">Distance</p>
             </div>
           )}
@@ -450,9 +426,9 @@ function CompareActivitiesModal({
     const distDelta = distB - distA;
     rows.push({
       label: 'Distance',
-      a: fmtDistance(distA),
-      b: fmtDistance(distB),
-      delta: `${distDelta >= 0 ? '+' : ''}${fmtDistance(Math.abs(distDelta))}`,
+      a: formatDistance(distA),
+      b: formatDistance(distB),
+      delta: `${distDelta >= 0 ? '+' : ''}${formatDistance(Math.abs(distDelta))}`,
       positive: distDelta === 0 ? null : distDelta > 0,
     });
 
@@ -672,6 +648,7 @@ function StatsView({ activities }: { activities: Activity[] }) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ActivitiesPage() {
+  usePageTitle('Activities');
   const { authFetch, authFetchWithHeaders, authUpload } = useAuthFetch();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<ActivityFilters>({});
@@ -904,7 +881,7 @@ export default function ActivitiesPage() {
             <span>{weekActivities.length} activities</span>
             {totalDist > 0 && (
               <span className="flex items-center gap-1.5">
-                {'\u{1F4CF}'} {fmtDistance(totalDist)}
+                {'\u{1F4CF}'} {formatDistance(totalDist)}
                 <span className="inline-block h-1.5 rounded-full bg-green-500/60" style={{ width: `${Math.max(distPct * 0.4, 4)}px` }} />
               </span>
             )}

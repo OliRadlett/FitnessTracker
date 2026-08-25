@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { RouteMap } from '@/components/maps/RouteMap';
+import { formatDistance } from '@/lib/utils';
 import type {
   WorkoutZonesResponse,
   WorkoutPlanResponse,
@@ -30,10 +31,6 @@ const DURATION_OPTIONS = [
   { value: 150, label: '2h 30m' },
   { value: 180, label: '3 hrs' },
 ];
-
-function formatDistance(meters: number): string {
-  return `${(meters / 1000).toFixed(1)} km`;
-}
 
 function formatElevation(meters?: number): string {
   if (meters == null) return '—';

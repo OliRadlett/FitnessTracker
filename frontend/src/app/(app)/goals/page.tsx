@@ -8,6 +8,7 @@ import { GoalCard } from '@/components/ui/GoalCard';
 import { GoalCreateModal } from '@/components/goals/GoalCreateModal';
 import { GoalDetailModal } from '@/components/goals/GoalDetailModal';
 import { ProjectionCard } from '@/components/goals/ProjectionCard';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
 
@@ -19,6 +20,7 @@ const TABS: { key: StatusTab; label: string }[] = [
 ];
 
 export default function GoalsPage() {
+  usePageTitle('Goals');
   const { authFetch } = useAuthFetch();
   const [tab, setTab] = useState<StatusTab>('active');
   const [showCreate, setShowCreate] = useState(false);

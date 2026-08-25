@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatDistance } from '@/lib/utils';
+import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   ActivityCalendarEntry,
   Activity,
@@ -111,11 +112,6 @@ function isCyclingOrRunning(sportType: string): boolean {
     n.includes('bike') ||
     n.includes('run')
   );
-}
-
-function formatDistance(meters: number): string {
-  const km = meters / 1000;
-  return `${km.toFixed(1)} km`;
 }
 
 function getRecoveryColor(score: number): string {
@@ -703,6 +699,7 @@ function LiftingSessionDetail({
 // ─── Calendar Page ─────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
+  usePageTitle('Calendar');
   const { authFetch } = useAuthFetch();
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -888,6 +885,7 @@ export default function CalendarPage() {
                   <button
                     key={dateKey}
                     onClick={() => setSelectedDay(day)}
+                    aria-label={format(day, 'MMMM d, yyyy') + (dayActivities.length > 0 ? `, ${dayActivities.length} activities` : '')}
                     className={`
                       relative h-[120px] rounded-lg p-2 text-left transition-all
                       flex flex-col overflow-hidden

@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 const BASE_PATH = '/fittrack';
 
@@ -52,6 +53,7 @@ const integrations = [
 ];
 
 export default function SettingsPage() {
+  usePageTitle('Settings');
   const { data: session } = useSession();
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();

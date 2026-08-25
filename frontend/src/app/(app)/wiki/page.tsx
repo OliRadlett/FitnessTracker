@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
@@ -144,6 +145,7 @@ function FormulaBlock({ children }: { children: React.ReactNode }) {
 // ── Main Wiki Page ───────────────────────────────────────────────────────────
 
 export default function WikiPage() {
+  usePageTitle('Wiki');
   const [activeSection, setActiveSection] = useState('overview');
   const observerRef = useRef<IntersectionObserver | null>(null);
 

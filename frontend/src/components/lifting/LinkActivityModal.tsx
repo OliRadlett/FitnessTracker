@@ -5,16 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, LiftingSession } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
-
-function formatDuration(seconds?: number | null): string {
-  if (!seconds) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
+import { formatDuration } from '@/lib/utils';
 
 export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const { authFetch } = useAuthFetch();

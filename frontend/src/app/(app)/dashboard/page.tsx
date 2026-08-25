@@ -28,8 +28,10 @@ import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function DashboardPage() {
+  usePageTitle('Dashboard');
   const { authFetch } = useAuthFetch();
   const { data: session } = useSession();
   const queryClient = useQueryClient();

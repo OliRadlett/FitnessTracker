@@ -17,9 +17,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatDistance } from '@/lib/utils';
 import { decodePolyline } from '@/lib/polyline';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
+import { usePageTitle } from '@/lib/usePageTitle';
 import {
   AreaChart,
   Area,
@@ -32,10 +34,6 @@ import {
 } from 'recharts';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtDistance(meters: number): string {
-  return `${(meters / 1000).toFixed(1)} km`;
-}
 
 function fmtElevation(meters: number): string {
   return `${Math.round(meters)} m`;
@@ -119,28 +117,6 @@ function buildElevationData(encodedPolyline: string, elevations: (number | null)
     }
   }
   return result;
-}
-
-const PROVIDER_COLORS: Record<string, string> = {
-  strava: 'bg-orange-500',
-  komoot: 'bg-green-600',
-  wahoo: 'bg-blue-500',
-  manual: 'bg-gray-500',
-};
-
-const PROVIDER_ICONS: Record<string, string> = {
-  strava: '/icons/strava.svg',
-  komoot: '/icons/komoot.svg',
-  wahoo: '/icons/wahoo.svg',
-  manual: '',
-};
-
-function ProviderIcon({ provider, size = 14 }: { provider: string; size?: number }) {
-  const src = PROVIDER_ICONS[provider];
-  if (src) {
-    return <img src={src} alt={`${provider} logo`} className="inline-block" style={{ width: size, height: size }} />;
-  }
-  return <span aria-hidden="true">✏️</span>;
 }
 
 const SORT_OPTIONS = [
@@ -251,7 +227,7 @@ function RouteHistorySection({ routeId }: { routeId: string }) {
                     {ride.duration_seconds ? formatDuration(ride.duration_seconds) : '\u2014'}
                   </td>
                   <td className="py-2 px-3 text-right text-slate-300">
-                    {ride.distance_meters ? fmtDistance(ride.distance_meters) : '\u2014'}
+                    {ride.distance_meters ? formatDistance(ride.distance_meters) : '\u2014'}
                   </td>
                   <td className="py-2 px-3 text-right text-yellow-400">
                     {ride.average_power != null ? `${Math.round(ride.average_power)} W` : '\u2014'}
@@ -332,7 +308,7 @@ function CompareRoutesModal({
                     {r.is_loop && <Badge variant="positive">Loop</Badge>}
                   </div>
                   <div className="space-y-1 text-sm text-muted">
-                    <p>{'\u{1F4CF}'} {fmtDistance(r.distance_meters)}</p>
+                    <p>{'\u{1F4CF}'} {formatDistance(r.distance_meters)}</p>
                     {r.elevation_gain_meters != null && (
                       <p>{'\u26F0\uFE0F'} {fmtElevation(r.elevation_gain_meters)}</p>
                     )}
@@ -437,10 +413,10 @@ function CompareRoutesModal({
               <tbody>
                 <tr className="border-b border-surface-light/30">
                   <td className="py-2 text-muted">Distance</td>
-                  <td className="py-2 text-right text-white">{fmtDistance(routeA.distance_meters)}</td>
-                  <td className="py-2 text-right text-white">{fmtDistance(routeB.distance_meters)}</td>
+                  <td className="py-2 text-right text-white">{formatDistance(routeA.distance_meters)}</td>
+                  <td className="py-2 text-right text-white">{formatDistance(routeB.distance_meters)}</td>
                   <td className={`py-2 text-right ${distDelta > 0 ? 'text-green-400' : distDelta < 0 ? 'text-red-400' : 'text-muted'}`}>
-                    {distDelta > 0 ? '+' : ''}{fmtDistance(Math.abs(distDelta))}
+                    {distDelta > 0 ? '+' : ''}{formatDistance(Math.abs(distDelta))}
                   </td>
                 </tr>
                 <tr className="border-b border-surface-light/30">
@@ -523,7 +499,7 @@ function MapBrowseView({
           `<div style="min-width:180px">` +
             `<strong style="font-size:13px">${route.name}</strong><br/>` +
             `<span style="font-size:12px;color:#94a3b8">` +
-              `${fmtDistance(route.distance_meters)}` +
+              `${formatDistance(route.distance_meters)}` +
               `${route.elevation_gain_meters ? ' \u00B7 ' + fmtElevation(route.elevation_gain_meters) : ''}` +
               `${diffLabel}` +
             `</span><br/>` +
@@ -571,6 +547,7 @@ function MapBrowseView({
 }
 
 export default function RoutesPage() {
+  usePageTitle('Routes');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<RouteFilters>({});
@@ -1076,7 +1053,7 @@ export default function RoutesPage() {
                   </div>
                 </div>
                   <div className="flex items-center gap-4 text-sm text-muted flex-wrap">
-                    <span>📏 {fmtDistance(route.distance_meters)}</span>
+                    <span>📏 {formatDistance(route.distance_meters)}</span>
                     {route.elevation_gain_meters && (
                       <span>⛰️ {fmtElevation(route.elevation_gain_meters)}</span>
                     )}
@@ -1162,7 +1139,7 @@ export default function RoutesPage() {
                   )}
 
                   <div className="flex flex-wrap gap-4 text-sm text-muted mb-4">
-                    <span>📏 {fmtDistance(selectedRoute.distance_meters)}</span>
+                    <span>📏 {formatDistance(selectedRoute.distance_meters)}</span>
                     {selectedRoute.elevation_gain_meters && (
                       <span>⛰️ {fmtElevation(selectedRoute.elevation_gain_meters)}</span>
                     )}

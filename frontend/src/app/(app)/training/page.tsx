@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   TrainingPlan,
   TrainingPlanSummary,
@@ -76,6 +77,7 @@ function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
 }
 
 export default function TrainingPage() {
+  usePageTitle('Training');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);

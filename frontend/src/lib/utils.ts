@@ -16,9 +16,9 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${secs}s`;
 }
 
-export function formatDistance(meters: number | null | undefined): string {
+export function formatDistance(meters: number | null | undefined, precision = 2): string {
   if (meters == null || meters < 0) return '—';
-  return `${(meters / 1000).toFixed(2)} km`;
+  return `${(meters / 1000).toFixed(precision)} km`;
 }
 
 /**

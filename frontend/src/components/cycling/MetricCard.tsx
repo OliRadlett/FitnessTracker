@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/Card';
 import type { MetricTrend, MetricBenchmark } from '@/lib/api';
+import { formatDuration } from '@/lib/utils';
 
 function TrendIndicator({ trend }: { trend?: MetricTrend | null }) {
   if (!trend || trend.direction === 'stable') return null;
@@ -96,11 +97,4 @@ export function MetricCard({
       )}
     </Card>
   );
-}
-
-export function formatDuration(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0) return `${hrs}h ${mins}m`;
-  return `${mins}m`;
 }

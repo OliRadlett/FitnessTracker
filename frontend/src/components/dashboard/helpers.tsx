@@ -10,19 +10,11 @@ import type {
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { formatDuration, formatDistance } from '@/lib/utils';
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
-export function formatDuration(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0) return `${hrs}h ${mins}m`;
-  return `${mins}m`;
-}
-
-export function formatDistance(meters: number): string {
-  return `${(meters / 1000).toFixed(1)} km`;
-}
+export { formatDuration, formatDistance };
 
 export function getGreeting(): string {
   const hour = new Date().getHours();

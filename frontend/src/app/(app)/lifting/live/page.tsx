@@ -17,10 +17,12 @@ import {
   type ExerciseReference,
 } from '@/lib/lifting/reference';
 import { useLiveSession } from '@/lib/lifting/useLiveSession';
+import { usePageTitle } from '@/lib/usePageTitle';
 
 const FOCUS_OPTIONS = ['squat', 'bench', 'deadlift', 'overhead_press', 'accessories'];
 
 export default function LiveLiftPage() {
+  usePageTitle('Live Lift');
   const { authFetch } = useAuthFetch();
   const live = useLiveSession(authFetch);
 

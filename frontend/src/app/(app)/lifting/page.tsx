@@ -27,6 +27,8 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
+import { formatDuration } from '@/lib/utils';
+import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
@@ -44,16 +46,6 @@ function buildVolumeChart(volumeData: VolumeTrendPoint[]): ChartData {
     y_label: 'Volume (kg)',
     series: [{ name: 'Total Volume', data: volumeData.map((d) => d.total_volume_kg) }],
   };
-}
-
-function formatDuration(seconds?: number | null): string {
-  if (!seconds) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
 }
 
 /** Group lifting sets by exercise name, preserving order of first appearance. */
@@ -111,6 +103,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function LiftingPage() {
+  usePageTitle('Lifting');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
