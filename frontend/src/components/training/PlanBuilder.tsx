@@ -59,16 +59,11 @@ const FOCUS_OPTIONS = [
   { value: 'overhead_press', label: 'Overhead Press' },
   { value: 'accessories', label: 'Accessories' },
   { value: 'full_body', label: 'Full Body' },
-] as const;
-
-const SESSION_TYPES = [
-  { value: '', label: 'None' },
   { value: 'push', label: 'Push' },
   { value: 'pull', label: 'Pull' },
   { value: 'legs', label: 'Legs' },
   { value: 'upper', label: 'Upper' },
   { value: 'lower', label: 'Lower' },
-  { value: 'full_body', label: 'Full Body' },
 ] as const;
 
 const TEMPLATE_OPTIONS = [
@@ -160,6 +155,8 @@ interface PlanBuilderProps {
   onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) => void;
   onSaveDays: (planId: string, days: TrainingPlanDay[]) => void;
   onDeletePlan: (planId: string) => void;
+  /** Invalidate plan queries to refetch fresh data from server. */
+  onRefreshPlan: (planId: string) => void;
   isSaving?: boolean;
   isCreating?: boolean;
   isGenerating?: boolean;
@@ -175,6 +172,7 @@ export function PlanBuilder({
   onUpdatePlan,
   onSaveDays,
   onDeletePlan,
+  onRefreshPlan,
   isSaving,
   isCreating,
   isGenerating,
@@ -204,6 +202,7 @@ export function PlanBuilder({
       onUpdatePlan={onUpdatePlan}
       onSaveDays={onSaveDays}
       onDeletePlan={onDeletePlan}
+      onRefreshPlan={onRefreshPlan}
       isSaving={isSaving}
     />
   );
@@ -475,6 +474,7 @@ interface PlanEditorProps {
   onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) => void;
   onSaveDays: (planId: string, days: TrainingPlanDay[]) => void;
   onDeletePlan: (planId: string) => void;
+  onRefreshPlan: (planId: string) => void;
   isSaving?: boolean;
 }
 
@@ -484,6 +484,7 @@ function PlanEditor({
   onUpdatePlan,
   onSaveDays,
   onDeletePlan,
+  onRefreshPlan,
   isSaving,
 }: PlanEditorProps) {
   // Local editable copy of ALL days — re-initialised whenever the plan object
@@ -568,8 +569,7 @@ function PlanEditor({
     markDirty(dateStr);
   };
 
-  /** Toggle completed — accumulates like other edits and persists on Save
-   * (the backend cannot accept `completed` through PATCH today, see notes). */
+  /** Toggle completed — accumulates like other edits and persists on Save. */
   const toggleCompleted = (dateStr: string) => {
     const day = daysByDate.get(dateStr);
     updateDayFields(dateStr, { completed: !(day?.completed ?? false) });
@@ -808,11 +808,6 @@ function PlanEditor({
                         {(day.planned_focus as string).replace('_', ' ')}
                       </span>
                     )}
-                    {day?.session_type && sport === 'strength' && (
-                      <span className="text-[10px] uppercase tracking-wide opacity-75 ml-1">
-                        ({day.session_type})
-                      </span>
-                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1 text-[10px] opacity-90">
@@ -833,22 +828,21 @@ function PlanEditor({
           </div>
 
           {/* Expanded day editor (only one open) */}
-          {expandedDate && (
-            <DayEditor
-              key={expandedDate}
-              dateStr={expandedDate}
-              day={
-                daysByDate.get(expandedDate) ?? blankDay(expandedDate, plan.id)
-              }
-              planId={plan.id}
-              onPatch={(patch) => updateDayFields(expandedDate, patch)}
-              onClose={() => setExpandedDate(null)}
-              onRefreshPlan={() => {
-                // Re-fetch the plan from the parent
-                onSaveDays(plan.id, days);
-              }}
-            />
-          )}
+          {expandedDate && (() => {
+            const editorDay = daysByDate.get(expandedDate) ?? blankDay(expandedDate, plan.id);
+            return (
+              <DayEditor
+                key={expandedDate}
+                dateStr={expandedDate}
+                day={editorDay}
+                planId={plan.id}
+                isDraft={editorDay.id.startsWith('draft-')}
+                onPatch={(patch) => updateDayFields(expandedDate, patch)}
+                onClose={() => setExpandedDate(null)}
+                onRefreshPlan={() => onRefreshPlan(plan.id)}
+              />
+            );
+          })()}
 
           <div className="flex flex-wrap gap-3 pt-1">
             <span className="text-[10px] text-muted">
@@ -894,12 +888,13 @@ interface DayEditorProps {
   dateStr: string;
   day: TrainingPlanDay;
   planId: string;
+  isDraft: boolean;
   onPatch: (patch: Partial<TrainingPlanDay>) => void;
   onClose: () => void;
   onRefreshPlan: () => void;
 }
 
-function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: DayEditorProps) {
+function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshPlan }: DayEditorProps) {
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
@@ -924,23 +919,32 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
   const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [duplicateDate, setDuplicateDate] = useState('');
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const handleCopySession = async () => {
-    if (!selectedSessionId) return;
-    await copySessionToPlanDay(planId, day.id, selectedSessionId);
-    setShowSessionPicker(false);
-    setSelectedSessionId('');
-    queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-    onRefreshPlan();
+    if (!selectedSessionId || isDraft) return;
+    setCopyError(null);
+    try {
+      await copySessionToPlanDay(planId, day.id, selectedSessionId);
+      setShowSessionPicker(false);
+      setSelectedSessionId('');
+      onRefreshPlan();
+    } catch (err) {
+      setCopyError(err instanceof Error ? err.message : 'Failed to copy session');
+    }
   };
 
   const handleDuplicateDay = async () => {
-    if (!duplicateDate) return;
-    await copyPlanDayToDate(planId, day.id, duplicateDate);
-    setShowDuplicatePicker(false);
-    setDuplicateDate('');
-    queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-    onRefreshPlan();
+    if (!duplicateDate || isDraft) return;
+    setCopyError(null);
+    try {
+      await copyPlanDayToDate(planId, day.id, duplicateDate);
+      setShowDuplicatePicker(false);
+      setDuplicateDate('');
+      onRefreshPlan();
+    } catch (err) {
+      setCopyError(err instanceof Error ? err.message : 'Failed to duplicate day');
+    }
   };
 
   const patchExercise = (idx: number, patch: Partial<PlannedExercise>) => {
@@ -971,12 +975,13 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
           Edit {getDayOfWeek(dateStr)} {dateStr}
         </h4>
         <div className="flex items-center gap-1">
-          {isStrength && (
+          {isStrength && !isDraft && (
             <>
               <button
                 onClick={() => {
                   setShowSessionPicker(!showSessionPicker);
                   setShowDuplicatePicker(false);
+                  setCopyError(null);
                 }}
                 title="Copy exercises from a past session"
                 className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
@@ -987,6 +992,7 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
                 onClick={() => {
                   setShowDuplicatePicker(!showDuplicatePicker);
                   setShowSessionPicker(false);
+                  setCopyError(null);
                 }}
                 title="Duplicate this day to another date"
                 className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
@@ -994,6 +1000,11 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
                 📅 Duplicate
               </button>
             </>
+          )}
+          {isStrength && isDraft && (
+            <span className="text-[10px] text-muted italic px-2 py-1">
+              Save the plan first to use Copy/Duplicate
+            </span>
           )}
           <button onClick={onClose} className="text-muted hover:text-white text-sm px-1">
             ✕
@@ -1053,6 +1064,10 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
             ✕
           </button>
         </div>
+      )}
+
+      {copyError && (
+        <p className="text-xs text-red-400 px-1">{copyError}</p>
       )}
 
       {/* Sport */}
@@ -1181,7 +1196,7 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className={labelCls}>Focus</label>
+              <label className={labelCls}>Session Type</label>
               <select
                 value={day.planned_focus ?? 'squat'}
                 onChange={(e) => onPatch({ planned_focus: e.target.value })}
@@ -1191,18 +1206,6 @@ function DayEditor({ dateStr, day, planId, onPatch, onClose, onRefreshPlan }: Da
                   <option key={f.value} value={f.value}>
                     {f.label}
                   </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Session Type</label>
-              <select
-                value={day.session_type ?? ''}
-                onChange={(e) => onPatch({ session_type: e.target.value || null })}
-                className={inputCls}
-              >
-                {SESSION_TYPES.map((st) => (
-                  <option key={st.value} value={st.value}>{st.label}</option>
                 ))}
               </select>
             </div>

@@ -96,7 +96,12 @@ export type PlanFocus =
   | 'deadlift'
   | 'overhead_press'
   | 'accessories'
-  | 'full_body';
+  | 'full_body'
+  | 'push'
+  | 'pull'
+  | 'legs'
+  | 'upper'
+  | 'lower';
 
 export interface TrainingPlanDay {
   id: string;
@@ -108,7 +113,6 @@ export interface TrainingPlanDay {
   planned_type: PlanDayType;
   workout_description?: string | null;
   planned_focus?: PlanFocus | string | null;
-  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_volume_kg?: number | null;
   planned_rpe?: number | null;
@@ -169,16 +173,17 @@ export interface CreateTrainingPlanDayPayload {
   planned_type?: string;
   workout_description?: string | null;
   planned_focus?: string | null;
-  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_volume_kg?: number | null;
   planned_rpe?: number | null;
   planned_power_watts?: number | null;
   planned_zone?: string | null;
+  warmup_template_id?: string | null;
   notes?: string | null;
-  /** Client-computed completion flag — persisted server-side once the day
-   * schema exposes it; today the backend preserves it on unchanged dates. */
   completed?: boolean;
+  /** Link fields — included so drag-to-reassign preserves them on moved days. */
+  lifting_session_id?: string | null;
+  planned_route_id?: string | null;
 }
 
 export interface UpdateTrainingPlanPayload {
@@ -300,7 +305,6 @@ export interface UpdateTrainingPlanDayPayload {
   planned_type?: string;
   workout_description?: string | null;
   planned_focus?: string | null;
-  session_type?: string | null;
   planned_exercises?: PlannedExercise[] | null;
   planned_rpe?: number | null;
   planned_power_watts?: number | null;

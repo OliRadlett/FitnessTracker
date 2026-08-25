@@ -86,7 +86,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |

@@ -19,3 +19,4 @@ export * from './nutrition';
 export * from './weather';
 export * from './conformity';
 export * from './projections';
+export * from './exercises';

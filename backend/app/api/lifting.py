@@ -28,7 +28,6 @@ from app.schemas.lifting import (
 )
 from app.services import lifting as lifting_service
 from app.services.auth import get_current_user
-from app.services.exercise_db import search_exercises
 from app.services.strava import link_all_unlinked_activities
 
 router = APIRouter()
@@ -282,11 +281,75 @@ async def cleanup_prs(
 async def list_exercises(
     q: str | None = Query(None, description="Search query (substring match)"),
     limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Search the built-in exercise database. Returns canonical names with categories."""
-    results = search_exercises(q or "", limit=limit)
+    """Search the exercise library. Returns canonical names with categories."""
+    from app.services.exercise import search_exercises as db_search
+
+    results = await db_search(db, current_user.id, q or "", limit=limit)
     return results
+
+
+@router.post("/exercises", status_code=status.HTTP_201_CREATED)
+async def create_exercise_endpoint(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a custom exercise to the user's library."""
+    from app.services.exercise import create_exercise
+
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    category = data.get("category", "accessory")
+    aliases = data.get("aliases")
+    try:
+        ex = await create_exercise(db, current_user.id, name, category, aliases)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases}
+
+
+@router.patch("/exercises/{exercise_id}")
+async def update_exercise_endpoint(
+    exercise_id: uuid.UUID,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a user-owned exercise."""
+    from app.services.exercise import update_exercise
+
+    try:
+        ex = await update_exercise(
+            db,
+            current_user.id,
+            exercise_id,
+            name=data.get("name"),
+            category=data.get("category"),
+            aliases=data.get("aliases"),
+            is_active=data.get("is_active"),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases, "is_active": ex.is_active}
+
+
+@router.delete("/exercises/{exercise_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exercise_endpoint(
+    exercise_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a user-owned exercise."""
+    from app.services.exercise import delete_exercise
+
+    try:
+        await delete_exercise(db, current_user.id, exercise_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ── Manual PR Entry ──────────────────────────────────────────────────────────

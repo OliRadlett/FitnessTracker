@@ -16,7 +16,7 @@
 | `/lifting/live` | `lifting/live/page.tsx` | **Live Lift** — mobile-first live session tracker. Pre-start (focus/program/warmup template) → active workout (`LiveWorkout`: steppers w/ smart prefill from last set or last-session reference, count-up since-last-set pill, 1-tap logging, double-tap undo, Wake Lock, PR toasts) → finish sheet (RPE/notes). Local-first: state persisted to localStorage every mutation, background syncer lazily creates the remote session then pushes sets/deletes, flushes on reconnect/foreground; resume/discard prompt after crash |
 | `/routes` | `routes/page.tsx` | Route management — **List/Map view toggle**, filtering (status, sport, source, **surface type**, route type, distance, elevation, sort, search), route list with **difficulty badges** (Easy/Moderate/Hard/Extreme from elevation/distance ratio), **compare checkboxes** (pick 2 → overlaid elevation profiles + stats delta modal), route detail (map, elevation, surface breakdown, **ride history with PB table**), GPX upload/download |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — 10 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. Sticky sidebar nav with IntersectionObserver scroll highlighting |
-| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences |
+| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences, **exercise library management** (add/search exercises) |
 
 ## API Clients (`lib/api/`)
 
@@ -40,6 +40,7 @@
 | `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `auth.ts` | — | NextAuth config, `authOptions`, JWT/session callbacks |
+| `exercises.ts` | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `updateExercise`, `deleteExercise` — DB-backed exercise library CRUD |
 | `index.ts` | — | Barrel re-exports all modules |
 
 ## Components
@@ -123,12 +124,17 @@
 ### `training/` — Training plan components
 | Component | Purpose |
 |-----------|---------|
-| `PlanBuilder` | Full plan builder (Phase 5A): empty state (scratch/template creation w/ event taper select), plan header (inline rename, badges, event link/unlink, Activate/Delete), week tabs + "All" per-week summary, 7-col day cards with sport-aware expandable editors (cycle: power/zone; strength: focus/RPE/exercise list via `ExerciseAutocomplete` + computed volume), HTML5 drag-to-swap dates, sticky unsaved-changes footer. Edits accumulate locally keyed by `day_date`; Save PATCHes the FULL days array (backend upserts by date and deletes missing dates — never send partial days). Keyed by plan id from training page to reset state on plan switch |
+| `PlanBuilder` | Full plan builder (Phase 5A): empty state (scratch/template creation w/ event taper select), plan header (inline rename, badges, event link/unlink, Activate/Delete), week tabs + "All" per-week summary, 7-col day cards with sport-aware expandable editors (cycle: power/zone; strength: session type + RPE/exercise list via `ExerciseAutocomplete` + computed volume), HTML5 drag-to-swap dates, sticky unsaved-changes footer. Edits accumulate locally keyed by `day_date`; Save PATCHes the FULL days array (backend upserts by date and deletes missing dates — never send partial days). Keyed by plan id from training page to reset state on plan switch. Copy Session / Duplicate disabled on draft days |
 | `WeeklyView` | Weekly planning view (Phase 5B, sibling of PlanBuilder — toggle "This Week" on training page): Monday-aligned week navigation (week math mirrors backend: `week1 = start − weekday(start)`), readiness strip (CTL/ATL/TSB + recommended-zone dot), **conformity summary strip (Phase 5C, `['plan-conformity', planId]` staleTime 60s)** — overall % big number, trend arrow (↑/↓/→), per-sport chips from the viewed week's `by_sport`, warning-tinted patterns box, "Link activities" button (`POST /link-activities`); **TSB projection strip (Phase 7, `['tsb-projection', planId]` — event-linked plans only)** — race-day TSB + freshness assessment; 7 responsive day cards with weather emoji + bad-weather chips, actual activity/lifting summaries in green blocks, `ConformityBadge` status per day (done/pending/missed; rest hidden), expandable panel with planned-exercise table + route matches ("Assign" → single-day PATCH `{planned_route_id}`) + quick-edit (duration/TSS/notes) + `DayConformityPanel`. Queries `['plan-week', planId, week]`; edits use targeted `updatePlanDay` PATCHes and invalidate week + both conformity queries — unlike PlanBuilder's full-array saves |
 | `ConformityBadge` | Tiny inline day-status badge (Phase 5C): done → green dot + %, partial → yellow, missed → muted-red "Missed", extra → blue "Extra", pending → gray "—", rest → renders nothing; tooltip = classification when present (optional `title` override used by WeeklyView's heuristic labels) |
 | `DayConformityPanel` | Expanded plan-vs-actual detail for one day (Phase 5C): lazy `['day-conformity', dayId]` query fetched only while mounted (WeeklyView expanded panel), header badge + classification, weighted component table (humanized metric labels, planned → actual with units W/kg/min/%, deviation colored red-over/blue-under, weight %, component-score mini bar), "→" deviation notes in warning color, loading skeleton rows, status-appropriate empty message ("Not yet logged" / "Nothing planned") |
 | `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
 | `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
+
+### `settings/` — Settings page components
+| Component | Purpose |
+|-----------|---------|
+| `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
 
 ### `lib/` — Shared utilities
 | File | Purpose |

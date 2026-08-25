@@ -63,6 +63,50 @@ VALID_DAY_TYPES = {"rest", "easy", "moderate", "hard", "race"}
 # Weekly strength-focus rotation applied to Tue/Thu strength days.
 FOCUS_ROTATION = ["squat", "bench", "deadlift"]
 
+# Valid planned_focus values (merged from old focus + session_type).
+VALID_FOCUS_VALUES = {
+    "squat", "bench", "deadlift", "overhead_press", "accessories", "full_body",
+    "push", "pull", "legs", "upper", "lower",
+}
+
+# Map common free-text focus strings (from LiftingSession.focus) to valid values.
+_FOCUS_ALIASES: dict[str, str] = {
+    "squat": "squat",
+    "back squat": "squat",
+    "front squat": "squat",
+    "bench": "bench",
+    "bench press": "bench",
+    "deadlift": "deadlift",
+    "conventional deadlift": "deadlift",
+    "sumo deadlift": "deadlift",
+    "overhead press": "overhead_press",
+    "ohp": "overhead_press",
+    "shoulder press": "overhead_press",
+    "accessories": "accessories",
+    "accessory": "accessories",
+    "full body": "full_body",
+    "full_body": "full_body",
+    "push": "push",
+    "chest": "push",
+    "pull": "pull",
+    "back": "pull",
+    "legs": "legs",
+    "lower": "lower",
+    "upper": "upper",
+}
+
+
+def _normalise_focus(raw: str | None) -> str | None:
+    """Map a free-text focus string to a valid ``planned_focus`` value.
+
+    Returns the canonical value if a match is found, otherwise title-cased
+    input as a best-effort fallback (the column is free-text anyway).
+    """
+    if not raw:
+        return None
+    key = raw.strip().lower()
+    return _FOCUS_ALIASES.get(key, raw.strip())
+
 # Cycle-day TSS multipliers relative to daily_tss (weekly TSS / 4.5 ride days).
 _RIDE_MULTIPLIERS = {
     0: 0.9,  # Mon — moderate
@@ -175,7 +219,7 @@ _STRENGTH_TEMPLATES: dict[str, dict[str, list[dict]]] = {
                 "weight_kg": None,
                 "rpe": 7,
             },
-            {"exercise": "Pull-up", "sets": 3, "reps": 8, "weight_kg": None, "rpe": 7},
+            {"exercise": "Pull Up", "sets": 3, "reps": 8, "weight_kg": None, "rpe": 7},
         ],
         "accessories": [
             {
@@ -985,7 +1029,7 @@ async def copy_session_to_plan_day(
 
     day.planned_exercises = planned_exercises
     if not day.planned_focus and session.focus:
-        day.planned_focus = session.focus
+        day.planned_focus = _normalise_focus(session.focus)
 
     await db.flush()
     return day
@@ -1036,7 +1080,6 @@ async def copy_plan_day(
         planned_zone=source.planned_zone,
         planned_route_id=source.planned_route_id,
         warmup_template_id=source.warmup_template_id,
-        session_type=source.session_type,
         notes=source.notes,
     )
     db.add(new_day)

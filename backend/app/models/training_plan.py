@@ -76,7 +76,8 @@ class TrainingPlanDay(Base):
     workout_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     planned_focus: Mapped[str | None] = mapped_column(
         String(50), nullable=True
-    )  # squat, bench, deadlift, overhead_press, accessories, full_body
+    )  # squat, bench, deadlift, overhead_press, accessories, full_body,
+       # push, pull, legs, upper, lower
     planned_exercises: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     planned_volume_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     planned_rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -97,9 +98,6 @@ class TrainingPlanDay(Base):
         ForeignKey("warmup_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
-    session_type: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )  # push, pull, legs, upper, lower, full_body
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     activity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
+import { ExerciseManager } from '@/components/settings/ExerciseManager';
 
 const BASE_PATH = '/fittrack';
 
@@ -610,6 +611,9 @@ export default function SettingsPage() {
           )}
         </div>
       </Card>
+
+      {/* Exercise Library */}
+      <ExerciseManager />
 
       {/* Danger Zone */}
       <Card>

@@ -66,8 +66,12 @@ function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
     planned_rpe: d.planned_rpe,
     planned_power_watts: d.planned_power_watts,
     planned_zone: d.planned_zone,
+    warmup_template_id: d.warmup_template_id ?? null,
     notes: d.notes,
     completed: d.completed,
+    // Include link fields so drag-to-reassign preserves them on moved days.
+    ...(d.lifting_session_id ? { lifting_session_id: d.lifting_session_id } : {}),
+    ...(d.planned_route_id ? { planned_route_id: d.planned_route_id } : {}),
   };
 }
 
@@ -394,6 +398,10 @@ export default function TrainingPage() {
               onUpdatePlan={(planId, payload) => updatePlanMutation.mutate({ planId, payload })}
               onSaveDays={(planId, days) => saveDaysMutation.mutate({ planId, days })}
               onDeletePlan={(planId) => deletePlanMutation.mutate(planId)}
+              onRefreshPlan={(planId) => {
+                queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
+                queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+              }}
               isSaving={saveDaysMutation.isPending}
               isCreating={createPlanMutation.isPending}
               isGenerating={generateMutation.isPending}

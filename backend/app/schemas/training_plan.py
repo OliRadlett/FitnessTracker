@@ -32,7 +32,8 @@ class TrainingPlanDayBase(BaseModel):
     workout_description: str | None = Field(None, max_length=1000)
     planned_focus: str | None = Field(
         None, max_length=50
-    )  # squat, bench, deadlift, overhead_press, accessories, full_body
+    )  # squat, bench, deadlift, overhead_press, accessories, full_body,
+       # push, pull, legs, upper, lower
     planned_exercises: list[dict[str, Any]] | None = None
     planned_volume_kg: float | None = None
     planned_rpe: float | None = None
@@ -41,9 +42,6 @@ class TrainingPlanDayBase(BaseModel):
     planned_route_id: uuid.UUID | None = None
     lifting_session_id: uuid.UUID | None = None
     warmup_template_id: uuid.UUID | None = None
-    session_type: str | None = Field(
-        None, max_length=20
-    )  # push, pull, legs, upper, lower, full_body
     notes: str | None = None
     # Client-settable completion toggle; activity_id stays server-managed.
     completed: bool | None = None
@@ -89,9 +87,6 @@ class TrainingPlanDayUpdate(BaseModel):
     planned_zone: str | None = Field(None, max_length=10)
     planned_route_id: uuid.UUID | None = None
     warmup_template_id: uuid.UUID | None = None
-    session_type: str | None = Field(
-        None, max_length=20
-    )  # push, pull, legs, upper, lower, full_body
     notes: str | None = Field(None, max_length=500)
     completed: bool | None = None
 

@@ -52,6 +52,11 @@ const FOCUS_LABELS: Record<string, string> = {
   overhead_press: 'Overhead Press',
   accessories: 'Accessories',
   full_body: 'Full Body',
+  push: 'Push',
+  pull: 'Pull',
+  legs: 'Legs',
+  upper: 'Upper',
+  lower: 'Lower',
 };
 
 /** Zone ceiling → dot colour for the readiness strip. */
@@ -223,6 +228,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     // Completion toggles / edits change scoring inputs → refresh both.
     queryClient.invalidateQueries({ queryKey: ['plan-conformity', plan.id] });
     queryClient.invalidateQueries({ queryKey: ['day-conformity'] });
+    // Keep PlanBuilder's local state in sync when user switches views.
+    queryClient.invalidateQueries({ queryKey: ['training-plan', plan.id] });
+    queryClient.invalidateQueries({ queryKey: ['training-plans'] });
   };
 
   const linkActivities = useMutation({
