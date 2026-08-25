@@ -47,3 +47,4 @@ frontend/e2e/.auth/
 # Local dev overrides (dev.oliradlett.co.uk Strava workaround)
 docker-compose.override.yml
 infra/Caddyfile.local
+infra/caddy-root.crt

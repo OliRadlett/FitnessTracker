@@ -20,6 +20,7 @@ Usage:
     python fittrack.py migrate                # Run database migrations
     python fittrack.py ps                     # Alias for status
     python fittrack.py exec backend bash      # Execute command in a container
+    python fittrack.py patch-cert             # Fix SSL cert errors (regen Caddy CA)
 
 No external dependencies — uses only the Python standard library.
 """
@@ -813,6 +814,130 @@ def cmd_reset() -> None:
     print(C.colourise(C.GREEN + C.BOLD, "  ✓ FitTrack reset complete — rebuilt with latest code and migrations!\n"))
 
 
+def cmd_patch_cert() -> None:
+    """Fix SSL_ERROR_INTERNAL_ERROR_ALERT by regenerating Caddy's internal CA.
+
+    Clears the persisted PKI data in the caddy_data volume so Caddy issues a
+    fresh root CA on next start, then imports the new root into the OS trust
+    store (Windows certutil / macOS security / Linux update-ca-certificates).
+    """
+    if not _ensure_docker():
+        return
+
+    print(C.colourise(C.CYAN + C.BOLD, "\n  Patching Caddy certificates...\n"))
+
+    # Step 1: Stop caddy so we can safely wipe its PKI
+    print(C.colourise(C.YELLOW, "  1/4  Stopping caddy..."))
+    _compose("stop", "caddy")
+
+    # Step 2: Remove the caddy_data volume (contains the internal CA)
+    print(C.colourise(C.YELLOW, "  2/4  Removing caddy_data volume (old CA)..."))
+    vol_ls = subprocess.run(
+        ["docker", "volume", "ls", "-q", "--filter", "name=caddy_data"],
+        capture_output=True, text=True,
+    )
+    for vol in vol_ls.stdout.strip().splitlines():
+        subprocess.run(["docker", "volume", "rm", vol], capture_output=True, text=True)
+
+    # Step 3: Start caddy — it will generate a fresh root CA
+    print(C.colourise(C.YELLOW, "  3/4  Starting caddy (fresh CA)..."))
+    result = _compose("up", "-d", "caddy")
+    if result.returncode != 0:
+        print(C.colourise(C.RED, "  ✗ Failed to start caddy."))
+        return
+
+    # Give Caddy a moment to initialise its PKI (retry up to 15s)
+    cert_in_container = "/data/caddy/pki/authorities/local/root.crt"
+    container_id = None
+    for _ in range(15):
+        time.sleep(1)
+        id_result = _compose("ps", "-q", "caddy", capture=True)
+        container_id = id_result.stdout.strip()
+        if not container_id:
+            continue
+        check = subprocess.run(
+            ["docker", "exec", container_id, "test", "-f", cert_in_container],
+            capture_output=True, text=True,
+        )
+        if check.returncode == 0:
+            break
+    else:
+        print(C.colourise(C.RED, "  ✗ Caddy PKI not ready after 15s."))
+        return
+
+    # Step 4: Extract the new root CA cert and install it
+    print(C.colourise(C.YELLOW, "  4/4  Installing root CA into system trust store..."))
+    ps = _project_root()
+    cert_host_path = ps / "infra" / "caddy-root.crt"
+
+    # Copy the root cert out of the container
+    cp = subprocess.run(
+        ["docker", "cp", f"{container_id}:{cert_in_container}", str(cert_host_path)],
+        cwd=_project_root(),
+        capture_output=True,
+        text=True,
+    )
+    if cp.returncode != 0:
+        print(C.colourise(C.RED, "  ✗ Failed to extract root CA from caddy."))
+        if cp.stderr:
+            print(C.colourise(C.DIM, cp.stderr[:500]))
+        return
+
+    print(C.colourise(C.GREEN, f"  [OK] Root CA exported → {cert_host_path}"))
+
+    # Install into OS trust store
+    installed = False
+    if sys.platform == "win32":
+        # Windows — import into Trusted Root Certification Authorities
+        r = subprocess.run(
+            ["certutil", "-addstore", "Root", str(cert_host_path)],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            print(C.colourise(C.GREEN, "  [OK] Root CA installed into Windows trust store."))
+            installed = True
+        else:
+            print(C.colourise(C.RED, "  ✗ certutil failed (run as Administrator?)."))
+            if r.stderr:
+                print(C.colourise(C.DIM, r.stderr[:500]))
+    elif sys.platform == "darwin":
+        # macOS — import into System keychain
+        r = subprocess.run(
+            ["sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot",
+             "-k", "/Library/Keychains/System.keychain", str(cert_host_path)],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            print(C.colourise(C.GREEN, "  [OK] Root CA installed into macOS trust store."))
+            installed = True
+        else:
+            print(C.colourise(C.RED, "  ✗ security command failed."))
+            if r.stderr:
+                print(C.colourise(C.DIM, r.stderr[:500]))
+    else:
+        # Linux — copy to /usr/local/share/ca-certificates and update
+        r = subprocess.run(
+            ["sudo", "cp", str(cert_host_path), "/usr/local/share/ca-certificates/caddy-root.crt"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            subprocess.run(["sudo", "update-ca-certificates"], capture_output=True)
+            print(C.colourise(C.GREEN, "  [OK] Root CA installed into Linux trust store."))
+            installed = True
+        else:
+            print(C.colourise(C.RED, "  ✗ Failed to copy cert (sudo required)."))
+
+    if not installed:
+        print(C.colourise(C.YELLOW, "  ⚠ Auto-install failed. Manually import the cert:"))
+        if sys.platform == "win32":
+            print(C.colourise(C.DIM, f"    certutil -addstore Root {cert_host_path}"))
+        else:
+            print(C.colourise(C.DIM, f"    sudo cp {cert_host_path} /usr/local/share/ca-certificates/"))
+            print(C.colourise(C.DIM, "    sudo update-ca-certificates"))
+
+    print(C.colourise(C.GREEN + C.BOLD, "\n  ✓ Certificate patch complete. Restart caddy and refresh your browser.\n"))
+
+
 def cmd_exec(service: str, command: list[str]) -> None:
     """Execute *command* inside a new container for *service* (uses run --rm)."""
     if not _ensure_docker():
@@ -1175,6 +1300,7 @@ _MENU_ITEMS = [
     ("9", "logs",     "Tail all logs"),
     ("b", "backup",   "Backup the database"),
     ("r", "restore",  "Restore database from backup"),
+    ("c", "patch-cert", "Fix SSL cert errors (regenerate Caddy CA)"),
 ]
 
 
@@ -1248,6 +1374,8 @@ def _interactive_menu() -> None:
                 print(C.colourise(C.RED, "  Usage: restore <backup_file>"))
             else:
                 cmd_restore(cmd_args[0])
+        elif cmd in ("c", "patch-cert", "cert"):
+            cmd_patch_cert()
         else:
             print(C.colourise(C.RED, f"  Unknown command: {cmd}"))
             print(C.colourise(C.DIM, "  Type 'q' to quit.\n"))
@@ -1276,6 +1404,7 @@ def _build_parser() -> argparse.ArgumentParser:
               %(prog)s build                   Rebuild all images
               %(prog)s migrate                 Run database migrations
               %(prog)s exec backend bash       Open shell in backend container
+              %(prog)s patch-cert              Fix SSL cert errors (regen Caddy CA)
         """),
     )
 
@@ -1343,6 +1472,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_restore.add_argument("backup_file", help="Path to backup file (.sql or .sql.gz)")
     p_restore.add_argument("-f", "--force", action="store_true", help="Skip confirmation prompt")
 
+    # patch-cert
+    subparsers.add_parser("patch-cert", help="Fix SSL errors by regenerating Caddy's internal CA and installing it")
+
     return parser
 
 
@@ -1385,6 +1517,8 @@ def main() -> None:
         cmd_backup(args.output)
     elif args.command == "restore":
         cmd_restore(args.backup_file, force=args.force)
+    elif args.command == "patch-cert":
+        cmd_patch_cert()
 
 
 if __name__ == "__main__":

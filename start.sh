@@ -19,6 +19,7 @@
 #     ./start.sh backup                # Backup database to backups/
 #     ./start.sh backup -o my.sql.gz   # Backup to custom path
 #     ./start.sh restore backups/fittrack_20260101_120000.sql.gz  # Restore from backup
+#     ./start.sh patch-cert            # Fix SSL cert errors (regen Caddy CA)
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail

@@ -27,6 +27,7 @@ python fittrack.py logs backend --tail 30   # Tail logs
 python fittrack.py build            # Rebuild images (needed after new pip deps)
 python fittrack.py migrate          # Apply Alembic migrations
 python fittrack.py reset            # Full teardown + rebuild + restart (DB preserved)
+python fittrack.py patch-cert       # Fix SSL cert errors (regen Caddy CA + install)
 ```
 
 ### Executing commands inside containers
