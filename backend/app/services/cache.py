@@ -12,6 +12,7 @@ import functools
 import hashlib
 import json
 import logging
+import secrets
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -26,6 +27,15 @@ settings = get_settings()
 
 _redis: aioredis.Redis | None = None
 
+# Lua script: delete the key only if the stored value matches our token.
+_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "  return redis.call('del', KEYS[1]) "
+    "else "
+    "  return 0 "
+    "end"
+)
+
 
 def _get_redis() -> aioredis.Redis:
     global _redis
@@ -36,7 +46,11 @@ def _get_redis() -> aioredis.Redis:
 
 @asynccontextmanager
 async def redis_lock(name: str, ttl: int = 600):
-    """Distributed lock via Redis SET NX EX.
+    """Distributed lock via Redis SET NX EX with safe token-based release.
+
+    Each acquisition generates a random token stored as the key value.
+    On release, a Lua compare-and-delete ensures a caller whose work
+    exceeded the TTL cannot accidentally delete a successor's lock.
 
     Usage:
         async with redis_lock("whoop-backfill:user123"):
@@ -47,13 +61,22 @@ async def redis_lock(name: str, ttl: int = 600):
     """
     r = _get_redis()
     key = f"lock:{name}"
-    acquired = await r.set(key, "1", nx=True, ex=ttl)
+    token = secrets.token_hex(16)
+    acquired = await r.set(key, token, nx=True, ex=ttl)
     if not acquired:
         raise RuntimeError(f"Lock '{name}' is already held")
     try:
         yield
     finally:
-        await r.delete(key)
+        try:
+            deleted = await r.eval(_RELEASE_LUA, 1, key, token)
+            if not deleted:
+                logger.warning(
+                    "Lock '%s' expired before release — successor may be running",
+                    name,
+                )
+        except Exception as e:
+            logger.warning("Failed to release lock '%s': %s", name, e)
 
 
 def _make_cache_key(prefix: str, *args, **kwargs) -> str:

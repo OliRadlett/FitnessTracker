@@ -80,7 +80,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (24 tables, UUID PKs)
+## Database (27 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -94,6 +94,9 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `Route` | `RouteSource` | has many |
 | `WarmupTemplate` | `WarmupTemplateStep` | has many |
 | `TrainingPlan` | `TrainingPlanDay` | has many |
+| `Goal` | `GoalCheckIn` | has many |
+| `User` | `RideFuelPlan` | has many |
+| `User` | `CachedWeather` | has many |
 
 ## Celery Tasks
 
@@ -111,7 +114,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
 | `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
 
-All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts.
+All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts. Per-user failures are isolated via `await db.rollback()` in except blocks; successful users are committed immediately so watermarks survive mid-task crashes.
 
 ## Conventions
 
@@ -150,7 +153,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→head
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→033(head)
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
@@ -158,9 +161,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
-12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
-13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
-14. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
+16. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
 
 ## Development Lessons
 
@@ -176,7 +177,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation
-- **Frontend component tests**: Vitest + React Testing Library for charts, MetricCard, etc.
+- **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, 4 test files in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
 ## Quick Reference

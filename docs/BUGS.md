@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24 | Total: 48 bugs | Fixed: 39 | Deferred: 9
+> Generated: 2026-08-24 | Total: 61 bugs | Fixed: 43 | Deferred: 9
 
 ---
 
@@ -408,3 +408,31 @@
 - **File:** `backend/app/services/merge_service.py`
 - **Issue:** `backfill_activity_route_links` called `link_activity_to_route` per activity, which re-queried all user routes each time. O(A×R) queries.
 - **Fix:** Pre-fetch routes once and pass to `link_activity_to_route` via optional `routes` parameter.
+
+---
+
+## AUDIT REMEDIATION (2026-08-25)
+
+### BUG-062: `redis_lock` Releases Locks It No Longer Owns
+- **Status:** FIXED
+- **File:** `backend/app/services/cache.py:38-56`
+- **Issue:** `finally: await r.delete(key)` unconditionally deletes the lock key. If work exceeds TTL (600s–3600s), the lock expires, a successor acquires it, and the original caller's `finally` deletes the successor's lock — allowing a third caller in concurrently.
+- **Fix:** Token-based release via Lua compare-and-delete script. Each acquisition stores a random `secrets.token_hex(16)` as the value; release only deletes if the stored value matches.
+
+### BUG-063: Celery Per-User Except Blocks Never Roll Back Poisoned Sessions
+- **Status:** FIXED
+- **File:** `backend/app/tasks/scheduler.py` (all per-user task loops)
+- **Issue:** If a user's DB operation fails mid-flush, the asyncpg session enters `PendingRollbackError` state. Subsequent users' operations all fail silently (logged as warnings). Final commit commits nothing or partial data.
+- **Fix:** Added `await db.rollback()` in every per-user except block across all 6 task loops (Strava sync, Whoop sync, routes, FTP, weather, goals).
+
+### BUG-064: Strava/Wahoo Watermarks Committed Only at Task End
+- **Status:** FIXED
+- **File:** `backend/app/tasks/scheduler.py` (sync_all_strava_activities, sync_all_whoop_data)
+- **Issue:** `last_synced_at` watermarks set per-user but single `db.commit()` at task end. Mid-task crash rolls back all watermarks → next run re-syncs full history (API quota burn).
+- **Fix:** Commit per-user after each successful sync. Watermarks now survive mid-task crashes.
+
+### BUG-065: `compute_metric_trend` Returns Empty Trend for 9 of 13 Registry Metrics
+- **Status:** FIXED
+- **File:** `backend/app/services/projections.py:336-380`
+- **Issue:** History branches existed only for `ftp_watts`, `body_weight`, `resting_hr`, `hrv_ms`. For `estimated_1rm`, `weekly_tss`, `vo2max`, bw-ratios, `big3_total`, `weekly_sessions`, `monthly_distance_km` — silently returned `trend: null` despite having data.
+- **Fix:** Added history branches for all 13 metrics, reusing PersonalRecord queries (lifting metrics), activity aggregations (weekly/monthly), and `compute_vo2max_history` (VO2max).

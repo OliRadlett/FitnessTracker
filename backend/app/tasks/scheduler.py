@@ -144,54 +144,59 @@ def sync_all_strava_activities() -> dict:
                     from datetime import datetime
 
                     conn.last_synced_at = datetime.now(UTC)
+
+                    # Tag recent activities with historical weather
+                    try:
+                        from app.services.weather import tag_recent_activities
+
+                        tagged = await tag_recent_activities(db, conn.user_id)
+                        weather_tagged_count += tagged
+                    except Exception as e:
+                        logger.warning(
+                            f"Weather tagging failed for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
+
+                    # Auto-link activities/lifting sessions to training-plan days
+                    try:
+                        from app.services.conformity import link_activities_to_plan_days
+
+                        plan_linked = await link_activities_to_plan_days(db, conn.user_id)
+                        plan_day_linked_count += plan_linked
+                    except Exception as e:
+                        logger.warning(
+                            f"Plan-day linking failed for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
+
+                    # Backfill links for any remaining unlinked activities
+                    try:
+                        linked = await link_all_unlinked_activities(db, conn.user_id)
+                        linked_count += linked
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to backfill links for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
+
+                    # Backfill activity-to-route links
+                    try:
+                        rl = await backfill_activity_route_links(db, conn.user_id)
+                        route_linked_count += rl
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to backfill route links for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
+
+                    # Commit this user's data (watermark + hooks) so a later
+                    # crash doesn't roll back a successful sync.
+                    await db.commit()
                 except Exception as e:
                     logger.error(
                         f"Failed to sync for user {conn.user_id}: {e}", exc_info=True
                     )
-
-                # Tag recent activities with historical weather — must never fail the sync
-                try:
-                    from app.services.weather import tag_recent_activities
-
-                    tagged = await tag_recent_activities(db, conn.user_id)
-                    weather_tagged_count += tagged
-                except Exception as e:
-                    logger.warning(
-                        f"Weather tagging failed for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
-
-                # Auto-link activities/lifting sessions to training-plan days
-                try:
-                    from app.services.conformity import link_activities_to_plan_days
-
-                    plan_linked = await link_activities_to_plan_days(db, conn.user_id)
-                    plan_day_linked_count += plan_linked
-                except Exception as e:
-                    logger.warning(
-                        f"Plan-day linking failed for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
-
-                # Backfill links for any remaining unlinked activities
-                try:
-                    linked = await link_all_unlinked_activities(db, conn.user_id)
-                    linked_count += linked
-                except Exception as e:
-                    logger.error(
-                        f"Failed to backfill links for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
-
-                # Backfill activity-to-route links
-                try:
-                    rl = await backfill_activity_route_links(db, conn.user_id)
-                    route_linked_count += rl
-                except Exception as e:
-                    logger.error(
-                        f"Failed to backfill route links for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
+                    await db.rollback()
 
             # Also sync Wahoo activities for users with Wahoo connections
             wahoo_result = await db.execute(
@@ -209,13 +214,14 @@ def sync_all_strava_activities() -> dict:
                     from datetime import datetime
 
                     conn.last_synced_at = datetime.now(UTC)
+                    await db.commit()
                 except Exception as e:
                     logger.error(
                         f"Failed to sync Wahoo activities for user {conn.user_id}: {e}",
                         exc_info=True,
                     )
+                    await db.rollback()
 
-            await db.commit()
             return {
                 "synced_activities": synced_count,
                 "wahoo_synced_activities": wahoo_synced_count,
@@ -263,157 +269,144 @@ def generate_health_alerts() -> dict:
             alerts_created = 0
 
             for user in users:
-                # ── Composite analysis (Phase 6) ──────────────────────────
                 try:
+                    # ── Composite analysis (Phase 6) ──────────────────────────
                     overtraining = await analyze_overtraining(db, user.id)
                     if await upsert_alert(db, user.id, overtraining):
                         alerts_created += 1
-                except Exception as e:
-                    logger.error(
-                        f"Overtraining analysis failed for user {user.id}: {e}",
-                        exc_info=True,
-                    )
 
-                try:
                     injury = await analyze_injury_risk(db, user.id)
                     if await upsert_alert(db, user.id, injury):
                         alerts_created += 1
-                except Exception as e:
-                    logger.error(
-                        f"Injury risk analysis failed for user {user.id}: {e}",
-                        exc_info=True,
-                    )
 
-                try:
                     illness = await analyze_illness(db, user.id)
                     if await upsert_alert(db, user.id, illness):
                         alerts_created += 1
+
+                    # ── Simple threshold checks (legacy) ──────────────────────
+                    cutoff = date.today() - timedelta(days=7)
+                    result = await db.execute(
+                        select(DailyMetric)
+                        .where(
+                            DailyMetric.user_id == user.id,
+                            DailyMetric.metric_date >= cutoff,
+                        )
+                        .order_by(DailyMetric.metric_date.desc())
+                    )
+                    metrics = list(result.scalars().all())
+
+                    if len(metrics) >= 3:
+                        # HRV decline (>20% drop from average)
+                        hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
+                        if len(hrv_values) >= 3:
+                            avg_hrv = sum(hrv_values) / len(hrv_values)
+                            recent_hrv = hrv_values[0]
+                            if recent_hrv < avg_hrv * 0.8:
+                                existing = await db.execute(
+                                    select(HealthAlert).where(
+                                        HealthAlert.user_id == user.id,
+                                        HealthAlert.alert_type == "hrv_drop",
+                                        HealthAlert.status == "active",
+                                    )
+                                )
+                                if not existing.scalar_one_or_none():
+                                    alert = HealthAlert(
+                                        user_id=user.id,
+                                        alert_type="hrv_drop",
+                                        severity="warning",
+                                        title="HRV Decline Detected",
+                                        description=f"Your HRV has dropped to {recent_hrv:.0f}ms (avg: {avg_hrv:.0f}ms). Consider reducing training load.",
+                                        evidence={"recent": recent_hrv, "average": avg_hrv},
+                                        detected_date=date.today(),
+                                    )
+                                    db.add(alert)
+                                    alerts_created += 1
+
+                        # Sleep decline
+                        sleep_values = [
+                            m.sleep_duration_minutes
+                            for m in metrics
+                            if m.sleep_duration_minutes
+                        ]
+                        if len(sleep_values) >= 3:
+                            avg_sleep = sum(sleep_values) / len(sleep_values)
+                            recent_sleep = sleep_values[0]
+                            if recent_sleep < avg_sleep * 0.75:
+                                existing = await db.execute(
+                                    select(HealthAlert).where(
+                                        HealthAlert.user_id == user.id,
+                                        HealthAlert.alert_type == "sleep_decline",
+                                        HealthAlert.status == "active",
+                                    )
+                                )
+                                if not existing.scalar_one_or_none():
+                                    alert = HealthAlert(
+                                        user_id=user.id,
+                                        alert_type="sleep_decline",
+                                        severity="warning",
+                                        title="Sleep Decline Detected",
+                                        description=f"Your recent sleep ({recent_sleep:.0f}min) is significantly below average ({avg_sleep:.0f}min).",
+                                        evidence={"recent": recent_sleep, "average": avg_sleep},
+                                        detected_date=date.today(),
+                                    )
+                                    db.add(alert)
+                                    alerts_created += 1
+
+                        # Respiratory rate elevation
+                        rr_cutoff = date.today() - timedelta(days=30)
+                        rr_result = await db.execute(
+                            select(
+                                func.avg(DailyMetric.respiratory_rate).label("avg_rr")
+                            ).where(
+                                DailyMetric.user_id == user.id,
+                                DailyMetric.respiratory_rate.isnot(None),
+                                DailyMetric.metric_date >= rr_cutoff,
+                            )
+                        )
+                        rr_row = rr_result.one()
+                        if rr_row.avg_rr:
+                            baseline_rr = float(rr_row.avg_rr)
+                            recent_rr_values = [
+                                m.respiratory_rate for m in metrics if m.respiratory_rate
+                            ]
+                            if recent_rr_values:
+                                current_rr = recent_rr_values[0]
+                                if current_rr > baseline_rr * 1.1:
+                                    existing = await db.execute(
+                                        select(HealthAlert).where(
+                                            HealthAlert.user_id == user.id,
+                                            HealthAlert.alert_type
+                                            == "respiratory_rate_elevated",
+                                            HealthAlert.status == "active",
+                                        )
+                                    )
+                                    if not existing.scalar_one_or_none():
+                                        alert = HealthAlert(
+                                            user_id=user.id,
+                                            alert_type="respiratory_rate_elevated",
+                                            severity="warning",
+                                            title="Elevated Respiratory Rate",
+                                            description=(
+                                                f"Your respiratory rate ({current_rr:.1f} bpm) is elevated "
+                                                f"compared to your baseline ({baseline_rr:.1f} bpm). "
+                                                f"This can be an early sign of illness."
+                                            ),
+                                            evidence={
+                                                "current": current_rr,
+                                                "baseline": baseline_rr,
+                                            },
+                                            detected_date=date.today(),
+                                        )
+                                        db.add(alert)
+                                        alerts_created += 1
+
+                    await db.commit()
                 except Exception as e:
                     logger.error(
-                        f"Illness analysis failed for user {user.id}: {e}",
+                        f"Health alert generation failed for user {user.id}: {e}",
                         exc_info=True,
                     )
-
-                # ── Simple threshold checks (legacy) ──────────────────────
-                cutoff = date.today() - timedelta(days=7)
-                result = await db.execute(
-                    select(DailyMetric)
-                    .where(
-                        DailyMetric.user_id == user.id,
-                        DailyMetric.metric_date >= cutoff,
-                    )
-                    .order_by(DailyMetric.metric_date.desc())
-                )
-                metrics = list(result.scalars().all())
-
-                if len(metrics) < 3:
-                    continue
-
-                # HRV decline (>20% drop from average)
-                hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
-                if len(hrv_values) >= 3:
-                    avg_hrv = sum(hrv_values) / len(hrv_values)
-                    recent_hrv = hrv_values[0]
-                    if recent_hrv < avg_hrv * 0.8:
-                        existing = await db.execute(
-                            select(HealthAlert).where(
-                                HealthAlert.user_id == user.id,
-                                HealthAlert.alert_type == "hrv_drop",
-                                HealthAlert.status == "active",
-                            )
-                        )
-                        if not existing.scalar_one_or_none():
-                            alert = HealthAlert(
-                                user_id=user.id,
-                                alert_type="hrv_drop",
-                                severity="warning",
-                                title="HRV Decline Detected",
-                                description=f"Your HRV has dropped to {recent_hrv:.0f}ms (avg: {avg_hrv:.0f}ms). Consider reducing training load.",
-                                evidence={"recent": recent_hrv, "average": avg_hrv},
-                                detected_date=date.today(),
-                            )
-                            db.add(alert)
-                            alerts_created += 1
-
-                # Sleep decline
-                sleep_values = [
-                    m.sleep_duration_minutes
-                    for m in metrics
-                    if m.sleep_duration_minutes
-                ]
-                if len(sleep_values) >= 3:
-                    avg_sleep = sum(sleep_values) / len(sleep_values)
-                    recent_sleep = sleep_values[0]
-                    if recent_sleep < avg_sleep * 0.75:
-                        existing = await db.execute(
-                            select(HealthAlert).where(
-                                HealthAlert.user_id == user.id,
-                                HealthAlert.alert_type == "sleep_decline",
-                                HealthAlert.status == "active",
-                            )
-                        )
-                        if not existing.scalar_one_or_none():
-                            alert = HealthAlert(
-                                user_id=user.id,
-                                alert_type="sleep_decline",
-                                severity="warning",
-                                title="Sleep Decline Detected",
-                                description=f"Your recent sleep ({recent_sleep:.0f}min) is significantly below average ({avg_sleep:.0f}min).",
-                                evidence={"recent": recent_sleep, "average": avg_sleep},
-                                detected_date=date.today(),
-                            )
-                            db.add(alert)
-                            alerts_created += 1
-
-                # Respiratory rate elevation
-                rr_cutoff = date.today() - timedelta(days=30)
-                rr_result = await db.execute(
-                    select(
-                        func.avg(DailyMetric.respiratory_rate).label("avg_rr")
-                    ).where(
-                        DailyMetric.user_id == user.id,
-                        DailyMetric.respiratory_rate.isnot(None),
-                        DailyMetric.metric_date >= rr_cutoff,
-                    )
-                )
-                rr_row = rr_result.one()
-                if rr_row.avg_rr:
-                    baseline_rr = float(rr_row.avg_rr)
-                    recent_rr_values = [
-                        m.respiratory_rate for m in metrics if m.respiratory_rate
-                    ]
-                    if recent_rr_values:
-                        current_rr = recent_rr_values[0]
-                        if current_rr > baseline_rr * 1.1:
-                            existing = await db.execute(
-                                select(HealthAlert).where(
-                                    HealthAlert.user_id == user.id,
-                                    HealthAlert.alert_type
-                                    == "respiratory_rate_elevated",
-                                    HealthAlert.status == "active",
-                                )
-                            )
-                            if not existing.scalar_one_or_none():
-                                alert = HealthAlert(
-                                    user_id=user.id,
-                                    alert_type="respiratory_rate_elevated",
-                                    severity="warning",
-                                    title="Elevated Respiratory Rate",
-                                    description=(
-                                        f"Your respiratory rate ({current_rr:.1f} bpm) is elevated "
-                                        f"compared to your baseline ({baseline_rr:.1f} bpm). "
-                                        f"This can be an early sign of illness."
-                                    ),
-                                    evidence={
-                                        "current": current_rr,
-                                        "baseline": baseline_rr,
-                                    },
-                                    detected_date=date.today(),
-                                )
-                                db.add(alert)
-                                alerts_created += 1
-
-            await db.commit()
+                    await db.rollback()
             return {"alerts_created": alerts_created, "users_analyzed": len(users)}
 
     return asyncio.run(_run())
@@ -473,33 +466,28 @@ def sync_all_routes() -> dict:
                     )
 
             for user_id, providers in user_providers.items():
-                if "strava" in providers:
-                    try:
+                try:
+                    if "strava" in providers:
                         from app.services.strava import sync_strava_routes
 
                         count, merged = await sync_strava_routes(db, user_id)
                         synced_total += count
                         merged_total += merged
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to sync Strava routes for user {user_id}: {e}",
-                            exc_info=True,
-                        )
 
-                if "wahoo" in providers:
-                    try:
+                    if "wahoo" in providers:
                         from app.services.wahoo import sync_wahoo_routes
 
                         count, merged = await sync_wahoo_routes(db, user_id)
                         synced_total += count
                         merged_total += merged
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to sync Wahoo routes for user {user_id}: {e}",
-                            exc_info=True,
-                        )
 
-            await db.commit()
+                    await db.commit()
+                except Exception as e:
+                    logger.error(
+                        f"Failed to sync routes for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
             return {
                 "routes_synced": synced_total,
                 "routes_merged": merged_total,
@@ -590,14 +578,14 @@ def auto_estimate_ftp_weekly() -> dict:
                     )
                     db.add(ftp_entry)
                     estimated_count += 1
+                    await db.commit()
 
                 except Exception as e:
                     logger.error(
                         f"Failed to auto-estimate FTP for user {profile.user_id}: {e}",
                         exc_info=True,
                     )
-
-            await db.commit()
+                    await db.rollback()
             return {
                 "users_checked": len(profiles),
                 "ftp_estimated": estimated_count,
@@ -659,6 +647,8 @@ def sync_all_whoop_data() -> dict:
                         "%Y-%m-%dT%H:%M:%S.000Z"
                     )
 
+                user_failed = False
+
                 try:
                     metrics = await sync_whoop_cycles(db, conn.user_id, start=start)
                     synced_cycles += len(metrics)
@@ -668,63 +658,70 @@ def sync_all_whoop_data() -> dict:
                     logger.warning(
                         f"Whoop cycle sync failed for user {conn.user_id}: {e}"
                     )
+                    user_failed = True
                 except Exception as e:
                     logger.error(
                         f"Whoop cycle sync error for user {conn.user_id}: {e}",
                         exc_info=True,
                     )
+                    user_failed = True
 
-                try:
-                    sleep_logs = await sync_whoop_sleep(db, conn.user_id, start=start)
-                    synced_sleep += len(sleep_logs)
-                except ValueError as e:
-                    if "expired" in str(e).lower():
-                        skipped_expired += 1
-                    logger.warning(
-                        f"Whoop sleep sync failed for user {conn.user_id}: {e}"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Whoop sleep sync error for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
+                if not user_failed:
+                    try:
+                        sleep_logs = await sync_whoop_sleep(db, conn.user_id, start=start)
+                        synced_sleep += len(sleep_logs)
+                    except ValueError as e:
+                        if "expired" in str(e).lower():
+                            skipped_expired += 1
+                        logger.warning(
+                            f"Whoop sleep sync failed for user {conn.user_id}: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Whoop sleep sync error for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
 
-                try:
-                    enriched = await sync_whoop_workouts(db, conn.user_id, start=start)
-                    synced_workouts += len(enriched)
-                except ValueError as e:
-                    if "expired" in str(e).lower():
-                        skipped_expired += 1
-                    logger.warning(
-                        f"Whoop workout sync failed for user {conn.user_id}: {e}"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Whoop workout sync error for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
+                if not user_failed:
+                    try:
+                        enriched = await sync_whoop_workouts(db, conn.user_id, start=start)
+                        synced_workouts += len(enriched)
+                    except ValueError as e:
+                        if "expired" in str(e).lower():
+                            skipped_expired += 1
+                        logger.warning(
+                            f"Whoop workout sync failed for user {conn.user_id}: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Whoop workout sync error for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
 
-                # Sync body weight from Whoop
-                try:
-                    await sync_whoop_weight(db, conn.user_id)
-                except ValueError as e:
-                    if "expired" in str(e).lower():
-                        skipped_expired += 1
-                    logger.warning(
-                        f"Whoop weight sync failed for user {conn.user_id}: {e}"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Whoop weight sync error for user {conn.user_id}: {e}",
-                        exc_info=True,
-                    )
+                if not user_failed:
+                    # Sync body weight from Whoop
+                    try:
+                        await sync_whoop_weight(db, conn.user_id)
+                    except ValueError as e:
+                        if "expired" in str(e).lower():
+                            skipped_expired += 1
+                        logger.warning(
+                            f"Whoop weight sync failed for user {conn.user_id}: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Whoop weight sync error for user {conn.user_id}: {e}",
+                            exc_info=True,
+                        )
 
-                # Update watermark on success
-                from datetime import datetime
+                if user_failed:
+                    await db.rollback()
+                else:
+                    # Update watermark on success and commit
+                    from datetime import datetime
 
-                conn.last_synced_at = datetime.now(UTC)
-
-            await db.commit()
+                    conn.last_synced_at = datetime.now(UTC)
+                    await db.commit()
             return {
                 "synced_cycles": synced_cycles,
                 "synced_sleep": synced_sleep,
@@ -946,13 +943,13 @@ def refresh_weather_forecasts() -> dict:
                         continue
                     await get_forecast(db, user.id, coords[0], coords[1], days=7)
                     refreshed += 1
+                    await db.commit()
                 except Exception as e:
                     logger.warning(
                         f"Weather forecast refresh failed for user {user.id}: {e}",
                         exc_info=True,
                     )
-
-            await db.commit()
+                    await db.rollback()
             return {
                 "users_total": len(users),
                 "forecasts_refreshed": refreshed,
@@ -997,13 +994,14 @@ def record_goal_checkins() -> dict:
                     goals_active += len(list(active.scalars().all()))
                     recorded = await record_all_check_ins(db, user.id)
                     checkins_recorded += recorded
+                    await db.commit()
                 except Exception as e:
                     logger.warning(
                         f"Goal check-ins failed for user {user.id}: {e}",
                         exc_info=True,
                     )
+                    await db.rollback()
 
-            await db.commit()
             return {
                 "users_total": len(users),
                 "goals_active": goals_active,

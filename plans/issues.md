@@ -17,7 +17,7 @@
 **File:** `infra/Caddyfile` (local), `.github/workflows/deploy.yml` (production template)
 **Issue:** The local Caddyfile includes a `@nextauth` redirect rule that catches `/api/auth` and redirects to `/fittrack{uri}`. The production Caddyfile template (in deploy.yml) does not include this rule. This means NextAuth error redirects may break in production.
 **Fix:** Add the `@nextauth` redirect rule to the production Caddyfile template in `.github/workflows/deploy.yml`.
-**Status:** Open — needs fix.
+**Status:** Fixed — deploy.yml:157-158 now includes the rule.
 
 ### 3. `cleanup_old_data` Celery task is a no-op
 **File:** `backend/app/tasks/scheduler.py:447`
@@ -92,7 +92,7 @@
 ### 15. No `health` endpoint in production Caddyfile
 **File:** `.github/workflows/deploy.yml`
 **Issue:** The production Caddyfile template lacks a `/health` route. The local Caddyfile has `handle /health { reverse_proxy backend:8000 }` but the deploy template omits it. The deploy workflow does a health check via `curl` but if Caddy doesn't route `/health`, the check fails.
-**Status:** Open — needs fix in deploy.yml template.
+**Status:** Fixed — deploy.yml:163 now includes the `/health` route.
 
 ---
 

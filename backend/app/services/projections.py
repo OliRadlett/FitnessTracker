@@ -319,9 +319,11 @@ async def compute_metric_trend(
 ) -> dict:
     """Trend for any metric in the registry.
 
-    Fetches historical data points (reuse vo2max history for vo2max,
-    FtpHistory for ftp_watts, WeightLog for body_weight,
-    DailyMetric for resting_hr/hrv_ms).
+    Fetches historical data points for all 13 registry metrics:
+    - Direct history: ftp_watts, body_weight, resting_hr, hrv_ms
+    - Lifting PRs: estimated_1rm, squat/bench/deadlift_bw_ratio, big3_total
+    - Activity aggregations: weekly_tss, weekly_sessions, monthly_distance_km
+    - Computed: vo2max (via compute_vo2max_history)
 
     Returns ``{metric, current_value, trend, classification}``.
     """
@@ -378,6 +380,211 @@ async def compute_metric_trend(
             .order_by(DailyMetric.metric_date.asc())
         )
         points = [(row[0], float(row[1])) for row in result.all()]
+
+    elif metric_key == "estimated_1rm":
+        from app.models.lifting import PersonalRecord
+        from app.services.exercise_db import normalise_exercise_name
+
+        exercise = (filter_json or {}).get("exercise")
+        if exercise:
+            canonical = normalise_exercise_name(str(exercise))
+            result = await db.execute(
+                select(PersonalRecord.achieved_date, PersonalRecord.estimated_1rm)
+                .where(
+                    PersonalRecord.user_id == user_id,
+                    PersonalRecord.exercise_name == canonical,
+                    PersonalRecord.record_type == "1rm",
+                    PersonalRecord.estimated_1rm.isnot(None),
+                    PersonalRecord.achieved_date >= cutoff,
+                )
+                .order_by(PersonalRecord.achieved_date.asc())
+            )
+            points = [(row[0], float(row[1])) for row in result.all()]
+
+    elif metric_key in ("squat_bw_ratio", "bench_bw_ratio", "deadlift_bw_ratio"):
+        from app.models.cycling import CyclingProfile
+        from app.models.lifting import PersonalRecord
+
+        exercise_map = {
+            "squat_bw_ratio": "Back Squat",
+            "bench_bw_ratio": "Bench Press",
+            "deadlift_bw_ratio": "Deadlift",
+        }
+        exercise_name = exercise_map[metric_key]
+
+        # Get body weight history for ratio computation
+        weight_result = await db.execute(
+            select(WeightLog.date, WeightLog.weight_kilogram)
+            .where(WeightLog.user_id == user_id, WeightLog.date >= cutoff)
+            .order_by(WeightLog.date.asc())
+        )
+        weight_rows = weight_result.all()
+        weight_by_date = {row[0]: float(row[1]) for row in weight_rows if row[1]}
+
+        # Get PR history for the exercise
+        result = await db.execute(
+            select(PersonalRecord.achieved_date, PersonalRecord.estimated_1rm)
+            .where(
+                PersonalRecord.user_id == user_id,
+                PersonalRecord.exercise_name == exercise_name,
+                PersonalRecord.record_type == "1rm",
+                PersonalRecord.estimated_1rm.isnot(None),
+                PersonalRecord.achieved_date >= cutoff,
+            )
+            .order_by(PersonalRecord.achieved_date.asc())
+        )
+        pr_rows = result.all()
+
+        # For each PR, find the closest body weight
+        weight_dates = sorted(weight_by_date.keys())
+        for pr_date, one_rm in pr_rows:
+            # Find nearest weight on or before PR date
+            best_weight = None
+            for wd in reversed(weight_dates):
+                if wd <= pr_date:
+                    best_weight = weight_by_date[wd]
+                    break
+            if best_weight and best_weight > 0:
+                ratio = float(one_rm) / best_weight
+                points.append((pr_date, round(ratio, 3)))
+
+    elif metric_key == "big3_total":
+        from app.models.lifting import PersonalRecord
+        from app.services.exercise_db import BIG_3_ORDER
+
+        result = await db.execute(
+            select(
+                PersonalRecord.exercise_name,
+                PersonalRecord.achieved_date,
+                PersonalRecord.estimated_1rm,
+            )
+            .where(
+                PersonalRecord.user_id == user_id,
+                PersonalRecord.exercise_name.in_(BIG_3_ORDER),
+                PersonalRecord.record_type == "1rm",
+                PersonalRecord.estimated_1rm.isnot(None),
+                PersonalRecord.achieved_date >= cutoff,
+            )
+            .order_by(PersonalRecord.achieved_date.asc())
+        )
+        rows = result.all()
+
+        # Track best per lift, accumulate total when any lift improves
+        best_per_lift: dict[str, float] = {}
+        totals_by_date: dict[date, float] = {}
+        for exercise_name, achieved_date, one_rm in rows:
+            val = float(one_rm)
+            if exercise_name not in best_per_lift or val > best_per_lift[exercise_name]:
+                best_per_lift[exercise_name] = val
+            if best_per_lift:
+                totals_by_date[achieved_date] = round(
+                    sum(best_per_lift.values()), 1
+                )
+        points = sorted(totals_by_date.items())
+
+    elif metric_key == "vo2max":
+        from app.services.cycling.vo2max import compute_vo2max_history
+
+        history = await compute_vo2max_history(db, user_id, months=months)
+        points = [(h["date"], h["vo2max"]) for h in history if h.get("vo2max")]
+
+    elif metric_key == "weekly_tss":
+        from app.models.activity import Activity
+
+        result = await db.execute(
+            select(Activity.start_date, Activity.tss)
+            .where(
+                Activity.user_id == user_id,
+                Activity.start_date >= cutoff,
+                Activity.tss.isnot(None),
+                Activity.source != "wahoo",
+            )
+            .order_by(Activity.start_date.asc())
+        )
+        rows = result.all()
+        # Group by ISO week
+        weekly: dict[tuple[int, int], float] = {}
+        for start_date, tss in rows:
+            iso = start_date.isocalendar()
+            key = (iso[1], iso[0])  # (week, year)
+            weekly[key] = weekly.get(key, 0.0) + float(tss)
+        # Convert week keys back to dates (Monday of each week)
+        points = sorted(
+            [
+                (date.fromisocalendar(yr, wk, 1), round(val, 1))
+                for (wk, yr), val in weekly.items()
+            ]
+        )
+
+    elif metric_key == "weekly_sessions":
+        from app.models.activity import Activity
+        from app.models.lifting import LiftingSession
+
+        # Activities
+        act_result = await db.execute(
+            select(Activity.start_date)
+            .where(
+                Activity.user_id == user_id,
+                Activity.start_date >= cutoff,
+                Activity.source != "wahoo",
+            )
+            .order_by(Activity.start_date.asc())
+        )
+        act_dates = [r[0] for r in act_result.all()]
+
+        # Lifting sessions
+        lift_result = await db.execute(
+            select(LiftingSession.session_date)
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= cutoff,
+            )
+            .order_by(LiftingSession.session_date.asc())
+        )
+        lift_dates = [r[0] for r in lift_result.all()]
+
+        # Group by ISO week
+        weekly: dict[tuple[int, int], int] = {}
+        for d in act_dates:
+            iso = d.isocalendar()
+            key = (iso[1], iso[0])
+            weekly[key] = weekly.get(key, 0) + 1
+        for d in lift_dates:
+            iso = d.isocalendar()
+            key = (iso[1], iso[0])
+            weekly[key] = weekly.get(key, 0) + 1
+        points = sorted(
+            [
+                (date.fromisocalendar(yr, wk, 1), float(cnt))
+                for (wk, yr), cnt in weekly.items()
+            ]
+        )
+
+    elif metric_key == "monthly_distance_km":
+        from app.models.activity import Activity
+
+        result = await db.execute(
+            select(Activity.start_date, Activity.distance_meters)
+            .where(
+                Activity.user_id == user_id,
+                Activity.start_date >= cutoff,
+                Activity.distance_meters.isnot(None),
+                Activity.source != "wahoo",
+            )
+            .order_by(Activity.start_date.asc())
+        )
+        rows = result.all()
+        # Group by month
+        monthly: dict[tuple[int, int], float] = {}
+        for start_date, dist in rows:
+            key = (start_date.year, start_date.month)
+            monthly[key] = monthly.get(key, 0.0) + (dist or 0)
+        points = sorted(
+            [
+                (date(yr, mo, 1), round(val / 1000.0, 2))
+                for (yr, mo), val in monthly.items()
+            ]
+        )
 
     # Resolve current value
     current_value = await resolve_metric(db, user_id, metric_key, filter_json)
