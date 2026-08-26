@@ -200,6 +200,20 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, 4 test files in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
+## Git & Deployment Strategy
+
+**Model: `main` is the trunk, `prod` deploys.** All features/fixes land on `main`; `prod` is the single branch that auto-deploys (GitHub Actions `Deploy` workflow, triggered when CI completes on `prod`). `main` is merged into `prod` **only** to ship a release.
+
+**Rules (these prevent the history mess from Aug 2026):**
+
+1. **Feature branches PR into `main`, never directly into `prod`.** `prod` only ever receives merges of `main`. Direct `feature → prod` merges (PRs #2/#4/#5) created diverging topologies that are painful to reconcile.
+2. **Deploy = merge `main` into `prod` and push.** That single push triggers CI on `prod` → the `Deploy` workflow builds GHCR images and redeploys the Droplet. Do not merge directly to `prod` for anything other than a release.
+3. **Keep `main` and `prod` content-identical between releases.** After a release, `main` and `prod` should have the same tree (`git diff origin/main origin/prod` empty). If they drift, reconcile before the next release — the drift compounds.
+4. **Prefer squash or simple merge commits over long chains of interleaved merges.** Avoid merge commits that only re-merge already-merged content (e.g. `Merge sync-hardening into main` followed by `Merge main into prod` where both carry the same feature commits).
+5. **Before pushing a release, check the delta**: `git log --oneline origin/main..origin/prod` and `git diff --stat origin/main origin/prod` — the diff should be exactly the intended release content, nothing else.
+6. **CI (`test.yml`) runs on `push`/`pull_request` for `[main, prod]`.** If CI on a `prod` push is stuck `queued` (GitHub Actions runner availability), the deploy is blocked — do not try to force it; monitor `gh run watch <id>` or the Actions tab. (Aug 2026: runners queued 50+ min intermittently.)
+7. **`prod` is a release branch, not a working branch.** Never commit directly to it. Commit locally, PR into `main`, then merge `main` → `prod` to ship.
+
 ## Quick Reference
 
 ```bash
