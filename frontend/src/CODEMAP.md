@@ -41,6 +41,7 @@
 | `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
 | `auth.ts` | — | NextAuth config, `authOptions`, JWT/session callbacks |
 | `exercises.ts` | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `updateExercise`, `deleteExercise` — DB-backed exercise library CRUD |
+| `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
 | `index.ts` | — | Barrel re-exports all modules |
 
 ## Components
@@ -62,6 +63,7 @@
 | `TabGroup` | Accessible tab bar with ARIA tablist/tab/selected attributes |
 | `ProviderBadge` | Provider icon + color badge (strava, komoot, wahoo, manual). Exports `ProviderIcon`, `ProviderBadge`, `PROVIDER_COLORS` |
 | `MetricCard` | Unified metric card — supports simple trend strings (dashboard) and complex MetricTrend/benchmark (cycling). Icon, unit, tooltip, subtitle |
+| `NotificationBell` | Fixed top-right bell with unread badge (`['notifications']`, 30s refetch) + dropdown panel (severity-tagged, type icons, mark-read on click, mark-all). Mounted in `(app)/layout.tsx` |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -159,6 +161,7 @@
 | Component | Purpose |
 |-----------|---------|
 | `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
+| `NotificationSettings` | Per-type notification toggles (health alerts / PRs / goal milestones / plan reminders) — `['notification-preferences']` query, PATCH on toggle. Rendered on `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
 
 ### `lib/` — Shared utilities

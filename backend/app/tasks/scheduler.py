@@ -178,6 +178,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.record_goal_checkins",
         "schedule": crontab(hour=6, minute=0, day_of_week=1),
     },
+    # Daily training-plan reminder (7 AM UTC)
+    "send-plan-reminders": {
+        "task": "app.tasks.scheduler.send_plan_reminders",
+        "schedule": crontab(hour=7, minute=0),
+    },
     # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
     "backfill-streams": {
         "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
@@ -1244,12 +1249,208 @@ def refresh_weather_forecasts() -> dict:
                     )
                     await db.rollback()
             return {
-                "users_total": len(users),
                 "forecasts_refreshed": refreshed,
                 "users_without_location": no_location,
             }
 
     return asyncio.run(_run())
+
+
+async def _goal_milestone_notifications(db, user_id: uuid.UUID) -> int:
+    """Fire notifications when an active goal crosses 50/75/100% progress.
+
+    Progress is computed as absolute movement toward the target (sign-aware for
+    both increase and decrease goals), compared against the previous check-in.
+    Dedup keys make each crossing fire exactly once.
+    """
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.models.goal import Goal, GoalCheckIn
+    from app.services.notifications import notify
+
+    today = date.today()
+    goals = list(
+        (
+            await db.execute(
+                select(Goal).where(Goal.user_id == user_id, Goal.status == "active")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    fired = 0
+    for goal in goals:
+        if goal.current_value is None or goal.starting_value is None:
+            continue
+        target_delta = goal.target_value - goal.starting_value
+        if target_delta == 0:
+            continue
+
+        prev_result = await db.execute(
+            select(GoalCheckIn.value)
+            .where(
+                GoalCheckIn.goal_id == goal.id,
+                GoalCheckIn.check_in_date < today,
+            )
+            .order_by(GoalCheckIn.check_in_date.desc(), GoalCheckIn.created_at.desc())
+            .limit(1)
+        )
+        prev = prev_result.scalar_one_or_none()
+        prev_pct = (
+            round((prev - goal.starting_value) / target_delta * 100, 1)
+            if prev is not None
+            else 0.0
+        )
+        cur_pct = round(
+            (goal.current_value - goal.starting_value) / target_delta * 100, 1
+        )
+
+        label = f"{goal.metric} — target {goal.target_value:g}"
+        for threshold in (50, 75):
+            if prev_pct < threshold <= cur_pct:
+                await notify(
+                    db,
+                    user_id,
+                    type="goal_milestone",
+                    title=f"Goal {threshold:.0f}% reached",
+                    body=label,
+                    severity="info",
+                    link="/goals",
+                    dedup_key=f"goal:{goal.id}:{threshold:.0f}",
+                    metadata={"metric": goal.metric, "progress_pct": cur_pct},
+                )
+                fired += 1
+        if goal.status == "achieved" and prev_pct < 100:
+            await notify(
+                db,
+                user_id,
+                type="goal_milestone",
+                title="Goal achieved",
+                body=label,
+                severity="success",
+                link="/goals",
+                dedup_key=f"goal:{goal.id}:achieved",
+                metadata={"metric": goal.metric, "progress_pct": cur_pct},
+            )
+            fired += 1
+    return fired
+
+
+@celery_app.task(name="app.tasks.scheduler.send_plan_reminders")
+def send_plan_reminders() -> dict:
+    """Daily morning reminder for today's planned training session.
+
+    One notification per user per day (dedup keyed on the date) when an active
+    plan schedules a non-rest session today. Per-user failures are isolated.
+    """
+    import asyncio
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.training_plan import TrainingPlan, TrainingPlanDay
+    from app.models.user import User
+    from app.services.notifications import notify
+
+    async def _run():
+        today = date.today()
+        notified = 0
+        async with task_session() as db:
+            users = list((await db.execute(select(User))).scalars().all())
+            for user in users:
+                try:
+                    day = await _find_today_plan_day(db, user.id, today)
+                    if day is None:
+                        continue
+                    created = await notify(
+                        db,
+                        user.id,
+                        type="plan_reminder",
+                        title="Today's plan",
+                        body=_plan_reminder_body(day),
+                        severity="info",
+                        link="/training",
+                        dedup_key=f"plan_reminder:{today}",
+                        metadata={"focus": day.planned_focus},
+                    )
+                    if created is not None:
+                        notified += 1
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Plan reminder failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+        return {"notified": notified}
+
+    return asyncio.run(_run())
+
+
+async def _find_today_plan_day(db, user_id: uuid.UUID, today) -> TrainingPlanDay | None:
+    """Return today's non-rest plan day across the user's active plans."""
+    from sqlalchemy import select
+
+    from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+    plans = list(
+        (
+            await db.execute(
+                select(TrainingPlan).where(
+                    TrainingPlan.user_id == user_id,
+                    TrainingPlan.status == "active",
+                    TrainingPlan.start_date <= today,
+                    TrainingPlan.end_date >= today,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for plan in plans:
+        days = list(
+            (
+                await db.execute(
+                    select(TrainingPlanDay).where(
+                        TrainingPlanDay.plan_id == plan.id,
+                        TrainingPlanDay.day_date == today,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for day in days:
+            if day.sport != "rest":
+                return day
+    return None
+
+
+def _plan_reminder_body(day: TrainingPlanDay) -> str:
+    """Human-readable summary of a planned day for the reminder body."""
+    focus = day.planned_focus or "training"
+    if day.planned_exercises:
+        try:
+            names = ", ".join(
+                str(e.get("exercise") or e.get("name") or e)
+                for e in day.planned_exercises[:5]
+            )
+            if names:
+                return f"{focus} — {names}"
+        except Exception:
+            pass
+    if day.planned_volume_kg:
+        return f"{focus} — {day.planned_volume_kg:,.0f} kg volume"
+    if day.planned_duration_min:
+        return f"{focus} — {day.planned_duration_min} min"
+    if day.workout_description:
+        return f"{focus} — {day.workout_description[:120]}"
+    if day.planned_tss:
+        return f"{focus} — {day.planned_tss:.0f} TSS"
+    return f"{focus} — planned session"
 
 
 @celery_app.task(name="app.tasks.scheduler.record_goal_checkins")
@@ -1276,6 +1477,7 @@ def record_goal_checkins() -> dict:
             users = list(users_result.scalars().all())
             checkins_recorded = 0
             goals_active = 0
+            milestone_notifications = 0
 
             for user in users:
                 try:
@@ -1287,6 +1489,9 @@ def record_goal_checkins() -> dict:
                     goals_active += len(list(active.scalars().all()))
                     recorded = await record_all_check_ins(db, user.id)
                     checkins_recorded += recorded
+                    milestone_notifications = await _goal_milestone_notifications(
+                        db, user.id
+                    )
                     await db.commit()
                 except Exception as e:
                     logger.warning(
@@ -1299,6 +1504,7 @@ def record_goal_checkins() -> dict:
                 "users_total": len(users),
                 "goals_active": goals_active,
                 "checkins_recorded": checkins_recorded,
+                "milestone_notifications": milestone_notifications,
             }
 
     return asyncio.run(_run())

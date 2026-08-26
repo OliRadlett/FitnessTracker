@@ -12,6 +12,7 @@ from app.models.lifting import (
     WarmupTemplateStep,
 )
 from app.models.llm_analysis import LlmAnalysis
+from app.models.notification import Notification
 from app.models.nutrition import RideFuelPlan
 from app.models.route import Route, RouteSource
 from app.models.sleep import SleepLog
@@ -35,6 +36,7 @@ __all__ = [
     "LiftingSession",
     "LiftingSet",
     "LlmAnalysis",
+    "Notification",
     "OAuthConnection",
     "PersonalRecord",
     "RideFuelPlan",
