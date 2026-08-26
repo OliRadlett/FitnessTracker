@@ -233,12 +233,12 @@ Use the start script with the `--prod` flag for production overrides:
 
 ## 11. Set Up Continuous Deployment (Optional)
 
-The repo includes a GitHub Actions workflow ([`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)) that auto-deploys to your Droplet whenever CI passes on `main`.
+The repo includes a GitHub Actions workflow ([`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)) that auto-deploys to your Droplet whenever CI passes on the `prod` branch.
 
 ### How it works
 
-1. You push / merge to `main`
-2. The existing **CI** workflow runs lint + tests
+1. Merge `main` into `prod` to ship a release (feature branches PR into `main` first — never directly into `prod`)
+2. The **CI** workflow runs lint + tests on the `prod` push
 3. If CI passes, the **Deploy** workflow triggers automatically
 4. It SSHs into your Droplet, pulls the latest code, rebuilds images, runs migrations, and restarts services
 
@@ -263,7 +263,7 @@ The repo includes a GitHub Actions workflow ([`.github/workflows/deploy.yml`](..
    | `DROPLET_USER` | `root` |
    | `DROPLET_SSH_KEY` | Contents of `~/.ssh/fittrack-deploy` (the **private** key) |
 
-4. **Push to `main`** — the workflow will run automatically.
+4. **Merge `main` into `prod`** — the workflow will run automatically.
 
 > **Note**: The `.env` file on the Droplet is **not** in git. It persists across deploys. To change env vars, SSH into the Droplet and edit `/opt/fitness-tracker/.env`, then restart services.
 
