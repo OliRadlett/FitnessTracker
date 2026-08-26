@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 
 import httpx
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 BACKOFF_MULTIPLIER = 2.0
+JITTER_MAX_SECONDS = 0.25
 
 # HTTP status codes that are safe to retry
 _RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
@@ -27,8 +29,8 @@ async def retry_request(
     """Execute an async HTTP function with exponential backoff retry.
 
     Retries on:
-    - httpx.TimeoutException
-    - httpx.ConnectError
+    - httpx.TransportError (covers TimeoutException, ConnectError, ReadError,
+      WriteError, RemoteProtocolError, UnsupportedProtocol, pool timeouts)
     - HTTP status codes: 408, 429, 500, 502, 503, 504
 
     Does NOT retry on:
@@ -54,23 +56,15 @@ async def retry_request(
     for attempt in range(max_retries + 1):
         try:
             return await func(*args, **kwargs)
-        except httpx.TimeoutException as e:
+        except httpx.TransportError as e:
             last_exception = e
             if attempt < max_retries:
                 logger.warning(
-                    f"Request timeout (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"Transport error {type(e).__name__} "
+                    f"(attempt {attempt + 1}/{max_retries + 1}), "
                     f"retrying in {backoff:.1f}s..."
                 )
-                await asyncio.sleep(backoff)
-                backoff *= backoff_multiplier
-        except httpx.ConnectError as e:
-            last_exception = e
-            if attempt < max_retries:
-                logger.warning(
-                    f"Connection error (attempt {attempt + 1}/{max_retries + 1}), "
-                    f"retrying in {backoff:.1f}s..."
-                )
-                await asyncio.sleep(backoff)
+                await asyncio.sleep(backoff + random.uniform(0, JITTER_MAX_SECONDS))
                 backoff *= backoff_multiplier
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
@@ -87,7 +81,7 @@ async def retry_request(
                     f"HTTP {status} (attempt {attempt + 1}/{max_retries + 1}), "
                     f"retrying in {backoff:.1f}s..."
                 )
-                await asyncio.sleep(backoff)
+                await asyncio.sleep(backoff + random.uniform(0, JITTER_MAX_SECONDS))
                 backoff *= backoff_multiplier
             else:
                 raise  # Non-retryable HTTP error

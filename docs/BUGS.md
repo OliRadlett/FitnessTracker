@@ -478,12 +478,78 @@
 ## OAUTH TOKEN HEALTH (2026-08-26)
 
 ### BUG-072: Failed Token Refreshes Retry Forever With No User Signal
-- **Status:** OPEN (observed in prod 2026-08-26)
-- **Files:** `backend/app/tasks/scheduler.py` (per-provider sync loops), `backend/app/models/user.py:81` (`OAuthConnection`), `backend/app/integrations/*_client.py` (token refresh)
-- **Issue:** Strava + Wahoo token refreshes fail with `400 Bad Request` on `*/oauth/token` every sync run (tokens revoked/expired — e.g. password change or deauthorised app on provider side). The connection is never marked unhealthy: each 30-min beat task retries the dead refresh token indefinitely, syncing silently does nothing for that provider, and the user gets no indication anywhere that re-authorisation is needed. Sync appears "healthy" (task succeeds) while data goes stale.
-- **Fix (improvement plan):**
-  1. Add a health/status column to `OAuthConnection` (e.g. `status`: `active` | `needs_reauth`, plus `last_error_at`/`last_error`). Migration required.
-  2. In refresh handling, distinguish permanent vs transient failures: HTTP 400 with `invalid_grant`/`invalid_request` → set `status='needs_reauth'` and skip future syncs for that connection until re-authorised; network/5xx/rate-limit → retry with backoff as today.
-  3. Sync loops (`sync_all_strava_activities`, Wahoo, Whoop) filter out `needs_reauth` connections instead of attempting sync.
-  4. Surface it: Settings page shows "Reconnect" badge/banner per provider (GET /connections already lists them — add status); optionally a daily `generate_health_alert` check for stale sync + needs_reauth.
-  5. Re-authorisation flow resets status back to `active` in the OAuth callback.
+- **Status:** FIXED (2026-08-26 — sync-hardening)
+- **Files:** `backend/app/services/connection_health.py`, `backend/app/models/user.py`, `backend/app/tasks/scheduler.py`, `backend/app/api/connections.py`, `backend/app/schemas/auth.py`, `frontend/src/app/(app)/settings/page.tsx`
+- **Issue:** Strava + Wahoo token refreshes fail with `400 Bad Request` on `*/oauth/token` every sync run (tokens revoked/expired). The connection is never marked unhealthy: each 30-min beat task retries the dead refresh token indefinitely, syncing silently does nothing, and the user gets no indication.
+- **Fix (implemented):**
+  1. Migration `035` adds `status` (`active`/`needs_reauth`), `consecutive_failures`, `last_error_at`, `last_error`, `last_refreshed_at` to `OAuthConnection`.
+  2. Typed errors (`app/integrations/errors.py`): `PermanentAuthError` vs `TransientSyncError`; all provider clients classify via `app/services/connection_health.refresh_connection()` — a single hardened refresh path with `SELECT … FOR UPDATE`, immediate commit of rotated tokens, and health-state updates.
+  3. Sync loops skip `needs_reauth` connections; `PermanentAuthError` marks reauth, transient failures increment `consecutive_failures`.
+  4. OAuth callback (`api/auth.py`) resets status to `active` on successful (re)connect.
+  5. `GET /connections` exposes `status`/`last_synced_at`/`last_error`; Settings shows a "Needs re-auth" badge + Reconnect button + last-synced time; a global `SyncHealthBanner` (all app pages) flags reauth-required and stale connections.
+
+---
+
+## SYNC HARDENING AUDIT (2026-08-26) — bulletproof sync
+
+Full audit of every sync path (Celery scheduler, four provider clients, sync services, webhooks, manual endpoints, frontend UX). Findings fixed in `sync-hardening` branch (migrations 035–037):
+
+### BUG-073: Whoop Chunked Backfill Commits Nothing
+- **Status:** FIXED
+- **Files:** `backend/app/services/whoop.py:1841`, `backend/app/api/connections.py:238`
+- **Issue:** BUG-036 removed the explicit `db.commit()` from `backfill_whoop_chunked` ("let get_db handle it"), but the SSE endpoint creates its session via `async_session_factory()` (never `get_db`), so `stream_db.close()` rolled back every chunk. The entire historical Whoop backfill reported success and persisted **zero rows**.
+- **Fix:** Restored per-chunk `await db.commit()` (this generator owns its session). Regression test in `tests/integration/test_backfill_persistence.py`.
+
+### BUG-074: Strava Backfill Loses Tail Pages, Streams, and Links
+- **Status:** FIXED
+- **Files:** `backend/app/services/strava/sync.py:642`, `backend/app/api/activities.py:416`
+- **Issue:** `backfill_all_activities_stream` committed only at 10-page boundaries; the final partial page, **all** fetched streams, and all lifting/route link mutations were flushed but never committed → rolled back on session close.
+- **Fix:** Final `await db.commit()` before the `complete` event. Regression test added.
+
+### BUG-075: Sync Backlog Truncated — Watermark Advances Past Unfetched Data
+- **Status:** FIXED
+- **Files:** `backend/app/services/strava/sync.py:150`, `backend/app/tasks/scheduler.py`
+- **Issue:** `sync_activities` fetched a single page (≤100) but the Celery task advanced `last_synced_at = now` afterwards — a backlog >100 activities lost everything older permanently.
+- **Fix:** `sync_activities` now paginates through the window (newest-first) and signals truncation via `truncated_ref`; the scheduler holds the watermark (committing the synced page) until the backlog drains.
+
+### BUG-076: Whoop Chunked Backfill Crashed on Chunk 2 (`NameError: asyncio`)
+- **Status:** FIXED
+- **Files:** `backend/app/services/whoop.py:1773`
+- **Issue:** `backfill_whoop_chunked` called `asyncio.sleep()` but never imported `asyncio` (module imports it function-locally elsewhere). Multi-chunk backfills aborted with a NameError before the second chunk.
+- **Fix:** Added `import asyncio` in the function.
+
+### BUG-077: Token Refresh Races Can Rotate the Refresh Token Twice
+- **Status:** FIXED
+- **Files:** `backend/app/services/connection_health.py`
+- **Issue:** Three divergent `refresh_if_needed` implementations with zero locking; 4+ concurrent refresh triggers (beat ×2 on the same `*/30` cron, webhooks, manual syncs). On strict-rotation providers (Wahoo/Whoop) the loser's refresh could `invalid_grant` — a *self-inflicted* permanent failure. Rotated tokens were also flushed inside a transaction that later rolled back.
+- **Fix:** Single hardened `refresh_connection()` with `SELECT … FOR UPDATE`, immediate commit of rotated tokens, and typed error classification.
+
+### BUG-078: Concurrent Sync Runs Overlap (Beat + Manual + Backfills)
+- **Status:** FIXED
+- **Files:** `backend/app/tasks/scheduler.py`, `backend/app/api/connections.py`
+- **Issue:** No concurrency guards on beat tasks or the manual `/sync` endpoint; `task_acks_late=True` redelivery + `*/30` beats could run two identical instances. Manual backfill locks shared no namespace with beat tasks.
+- **Fix:** Task-level Redis locks (`_run_task_guarded`, fail-open on Redis outage) on all 4 sync tasks + Celery `expires` on beat entries; per-user `sync:{user}:{provider}` locks shared by beat loops and the manual sync endpoint (409 if held).
+
+### BUG-079: Webhook Events Processed Inline With No Retries/Ordering
+- **Status:** FIXED
+- **Files:** `backend/app/models/webhook_event.py`, `backend/app/api/webhooks.py`, `backend/app/services/strava/webhook_queue.py`, `backend/app/tasks/scheduler.py`
+- **Issue:** Strava webhook POSTs were processed synchronously in-request (multi-second, Strava redelivers on timeout); update-before-create events were silently dropped; a lost delete event left zombie activities.
+- **Fix:** New `strava_webhook_events` queue (migration `037`): POST verifies HMAC (empty-secret guard → 503) and persists the event; a Celery task (`process_strava_webhook_events`, every 5 min) drains oldest-first with `attempts`/`error` tracking and retry-then-fail; a weekly `reconcile_strava_activities` pass heals missed deletes/renames against the Strava list within a bounded window.
+
+### BUG-080: Whoop Resting HR / Strain / Calories Clobbered by Null or Average Fallbacks
+- **Status:** FIXED
+- **Files:** `backend/app/services/whoop.py`
+- **Issue:** `resting_hr` was initialized to cycle-average HR and written even when the recovery fetch failed (overwriting the real value); `strain`/`calories` were written as `None` on sparse payloads, erasing earlier values.
+- **Fix:** `resting_hr` is only written when actually recovered; `strain`/`calories` are conditionally included in the upsert (both `sync_whoop_cycles` and backfill).
+
+### BUG-081: `Notification` Model Used Reserved `metadata` Attribute (collision with notifications session)
+- **Status:** FIXED
+- **Files:** `backend/app/models/notification.py`, `backend/app/services/notifications.py`
+- **Issue:** A concurrent session's in-flight `Notification` model declared a column named `metadata` (reserved in SQLAlchemy Declarative API), breaking every `app.models` import. Its migration also collided with mine at revision `037`.
+- **Fix:** Renamed the ORM attribute to `payload` (mapped onto the `metadata` DB column), updated the `notify` service; renumbered their migration to `038` (depends on my `037`).
+
+### BUG-082: Frontend Corrupted by `t`→`e` Character Replacement (concurrent session)
+- **Status:** FIXED (recovered)
+- **Files:** 50 frontend `.tsx`/`.ts` files
+- **Issue:** A concurrent session's bulk operation replaced lowercase `t` with `e` across ~50 frontend files (`const`→`conse`, `mutation`→`mueaeion`, `string`→`sering`), plus `h`→`o` in a subset. Lossy — cannot be reversed. The frontend no longer compiled.
+- **Fix:** Restored the 50 files from git HEAD and re-applied the sync-health Settings changes (`settings/page.tsx`). Note: any uncommitted work in those files from the offending session was discarded.

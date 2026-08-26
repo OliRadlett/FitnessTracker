@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.integrations.errors import PermanentAuthError, TransientSyncError
 from app.models.user import OAuthConnection, User
 from app.schemas.auth import OAuthConnectionRead
 from app.services.auth import get_current_user
@@ -72,6 +73,25 @@ async def trigger_sync(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    # Prevent overlapping a scheduled Celery sync for the same user/provider.
+    from app.services.cache import redis_lock
+
+    lock = redis_lock(f"sync:{current_user.id}:{connection.provider}", ttl=1800)
+    try:
+        await lock.__aenter__()
+    except RuntimeError:
+        raise HTTPException(
+            status_code=409,
+            detail="A sync for this connection is already in progress. Try again shortly.",
+        )
+
+    try:
+        return await _dispatch_sync(connection, current_user, db)
+    finally:
+        await lock.__aexit__(None, None, None)
+
+
+async def _dispatch_sync(connection, current_user, db):
     if connection.provider == "strava":
         try:
             activities = await sync_activities(db, current_user.id, limit=100)
@@ -95,6 +115,22 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except PermanentAuthError as e:
+            logger.warning(
+                f"Strava sync auth failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Strava.",
+            )
+        except TransientSyncError as e:
+            logger.warning(
+                f"Strava sync transient failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Strava is temporarily unavailable — please try again later.",
+            )
         except httpx.HTTPStatusError as e:
             logger.error(
                 f"Strava token refresh failed for user {current_user.id}: {e}",
@@ -117,6 +153,22 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except PermanentAuthError as e:
+            logger.warning(
+                f"Komoot sync auth failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Komoot.",
+            )
+        except TransientSyncError as e:
+            logger.warning(
+                f"Komoot sync transient failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Komoot is temporarily unavailable — please try again later.",
+            )
         except httpx.HTTPStatusError as e:
             logger.error(
                 f"Komoot sync failed for user {current_user.id}: {e}",
@@ -142,6 +194,22 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except PermanentAuthError as e:
+            logger.warning(
+                f"Wahoo sync auth failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Wahoo.",
+            )
+        except TransientSyncError as e:
+            logger.warning(
+                f"Wahoo sync transient failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Wahoo is temporarily unavailable — please try again later.",
+            )
         except httpx.HTTPStatusError as e:
             logger.error(
                 f"Wahoo token refresh failed for user {current_user.id}: {e}",
@@ -153,6 +221,8 @@ async def trigger_sync(
             )
     elif connection.provider == "whoop":
         try:
+            from datetime import UTC, datetime, timedelta
+
             from app.services.whoop import (
                 refresh_if_needed as whoop_refresh,
             )
@@ -164,9 +234,16 @@ async def trigger_sync(
 
             # Refresh token first (same as Celery task does)
             connection = await whoop_refresh(db, connection)
-            metrics = await sync_whoop_cycles(db, current_user.id)
-            sleep_logs = await sync_whoop_sleep(db, current_user.id)
-            enriched = await sync_whoop_workouts(db, current_user.id)
+            # Incremental window matching the scheduled task: watermark minus
+            # 24h overlap — avoids a full 500-record refetch on every click.
+            start = None
+            if connection.last_synced_at:
+                start = (connection.last_synced_at - timedelta(hours=24)).strftime(
+                    "%Y-%m-%dT%H:%M:%S.000Z"
+                )
+            metrics = await sync_whoop_cycles(db, current_user.id, start=start)
+            sleep_logs = await sync_whoop_sleep(db, current_user.id, start=start)
+            enriched = await sync_whoop_workouts(db, current_user.id, start=start)
             await db.commit()
             return {
                 "detail": f"Synced {len(metrics)} metrics, {len(sleep_logs)} sleep records, {len(enriched)} enriched activities from Whoop",
@@ -174,6 +251,22 @@ async def trigger_sync(
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except PermanentAuthError as e:
+            logger.warning(
+                f"Whoop sync auth failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Whoop.",
+            )
+        except TransientSyncError as e:
+            logger.warning(
+                f"Whoop sync transient failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Whoop is temporarily unavailable — please try again later.",
+            )
         except httpx.HTTPStatusError as e:
             logger.error(
                 f"Whoop token refresh failed for user {current_user.id}: {e}",

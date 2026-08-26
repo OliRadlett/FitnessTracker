@@ -15,6 +15,7 @@ import time
 import httpx
 
 from app.config import get_settings
+from app.integrations.retry import retry_request
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class KomootClient:
 
         # First try: POST /account/v1/session
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(
                     f"{KOMOOT_API_BASE}/account/v1/session",
                     json={
@@ -162,7 +163,7 @@ class KomootClient:
             return {"username": self._user_id, "user_id": self._user_id}
 
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             # Try email-based account lookup
             if self.komoot_email:
                 url = f"{KOMOOT_API_BASE}/account/email/{self.komoot_email}/"
@@ -217,28 +218,35 @@ class KomootClient:
         if tour_type:
             params["type"] = tour_type
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/users/{user_id}/tours/",
-                headers=headers,
-                params=params,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            # Komoot returns tours under _embedded.tours
-            embedded = data.get("_embedded", {})
-            return embedded.get("tours", embedded.get("items", []))
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/users/{user_id}/tours/",
+                    headers=headers,
+                    params=params,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                # Komoot returns tours under _embedded.tours
+                embedded = data.get("_embedded", {})
+                return embedded.get("tours", embedded.get("items", []))
+
+        return await retry_request(_fetch)
 
     async def get_tour_detail(self, tour_id: str = "") -> dict:
         """Fetch detailed info for a single tour including coordinates."""
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/tours/{tour_id}/",
-                headers=headers,
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/tours/{tour_id}/",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_coordinates(self, tour_id: str = "") -> list[dict]:
         """Fetch full trackpoint coordinates for a tour.
@@ -247,16 +255,20 @@ class KomootClient:
         Response is {"items": [...], "_links": {...}} — unwraps to return items list.
         """
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/tours/{tour_id}/coordinates/",
-                headers=headers,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, dict):
-                return data.get("items", [])
-            return data if isinstance(data, list) else []
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/tours/{tour_id}/coordinates/",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, dict):
+                    return data.get("items", [])
+                return data if isinstance(data, list) else []
+
+        return await retry_request(_fetch)
 
     async def get_surface(self, tour_id: str = "") -> dict:
         """Fetch terrain surface breakdown for a tour.
@@ -264,13 +276,17 @@ class KomootClient:
         Returns dict with surface type percentages (e.g. asphalt, gravel, etc.).
         """
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/tours/{tour_id}/surface",
-                headers=headers,
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/tours/{tour_id}/surface",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_routes(
         self,
@@ -280,33 +296,41 @@ class KomootClient:
     ) -> list[dict]:
         """Fetch user's planned/saved routes (tours with type=tour_planned)."""
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/users/{user_id}/tours/",
-                headers=headers,
-                params={
-                    "page": page,
-                    "limit": limit,
-                    "type": "tour_planned",
-                    "sort_field": "date",
-                    "sort_direction": "desc",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            embedded = data.get("_embedded", {})
-            return embedded.get("tours", embedded.get("items", []))
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/users/{user_id}/tours/",
+                    headers=headers,
+                    params={
+                        "page": page,
+                        "limit": limit,
+                        "type": "tour_planned",
+                        "sort_field": "date",
+                        "sort_direction": "desc",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                embedded = data.get("_embedded", {})
+                return embedded.get("tours", embedded.get("items", []))
+
+        return await retry_request(_fetch)
 
     async def get_route_detail(self, route_id: str = "") -> dict:
         """Fetch detailed info for a single planned route (tour) including coordinates."""
         headers = self._auth_headers()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{KOMOOT_API_BASE}/tours/{route_id}/",
-                headers=headers,
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{KOMOOT_API_BASE}/tours/{route_id}/",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
 
 # Singleton

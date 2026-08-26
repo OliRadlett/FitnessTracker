@@ -12,6 +12,12 @@ export interface Connection {
   provider: string;
   provider_user_id: string;
   created_at: string;
+  status: 'active' | 'needs_reauth' | string;
+  last_synced_at?: string | null;
+  last_refreshed_at?: string | null;
+  last_error_at?: string | null;
+  last_error?: string | null;
+  consecutive_failures?: number;
 }
 
 export interface ChartSeries {

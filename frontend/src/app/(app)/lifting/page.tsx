@@ -428,6 +428,11 @@ export default function LiftingPage() {
           Linked {backfillMutation.data.linked_count} Strava activities to lifting sessions
         </div>
       )}
+      {backfillMutation.isError && (
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400" role="alert">
+          Error: {backfillMutation.error instanceof Error ? backfillMutation.error.message : 'Auto-link failed'}
+        </div>
+      )}
 
       {/* New Session Form */}
       {showNewSession && (

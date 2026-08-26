@@ -69,21 +69,15 @@ async def get_wahoo_connection(
 async def refresh_if_needed(
     db: AsyncSession, connection: OAuthConnection
 ) -> OAuthConnection:
-    """Refresh the access token if it's expired."""
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
-        if not connection.refresh_token:
-            raise ValueError("No refresh token available")
-        token_data = await wahoo_client.refresh_access_token(connection.refresh_token)
-        connection.access_token = token_data["access_token"]
-        connection.refresh_token = token_data.get(
-            "refresh_token", connection.refresh_token
-        )
-        if "expires_in" in token_data:
-            connection.token_expires_at = datetime.now(UTC) + timedelta(
-                seconds=int(token_data["expires_in"])
-            )
-        await db.flush()
-    return connection
+    """Refresh the access token if it's expired (hardened path).
+
+    Row-locked and health-state-aware via
+    :func:`app.services.connection_health.refresh_connection`.
+    """
+    from app.integrations.wahoo_client import wahoo_client
+    from app.services.connection_health import refresh_connection
+
+    return await refresh_connection(db, connection, wahoo_client)
 
 
 # ── Activity sync ────────────────────────────────────────────────────────────

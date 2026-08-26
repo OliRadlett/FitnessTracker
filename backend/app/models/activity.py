@@ -147,6 +147,11 @@ class ActivitySource(Base):
 
 class ActivityStream(Base):
     __tablename__ = "activity_streams"
+    __table_args__ = (
+        # One stream per type per activity — prevents duplicate stream rows
+        # when the weekly backfill and a manual backfill race.
+        UniqueConstraint("activity_id", "stream_type", name="uq_activity_streams_activity_type"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

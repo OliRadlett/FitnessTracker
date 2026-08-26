@@ -37,3 +37,23 @@ export function weatherEmoji(conditions?: string | null): string {
   if (c.includes('clear')) return '☀️';
   return '🌡️';
 }
+
+/**
+ * Format an ISO timestamp as a short relative label ("2h ago").
+ * Returns 'never' for null/undefined so sync staleness is visibly honest.
+ */
+export function formatRelativeTime(dateStr?: string | null): string {
+  if (!dateStr) return 'never';
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  if (Number.isNaN(then)) return 'never';
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}

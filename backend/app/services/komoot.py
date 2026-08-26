@@ -182,6 +182,23 @@ async def _enrich_and_create_route(
         f"{provider_id_prefix}{tour_id}" if provider_id_prefix else tour_id
     )
 
+    # Cheap existence check BEFORE the expensive coordinate/surface fetches —
+    # a fully-synced route must not be re-downloaded (and re-crawled) every
+    # 2 hours. Routes missing surface data still fall through so the
+    # surface backfill can complete (BUG-069).
+    existing_result = await db.execute(
+        select(Route)
+        .join(Route.sources)
+        .where(
+            Route.user_id == user_id,
+            RouteSource.provider == "komoot",
+            RouteSource.provider_route_id == provider_route_id,
+        )
+    )
+    existing_route_row = existing_result.scalar_one_or_none()
+    if existing_route_row is not None and existing_route_row.surface_profile is not None:
+        return False, True
+
     # Fetch full coordinates from the /coordinates/ endpoint
     # The tour list/detail doesn't include coordinate data — must fetch separately
     trackpoints: list[dict] = []
@@ -360,8 +377,10 @@ async def sync_komoot_routes(
             break
 
     # ── Sync planned/saved routes ───────────────────────────────────────────
+    # Safety cap: the planned-routes endpoint paginates with `while True`
+    # in practice; bound it so a misbehaving API can't crawl forever.
     page = 0
-    while True:
+    while page <= 50:
         try:
             routes = await komoot_client.get_routes(
                 user_id=komoot_user_id,

@@ -5,6 +5,7 @@
 | File | Responsibility | Key Functions |
 |------|---------------|---------------|
 | `auth.py` | JWT creation/validation, OAuth provider config | `create_access_token()`, `get_current_user()` |
+| `connection_health.py` | Connection health state machine (BUG-072): single hardened token-refresh path (`SELECT … FOR UPDATE`, immediate commit of rotated tokens), typed error classification, `needs_reauth` marking | `refresh_connection()`, `mark_connection_reauth()`, `reset_connection_health()` |
 | `strava.py` | Strava activity sync, webhook handling, activity↔lifting linking, route sync | `sync_activities()`, `handle_strava_event()`, `sync_strava_routes()`, `link_activity_to_lifting_sessions()` |
 | `wahoo.py` | Wahoo activity + route sync | `sync_wahoo_activities()`, `sync_wahoo_routes()` |
 | `komoot.py` | Komoot route sync | `sync_komoot_routes()` |
@@ -29,3 +30,5 @@
 | `goals.py` | Goal state engine (Phase 6): direction derived from starting_value vs target (no column), uniform status transitions (abandoned is terminal; reactivate suppresses re-expiry), sign-safe alignment score clamped 0–200, check-in recording | `compute_goal_state()`, `update_goal_status()`, `alignment_pct()`, `derive_direction()`, `record_manual_check_in()`, `list_check_ins()`, `record_all_check_ins()`, `reactivate_goal()` |
 | `projections.py` | Projections & success prediction (Phase 7): OLS regression on day-offsets, trend extrapolation to target crossing, badge classification (On Track / At Risk / Unlikely / Not enough data), TSB projection using planned TSS with EMA (CTL τ=42, ATL τ=7), metric trend for all 13 registry metrics (FTP/weight/HR/HRV/1RM/TSS/VO2max/bw-ratios/big3/sessions/distance) | `linear_regression()`, `project_to_target()`, `success_badge()`, `tsb_projection()`, `compute_goal_projection()`, `compute_metric_trend()`, `compute_tsb_projection()` |
 | `cache.py` | Redis-backed response caching + distributed locks | `cached()`, `redis_lock()` |
+| `metrics.py` | Prometheus counters for sync outcomes (`SYNC_RUNS`, `CONNECTION_REAUTH`, `WEBHOOK_EVENTS`) | module-level counters |
+| `strava/webhook_queue.py` | Async Strava webhook event processing (drain `strava_webhook_events` oldest-first with attempts/error + retry-then-fail) + weekly reconciliation against the Strava list (heals missed deletes/renames in a bounded window) | `process_pending_strava_events()`, `reconcile_strava_activities()` |
