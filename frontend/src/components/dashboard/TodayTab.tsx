@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch, getPlanWeek, getTrainingPlans } from '@/lib/api';
 import type {
@@ -35,10 +36,10 @@ const SPORT_EMOJI: Record<string, string> = {
 
 const DAY_TYPE_COLORS: Record<string, string> = {
   rest: 'text-gray-400',
-  easy: 'text-green-400',
+  easy: 'text-positive',
   moderate: 'text-blue-400',
   hard: 'text-orange-400',
-  race: 'text-red-400',
+  race: 'text-warning',
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────
@@ -135,9 +136,10 @@ export function TodayTab({
           {displayEvents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {displayEvents.map((evt) => (
-                <div
+                <Link
                   key={evt.id}
-                  className={`rounded-xl p-4 border ${
+                  href="/training"
+                  className={`rounded-xl p-4 border block transition-colors hover:border-accent/40 ${
                     evt.is_in_taper
                       ? 'bg-purple-900/20 border-purple-500/30'
                       : 'bg-surface border-surface-light/50'
@@ -162,7 +164,7 @@ export function TodayTab({
                   {evt.is_in_taper && (
                     <p className="text-xs text-purple-300 mt-1">📉 Taper phase — reduce load</p>
                   )}
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -184,7 +186,7 @@ export function TodayTab({
             label="Recovery"
             value={todaySummary.latest_recovery != null ? `${todaySummary.latest_recovery.toFixed(0)}%` : '—'}
             subtitle={todaySummary.latest_hrv_ms != null ? `HRV: ${todaySummary.latest_hrv_ms.toFixed(0)}ms` : 'No data'}
-            color={(todaySummary.latest_recovery ?? 0) >= 70 ? 'text-green-400' : (todaySummary.latest_recovery ?? 0) >= 50 ? 'text-yellow-400' : 'text-red-400'}
+            color={(todaySummary.latest_recovery ?? 0) >= 70 ? 'text-positive' : (todaySummary.latest_recovery ?? 0) >= 50 ? 'text-yellow-400' : 'text-warning'}
             icon="❤️"
           />
         )}
@@ -195,7 +197,7 @@ export function TodayTab({
             label="Sleep"
             value={todaySummary.latest_sleep_hours != null ? `${todaySummary.latest_sleep_hours.toFixed(1)}h` : '—'}
             subtitle="Last night"
-            color={(todaySummary.latest_sleep_hours ?? 0) >= 7 ? 'text-green-400' : (todaySummary.latest_sleep_hours ?? 0) >= 6 ? 'text-yellow-400' : 'text-red-400'}
+            color={(todaySummary.latest_sleep_hours ?? 0) >= 7 ? 'text-positive' : (todaySummary.latest_sleep_hours ?? 0) >= 6 ? 'text-yellow-400' : 'text-warning'}
             icon="😴"
           />
         )}
@@ -203,7 +205,7 @@ export function TodayTab({
           label="Strain"
           value={todaySummary.latest_strain != null ? todaySummary.latest_strain.toFixed(1) : '—'}
           subtitle="Whoop strain (0-21)"
-          color={(todaySummary.latest_strain ?? 0) >= 14 ? 'text-warning' : (todaySummary.latest_strain ?? 0) >= 10 ? 'text-yellow-400' : 'text-green-400'}
+          color={(todaySummary.latest_strain ?? 0) >= 14 ? 'text-warning' : (todaySummary.latest_strain ?? 0) >= 10 ? 'text-yellow-400' : 'text-positive'}
           icon="💪"
           tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
         />
@@ -211,7 +213,7 @@ export function TodayTab({
           label="Active Alerts"
           value={todaySummary.active_alerts}
           subtitle="Health warnings"
-          color={todaySummary.active_alerts > 0 ? 'text-warning' : 'text-green-400'}
+          color={todaySummary.active_alerts > 0 ? 'text-warning' : 'text-positive'}
           icon="🔔"
           tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies. Check the Weekly tab for details."
         />
@@ -272,7 +274,7 @@ export function TodayTab({
             label="Distance"
             value={todaySummary.today_distance_meters > 0 ? formatDistance(todaySummary.today_distance_meters) : '—'}
             subtitle="Cardio distance"
-            color="text-green-400"
+            color="text-positive"
             icon="🚴"
             tooltip="Total distance from all cardio activities today (cycling, running, etc.)."
           />
@@ -280,7 +282,7 @@ export function TodayTab({
             label="Duration"
             value={todaySummary.today_duration_seconds > 0 ? formatDuration(todaySummary.today_duration_seconds) : '—'}
             subtitle="Training time"
-            color="text-slate-300"
+            color="text-muted"
             icon="⏱️"
             tooltip="Total elapsed time across all activities and lifting sessions today."
           />
@@ -301,41 +303,47 @@ export function TodayTab({
               />
             </Card>
           </div>
-          <div className="grid grid-cols-3 lg:grid-cols-1 gap-4">
-            <MetricCard
-              label="CTL (Fitness)"
-              value={todaySummary.current_ctl.toFixed(1)}
-              subtitle="42-day chronic load"
-              color="text-blue-400"
-              icon="📈"
-              tooltip="Chronic Training Load — long-term fitness as a 42-day exponentially weighted average of TSS. Higher = fitter. Typical range: 30-150. Builds slowly over weeks."
-            />
-            <MetricCard
-              label="ATL (Fatigue)"
-              value={todaySummary.current_atl.toFixed(1)}
-              subtitle="7-day acute load"
-              color="text-orange-400"
-              icon="🔥"
-              tooltip="Acute Training Load — short-term fatigue as a 7-day exponentially weighted average of TSS. Spikes after hard days, drops quickly with rest."
-            />
-            <MetricCard
-              label="TSB (Form)"
-              value={todaySummary.current_tsb.toFixed(1)}
-              subtitle={
-                todaySummary.current_tsb < -30 ? 'Overreaching'
-                : todaySummary.current_tsb < -10 ? 'Productive'
-                : todaySummary.current_tsb > 10 ? 'Fresh / Tapered'
-                : 'Neutral'
-              }
-              color={
-                todaySummary.current_tsb < -30 ? 'text-red-400'
-                : todaySummary.current_tsb < -10 ? 'text-amber-400'
-                : todaySummary.current_tsb > 10 ? 'text-green-400'
-                : 'text-blue-400'
-              }
-              icon="⚖️"
-              tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4">
+            <Link href="/cycling" className="block group">
+              <MetricCard
+                label="CTL (Fitness)"
+                value={todaySummary.current_ctl.toFixed(1)}
+                subtitle="42-day chronic load"
+                color="text-blue-400"
+                icon="📈"
+                tooltip="Chronic Training Load — long-term fitness as a 42-day exponentially weighted average of TSS. Higher = fitter. Typical range: 30-150. Builds slowly over weeks."
+              />
+            </Link>
+            <Link href="/cycling" className="block group">
+              <MetricCard
+                label="ATL (Fatigue)"
+                value={todaySummary.current_atl.toFixed(1)}
+                subtitle="7-day acute load"
+                color="text-orange-400"
+                icon="🔥"
+                tooltip="Acute Training Load — short-term fatigue as a 7-day exponentially weighted average of TSS. Spikes after hard days, drops quickly with rest."
+              />
+            </Link>
+            <Link href="/cycling" className="block group">
+              <MetricCard
+                label="TSB (Form)"
+                value={todaySummary.current_tsb.toFixed(1)}
+                subtitle={
+                  todaySummary.current_tsb < -30 ? 'Overreaching'
+                  : todaySummary.current_tsb < -10 ? 'Productive'
+                  : todaySummary.current_tsb > 10 ? 'Fresh / Tapered'
+                  : 'Neutral'
+                }
+                color={
+                  todaySummary.current_tsb < -30 ? 'text-warning'
+                  : todaySummary.current_tsb < -10 ? 'text-amber-400'
+                  : todaySummary.current_tsb > 10 ? 'text-positive'
+                  : 'text-blue-400'
+                }
+                icon="⚖️"
+                tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
+              />
+            </Link>
           </div>
         </div>
       </div>
@@ -373,10 +381,10 @@ export function TodayTab({
                       <p className="text-xs text-yellow-400">{a.average_power.toFixed(0)}W</p>
                     )}
                     {a.average_heartrate != null && (
-                      <p className="text-xs text-red-400">{a.average_heartrate.toFixed(0)} bpm</p>
+                      <p className="text-xs text-warning">{a.average_heartrate.toFixed(0)} bpm</p>
                     )}
                     {a.distance_meters != null && !['weighttraining', 'workout', 'crossfit', 'strength_training'].includes(a.sport_type) && (
-                      <p className="text-sm text-slate-300">{formatDistance(a.distance_meters)}</p>
+                      <p className="text-sm text-muted">{formatDistance(a.distance_meters)}</p>
                     )}
                     {a.duration_seconds != null && (
                       <p className="text-xs text-muted">{formatDuration(a.duration_seconds)}</p>
@@ -461,7 +469,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
             </span>
           )}
           {isDone && (
-            <span className="text-xs font-medium text-green-400">✓ Completed</span>
+            <span className="text-xs font-medium text-positive">✓ Completed</span>
           )}
           {isRest && (
             <span className="text-xs font-medium text-gray-400">Recovery day</span>
@@ -482,7 +490,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
         {!isRest && (
           <div className="flex items-center gap-4 mt-2 text-xs">
             {day.planned_duration_min != null && (
-              <span className="text-slate-300">⏱ {day.planned_duration_min} min</span>
+              <span className="text-muted">⏱ {day.planned_duration_min} min</span>
             )}
             {day.planned_tss != null && (
               <span className="text-blue-400">⚡ {day.planned_tss} TSS</span>
@@ -531,7 +539,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
       {/* Actual activity summary */}
       {day.actual_activity && (
         <div className="shrink-0 text-right">
-          <p className="text-xs text-green-400 font-medium">Done</p>
+          <p className="text-xs text-positive font-medium">Done</p>
           {day.actual_activity.distance_meters != null && (
             <p className="text-xs text-muted">{(day.actual_activity.distance_meters / 1000).toFixed(1)} km</p>
           )}

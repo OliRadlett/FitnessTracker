@@ -77,7 +77,7 @@ const TEMPLATE_OPTIONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  active: 'bg-green-500/20 text-green-400 border-green-500/30',
+  active: 'bg-green-500/20 text-positive border-green-500/30',
   completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   archived: 'bg-gray-500/20 text-gray-500 border-gray-500/30',
 };
@@ -681,7 +681,7 @@ function PlanEditor({
                   onDeletePlan(plan.id);
                 }
               }}
-              className="px-3 py-1.5 bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg text-sm font-medium hover:bg-red-600/30 transition-colors"
+              className="px-3 py-1.5 bg-red-600/20 text-warning border border-red-600/30 rounded-lg text-sm font-medium hover:bg-red-600/30 transition-colors"
             >
               🗑️ Delete
             </button>
@@ -742,7 +742,7 @@ function PlanEditor({
       {/* Week view: day cards */}
       {activeTab !== 'all' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
             {activeDates.map((dateStr) => {
               const day = daysByDate.get(dateStr);
               const ptype = day?.planned_type ?? 'rest';
@@ -1069,7 +1069,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
       )}
 
       {copyError && (
-        <p className="text-xs text-red-400 px-1">{copyError}</p>
+        <p className="text-xs text-warning px-1">{copyError}</p>
       )}
 
       {/* Sport */}
@@ -1344,7 +1344,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                 <button
                   onClick={() => removeExercise(idx)}
                   title="Remove exercise"
-                  className="col-span-6 sm:col-span-2 text-xs text-muted hover:text-red-400 py-1"
+                  className="col-span-6 sm:col-span-2 text-xs text-muted hover:text-warning py-1"
                 >
                   ✕ Remove
                 </button>

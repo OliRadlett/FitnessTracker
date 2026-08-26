@@ -42,7 +42,7 @@ export function FtpSection({
           </div>
         </CardHeader>
         {backfillFtpResult && (
-          <p className={`text-xs mb-3 ${backfillFtpResult.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>
+          <p className={`text-xs mb-3 ${backfillFtpResult.startsWith('Error') ? 'text-warning' : 'text-positive'}`}>
             {backfillFtpResult}
           </p>
         )}
@@ -50,7 +50,7 @@ export function FtpSection({
           Current FTP: <span className="text-yellow-400 font-mono font-bold">{profile?.ftp_watts ?? '—'} W</span>
           {profile?.weight_kg && profile?.ftp_watts && (
             <span className="ml-4">
-              W/kg: <span className="text-green-400 font-mono font-bold">
+              W/kg: <span className="text-positive font-mono font-bold">
                 {(profile.ftp_watts / profile.weight_kg).toFixed(2)}
               </span>
             </span>
@@ -121,7 +121,7 @@ export function FtpSection({
                       {pb.best_power_watts} W
                     </td>
                     {profile?.weight_kg && (
-                      <td className="py-2 text-right text-green-400 font-mono">
+                      <td className="py-2 text-right text-positive font-mono">
                         {(pb.best_power_watts! / profile.weight_kg).toFixed(2)}
                       </td>
                     )}

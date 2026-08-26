@@ -174,7 +174,8 @@ export default function SettingsPage() {
         body: JSON.stringify({ home_lat: lat, home_lng: lng }),
       });
       setLocationResult('Location saved');
-      queryClient.invalidateQueries({ queryKey: ['weather'] });
+      queryClient.invalidateQueries({ queryKey: ['weather-current'] });
+      queryClient.invalidateQueries({ queryKey: ['weather-forecast'] });
     } catch (err) {
       setLocationResult(`Error: ${err instanceof Error ? err.message : 'Save failed'}`);
     } finally {
@@ -342,7 +343,7 @@ export default function SettingsPage() {
                       </p>
                     )}
                     {isConnected && connection?.status === 'needs_reauth' && (
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="text-xs text-warning mt-1">
                         Sync is paused — please re-authorise to resume.
                       </p>
                     )}
@@ -363,7 +364,7 @@ export default function SettingsPage() {
                       {connection!.status === 'needs_reauth' ? (
                         <button
                           onClick={() => handleConnect(integration.id)}
-                          className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors"
+                          className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors"
                         >
                           Reconnect
                         </button>
@@ -378,7 +379,7 @@ export default function SettingsPage() {
                       )}
                       <button
                         onClick={() => handleDisconnect(connection!.id)}
-                        className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
                         Disconnect
                       </button>
@@ -404,7 +405,7 @@ export default function SettingsPage() {
         {syncResult && (
           <div
             className={`mx-6 mb-4 p-3 rounded-lg bg-background text-sm ${
-              syncResult.startsWith('Error:') ? 'text-red-400' : 'text-muted'
+              syncResult.startsWith('Error:') ? 'text-warning' : 'text-muted'
             }`}
           >
             {syncResult}
@@ -413,7 +414,7 @@ export default function SettingsPage() {
         {oauthNotice && (
           <div
             className={`mx-6 mb-4 p-3 rounded-lg bg-background text-sm ${
-              oauthNotice.startsWith('Connection failed') ? 'text-red-400' : 'text-green-400'
+              oauthNotice.startsWith('Connection failed') ? 'text-warning' : 'text-positive'
             }`}
           >
             {oauthNotice}
@@ -682,13 +683,13 @@ export default function SettingsPage() {
       {/* Danger Zone */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-red-400">Danger Zone</CardTitle>
+          <CardTitle className="text-warning">Danger Zone</CardTitle>
         </CardHeader>
         <div className="px-6 pb-6">
           <p className="text-sm text-muted mb-4">
             Delete your account and all associated data. This action cannot be undone.
           </p>
-          <button className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors">
+          <button className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors">
             Delete Account
           </button>
         </div>

@@ -582,6 +582,11 @@ async def sync_whoop_sleep(
         if record.get("score_state") != "SCORED":
             continue
 
+        # Skip naps — we only track overnight sleep. Whoop marks daytime naps
+        # with the `nap` boolean; without this guard naps inflate sleep totals.
+        if record.get("nap"):
+            continue
+
         score = record.get("score")
         if not score:
             continue
@@ -1797,6 +1802,19 @@ async def backfill_whoop_chunked(
     chunks_failed = 0
 
     _CHUNK_DELAY_SECONDS = 5  # Pause between chunks to avoid Whoop rate limits
+
+    # Emit an initial progress event so the UI shows a bar immediately. The
+    # first real chunk's data fetch (rate-limited recovery lookups) can take
+    # a while, and without this the progress bar appears to never load even
+    # though the backfill is running.
+    yield {
+        "type": "progress",
+        "chunk": 0,
+        "total_chunks": total_chunks,
+        "window_start": chunks[0][0].date().isoformat() if chunks else None,
+        "window_end": chunks[-1][1].date().isoformat() if chunks else None,
+        **agg,
+    }
 
     for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
         # Pause between chunks to respect Whoop rate limits

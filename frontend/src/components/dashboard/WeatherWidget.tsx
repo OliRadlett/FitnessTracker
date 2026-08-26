@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch, getCurrentWeather } from '@/lib/api';
 import type { CurrentWeather } from '@/lib/api';
@@ -29,9 +30,9 @@ export function WeatherWidget() {
       </div>
 
       {!weather ? (
-        <p className="text-xs text-muted flex items-center gap-1.5 py-1">
+        <Link href="/settings" className="text-xs text-muted flex items-center gap-1.5 py-1 hover:text-white transition-colors">
           <span aria-hidden="true">📍</span> Set your home location in Settings
-        </p>
+        </Link>
       ) : (
         <>
           <div className="flex items-center gap-3">
@@ -41,7 +42,7 @@ export function WeatherWidget() {
             <p className="text-2xl font-bold text-white leading-none">
               {Math.round(weather.temperature)}°C
             </p>
-            <p className="text-sm text-slate-300">{weather.conditions}</p>
+            <p className="text-sm text-muted">{weather.conditions}</p>
           </div>
           <p className="text-xs text-muted mt-2">
             Feels {Math.round(weather.apparent_temperature)}°C · 💨{' '}

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityDetail, ChartData, ActivityFilters, RideAnalysis } from '@/lib/api';
+import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
@@ -178,6 +179,7 @@ export default function ActivitiesPage() {
   usePageTitle('Activities');
   const { authFetch, authFetchWithHeaders, authUpload } = useAuthFetch();
   const queryClient = useQueryClient();
+  const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'week' | 'stats'>('list');
@@ -185,6 +187,17 @@ export default function ActivitiesPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const PAGE_SIZE = 50;
+
+  // Deep-link: select the activity referenced by ?activity=<id> on load
+  useEffect(() => {
+    const id = getParam('activity');
+    if (id) setSelectedActivityId((prev) => (prev === id ? prev : id));
+  }, [getParam]);
+
+  const handleSelectActivity = useCallback((id: string | null) => {
+    setSelectedActivityId(id);
+    setParam('activity', id);
+  }, [setParam]);
 
   // ── Advanced filters state ───────────────────────────────────────────────
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -363,6 +376,15 @@ export default function ActivitiesPage() {
     enabled: !!selectedActivityId,
   });
 
+  // Deep-linked activity that isn't in the currently loaded list (e.g. opened
+  // from route history or calendar) — render its detail from the fetched record.
+  const selectedActivity = useMemo(() => {
+    if (!selectedActivityId) return undefined;
+    const inList = displayActivities.find((a) => a.id === selectedActivityId);
+    if (inList) return inList;
+    return activityDetail;
+  }, [selectedActivityId, displayActivities, activityDetail]);
+
   // Group activities by ISO week for week view
   const weekGroups = useMemo(() => {
     if (displayActivities.length === 0 || viewMode !== 'week') return [];
@@ -473,7 +495,7 @@ export default function ActivitiesPage() {
             <ActivityCard
               activity={activity}
               isSelected={selectedActivityId === activity.id}
-              onSelect={() => setSelectedActivityId(selectedActivityId === activity.id ? null : activity.id)}
+              onSelect={() => handleSelectActivity(selectedActivityId === activity.id ? null : activity.id)}
               showCompareCheckbox={viewMode === 'list'}
               isCompareSelected={selectedForComparison.has(activity.id)}
               onToggleCompare={() => toggleCompare(activity.id)}
@@ -603,7 +625,7 @@ export default function ActivitiesPage() {
           {/* Status message */}
           {importMessage && (
             <span
-              className={`text-sm ${importMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}
+              className={`text-sm ${importMessage.type === 'success' ? 'text-positive' : 'text-warning'}`}
             >
               {importMessage.type === 'success' ? '\u2713' : '\u2717'} {importMessage.text}
             </span>
@@ -819,7 +841,7 @@ export default function ActivitiesPage() {
                 <ActivityCard
                   activity={activity}
                   isSelected={selectedActivityId === activity.id}
-                  onSelect={() => setSelectedActivityId(selectedActivityId === activity.id ? null : activity.id)}
+                  onSelect={() => handleSelectActivity(selectedActivityId === activity.id ? null : activity.id)}
                   showCompareCheckbox={viewMode === 'list' && !selectMode}
                   isCompareSelected={selectedForComparison.has(activity.id)}
                   onToggleCompare={() => toggleCompare(activity.id)}
@@ -843,6 +865,18 @@ export default function ActivitiesPage() {
         />
       )}
       </div>
+
+      {/* Deep-linked activity outside the loaded list */}
+      {selectedActivity && !displayActivities.some((a) => a.id === selectedActivity.id) && (
+        <div className="space-y-3">
+          <ActivityCard
+            activity={selectedActivity}
+            isSelected
+            onSelect={() => handleSelectActivity(null)}
+          />
+          <ActivityExpanded activity={selectedActivity} activityDetail={activityDetail} />
+        </div>
+      )}
 
       {/* Load More */}
       {!isLoading && viewMode !== 'stats' && displayActivities.length > 0 && hasMore && (

@@ -63,7 +63,7 @@ function fmtMetricValue(metric: string, v: number | null | undefined): string {
 
 function deviationColor(deviationPct: number | null): string {
   if (deviationPct == null || deviationPct === 0) return 'text-muted';
-  return deviationPct > 0 ? 'text-red-400' : 'text-blue-300';
+  return deviationPct > 0 ? 'text-warning' : 'text-blue-300';
 }
 
 function fmtDeviation(deviationPct: number | null): string {
@@ -132,7 +132,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
       )}
 
       {query.isError && (
-        <p className="text-[11px] text-red-400">
+        <p className="text-[11px] text-warning">
           Failed to load conformity: {(query.error as Error).message}
         </p>
       )}

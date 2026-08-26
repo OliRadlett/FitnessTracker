@@ -152,7 +152,7 @@ export function ExerciseGroup({
                           <button
                             onClick={() => saveEdit(set.id)}
                             disabled={isUpdating}
-                            className="text-positive hover:text-green-400 text-xs font-medium px-2 py-0.5 rounded bg-positive/10 disabled:opacity-50"
+                            className="text-positive hover:text-positive text-xs font-medium px-2 py-0.5 rounded bg-positive/10 disabled:opacity-50"
                           >
                             Save
                           </button>
@@ -168,7 +168,7 @@ export function ExerciseGroup({
                   ) : (
                     <>
                       <td className="py-2 px-3 text-right text-blue-400">{set.weight_kg} kg</td>
-                      <td className="py-2 px-3 text-right text-green-400">{set.reps}</td>
+                      <td className="py-2 px-3 text-right text-positive">{set.reps}</td>
                       <td className="py-2 px-3 text-right text-yellow-400">{set.rpe ?? '—'}</td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex justify-center gap-1">

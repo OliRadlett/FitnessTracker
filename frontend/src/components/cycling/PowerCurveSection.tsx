@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { ChartData, PowerCurveResponse, PowerZonesResponse, HrZonesResponse, PowerVsHrResponse } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api';
@@ -197,7 +198,13 @@ export function PowerCurveSection({
           </CardHeader>
           <ChartBody
             data={chartWeightTrend}
-            emptyMessage="No weight data available. Log weight in settings or sync from Whoop."
+            emptyMessage={
+              <>
+                No weight data available.{' '}
+                <Link href="/settings" className="text-accent hover:text-accent-hover underline">Log weight in settings</Link>{' '}
+                or sync from Whoop.
+              </>
+            }
             height={280}
           />
         </Card>

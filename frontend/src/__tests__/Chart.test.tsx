@@ -95,6 +95,21 @@ describe('Chart rendering', () => {
     expect(container.querySelector('.recharts-scatter')).toBeInTheDocument();
   });
 
+  it('renders scatter with date labels as real x values (no NaN)', () => {
+    const data: ChartData = {
+      chart_type: 'scatter',
+      title: 'Decoupling Trend',
+      labels: ['2026-08-20', '2026-08-21', '2026-08-22'],
+      series: [{ name: 'Decoupling %', data: [4.2, 7.1, 3.8] }],
+      x_label: 'Date',
+      y_label: 'Decoupling %',
+    };
+    const { container } = render(<Chart data={data} height={300} />);
+    expect(container.querySelector('.recharts-scatter')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('NaN');
+    expect(container.textContent).not.toContain('undefined');
+  });
+
   it('renders heatmap chart type', () => {
     const data: ChartData = {
       chart_type: 'heatmap',

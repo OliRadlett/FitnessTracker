@@ -25,7 +25,7 @@ export function SummaryStatsBar({ activities }: { activities: Activity[] }) {
         <p className="text-xs text-muted">Activities</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
-        <p className="text-lg font-bold text-green-400">{formatDistance(stats.totalDistance)}</p>
+        <p className="text-lg font-bold text-positive">{formatDistance(stats.totalDistance)}</p>
         <p className="text-xs text-muted">Total Distance</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">

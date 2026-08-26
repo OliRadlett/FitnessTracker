@@ -90,7 +90,7 @@ export default function GoalsPage() {
           ))}
         </div>
       ) : isError ? (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-warning text-sm">
           ⚠️ {error instanceof Error ? error.message : 'Failed to load goals'}
         </div>
       ) : sortedGoals.length > 0 ? (

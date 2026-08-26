@@ -121,7 +121,7 @@ export function ProfileEditor({
         </button>
       </div>
       {saveMessage && (
-        <p className={`text-xs mt-2 ${saveMessage.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>
+        <p className={`text-xs mt-2 ${saveMessage.startsWith('Error') ? 'text-warning' : 'text-positive'}`}>
           {saveMessage}
         </p>
       )}
@@ -180,10 +180,10 @@ export function ProfileEditor({
                   {ftpEstimate.confidence != null && (
                     <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
                       ftpEstimate.confidence >= 0.8
-                        ? 'bg-green-500/20 text-green-400'
+                        ? 'bg-green-500/20 text-positive'
                         : ftpEstimate.confidence >= 0.5
                           ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-red-500/20 text-red-400'
+                          : 'bg-red-500/20 text-warning'
                     }`}>
                       {Math.round(ftpEstimate.confidence * 100)}% confidence
                     </span>
@@ -202,13 +202,13 @@ export function ProfileEditor({
               {!ftpEstimate.accepted && (
                 <button
                   onClick={onAcceptEstimate}
-                  className="px-3 py-1.5 text-xs bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
+                  className="px-3 py-1.5 text-xs bg-green-500/20 text-positive border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
                 >
                   ✓ Accept & Save
                 </button>
               )}
               {ftpEstimate.accepted && (
-                <span className="text-xs text-green-400 font-medium">✓ Saved as FTP</span>
+                <span className="text-xs text-positive font-medium">✓ Saved as FTP</span>
               )}
             </div>
 

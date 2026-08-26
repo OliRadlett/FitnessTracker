@@ -48,10 +48,10 @@ function computeDifficulty(
 }
 
 const DIFFICULTY_STYLES: Record<DifficultyLevel, string> = {
-  Easy: 'bg-green-500/20 text-green-400 border-green-500/30',
+  Easy: 'bg-green-500/20 text-positive border-green-500/30',
   Moderate: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   Hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  Extreme: 'bg-red-500/20 text-red-400 border-red-500/30',
+  Extreme: 'bg-red-500/20 text-warning border-red-500/30',
 };
 
 function DifficultyBadge({ level }: { level: DifficultyLevel }) {
@@ -271,7 +271,7 @@ export function CompareRoutesModal({
                   <td className="py-2 text-muted">Distance</td>
                   <td className="py-2 text-right text-white">{formatDistance(routeA.distance_meters)}</td>
                   <td className="py-2 text-right text-white">{formatDistance(routeB.distance_meters)}</td>
-                  <td className={`py-2 text-right ${distDelta > 0 ? 'text-green-400' : distDelta < 0 ? 'text-red-400' : 'text-muted'}`}>
+                  <td className={`py-2 text-right ${distDelta > 0 ? 'text-positive' : distDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {distDelta > 0 ? '+' : ''}{formatDistance(Math.abs(distDelta))}
                   </td>
                 </tr>
@@ -279,7 +279,7 @@ export function CompareRoutesModal({
                   <td className="py-2 text-muted">Elevation</td>
                   <td className="py-2 text-right text-white">{routeA.elevation_gain_meters != null ? fmtElevation(routeA.elevation_gain_meters) : '\u2014'}</td>
                   <td className="py-2 text-right text-white">{routeB.elevation_gain_meters != null ? fmtElevation(routeB.elevation_gain_meters) : '\u2014'}</td>
-                  <td className={`py-2 text-right ${elevDelta > 0 ? 'text-green-400' : elevDelta < 0 ? 'text-red-400' : 'text-muted'}`}>
+                  <td className={`py-2 text-right ${elevDelta > 0 ? 'text-positive' : elevDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {elevDelta > 0 ? '+' : ''}{fmtElevation(Math.abs(elevDelta))}
                   </td>
                 </tr>
@@ -293,7 +293,7 @@ export function CompareRoutesModal({
                   <td className="py-2 text-muted">Est. Time</td>
                   <td className="py-2 text-right text-white">{routeA.estimated_time_seconds ? fmtDurationShort(routeA.estimated_time_seconds) : '\u2014'}</td>
                   <td className="py-2 text-right text-white">{routeB.estimated_time_seconds ? fmtDurationShort(routeB.estimated_time_seconds) : '\u2014'}</td>
-                  <td className={`py-2 text-right ${timeDelta > 0 ? 'text-green-400' : timeDelta < 0 ? 'text-red-400' : 'text-muted'}`}>
+                  <td className={`py-2 text-right ${timeDelta > 0 ? 'text-positive' : timeDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {timeDelta > 0 ? '+' : ''}{timeDelta !== 0 ? fmtDurationShort(Math.abs(timeDelta)) : '\u2014'}
                   </td>
                 </tr>

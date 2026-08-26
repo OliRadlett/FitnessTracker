@@ -86,10 +86,10 @@ export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
 
               {pr.improvement_pct !== null && pr.improvement_pct > 0 && (
                 <div className="text-center ml-auto">
-                  <p className="text-lg font-bold text-green-400">
+                  <p className="text-lg font-bold text-positive">
                     +{pr.improvement_pct.toFixed(1)}%
                   </p>
-                  <p className="text-[10px] text-green-400/70">Improvement</p>
+                  <p className="text-[10px] text-positive/70">Improvement</p>
                 </div>
               )}
             </div>

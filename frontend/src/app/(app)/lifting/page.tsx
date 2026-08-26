@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
   PersonalRecord,
@@ -86,7 +88,13 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Strava</span>
-          <span className="text-sm font-medium text-white truncate max-w-[200px]">{activity.name}</span>
+          <Link
+            href={`/activities?activity=${activity.id}`}
+            className="text-sm font-medium text-white truncate max-w-[200px] hover:text-accent transition-colors"
+            title="View in Activities"
+          >
+            {activity.name}
+          </Link>
         </div>
         <button onClick={onUnlink} className="text-xs text-muted hover:text-warning transition-colors">
           Unlink
@@ -102,7 +110,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
         {activity.average_heartrate && (
           <div>
             <span className="text-muted">Avg HR</span>
-            <p className="text-red-400">{Math.round(activity.average_heartrate)} bpm</p>
+            <p className="text-warning">{Math.round(activity.average_heartrate)} bpm</p>
           </div>
         )}
         {activity.calories && (
@@ -122,6 +130,7 @@ export default function LiftingPage() {
   usePageTitle('Lifting');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
+  const { getParam, setParam } = useDeepLink();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -131,6 +140,17 @@ export default function LiftingPage() {
   const [showAccessories, setShowAccessories] = useState(false);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
+
+  // Deep-link: select the session referenced by ?session=<id> on load
+  useEffect(() => {
+    const id = getParam('session');
+    if (id) setSelectedSessionId((prev) => (prev === id ? prev : id));
+  }, [getParam]);
+
+  const handleSelectSession = useCallback((id: string | null) => {
+    setSelectedSessionId(id);
+    setParam('session', id);
+  }, [setParam]);
   const previousPRsRef = useRef<Map<string, number>>(new Map());
 
   const [newSession, setNewSession] = useState<CreateSessionPayload>({
@@ -243,7 +263,7 @@ export default function LiftingPage() {
     onSuccess: (newSession) => {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       setShowNewSession(false);
-      setSelectedSessionId(newSession.id);
+      handleSelectSession(newSession.id);
       setNewSession({ session_date: new Date().toISOString().split('T')[0], focus: '', notes: '' });
     },
   });
@@ -310,7 +330,7 @@ export default function LiftingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['personal-records'] });
-      setSelectedSessionId(null);
+      handleSelectSession(null);
       setConfirmDeleteSession(false);
     },
   });
@@ -429,7 +449,7 @@ export default function LiftingPage() {
         </div>
       )}
       {backfillMutation.isError && (
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400" role="alert">
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-warning" role="alert">
           Error: {backfillMutation.error instanceof Error ? backfillMutation.error.message : 'Auto-link failed'}
         </div>
       )}
@@ -500,7 +520,7 @@ export default function LiftingPage() {
             sessions.map((session) => (
               <Card
                 key={session.id}
-                onClick={() => { setSelectedSessionId(selectedSessionId === session.id ? null : session.id); setShowAddExercise(false); }}
+                onClick={() => { handleSelectSession(selectedSessionId === session.id ? null : session.id); setShowAddExercise(false); }}
                 className={selectedSessionId === session.id ? 'border-accent/50' : ''}
               >
                 <div className="flex items-center justify-between">
@@ -531,7 +551,8 @@ export default function LiftingPage() {
             <EmptyState
               icon="🏋️"
               title="No lifting sessions recorded"
-              description="Create your first session above to start tracking your strength training."
+              description="Create your first session above, or jump straight into the Live Lift tracker to start logging sets in real time."
+              action={{ label: '⚡ Start Live Session', href: '/lifting/live' }}
             />
           )}
           </div>
@@ -756,7 +777,7 @@ export default function LiftingPage() {
                     <p className="text-xs text-muted">Weight</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-green-400">{pr.reps}</p>
+                    <p className="text-lg font-bold text-positive">{pr.reps}</p>
                     <p className="text-xs text-muted">Reps</p>
                   </div>
                   <div>
@@ -796,7 +817,7 @@ export default function LiftingPage() {
               {/* Other Compounds */}
               {compoundPRs.length > 0 && (
                 <div>
-                  <h3 className="text-xs font-semibold text-green-400 uppercase tracking-wider mb-3">Compounds</h3>
+                  <h3 className="text-xs font-semibold text-positive uppercase tracking-wider mb-3">Compounds</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {compoundPRs.map((pr) => <PRCard key={pr.id} pr={pr} />)}
                   </div>

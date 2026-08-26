@@ -25,7 +25,7 @@ import { WeatherForecast } from '@/components/training/WeatherForecast';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  active: 'bg-green-500/20 text-green-400 border-green-500/30',
+  active: 'bg-green-500/20 text-positive border-green-500/30',
   completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   archived: 'bg-gray-500/20 text-gray-500 border-gray-500/30',
 };
@@ -110,7 +110,7 @@ export default function TrainingPage() {
   });
 
   const { data: periodizationChart } = useQuery<ChartData>({
-    queryKey: ['chart', 'periodization'],
+    queryKey: ['chart-periodization'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
   });
 
@@ -345,7 +345,7 @@ export default function TrainingPage() {
                             deleteEventMutation.mutate(evt.id);
                             setConfirmingDeleteId(null);
                           }}
-                          className="text-xs text-red-400 hover:text-red-300 font-medium"
+                          className="text-xs text-warning hover:text-red-300 font-medium"
                         >
                           Yes
                         </button>

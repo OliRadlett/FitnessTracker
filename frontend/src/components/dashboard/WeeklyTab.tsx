@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import type {
   DashboardSummary,
   MonthlySummaryItem,
@@ -133,9 +134,10 @@ export function WeeklyTab({
       {upcomingEvents && upcomingEvents.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {upcomingEvents.slice(0, 3).map(evt => (
-            <div
+            <Link
               key={evt.id}
-              className={`rounded-xl p-4 border ${
+              href="/training"
+              className={`rounded-xl p-4 border block transition-colors hover:border-accent/40 ${
                 evt.is_in_taper
                   ? 'bg-purple-900/20 border-purple-500/30'
                   : 'bg-surface border-surface-light/50'
@@ -161,7 +163,7 @@ export function WeeklyTab({
               {evt.days_until_taper !== undefined && evt.days_until_taper > 0 && evt.days_until_taper <= 14 && (
                 <p className="text-xs text-muted mt-1">Taper starts in {evt.days_until_taper} days</p>
               )}
-            </div>
+            </Link>
           ))}
         </div>
       )}
@@ -195,7 +197,7 @@ export function WeeklyTab({
             color={
               (summary?.latest_strain ?? 0) >= 14 ? 'text-warning'
               : (summary?.latest_strain ?? 0) >= 10 ? 'text-yellow-400'
-              : 'text-green-400'
+              : 'text-positive'
             }
             icon="💪"
             tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
@@ -204,7 +206,7 @@ export function WeeklyTab({
             label="Active Alerts"
             value={summary?.active_alerts_count ?? 0}
             subtitle="Health warnings"
-            color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-green-400'}
+            color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-positive'}
             icon="🔔"
             tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies."
           />
@@ -231,7 +233,7 @@ export function WeeklyTab({
                 label="Distance"
                 value={summary ? `${(summary.weekly_distance_meters / 1000).toFixed(1)} km` : '—'}
                 subtitle="Cycling, running, etc."
-                color="text-green-400"
+                color="text-positive"
                 icon="🚴"
                 tooltip="Total cardio distance this week across all activities."
               />
@@ -260,7 +262,7 @@ export function WeeklyTab({
                 color={
                   (summary?.latest_strain ?? 0) >= 14 ? 'text-warning'
                   : (summary?.latest_strain ?? 0) >= 10 ? 'text-yellow-400'
-                  : 'text-green-400'
+                  : 'text-positive'
                 }
                 icon="💪"
                 tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out."
@@ -288,12 +290,14 @@ export function WeeklyTab({
         {hasWhoop ? (
           <WhoopWeeklyCard data={whoopWeekly!} />
         ) : (
-          <Card className="flex items-center justify-center text-muted">
-            <div className="text-center py-8">
-              <p className="text-3xl mb-2">🩺</p>
-              <p className="text-sm">Connect Whoop for weekly health insights</p>
-            </div>
-          </Card>
+          <Link href="/settings" className="block">
+            <Card className="flex items-center justify-center text-muted transition-colors hover:border-accent/40">
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2">🩺</p>
+                <p className="text-sm">Connect Whoop for weekly health insights</p>
+              </div>
+            </Card>
+          </Link>
         )}
       </div>
 
@@ -440,9 +444,9 @@ export function WeeklyTab({
               value={streaks.weekly_consistency_pct > 0 ? `${streaks.weekly_consistency_pct}%` : '—'}
               subtitle="Weeks with ≥3 sessions"
               color={
-                streaks.weekly_consistency_pct >= 75 ? 'text-green-400'
+                streaks.weekly_consistency_pct >= 75 ? 'text-positive'
                 : streaks.weekly_consistency_pct >= 50 ? 'text-yellow-400'
-                : 'text-red-400'
+                : 'text-warning'
               }
               icon="📊"
               tooltip="Percentage of weeks where you completed 3+ training sessions. 75%+ is excellent consistency."
@@ -538,11 +542,11 @@ export function WeeklyTab({
                     </div>
                     <div>
                       <p className="text-xs text-muted">Distance</p>
-                      <p className="text-sm font-bold text-green-400">{(month.total_distance_meters / 1000).toFixed(0)} km</p>
+                      <p className="text-sm font-bold text-positive">{(month.total_distance_meters / 1000).toFixed(0)} km</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted">Time</p>
-                      <p className="text-sm font-bold text-slate-300">{(month.total_time_seconds / 3600).toFixed(1)}h</p>
+                      <p className="text-sm font-bold text-muted">{(month.total_time_seconds / 3600).toFixed(1)}h</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted">Sessions</p>
@@ -556,9 +560,9 @@ export function WeeklyTab({
                     <div>
                       <p className="text-xs text-muted">Avg Recovery</p>
                       <p className={`text-sm font-bold ${
-                        (month.avg_recovery ?? 0) >= 70 ? 'text-green-400'
+                        (month.avg_recovery ?? 0) >= 70 ? 'text-positive'
                         : (month.avg_recovery ?? 0) >= 50 ? 'text-yellow-400'
-                        : 'text-red-400'
+                        : 'text-warning'
                       }`}>
                         {month.avg_recovery?.toFixed(0) ?? '—'}%
                       </p>
@@ -650,8 +654,8 @@ export function WeeklyTab({
                   <span
                     key={item.label}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
-                      (item.value ?? 0) > 0 ? 'bg-green-500/15 text-green-400 border border-green-500/20'
-                      : (item.value ?? 0) < 0 ? 'bg-red-500/15 text-red-400 border border-red-500/20'
+                      (item.value ?? 0) > 0 ? 'bg-green-500/15 text-positive border border-green-500/20'
+                      : (item.value ?? 0) < 0 ? 'bg-red-500/15 text-warning border border-red-500/20'
                       : 'bg-surface-light text-muted border border-surface-light'
                     }`}
                   >
@@ -668,11 +672,11 @@ export function WeeklyTab({
             {/* Year totals */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <MetricCard label="Activities" value={yearlySummary.total_activities} subtitle="Cardio sessions" color="text-blue-400" icon="🚴" />
-              <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-green-400" icon="📏" />
+              <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-positive" icon="📏" />
               <MetricCard label="TSS" value={yearlySummary.total_tss.toFixed(0)} subtitle="Training Stress" color="text-accent" icon="⚡" />
               <MetricCard label="Lifting" value={`${yearlySummary.total_lifting_sessions}`} subtitle={`${(yearlySummary.total_lifting_volume_kg / 1000).toFixed(0)}k kg vol`} color="text-purple-400" icon="🏋️" />
-              <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-slate-300" icon="⏱️" />
-              <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-green-400' : 'text-yellow-400'} icon="❤️" />
+              <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-muted" icon="⏱️" />
+              <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-yellow-400'} icon="❤️" />
             </div>
 
             {/* Highlight cards */}
@@ -694,7 +698,7 @@ export function WeeklyTab({
               {yearlySummary.highlights.longest_ride && (
                 <div className="bg-surface rounded-xl border border-surface-light/50 p-4">
                   <p className="text-xs font-medium text-muted uppercase tracking-wider mb-1">🚴 Longest Ride</p>
-                  <p className="text-lg font-bold text-green-400">{yearlySummary.highlights.longest_ride.value} {yearlySummary.highlights.longest_ride.unit}</p>
+                  <p className="text-lg font-bold text-positive">{yearlySummary.highlights.longest_ride.value} {yearlySummary.highlights.longest_ride.unit}</p>
                   <p className="text-xs text-muted truncate">{yearlySummary.highlights.longest_ride.name}</p>
                 </div>
               )}
@@ -726,7 +730,7 @@ export function WeeklyTab({
                       <div className="text-right">
                         <p className="text-xs text-muted">{new Date(pr.achieved_date).toLocaleDateString()}</p>
                         {pr.improvement_pct !== null && pr.improvement_pct !== undefined && (
-                          <span className={`text-xs font-medium ${pr.improvement_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          <span className={`text-xs font-medium ${pr.improvement_pct >= 0 ? 'text-positive' : 'text-warning'}`}>
                             {pr.improvement_pct > 0 ? '+' : ''}{pr.improvement_pct}%
                           </span>
                         )}
