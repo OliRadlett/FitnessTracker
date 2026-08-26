@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Sidebar, SidebarProvider, MobileMenuButton } from '@/components/Sidebar';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncHealthBanner } from '@/components/sync/SyncHealthBanner';
@@ -36,6 +37,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen bg-background">
         <PageLoadingBar />
         <MobileMenuButton />
+        <NotificationBell />
         <Sidebar />
         <main role="main" className="flex-1 overflow-auto">
           <div className="p-4 pt-16 md:p-8">

@@ -20,6 +20,10 @@ class User(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Per-user in-app notification toggles, e.g.
+    # {"health_alert": true, "pr": true, "goal_milestone": true, "plan_reminder": true}.
+    # NULL means all-on (service falls back to defaults).
+    notification_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -74,6 +78,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
     fuel_plans: Mapped[list["RideFuelPlan"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
+    notifications: Mapped[list["Notification"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
 

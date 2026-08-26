@@ -19,3 +19,4 @@
 | `nutrition.py` | `FuelPlanCreate`, `RideFuelPlanRead`, `FuelScheduleEntry`, `FuelPlanActualsUpdate` (ride fuel plan contract) |
 | `weather.py` | `CurrentWeatherResponse`, `ForecastDay`, `ForecastResponse`, `ActivityWeatherResponse`, `TagActivityResponse` (Open-Meteo normalized contract) |
 | `projections.py` | `TrendInfo` (slope_per_day/week, r_squared, data_points), `ProjectionPoint` (date+value), `GoalProjectionResponse` (goal projection with badge/history/projection_line), `MetricTrendResponse` (metric trend with classification), `TsbProjectionPoint` (date/ctl/atl/tsb), `TsbProjectionResponse` (plan TSB projection with freshness_assessment) |
+| `notification.py` | `NotificationRead` (id/type/title/body/severity/link/read/created_at/payload — payload maps the ORM `payload` attr → DB `metadata` column), `NotificationPreferences` (4 toggles), `NotificationPreferencesUpdate` (partial) |

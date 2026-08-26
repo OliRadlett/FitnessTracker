@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
+import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -679,6 +680,9 @@ export default function SettingsPage() {
 
       {/* Exercise Library */}
       <ExerciseManager />
+
+      {/* Notifications */}
+      <NotificationSettings />
 
       {/* Danger Zone */}
       <Card>

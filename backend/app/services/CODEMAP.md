@@ -32,3 +32,4 @@
 | `cache.py` | Redis-backed response caching + distributed locks | `cached()`, `redis_lock()` |
 | `metrics.py` | Prometheus counters for sync outcomes (`SYNC_RUNS`, `CONNECTION_REAUTH`, `WEBHOOK_EVENTS`) | module-level counters |
 | `strava/webhook_queue.py` | Async Strava webhook event processing (drain `strava_webhook_events` oldest-first with attempts/error + retry-then-fail) + weekly reconciliation against the Strava list (heals missed deletes/renames in a bounded window) | `process_pending_strava_events()`, `reconcile_strava_activities()` |
+| `notifications.py` | In-app notifications (Feature 1): preference-gated (`User.notification_preferences`, NULL = all on), dedup-keyed idempotent creation, no commit (caller owns txn). Wired from health alerts (`upsert_alert` on new alert), PRs (`lifting._notify_pr`), goal milestones + plan reminders (scheduler tasks) | `notify()`, `get_notification_preferences()`, `set_notification_preferences()` |

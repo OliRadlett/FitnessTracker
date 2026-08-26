@@ -473,6 +473,28 @@ async def delete_set(db: AsyncSession, set_id: uuid.UUID, user_id: uuid.UUID) ->
 # ── Personal Records ──────────────────────────────────────────────────────────
 
 
+async def _notify_pr(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    pr: PersonalRecord,
+) -> None:
+    """Fire an in-app PR notification (deduped per exercise + achieved date)."""
+    from app.services.notifications import notify
+
+    est = f"{pr.estimated_1rm:.1f}" if pr.estimated_1rm else "—"
+    await notify(
+        db,
+        user_id,
+        type="pr",
+        title=f"{pr.exercise_name} PR",
+        body=f"{pr.weight_kg:.1f} kg × {pr.reps} — e1RM {est} kg",
+        severity="success",
+        link="/lifting",
+        dedup_key=f"pr:{pr.exercise_name}:{pr.achieved_date}",
+        metadata={"exercise": pr.exercise_name},
+    )
+
+
 async def get_prs(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -522,6 +544,7 @@ async def _check_and_record_pr(
             session_id=session.id,
         )
         db.add(pr)
+        await _notify_pr(db, user_id, pr)
         return pr
     elif estimated_1rm > (current_pr.estimated_1rm or 0):
         # Update existing PR in-place (deduplication)
@@ -530,6 +553,7 @@ async def _check_and_record_pr(
         current_pr.estimated_1rm = estimated_1rm
         current_pr.achieved_date = session.session_date
         current_pr.session_id = session.id
+        await _notify_pr(db, user_id, current_pr)
         return current_pr
 
     return None
@@ -586,6 +610,7 @@ async def _recalculate_pr_after_set_change(
 
     if existing_pr:
         # Update the existing PR with the new best
+        previous_1rm = existing_pr.estimated_1rm or 0
         best_session = await db.get(LiftingSession, best_set.session_id)
         existing_pr.weight_kg = best_set.weight_kg
         existing_pr.reps = best_set.reps
@@ -593,6 +618,10 @@ async def _recalculate_pr_after_set_change(
         existing_pr.session_id = best_set.session_id
         if best_session:
             existing_pr.achieved_date = best_session.session_date
+        # Only notify when this recalculation genuinely improved the PR (a
+        # set deletion that lowers it must not fire a "new PR" notification).
+        if best_1rm > previous_1rm:
+            await _notify_pr(db, user_id, existing_pr)
         return existing_pr
     else:
         # Create a new PR for the remaining best set
@@ -608,6 +637,7 @@ async def _recalculate_pr_after_set_change(
             session_id=best_set.session_id,
         )
         db.add(pr)
+        await _notify_pr(db, user_id, pr)
         return pr
 
 
@@ -801,6 +831,7 @@ async def create_manual_pr(
         if data.notes:
             existing_pr.notes = data.notes
         await db.flush()
+        await _notify_pr(db, user_id, existing_pr)
         return existing_pr
     elif existing_pr:
         # Existing PR is still better — return it unchanged
@@ -819,6 +850,7 @@ async def create_manual_pr(
         )
         db.add(pr)
         await db.flush()
+        await _notify_pr(db, user_id, pr)
         return pr
 
 

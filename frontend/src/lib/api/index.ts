@@ -20,3 +20,4 @@ export * from './weather';
 export * from './conformity';
 export * from './projections';
 export * from './exercises';
+export * from './notifications';

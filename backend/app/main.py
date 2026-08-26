@@ -200,6 +200,7 @@ from app.api.goals import router as goals_router
 from app.api.lifting import router as lifting_router
 from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
+from app.api.notifications import router as notifications_router
 from app.api.nutrition import router as nutrition_router
 from app.api.projections import router as projections_router
 from app.api.routes import router as routes_router
@@ -221,6 +222,9 @@ app.include_router(routes_router, prefix="/api/v1/routes", tags=["routes"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
+app.include_router(
+    notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
+)
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(
     deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"]

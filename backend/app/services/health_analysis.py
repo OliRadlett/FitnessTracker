@@ -745,4 +745,19 @@ async def upsert_alert(
         detected_date=date.today(),
     )
     db.add(alert)
+    # Fire an in-app notification for the new alert (idempotent via alert id).
+    from app.services.notifications import notify
+
+    severity_map = {"critical": "error", "warning": "warning", "info": "info"}
+    await notify(
+        db,
+        user_id,
+        type="health_alert",
+        title=analysis["title"],
+        body=analysis["description"],
+        severity=severity_map.get(analysis["severity"], "warning"),
+        link="/dashboard",
+        dedup_key=f"alert:{alert.id}",
+        metadata={"alert_type": analysis["alert_type"]},
+    )
     return True

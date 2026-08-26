@@ -20,3 +20,4 @@
 | `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |
 | `webhook_event.py` | `StravaWebhookEvent` | Async Strava webhook queue: raw payload, received_at, processed_at, attempts, status (pending/processed/failed), error. Drained by `process_strava_webhook_events` Celery task |
+| `notification.py` | `Notification` | In-app notifications: type (health_alert/pr/goal_milestone/plan_reminder), title/body, severity, link, read/read_at, dedup_key (partial unique (user_id, dedup_key)), `payload` Python attr → DB column `metadata` (SQLAlchemy reserves the attr name). Per-user toggles live in `User.notification_preferences` (JSONB) |
