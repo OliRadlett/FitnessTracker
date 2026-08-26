@@ -172,6 +172,75 @@ class TestSyncActivities:
             await sync_activities(db_session, test_user.id)
 
 
+# ── sync_activities truncation guard ──────────────────────────────────────
+
+
+class TestSyncActivitiesTruncation:
+    """sync_activities() pagination + truncation signalling."""
+
+    async def test_reports_truncated_when_backlog_exceeds_limit(
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
+    ):
+        """When the limit is hit on a full page and more items remain, the
+        ``truncated_ref`` flag is set so callers can hold the watermark."""
+        from app.services.strava.sync import sync_activities
+
+        acts = strava_responses["activities"][:2]
+
+        async def fake_get_activities(**kwargs):
+            page = kwargs.get("page", 1)
+            return [acts[0]] if page == 1 else [acts[1]]
+
+        with patch("app.services.strava.sync.strava_client") as mock_client:
+            mock_client.get_activities = AsyncMock(side_effect=fake_get_activities)
+            mock_client.get_activity_streams = AsyncMock(
+                return_value=strava_responses["activity_streams"],
+            )
+
+            truncated_ref: list[bool] = []
+            synced = await sync_activities(
+                db_session, test_user.id, limit=1, truncated_ref=truncated_ref
+            )
+
+        assert truncated_ref == [True]
+        assert len(synced) == 1  # only the capped page was processed this run
+
+    async def test_not_truncated_when_backlog_drained(
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
+    ):
+        """When the probe page is empty, truncation is False — the window is
+        fully drained and the watermark may advance."""
+        from app.services.strava.sync import sync_activities
+
+        acts = strava_responses["activities"][:1]
+
+        async def fake_get_activities(**kwargs):
+            page = kwargs.get("page", 1)
+            return acts if page == 1 else []
+
+        with patch("app.services.strava.sync.strava_client") as mock_client:
+            mock_client.get_activities = AsyncMock(side_effect=fake_get_activities)
+            mock_client.get_activity_streams = AsyncMock(
+                return_value=strava_responses["activity_streams"],
+            )
+
+            truncated_ref: list[bool] = []
+            synced = await sync_activities(
+                db_session, test_user.id, limit=1, truncated_ref=truncated_ref
+            )
+
+        assert truncated_ref == [False]
+        assert len(synced) == 1
+
+
 # ── backfill_all_activities ──────────────────────────────────────────────
 
 

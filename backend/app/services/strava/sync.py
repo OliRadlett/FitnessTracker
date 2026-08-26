@@ -68,20 +68,15 @@ async def get_strava_connection(
 async def refresh_if_needed(
     db: AsyncSession, connection: OAuthConnection
 ) -> OAuthConnection:
-    """Refresh the access token if it's expired."""
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(UTC):
-        if not connection.refresh_token:
-            raise ValueError("No refresh token available")
-        token_data = await strava_client.refresh_access_token(connection.refresh_token)
-        connection.access_token = token_data["access_token"]
-        connection.refresh_token = token_data.get(
-            "refresh_token", connection.refresh_token
-        )
-        connection.token_expires_at = datetime.fromtimestamp(
-            token_data["expires_at"], tz=UTC
-        )
-        await db.flush()
-    return connection
+    """Refresh the access token if it's expired (hardened path).
+
+    Row-locked and health-state-aware via
+    :func:`app.services.connection_health.refresh_connection`.
+    """
+    from app.integrations.strava_client import strava_client
+    from app.services.connection_health import refresh_connection
+
+    return await refresh_connection(db, connection, strava_client)
 
 
 # ── Activity creation helpers ───────────────────────────────────────────────
@@ -152,12 +147,18 @@ async def sync_activities(
     user_id: uuid.UUID,
     after: datetime | None = None,
     limit: int = 100,
+    truncated_ref: list[bool] | None = None,
 ) -> list[Activity]:
     """Fetch and store recent Strava activities for a user.
 
     Uses the merge engine to detect duplicates with existing activities
     from other providers (Wahoo, Komoot). Creates ActivitySource records
     for all synced activities.
+
+    Paginates through the sync window (newest first) so a backlog larger
+    than ``limit`` is not silently truncated. When the run stops because
+    the cap was hit on a full page, ``truncated_ref`` (if supplied) is
+    appended with ``True`` so callers know not to advance the watermark.
     """
     from app.services.merge_service import (
         find_duplicate_activity,
@@ -172,85 +173,118 @@ async def sync_activities(
 
     connection = await refresh_if_needed(db, connection)
 
-    strava_activities = await strava_client.get_activities(
-        access_token=connection.access_token,
-        after=after,
-        per_page=min(limit, 100),
-    )
-
     synced: list[Activity] = []
-    for sa in strava_activities:
-        provider_id = str(sa["id"])
+    per_page = min(limit, 100)
+    page = 1
+    fetched_total = 0
+    truncated = False
 
-        # Check if already synced via ActivitySource
-        existing_source = await _find_activity_source(db, provider_id)
-        if existing_source:
-            continue
-
-        # Also check legacy source/provider_activity_id on Activity for backward compat
-        legacy = await db.execute(
-            select(Activity).where(
-                Activity.source == "strava",
-                Activity.provider_activity_id == provider_id,
-            )
-        )
-        existing_activity = legacy.scalar_one_or_none()
-        if existing_activity:
-            # Backfill the ActivitySource record
-            source = ActivitySource(
-                activity_id=existing_activity.id,
-                provider="strava",
-                provider_activity_id=provider_id,
-                provider_name=existing_activity.name,
-                raw_data=sa,
-            )
-            db.add(source)
-            continue
-
-        # Parse activity data
-        start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
-        sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
-        duration_seconds = int(sa.get("moving_time") or 0)
-        distance_meters = sa.get("distance")
-
-        # Use merge engine to detect duplicates from other providers
-        duplicate = await find_duplicate_activity(
-            db,
-            user_id,
-            sport_type,
-            start_date,
-            duration_seconds,
-            distance_meters,
+    while True:
+        strava_activities = await strava_client.get_activities(
+            access_token=connection.access_token,
+            after=after,
+            page=page,
+            per_page=per_page,
         )
 
-        if duplicate:
-            # Merge into the existing activity
-            new_data = {
-                "name": sa.get("name"),
-                "duration_seconds": duration_seconds,
-                "distance_meters": _safe_float(distance_meters),
-                "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
-                "average_heartrate": _safe_float(sa.get("average_heartrate")),
-                "max_heartrate": _safe_float(sa.get("max_heartrate")),
-                "average_power": _safe_float(sa.get("average_watts")),
-                "normalized_power": _safe_float(sa.get("weighted_average_watts")),
-                "average_speed": _safe_float(sa.get("average_speed")),
-                "average_cadence": _safe_float(sa.get("average_cadence")),
-                "calories": _safe_float(sa.get("calories")),
-            }
-            await merge_activity(
+        if not strava_activities:
+            break
+
+        for sa in strava_activities:
+            provider_id = str(sa["id"])
+
+            # Check if already synced via ActivitySource
+            existing_source = await _find_activity_source(db, provider_id)
+            if existing_source:
+                continue
+
+            # Also check legacy source/provider_activity_id on Activity for backward compat
+            legacy = await db.execute(
+                select(Activity).where(
+                    Activity.source == "strava",
+                    Activity.provider_activity_id == provider_id,
+                )
+            )
+            existing_activity = legacy.scalar_one_or_none()
+            if existing_activity:
+                # Backfill the ActivitySource record
+                source = ActivitySource(
+                    activity_id=existing_activity.id,
+                    provider="strava",
+                    provider_activity_id=provider_id,
+                    provider_name=existing_activity.name,
+                    raw_data=sa,
+                )
+                db.add(source)
+                continue
+
+            # Parse activity data
+            start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
+            sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+            duration_seconds = int(sa.get("moving_time") or 0)
+            distance_meters = sa.get("distance")
+
+            # Use merge engine to detect duplicates from other providers
+            duplicate = await find_duplicate_activity(
                 db,
-                duplicate,
-                new_data,
-                "strava",
-                provider_id,
-                raw_data=sa,
+                user_id,
+                sport_type,
+                start_date,
+                duration_seconds,
+                distance_meters,
             )
-            synced.append(duplicate)
-        else:
-            # Create new activity
-            activity = await _create_activity_from_strava(db, sa, user_id, connection)
-            synced.append(activity)
+
+            if duplicate:
+                # Merge into the existing activity
+                new_data = {
+                    "name": sa.get("name"),
+                    "duration_seconds": duration_seconds,
+                    "distance_meters": _safe_float(distance_meters),
+                    "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+                    "average_heartrate": _safe_float(sa.get("average_heartrate")),
+                    "max_heartrate": _safe_float(sa.get("max_heartrate")),
+                    "average_power": _safe_float(sa.get("average_watts")),
+                    "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+                    "average_speed": _safe_float(sa.get("average_speed")),
+                    "average_cadence": _safe_float(sa.get("average_cadence")),
+                    "calories": _safe_float(sa.get("calories")),
+                }
+                await merge_activity(
+                    db,
+                    duplicate,
+                    new_data,
+                    "strava",
+                    provider_id,
+                    raw_data=sa,
+                )
+                synced.append(duplicate)
+            else:
+                # Create new activity
+                activity = await _create_activity_from_strava(db, sa, user_id, connection)
+                synced.append(activity)
+
+        fetched_total += len(strava_activities)
+
+        # A partial page means we've reached the oldest activity in the window.
+        if len(strava_activities) < per_page:
+            break
+
+        # A full page at the total cap: probe the next page to learn whether
+        # more in-scope activities remain, so callers can hold the watermark.
+        if fetched_total >= limit:
+            next_page = await strava_client.get_activities(
+                access_token=connection.access_token,
+                after=after,
+                page=page + 1,
+                per_page=1,
+            )
+            truncated = bool(next_page)
+            break
+
+        page += 1
+
+    if truncated_ref is not None:
+        truncated_ref.append(truncated)
 
     await db.flush()
 
@@ -633,7 +667,13 @@ async def backfill_all_activities_stream(
                             if best_score >= threshold and best_route is not None:
                                 activity.route_id = best_route.id
 
-    await db.flush()
+    # Persist the tail pages, all fetched streams, and the linking mutations.
+    # The generator owns its session (the SSE endpoint creates it via
+    # async_session_factory, not get_db), so without this final commit the
+    # work accumulated since the last 10-page boundary is rolled back when
+    # the endpoint closes the session — the backfill would report success
+    # while losing the last partial page, every stream, and all links.
+    await db.commit()
 
     yield {
         "type": "complete",

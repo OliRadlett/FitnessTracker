@@ -1,7 +1,17 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +20,16 @@ from app.database import Base
 
 class LiftingSession(Base):
     __tablename__ = "lifting_sessions"
+    __table_args__ = (
+        # A Whoop workout may enrich at most one lifting session — guards the
+        # time-overlap match (sync_whoop_workouts) against duplicate attaches.
+        Index(
+            "uq_lifting_sessions_whoop_workout",
+            "whoop_workout_id",
+            unique=True,
+            postgresql_where="whoop_workout_id IS NOT NULL",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

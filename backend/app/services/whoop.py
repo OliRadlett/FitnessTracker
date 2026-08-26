@@ -69,8 +69,8 @@ def decode_token_exp(token: str) -> float | None:
         if len(parts) < 2:
             return None
         payload_b64 = parts[1]
-        # Add padding
-        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        # Add padding (only when missing — never over-pad a well-formed segment)
+        payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
         return payload.get("exp")
     except Exception:
@@ -108,53 +108,21 @@ def token_expiry_date(token: str) -> datetime | None:
 async def refresh_if_needed(
     db: AsyncSession, connection: OAuthConnection
 ) -> OAuthConnection:
-    """Refresh the Whoop access token if it's expired.
+    """Refresh the Whoop access token if it's expired (hardened path).
 
-    Uses the OAuth2 refresh_token grant (same as Strava/Wahoo).
-    Falls back gracefully if no refresh token is available.
+    Row-locked and health-state-aware via
+    :func:`app.services.connection_health.refresh_connection`.
+Uses the JWT ``exp`` claim (with DB fallback) for expiry detection.
     """
-    if not is_token_expired(connection.access_token, connection.token_expires_at):
-        return connection
+    from app.integrations.whoop_client import whoop_client
+    from app.services.connection_health import refresh_connection
 
-    if not connection.refresh_token:
-        raise ValueError(
-            "Whoop token is expired and no refresh token is available. "
-            "Please reconnect Whoop from Settings."
-        )
-
-    try:
-        token_data = await whoop_client.refresh_access_token(
-            refresh_token=connection.refresh_token,
-        )
-    except httpx.HTTPStatusError as e:
-        body = ""
-        try:
-            body = e.response.text[:500]
-        except Exception:
-            pass
-        logger.error(
-            f"Whoop token refresh failed for user {connection.user_id}: "
-            f"HTTP {e.response.status_code} — {body}"
-        )
-        raise ValueError(
-            f"Failed to refresh Whoop token (HTTP {e.response.status_code}). "
-            f"Please reconnect Whoop from Settings."
-        )
-    except Exception as e:
-        logger.error(f"Whoop token refresh failed for user {connection.user_id}: {e}")
-        raise ValueError(
-            f"Failed to refresh Whoop token: {e}. Please reconnect Whoop from Settings."
-        )
-
-    connection.access_token = token_data["access_token"]
-    connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
-    if "expires_in" in token_data:
-        connection.token_expires_at = datetime.now(UTC) + timedelta(
-            seconds=int(token_data["expires_in"])
-        )
-    await db.flush()
-    logger.info(f"Whoop token refreshed for user {connection.user_id}")
-    return connection
+    return await refresh_connection(
+        db,
+        connection,
+        whoop_client,
+        is_expired=lambda c: is_token_expired(c.access_token, c.token_expires_at),
+    )
 
 
 async def get_whoop_connection(
@@ -283,11 +251,12 @@ async def _backfill_missing_recovery(
                 try:
                     recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
                     break
-                except Exception as e:
-                    err_str = str(e).lower()
-                    if "401" in err_str or "expired" in err_str:
+                except PermanentAuthError:
+                    raise
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code in (401, 403):
                         raise
-                    if "429" in err_str or "rate" in err_str:
+                    if e.response.status_code == 429:
                         logger.warning(
                             f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
                         )
@@ -322,7 +291,7 @@ async def _backfill_missing_recovery(
                     },
                 }
                 backfilled += 1
-        except ValueError:
+        except PermanentAuthError:
             raise
         except Exception as e:
             logger.warning(f"Backfill recovery failed for cycle {cycle_id}: {e}")
@@ -401,7 +370,10 @@ async def sync_whoop_cycles(
         # Fetch recovery data for this cycle with retry
         recovery_score = None
         hrv_ms = None
-        resting_hr = float(avg_hr) if avg_hr else None
+        # Never fall back to cycle-average HR: a failed recovery fetch must not
+        # overwrite a previously-stored real resting HR with average HR.
+        resting_hr = None
+        resting_hr_from_recovery = False
         respiratory_rate = None
 
         cycle_id = cycle.get("id")
@@ -423,15 +395,17 @@ async def sync_whoop_cycles(
                         rr = rec_score.get("resting_heart_rate")
                         if rr is not None:
                             resting_hr = float(rr)
+                            resting_hr_from_recovery = True
                         respiratory_rate = rec_score.get("respiratory_rate")
                     break  # Success or no data — move on
-                except Exception as e:
-                    err_str = str(e).lower()
-                    if "401" in err_str or "expired" in err_str:
-                        raise ValueError(
+                except PermanentAuthError:
+                    raise
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code in (401, 403):
+                        raise PermanentAuthError(
                             "Whoop token is expired. Please reconnect via OAuth in Settings."
-                        )
-                    if "429" in err_str or "rate" in err_str:
+                        ) from e
+                    if e.response.status_code == 429:
                         logger.warning(
                             f"Rate limited fetching recovery for cycle {cycle_id}, retry {_retry + 1}/3"
                         )
@@ -441,6 +415,11 @@ async def sync_whoop_cycles(
                         f"Failed to fetch recovery for cycle {cycle_id}: {e}"
                     )
                     break  # Non-rate-limit error — don't retry
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch recovery for cycle {cycle_id}: {e}"
+                    )
+                    break
 
         # Merge recovery data into cycle raw_data for reference
         cycle_with_recovery = {**cycle}
@@ -455,18 +434,21 @@ async def sync_whoop_cycles(
         # Upsert: insert or update on conflict.
         # IMPORTANT: Only overwrite recovery/hrv fields if we have non-null values,
         # to prevent a cycle sync from clobbering recovery data that was already stored
-        # from a previous sync where recovery was available.
+        # from a previous sync where recovery was available. The same protection
+        # applies to strain/calories — a sparse payload must not erase earlier data.
         update_fields: dict = {
-            "strain": float(strain) if strain else None,
-            "calories": calories,
             "raw_data": cycle_with_recovery,
             "updated_at": datetime.now(UTC),
         }
+        if strain:
+            update_fields["strain"] = float(strain)
+        if calories is not None:
+            update_fields["calories"] = calories
         if recovery_score is not None:
             update_fields["recovery_score"] = recovery_score
         if hrv_ms is not None:
             update_fields["hrv_ms"] = hrv_ms
-        if resting_hr is not None:
+        if resting_hr_from_recovery:
             update_fields["resting_hr"] = resting_hr
         if respiratory_rate is not None:
             update_fields["respiratory_rate"] = respiratory_rate
@@ -1342,7 +1324,9 @@ async def backfill_whoop_data(
         # Fetch recovery for this cycle
         recovery_score = None
         hrv_ms = None
-        resting_hr = float(avg_hr) if avg_hr else None
+        # Never fall back to cycle-average HR (see sync_whoop_cycles).
+        resting_hr = None
+        resting_hr_from_recovery = False
         respiratory_rate = None
 
         cycle_id = cycle.get("id")
@@ -1358,11 +1342,12 @@ async def backfill_whoop_data(
                             token, cycle_id
                         )
                         break  # Success or no data — move on
-                    except Exception as e:
-                        err_str = str(e).lower()
-                        if "401" in err_str or "expired" in err_str:
+                    except PermanentAuthError:
+                        raise
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code in (401, 403):
                             raise
-                        if "429" in err_str or "rate" in err_str:
+                        if e.response.status_code == 429:
                             logger.warning(
                                 f"Rate limited backfilling recovery for cycle {cycle_id}, retry {_retry + 1}/3"
                             )
@@ -1380,8 +1365,9 @@ async def backfill_whoop_data(
                     rr = rec_score.get("resting_heart_rate")
                     if rr is not None:
                         resting_hr = float(rr)
+                        resting_hr_from_recovery = True
                     respiratory_rate = rec_score.get("respiratory_rate")
-            except ValueError:
+            except PermanentAuthError:
                 raise
             except Exception as e:
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
@@ -1397,18 +1383,21 @@ async def backfill_whoop_data(
 
         # Build conditional update fields — only overwrite recovery fields
         # if we have non-null values, to prevent clobbering existing data
-        # when the recovery fetch fails.
+        # when the recovery fetch fails. strain/calories are protected the
+        # same way (a sparse payload must not erase earlier values).
         update_fields: dict = {
-            "strain": float(strain) if strain else None,
-            "calories": calories,
             "raw_data": cycle_with_recovery,
             "updated_at": datetime.now(UTC),
         }
+        if strain:
+            update_fields["strain"] = float(strain)
+        if calories is not None:
+            update_fields["calories"] = calories
         if recovery_score is not None:
             update_fields["recovery_score"] = recovery_score
         if hrv_ms is not None:
             update_fields["hrv_ms"] = hrv_ms
-        if resting_hr is not None:
+        if resting_hr_from_recovery:
             update_fields["resting_hr"] = resting_hr
         if respiratory_rate is not None:
             update_fields["respiratory_rate"] = respiratory_rate
@@ -1787,6 +1776,8 @@ async def backfill_whoop_chunked(
     Each chunk commits independently so partial progress is preserved
     even if the request is interrupted.
     """
+    import asyncio
+
     now = datetime.now(UTC)
     total_months = months
     # Build list of (start_dt, end_dt) windows, oldest first
@@ -1838,7 +1829,13 @@ async def backfill_whoop_chunked(
                 **agg,
             }
             continue
-        # BUG-036: Removed explicit db.commit() — let get_db handle it
+        # This generator owns its session (the SSE endpoint creates it via
+        # async_session_factory, not get_db), so commit each chunk explicitly
+        # to persist partial progress. BUG-036's "let get_db handle it" does
+        # not apply to this path — without this commit, closing the session
+        # rolls back every chunk and the backfill reports success while
+        # persisting nothing.
+        await db.commit()
 
         agg["synced_cycles"] += result["synced_cycles"]
         agg["synced_sleep"] += result["synced_sleep"]

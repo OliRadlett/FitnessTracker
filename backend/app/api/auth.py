@@ -324,6 +324,11 @@ async def oauth_callback(
                 )
                 db.add(connection)
 
+            # A successful (re)connect clears any previous needs_reauth state
+            from app.services.connection_health import reset_connection_health
+
+            await reset_connection_health(db, connection)
+
             await db.commit()
             return RedirectResponse(
                 url=f"{_frontend_url}/settings?connected={provider}"

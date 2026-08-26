@@ -167,16 +167,28 @@ class WhoopClient:
             if next_token:
                 params["nextToken"] = next_token
 
-            # Retry loop for 429 rate limits
+            # Retry loop for 429 rate limits and transport errors
             backoff = _INITIAL_BACKOFF_SECONDS
             for attempt in range(_MAX_RETRIES + 1):
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(
-                        f"{self.base_url}{endpoint}",
-                        headers=self._headers(access_token),
-                        params=params,
-                        timeout=30,
-                    )
+                try:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(
+                            f"{self.base_url}{endpoint}",
+                            headers=self._headers(access_token),
+                            params=params,
+                            timeout=30,
+                        )
+                except httpx.TransportError as e:
+                    if attempt < _MAX_RETRIES:
+                        logger.warning(
+                            f"Whoop transport error on {endpoint} "
+                            f"(attempt {attempt + 1}/{_MAX_RETRIES}): "
+                            f"{type(e).__name__} — retrying in {backoff:.1f}s"
+                        )
+                        await asyncio.sleep(backoff)
+                        backoff *= _BACKOFF_MULTIPLIER
+                        continue
+                    raise
 
                 if resp.status_code == 429:
                     if attempt < _MAX_RETRIES:

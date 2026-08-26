@@ -29,6 +29,11 @@ Read only the sections relevant to your task:
 7. **Prefer small changes**: Make one change, verify it works, then proceed. Don't batch changes and debug.
 8. **No code changes on production**: Never make code changes directly on the production server or on the production branch (`prod` — only this branch auto-deploys; `main` does not). All changes go through feature branches and PRs; hotfixes are made locally and deployed via the normal pipeline.
 9. **Keep documentation up to date**: When changing the codebase, update the relevant docs in the same change — `AGENTS.md`, CODEMAP files, `docs/*.md`, and `plans/`. Stale docs mislead future sessions.
+10. **No bulk scripted rewrites**: Never apply a single scripted find/replace across many source files. One subtle bug in such a script (e.g. a nested-array flattening that silently turned a token swap into a global `t`→`e` replace) corrupts every file at once, invisibly. Use the Edit tool per-file (`replaceAll` is fine). If a bulk change is genuinely unavoidable, do it in small batches (≤5 files) with a `git diff --stat` + spot-read between batches.
+11. **Check file ownership before touching files**: Before editing a file, run `git status`. A file with uncommitted changes is owned by another session — do not rewrite it in place without coordinating. This extends rule #1 from the index to file *contents*.
+12. **Rollback safety net**: Only run high-blast-radius operations (bulk edits, scripted rewrites, content migrations) on files with a clean working tree, so `git checkout -- <file>` is a working rollback. A file with uncommitted changes has no git rollback path — treat it with extra care or don't touch it.
+13. **No shell-based in-place edits to source files**: Never use PowerShell/Shell (`Set-Content`, `[IO.File]::WriteAllText`, `-replace`, `sed`) to mutate source files in place. The Edit tool preserves encoding and line-endings and makes each change visible. Scripted text mutation is only for temp/generated artifacts.
+14. **Verify before destructive writes**: After any multi-file change, review `git diff --stat` and spot-read at least 2 changed files *before* running typecheck/lint. Never let the first verification come after all writes are complete.
 
 ## Subagent Delegation Rules
 
@@ -113,8 +118,14 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
 | `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
+| `process_strava_webhook_events` | 5 min | Drains the `strava_webhook_events` queue oldest-first, with attempts/error tracking and retry-then-fail |
+| `reconcile_strava_activities` | Weekly Sun 4:30AM UTC | Heals drift (missed deletes/renames) against the Strava list within a bounded recent window |
 
-All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts. Per-user failures are isolated via `await db.rollback()` in except blocks; successful users are committed immediately so watermarks survive mid-task crashes.
+All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts. Per-user failures are isolated via `await db.rollback()` in except blocks; successful users are committed immediately so watermarks survive mid-task crashes. The 4 sync tasks (`sync_all_strava_activities`, `sync_all_whoop_data`, `sync_all_routes`, `backfill_streams_*`) run under a task-level Redis lock (`_run_task_guarded`, fail-open on Redis outage) with Celery `expires` on their beat entries, and each per-user section acquires `sync:{user}:{provider}` so manual syncs and beat runs can't overlap.
+
+## Connection Health (BUG-072)
+
+`OAuthConnection` tracks `status` (`active`/`needs_reauth`), `consecutive_failures`, `last_error_at`, `last_error`, `last_refreshed_at`. Token refresh is centralized in `app/services/connection_health.py::refresh_connection()`: `SELECT … FOR UPDATE` row-lock, immediate commit of rotated tokens, typed error classification (`app/integrations/errors.py` — `PermanentAuthError` marks `needs_reauth`, `TransientSyncError` counts failures). Sync loops skip `needs_reauth` connections. The OAuth callback resets status to `active`. The UI surfaces this via Settings badges/reconnect + a global `SyncHealthBanner`.
 
 ## Conventions
 
@@ -168,6 +179,9 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
 18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
 19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
+20. **SSE backfill sessions own their commits**: The Strava/Whoop backfill endpoints create their session via `async_session_factory()` (never `get_db`), so anything only `flush()`ed is rolled back when the endpoint closes it. The generators must `await db.commit()` explicitly (Whoop per-chunk, Strava at the end) — see BUG-073/074.
+21. **Token refresh commits immediately**: `refresh_connection()` commits rotated tokens/health state on its own so a later per-user rollback can't discard them. It also `SELECT … FOR UPDATE`s the row — don't "optimise" that away or strict-rotation providers (Wahoo) can invalidate the loser's refresh token.
+22. **Webhook POSTs are queued, not processed**: `POST /webhooks/strava` only HMAC-verifies (empty secret → 503) and persists to `strava_webhook_events`; the `process_strava_webhook_events` Celery task drains the queue. Add new event handling in `app/services/strava/webhook_queue.py`, not inline in the API handler.
 
 ## Development Lessons
 

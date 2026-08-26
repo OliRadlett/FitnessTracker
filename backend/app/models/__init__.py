@@ -18,6 +18,7 @@ from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import OAuthConnection, User
 from app.models.weather import CachedWeather
+from app.models.webhook_event import StravaWebhookEvent
 from app.models.weight import WeightLog
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "Route",
     "RouteSource",
     "SleepLog",
+    "StravaWebhookEvent",
     "TrainingPlan",
     "TrainingPlanDay",
     "User",

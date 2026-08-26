@@ -1,6 +1,9 @@
 """Celery tasks — scheduler.py with Redis broker, Beat schedule."""
 
+from __future__ import annotations
+
 import logging
+import uuid
 from datetime import UTC
 
 from celery import Celery
@@ -32,6 +35,81 @@ celery_app.conf.update(
     result_expires=3600,
 )
 
+
+# ── Concurrency guards ────────────────────────────────────────────────────────
+# Celery Beat can enqueue a task while a previous instance is still running
+# (a slow sync > 30 min, or an acks_late redelivery after a worker crash).
+# Redis locks make each sync task single-instance and prevent manual syncs
+# from overlapping the scheduled ones for the same user.
+
+
+async def _run_task_guarded(task_name: str, _run) -> dict:
+    """Run a task's ``_run()`` coroutine under a Redis lock.
+
+    Returns ``{"status": "skipped_lock"}`` if another instance is running.
+    A Redis outage fails open (logs a warning, runs unlocked) so a broker
+    problem never silently halts all syncing.
+    """
+    from app.metrics import SYNC_RUNS
+    from app.services.cache import redis_lock
+
+    lock = redis_lock(f"celery-task:{task_name}", ttl=3600)
+    try:
+        await lock.__aenter__()
+    except RuntimeError:
+        logger.warning(f"{task_name} skipped — another instance is running")
+        SYNC_RUNS.labels(task=task_name, outcome="skipped_lock").inc()
+        return {"status": "skipped_lock"}
+    except Exception as e:
+        logger.warning(
+            f"{task_name}: Redis unavailable — running without a lock ({e})"
+        )
+        return await _run()
+    try:
+        result = await _run()
+        SYNC_RUNS.labels(task=task_name, outcome="success").inc()
+        return result
+    except Exception:
+        SYNC_RUNS.labels(task=task_name, outcome="failure").inc()
+        raise
+    finally:
+        await lock.__aexit__(None, None, None)
+
+
+class _NoopLock:
+    """Async context manager that does nothing — used when Redis is down so
+    per-user sync still proceeds without the concurrency guard."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+async def _try_acquire_user_lock(
+    user_id, provider: str, ttl: int = 1800
+):
+    """Best-effort acquire the ``sync:{user}:{provider}`` lock.
+
+    Returns the lock context manager, ``None`` if it is genuinely held by
+    another run (scheduled task or manual sync), or a no-op lock if Redis
+    is unavailable (fail open — a Redis outage must not stop syncing).
+    """
+    from app.services.cache import redis_lock
+
+    try:
+        cm = redis_lock(f"sync:{user_id}:{provider}", ttl=ttl)
+        await cm.__aenter__()
+        return cm
+    except RuntimeError:
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Redis unavailable for sync lock ({e}) — proceeding without lock"
+        )
+        return _NoopLock()
+
 # ── Beat schedule ─────────────────────────────────────────────────────────────
 
 celery_app.conf.beat_schedule = {
@@ -39,6 +117,19 @@ celery_app.conf.beat_schedule = {
     "sync-strava-activities": {
         "task": "app.tasks.scheduler.sync_all_strava_activities",
         "schedule": crontab(minute="*/30"),
+        "expires": 3600,
+    },
+    # Drain the Strava webhook queue (async, with retries)
+    "process-strava-webhook-events": {
+        "task": "app.tasks.scheduler.process_strava_webhook_events",
+        "schedule": crontab(minute="*/5"),
+        "expires": 900,
+    },
+    # Weekly Strava reconciliation — heals missed deletes/renames
+    "reconcile-strava-activities": {
+        "task": "app.tasks.scheduler.reconcile_strava_activities",
+        "schedule": crontab(hour=4, minute=30, day_of_week=0),
+        "expires": 3600,
     },
     # Generate daily health alerts at 6 AM UTC
     "generate-health-alerts": {
@@ -54,6 +145,7 @@ celery_app.conf.beat_schedule = {
     "sync-routes": {
         "task": "app.tasks.scheduler.sync_all_routes",
         "schedule": crontab(minute=0, hour="*/2"),
+        "expires": 3600,
     },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
@@ -64,6 +156,7 @@ celery_app.conf.beat_schedule = {
     "sync-whoop-data": {
         "task": "app.tasks.scheduler.sync_all_whoop_data",
         "schedule": crontab(minute="*/30"),
+        "expires": 3600,
     },
     # Weekly database backup (Sunday 2 AM UTC)
     "backup-database": {
@@ -85,10 +178,16 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.record_goal_checkins",
         "schedule": crontab(hour=6, minute=0, day_of_week=1),
     },
+    # Daily training-plan reminder (7 AM UTC)
+    "send-plan-reminders": {
+        "task": "app.tasks.scheduler.send_plan_reminders",
+        "schedule": crontab(hour=7, minute=0),
+    },
     # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
     "backfill-streams": {
         "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
         "schedule": crontab(hour=3, minute=0, day_of_week=6),
+        "expires": 3600,
     },
 }
 
@@ -114,7 +213,9 @@ def sync_all_strava_activities() -> dict:
     from sqlalchemy import select
 
     from app.database import task_session
+    from app.integrations.errors import PermanentAuthError, TransientSyncError
     from app.models.user import OAuthConnection
+    from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
     from app.services.merge_service import backfill_activity_route_links
     from app.services.strava import link_all_unlinked_activities, sync_activities
 
@@ -130,16 +231,42 @@ def sync_all_strava_activities() -> dict:
             weather_tagged_count = 0
             plan_day_linked_count = 0
             for conn in connections:
+                # BUG-072: skip connections awaiting re-authorisation — a dead
+                # token would otherwise be retried (and fail) every 30 minutes.
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    continue
+
+                # Don't overlap a manual sync (or a backfill) for the same user.
+                lock = await _try_acquire_user_lock(conn.user_id, "strava")
+                if lock is None:
+                    logger.info(
+                        f"Skipping Strava sync for user {conn.user_id} — already in progress"
+                    )
+                    continue
+
                 # Compute incremental window: watermark minus 24h overlap
                 after = None
                 if conn.last_synced_at:
                     after = conn.last_synced_at - timedelta(hours=24)
 
                 try:
+                    truncated_ref: list[bool] = []
                     activities = await sync_activities(
-                        db, conn.user_id, after=after
+                        db, conn.user_id, after=after, truncated_ref=truncated_ref
                     )
                     synced_count += len(activities)
+                    # If the incremental window still has unfetched activities
+                    # (backlog larger than one page), hold the watermark so the
+                    # next run continues draining instead of permanently losing
+                    # everything older than the fetched page.
+                    if truncated_ref and truncated_ref[0]:
+                        logger.warning(
+                            f"Strava sync for user {conn.user_id} truncated — "
+                            "more activities remain in the sync window; "
+                            "watermark not advanced"
+                        )
+                        await db.commit()
+                        continue
                     # Update watermark on success
                     from datetime import datetime
 
@@ -192,11 +319,23 @@ def sync_all_strava_activities() -> dict:
                     # Commit this user's data (watermark + hooks) so a later
                     # crash doesn't roll back a successful sync.
                     await db.commit()
+                except PermanentAuthError as e:
+                    logger.warning(
+                        f"Strava sync auth failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Strava sync transient failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
                 except Exception as e:
                     logger.error(
                         f"Failed to sync for user {conn.user_id}: {e}", exc_info=True
                     )
                     await db.rollback()
+                finally:
+                    await lock.__aexit__(None, None, None)
 
             # Also sync Wahoo activities for users with Wahoo connections
             wahoo_result = await db.execute(
@@ -205,6 +344,14 @@ def sync_all_strava_activities() -> dict:
             wahoo_connections = list(wahoo_result.scalars().all())
             wahoo_synced_count = 0
             for conn in wahoo_connections:
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    continue
+                lock = await _try_acquire_user_lock(conn.user_id, "wahoo")
+                if lock is None:
+                    logger.info(
+                        f"Skipping Wahoo sync for user {conn.user_id} — already in progress"
+                    )
+                    continue
                 try:
                     from app.services.wahoo import sync_wahoo_activities
 
@@ -215,12 +362,24 @@ def sync_all_strava_activities() -> dict:
 
                     conn.last_synced_at = datetime.now(UTC)
                     await db.commit()
+                except PermanentAuthError as e:
+                    logger.warning(
+                        f"Wahoo sync auth failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Wahoo sync transient failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
                 except Exception as e:
                     logger.error(
                         f"Failed to sync Wahoo activities for user {conn.user_id}: {e}",
                         exc_info=True,
                     )
                     await db.rollback()
+                finally:
+                    await lock.__aexit__(None, None, None)
 
             return {
                 "synced_activities": synced_count,
@@ -232,7 +391,64 @@ def sync_all_strava_activities() -> dict:
                 "users_processed": len(connections) + len(wahoo_connections),
             }
 
-    return asyncio.run(_run())
+    return asyncio.run(_run_task_guarded("sync_all_strava_activities", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.process_strava_webhook_events")
+def process_strava_webhook_events() -> dict:
+    """Drain queued Strava webhook events (async processing with retries)."""
+    import asyncio
+
+    from app.database import task_session
+    from app.services.strava.webhook_queue import process_pending_strava_events
+
+    async def _run():
+        async with task_session() as db:
+            return await process_pending_strava_events(db)
+
+    return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.reconcile_strava_activities")
+def reconcile_strava_activities() -> dict:
+    """Weekly safety net — heal drift (missed deletes/renames) against Strava."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.integrations.errors import PermanentAuthError
+    from app.models.user import OAuthConnection
+    from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
+    from app.services.strava.webhook_queue import (
+        reconcile_strava_activities as _reconcile,
+    )
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(
+                select(OAuthConnection).where(OAuthConnection.provider == "strava")
+            )
+            total = 0
+            for conn in result.scalars().all():
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    continue
+                try:
+                    total += await _reconcile(db, conn.user_id)
+                except PermanentAuthError as e:
+                    logger.warning(
+                        f"Reconciliation auth failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
+                except Exception as e:
+                    logger.error(
+                        f"Reconciliation failed for user {conn.user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+            return {"corrections": total}
+
+    return asyncio.run(_run_task_guarded("reconcile_strava_activities", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.generate_health_alerts")
@@ -424,7 +640,9 @@ def sync_all_routes() -> dict:
     from sqlalchemy import select
 
     from app.database import task_session
+    from app.integrations.errors import PermanentAuthError, TransientSyncError
     from app.models.user import OAuthConnection
+    from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
 
     async def _run():
         async with task_session() as db:
@@ -436,9 +654,11 @@ def sync_all_routes() -> dict:
             )
             connections = list(result.scalars().all())
 
-            # Group by user
+            # Group by user, skipping connections awaiting re-authorisation
             user_providers: dict = {}
             for conn in connections:
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    continue
                 if conn.user_id not in user_providers:
                     user_providers[conn.user_id] = []
                 user_providers[conn.user_id].append(conn.provider)
@@ -459,6 +679,10 @@ def sync_all_routes() -> dict:
                     count, merged = await sync_komoot_routes(db, first_user)
                     synced_total += count
                     merged_total += merged
+                except PermanentAuthError as e:
+                    logger.warning(f"Komoot route sync auth failure: {e}")
+                except TransientSyncError as e:
+                    logger.warning(f"Komoot route sync transient failure: {e}")
                 except Exception as e:
                     logger.error(
                         f"Failed to sync Komoot routes: {e}",
@@ -482,6 +706,16 @@ def sync_all_routes() -> dict:
                         merged_total += merged
 
                     await db.commit()
+                except PermanentAuthError as e:
+                    logger.warning(
+                        f"Route sync auth failure for user {user_id}: {e}"
+                    )
+                    await db.rollback()
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Route sync transient failure for user {user_id}: {e}"
+                    )
+                    await db.rollback()
                 except Exception as e:
                     logger.error(
                         f"Failed to sync routes for user {user_id}: {e}",
@@ -494,7 +728,7 @@ def sync_all_routes() -> dict:
                 "users_processed": len(user_providers),
             }
 
-    return asyncio.run(_run())
+    return asyncio.run(_run_task_guarded("sync_all_routes", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.cleanup_old_data")
@@ -611,7 +845,12 @@ def sync_all_whoop_data() -> dict:
     from sqlalchemy import select
 
     from app.database import task_session
+    from app.integrations.errors import PermanentAuthError, TransientSyncError
     from app.models.user import OAuthConnection
+    from app.services.connection_health import (
+        CONNECTION_STATUS_NEEDS_REAUTH,
+        mark_connection_reauth,
+    )
     from app.services.whoop import (
         refresh_if_needed,
         sync_whoop_cycles,
@@ -629,15 +868,39 @@ def sync_all_whoop_data() -> dict:
             synced_cycles = 0
             synced_sleep = 0
             synced_workouts = 0
-            skipped_expired = 0
+            skipped_reauth = 0
+            skipped_transient = 0
 
             for conn in connections:
+                # BUG-072: never keep hammering a provider whose token has been
+                # revoked/expired — require the user to re-authorise first.
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    skipped_reauth += 1
+                    continue
+
+                # Don't overlap a manual sync for the same user.
+                lock = await _try_acquire_user_lock(conn.user_id, "whoop")
+                if lock is None:
+                    logger.info(
+                        f"Skipping Whoop sync for user {conn.user_id} — already in progress"
+                    )
+                    skipped_transient += 1
+                    continue
+
                 # Auto-refresh token if needed
                 try:
                     conn = await refresh_if_needed(db, conn)
-                except ValueError as e:
-                    skipped_expired += 1
+                except PermanentAuthError as e:
+                    skipped_reauth += 1
                     logger.warning(f"Skipping Whoop sync for user {conn.user_id}: {e}")
+                    await lock.__aexit__(None, None, None)
+                    continue
+                except TransientSyncError as e:
+                    skipped_transient += 1
+                    logger.warning(
+                        f"Whoop refresh transient failure for user {conn.user_id}: {e}"
+                    )
+                    await lock.__aexit__(None, None, None)
                     continue
 
                 # Compute incremental window: watermark minus 24h overlap
@@ -652,11 +915,16 @@ def sync_all_whoop_data() -> dict:
                 try:
                     metrics = await sync_whoop_cycles(db, conn.user_id, start=start)
                     synced_cycles += len(metrics)
-                except ValueError as e:
-                    if "expired" in str(e).lower():
-                        skipped_expired += 1
+                except PermanentAuthError as e:
+                    skipped_reauth += 1
                     logger.warning(
-                        f"Whoop cycle sync failed for user {conn.user_id}: {e}"
+                        f"Whoop cycle sync auth failure for user {conn.user_id}: {e}"
+                    )
+                    await mark_connection_reauth(db, conn, str(e))
+                    user_failed = True
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Whoop cycle sync transient failure for user {conn.user_id}: {e}"
                     )
                     user_failed = True
                 except Exception as e:
@@ -670,11 +938,16 @@ def sync_all_whoop_data() -> dict:
                     try:
                         sleep_logs = await sync_whoop_sleep(db, conn.user_id, start=start)
                         synced_sleep += len(sleep_logs)
-                    except ValueError as e:
-                        if "expired" in str(e).lower():
-                            skipped_expired += 1
+                    except PermanentAuthError as e:
+                        skipped_reauth += 1
                         logger.warning(
-                            f"Whoop sleep sync failed for user {conn.user_id}: {e}"
+                            f"Whoop sleep sync auth failure for user {conn.user_id}: {e}"
+                        )
+                        await mark_connection_reauth(db, conn, str(e))
+                        user_failed = True
+                    except TransientSyncError as e:
+                        logger.warning(
+                            f"Whoop sleep sync transient failure for user {conn.user_id}: {e}"
                         )
                     except Exception as e:
                         logger.error(
@@ -686,11 +959,16 @@ def sync_all_whoop_data() -> dict:
                     try:
                         enriched = await sync_whoop_workouts(db, conn.user_id, start=start)
                         synced_workouts += len(enriched)
-                    except ValueError as e:
-                        if "expired" in str(e).lower():
-                            skipped_expired += 1
+                    except PermanentAuthError as e:
+                        skipped_reauth += 1
                         logger.warning(
-                            f"Whoop workout sync failed for user {conn.user_id}: {e}"
+                            f"Whoop workout sync auth failure for user {conn.user_id}: {e}"
+                        )
+                        await mark_connection_reauth(db, conn, str(e))
+                        user_failed = True
+                    except TransientSyncError as e:
+                        logger.warning(
+                            f"Whoop workout sync transient failure for user {conn.user_id}: {e}"
                         )
                     except Exception as e:
                         logger.error(
@@ -702,11 +980,16 @@ def sync_all_whoop_data() -> dict:
                     # Sync body weight from Whoop
                     try:
                         await sync_whoop_weight(db, conn.user_id)
-                    except ValueError as e:
-                        if "expired" in str(e).lower():
-                            skipped_expired += 1
+                    except PermanentAuthError as e:
+                        skipped_reauth += 1
                         logger.warning(
-                            f"Whoop weight sync failed for user {conn.user_id}: {e}"
+                            f"Whoop weight sync auth failure for user {conn.user_id}: {e}"
+                        )
+                        await mark_connection_reauth(db, conn, str(e))
+                        user_failed = True
+                    except TransientSyncError as e:
+                        logger.warning(
+                            f"Whoop weight sync transient failure for user {conn.user_id}: {e}"
                         )
                     except Exception as e:
                         logger.error(
@@ -722,15 +1005,17 @@ def sync_all_whoop_data() -> dict:
 
                     conn.last_synced_at = datetime.now(UTC)
                     await db.commit()
+                await lock.__aexit__(None, None, None)
             return {
                 "synced_cycles": synced_cycles,
                 "synced_sleep": synced_sleep,
                 "synced_workouts": synced_workouts,
-                "skipped_expired_tokens": skipped_expired,
+                "skipped_reauth": skipped_reauth,
+                "skipped_transient": skipped_transient,
                 "users_processed": len(connections),
             }
 
-    return asyncio.run(_run())
+    return asyncio.run(_run_task_guarded("sync_all_whoop_data", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.backup_database")
@@ -874,6 +1159,7 @@ def weekly_llm_analysis() -> dict:
             result = await db.execute(select(User))
             users = list(result.scalars().all())
             analyzed = 0
+            failed = 0
             for user in users:
                 try:
                     from app.services.llm_analysis import run_llm_analysis
@@ -881,11 +1167,23 @@ def weekly_llm_analysis() -> dict:
                     await run_llm_analysis(db, user.id)
                     analyzed += 1
                 except Exception as e:
+                    failed += 1
                     logger.error(
                         f"LLM analysis failed for user {user.id}: {e}", exc_info=True
                     )
-            await db.commit()
-            return {"users_analyzed": analyzed, "users_total": len(users)}
+                    # Roll back the poisoned session so a failing user's
+                    # partially-flushed writes don't leak into the next user's
+                    # commit (per-user isolation like every other task loop).
+                    await db.rollback()
+                else:
+                    # Commit per user so a mid-task crash doesn't discard the
+                    # analyses already written for other users.
+                    await db.commit()
+            return {
+                "users_analyzed": analyzed,
+                "users_failed": failed,
+                "users_total": len(users),
+            }
 
     return asyncio.run(_run())
 
@@ -909,7 +1207,7 @@ def backfill_streams_for_all_activities() -> dict:
         async with task_session() as db:
             return await _backfill_streams(db)
 
-    return asyncio.run(_run())
+    return asyncio.run(_run_task_guarded("backfill_streams_for_all_activities", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.refresh_weather_forecasts")
@@ -983,6 +1281,7 @@ def record_goal_checkins() -> dict:
             users = list(users_result.scalars().all())
             checkins_recorded = 0
             goals_active = 0
+            milestone_notifications = 0
 
             for user in users:
                 try:
@@ -994,6 +1293,9 @@ def record_goal_checkins() -> dict:
                     goals_active += len(list(active.scalars().all()))
                     recorded = await record_all_check_ins(db, user.id)
                     checkins_recorded += recorded
+                    milestone_notifications = await _goal_milestone_notifications(
+                        db, user.id
+                    )
                     await db.commit()
                 except Exception as e:
                     logger.warning(
@@ -1006,6 +1308,204 @@ def record_goal_checkins() -> dict:
                 "users_total": len(users),
                 "goals_active": goals_active,
                 "checkins_recorded": checkins_recorded,
+                "milestone_notifications": milestone_notifications,
             }
 
     return asyncio.run(_run())
+
+
+async def _goal_milestone_notifications(db, user_id: uuid.UUID) -> int:
+    """Fire notifications when an active goal crosses 50/75/100% progress.
+
+    Progress is computed as absolute movement toward the target (sign-aware for
+    both increase and decrease goals), compared against the previous check-in.
+    Dedup keys make each crossing fire exactly once.
+    """
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.models.goal import Goal, GoalCheckIn
+    from app.services.notifications import notify
+
+    today = date.today()
+    goals = list(
+        (
+            await db.execute(
+                select(Goal).where(Goal.user_id == user_id, Goal.status == "active")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    fired = 0
+    for goal in goals:
+        if goal.current_value is None or goal.starting_value is None:
+            continue
+        target_delta = goal.target_value - goal.starting_value
+        if target_delta == 0:
+            continue
+
+        prev_result = await db.execute(
+            select(GoalCheckIn.value)
+            .where(
+                GoalCheckIn.goal_id == goal.id,
+                GoalCheckIn.check_in_date < today,
+            )
+            .order_by(GoalCheckIn.check_in_date.desc(), GoalCheckIn.created_at.desc())
+            .limit(1)
+        )
+        prev = prev_result.scalar_one_or_none()
+        prev_pct = (
+            round((prev - goal.starting_value) / target_delta * 100, 1)
+            if prev is not None
+            else 0.0
+        )
+        cur_pct = round(
+            (goal.current_value - goal.starting_value) / target_delta * 100, 1
+        )
+
+        label = f"{goal.metric} — target {goal.target_value:g}"
+        for threshold in (50, 75):
+            if prev_pct < threshold <= cur_pct:
+                await notify(
+                    db,
+                    user_id,
+                    type="goal_milestone",
+                    title=f"Goal {threshold:.0f}% reached",
+                    body=label,
+                    severity="info",
+                    link="/goals",
+                    dedup_key=f"goal:{goal.id}:{threshold:.0f}",
+                    metadata={"metric": goal.metric, "progress_pct": cur_pct},
+                )
+                fired += 1
+        if goal.status == "achieved" and prev_pct < 100:
+            await notify(
+                db,
+                user_id,
+                type="goal_milestone",
+                title="Goal achieved",
+                body=label,
+                severity="success",
+                link="/goals",
+                dedup_key=f"goal:{goal.id}:achieved",
+                metadata={"metric": goal.metric, "progress_pct": cur_pct},
+            )
+            fired += 1
+    return fired
+
+
+@celery_app.task(name="app.tasks.scheduler.send_plan_reminders")
+def send_plan_reminders() -> dict:
+    """Daily morning reminder for today's planned training session.
+
+    One notification per user per day (dedup keyed on the date) when an active
+    plan schedules a non-rest session today. Per-user failures are isolated.
+    """
+    import asyncio
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.training_plan import TrainingPlan, TrainingPlanDay
+    from app.models.user import User
+    from app.services.notifications import notify
+
+    async def _run():
+        today = date.today()
+        notified = 0
+        async with task_session() as db:
+            users = list((await db.execute(select(User))).scalars().all())
+            for user in users:
+                try:
+                    day = await _find_today_plan_day(db, user.id, today)
+                    if day is None:
+                        continue
+                    created = await notify(
+                        db,
+                        user.id,
+                        type="plan_reminder",
+                        title="Today's plan",
+                        body=_plan_reminder_body(day),
+                        severity="info",
+                        link="/training",
+                        dedup_key=f"plan_reminder:{today}",
+                        metadata={"focus": day.planned_focus},
+                    )
+                    if created is not None:
+                        notified += 1
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Plan reminder failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+        return {"notified": notified}
+
+    return asyncio.run(_run())
+
+
+async def _find_today_plan_day(db, user_id: uuid.UUID, today) -> TrainingPlanDay | None:
+    """Return today's non-rest plan day across the user's active plans."""
+    from sqlalchemy import select
+
+    from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+    plans = list(
+        (
+            await db.execute(
+                select(TrainingPlan).where(
+                    TrainingPlan.user_id == user_id,
+                    TrainingPlan.status == "active",
+                    TrainingPlan.start_date <= today,
+                    TrainingPlan.end_date >= today,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for plan in plans:
+        days = list(
+            (
+                await db.execute(
+                    select(TrainingPlanDay).where(
+                        TrainingPlanDay.plan_id == plan.id,
+                        TrainingPlanDay.day_date == today,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for day in days:
+            if day.sport != "rest":
+                return day
+    return None
+
+
+def _plan_reminder_body(day: TrainingPlanDay) -> str:
+    """Human-readable summary of a planned day for the reminder body."""
+    focus = day.planned_focus or "training"
+    if day.planned_exercises:
+        try:
+            names = ", ".join(
+                str(e.get("exercise") or e.get("name") or e)
+                for e in day.planned_exercises[:5]
+            )
+            if names:
+                return f"{focus} — {names}"
+        except Exception:
+            pass
+    if day.planned_volume_kg:
+        return f"{focus} — {day.planned_volume_kg:,.0f} kg volume"
+    if day.planned_duration_min:
+        return f"{focus} — {day.planned_duration_min} min"
+    if day.workout_description:
+        return f"{focus} — {day.workout_description[:120]}"
+    if day.planned_tss:
+        return f"{focus} — {day.planned_tss:.0f} TSS"
+    return f"{focus} — planned session"

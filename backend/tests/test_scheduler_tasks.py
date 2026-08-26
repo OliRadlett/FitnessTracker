@@ -59,7 +59,7 @@ class TestStravaSyncErrorIsolation:
 
         call_count = 0
 
-        async def mock_sync(db, user_id, after=None):
+        async def mock_sync(db, user_id, after=None, truncated_ref=None):
             nonlocal call_count
             call_count += 1
             if user_id == "user-1":
@@ -88,7 +88,7 @@ class TestStravaSyncErrorIsolation:
         user2 = _make_connection("user-2", "strava")
         db = _make_mock_session([user1, user2])
 
-        async def mock_sync(db, user_id, after=None):
+        async def mock_sync(db, user_id, after=None, truncated_ref=None):
             return [{"id": "act1"}]
 
         # Mock Wahoo query to return empty (no Wahoo connections)
@@ -124,6 +124,76 @@ class TestStravaSyncErrorIsolation:
         assert db.commit.call_count == 2
         # No rollback on success
         db.rollback.assert_not_called()
+
+
+class TestNeedsReauthSkipping:
+    """Connections awaiting re-authorisation must be skipped entirely."""
+
+    def test_strava_skips_needs_reauth_connection(self):
+        from app.tasks.scheduler import sync_all_strava_activities
+
+        user1 = _make_connection("user-1", "strava")
+        user1.status = "needs_reauth"
+        user2 = _make_connection("user-2", "strava")
+        db = _make_mock_session([user1, user2])
+
+        synced_users: list = []
+
+        async def mock_sync(db, user_id, after=None, truncated_ref=None):
+            synced_users.append(user_id)
+            return []
+
+        # Mock Wahoo query to return empty (no Wahoo connections)
+        wahoo_result = MagicMock()
+        wahoo_result.scalars.return_value.all.return_value = []
+
+        async def execute_side_effect(*args, **kwargs):
+            if execute_side_effect.call_count == 0:
+                execute_side_effect.call_count += 1
+                mock_r = MagicMock()
+                mock_r.scalars.return_value.all.return_value = [user1, user2]
+                return mock_r
+            return wahoo_result
+
+        execute_side_effect.call_count = 0
+        db.execute = AsyncMock(side_effect=execute_side_effect)
+
+        with patch("app.database.task_session", lambda: _mock_task_session(db)), \
+             patch("app.services.strava.sync_activities", side_effect=mock_sync), \
+             patch("app.services.strava.link_all_unlinked_activities", return_value=0), \
+             patch("app.services.merge_service.backfill_activity_route_links", return_value=0), \
+             patch("app.services.weather.tag_recent_activities", return_value=0), \
+             patch("app.services.conformity.link_activities_to_plan_days", return_value=0):
+            sync_all_strava_activities()
+
+        # Only the healthy user was synced
+        assert synced_users == ["user-2"]
+
+    def test_whoop_skips_needs_reauth_connection(self):
+        from app.tasks.scheduler import sync_all_whoop_data
+
+        user1 = _make_connection("user-1", "whoop")
+        user1.status = "needs_reauth"
+        user2 = _make_connection("user-2", "whoop")
+        db = _make_mock_session([user1, user2])
+
+        refreshed_users: list = []
+
+        async def mock_refresh(db, conn):
+            refreshed_users.append(conn.user_id)
+            return conn
+
+        with patch("app.database.task_session", lambda: _mock_task_session(db)), \
+             patch("app.services.whoop.refresh_if_needed", side_effect=mock_refresh), \
+             patch("app.services.whoop.sync_whoop_cycles", return_value=[]), \
+             patch("app.services.whoop.sync_whoop_sleep", return_value=[]), \
+             patch("app.services.whoop.sync_whoop_workouts", return_value=[]), \
+             patch("app.services.whoop.sync_whoop_weight", return_value=None):
+            result = sync_all_whoop_data()
+
+        # The needs_reauth connection was never touched
+        assert refreshed_users == ["user-2"]
+        assert result["skipped_reauth"] == 1
 
 
 class TestWhoopSyncErrorIsolation:

@@ -33,6 +33,12 @@ class OAuthConnectionRead(BaseModel):
     provider: str
     provider_user_id: str
     created_at: datetime
+    status: str = "active"
+    last_synced_at: datetime | None = None
+    last_refreshed_at: datetime | None = None
+    last_error_at: datetime | None = None
+    last_error: str | None = None
+    consecutive_failures: int = 0
 
     model_config = {"from_attributes": True}
 
