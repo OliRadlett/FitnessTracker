@@ -91,7 +91,7 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
           {saveMutation.isPending ? 'Saving…' : 'Save Actuals'}
         </button>
         {saveMutation.isError && (
-          <span className="text-xs text-red-400">Save failed — try again</span>
+          <span className="text-xs text-warning">Save failed — try again</span>
         )}
         {saveMutation.isSuccess && !saveMutation.isPending && (
           <span className="text-xs text-positive">Saved</span>
@@ -157,7 +157,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
                   if (confirm('Delete this fuel plan?')) deleteMutation.mutate();
                 }}
                 disabled={deleteMutation.isPending}
-                className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                className="text-xs text-warning hover:text-red-300 disabled:opacity-50"
               >
                 Delete
               </button>
@@ -170,7 +170,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
 
       {isError && (
         <div className="space-y-2">
-          <p className="text-sm text-red-400">Could not load fuel plan.</p>
+          <p className="text-sm text-warning">Could not load fuel plan.</p>
           <p className="text-xs text-muted">{(error as Error)?.message || 'Unknown error'}</p>
           <button
             onClick={() => createMutation.mutate()}
@@ -195,7 +195,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
             {createMutation.isPending ? 'Generating…' : 'Generate Fuel Plan'}
           </button>
           {createMutation.isError && (
-            <p className="text-xs text-red-400">Failed to generate fuel plan — try again.</p>
+            <p className="text-xs text-warning">Failed to generate fuel plan — try again.</p>
           )}
         </div>
       )}

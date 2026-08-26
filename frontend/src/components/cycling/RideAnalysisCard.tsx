@@ -22,7 +22,7 @@ const ZONE_COLORS: Record<string, string> = {
 function decouplingColor(pct: number): string {
   if (pct < 3) return 'text-positive';
   if (pct < 5) return 'text-warning';
-  return 'text-red-400';
+  return 'text-warning';
 }
 
 function StatBadge({ label, value, className = '' }: { label: string; value: string | number | undefined; className?: string }) {

@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { usePageTitle } from '@/lib/usePageTitle';
+
+/** Inline link used throughout the wiki to jump to the feature page being described. */
+function WikiLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="text-accent hover:text-accent-hover underline underline-offset-2">
+      {children}
+    </Link>
+  );
+}
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
@@ -258,12 +268,12 @@ export default function WikiPage() {
                 <h3 className="text-white font-semibold mb-2">Connect Your Integrations</h3>
                 <ol className="list-decimal list-inside space-y-2">
                   <li>
-                    <strong className="text-white">Strava</strong> — Go to <em>Settings → Connections</em> and
+                    <strong className="text-white">Strava</strong> — Go to <WikiLink href="/settings">Settings → Connections</WikiLink> and
                     click "Connect Strava". Authorise FitTrack to read your activities. All rides and runs
                     will sync automatically.
                   </li>
                   <li>
-                    <strong className="text-white">Whoop</strong> — Connect via OAuth in Settings. FitTrack imports
+                    <strong className="text-white">Whoop</strong> — Connect via OAuth in <WikiLink href="/settings">Settings</WikiLink>. FitTrack imports
                     recovery scores, HRV, sleep data, and strain metrics.
                   </li>
                   <li>
@@ -289,7 +299,7 @@ export default function WikiPage() {
               <div>
                 <h3 className="text-white font-semibold mb-2">Set Up Your Cycling Profile</h3>
                 <p>
-                  Navigate to <em>Settings → Cycling Profile</em> and enter:
+                  Navigate to <em><WikiLink href="/cycling">Cycling page → Profile</WikiLink></em> and enter:
                 </p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
                   <li><strong className="text-white">FTP</strong> — Your Functional Threshold Power in watts (from a 20-min test or ramp test).</li>
@@ -305,7 +315,8 @@ export default function WikiPage() {
               <div>
                 <h3 className="text-white font-semibold mb-2">Understanding the Dashboard</h3>
                 <p>
-                  The dashboard has three time-range tabs: <strong className="text-white">Today</strong> for a quick
+                  The <WikiLink href="/dashboard">dashboard</WikiLink> has three time-range tabs:{' '}
+                  <strong className="text-white">Today</strong> for a quick
                   snapshot (recovery, strain, recent activities), <strong className="text-white">Weekly</strong> for
                   aggregated metrics and trends, and <strong className="text-white">Monthly</strong> for long-term
                   progress overview.
@@ -504,7 +515,13 @@ export default function WikiPage() {
                 },
                 {
                   title: 'Set Your FTP Accurately',
-                  text: 'Enable auto-FTP estimation in Settings or perform a 20-minute maximal effort test. All power-based metrics depend on an accurate FTP value.',
+                  text: (
+                    <>
+                      Enable auto-FTP estimation on the <WikiLink href="/cycling">Cycling page</WikiLink> or
+                      perform a 20-minute maximal effort test. All power-based metrics depend on an accurate FTP
+                      value.
+                    </>
+                  ),
                 },
                 {
                   title: 'Check the Dashboard Daily',
@@ -528,7 +545,12 @@ export default function WikiPage() {
                 },
                 {
                   title: 'Set Goals',
-                  text: 'Use the Goals feature to define specific targets (weight, FTP, PRs) and track your progress with visual indicators and projections.',
+                  text: (
+                    <>
+                      Use the <WikiLink href="/goals">Goals feature</WikiLink> to define specific targets (weight,
+                      FTP, PRs) and track your progress with visual indicators and projections.
+                    </>
+                  ),
                 },
                 {
                   title: 'Watch Health Alerts',
@@ -536,7 +558,13 @@ export default function WikiPage() {
                 },
                 {
                   title: 'Backfill Historical Data',
-                  text: 'After connecting Strava or Whoop, use the backfill feature in Settings to import your complete training history for comprehensive trend analysis.',
+                  text: (
+                    <>
+                      After connecting Strava or Whoop, use the backfill feature in{' '}
+                      <WikiLink href="/settings">Settings</WikiLink> to import your complete training history for
+                      comprehensive trend analysis.
+                    </>
+                  ),
                 },
               ].map((tip) => (
                 <div key={tip.title} className="flex items-start gap-3">
@@ -605,8 +633,10 @@ export default function WikiPage() {
               <div>
                 <h3 className="text-white font-semibold mb-2">How to Use</h3>
                 <p>
-                  Check the <strong className="text-white">DeficiencyCard</strong> on the dashboard (Weekly tab) and
-                  the lifting page. Items are ranked by severity: <strong className="text-white">Critical</strong>{' '}
+                  Check the <strong className="text-white">DeficiencyCard</strong> on the{' '}
+                  <WikiLink href="/dashboard">dashboard</WikiLink> (Weekly tab) and the{' '}
+                  <WikiLink href="/lifting">lifting page</WikiLink>. Items are ranked by severity:{' '}
+                  <strong className="text-white">Critical</strong>{' '}
                   {'>'} <strong className="text-white">High</strong> {'>'} <strong className="text-white">Medium</strong> {'>'}{' '}
                   <strong className="text-white">Low</strong>. Address critical and high items first. Thresholds are
                   adjustable over time as your training evolves.
@@ -693,8 +723,8 @@ export default function WikiPage() {
               <div>
                 <h3 className="text-white font-semibold mb-2">How to Use</h3>
                 <p>
-                  Generate a fuel plan from any cycling activity's detail page via the{' '}
-                  <strong className="text-white">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
+                  Generate a fuel plan from any cycling <WikiLink href="/activities">activity's detail page</WikiLink>{' '}
+                  via the <strong className="text-white">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
                   during, post-ride) with specific products and quantities. Follow the schedule during your ride,
                   then log your actual intake post-ride for tracking and plan refinement.
                 </p>
@@ -718,12 +748,14 @@ export default function WikiPage() {
                 <h3 className="text-white font-semibold mb-2">Features</h3>
                 <ul className="list-disc list-inside space-y-1">
                   <li>
-                    <strong className="text-white">Current Conditions Widget</strong> — Shown at the top of the
-                    dashboard with temperature, wind, and conditions for your home location.
+                    <strong className="text-white">Current Conditions Widget</strong> — Shown at the top of the{' '}
+                    <WikiLink href="/dashboard">dashboard</WikiLink> with temperature, wind, and conditions for
+                    your home location.
                   </li>
                   <li>
-                    <strong className="text-white">7-Day Forecast</strong> — Displayed on the training page with
-                    bad-weather warning indicators for upcoming planned sessions.
+                    <strong className="text-white">7-Day Forecast</strong> — Displayed on the{' '}
+                    <WikiLink href="/training">training page</WikiLink> with bad-weather warning indicators for
+                    upcoming planned sessions.
                   </li>
                   <li>
                     <strong className="text-white">Activity Weather Tags</strong> — Past activities are
@@ -737,8 +769,8 @@ export default function WikiPage() {
                 <h3 className="text-white font-semibold mb-2">Setup</h3>
                 <p>
                   Set your <strong className="text-white">home latitude and longitude</strong> in the Cycling
-                  Profile editor (Cycling page → Profile tab). This is the location used for current conditions
-                  and forecasts. Without a home location, weather features are disabled.
+                  Profile editor (<WikiLink href="/cycling">Cycling page → Profile</WikiLink>). This is the location
+                  used for current conditions and forecasts. Without a home location, weather features are disabled.
                 </p>
               </div>
 
@@ -845,7 +877,8 @@ export default function WikiPage() {
                 <h3 className="text-white font-semibold mb-2">Auto-Linking</h3>
                 <p>
                   Synced activities are automatically matched to planned days by date. Use the "Link activities"
-                  button in the weekly view to force a re-match after manual imports or late syncs.
+                  button in the <WikiLink href="/training">weekly view</WikiLink> to force a re-match after manual
+                  imports or late syncs.
                 </p>
               </div>
             </div>
@@ -890,7 +923,7 @@ export default function WikiPage() {
                 <ul className="list-disc list-inside mt-2 space-y-1">
                   <li><strong className="text-positive">On Track</strong> — Projected to hit target before deadline.</li>
                   <li><strong className="text-warning">At Risk</strong> — Progress is behind schedule but still possible.</li>
-                  <li><strong className="text-red-400">Unlikely</strong> — Current trajectory won't reach target in time.</li>
+                  <li><strong className="text-warning">Unlikely</strong> — Current trajectory won't reach target in time.</li>
                 </ul>
               </div>
 

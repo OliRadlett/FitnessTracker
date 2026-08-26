@@ -21,17 +21,17 @@ export function DecouplingSection({ decoupling, chartDecouplingTrend }: Decoupli
           <div className="mb-3 flex items-center gap-4 text-sm">
             <span className="text-muted">Average decoupling:</span>
             <span className={`font-bold ${
-              (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-green-400'
+              (decoupling.avg_decoupling_pct ?? 0) < 5 ? 'text-positive'
               : (decoupling.avg_decoupling_pct ?? 0) < 8 ? 'text-yellow-400'
-              : 'text-red-400'
+              : 'text-warning'
             }`}>
               {decoupling.avg_decoupling_pct?.toFixed(1)}%
             </span>
             {decoupling.classification && (
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-green-400'
+                decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-positive'
                 : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
-                : 'bg-red-500/20 text-red-400'
+                : 'bg-red-500/20 text-warning'
               }`}>
                 {decoupling.classification}
               </span>

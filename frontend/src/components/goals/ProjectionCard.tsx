@@ -6,9 +6,9 @@ import { useAuthFetch, listGoals, getGoalProjection } from '@/lib/api';
 import type { Goal, GoalProjectionResponse } from '@/lib/api';
 
 const BADGE_STYLES: Record<string, string> = {
-  'On Track': 'bg-green-500/20 text-green-400',
+  'On Track': 'bg-green-500/20 text-positive',
   'At Risk': 'bg-yellow-500/20 text-yellow-400',
-  'Unlikely': 'bg-red-500/20 text-red-400',
+  'Unlikely': 'bg-red-500/20 text-warning',
   'Not enough data': 'bg-muted/20 text-muted',
 };
 

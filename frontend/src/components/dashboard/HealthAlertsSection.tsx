@@ -34,10 +34,10 @@ export function HealthAlertsSection({ analysisResults, isAnalyzing, onAnalyze }:
               : severity === 'warning' ? 'border-yellow-500/30 bg-yellow-500/10'
               : severity === 'info' ? 'border-blue-500/30 bg-blue-500/10'
               : 'border-green-500/20 bg-green-500/5';
-            const badgeClass = severity === 'critical' ? 'bg-red-500/20 text-red-400'
+            const badgeClass = severity === 'critical' ? 'bg-red-500/20 text-warning'
               : severity === 'warning' ? 'bg-yellow-500/20 text-yellow-400'
               : severity === 'info' ? 'bg-blue-500/20 text-blue-400'
-              : 'bg-green-500/20 text-green-400';
+              : 'bg-green-500/20 text-positive';
             const badgeText = severity === 'none' ? '✅ OK'
               : severity === 'info' ? 'ℹ️ INFO'
               : severity.toUpperCase();
@@ -49,14 +49,14 @@ export function HealthAlertsSection({ analysisResults, isAnalyzing, onAnalyze }:
                   <span className={`text-xs px-2 py-0.5 rounded ${badgeClass}`}>{badgeText}</span>
                 </div>
                 {item.result?.description && (
-                  <p className="text-xs text-slate-300 mt-1">{item.result.description}</p>
+                  <p className="text-xs text-muted mt-1">{item.result.description}</p>
                 )}
                 {item.result?.evidence && Object.keys(item.result.evidence).length > 0 && (
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                     {Object.entries(item.result.evidence).map(([key, value]) => (
                       <div key={key} className="flex justify-between text-xs gap-2">
                         <span className="text-muted truncate">{key}</span>
-                        <span className="text-slate-300 font-mono whitespace-nowrap">
+                        <span className="text-muted font-mono whitespace-nowrap">
                           {typeof value === 'number' ? value.toFixed(0) : String(value)}
                         </span>
                       </div>
@@ -64,7 +64,7 @@ export function HealthAlertsSection({ analysisResults, isAnalyzing, onAnalyze }:
                   </div>
                 )}
                 {item.error && (
-                  <p className="text-xs text-red-400 mt-1">Error: {item.error}</p>
+                  <p className="text-xs text-warning mt-1">Error: {item.error}</p>
                 )}
               </div>
             );

@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   TrainingPlan,
@@ -136,7 +137,7 @@ function tsbColor(tsb: number): string {
   if (tsb > 5) return 'text-positive';
   if (tsb >= -10) return 'text-warning';
   if (tsb >= -20) return 'text-orange-400';
-  return 'text-red-400';
+  return 'text-warning';
 }
 
 /** Simple status heuristic — real conformity scoring lands in Phase 5C. */
@@ -172,7 +173,7 @@ function getBadgeStatus(day: TrainingWeekDay | undefined, status: DayStatus): st
 /** Trend arrow for the weekly conformity strip. */
 const TREND_ARROW: Record<string, { symbol: string; className: string }> = {
   improving: { symbol: '↑', className: 'text-positive' },
-  declining: { symbol: '↓', className: 'text-red-400' },
+  declining: { symbol: '↓', className: 'text-warning' },
   stable: { symbol: '→', className: 'text-muted' },
 };
 
@@ -378,7 +379,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
                       ? 'text-positive'
                       : conformity.overall_pct >= 60
                         ? 'text-warning'
-                        : 'text-red-400'
+                        : 'text-warning'
                   }`}
                 >
                   {Math.round(conformity.overall_pct)}%
@@ -443,7 +444,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             ? 'text-white'
             : assessment === 'Slightly fatigued'
               ? 'text-warning'
-              : 'text-red-400';
+              : 'text-warning';
         return (
           <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-surface-light/20 border border-surface-light/40">
             <span className="text-xs font-medium text-muted uppercase tracking-wide">Race TSB</span>
@@ -475,7 +476,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         </div>
       )}
       {weekQuery.isError && (
-        <p className="text-sm text-red-400">
+        <p className="text-sm text-warning">
           Failed to load week: {(weekQuery.error as Error).message}
         </p>
       )}
@@ -852,7 +853,7 @@ function ExpandedPanel({
               <button
                 onClick={onUnassignRoute}
                 disabled={busy}
-                className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-50"
+                className="text-[10px] text-warning hover:text-red-300 disabled:opacity-50"
               >
                 Remove
               </button>
@@ -891,6 +892,12 @@ function ExpandedPanel({
               >
                 🗺️ Browse all routes...
               </button>
+              <Link
+                href="/routes"
+                className="text-[10px] text-accent hover:text-accent/80 ml-2"
+              >
+                Route library →
+              </Link>
             </div>
           )}
         </div>

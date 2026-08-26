@@ -66,7 +66,7 @@ export function LlmAnalysisCard({ analysis, isLoading, onRefresh, isRefreshing }
               })}
             </span>
             <span className="text-surface-light">|</span>
-            <span>Model: <span className="text-slate-300 font-mono">{analysis.model_used}</span></span>
+            <span>Model: <span className="text-muted font-mono">{analysis.model_used}</span></span>
           </div>
 
           {/* Rendered analysis */}

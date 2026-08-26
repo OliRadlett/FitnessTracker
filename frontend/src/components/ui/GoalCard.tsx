@@ -38,6 +38,14 @@ function isCyclingMetric(goal: Goal): boolean {
   return sport === 'cycling';
 }
 
+/** Whether this goal relates to lifting (1RM, volume, big3, bw_ratio). */
+function isLiftingMetric(goal: Goal): boolean {
+  const m = goal.metric.toLowerCase();
+  if (m.includes('1rm') || m.includes('volume') || m.includes('big3') || m.includes('bw_ratio')) return true;
+  const sport = goal.filter_json?.sport?.toLowerCase();
+  return sport === 'strength';
+}
+
 /**
  * Direction-aware progress fill (%):
  * - increase: how far current has moved from start toward target
@@ -74,16 +82,16 @@ export function goalAlignmentBadge(goal: Goal): AlignmentBadgeInfo | null {
     return null;
   }
   const a = goal.alignment_pct;
-  if (a >= 100) return { label: 'Ahead', className: 'bg-green-500/20 text-green-400' };
+  if (a >= 100) return { label: 'Ahead', className: 'bg-green-500/20 text-positive' };
   if (a >= 85) return { label: 'On track', className: 'bg-accent/20 text-accent' };
   if (a > 0) return { label: 'Behind', className: 'bg-warning/20 text-warning' };
-  return { label: 'Regressing', className: 'bg-red-500/20 text-red-400' };
+  return { label: 'Regressing', className: 'bg-red-500/20 text-warning' };
 }
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
   active: { label: 'Active', className: 'bg-accent/20 text-accent' },
-  achieved: { label: '✅ Achieved', className: 'bg-green-500/20 text-green-400' },
-  expired: { label: 'Expired', className: 'bg-red-500/20 text-red-400' },
+  achieved: { label: '✅ Achieved', className: 'bg-green-500/20 text-positive' },
+  expired: { label: 'Expired', className: 'bg-red-500/20 text-warning' },
   abandoned: { label: 'Abandoned', className: 'bg-muted/30 text-muted' },
 };
 
@@ -181,7 +189,7 @@ export function GoalCard({
         </p>
       )}
 
-      {/* Cross-link to cycling page for cycling-related goals */}
+      {/* Cross-link to the feature page for sport-specific goals */}
       {isCyclingMetric(goal) && (
         <Link
           href="/cycling"
@@ -189,6 +197,18 @@ export function GoalCard({
           className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
         >
           View cycling stats
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      )}
+      {isLiftingMetric(goal) && (
+        <Link
+          href="/lifting"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+        >
+          View lifting stats
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>

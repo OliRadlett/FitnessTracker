@@ -10,7 +10,7 @@ interface ChartCardProps {
   actions?: React.ReactNode;
   isLoading?: boolean;
   data?: ChartData | null;
-  emptyMessage?: string;
+  emptyMessage?: React.ReactNode;
   height?: number;
   className?: string;
 }

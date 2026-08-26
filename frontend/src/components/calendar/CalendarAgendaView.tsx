@@ -149,9 +149,9 @@ export function CalendarAgendaView({
               {/* Recovery badge */}
               {dm?.recovery_score != null && (
                 <span className={`shrink-0 text-xs font-mono font-bold ${
-                  dm.recovery_score >= 70 ? 'text-green-400'
+                  dm.recovery_score >= 70 ? 'text-positive'
                   : dm.recovery_score >= 50 ? 'text-amber-400'
-                  : 'text-red-400'
+                  : 'text-warning'
                 }`}>
                   {Math.round(dm.recovery_score)}%
                 </span>

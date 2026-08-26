@@ -192,10 +192,10 @@ export function CompareActivitiesModal({
                     {deltas.map((row) => (
                       <tr key={row.label} className="border-b border-surface-light/20">
                         <td className="py-2 pr-4 text-white">{row.label}</td>
-                        <td className="text-right text-slate-300 py-2 px-4">{row.a}</td>
-                        <td className="text-right text-slate-300 py-2 px-4">{row.b}</td>
+                        <td className="text-right text-muted py-2 px-4">{row.a}</td>
+                        <td className="text-right text-muted py-2 px-4">{row.b}</td>
                         <td className={`text-right py-2 pl-4 font-medium ${
-                          row.positive === null ? 'text-muted' : row.positive ? 'text-green-400' : 'text-red-400'
+                          row.positive === null ? 'text-muted' : row.positive ? 'text-positive' : 'text-warning'
                         }`}>
                           {row.delta}
                         </td>

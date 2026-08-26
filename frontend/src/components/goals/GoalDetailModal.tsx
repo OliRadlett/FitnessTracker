@@ -208,7 +208,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               {alignmentBadge.label} · {Math.round(goal.alignment_pct ?? 0)}%
             </span>
           )}
-          <span className={`px-2 py-0.5 rounded font-medium ${goal.status === 'achieved' ? 'bg-green-500/20 text-green-400' : 'bg-accent/20 text-accent'}`}>
+          <span className={`px-2 py-0.5 rounded font-medium ${goal.status === 'achieved' ? 'bg-green-500/20 text-positive' : 'bg-accent/20 text-accent'}`}>
             {progress.toFixed(0)}% progress
           </span>
           <span className="text-muted">
@@ -451,7 +451,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             <button
               onClick={() => reactivateMutation.mutate()}
               disabled={reactivateMutation.isPending}
-              className="px-3 py-1.5 text-sm bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
+              className="px-3 py-1.5 text-sm bg-green-500/20 hover:bg-green-500/30 text-positive border border-green-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
             >
               🔄 Reactivate
             </button>
@@ -463,7 +463,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
+                className="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-warning border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
               >
                 {deleteMutation.isPending ? 'Deleting…' : 'Confirm Delete'}
               </button>
@@ -496,9 +496,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 // ── Projection section (Phase 7) ──────────────────────────────────────────
 
 const BADGE_STYLES: Record<string, string> = {
-  'On Track': 'bg-green-500/20 text-green-400 border-green-500/30',
+  'On Track': 'bg-green-500/20 text-positive border-green-500/30',
   'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Unlikely': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'Unlikely': 'bg-red-500/20 text-warning border-red-500/30',
   'Not enough data': 'bg-muted/20 text-muted border-muted/30',
 };
 

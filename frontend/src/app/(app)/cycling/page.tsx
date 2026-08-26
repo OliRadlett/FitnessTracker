@@ -414,7 +414,7 @@ export default function CyclingPage() {
           label="W/kg"
           value={metrics?.power_to_weight}
           unit="W/kg"
-          color="text-green-400"
+          color="text-positive"
           subtext="At FTP"
           benchmark={metrics?.ftp_wkg_benchmark}
           tooltip="Power-to-weight ratio at FTP. Higher is better for climbing. Elite: 5-6 W/kg, Good: 3.5-4.5 W/kg."
@@ -461,9 +461,9 @@ export default function CyclingPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <MetricCard label="7d TSS" value={metrics?.recent_tss?.toFixed(0)} color="text-blue-400" trend={metrics?.tss_trend} tooltip="Training Stress Score — a composite measure of ride difficulty based on intensity and duration. 100 TSS = 1 hour at FTP." />
         <MetricCard label="7d Rides" value={metrics?.recent_rides} color="text-purple-400" trend={metrics?.rides_trend} tooltip="Number of cycling activities in the last 7 days." />
-        <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-slate-300" trend={metrics?.distance_trend} tooltip="Total distance covered in the last 7 days." />
-        <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-slate-300" trend={metrics?.time_trend} tooltip="Total time on the bike in the last 7 days." />
-        <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-slate-300" trend={metrics?.elevation_trend} tooltip="Total elevation gain in the last 7 days." />
+        <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-muted" trend={metrics?.distance_trend} tooltip="Total distance covered in the last 7 days." />
+        <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-muted" trend={metrics?.time_trend} tooltip="Total time on the bike in the last 7 days." />
+        <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-muted" trend={metrics?.elevation_trend} tooltip="Total elevation gain in the last 7 days." />
       </div>
 
       {/* IF & VI Row */}
@@ -530,7 +530,7 @@ export default function CyclingPage() {
             </div>
           </div>
           {recalcResult && (
-            <p className="text-xs text-green-400 mt-2">{recalcResult}</p>
+            <p className="text-xs text-positive mt-2">{recalcResult}</p>
           )}
         </Card>
       )}
@@ -560,7 +560,7 @@ export default function CyclingPage() {
           </div>
         </div>
         {backfillResult && (
-          <p className="text-xs text-green-400 mt-2">{backfillResult}</p>
+          <p className="text-xs text-positive mt-2">{backfillResult}</p>
         )}
       </Card>
 

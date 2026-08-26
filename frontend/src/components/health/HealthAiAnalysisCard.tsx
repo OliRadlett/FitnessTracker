@@ -49,7 +49,7 @@ export function HealthAiAnalysisCard() {
       {/* Error state */}
       {mutation.isError && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
-          <p className="text-sm text-red-400">
+          <p className="text-sm text-warning">
             {mutation.error instanceof Error
               ? mutation.error.message.includes('GEMINI_API_KEY')
                 ? 'AI analysis is not available — GEMINI_API_KEY is not configured.'
@@ -93,7 +93,7 @@ export function HealthAiAnalysisCard() {
       {analysis && (
         <div>
           <div className="flex items-center gap-3 mb-4 text-xs text-muted">
-            <span>Model: <span className="text-slate-300 font-mono">{analysis.model_used}</span></span>
+            <span>Model: <span className="text-muted font-mono">{analysis.model_used}</span></span>
             <span className="text-surface-light">|</span>
             <span>Generated {relativeTime(analysis.created_at)}</span>
           </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
@@ -55,7 +56,7 @@ function ExpandableRouteMatch({
     staleTime: 300_000,
   });
 
-  const scoreColor = match.match_score >= 0.8 ? 'text-green-400'
+  const scoreColor = match.match_score >= 0.8 ? 'text-positive'
     : match.match_score >= 0.5 ? 'text-yellow-400'
     : 'text-muted';
 
@@ -120,7 +121,7 @@ function ExpandableRouteMatch({
             {match.avg_hr != null && (
               <div className="bg-surface/60 rounded-lg p-2 text-center">
                 <div className="text-[10px] text-muted">Avg HR</div>
-                <div className="text-sm font-semibold text-red-400">{Math.round(match.avg_hr)} bpm</div>
+                <div className="text-sm font-semibold text-warning">{Math.round(match.avg_hr)} bpm</div>
               </div>
             )}
             {match.avg_duration_min != null && (
@@ -319,7 +320,9 @@ export function WorkoutPlanner() {
     return (
       <Card className="border-yellow-500/30 bg-yellow-500/5">
         <p className="text-sm text-yellow-400">
-          ⚠️ Set your FTP in the Cycling page to use the Workout Planner.
+          ⚠️ Set your FTP on the{' '}
+          <Link href="/cycling" className="underline hover:text-yellow-300">Cycling page</Link>{' '}
+          to use the Workout Planner.
         </p>
       </Card>
     );
@@ -351,7 +354,7 @@ export function WorkoutPlanner() {
                 </p>
               </div>
               <span className={`text-xs font-medium px-2 py-1 rounded ${
-                readiness.is_fatigued ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+                readiness.is_fatigued ? 'bg-red-500/20 text-warning' : 'bg-green-500/20 text-positive'
               }`}>
                 Max: {ZONE_LABELS[readiness.recommended_max_zone]?.split(' — ')[1] || readiness.recommended_max_zone}
               </span>
@@ -394,16 +397,16 @@ export function WorkoutPlanner() {
                         <span className="font-medium text-white">{z.name}</span>
                       </div>
                     </td>
-                    <td className="text-center py-2 px-2 text-slate-300">
+                    <td className="text-center py-2 px-2 text-muted">
                       {z.if_low.toFixed(2)}–{z.if_high.toFixed(2)}
                     </td>
                     <td className="text-center py-2 px-2 text-white font-medium">
                       {z.power_low}–{z.power_high}W
                     </td>
-                    <td className="text-center py-2 px-2 text-slate-300">
+                    <td className="text-center py-2 px-2 text-muted">
                       {z.hr_low > 0 ? `${z.hr_low}–${z.hr_high}` : '—'}
                     </td>
-                    <td className="text-center py-2 px-2 text-slate-300">
+                    <td className="text-center py-2 px-2 text-muted">
                       {z.tss_per_hour_low.toFixed(0)}–{z.tss_per_hour_high.toFixed(0)}
                     </td>
                   </tr>
@@ -493,7 +496,7 @@ export function WorkoutPlanner() {
         </div>
 
         {error && (
-          <p className="text-xs text-red-400 mt-3">⚠️ {error}</p>
+          <p className="text-xs text-warning mt-3">⚠️ {error}</p>
         )}
       </Card>
 
@@ -522,7 +525,7 @@ export function WorkoutPlanner() {
             </div>
             <div className="bg-surface/60 rounded-lg p-3 text-center">
               <div className="text-xs text-muted mb-1">Heart Rate</div>
-              <div className="text-lg font-bold text-red-400">
+              <div className="text-lg font-bold text-warning">
                 {plan.target_hr_low > 0 ? `${plan.target_hr_low}–${plan.target_hr_high} bpm` : '—'}
               </div>
             </div>

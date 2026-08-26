@@ -14,7 +14,7 @@ export function HRZonesDisplay({ zones, lthr }: { zones: HrZonesResponse['zones'
   return (
     <div className="space-y-2">
       <div className="text-xs text-muted mb-3">
-        Based on LTHR: <span className="text-red-400 font-mono">{lthr} bpm</span>
+        Based on LTHR: <span className="text-warning font-mono">{lthr} bpm</span>
       </div>
       {zones.map((zone) => (
         <div key={zone.zone} className="flex items-center gap-3">

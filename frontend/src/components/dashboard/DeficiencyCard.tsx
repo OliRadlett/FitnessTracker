@@ -39,7 +39,7 @@ const SEVERITY_STYLES: Record<DeficiencySeverity, SeverityStyle> = {
   critical: {
     dot: 'bg-red-500',
     badgeBg: 'bg-red-500/20',
-    badgeText: 'text-red-400',
+    badgeText: 'text-warning',
     label: 'Critical',
   },
   high: {

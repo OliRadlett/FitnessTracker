@@ -46,7 +46,7 @@ export function ConformityBadge({
     }
     case 'missed':
       return (
-        <span title={resolvedTitle ?? 'Missed'} className="text-[10px] font-medium text-red-400/60">
+        <span title={resolvedTitle ?? 'Missed'} className="text-[10px] font-medium text-warning/60">
           Missed
         </span>
       );
