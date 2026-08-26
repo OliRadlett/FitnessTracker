@@ -215,7 +215,7 @@ export function WarmupTemplateManager() {
             <button type="button" onClick={addStep} className="px-3 py-1.5 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light">
               + Add Step
             </button>
-            <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="px-4 py-1.5 bg-positive hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+            <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="px-4 py-1.5 bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
               {editingId ? 'Update Template' : 'Save Template'}
             </button>
             <button type="button" onClick={resetForm} className="px-3 py-1.5 text-muted hover:text-white text-sm transition-colors">

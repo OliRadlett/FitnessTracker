@@ -33,7 +33,7 @@ export default function LiveLiftPage() {
     staleTime: 60_000,
   });
   const { data: prs } = useQuery({
-    queryKey: ['prs'],
+    queryKey: ['personal-records'],
     queryFn: () => getPersonalRecords(authFetch),
     staleTime: 60_000,
   });
@@ -172,6 +172,12 @@ export default function LiveLiftPage() {
   // ── Pre-start ──
   return (
     <div className="max-w-md mx-auto px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
+      <Link
+        href="/lifting"
+        className="inline-flex items-center gap-1 text-sm text-muted hover:text-white transition-colors mb-3"
+      >
+        ← Back to Lifting
+      </Link>
       <h1 className="text-2xl font-bold text-white mb-1">Live Lift</h1>
       <p className="text-muted text-sm mb-6">
         Track your session as it happens. Sets sync automatically — no signal needed.

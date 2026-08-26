@@ -105,11 +105,11 @@ export function MonthlyTab({
                     </div>
                     <div>
                       <p className="text-xs text-muted">Distance</p>
-                      <p className="text-sm font-bold text-green-400">{(month.total_distance_meters / 1000).toFixed(0)} km</p>
+                      <p className="text-sm font-bold text-positive">{(month.total_distance_meters / 1000).toFixed(0)} km</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted">Time</p>
-                      <p className="text-sm font-bold text-slate-300">{(month.total_time_seconds / 3600).toFixed(1)}h</p>
+                      <p className="text-sm font-bold text-muted">{(month.total_time_seconds / 3600).toFixed(1)}h</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted">Sessions</p>
@@ -123,9 +123,9 @@ export function MonthlyTab({
                     <div>
                       <p className="text-xs text-muted">Avg Recovery</p>
                       <p className={`text-sm font-bold ${
-                        (month.avg_recovery ?? 0) >= 70 ? 'text-green-400'
+                        (month.avg_recovery ?? 0) >= 70 ? 'text-positive'
                         : (month.avg_recovery ?? 0) >= 50 ? 'text-yellow-400'
-                        : 'text-red-400'
+                        : 'text-warning'
                       }`}>
                         {month.avg_recovery?.toFixed(0) ?? '—'}%
                       </p>
@@ -222,8 +222,8 @@ export function MonthlyTab({
                   <span
                     key={item.label}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
-                      (item.value ?? 0) > 0 ? 'bg-green-500/15 text-green-400 border border-green-500/20'
-                      : (item.value ?? 0) < 0 ? 'bg-red-500/15 text-red-400 border border-red-500/20'
+                      (item.value ?? 0) > 0 ? 'bg-green-500/15 text-positive border border-green-500/20'
+                      : (item.value ?? 0) < 0 ? 'bg-red-500/15 text-warning border border-red-500/20'
                       : 'bg-surface-light text-muted border border-surface-light'
                     }`}
                   >
@@ -240,11 +240,11 @@ export function MonthlyTab({
             {/* Year totals */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <MetricCard label="Activities" value={yearlySummary.total_activities} subtitle="Cardio sessions" color="text-blue-400" icon="🚴" />
-              <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-green-400" icon="📏" />
+              <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-positive" icon="📏" />
               <MetricCard label="TSS" value={yearlySummary.total_tss.toFixed(0)} subtitle="Training Stress" color="text-accent" icon="⚡" />
               <MetricCard label="Lifting" value={`${yearlySummary.total_lifting_sessions}`} subtitle={`${(yearlySummary.total_lifting_volume_kg / 1000).toFixed(0)}k kg vol`} color="text-purple-400" icon="🏋️" />
-              <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-slate-300" icon="⏱️" />
-              <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-green-400' : 'text-yellow-400'} icon="❤️" />
+              <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-muted" icon="⏱️" />
+              <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-yellow-400'} icon="❤️" />
             </div>
 
             {/* Highlight cards */}
@@ -266,7 +266,7 @@ export function MonthlyTab({
               {yearlySummary.highlights.longest_ride && (
                 <div className="bg-surface rounded-xl border border-surface-light/50 p-4">
                   <p className="text-xs font-medium text-muted uppercase tracking-wider mb-1">🚴 Longest Ride</p>
-                  <p className="text-lg font-bold text-green-400">{yearlySummary.highlights.longest_ride.value} {yearlySummary.highlights.longest_ride.unit}</p>
+                  <p className="text-lg font-bold text-positive">{yearlySummary.highlights.longest_ride.value} {yearlySummary.highlights.longest_ride.unit}</p>
                   <p className="text-xs text-muted truncate">{yearlySummary.highlights.longest_ride.name}</p>
                 </div>
               )}
@@ -298,7 +298,7 @@ export function MonthlyTab({
                       <div className="text-right">
                         <p className="text-xs text-muted">{new Date(pr.achieved_date).toLocaleDateString()}</p>
                         {pr.improvement_pct !== null && pr.improvement_pct !== undefined && (
-                          <span className={`text-xs font-medium ${pr.improvement_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          <span className={`text-xs font-medium ${pr.improvement_pct >= 0 ? 'text-positive' : 'text-warning'}`}>
                             {pr.improvement_pct > 0 ? '+' : ''}{pr.improvement_pct}%
                           </span>
                         )}

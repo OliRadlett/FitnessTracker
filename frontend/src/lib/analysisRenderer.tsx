@@ -42,7 +42,7 @@ export function renderAnalysisText(text: string): React.ReactNode[] {
   const flushList = () => {
     if (listItems.length > 0) {
       elements.push(
-        <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 text-sm text-slate-300 mb-3 pl-2">
+        <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 text-sm text-muted mb-3 pl-2">
           {listItems.map((item, i) => (
             <li key={i}>{renderInline(item)}</li>
           ))}
@@ -88,7 +88,7 @@ export function renderAnalysisText(text: string): React.ReactNode[] {
 
     flushList();
     elements.push(
-      <p key={`p-${i}`} className="text-sm text-slate-300 leading-relaxed mb-2">
+      <p key={`p-${i}`} className="text-sm text-muted leading-relaxed mb-2">
         {renderInline(line)}
       </p>,
     );

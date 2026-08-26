@@ -126,7 +126,7 @@ export function ExerciseManager() {
                 {createMut.isPending ? 'Adding...' : 'Add'}
               </button>
               {createMut.isError && (
-                <span className="text-xs text-red-400 self-center">
+                <span className="text-xs text-warning self-center">
                   {(createMut.error as Error).message || 'Already exists'}
                 </span>
               )}
@@ -158,7 +158,7 @@ export function ExerciseManager() {
                   onClick={() => {
                     if (confirm(`Delete "${ex.name}"?`)) deleteMut.mutate(ex.id);
                   }}
-                  className="text-xs text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-300"
+                  className="text-xs text-warning opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-300"
                 >
                   Delete
                 </button>

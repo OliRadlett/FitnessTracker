@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { formatDuration, formatDistance } from '@/lib/utils';
@@ -186,9 +187,9 @@ export function DayDetailPanel({
                   <div className="text-center">
                     <div className="text-xs text-muted mb-1">Score</div>
                     <div className={`text-lg font-bold ${
-                      dayMetric.recovery_score >= 67 ? 'text-green-400'
+                      dayMetric.recovery_score >= 67 ? 'text-positive'
                       : dayMetric.recovery_score >= 34 ? 'text-yellow-400'
-                      : 'text-red-400'
+                      : 'text-warning'
                     }`}>
                       {Math.round(dayMetric.recovery_score)}%
                     </div>
@@ -212,9 +213,9 @@ export function DayDetailPanel({
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted">Strain</span>
                     <span className={`text-sm font-semibold ${
-                      dayMetric.strain >= 14 ? 'text-red-400'
+                      dayMetric.strain >= 14 ? 'text-warning'
                       : dayMetric.strain >= 10 ? 'text-yellow-400'
-                      : 'text-green-400'
+                      : 'text-positive'
                     }`}>{dayMetric.strain.toFixed(1)} / 21</span>
                   </div>
                 </div>
@@ -235,9 +236,9 @@ export function DayDetailPanel({
                     <div className="text-center">
                       <div className="text-xs text-muted mb-1">Total</div>
                       <div className={`text-lg font-bold ${
-                        (daySleepLog.total_sleep_seconds ?? 0) >= 25200 ? 'text-green-400'
+                        (daySleepLog.total_sleep_seconds ?? 0) >= 25200 ? 'text-positive'
                         : (daySleepLog.total_sleep_seconds ?? 0) >= 21600 ? 'text-yellow-400'
-                        : 'text-red-400'
+                        : 'text-warning'
                       }`}>
                         {daySleepLog.total_sleep_seconds ? formatSleepHrs(daySleepLog.total_sleep_seconds) : '\u2014'}
                       </div>
@@ -324,9 +325,15 @@ export function DayDetailPanel({
                   {getSportEmoji(activity.sport_type)}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-semibold text-lg truncate">
-                    {activity.name}
-                  </h3>
+                  <Link
+                    href={`/activities?activity=${activity.id}`}
+                    className="hover:text-accent transition-colors"
+                    title="View this activity in Activities"
+                  >
+                    <h3 className="text-white font-semibold text-lg truncate">
+                      {activity.name}
+                    </h3>
+                  </Link>
                   <span
                     className={`text-sm font-medium ${getSportTextColor(activity.sport_type)}`}
                   >
@@ -460,9 +467,15 @@ export function DayDetailPanel({
             <div className="flex items-center gap-3 mb-3">
               <span className="text-2xl">{'\U0001F3CB\uFE0F'}</span>
               <div className="flex-1 min-w-0">
-                <h3 className="text-white font-semibold text-lg truncate">
-                  {session.focus || session.program_name || 'Lifting Session'}
-                </h3>
+                <Link
+                  href={`/lifting?session=${session.id}`}
+                  className="hover:text-accent transition-colors"
+                  title="View this session in Lifting"
+                >
+                  <h3 className="text-white font-semibold text-lg truncate">
+                    {session.focus || session.program_name || 'Lifting Session'}
+                  </h3>
+                </Link>
                 <span className="text-sm text-purple-400">Strength</span>
               </div>
               {session.total_volume_kg != null && (

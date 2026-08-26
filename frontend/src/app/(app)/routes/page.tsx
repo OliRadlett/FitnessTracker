@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   RouteSummary,
   RouteData,
@@ -54,10 +56,10 @@ function computeDifficulty(
 }
 
 const DIFFICULTY_STYLES: Record<DifficultyLevel, string> = {
-  Easy: 'bg-green-500/20 text-green-400 border-green-500/30',
+  Easy: 'bg-green-500/20 text-positive border-green-500/30',
   Moderate: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   Hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  Extreme: 'bg-red-500/20 text-red-400 border-red-500/30',
+  Extreme: 'bg-red-500/20 text-warning border-red-500/30',
 };
 
 function DifficultyBadge({ level }: { level: DifficultyLevel }) {
@@ -134,7 +136,7 @@ function RouteHistorySection({ routeId }: { routeId: string }) {
           <>
             <div className="w-px h-8 bg-accent/20" />
             <div>
-              <p className="text-sm font-semibold text-green-400">
+              <p className="text-sm font-semibold text-positive">
                 {formatDuration(history.personal_best.duration_seconds)}
               </p>
               <p className="text-xs text-muted">Personal Best</p>
@@ -170,14 +172,20 @@ function RouteHistorySection({ routeId }: { routeId: string }) {
             </thead>
             <tbody>
               {history.rides.map((ride) => (
-                <tr key={ride.activity_id} className="border-b border-surface-light/30 hover:bg-surface-light/20">
+                <tr key={ride.activity_id} className="border-b border-surface-light/30 hover:bg-surface-light/20 cursor-pointer">
                   <td className="py-2 pr-3 text-white">
-                    {new Date(ride.date).toLocaleDateString()}
+                    <Link
+                      href={`/activities?activity=${ride.activity_id}`}
+                      className="hover:text-accent transition-colors"
+                      title="View this ride in Activities"
+                    >
+                      {new Date(ride.date).toLocaleDateString()}
+                    </Link>
                   </td>
-                  <td className="py-2 px-3 text-right text-slate-300">
+                  <td className="py-2 px-3 text-right text-muted">
                     {ride.duration_seconds ? formatDuration(ride.duration_seconds) : '\u2014'}
                   </td>
-                  <td className="py-2 px-3 text-right text-slate-300">
+                  <td className="py-2 px-3 text-right text-muted">
                     {ride.distance_meters ? formatDistance(ride.distance_meters) : '\u2014'}
                   </td>
                   <td className="py-2 px-3 text-right text-yellow-400">
@@ -202,10 +210,22 @@ export default function RoutesPage() {
   usePageTitle('Routes');
   const { authFetch, authFetchWithHeaders, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<RouteFilters>({});
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Deep-link: select the route referenced by ?route=<id> on load
+  useEffect(() => {
+    const id = getParam('route');
+    if (id) setSelectedRouteId((prev) => (prev === id ? prev : id));
+  }, [getParam]);
+
+  const handleSelectRoute = useCallback((id: string | null) => {
+    setSelectedRouteId(id);
+    setParam('route', id);
+  }, [setParam]);
 
   // Phase 8B state
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
@@ -269,7 +289,7 @@ export default function RoutesPage() {
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-      setSelectedRouteId(null);
+      handleSelectRoute(null);
     },
   });
 
@@ -357,9 +377,9 @@ export default function RoutesPage() {
 
   // Map browse select handler
   const handleMapSelectRoute = useCallback((id: string) => {
-    setSelectedRouteId(id);
+    handleSelectRoute(id);
     setViewMode('list');
-  }, []);
+  }, [handleSelectRoute]);
 
   // Selected route ride stats from the list data
   const selectedRouteSummary = routes?.find(r => r.id === selectedRouteId);
@@ -450,7 +470,7 @@ export default function RoutesPage() {
       {syncMutation.isError && (
         <Card>
           <div className="p-4" aria-live="polite">
-            <p className="text-sm text-red-400">
+            <p className="text-sm text-warning">
               Error: {syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}
             </p>
           </div>
@@ -693,7 +713,7 @@ export default function RoutesPage() {
               >
                 <div
                   className="p-4"
-                  onClick={() => setSelectedRouteId(route.id)}
+                  onClick={() => handleSelectRoute(route.id)}
                 >
                   <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
@@ -847,7 +867,7 @@ export default function RoutesPage() {
                           }
                         }}
                         aria-label="Delete route"
-                        className="px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium text-warning hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
                         🗑️
                       </button>

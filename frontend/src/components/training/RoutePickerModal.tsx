@@ -103,7 +103,7 @@ export function RoutePickerModal({
       {currentRouteId && (
         <button
           onClick={handleUnassign}
-          className="mb-3 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+          className="mb-3 px-3 py-1.5 text-xs font-medium text-warning hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
         >
           Remove assigned route
         </button>

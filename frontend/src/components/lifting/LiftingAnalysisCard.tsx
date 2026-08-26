@@ -12,7 +12,7 @@ interface LiftingAnalysisCardProps {
 function fatigueColor(index: number): string {
   if (index < 40) return 'text-positive';
   if (index < 70) return 'text-warning';
-  return 'text-red-400';
+  return 'text-warning';
 }
 
 function StatBadge({ label, value, className = '' }: { label: string; value: string | number; className?: string }) {

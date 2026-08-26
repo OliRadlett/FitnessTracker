@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import type {
   WhoopWeeklySummary,
   RespiratoryRateResponse,
@@ -44,7 +45,7 @@ export function WhoopWeeklyCard({ data }: { data: WhoopWeeklySummary }) {
         <div>
           <p className="text-xs text-muted mb-1">Avg Recovery</p>
           <div className="flex items-center gap-1">
-            <p className="text-xl font-bold text-green-400">
+            <p className="text-xl font-bold text-positive">
               {data.avg_recovery?.toFixed(0) ?? '—'}%
             </p>
             <TrendArrow trend={data.avg_recovery_trend} />
@@ -80,7 +81,7 @@ export function WhoopWeeklyCard({ data }: { data: WhoopWeeklySummary }) {
           {data.best_recovery_day && (
             <div>
               <span className="text-muted">Best: </span>
-              <span className="text-green-400">
+              <span className="text-positive">
                 {new Date(data.best_recovery_day.date).toLocaleDateString(undefined, { weekday: 'short' })} ({data.best_recovery_day.score?.toFixed(0)}%)
               </span>
             </div>
@@ -88,7 +89,7 @@ export function WhoopWeeklyCard({ data }: { data: WhoopWeeklySummary }) {
           {data.worst_recovery_day && (
             <div>
               <span className="text-muted">Worst: </span>
-              <span className="text-red-400">
+              <span className="text-warning">
                 {new Date(data.worst_recovery_day.date).toLocaleDateString(undefined, { weekday: 'short' })} ({data.worst_recovery_day.score?.toFixed(0)}%)
               </span>
             </div>
@@ -130,7 +131,10 @@ export function RespiratoryRateCard({ data }: { data: RespiratoryRateResponse })
 
 export function ActivityRow({ activity }: { activity: Activity }) {
   return (
-    <div className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors">
+    <Link
+      href={`/activities?activity=${activity.id}`}
+      className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors"
+    >
       <div className="flex items-center gap-3 min-w-0">
         <Badge variant={getSportBadgeVariant(activity.sport_type)}>
           {activity.sport_type}
@@ -144,13 +148,13 @@ export function ActivityRow({ activity }: { activity: Activity }) {
       </div>
       <div className="text-right shrink-0 ml-3">
         {activity.distance_meters && !['weighttraining', 'workout', 'crossfit', 'strength_training'].includes(activity.sport_type) && (
-          <p className="text-sm text-slate-300">{formatDistance(activity.distance_meters)}</p>
+          <p className="text-sm text-muted">{formatDistance(activity.distance_meters)}</p>
         )}
         {activity.duration_seconds && (
           <p className="text-xs text-muted">{formatDuration(activity.duration_seconds)}</p>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -158,7 +162,10 @@ export function ActivityRow({ activity }: { activity: Activity }) {
 
 export function SessionRow({ session }: { session: LiftingSession }) {
   return (
-    <div className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors">
+    <Link
+      href={`/lifting?session=${session.id}`}
+      className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors"
+    >
       <div>
         <p className="text-sm font-medium text-white">{session.focus || 'General'}</p>
         <p className="text-xs text-muted">
@@ -175,7 +182,7 @@ export function SessionRow({ session }: { session: LiftingSession }) {
           </p>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 

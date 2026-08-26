@@ -23,7 +23,7 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend }: Vo2ma
           <>
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
               <div className="flex items-center gap-4">
-                <p className="text-4xl font-bold text-green-400">
+                <p className="text-4xl font-bold text-positive">
                   {vo2max.vo2max.toFixed(1)}
                 </p>
                 <div>
@@ -31,10 +31,10 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend }: Vo2ma
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     vo2max.classification === 'Superior' ? 'bg-purple-500/20 text-purple-400'
                     : vo2max.classification === 'Excellent' ? 'bg-blue-500/20 text-blue-400'
-                    : vo2max.classification === 'Good' ? 'bg-green-500/20 text-green-400'
+                    : vo2max.classification === 'Good' ? 'bg-green-500/20 text-positive'
                     : vo2max.classification === 'Average' ? 'bg-yellow-500/20 text-yellow-400'
                     : vo2max.classification === 'Below Average' ? 'bg-orange-500/20 text-orange-400'
-                    : 'bg-red-500/20 text-red-400'
+                    : 'bg-red-500/20 text-warning'
                   }`}>
                     {vo2max.classification}
                   </span>

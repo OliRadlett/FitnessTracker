@@ -269,7 +269,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
         </button>
         <button
           type="submit"
-          className="px-4 py-1.5 bg-positive hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-1.5 bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors"
         >
           Save Exercise
         </button>

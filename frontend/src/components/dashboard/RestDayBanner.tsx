@@ -24,9 +24,9 @@ export function RestDayBanner({ suggestion }: RestDayBannerProps) {
           <div>
             <p className="text-muted uppercase tracking-wider">TSB (Form)</p>
             <p className={`font-mono font-bold ${
-              (suggestion.current_tsb ?? 0) < -30 ? 'text-red-400'
+              (suggestion.current_tsb ?? 0) < -30 ? 'text-warning'
               : (suggestion.current_tsb ?? 0) < -10 ? 'text-amber-400'
-              : (suggestion.current_tsb ?? 0) > 10 ? 'text-green-400'
+              : (suggestion.current_tsb ?? 0) > 10 ? 'text-positive'
               : 'text-blue-400'
             }`}>
               {suggestion.current_tsb?.toFixed(0) ?? '—'}
@@ -35,9 +35,9 @@ export function RestDayBanner({ suggestion }: RestDayBannerProps) {
           <div>
             <p className="text-muted uppercase tracking-wider">Recovery</p>
             <p className={`font-mono font-bold ${
-              (suggestion.latest_recovery ?? 0) >= 70 ? 'text-green-400'
+              (suggestion.latest_recovery ?? 0) >= 70 ? 'text-positive'
               : (suggestion.latest_recovery ?? 0) >= 50 ? 'text-amber-400'
-              : 'text-red-400'
+              : 'text-warning'
             }`}>
               {suggestion.latest_recovery?.toFixed(0) ?? '—'}%
             </p>
@@ -45,9 +45,9 @@ export function RestDayBanner({ suggestion }: RestDayBannerProps) {
           <div>
             <p className="text-muted uppercase tracking-wider">Consecutive Days</p>
             <p className={`font-mono font-bold ${
-              suggestion.consecutive_training_days >= 7 ? 'text-red-400'
+              suggestion.consecutive_training_days >= 7 ? 'text-warning'
               : suggestion.consecutive_training_days >= 4 ? 'text-amber-400'
-              : 'text-green-400'
+              : 'text-positive'
             }`}>
               {suggestion.consecutive_training_days}
             </p>

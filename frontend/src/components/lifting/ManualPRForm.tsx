@@ -48,7 +48,7 @@ export function ManualPRForm({ onSubmit, onCancel, isPending }: { onSubmit: (dat
         <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Hit this at a commercial gym" className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
       </div>
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={isPending} className="px-4 py-1.5 bg-positive hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+        <button type="submit" disabled={isPending} className="px-4 py-1.5 bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
           {isPending ? 'Saving...' : 'Save PR'}
         </button>
         <button type="button" onClick={onCancel} className="px-3 py-1.5 text-muted hover:text-white text-sm transition-colors">Cancel</button>

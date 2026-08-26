@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import type { PersonalRecord } from '@/lib/api/types';
@@ -257,7 +258,13 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
       {/* Header */}
       <header className="shrink-0 px-4 pt-4 pb-3 bg-surface border-b border-surface-light/50">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
+            <Link
+              href="/lifting"
+              className="inline-flex items-center gap-1 text-xs text-muted hover:text-white transition-colors mb-1"
+            >
+              ← Lifting
+            </Link>
             <p className="text-3xl font-bold text-white tabular-nums leading-none">
               {formatClock(elapsedSeconds)}
             </p>

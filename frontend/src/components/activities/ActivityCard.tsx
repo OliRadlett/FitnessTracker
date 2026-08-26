@@ -103,7 +103,7 @@ export function ActivityCard({
               )}
               {activity.route_id && (
                 <Link
-                  href="/routes"
+                  href={`/routes?route=${activity.route_id}`}
                   className="ml-2 text-accent/70 hover:text-accent transition-colors"
                   title={`View route: ${activity.route_name || 'Route'}`}
                 >
@@ -121,13 +121,13 @@ export function ActivityCard({
         <div className="flex items-center flex-wrap gap-6 text-right">
           {!isStrength && activity.distance_meters && (
             <div>
-              <p className="text-sm text-slate-300">{formatDistance(activity.distance_meters)}</p>
+              <p className="text-sm text-muted">{formatDistance(activity.distance_meters)}</p>
               <p className="text-xs text-muted">Distance</p>
             </div>
           )}
           {activity.duration_seconds && (
             <div>
-              <p className="text-sm text-slate-300">{formatDuration(activity.duration_seconds)}</p>
+              <p className="text-sm text-muted">{formatDuration(activity.duration_seconds)}</p>
               <p className="text-xs text-muted">Duration</p>
             </div>
           )}
@@ -148,7 +148,11 @@ export function ActivityCard({
 
       {/* Linked Lifting Session indicator */}
       {activity.linked_lifting_session && (
-        <div className="mt-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+        <Link
+          href={`/lifting?session=${activity.linked_lifting_session.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg block transition-colors hover:border-purple-400/40"
+        >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">Lifting</span>
             <span className="text-sm text-white">{activity.linked_lifting_session.focus || 'Lifting Session'}</span>
@@ -160,7 +164,7 @@ export function ActivityCard({
               <span>{Math.round(activity.linked_lifting_session.total_volume_kg).toLocaleString()} kg volume</span>
             )}
           </div>
-        </div>
+        </Link>
       )}
     </Card>
   );

@@ -16,7 +16,7 @@ const readinessConfig = {
   green: {
     bg: 'bg-green-500/15',
     border: 'border-green-500/30',
-    text: 'text-green-400',
+    text: 'text-positive',
     emoji: '🟢',
     label: 'Ready to Train',
   },
@@ -30,14 +30,14 @@ const readinessConfig = {
   red: {
     bg: 'bg-red-500/15',
     border: 'border-red-500/30',
-    text: 'text-red-400',
+    text: 'text-warning',
     emoji: '🔴',
     label: 'Rest Day',
   },
   unknown: {
     bg: 'bg-slate-500/15',
     border: 'border-slate-500/30',
-    text: 'text-slate-400',
+    text: 'text-muted',
     emoji: '⚪',
     label: 'No Data',
   },

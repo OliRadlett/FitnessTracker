@@ -91,7 +91,7 @@ interface ChartFrameProps {
  * Renders a chart body with built-in loading and empty states.
  * Use directly inside a Card when you need custom chrome around it.
  */
-export function ChartBody({ isLoading, data, emptyMessage = 'No data available', height = 400, className = '' }: ChartFrameProps & { isLoading?: boolean; emptyMessage?: string }) {
+export function ChartBody({ isLoading, data, emptyMessage = 'No data available', height = 400, className = '' }: ChartFrameProps & { isLoading?: boolean; emptyMessage?: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className={`h-80 flex items-center justify-center ${className}`} style={{ height }}>
@@ -184,7 +184,7 @@ function InsightsList({ insights }: { insights?: string[] }) {
   return (
     <div className="mt-3 space-y-1">
       {insights.map((insight, i) => (
-        <p key={i} className="text-xs text-slate-400 flex items-start gap-1.5">
+        <p key={i} className="text-xs text-muted flex items-start gap-1.5">
           <span className="text-accent mt-0.5">💡</span>
           {insight}
         </p>
