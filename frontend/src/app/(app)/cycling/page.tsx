@@ -331,6 +331,9 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['chart-power-zones'] });
       queryClient.invalidateQueries({ queryKey: ['cycling-metrics'] });
     },
+    onError: (error: Error) => {
+      setBackfillResult(`Error: ${error.message}`);
+    },
   });
 
   const backfillFtpHistoryMutation = useMutation({

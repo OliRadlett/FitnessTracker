@@ -33,40 +33,48 @@ class WahooClient:
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         """Exchange authorization code for tokens."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                WAHOO_TOKEN_URL,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "grant_type": "authorization_code",
-                },
-                headers={"Accept": "application/json"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    WAHOO_TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "code": code,
+                        "redirect_uri": redirect_uri,
+                        "grant_type": "authorization_code",
+                    },
+                    headers={"Accept": "application/json"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def refresh_access_token(self, refresh_token: str) -> dict:
         """Refresh an expired Wahoo access token."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                WAHOO_TOKEN_URL,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "refresh_token": refresh_token,
-                    "grant_type": "refresh_token",
-                },
-                headers={"Accept": "application/json"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    WAHOO_TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "refresh_token": refresh_token,
+                        "grant_type": "refresh_token",
+                    },
+                    headers={"Accept": "application/json"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_user(self, access_token: str) -> dict:
         """Fetch the authenticated user profile."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{WAHOO_API_BASE}/v1/user",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -83,7 +91,7 @@ class WahooClient:
         """Fetch user's saved routes."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{WAHOO_API_BASE}/v1/routes",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -98,7 +106,7 @@ class WahooClient:
         """Fetch detailed info for a single route."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{WAHOO_API_BASE}/v1/routes/{route_id}",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -117,7 +125,7 @@ class WahooClient:
         """Fetch user's completed workouts."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{WAHOO_API_BASE}/v1/workouts",
                     headers={"Authorization": f"Bearer {access_token}"},

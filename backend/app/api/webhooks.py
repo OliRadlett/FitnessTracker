@@ -6,7 +6,7 @@ import hmac
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.config import get_settings
-from app.services.strava import handle_strava_event
+from app.models.webhook_event import StravaWebhookEvent
 
 settings = get_settings()
 router = APIRouter()
@@ -20,6 +20,13 @@ def _verify_strava_signature(payload_body: bytes, signature_header: str | None) 
     """
     if not signature_header:
         return False
+
+    # Guard against a misconfigured empty secret — an empty key would make
+    # the MAC trivially forgeable.
+    if not settings.strava_client_secret:
+        raise HTTPException(
+            status_code=503, detail="Webhook signature verification not configured"
+        )
 
     expected = hmac.HMAC(
         key=settings.strava_client_secret.encode("utf-8"),
@@ -54,7 +61,10 @@ async def strava_webhook_event(
     """Receive Strava webhook events.
 
     Strava POSTs event data when activities are created, updated, or deleted.
-    Verifies the ``X-Hub-Signature-256`` header before processing.
+    Verifies the ``X-Hub-Signature-256`` header, then persists the event to
+    the queue for asynchronous processing by a Celery task (fast ack, retries,
+    ordering). Processing inline would make Strava redeliver the event on any
+    timeout and block the worker on slow API fetches.
     """
     raw_body = await request.body()
 
@@ -74,22 +84,19 @@ async def strava_webhook_event(
     if not all([object_type, object_id, aspect_type, owner_id]):
         raise HTTPException(status_code=400, detail="Missing required fields")
 
-    # Use a new DB session for the background event processing
     from app.database import async_session_factory
 
     async with async_session_factory() as db:
-        try:
-            await handle_strava_event(
-                db=db,
-                object_type=object_type,
-                object_id=object_id,
-                aspect_type=aspect_type,
-                owner_id=owner_id,
-                updates=updates,
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        event = StravaWebhookEvent(
+            aspect_type=str(aspect_type),
+            object_type=str(object_type),
+            object_id=str(object_id),
+            owner_id=str(owner_id),
+            raw_data=body,
+            updates=updates,
+            status="pending",
+        )
+        db.add(event)
+        await db.commit()
 
-    return {"status": "ok"}
+    return {"status": "ok", "queued": str(event.id)}

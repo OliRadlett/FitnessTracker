@@ -4,11 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { formatRelativeTime } from '@/lib/utils';
 
 const BASE_PATH = '/fittrack';
 
@@ -57,11 +59,35 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   useEffect(() => {
     loadConnections();
   }, [authFetch]);
+
+  // Surface the OAuth redirect outcome (the callback bounces back to
+  // /settings?connected=... or /settings?error=... — previously dropped).
+  useEffect(() => {
+    const connected = searchParams?.get('connected');
+    const error = searchParams?.get('error');
+    if (connected) {
+      setOauthNotice(`${connected.charAt(0).toUpperCase() + connected.slice(1)} connected successfully.`);
+      setConnections([]);
+      setLoading(true);
+      loadConnections();
+    } else if (error) {
+      setOauthNotice(`Connection failed: ${error}`);
+    }
+    if (connected || error) {
+      // Strip the params so a refresh doesn't re-show the stale notice.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('connected');
+      url.searchParams.delete('error');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams]);
 
   async function loadConnections() {
     try {
@@ -298,14 +324,26 @@ export default function SettingsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-white font-medium">{integration.name}</p>
-                      {isConnected && (
-                        <Badge variant="positive">Connected</Badge>
+                      {isConnected && connection && (
+                        connection.status === 'needs_reauth' ? (
+                          <Badge variant="warning">Needs re-auth</Badge>
+                        ) : (
+                          <Badge variant="positive">Connected</Badge>
+                        )
                       )}
                     </div>
                     <p className="text-sm text-muted mt-1">{integration.description}</p>
                     {isConnected && connection && (
                       <p className="text-xs text-muted mt-1">
                         Connected as {connection.provider_user_id}
+                        {connection.last_synced_at && (
+                          <> · Last synced {formatRelativeTime(connection.last_synced_at)}</>
+                        )}
+                      </p>
+                    )}
+                    {isConnected && connection?.status === 'needs_reauth' && (
+                      <p className="text-xs text-red-400 mt-1">
+                        Sync is paused — please re-authorise to resume.
                       </p>
                     )}
                   </div>
@@ -322,13 +360,22 @@ export default function SettingsPage() {
                     </Link>
                   ) : isConnected ? (
                     <>
-                      <button
-                        onClick={() => handleSync(connection!.id)}
-                        disabled={syncing === connection!.id}
-                        className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {syncing === connection!.id ? 'Syncing...' : 'Sync'}
-                      </button>
+                      {connection!.status === 'needs_reauth' ? (
+                        <button
+                          onClick={() => handleConnect(integration.id)}
+                          className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors"
+                        >
+                          Reconnect
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleSync(connection!.id)}
+                          disabled={syncing === connection!.id}
+                          className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {syncing === connection!.id ? 'Syncing...' : 'Sync'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDisconnect(connection!.id)}
                         className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
@@ -355,8 +402,21 @@ export default function SettingsPage() {
           })}
         </div>
         {syncResult && (
-          <div className="mx-6 mb-4 p-3 rounded-lg bg-background text-sm text-muted">
+          <div
+            className={`mx-6 mb-4 p-3 rounded-lg bg-background text-sm ${
+              syncResult.startsWith('Error:') ? 'text-red-400' : 'text-muted'
+            }`}
+          >
             {syncResult}
+          </div>
+        )}
+        {oauthNotice && (
+          <div
+            className={`mx-6 mb-4 p-3 rounded-lg bg-background text-sm ${
+              oauthNotice.startsWith('Connection failed') ? 'text-red-400' : 'text-green-400'
+            }`}
+          >
+            {oauthNotice}
           </div>
         )}
       </Card>
@@ -507,6 +567,7 @@ export default function SettingsPage() {
                   if (!reader) throw new Error('No response stream');
                   const decoder = new TextDecoder();
                   let buffer = '';
+                  let chunkErrors = 0;
 
                   while (true) {
                     const { done, value } = await reader.read();
@@ -532,10 +593,11 @@ export default function SettingsPage() {
                           setWhoopBackfillResult(event.detail);
                           setWhoopBackfillProgress(null);
                         } else if (event.type === 'error') {
-                          // Backend error (e.g. 429 rate limit) — surface to user
-                          setWhoopBackfillResult(`Error: ${event.detail}`);
-                          setWhoopBackfillProgress(null);
-                          return; // Stop processing further events
+                          // Non-fatal per-chunk error — the backend continues
+                          // and reports the failure count in the final
+                          // `complete` event. Don't abort the stream.
+                          console.warn('Whoop backfill chunk error:', event.detail);
+                          chunkErrors += 1;
                         }
                       } catch (parseErr) {
                         // Only log actual JSON parse errors, not backend errors

@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { Sidebar, SidebarProvider, MobileMenuButton } from '@/components/Sidebar';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { SyncHealthBanner } from '@/components/sync/SyncHealthBanner';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -38,6 +39,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main role="main" className="flex-1 overflow-auto">
           <div className="p-4 pt-16 md:p-8">
+            <SyncHealthBanner />
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

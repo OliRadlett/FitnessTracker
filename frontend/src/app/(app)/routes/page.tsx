@@ -447,6 +447,15 @@ export default function RoutesPage() {
           </div>
         </Card>
       )}
+      {syncMutation.isError && (
+        <Card>
+          <div className="p-4" aria-live="polite">
+            <p className="text-sm text-red-400">
+              Error: {syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}
+            </p>
+          </div>
+        </Card>
+      )}
 
       {/* Filter Bar */}
       <Card>

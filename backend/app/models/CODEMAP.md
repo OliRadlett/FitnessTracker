@@ -19,3 +19,4 @@
 | `event.py` | `Event` | Race/ride/lift events with taper config |
 | `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |
+| `webhook_event.py` | `StravaWebhookEvent` | Async Strava webhook queue: raw payload, received_at, processed_at, attempts, status (pending/processed/failed), error. Drained by `process_strava_webhook_events` Celery task |

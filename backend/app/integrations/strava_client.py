@@ -34,33 +34,41 @@ class StravaClient:
 
     async def exchange_code(self, code: str) -> dict:
         """Exchange authorization code for tokens."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                STRAVA_TOKEN_URL,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": code,
-                    "grant_type": "authorization_code",
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    STRAVA_TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "code": code,
+                        "grant_type": "authorization_code",
+                    },
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def refresh_access_token(self, refresh_token: str) -> dict:
         """Refresh an expired Strava access token."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                STRAVA_TOKEN_URL,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "refresh_token": refresh_token,
-                    "grant_type": "refresh_token",
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    STRAVA_TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "refresh_token": refresh_token,
+                        "grant_type": "refresh_token",
+                    },
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
 
     async def get_activities(
         self,
@@ -78,7 +86,7 @@ class StravaClient:
             params["before"] = int(before.timestamp())
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/athlete/activities",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -93,7 +101,7 @@ class StravaClient:
         """Fetch detailed info for a single Strava activity."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/activities/{activity_id}",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -124,7 +132,7 @@ class StravaClient:
         keys = ",".join(stream_types)
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/activities/{activity_id}/streams",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -140,7 +148,7 @@ class StravaClient:
         """Fetch the authenticated athlete profile."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/athlete",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -166,7 +174,7 @@ class StravaClient:
             athlete_id = athlete["id"]
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/athletes/{athlete_id}/routes",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -181,7 +189,7 @@ class StravaClient:
         """Fetch detailed info for a single Strava route."""
 
         async def _fetch():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{STRAVA_API_BASE}/routes/{route_id}",
                     headers={"Authorization": f"Bearer {access_token}"},
