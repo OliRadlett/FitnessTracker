@@ -25,7 +25,7 @@ const DEFAULT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Extract a unit suffix from a y-axis label, e.g. "Power (W)" -> " W". */
 function extractUnit(yLabel?: string): string {
@@ -327,12 +327,24 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
       );
       break;
 
-    case 'scatter':
+    case 'scatter': {
+      const scatterLabels = data.labels ?? [];
+      // Scatter axes are numeric. Date labels (e.g. decoupling trend) would
+      // otherwise become Number("2026-08-20") -> NaN. Map them to timestamps.
+      const scatterIsDate = scatterLabels.length > 0 && ISO_DATE_RE.test(scatterLabels[0]);
+      const toScatterX = (label: string) =>
+        scatterIsDate ? new Date(`${label}T00:00:00`).getTime() : Number(label);
+      const formatScatterTick = (v: number) => {
+        const d = new Date(v);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return formatDateTick(iso, scatterLabels.length);
+      };
       chartContent = (
         <ResponsiveContainer width="100%" height={height}>
           <ScatterChart>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="x" name={data.x_label || 'x'} type="number"
+              tickFormatter={scatterIsDate ? formatScatterTick : undefined}
               label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined}
               {...commonAxisProps} />
             <YAxis dataKey="y" name={data.y_label || 'y'} type="number"
@@ -345,7 +357,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <Scatter
                 key={s.name}
                 name={s.name}
-                data={(data.labels ?? []).map((label, j) => ({ x: Number(label), y: s.data[j] ?? 0 }))}
+                data={scatterLabels.map((label, j) => ({ x: toScatterX(label), y: s.data[j] ?? 0 }))}
                 fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
               />
             ))}
@@ -353,6 +365,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         </ResponsiveContainer>
       );
       break;
+    }
 
     case 'area':
       chartContent = (

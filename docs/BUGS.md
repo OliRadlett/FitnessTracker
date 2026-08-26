@@ -553,3 +553,21 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **Files:** 50 frontend `.tsx`/`.ts` files
 - **Issue:** A concurrent session's bulk operation replaced lowercase `t` with `e` across ~50 frontend files (`const`→`conse`, `mutation`→`mueaeion`, `string`→`sering`), plus `h`→`o` in a subset. Lossy — cannot be reversed. The frontend no longer compiled.
 - **Fix:** Restored the 50 files from git HEAD and re-applied the sync-health Settings changes (`settings/page.tsx`). Note: any uncommitted work in those files from the offending session was discarded.
+
+### BUG-083: Date Chart X-Axis Shows "undefined NaN"
+- **Status:** FIXED
+- **File:** `frontend/src/components/charts/Chart.tsx:28`
+- **Issue:** `ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/` has **no capture groups**, so destructuring `const [, year, month, day] = match` yields `undefined` for every match. `formatDateTick`/`formatDateFull` return `"undefined NaN"`, so every date-labeled chart's x-axis ticks and tooltip headers render `"undefined NaN"`. Compounded for the decoupling-trend scatter whose date labels (`Number("2026-08-20")`) additionally became `NaN` on a numeric axis.
+- **Fix:** Added capture groups `^(\d{4})-(\d{2})-(\d{2})$`. Also made the scatter branch map ISO-date labels to timestamps and tick-format back to dates. Regression test added for date-labeled scatter in `Chart.test.tsx`.
+
+### BUG-084: Whoop Backfill Progress Bar Never Appears
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py` (`backfill_whoop_chunked`), `frontend/src/app/(app)/settings/page.tsx`
+- **Issue:** The Whoop backfill only yields SSE `progress` events after each 3-month chunk's data fetch completes (rate-limited recovery lookups + a 5s inter-chunk pause), so the first progress event can be delayed tens of seconds — the progress bar never visibly appears even though the backfill runs. Strava streams per-page progress, so its bar shows immediately.
+- **Fix:** Emit an immediate initial `progress` event (`chunk: 0`) before the chunk loop so the settings UI shows the bar at 0% as soon as the backfill starts.
+
+### BUG-085: Whoop Sleep Sync Includes Naps
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py` (`sync_whoop_sleep`)
+- **Issue:** The Whoop sleep sync stored every SCORED sleep record including daytime naps, inflating overnight sleep totals in the calendar/dashboard. Whoop marks naps with the record-level `nap` boolean.
+- **Fix:** Skip records where `record.get("nap")` is truthy before upserting into `SleepLog`.
