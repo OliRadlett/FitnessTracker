@@ -1,6 +1,14 @@
-# Plan-Day Linking Fix — Session State (2026-08-26)
+# Plan-Day Linking Fix — DEPLOYED & VERIFIED (2026-08-26)
 
-> Written mid-session before an opencode restart. Resume from "Remaining steps".
+> Status: fix live in production. Commits `0598fb6` (fix) + `13764a2` (test
+> determinism) + `aa0054d` (other session's live-sync idempotency work) pushed
+> to main and fast-forwarded to prod; deploy workflow green; migration 034
+> applied. Prod verification: worker task reported `plan_day_linked: 1` and
+> the 2026-08-25 bench day ↔ Push session row shows linked=true.
+>
+> Remaining roadmap below — next up: substitution-detection design session,
+> then manual attach/unlink feature. Also outstanding: BUG-072 (OAuth token
+> health) in docs/BUGS.md.
 
 ## Reported Bug
 
