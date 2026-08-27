@@ -301,9 +301,10 @@ async def create_or_merge_route(
             RouteSource.provider_route_id == provider_route_id,
         )
     )
-    if existing_source.scalar_one_or_none():
+    existing_row = existing_source.scalar_one_or_none()
+    if existing_row:
         logger.info(f"Route source already exists: {provider}/{provider_route_id}")
-        source = existing_source.scalar_one_or_none()
+        source = existing_row
         # Return the parent route, filling surface_profile if missing
         result = await db.execute(
             select(Route)

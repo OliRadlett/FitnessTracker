@@ -1153,17 +1153,23 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
         {!isRest && !isStrength && (
           <div>
             <label className={labelCls}>TSS</label>
-            <input
-              type="number"
-              min={0}
-              value={day.planned_tss ?? ''}
-              onChange={(e) =>
-                onPatch({
-                  planned_tss: e.target.value === '' ? null : parseFloat(e.target.value),
-                })
-              }
-              className={inputCls}
-            />
+            {previewTargets ? (
+              <p className="text-sm text-white font-medium mt-1">
+                {Math.round(previewTargets.target_tss_low)}–{Math.round(previewTargets.target_tss_high)}
+              </p>
+            ) : (
+              <input
+                type="number"
+                min={0}
+                value={day.planned_tss ?? ''}
+                onChange={(e) =>
+                  onPatch({
+                    planned_tss: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })
+                }
+                className={inputCls}
+              />
+            )}
           </div>
         )}
       </div>

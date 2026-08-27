@@ -660,11 +660,19 @@ async def link_activities_to_plan_days(
                     if _activity_sport_matches_day(candidates[0], day):
                         day.completed = True
                         completed_updates += 1
+                    # Copy route: plan → activity
                     if (
                         candidates[0].route_id is None
                         and day.planned_route_id is not None
                     ):
                         candidates[0].route_id = day.planned_route_id
+                        route_backfills += 1
+                    # Copy route: activity → plan day
+                    if (
+                        candidates[0].route_id is not None
+                        and day.planned_route_id is None
+                    ):
+                        day.planned_route_id = candidates[0].route_id
                         route_backfills += 1
             elif day.sport == "strength" and day.lifting_session_id is None:
                 candidates = [
@@ -738,6 +746,37 @@ async def link_activities_to_plan_days(
                     act = acts_by_id.get(day.activity_id)
                     if act is not None and act.route_id is None:
                         act.route_id = day.planned_route_id
+                        route_backfills += 1
+
+    # Retroactive: backfill planned_route_id from activity route
+    retro_route_ids = set()
+    for plan in plans:
+        for day in plan.days:
+            if (
+                day.sport == "cycle"
+                and day.activity_id is not None
+                and day.planned_route_id is None
+            ):
+                retro_route_ids.add(day.activity_id)
+
+    if retro_route_ids:
+        retro_route_result = await db.execute(
+            select(Activity).where(
+                Activity.id.in_(retro_route_ids),
+                Activity.route_id.isnot(None),
+            )
+        )
+        retro_route_acts = {a.id: a for a in retro_route_result.scalars()}
+        for plan in plans:
+            for day in plan.days:
+                if (
+                    day.sport == "cycle"
+                    and day.activity_id is not None
+                    and day.planned_route_id is None
+                ):
+                    act = retro_route_acts.get(day.activity_id)
+                    if act is not None and act.route_id is not None:
+                        day.planned_route_id = act.route_id
                         route_backfills += 1
 
     if linked or route_backfills:
