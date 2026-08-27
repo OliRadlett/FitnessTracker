@@ -1,5 +1,6 @@
 """Strava service — webhook event handling."""
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -17,6 +18,8 @@ from app.services.strava.sync import (
     _safe_float,
     refresh_if_needed,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_strava_event(
@@ -154,6 +157,18 @@ async def _handle_activity_create(
 
     # Auto-link to route if GPS activity
     await link_activity_to_route(db, activity)
+
+    # Auto-link the new activity to its training-plan day (same-date match)
+    try:
+        from app.services.conformity import link_activities_to_plan_days
+
+        await link_activities_to_plan_days(db, activity.user_id)
+    except Exception:
+        logger.warning(
+            "Plan-day linking failed for user %s after webhook create", activity.user_id,
+            exc_info=True,
+        )
+    await db.flush()
 
 
 async def _handle_activity_update(

@@ -214,21 +214,23 @@ async def oauth_callback(
                         url=f"{_frontend_url}/settings?error={provider.title()}+HTTP+{token_resp.status_code}+{token_resp.text[:100]}"
                     )
 
-            access_token = token_data.get("access_token")
-            if not access_token:
+            if token_resp.status_code != 200:
                 _logger.error(
                     "%s token exchange failed: status=%s, response=%s",
                     provider.title(),
                     token_resp.status_code,
                     token_data,
                 )
+
+            access_token = token_data.get("access_token")
+            if not access_token:
+                import urllib.parse as _urlparse
+
                 error_detail = token_data.get(
                     "error_description", token_data.get("error", "unknown")
                 )
-                import urllib.parse as _urlparse
-
                 return RedirectResponse(
-                    url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed:+{_urlparse.quote(str(error_detail))}"
+                    url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed+(HTTP+{token_resp.status_code}):+{_urlparse.quote(str(error_detail))}"
                 )
 
             refresh_token = token_data.get("refresh_token")

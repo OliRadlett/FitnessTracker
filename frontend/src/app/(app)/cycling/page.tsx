@@ -199,7 +199,7 @@ export default function CyclingPage() {
     staleTime: 300_000,
   });
 
-  const { data: vo2max } = useQuery<Vo2maxResponse>({
+  const { data: vo2max, isLoading: vo2maxLoading } = useQuery<Vo2maxResponse>({
     queryKey: ['vo2max'],
     queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
     enabled: visibleSections.has('vo2max'),
@@ -454,6 +454,7 @@ export default function CyclingPage() {
           vo2max={vo2max}
           vo2maxHistory={vo2maxHistory}
           chartVo2maxTrend={chartVo2maxTrend}
+          loading={vo2maxLoading}
         />
       </div>
 

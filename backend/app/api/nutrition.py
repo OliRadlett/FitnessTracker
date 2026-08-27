@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
 from app.schemas.nutrition import (
     FuelPlanActualsUpdate,
     FuelPlanCreate,
@@ -29,7 +30,7 @@ router = APIRouter()
 async def create_fuel_plan(
     payload: FuelPlanCreate,
     db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Generate a fuel plan for a planned or completed ride.
 
@@ -45,7 +46,7 @@ async def create_fuel_plan(
     try:
         plan = await generate_fuel_plan(
             db,
-            user_id,
+            current_user.id,
             activity_id=payload.activity_id,
             planned_duration_min=payload.planned_duration_min,
             planned_if=payload.planned_if,
@@ -59,9 +60,9 @@ async def create_fuel_plan(
 async def read_fuel_plan(
     plan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    plan = await get_fuel_plan(db, user_id, plan_id)
+    plan = await get_fuel_plan(db, current_user.id, plan_id)
     if not plan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Fuel plan not found"
@@ -73,11 +74,11 @@ async def read_fuel_plan(
 async def read_plan_for_activity(
     activity_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Get the fuel plan for an activity (null if none exists)."""
     try:
-        plan = await get_plan_for_activity(db, user_id, activity_id)
+        plan = await get_plan_for_activity(db, current_user.id, activity_id)
     except Exception:
         logger.exception("Failed to load fuel plan for activity %s", activity_id)
         raise HTTPException(status_code=500, detail="Failed to load fuel plan")
@@ -91,12 +92,12 @@ async def log_fuel_actuals(
     plan_id: uuid.UUID,
     payload: FuelPlanActualsUpdate,
     db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Log what was actually consumed pre/during/post ride."""
     plan = await update_fuel_plan_actuals(
         db,
-        user_id,
+        current_user.id,
         plan_id,
         actual_pre=payload.actual_pre_ride_notes,
         actual_during=payload.actual_during_notes,
@@ -113,9 +114,9 @@ async def log_fuel_actuals(
 async def remove_fuel_plan(
     plan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    deleted = await delete_fuel_plan(db, user_id, plan_id)
+    deleted = await delete_fuel_plan(db, current_user.id, plan_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Fuel plan not found"

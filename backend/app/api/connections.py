@@ -108,10 +108,24 @@ async def _dispatch_sync(connection, current_user, db):
                     f"Strava route sync failed for user {current_user.id}: {e}",
                     exc_info=True,
                 )
+            # Auto-link synced activities/lifting sessions to training-plan days.
+            # Beat syncs run this pass; manual syncs must too, or days stay
+            # incomplete until the next scheduled run (or forever if beat is down).
+            plan_linked = 0
+            try:
+                from app.services.conformity import link_activities_to_plan_days
+
+                plan_linked = await link_activities_to_plan_days(db, current_user.id)
+            except Exception as e:
+                logger.warning(
+                    f"Plan-day linking failed for user {current_user.id}: {e}",
+                    exc_info=True,
+                )
             return {
                 "detail": f"Synced {len(activities)} activities and {route_count} routes from Strava",
                 "synced_count": len(activities),
                 "routes_synced": route_count,
+                "plan_day_linked": plan_linked,
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -346,7 +360,14 @@ async def backfill_whoop(
                 )
                 yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
             finally:
-                # BUG-020: Ensure session is closed even on client disconnect
+                # BUG-020: Ensure session is cleaned up even on client disconnect.
+                # Rollback any uncommitted transaction so the connection is
+                # returned to the pool in a clean state.
+                try:
+                    if stream_db.is_active:
+                        await stream_db.rollback()
+                except Exception:
+                    pass
                 await stream_db.close()
                 # Release the concurrency lock
                 await lock.__aexit__(None, None, None)

@@ -4,14 +4,16 @@ import React from 'react';
 import type { Vo2maxResponse, Vo2maxHistoryResponse, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 
 interface Vo2maxSectionProps {
   vo2max: Vo2maxResponse | undefined;
   vo2maxHistory: Vo2maxHistoryResponse | undefined;
   chartVo2maxTrend: ChartData | undefined;
+  loading?: boolean;
 }
 
-export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend }: Vo2maxSectionProps) {
+export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading }: Vo2maxSectionProps) {
   return (
     <>
       {/* VO2max Card */}
@@ -19,7 +21,9 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend }: Vo2ma
         <CardHeader>
           <CardTitle>🫁 VO2max Estimate</CardTitle>
         </CardHeader>
-        {vo2max ? (
+        {loading ? (
+          <SkeletonRow />
+        ) : vo2max ? (
           <>
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
               <div className="flex items-center gap-4">

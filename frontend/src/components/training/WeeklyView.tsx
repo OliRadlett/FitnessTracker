@@ -587,6 +587,7 @@ function DayCard({
 }: DayCardProps) {
   const status = day ? getStatus(day, todayStr) : 'neutral';
   const badgeStatus = getBadgeStatus(day, status);
+  const [showRoutePicker, setShowRoutePicker] = useState(false);
 
   return (
     <div
@@ -612,6 +613,18 @@ function DayCard({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {day?.sport === 'cycle' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowRoutePicker(true);
+              }}
+              className="text-[10px] px-1 rounded text-muted hover:text-accent"
+              title={day?.planned_route_id ? 'Change route' : 'Assign route'}
+            >
+              🗺️
+            </button>
+          )}
           <ConformityBadge
             status={badgeStatus}
             title={STATUS_LABEL[status]}
@@ -743,6 +756,7 @@ function DayCard({
               onAssignRoute={onAssignRoute}
               onUnassignRoute={onUnassignRoute}
               onQuickEdit={onQuickEdit}
+              onOpenRoutePicker={() => setShowRoutePicker(true)}
             />
           )}
         </>
@@ -760,6 +774,7 @@ function ExpandedPanel({
   onAssignRoute,
   onUnassignRoute,
   onQuickEdit,
+  onOpenRoutePicker,
 }: {
   day: TrainingWeekDay;
   planId: string;
@@ -767,11 +782,11 @@ function ExpandedPanel({
   onAssignRoute: (routeId: string) => void;
   onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
+  onOpenRoutePicker: () => void;
 }) {
   const [duration, setDuration] = useState(day.planned_duration_min?.toString() ?? '');
   const [tss, setTss] = useState(day.planned_tss?.toString() ?? '');
   const [notes, setNotes] = useState(day.notes ?? '');
-  const [showRoutePicker, setShowRoutePicker] = useState(false);
 
   const handleSave = () => {
     const payload: UpdateTrainingPlanDayPayload = {};
@@ -839,85 +854,49 @@ function ExpandedPanel({
           <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
             Route
           </p>
-          {day.planned_route_id ? (
+          {day.actual_activity?.route_id ? (
             <div className="flex items-center gap-2">
-              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30">
+              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
+                {day.actual_activity.route_name || 'Linked route ✓'}
+              </span>
+            </div>
+          ) : day.planned_route_id ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
                 {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned ✓'}
               </span>
               <button
-                onClick={() => setShowRoutePicker(true)}
-                className="text-[10px] text-accent hover:text-accent/80"
+                onClick={onOpenRoutePicker}
+                className="text-[10px] text-accent hover:text-accent/80 shrink-0"
               >
                 Change
               </button>
               <button
                 onClick={onUnassignRoute}
                 disabled={busy}
-                className="text-[10px] text-warning hover:text-red-300 disabled:opacity-50"
+                className="text-[10px] text-warning hover:text-red-300 disabled:opacity-50 shrink-0"
               >
                 Remove
               </button>
             </div>
           ) : (
-            <div className="space-y-1">
-              {day.route_matches && day.route_matches.length > 0 && (
-                <div className="space-y-1">
-                  {day.route_matches.slice(0, 3).map((m: WeekRouteMatchEntry) => (
-                    <div key={m.route_id} className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-white/90 truncate flex-1 min-w-0" title={m.name}>
-                        {m.name}
-                      </span>
-                      <span className="text-muted shrink-0" title="Match score">
-                        {toPercent(m.score)}
-                      </span>
-                      {m.estimated_tss != null && (
-                        <span className="text-muted shrink-0" title="Estimated TSS">
-                          ~{Math.round(m.estimated_tss)}
-                        </span>
-                      )}
-                      <button
-                        onClick={() => onAssignRoute(m.route_id)}
-                        disabled={busy}
-                        className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
-                      >
-                        Assign
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={() => setShowRoutePicker(true)}
-                className="text-[10px] text-accent hover:text-accent/80"
-              >
-                🗺️ Browse all routes...
-              </button>
-              <Link
-                href="/routes"
-                className="text-[10px] text-accent hover:text-accent/80 ml-2"
-              >
-                Route library →
-              </Link>
-            </div>
+            <button
+              onClick={onOpenRoutePicker}
+              className="text-[10px] text-accent hover:text-accent/80"
+            >
+              🗺️ Pick a route...
+            </button>
           )}
         </div>
       )}
-
-      <RoutePickerModal
-        open={showRoutePicker}
-        onClose={() => setShowRoutePicker(false)}
-        onSelect={onAssignRoute}
-        onUnassign={onUnassignRoute}
-        currentRouteId={day.planned_route_id}
-      />
 
       {/* Notes */}
       {day.notes && !notes && <p className="text-[11px] text-muted italic">{day.notes}</p>}
 
       {/* Quick edit */}
-      <div className="grid grid-cols-2 gap-1.5">
-        <label className="block">
-          <span className="block text-[9px] text-muted mb-0.5">Duration (min)</span>
+      <div className="flex gap-1.5">
+        <label className="block flex-1">
+          <span className="block text-[9px] text-muted mb-0.5">Min</span>
           <input
             type="number"
             value={duration}
@@ -925,8 +904,8 @@ function ExpandedPanel({
             className="w-full px-1.5 py-1 bg-background border border-surface-light rounded text-white text-[11px] focus:outline-none focus:border-accent"
           />
         </label>
-        <label className="block">
-          <span className="block text-[9px] text-muted mb-0.5">Target TSS</span>
+        <label className="block flex-1">
+          <span className="block text-[9px] text-muted mb-0.5">TSS</span>
           <input
             type="number"
             value={tss}

@@ -34,6 +34,7 @@ import {
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { RoutePickerModal } from './RoutePickerModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -920,6 +921,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [showDuplicatePicker, setShowDuplicatePicker] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [duplicateDate, setDuplicateDate] = useState('');
   const [copyError, setCopyError] = useState<string | null>(null);
 
@@ -1183,12 +1185,32 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           </div>
           <div>
             <label className={labelCls}>Route</label>
-            <input
-              type="text"
-              disabled
-              placeholder="Use Weekly View to assign routes"
-              className={`${inputCls} opacity-50 cursor-not-allowed`}
-            />
+            {day.planned_route_id ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-block text-xs px-2 py-1 rounded-full bg-positive/15 text-positive border border-positive/30">
+                  Route assigned ✓
+                </span>
+                <button
+                  onClick={() => setShowRoutePicker(true)}
+                  className="text-xs text-accent hover:text-accent/80"
+                >
+                  Change
+                </button>
+                <button
+                  onClick={() => onPatch({ planned_route_id: null })}
+                  className="text-xs text-warning hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowRoutePicker(true)}
+                className="w-full px-3 py-2 text-left text-sm bg-background border border-surface-light rounded-lg text-muted hover:text-white hover:border-accent/50 transition-colors"
+              >
+                🗺️ Pick a route...
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1394,6 +1416,14 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
         />
         Completed
       </label>
+
+      <RoutePickerModal
+        open={showRoutePicker}
+        onClose={() => setShowRoutePicker(false)}
+        onSelect={(routeId) => onPatch({ planned_route_id: routeId })}
+        onUnassign={() => onPatch({ planned_route_id: null })}
+        currentRouteId={day.planned_route_id}
+      />
     </div>
   );
 }

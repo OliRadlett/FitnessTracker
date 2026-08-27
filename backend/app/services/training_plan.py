@@ -807,7 +807,11 @@ async def get_plan_week(
     activity_ids = {d.activity_id for d in week_days if d.activity_id}
     activities: dict[uuid.UUID, Activity] = {}
     if activity_ids:
-        result = await db.execute(select(Activity).where(Activity.id.in_(activity_ids)))
+        result = await db.execute(
+            select(Activity)
+            .where(Activity.id.in_(activity_ids))
+            .options(selectinload(Activity.route))
+        )
         activities = {a.id: a for a in result.scalars().all()}
 
     lifting_ids = {d.lifting_session_id for d in week_days if d.lifting_session_id}
@@ -916,6 +920,8 @@ async def get_plan_week(
                 distance_meters=activity.distance_meters,
                 tss=activity.tss,
                 average_power=activity.average_power,
+                route_id=activity.route_id,
+                route_name=activity.route.name if activity.route else None,
             )
             if activity
             else None

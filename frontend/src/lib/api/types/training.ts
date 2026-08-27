@@ -235,6 +235,8 @@ export interface WeekActualActivity {
   distance_meters?: number | null;
   tss?: number | null;
   average_power?: number | null;
+  route_id?: string | null;
+  route_name?: string | null;
 }
 
 /** Summary of the lifting session linked to a plan day. */

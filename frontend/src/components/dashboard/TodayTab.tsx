@@ -361,7 +361,11 @@ export function TodayTab({
           {todaySummary.today_activities.length > 0 ? (
             <div className="space-y-2">
               {todaySummary.today_activities.map((a) => (
-                <div key={a.id} className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors">
+                <a
+                  key={a.id}
+                  href={`/activities?activity=${a.id}`}
+                  className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors"
+                >
                   <div className="flex items-center gap-3 min-w-0">
                     <Badge variant={getSportBadgeVariant(a.sport_type)}>
                       {a.sport_type}
@@ -390,7 +394,7 @@ export function TodayTab({
                       <p className="text-xs text-muted">{formatDuration(a.duration_seconds)}</p>
                     )}
                   </div>
-                </div>
+                </a>
               ))}
             </div>
           ) : (

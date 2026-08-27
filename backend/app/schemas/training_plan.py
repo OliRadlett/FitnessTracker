@@ -131,6 +131,8 @@ class ActualActivity(BaseModel):
     distance_meters: float | None = None
     tss: float | None = None
     average_power: float | None = None
+    route_id: uuid.UUID | None = None
+    route_name: str | None = None
 
 
 class ActualLiftingSession(BaseModel):

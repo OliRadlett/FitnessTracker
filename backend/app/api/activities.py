@@ -22,6 +22,7 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 from app.schemas.activity import (
     ActivityCalendarEntry,
+    ActivityDetailRead,
     ActivityRead,
     ActivityStreamRead,
     CalendarDayData,
@@ -319,19 +320,20 @@ async def get_activities_calendar(
     )
 
 
-@router.get("/{activity_id}", response_model=ActivityRead)
+@router.get("/{activity_id}", response_model=ActivityDetailRead)
 async def get_activity(
     activity_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get a single activity by ID."""
+    """Get a single activity by ID (with stream data)."""
     result = await db.execute(
         select(Activity)
         .options(
             selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
             selectinload(Activity.sources),
             selectinload(Activity.route),
+            selectinload(Activity.streams),
         )
         .where(
             Activity.id == activity_id,
@@ -341,7 +343,13 @@ async def get_activity(
     activity = result.scalar_one_or_none()
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-    return _enrich_activity_read(activity)
+    read = _enrich_activity_read(activity)
+    return ActivityDetailRead(
+        **read.model_dump(),
+        streams=[
+            ActivityStreamRead.model_validate(s) for s in (activity.streams or [])
+        ],
+    )
 
 
 @router.get("/{activity_id}/streams", response_model=list[ActivityStreamRead])
@@ -428,6 +436,13 @@ async def backfill_activities(
                 )
                 yield f"data: {json.dumps({'type': 'error', 'detail': 'An unexpected error occurred during backfill.'})}\n\n"
             finally:
+                # Rollback any uncommitted transaction so the connection is
+                # returned to the pool in a clean state on client disconnect.
+                try:
+                    if stream_db.is_active:
+                        await stream_db.rollback()
+                except Exception:
+                    pass
                 await stream_db.close()
                 await lock.__aexit__(None, None, None)
 

@@ -251,7 +251,7 @@ async def add_route_source(
             RouteSource.provider == provider,
         )
     )
-    existing_source = existing.scalar_one_or_none()
+    existing_source = existing.first()
     if existing_source:
         logger.info(
             f"Route {route_id} already has a source from {provider}, skipping duplicate"

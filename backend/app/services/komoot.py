@@ -13,7 +13,7 @@ Enriches each route with:
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.komoot_client import komoot_client
@@ -277,8 +277,10 @@ async def _enrich_and_create_route(
         .where(
             Route.user_id == user_id,
             Route.sources.any(
-                RouteSource.provider == "komoot",  # BUG-033: proper filter syntax
-                RouteSource.provider_route_id == provider_route_id,
+                and_(
+                    RouteSource.provider == "komoot",
+                    RouteSource.provider_route_id == provider_route_id,
+                )
             ),
         )
     )

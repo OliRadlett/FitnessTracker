@@ -117,19 +117,19 @@ celery_app.conf.beat_schedule = {
     "sync-strava-activities": {
         "task": "app.tasks.scheduler.sync_all_strava_activities",
         "schedule": crontab(minute="*/30"),
-        "expires": 3600,
+        "options": {"expires": 3600},
     },
     # Drain the Strava webhook queue (async, with retries)
     "process-strava-webhook-events": {
         "task": "app.tasks.scheduler.process_strava_webhook_events",
         "schedule": crontab(minute="*/5"),
-        "expires": 900,
+        "options": {"expires": 900},
     },
     # Weekly Strava reconciliation — heals missed deletes/renames
     "reconcile-strava-activities": {
         "task": "app.tasks.scheduler.reconcile_strava_activities",
         "schedule": crontab(hour=4, minute=30, day_of_week=0),
-        "expires": 3600,
+        "options": {"expires": 3600},
     },
     # Generate daily health alerts at 6 AM UTC
     "generate-health-alerts": {
@@ -145,7 +145,7 @@ celery_app.conf.beat_schedule = {
     "sync-routes": {
         "task": "app.tasks.scheduler.sync_all_routes",
         "schedule": crontab(minute=0, hour="*/2"),
-        "expires": 3600,
+        "options": {"expires": 3600},
     },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
@@ -156,7 +156,7 @@ celery_app.conf.beat_schedule = {
     "sync-whoop-data": {
         "task": "app.tasks.scheduler.sync_all_whoop_data",
         "schedule": crontab(minute="*/30"),
-        "expires": 3600,
+        "options": {"expires": 3600},
     },
     # Weekly database backup (Sunday 2 AM UTC)
     "backup-database": {
@@ -187,7 +187,7 @@ celery_app.conf.beat_schedule = {
     "backfill-streams": {
         "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
         "schedule": crontab(hour=3, minute=0, day_of_week=6),
-        "expires": 3600,
+        "options": {"expires": 3600},
     },
 }
 

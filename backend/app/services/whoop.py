@@ -20,12 +20,20 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.errors import PermanentAuthError
 from app.integrations.whoop_client import whoop_client
 from app.models.daily_metric import DailyMetric
 from app.models.sleep import SleepLog
 from app.models.user import OAuthConnection
 
 logger = logging.getLogger(__name__)
+
+# Pacing between per-cycle recovery API calls. Whoop caps requests at
+# 100/min per OAuth client (10k/day) and dev + prod share the same client ID,
+# so the per-cycle recovery fetches (the dominant call volume during backfills)
+# must be spaced well under the limit: 1.0s ≈ 60/min, leaving headroom for the
+# paginated cycle/sleep/workout list calls on top.
+_RECOVERY_FETCH_DELAY_SECONDS = 1.0
 
 # ── Sport type mapping ──────────────────────────────────────────────────────
 
@@ -247,7 +255,7 @@ async def _backfill_missing_recovery(
         try:
             recovery = None
             for _retry in range(3):
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(_RECOVERY_FETCH_DELAY_SECONDS)
                 try:
                     recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
                     break
@@ -383,8 +391,8 @@ async def sync_whoop_cycles(
             for _retry in range(3):
                 try:
                     await asyncio.sleep(
-                        0.3
-                    )  # Rate limit: 300ms between recovery fetches
+                        _RECOVERY_FETCH_DELAY_SECONDS
+                    )  # Rate limit: space recovery fetches
                     recovery = await whoop_client.get_recovery_for_cycle(
                         token, cycle_id
                     )
@@ -1341,7 +1349,7 @@ async def backfill_whoop_data(
 
                 recovery = None
                 for _retry in range(3):
-                    await asyncio.sleep(0.3)  # Rate limit: 300ms between recovery fetches
+                    await asyncio.sleep(_RECOVERY_FETCH_DELAY_SECONDS)  # Rate limit: space recovery fetches
                     try:
                         recovery = await whoop_client.get_recovery_for_cycle(
                             token, cycle_id

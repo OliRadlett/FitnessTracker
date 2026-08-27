@@ -98,6 +98,12 @@ class ActivityStreamRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ActivityDetailRead(ActivityRead):
+    """ActivityRead plus stream data (returned by the single-activity endpoint)."""
+
+    streams: list[ActivityStreamRead] = []
+
+
 # ── Activity Calendar Entry ──────────────────────────────────────────────────
 
 

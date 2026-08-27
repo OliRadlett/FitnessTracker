@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -102,17 +101,14 @@ export default function SettingsPage() {
   }
 
   function handleConnect(provider: string) {
-    // Build OAuth URLs from the runtime origin — NEXT_PUBLIC_* vars are baked
-    // in at build time and must not be relied on here (Pitfall #4).
-    // Callbacks must be absolute so providers accept them for token exchange;
-    // the authorize navigation itself stays relative (Caddy routes /api/v1).
-    const origin = window.location.origin;
-    const callbackUrl = `${origin}/api/v1/auth/oauth/${provider}/callback`;
+    // Let the backend own the redirect_uri (derived from PUBLIC_URL) so the
+    // authorize step and the callback's token exchange always agree (BUG-025).
+    // The authorize navigation stays relative (Caddy routes /api/v1).
     // The backend resolves the user from the state parameter (a JWT) in the
     // callback — without it, connecting fails with "Could not identify
     // authenticated user".
-    const state = session?.backendToken ? `&state=${encodeURIComponent(session.backendToken)}` : '';
-    window.location.href = `/api/v1/auth/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}${state}`;
+    const state = session?.backendToken ? `?state=${encodeURIComponent(session.backendToken)}` : '';
+    window.location.href = `/api/v1/auth/oauth/${provider}/authorize${state}`;
   }
 
   async function handleExport(apiPath: string, filename: string) {
@@ -225,6 +221,28 @@ export default function SettingsPage() {
       setSyncResult(result.detail);
     } catch (err) {
       setSyncResult(`Error: ${err instanceof Error ? err.message : 'Sync failed'}`);
+    } finally {
+      setSyncing(null);
+    }
+  }
+
+  async function handleSyncKomoot() {
+    setSyncing('komoot-route-sync');
+    setSyncResult(null);
+    try {
+      const results = await authFetch<Array<{ provider: string; synced_count: number; merged_count: number }>>(
+        '/api/v1/routes/sync',
+        { method: 'POST' }
+      );
+      const komoot = results?.find((r) => r.provider === 'komoot');
+      if (komoot) {
+        setSyncResult(`Komoot: synced ${komoot.synced_count} routes (${komoot.merged_count} merged)`);
+      } else {
+        setSyncResult('Komoot route sync completed');
+      }
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+    } catch (err) {
+      setSyncResult(`Error: ${err instanceof Error ? err.message : 'Komoot sync failed'}`);
     } finally {
       setSyncing(null);
     }
@@ -353,13 +371,14 @@ export default function SettingsPage() {
 
                 <div className="flex gap-2">
                   {(integration as { basicAuth?: boolean }).basicAuth ? (
-                    // Basic Auth integrations (e.g. Komoot) — configured via .env, synced from Routes page
-                    <Link
-                      href="/routes"
-                      className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors"
+                    // Basic Auth integrations (e.g. Komoot) — configured via .env, synced via routes endpoint
+                    <button
+                      onClick={() => handleSyncKomoot()}
+                      disabled={syncing === 'komoot-route-sync'}
+                      className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
                     >
-                      Sync Routes
-                    </Link>
+                      {syncing === 'komoot-route-sync' ? 'Syncing...' : 'Sync Routes'}
+                    </button>
                   ) : isConnected ? (
                     <>
                       {connection!.status === 'needs_reauth' ? (
