@@ -339,3 +339,55 @@ async def delete_fuel_plan(
     await db.delete(plan)
     await db.flush()
     return True
+
+
+async def save_actuals_for_activity(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    activity_id: uuid.UUID,
+    actual_pre: str | None = None,
+    actual_during: str | None = None,
+    actual_post: str | None = None,
+    actual_water_ml: float | None = None,
+    actual_carbs_g: float | None = None,
+    actual_electrolytes_mg: float | None = None,
+) -> RideFuelPlan:
+    """Create a minimal fuel plan and save actuals in one step.
+
+    Used when a user wants to log nutrition for an activity without
+    generating a full plan first.  If a plan already exists for the
+    activity, its actuals are updated instead.
+    """
+    existing = await get_plan_for_activity(db, user_id, activity_id)
+    if existing:
+        plan = await update_fuel_plan_actuals(
+            db, user_id, existing.id,
+            actual_pre=actual_pre, actual_during=actual_during,
+            actual_post=actual_post, actual_water_ml=actual_water_ml,
+            actual_carbs_g=actual_carbs_g,
+            actual_electrolytes_mg=actual_electrolytes_mg,
+        )
+        assert plan is not None
+        return plan
+
+    plan = RideFuelPlan(
+        user_id=user_id,
+        activity_id=activity_id,
+        source="manual",
+        pre_ride_carbs_g=0.0,
+        during_carbs_per_hour_g=0.0,
+        during_hydration_ml_per_hour=0.0,
+        during_sodium_mg_per_hour=0.0,
+        post_ride_carbs_g=0.0,
+        post_ride_protein_g=0.0,
+        actual_pre_ride_notes=actual_pre[:1000] if actual_pre else None,
+        actual_during_notes=actual_during[:1000] if actual_during else None,
+        actual_post_ride_notes=actual_post[:1000] if actual_post else None,
+        actual_water_ml=actual_water_ml,
+        actual_carbs_g=actual_carbs_g,
+        actual_electrolytes_mg=actual_electrolytes_mg,
+    )
+    db.add(plan)
+    await db.flush()
+    await db.refresh(plan)
+    return plan

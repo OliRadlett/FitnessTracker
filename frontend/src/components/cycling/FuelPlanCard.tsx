@@ -21,7 +21,7 @@ function StatBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
+function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: string }) {
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -42,18 +42,27 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
   }, [plan]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      authFetch<RideFuelPlan>(`/api/v1/nutrition/fuel-plan/${plan.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          actual_pre_ride_notes: preNotes || null,
-          actual_during_notes: duringNotes || null,
-          actual_post_ride_notes: postNotes || null,
-          actual_water_ml: waterMl !== '' ? parseFloat(waterMl) : null,
-          actual_carbs_g: carbsG !== '' ? parseFloat(carbsG) : null,
-          actual_electrolytes_mg: electrolytesMg !== '' ? parseFloat(electrolytesMg) : null,
-        }),
-      }),
+    mutationFn: () => {
+      const body = JSON.stringify({
+        actual_pre_ride_notes: preNotes || null,
+        actual_during_notes: duringNotes || null,
+        actual_post_ride_notes: postNotes || null,
+        actual_water_ml: waterMl !== '' ? parseFloat(waterMl) : null,
+        actual_carbs_g: carbsG !== '' ? parseFloat(carbsG) : null,
+        actual_electrolytes_mg: electrolytesMg !== '' ? parseFloat(electrolytesMg) : null,
+      });
+      if (plan.id) {
+        return authFetch<RideFuelPlan>(`/api/v1/nutrition/fuel-plan/${plan.id}`, {
+          method: 'PATCH',
+          body,
+        });
+      }
+      // No plan yet — create minimal plan with actuals
+      return authFetch<RideFuelPlan>(
+        `/api/v1/nutrition/fuel-plan/actuals?activity_id=${activityId}`,
+        { method: 'POST', body }
+      );
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fuel-plan'] });
     },
@@ -227,9 +236,9 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
       )}
 
       {!isLoading && !isError && !plan && (
-        <div className="flex flex-col items-start gap-3">
+        <div className="space-y-4">
           <p className="text-sm text-muted">
-            Generate a carbohydrate, hydration and sodium fuelling strategy for this ride.
+            Generate a fuel plan, or log what you actually consumed below.
           </p>
           <button
             onClick={() => createMutation.mutate()}
@@ -241,6 +250,10 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
           {createMutation.isError && (
             <p className="text-xs text-warning">Failed to generate fuel plan — try again.</p>
           )}
+          <ActualsEditor
+            plan={plan ?? { actual_pre_ride_notes: null, actual_during_notes: null, actual_post_ride_notes: null, actual_water_ml: null, actual_carbs_g: null, actual_electrolytes_mg: null, id: '' } as RideFuelPlan}
+            activityId={activity?.id}
+          />
         </div>
       )}
 

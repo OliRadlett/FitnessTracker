@@ -118,7 +118,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
   const data = query.data;
 
   return (
-    <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-2 space-y-2">
+    <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-1.5 space-y-1.5">
       <p className="text-[10px] font-medium text-muted uppercase tracking-wide">Conformity</p>
 
       {/* Loading skeleton */}
@@ -156,37 +156,55 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
             </span>
           </div>
 
-          {/* No-score message */}
+          {/* No-score message + planned metrics for pending/missed days */}
           {data.conformity_pct == null ? (
-            <p className="text-[11px] text-muted italic">{emptyMessage(data.status)}</p>
+            <div className="space-y-1">
+              <p className="text-[11px] text-muted italic">{emptyMessage(data.status)}</p>
+              {day.sport === 'cycle' && (
+                <div className="text-[11px] text-white/80">
+                  <span>Planned: {day.planned_duration_min != null ? `${Math.round(day.planned_duration_min)} min` : '—'}</span>
+                  {day.planned_tss != null && <span className="text-muted"> · {Math.round(day.planned_tss)} TSS</span>}
+                  {day.planned_power_watts != null && (
+                    <span className="text-muted"> · {Math.round(day.planned_power_watts)}W{day.planned_zone ? ` (${day.planned_zone})` : ''}</span>
+                  )}
+                </div>
+              )}
+              {day.sport === 'strength' && (
+                <div className="text-[11px] text-white/80">
+                  <span>Planned: {day.planned_exercises?.length ?? '—'} exercises</span>
+                  {day.planned_volume_kg != null && (
+                    <span className="text-muted"> · {Math.round(day.planned_volume_kg)} kg volume</span>
+                  )}
+                  {day.planned_rpe != null && <span className="text-muted"> · RPE {day.planned_rpe}</span>}
+                </div>
+              )}
+            </div>
           ) : (
             /* Components table */
             data.components.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[10px] text-muted">
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-[9px] text-muted">
                 <thead>
                   <tr className="text-left">
                     <th className="font-medium">Metric</th>
                     <th className="font-medium">Plan → Actual</th>
                     <th className="font-medium">Dev</th>
-                    <th className="font-medium">Weight</th>
-                    <th className="font-medium w-14">Score</th>
+                    <th className="font-medium">Score</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.components.map((c: ConformityComponent) => (
                     <tr key={c.metric} className="border-t border-surface-light/30">
                       <td className="py-0.5 text-white/90">{metricLabel(c.metric)}</td>
-                      <td className="py-0.5 whitespace-nowrap">
+                      <td className="py-0.5">
                         {fmtMetricValue(c.metric, c.planned)} →{' '}
                         <span className="text-white/90">{fmtMetricValue(c.metric, c.actual)}</span>
                       </td>
                       <td className={`py-0.5 ${deviationColor(c.deviation_pct)}`}>
                         {fmtDeviation(c.deviation_pct)}
                       </td>
-                      <td className="py-0.5">{Math.round(c.weight_used * 100)}%</td>
                       <td className="py-0.5">
-                        <div className="h-1.5 w-full rounded-full bg-surface-light overflow-hidden">
+                        <div className="h-1 w-full rounded-full bg-surface-light overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
                               c.component_score != null ? scoreBarColor(c.component_score) : ''
@@ -205,9 +223,9 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
 
           {/* Deviations */}
           {data.deviations.length > 0 && (
-            <ul className="space-y-0.5">
+            <ul className="space-y-0">
               {data.deviations.map((d, i) => (
-                <li key={i} className="text-[10px] text-warning flex gap-1">
+                <li key={i} className="text-[9px] text-warning flex gap-1">
                   <span className="shrink-0">→</span>
                   <span>{d}</span>
                 </li>

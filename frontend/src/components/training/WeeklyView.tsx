@@ -707,6 +707,13 @@ function DayCard({
             </p>
           )}
 
+          {/* Route indicator (cycle days — collapsed card) */}
+          {day.sport === 'cycle' && !expanded && (day.planned_route_id || day.actual_activity?.route_id) && (
+            <p className="text-[10px] text-muted truncate" title={day.actual_activity?.route_name || undefined}>
+              🗺️ {day.actual_activity?.route_name || 'Route assigned'}
+            </p>
+          )}
+
           {/* Weather (cycle days) */}
           {day.sport === 'cycle' && day.weather && (
             <div className="space-y-1">
@@ -819,7 +826,7 @@ function ExpandedPanel({
 
   return (
     <div
-      className="pt-2 mt-1 border-t border-surface-light/50 space-y-2"
+      className="pt-2 mt-1 border-t border-surface-light/50 space-y-1.5"
       onClick={(e) => e.stopPropagation()}
     >
       {day.workout_description && (
@@ -828,8 +835,8 @@ function ExpandedPanel({
 
       {/* Strength exercise table */}
       {day.sport === 'strength' && day.planned_exercises && day.planned_exercises.length > 0 && (
-        <div className="overflow-x-auto">
-        <table className="w-full text-[10px] text-muted">
+        <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[9px] text-muted">
           <thead>
             <tr className="text-left">
               <th className="font-medium">Exercise</th>
@@ -841,7 +848,7 @@ function ExpandedPanel({
           <tbody>
             {day.planned_exercises.map((ex, i) => (
               <tr key={`${ex.exercise}-${i}`} className="border-t border-surface-light/30">
-                <td className="py-0.5 text-white/90 truncate max-w-[90px]" title={ex.exercise}>
+                <td className="py-0.5 text-white/90 truncate max-w-[80px]" title={ex.exercise}>
                   {ex.exercise}
                 </td>
                 <td className="py-0.5">
@@ -915,14 +922,14 @@ function ExpandedPanel({
       {day.notes && !notes && <p className="text-[11px] text-muted italic">{day.notes}</p>}
 
       {/* Quick edit */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1">
         <label className="block flex-1">
           <span className="block text-[9px] text-muted mb-0.5">Min</span>
           <input
             type="number"
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full px-1.5 py-1 bg-background border border-surface-light rounded text-white text-[11px] focus:outline-none focus:border-accent"
+            className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
           />
         </label>
         <label className="block flex-1">
@@ -931,7 +938,7 @@ function ExpandedPanel({
             type="number"
             value={tss}
             onChange={(e) => setTss(e.target.value)}
-            className="w-full px-1.5 py-1 bg-background border border-surface-light rounded text-white text-[11px] focus:outline-none focus:border-accent"
+            className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
           />
         </label>
       </div>
@@ -940,12 +947,12 @@ function ExpandedPanel({
         placeholder="Notes"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        className="w-full px-1.5 py-1 bg-background border border-surface-light rounded text-white text-[11px] focus:outline-none focus:border-accent"
+        className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
       />
       <button
         onClick={handleSave}
         disabled={busy}
-        className="w-full px-2 py-1 bg-accent/20 text-accent rounded text-[11px] font-medium hover:bg-accent/30 disabled:opacity-50"
+        className="w-full px-2 py-1 bg-accent/20 text-accent rounded text-[10px] font-medium hover:bg-accent/30 disabled:opacity-50"
       >
         Save
       </button>

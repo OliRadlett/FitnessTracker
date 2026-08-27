@@ -19,6 +19,7 @@ from app.services.nutrition import (
     generate_fuel_plan,
     get_fuel_plan,
     get_plan_for_activity,
+    save_actuals_for_activity,
     update_fuel_plan_actuals,
 )
 
@@ -126,6 +127,31 @@ async def remove_fuel_plan(
         )
 
 
+@router.post("/fuel-plan/actuals", response_model=RideFuelPlanRead, status_code=status.HTTP_201_CREATED)
+async def log_actuals_for_activity(
+    payload: FuelPlanActualsUpdate,
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Log nutrition actuals for an activity.
+
+    Creates a minimal fuel plan if one doesn't exist for this activity.
+    """
+    plan = await save_actuals_for_activity(
+        db,
+        current_user.id,
+        activity_id,
+        actual_pre=payload.actual_pre_ride_notes,
+        actual_during=payload.actual_during_notes,
+        actual_post=payload.actual_post_ride_notes,
+        actual_water_ml=payload.actual_water_ml,
+        actual_carbs_g=payload.actual_carbs_g,
+        actual_electrolytes_mg=payload.actual_electrolytes_mg,
+    )
+    return _with_schedule(plan)
+
+
 def _with_schedule(plan) -> dict:
     """Serialize a RideFuelPlan with schedule_json exposed as `schedule`."""
     data = {
@@ -144,6 +170,9 @@ def _with_schedule(plan) -> dict:
         "actual_pre_ride_notes": plan.actual_pre_ride_notes,
         "actual_during_notes": plan.actual_during_notes,
         "actual_post_ride_notes": plan.actual_post_ride_notes,
+        "actual_water_ml": plan.actual_water_ml,
+        "actual_carbs_g": plan.actual_carbs_g,
+        "actual_electrolytes_mg": plan.actual_electrolytes_mg,
         "source": plan.source,
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
