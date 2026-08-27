@@ -467,16 +467,21 @@ async def save_plan_days(
             if row.sport == "cycle" and row.planned_type and row.planned_type != "rest":
                 difficulty = _TYPE_TO_DIFFICULTY.get(row.planned_type)
                 if difficulty and row.planned_duration_min:
-                    targets = plan_workout(
-                        ftp=ftp,
-                        lthr=profile.lthr if profile else None,
-                        weight_kg=profile.weight_kg if profile else None,
-                        difficulty=difficulty,
-                        duration_minutes=row.planned_duration_min,
-                    )
-                    if targets:
-                        row.planned_tss = targets.target_tss_low
-                        row.planned_power_watts = targets.target_power_low
+                    # Only auto-fill if user didn't explicitly set these values
+                    needs_fill = (row.planned_tss is None) or (row.planned_power_watts is None)
+                    if needs_fill:
+                        targets = plan_workout(
+                            ftp=ftp,
+                            lthr=profile.lactate_threshold_hr if profile else None,
+                            weight_kg=profile.weight_kg if profile else None,
+                            difficulty=difficulty,
+                            duration_minutes=row.planned_duration_min,
+                        )
+                        if targets:
+                            if row.planned_tss is None:
+                                row.planned_tss = targets.target_tss_low
+                            if row.planned_power_watts is None:
+                                row.planned_power_watts = targets.target_power_low
 
     await db.flush()
     return await _reload_plan(db, plan_id)
@@ -971,7 +976,7 @@ async def get_plan_week(
         # Compute day_status for visual indicators
         if day.sport == "rest":
             day_status = "rest"
-        elif day.day_date > today:
+        elif day.day_date >= today:
             day_status = "pending"
         elif day.completed:
             day_status = "completed"

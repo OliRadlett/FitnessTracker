@@ -362,7 +362,7 @@ async def preview_workout(
 
     targets = plan_workout(
         ftp=ftp,
-        lthr=profile.lthr if profile else None,
+        lthr=profile.lactate_threshold_hr if profile else None,
         weight_kg=profile.weight_kg if profile else None,
         difficulty=difficulty,
         duration_minutes=duration_minutes,
