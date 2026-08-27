@@ -57,6 +57,9 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fuel-plan'] });
     },
+    onError: (err: Error) => {
+      console.error('[FuelPlanCard] Save failed:', err);
+    },
   });
 
   return (
@@ -138,6 +141,9 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fuel-plan', activity?.id] });
     },
+    onError: (err: Error) => {
+      console.error('[FuelPlanCard] Create plan failed:', err);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -147,6 +153,9 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fuel-plan', activity?.id] });
+    },
+    onError: (err: Error) => {
+      console.error('[FuelPlanCard] Delete plan failed:', err);
     },
   });
 

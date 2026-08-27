@@ -11,7 +11,7 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const { data: linkableActivities, isLoading } = useQuery<Activity[]>({
+  const { data: linkableActivities, isLoading, isError, error } = useQuery<Activity[]>({
     queryKey: ['linkable-activities', sessionId],
     queryFn: () => authFetch<Activity[]>(`/api/v1/lifting/sessions/${sessionId}/linkable-activities`),
   });
@@ -27,6 +27,9 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
       queryClient.invalidateQueries({ queryKey: ['lifting-session', sessionId] });
       onClose();
     },
+    onError: (err: Error) => {
+      console.error('[LinkActivityModal] Link failed:', err);
+    },
   });
 
   return (
@@ -35,6 +38,10 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
         {isLoading ? (
           <div className="animate-pulse space-y-3">
             {[1, 2, 3].map((i) => (<div key={i} className="h-16 bg-surface-light rounded-lg"></div>))}
+          </div>
+        ) : isError ? (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+            Failed to load: {error?.message}
           </div>
         ) : linkableActivities && linkableActivities.length > 0 ? (
           <div className="space-y-2">

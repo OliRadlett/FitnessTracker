@@ -457,13 +457,18 @@ class TestGetPlanWeek:
         assert week2["week_end"] == (start + timedelta(weeks=1, days=6)).isoformat()
 
     async def test_week_404_out_of_range(self, client):
-        """Week 0 and past-the-end weeks return 404."""
+        """Week 0 and past-the-end weeks return 404 or 422."""
         data = await self._create_monday_plan(client, weeks=2, name="Range Check")
         plan_id = data["id"]
 
-        for bad_week in (0, 3, -1):
+        # Week 0 and -1 are out of the valid range (ge=1) → 422 validation error
+        for bad_week in (0, -1):
             resp = await client.get(f"/api/v1/training-plans/{plan_id}/week/{bad_week}")
-            assert resp.status_code == 404
+            assert resp.status_code == 422
+
+        # Week 3 is a valid week number but out of range for a 2-week plan → 404
+        resp = await client.get(f"/api/v1/training-plans/{plan_id}/week/3")
+        assert resp.status_code == 404
 
     async def test_week_404_unknown_plan(self, client):
         import uuid

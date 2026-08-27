@@ -180,6 +180,8 @@ export default function DashboardPage() {
   const hasReadiness = readiness && readiness.readiness !== 'unknown';
   const hasWhoop = whoopWeekly && whoopWeekly.days_with_data > 0;
 
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   async function handleDownloadReport(apiPath: string, filename: string) {
     try {
       const response = await fetch(apiPath, {
@@ -197,7 +199,8 @@ export default function DashboardPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Report download failed:', err);
+      setDownloadError(err instanceof Error ? err.message : 'Download failed');
+      setTimeout(() => setDownloadError(null), 5000);
     }
   }
 
@@ -211,6 +214,20 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8" aria-live="polite">
+      {/* ── Error Banner ────────────────────────────────────────────────────── */}
+      {downloadError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          <span>{downloadError}</span>
+          <button
+            onClick={() => setDownloadError(null)}
+            className="shrink-0 text-red-400 hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

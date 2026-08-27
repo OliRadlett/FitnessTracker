@@ -3,7 +3,7 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -125,7 +125,7 @@ async def delete_plan(
 @router.get("/{plan_id}/week/{week_number}", response_model=TrainingWeekResponse)
 async def get_plan_week(
     plan_id: uuid.UUID,
-    week_number: int,
+    week_number: int = Path(..., ge=1, le=104),
     include_weather: bool = True,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

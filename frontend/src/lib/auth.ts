@@ -6,6 +6,17 @@ import GitHubProvider from 'next-auth/providers/github';
 
 const API_BASE_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// NEXTAUTH_SECRET must be explicitly set — falling back to SECRET_KEY means the
+// NextAuth session cookie and the backend JWT share a signing key, so compromising
+// one exposes the other.
+if (!process.env.NEXTAUTH_SECRET) {
+  console.warn(
+    '[auth] NEXTAUTH_SECRET is not set. Generate one with: ' +
+      'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))". ' +
+      'NextAuth session cookies will fall back to SECRET_KEY, which is insecure.'
+  );
+}
+
 // Comma-separated email allowlist. Empty = allow all.
 const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '')
   .split(',')
@@ -143,5 +154,5 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
   },
-  secret: process.env.NEXTAUTH_SECRET || process.env.SECRET_KEY,
+  secret: process.env.NEXTAUTH_SECRET,
 };

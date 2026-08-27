@@ -44,6 +44,9 @@ export function NotificationSettings() {
     mutationFn: (patch: NotificationPreferencesUpdate) =>
       updateNotificationPreferences(authFetch, patch),
     onSuccess: (data) => queryClient.setQueryData(queryKey, data),
+    onError: (err: Error) => {
+      console.error('[NotificationSettings] Update failed:', err);
+    },
   });
 
   function toggle(key: keyof NotificationPreferences) {

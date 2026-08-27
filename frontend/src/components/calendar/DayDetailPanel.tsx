@@ -98,7 +98,7 @@ export function DayDetailPanel({
   );
 
   // Fetch full activity details for this day
-  const { data: activities, isLoading: loadingActivities } = useQuery<
+  const { data: activities, isLoading: loadingActivities, isError: activitiesIsError, error: activitiesErrorObj } = useQuery<
     Activity[]
   >({
     queryKey: ['activities-detail', dateStr],
@@ -110,7 +110,7 @@ export function DayDetailPanel({
   });
 
   // Fetch lifting sessions and filter to this day
-  const { data: allSessions, isLoading: loadingSessions } = useQuery<
+  const { data: allSessions, isLoading: loadingSessions, isError: sessionsIsError, error: sessionsErrorObj } = useQuery<
     LiftingSession[]
   >({
     queryKey: ['lifting-sessions-calendar'],
@@ -142,6 +142,9 @@ export function DayDetailPanel({
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions-calendar'] });
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
     },
+    onError: (err: Error) => {
+      console.error('[DayDetailPanel] Update session failed:', err);
+    },
   });
 
   const handleSaveNotes = useCallback(
@@ -157,6 +160,8 @@ export function DayDetailPanel({
   );
 
   const isLoading = loadingActivities || loadingSessions;
+  const hasQueryError = activitiesIsError || sessionsIsError;
+  const queryErrorMessage = (activitiesErrorObj || sessionsErrorObj)?.message ?? '';
 
   // Format helpers for sleep
   const formatSleepHrs = (seconds: number) => `${(seconds / 3600).toFixed(1)}h`;
@@ -307,6 +312,10 @@ export function DayDetailPanel({
           {[1, 2].map((i) => (
             <div key={i} className="h-32 bg-surface-light rounded-lg" />
           ))}
+        </div>
+      ) : hasQueryError ? (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          Failed to load: {queryErrorMessage}
         </div>
       ) : activities && activities.length > 0 ? (
         activities.map((activity) => {

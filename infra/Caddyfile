@@ -7,6 +7,17 @@
 }
 
 {$DOMAIN:localhost} {
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Permitted-Cross-Domain-Policies none
+        Permissions-Policy camera=(), microphone=(), geolocation=()
+        -Server
+    }
+
     # Frontend — Next.js basePath is /fittrack
     # /fittrack* matches /fittrack, /fittrack/, /fittrack/dashboard, etc.
     handle /fittrack* {

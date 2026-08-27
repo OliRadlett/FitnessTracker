@@ -210,8 +210,15 @@ async def oauth_callback(
                 try:
                     token_data = token_resp.json()
                 except Exception:
+                    _logger.warning(
+                        "%s token exchange returned non-JSON response "
+                        "(status=%s, body_len=%s)",
+                        provider.title(),
+                        token_resp.status_code,
+                        len(token_resp.text),
+                    )
                     return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error={provider.title()}+HTTP+{token_resp.status_code}+{token_resp.text[:100]}"
+                        url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed"
                     )
 
             if token_resp.status_code != 200:
@@ -224,13 +231,14 @@ async def oauth_callback(
 
             access_token = token_data.get("access_token")
             if not access_token:
-                import urllib.parse as _urlparse
-
-                error_detail = token_data.get(
-                    "error_description", token_data.get("error", "unknown")
+                _logger.error(
+                    "%s token exchange failed: status=%s, error=%s",
+                    provider.title(),
+                    token_resp.status_code,
+                    token_data.get("error_description", token_data.get("error", "unknown")),
                 )
                 return RedirectResponse(
-                    url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed+(HTTP+{token_resp.status_code}):+{_urlparse.quote(str(error_detail))}"
+                    url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed"
                 )
 
             refresh_token = token_data.get("refresh_token")
@@ -255,8 +263,13 @@ async def oauth_callback(
                     userinfo_resp = await client.get(fallback_url, headers=headers)
 
                 if userinfo_resp.status_code != 200:
+                    _logger.error(
+                        "%s userinfo fetch failed: status=%s",
+                        provider.title(),
+                        userinfo_resp.status_code,
+                    )
                     return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+HTTP+{userinfo_resp.status_code}+{userinfo_resp.text[:80]}"
+                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+failed"
                     )
                 try:
                     userinfo = userinfo_resp.json()
