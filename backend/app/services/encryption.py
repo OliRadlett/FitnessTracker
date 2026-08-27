@@ -55,8 +55,20 @@ def decrypt_token(ciphertext: str) -> str:
     """
     try:
         return _get_fernet().decrypt(ciphertext.encode()).decode()
-    except (InvalidToken, Exception):
-        # Not valid Fernet — return as-is (backward compat / sentinel values)
+    except InvalidToken:
+        # Not valid Fernet — return as-is (backward compat / sentinel values).
+        # Log at debug to avoid spamming on every startup; a genuine migration
+        # should not leave any non-Fernet rows behind.
+        logger.debug(
+            "decrypt_token: value is not valid Fernet ciphertext — returning "
+            "raw value unchanged (length=%d)", len(ciphertext)
+        )
+        return ciphertext
+    except Exception as e:
+        logger.warning(
+            "decrypt_token: unexpected error decrypting value (length=%d): %s",
+            len(ciphertext), e,
+        )
         return ciphertext
 
 

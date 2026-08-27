@@ -43,11 +43,17 @@ export function ExerciseManager() {
       setNewAliases('');
       setShowAdd(false);
     },
+    onError: (err: Error) => {
+      console.error('[ExerciseManager] Create failed:', err);
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (exerciseId: string) => deleteExercise(authFetch, exerciseId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exercises-list'] }),
+    onError: (err: Error) => {
+      console.error('[ExerciseManager] Delete failed:', err);
+    },
   });
 
   const handleAdd = () => {

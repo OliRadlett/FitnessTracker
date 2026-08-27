@@ -255,6 +255,8 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   // ── Mutations ────────────────────────────────────────────────────────────
 
   const createSessionMutation = useMutation({
@@ -266,6 +268,7 @@ export default function LiftingPage() {
       handleSelectSession(newSession.id);
       setNewSession({ session_date: new Date().toISOString().split('T')[0], focus: '', notes: '' });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to create session'),
   });
 
   const unlinkMutation = useMutation({
@@ -278,6 +281,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to unlink activity'),
   });
 
   const backfillMutation = useMutation({
@@ -286,6 +290,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to backfill links'),
   });
 
   const updateSetMutation = useMutation({
@@ -299,6 +304,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
       queryClient.invalidateQueries({ queryKey: ['lifting-volume'] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to update set'),
   });
 
   const deleteSetMutation = useMutation({
@@ -309,6 +315,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
       queryClient.invalidateQueries({ queryKey: ['lifting-volume'] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to delete set'),
   });
 
   const updateSessionMutation = useMutation({
@@ -322,6 +329,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
       setShowEditSession(false);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to update session'),
   });
 
   const deleteSessionMutation = useMutation({
@@ -333,6 +341,7 @@ export default function LiftingPage() {
       handleSelectSession(null);
       setConfirmDeleteSession(false);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to delete session'),
   });
 
   const createPRMutation = useMutation({
@@ -345,6 +354,7 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['personal-records'] });
       setShowManualPR(false);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to create PR'),
   });
 
   const volumeChart = volumeData ? buildVolumeChart(volumeData) : null;
@@ -356,6 +366,20 @@ export default function LiftingPage() {
     <div className="space-y-6">
       {/* PR Celebration Toast */}
       <PRCelebration pr={celebrationPR} onDismiss={() => setCelebrationPR(null)} />
+
+      {/* Error banner */}
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-red-400 hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">

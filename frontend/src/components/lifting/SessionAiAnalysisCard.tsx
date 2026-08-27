@@ -18,7 +18,7 @@ export function SessionAiAnalysisCard({ sessionId }: SessionAiAnalysisCardProps)
   const queryClient = useQueryClient();
   const queryKey = ['lifting-session-ai-analysis', sessionId];
 
-  const { data: cachedAnalysis, isLoading } = useQuery<LlmAnalysis | null>({
+  const { data: cachedAnalysis, isLoading, isError, error } = useQuery<LlmAnalysis | null>({
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`),
     staleTime: 1000 * 60 * 30, // 30 minutes — don't re-fetch cached analysis
@@ -28,6 +28,9 @@ export function SessionAiAnalysisCard({ sessionId }: SessionAiAnalysisCardProps)
     mutationFn: () => authFetch<LlmAnalysis>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`, { method: 'POST' }),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKey, data);
+    },
+    onError: (err: Error) => {
+      console.error('[SessionAiAnalysisCard] Analysis failed:', err);
     },
   });
 
@@ -60,6 +63,11 @@ export function SessionAiAnalysisCard({ sessionId }: SessionAiAnalysisCardProps)
                 : `Analysis failed: ${mutation.error.message}`
               : 'Analysis failed. Please try again.'}
           </p>
+        </div>
+      )}
+      {isError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm mb-4">
+          Failed to load: {error?.message}
         </div>
       )}
 

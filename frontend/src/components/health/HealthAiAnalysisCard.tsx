@@ -14,7 +14,7 @@ export function HealthAiAnalysisCard() {
   const queryClient = useQueryClient();
   const queryKey = ['health-ai-analysis'];
 
-  const { data: cachedAnalysis, isLoading } = useQuery<LlmAnalysis | null>({
+  const { data: cachedAnalysis, isLoading, isError, error } = useQuery<LlmAnalysis | null>({
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>('/api/v1/metrics/health-ai-analysis'),
     staleTime: 1000 * 60 * 30,
@@ -24,6 +24,9 @@ export function HealthAiAnalysisCard() {
     mutationFn: () => authFetch<LlmAnalysis>('/api/v1/metrics/health-ai-analysis', { method: 'POST' }),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKey, data);
+    },
+    onError: (err: Error) => {
+      console.error('[HealthAiAnalysisCard] Analysis failed:', err);
     },
   });
 
@@ -56,6 +59,11 @@ export function HealthAiAnalysisCard() {
                 : `Analysis failed: ${mutation.error.message}`
               : 'Analysis failed. Please try again.'}
           </p>
+        </div>
+      )}
+      {isError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm mb-4">
+          Failed to load: {error?.message}
         </div>
       )}
 

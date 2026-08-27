@@ -254,6 +254,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     onSuccess: () => {
       invalidateWeeks();
     },
+    onError: (err: Error) => {
+      console.error('[WeeklyView] Link activities failed:', err);
+    },
   });
 
   // ── Mutations ───────────────────────────────────────────────────────────
@@ -261,18 +264,27 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     mutationFn: ({ dayId, completed }: { dayId: string; completed: boolean }) =>
       updatePlanDay(authFetch, plan.id, dayId, { completed }),
     onSuccess: invalidateWeeks,
+    onError: (err: Error) => {
+      console.error('[WeeklyView] Toggle completed failed:', err);
+    },
   });
 
   const assignRoute = useMutation({
     mutationFn: ({ dayId, routeId }: { dayId: string; routeId: string }) =>
       updatePlanDay(authFetch, plan.id, dayId, { planned_route_id: routeId }),
     onSuccess: invalidateWeeks,
+    onError: (err: Error) => {
+      console.error('[WeeklyView] Assign route failed:', err);
+    },
   });
 
   const unassignRoute = useMutation({
     mutationFn: (dayId: string) =>
       updatePlanDay(authFetch, plan.id, dayId, { planned_route_id: null }),
     onSuccess: invalidateWeeks,
+    onError: (err: Error) => {
+      console.error('[WeeklyView] Unassign route failed:', err);
+    },
   });
 
   const quickEdit = useMutation({
@@ -284,6 +296,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
       payload: UpdateTrainingPlanDayPayload;
     }) => updatePlanDay(authFetch, plan.id, dayId, payload),
     onSuccess: invalidateWeeks,
+    onError: (err: Error) => {
+      console.error('[WeeklyView] Quick edit failed:', err);
+    },
   });
 
   // ── Derived data ────────────────────────────────────────────────────────
@@ -500,6 +515,16 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         <p className="text-sm text-warning">
           Failed to load week: {(weekQuery.error as Error).message}
         </p>
+      )}
+      {conformityQuery.isError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          Failed to load conformity: {(conformityQuery.error as Error)?.message}
+        </div>
+      )}
+      {tsbProjectionQuery.isError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          Failed to load TSB projection: {(tsbProjectionQuery.error as Error)?.message}
+        </div>
       )}
 
       {/* 7 day cards */}

@@ -246,7 +246,7 @@ export function WorkoutPlanner() {
   const [showRoutes, setShowRoutes] = useState(false);
 
   // Fetch zones
-  const { data: zonesData, isLoading: zonesLoading } = useQuery<WorkoutZonesResponse>({
+  const { data: zonesData, isLoading: zonesLoading, isError: zonesIsError, error: zonesErrorObj } = useQuery<WorkoutZonesResponse>({
     queryKey: ['workout-zones'],
     queryFn: () => authFetch<WorkoutZonesResponse>('/api/v1/workout-planner/zones'),
     staleTime: 300_000,
@@ -311,6 +311,16 @@ export function WorkoutPlanner() {
         <div className="animate-pulse space-y-4">
           <div className="h-5 bg-surface-light rounded w-48"></div>
           <div className="h-40 bg-surface-light/40 rounded-lg"></div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (zonesIsError && zonesErrorObj) {
+    return (
+      <Card>
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          Failed to load workout zones: {zonesErrorObj.message}
         </div>
       </Card>
     );

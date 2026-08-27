@@ -276,6 +276,11 @@ export default function CyclingPage() {
     onSuccess: (data) => {
       setFtpEstimate(data);
     },
+    onError: (error: Error) => {
+      setFtpEstimate(null);
+      setSaveMessage(`Error: ${error.message}`);
+      saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
+    },
   });
 
   const acceptEstimateMutation = useMutation({
