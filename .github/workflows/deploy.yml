@@ -63,10 +63,9 @@ jobs:
         with:
           context: ./backend
           push: true
+          no-cache: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract metadata for frontend
         id: meta-frontend
@@ -102,10 +101,9 @@ jobs:
         with:
           context: ./backend
           push: true
+          no-cache: true
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to DigitalOcean
