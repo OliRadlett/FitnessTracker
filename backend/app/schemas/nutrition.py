@@ -43,6 +43,9 @@ class RideFuelPlanRead(BaseModel):
     actual_pre_ride_notes: str | None
     actual_during_notes: str | None
     actual_post_ride_notes: str | None
+    actual_water_ml: float | None
+    actual_carbs_g: float | None
+    actual_electrolytes_mg: float | None
     source: Literal["auto", "manual"]
     created_at: datetime
     updated_at: datetime
@@ -54,3 +57,6 @@ class FuelPlanActualsUpdate(BaseModel):
     actual_pre_ride_notes: str | None = Field(default=None, max_length=1000)
     actual_during_notes: str | None = Field(default=None, max_length=1000)
     actual_post_ride_notes: str | None = Field(default=None, max_length=1000)
+    actual_water_ml: float | None = Field(default=None, ge=0)
+    actual_carbs_g: float | None = Field(default=None, ge=0)
+    actual_electrolytes_mg: float | None = Field(default=None, ge=0)

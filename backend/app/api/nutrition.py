@@ -102,6 +102,9 @@ async def log_fuel_actuals(
         actual_pre=payload.actual_pre_ride_notes,
         actual_during=payload.actual_during_notes,
         actual_post=payload.actual_post_ride_notes,
+        actual_water_ml=payload.actual_water_ml,
+        actual_carbs_g=payload.actual_carbs_g,
+        actual_electrolytes_mg=payload.actual_electrolytes_mg,
     )
     if not plan:
         raise HTTPException(

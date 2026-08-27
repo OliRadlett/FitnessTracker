@@ -554,6 +554,21 @@ async def compute_day_conformity(
 
 # ── Auto-linking ──────────────────────────────────────────────────────────
 
+# Cycling sport type keywords (case-insensitive matching).
+_CYCLE_SPORT_KEYWORDS = frozenset({"cycl", "ride", "bike", "mountain bike", "gravel"})
+
+
+def _activity_sport_matches_day(activity: Activity, day: TrainingPlanDay) -> bool:
+    """Return True if the activity's sport_type is compatible with the day's sport."""
+    if day.sport == "rest":
+        return False
+    if day.sport == "strength":
+        return False  # strength days match lifting sessions, not activities
+    if day.sport == "cycle":
+        st = (activity.sport_type or "").lower()
+        return any(kw in st for kw in _CYCLE_SPORT_KEYWORDS)
+    return True
+
 
 async def link_activities_to_plan_days(
     db: AsyncSession,
@@ -628,6 +643,8 @@ async def link_activities_to_plan_days(
     }
 
     linked = 0
+    route_backfills = 0
+    completed_updates = 0
     for plan in plans:
         for day in plan.days:
             if day.sport == "cycle" and day.activity_id is None:
@@ -640,6 +657,15 @@ async def link_activities_to_plan_days(
                     day.activity_id = candidates[0].id
                     used_activity_ids.add(candidates[0].id)
                     linked += 1
+                    if _activity_sport_matches_day(candidates[0], day):
+                        day.completed = True
+                        completed_updates += 1
+                    if (
+                        candidates[0].route_id is None
+                        and day.planned_route_id is not None
+                    ):
+                        candidates[0].route_id = day.planned_route_id
+                        route_backfills += 1
             elif day.sport == "strength" and day.lifting_session_id is None:
                 candidates = [
                     s
@@ -652,8 +678,69 @@ async def link_activities_to_plan_days(
                     day.lifting_session_id = candidates[0].id
                     used_session_ids.add(candidates[0].id)
                     linked += 1
+                    day.completed = True
+                    completed_updates += 1
 
-    if linked:
+    # Retroactive: set completed on already-linked cycle days that lack it.
+    retro_activity_ids = set()
+    for plan in plans:
+        for day in plan.days:
+            if (
+                day.activity_id is not None
+                and day.completed is not True
+                and day.sport == "cycle"
+            ):
+                retro_activity_ids.add(day.activity_id)
+
+    retro_acts_by_id: dict[uuid.UUID, Activity] = {}
+    if retro_activity_ids:
+        retro_result = await db.execute(
+            select(Activity).where(Activity.id.in_(retro_activity_ids))
+        )
+        retro_acts_by_id = {a.id: a for a in retro_result.scalars()}
+
+    for plan in plans:
+        for day in plan.days:
+            if (
+                day.activity_id is not None
+                and day.completed is not True
+                and day.sport == "cycle"
+            ):
+                act = retro_acts_by_id.get(day.activity_id)
+                if act is not None and _activity_sport_matches_day(act, day):
+                    day.completed = True
+                    completed_updates += 1
+
+    # Retroactive fallback: backfill route_id on already-linked cycle days
+    # where the activity never got a route from polyline matching.
+    activity_ids_to_check = set()
+    for plan in plans:
+        for day in plan.days:
+            if (
+                day.sport == "cycle"
+                and day.activity_id is not None
+                and day.planned_route_id is not None
+            ):
+                activity_ids_to_check.add(day.activity_id)
+
+    if activity_ids_to_check:
+        act_result2 = await db.execute(
+            select(Activity).where(Activity.id.in_(activity_ids_to_check))
+        )
+        acts_by_id = {a.id: a for a in act_result2.scalars()}
+        for plan in plans:
+            for day in plan.days:
+                if (
+                    day.sport == "cycle"
+                    and day.activity_id is not None
+                    and day.planned_route_id is not None
+                ):
+                    act = acts_by_id.get(day.activity_id)
+                    if act is not None and act.route_id is None:
+                        act.route_id = day.planned_route_id
+                        route_backfills += 1
+
+    if linked or route_backfills:
         await db.flush()
     return linked
 

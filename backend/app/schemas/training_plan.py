@@ -189,6 +189,7 @@ class TrainingWeekDay(TrainingPlanDayRead):
     actual_lifting_session: ActualLiftingSession | None = None
     route_matches: list[WeekRouteMatch] | None = None
     warmup_template: WarmupTemplateRead | None = None
+    day_status: Literal["pending", "completed", "partial", "missed", "rest"] = "pending"
 
 
 class TrainingWeekResponse(BaseModel):

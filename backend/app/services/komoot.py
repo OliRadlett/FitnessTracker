@@ -284,7 +284,7 @@ async def _enrich_and_create_route(
             ),
         )
     )
-    was_existing = existing_source.scalar_one_or_none() is not None
+    was_existing = existing_source.first() is not None
 
     await create_or_merge_route(
         db,

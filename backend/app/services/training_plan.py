@@ -453,6 +453,31 @@ async def save_plan_days(
             await db.delete(row)
             del existing_by_date[day_date]
 
+    # Auto-fill cycling fields when type changes (Feature 2)
+    from app.models.cycling_profile import CyclingProfile
+
+    profile_result = await db.execute(
+        select(CyclingProfile).where(CyclingProfile.user_id == user_id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    ftp = profile.ftp_watts if profile and profile.ftp_watts else None
+
+    if ftp:
+        for day_date, row in existing_by_date.items():
+            if row.sport == "cycle" and row.planned_type and row.planned_type != "rest":
+                difficulty = _TYPE_TO_DIFFICULTY.get(row.planned_type)
+                if difficulty and row.planned_duration_min:
+                    targets = plan_workout(
+                        ftp=ftp,
+                        lthr=profile.lthr if profile else None,
+                        weight_kg=profile.weight_kg if profile else None,
+                        difficulty=difficulty,
+                        duration_minutes=row.planned_duration_min,
+                    )
+                    if targets:
+                        row.planned_tss = targets.target_tss_low
+                        row.planned_power_watts = targets.target_power_low
+
     await db.flush()
     return await _reload_plan(db, plan_id)
 
@@ -943,6 +968,18 @@ async def get_plan_week(
             else None
         )
 
+        # Compute day_status for visual indicators
+        if day.sport == "rest":
+            day_status = "rest"
+        elif day.day_date > today:
+            day_status = "pending"
+        elif day.completed:
+            day_status = "completed"
+        elif day.activity_id is not None or day.lifting_session_id is not None:
+            day_status = "partial"
+        else:
+            day_status = "missed"
+
         entries.append(
             TrainingWeekDay(
                 **base,
@@ -956,6 +993,7 @@ async def get_plan_week(
                 )
                 if day.warmup_template_id
                 else None,
+                day_status=day_status,
             )
         )
 

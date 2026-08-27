@@ -304,6 +304,9 @@ async def update_fuel_plan_actuals(
     actual_pre: str | None = None,
     actual_during: str | None = None,
     actual_post: str | None = None,
+    actual_water_ml: float | None = None,
+    actual_carbs_g: float | None = None,
+    actual_electrolytes_mg: float | None = None,
 ) -> RideFuelPlan | None:
     """Log what was actually consumed. Only non-None fields are updated."""
     plan = await get_fuel_plan(db, user_id, plan_id)
@@ -315,6 +318,12 @@ async def update_fuel_plan_actuals(
         plan.actual_during_notes = actual_during[:1000] if actual_during else None
     if actual_post is not None:
         plan.actual_post_ride_notes = actual_post[:1000] if actual_post else None
+    if actual_water_ml is not None:
+        plan.actual_water_ml = actual_water_ml
+    if actual_carbs_g is not None:
+        plan.actual_carbs_g = actual_carbs_g
+    if actual_electrolytes_mg is not None:
+        plan.actual_electrolytes_mg = actual_electrolytes_mg
     plan.updated_at = datetime.now(UTC)
     await db.flush()
     await db.refresh(plan)
