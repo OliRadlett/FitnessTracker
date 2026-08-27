@@ -346,7 +346,7 @@ async def preview_workout(
     # Fetch FTP from cycling profile
     from sqlalchemy import select as sa_select
 
-    from app.models.cycling_profile import CyclingProfile
+    from app.models.cycling import CyclingProfile
 
     result = await db.execute(
         sa_select(CyclingProfile).where(CyclingProfile.user_id == current_user.id)

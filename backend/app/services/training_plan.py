@@ -454,7 +454,7 @@ async def save_plan_days(
             del existing_by_date[day_date]
 
     # Auto-fill cycling fields when type changes (Feature 2)
-    from app.models.cycling_profile import CyclingProfile
+    from app.models.cycling import CyclingProfile
 
     profile_result = await db.execute(
         select(CyclingProfile).where(CyclingProfile.user_id == user_id)
