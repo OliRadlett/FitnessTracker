@@ -35,6 +35,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: prod
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -113,6 +115,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: prod
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
