@@ -16,53 +16,13 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtElevation(meters: number): string {
-  return `${Math.round(meters)} m`;
-}
-
-function fmtDurationShort(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0) return `${hrs}h ${mins}m`;
-  return `${mins}m`;
-}
-
-// ── Difficulty ───────────────────────────────────────────────────────────────
-
-type DifficultyLevel = 'Easy' | 'Moderate' | 'Hard' | 'Extreme';
-
-function computeDifficulty(
-  elevationGainMeters: number | undefined | null,
-  distanceMeters: number,
-): DifficultyLevel | null {
-  if (!elevationGainMeters || elevationGainMeters <= 0) return null;
-  if (distanceMeters <= 0) return null;
-  const elevPerKm = elevationGainMeters / (distanceMeters / 1000);
-  if (elevPerKm < 10) return 'Easy';
-  if (elevPerKm < 20) return 'Moderate';
-  if (elevPerKm < 40) return 'Hard';
-  return 'Extreme';
-}
-
-const DIFFICULTY_STYLES: Record<DifficultyLevel, string> = {
-  Easy: 'bg-green-500/20 text-positive border-green-500/30',
-  Moderate: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  Hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  Extreme: 'bg-red-500/20 text-warning border-red-500/30',
-};
-
-function DifficultyBadge({ level }: { level: DifficultyLevel }) {
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${DIFFICULTY_STYLES[level]}`}
-    >
-      {level}
-    </span>
-  );
-}
+import {
+  computeDifficulty,
+  DifficultyBadge,
+  fmtElevation,
+  fmtDurationShort,
+  haversineDistance,
+} from '@/lib/routeUtils';
 
 // ── Haversine for elevation profile overlay ──────────────────────────────────
 
@@ -87,7 +47,7 @@ function buildElevationData(encodedPolyline: string, elevations: (number | null)
   let cumDist = 0;
   for (let i = 0; i < points.length; i++) {
     if (i > 0) {
-      cumDist += haversineDist(
+      cumDist += haversineDistance(
         points[i - 1][0], points[i - 1][1],
         points[i][0], points[i][1],
       );

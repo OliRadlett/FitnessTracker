@@ -20,57 +20,14 @@ import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 import { formatDuration, formatDistance } from '@/lib/utils';
+import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
 import { MapBrowseView } from '@/components/routes/MapBrowseView';
+import { TabGroup } from '@/components/ui/TabGroup';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtElevation(meters: number): string {
-  return `${Math.round(meters)} m`;
-}
-
-function fmtDurationShort(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0) return `${hrs}h ${mins}m`;
-  return `${mins}m`;
-}
-
-// ── Difficulty ───────────────────────────────────────────────────────────────
-
-type DifficultyLevel = 'Easy' | 'Moderate' | 'Hard' | 'Extreme';
-
-function computeDifficulty(
-  elevationGainMeters: number | undefined | null,
-  distanceMeters: number,
-): DifficultyLevel | null {
-  if (!elevationGainMeters || elevationGainMeters <= 0) return null;
-  if (distanceMeters <= 0) return null;
-  const elevPerKm = elevationGainMeters / (distanceMeters / 1000);
-  if (elevPerKm < 10) return 'Easy';
-  if (elevPerKm < 20) return 'Moderate';
-  if (elevPerKm < 40) return 'Hard';
-  return 'Extreme';
-}
-
-const DIFFICULTY_STYLES: Record<DifficultyLevel, string> = {
-  Easy: 'bg-green-500/20 text-positive border-green-500/30',
-  Moderate: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  Hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  Extreme: 'bg-red-500/20 text-warning border-red-500/30',
-};
-
-function DifficultyBadge({ level }: { level: DifficultyLevel }) {
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${DIFFICULTY_STYLES[level]}`}
-    >
-      {level}
-    </span>
-  );
-}
 
 const SORT_OPTIONS = [
   { value: '', label: 'Default (Newest)' },
@@ -231,6 +188,8 @@ export default function RoutesPage() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   const [showCompareModal, setShowCompareModal] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history'>('overview');
 
   // Fetch route list
   const { data: routesData, isLoading } = useQuery<{ routes: RouteSummary[]; totalCount: number }>({
@@ -384,6 +343,21 @@ export default function RoutesPage() {
   // Selected route ride stats from the list data
   const selectedRouteSummary = routes?.find(r => r.id === selectedRouteId);
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.is_ridden !== undefined) count++;
+    if (filters.sport_type) count++;
+    if (filters.source) count++;
+    if (filters.surface_type) count++;
+    if (filters.is_loop !== undefined) count++;
+    if (filters.min_distance) count++;
+    if (filters.max_distance) count++;
+    if (filters.min_elevation) count++;
+    if (filters.max_elevation) count++;
+    if (filters.sort_by) count++;
+    return count;
+  }, [filters]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -456,226 +430,197 @@ export default function RoutesPage() {
         </Card>
       )}
 
-      {/* Sync result */}
+      {/* Sync status banner */}
       {syncMutation.isSuccess && syncMutation.data && (
-        <Card>
-          <div className="p-4" aria-live="polite">
-            <p className="text-sm text-positive">
-              ✅ Synced {syncMutation.data.reduce((sum, r) => sum + r.synced_count, 0)} routes
-              ({syncMutation.data.reduce((sum, r) => sum + r.merged_count, 0)} merged duplicates)
-            </p>
-          </div>
-        </Card>
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-lg border bg-positive/10 border-positive/20 text-positive">
+          <span className="text-sm">
+            ✅ Synced {syncMutation.data.reduce((sum, r) => sum + r.synced_count, 0)} routes
+            ({syncMutation.data.reduce((sum, r) => sum + r.merged_count, 0)} merged duplicates)
+          </span>
+          <button onClick={() => queryClient.setQueryData(['routes-sync-result'], null)} className="text-sm opacity-60 hover:opacity-100">✕</button>
+        </div>
       )}
       {syncMutation.isError && (
-        <Card>
-          <div className="p-4" aria-live="polite">
-            <p className="text-sm text-warning">
-              Error: {syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}
-            </p>
-          </div>
-        </Card>
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-lg border bg-warning/10 border-warning/20 text-warning">
+          <span className="text-sm">⚠️ {syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}</span>
+          <button onClick={() => queryClient.setQueryData(['routes-sync-result'], null)} className="text-sm opacity-60 hover:opacity-100">✕</button>
+        </div>
       )}
 
-      {/* Filter Bar */}
+      {/* Filter Bar — Tier 1 (always visible) */}
       <Card>
-        <div className="flex flex-wrap gap-4 items-end p-4">
-          <div>
-            <label className="block text-xs text-muted mb-1">Status</label>
-            <select
-              value={filters.is_ridden === undefined ? '' : filters.is_ridden ? 'ridden' : 'unridden'}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFilters({
-                  ...filters,
-                  is_ridden: val === '' ? undefined : val === 'ridden',
-                });
-              }}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">All</option>
-              <option value="unridden">Not yet ridden</option>
-              <option value="ridden">Ridden</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Sport Type</label>
-            <select
-              value={filters.sport_type || ''}
-              onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">All</option>
-              <option value="cycling">Cycling</option>
-              <option value="running">Running</option>
-              <option value="walking">Walking</option>
-              <option value="hiking">Hiking</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Source</label>
-            <select
-              value={filters.source || ''}
-              onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">All Sources</option>
-              <option value="strava">Strava</option>
-              <option value="komoot">Komoot</option>
-              <option value="wahoo">Wahoo</option>
-              <option value="manual">Manual</option>
-            </select>
-          </div>
-          {/* Surface type filter */}
-          <div>
-            <label className="block text-xs text-muted mb-1">Surface</label>
-            <select
-              value={filters.surface_type || ''}
-              onChange={(e) => setFilters({ ...filters, surface_type: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {SURFACE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Route Type</label>
-            <select
-              value={filters.is_loop === undefined ? '' : filters.is_loop ? 'loop' : 'point'}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFilters({
-                  ...filters,
-                  is_loop: val === '' ? undefined : val === 'loop',
-                });
-              }}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">All</option>
-              <option value="loop">Loop</option>
-              <option value="point">Point to Point</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Min Dist (km)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              placeholder="0"
-              value={filters.min_distance ? filters.min_distance / 1000 : ''}
-              onChange={(e) => setFilters({
-                ...filters,
-                min_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined,
-              })}
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Max Dist (km)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              placeholder="∞"
-              value={filters.max_distance ? filters.max_distance / 1000 : ''}
-              onChange={(e) => setFilters({
-                ...filters,
-                max_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined,
-              })}
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Min Elev (m)</label>
-            <input
-              type="number"
-              min="0"
-              step="10"
-              placeholder="0"
-              value={filters.min_elevation ?? ''}
-              onChange={(e) => setFilters({
-                ...filters,
-                min_elevation: e.target.value ? parseFloat(e.target.value) : undefined,
-              })}
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Max Elev (m)</label>
-            <input
-              type="number"
-              min="0"
-              step="10"
-              placeholder="∞"
-              value={filters.max_elevation ?? ''}
-              onChange={(e) => setFilters({
-                ...filters,
-                max_elevation: e.target.value ? parseFloat(e.target.value) : undefined,
-              })}
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Sort By</label>
-            <select
-              value={filters.sort_by || ''}
-              onChange={(e) => setFilters({ ...filters, sort_by: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          {filters.sort_by && (
-            <div>
-              <label className="block text-xs text-muted mb-1">Order</label>
-              <select
-                value={filters.sort_order || 'desc'}
-                onChange={(e) => setFilters({ ...filters, sort_order: e.target.value })}
-                className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="block text-xs text-muted mb-1">Search</label>
+        <div className="flex flex-wrap gap-3 items-center p-4">
+          <div className="flex-1 min-w-[160px]">
             <input
               type="text"
               placeholder="Route name..."
               value={filters.q || ''}
               onChange={(e) => setFilters({ ...filters, q: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
-          <button
-            onClick={() => setFilters({})}
-            aria-label="Clear all route filters"
-            className="px-4 py-2 text-sm text-muted hover:text-white border border-surface-light rounded-lg hover:bg-surface-light/50 transition-colors"
+          <select
+            value={filters.sport_type || ''}
+            onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
+            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
-            Clear
+            <option value="">All Sports</option>
+            <option value="cycling">Cycling</option>
+            <option value="running">Running</option>
+            <option value="walking">Walking</option>
+            <option value="hiking">Hiking</option>
+          </select>
+          <select
+            value={filters.source || ''}
+            onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined })}
+            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">All Sources</option>
+            <option value="strava">Strava</option>
+            <option value="komoot">Komoot</option>
+            <option value="wahoo">Wahoo</option>
+            <option value="manual">Manual</option>
+          </select>
+          <select
+            value={filters.sort_by || ''}
+            onChange={(e) => setFilters({ ...filters, sort_by: e.target.value || undefined })}
+            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`px-3 py-2 text-sm border rounded-lg transition-colors inline-flex items-center gap-1.5 ${
+              showAdvancedFilters
+                ? 'bg-accent/20 text-accent border-accent/30'
+                : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] font-semibold bg-accent text-white rounded-full">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => setFilters({})}
+              className="px-3 py-2 text-sm text-accent hover:text-accent/80 transition-colors"
+            >
+              Clear
+            </button>
+          )}
         </div>
+
+        {/* Tier 2 — collapsible advanced filters */}
+        {showAdvancedFilters && (
+          <div className="px-4 pb-4 pt-3 border-t border-surface-light/30 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs text-muted mb-1">Status</label>
+              <select
+                value={filters.is_ridden === undefined ? '' : filters.is_ridden ? 'ridden' : 'unridden'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, is_ridden: val === '' ? undefined : val === 'ridden' });
+                }}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">All</option>
+                <option value="unridden">Not yet ridden</option>
+                <option value="ridden">Ridden</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Route Type</label>
+              <select
+                value={filters.is_loop === undefined ? '' : filters.is_loop ? 'loop' : 'point'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, is_loop: val === '' ? undefined : val === 'loop' });
+                }}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">All</option>
+                <option value="loop">Loop</option>
+                <option value="point">Point to Point</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Surface</label>
+              <select
+                value={filters.surface_type || ''}
+                onChange={(e) => setFilters({ ...filters, surface_type: e.target.value || undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {SURFACE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Min Dist (km)</label>
+              <input type="number" min="0" step="0.5" placeholder="0"
+                value={filters.min_distance ? filters.min_distance / 1000 : ''}
+                onChange={(e) => setFilters({ ...filters, min_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Max Dist (km)</label>
+              <input type="number" min="0" step="0.5" placeholder="∞"
+                value={filters.max_distance ? filters.max_distance / 1000 : ''}
+                onChange={(e) => setFilters({ ...filters, max_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Min Elev (m)</label>
+              <input type="number" min="0" step="10" placeholder="0"
+                value={filters.min_elevation ?? ''}
+                onChange={(e) => setFilters({ ...filters, min_elevation: e.target.value ? parseFloat(e.target.value) : undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Max Elev (m)</label>
+              <input type="number" min="0" step="10" placeholder="∞"
+                value={filters.max_elevation ?? ''}
+                onChange={(e) => setFilters({ ...filters, max_elevation: e.target.value ? parseFloat(e.target.value) : undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            {filters.sort_by && (
+              <div>
+                <label className="block text-xs text-muted mb-1">Order</label>
+                <select
+                  value={filters.sort_order || 'desc'}
+                  onChange={(e) => setFilters({ ...filters, sort_order: e.target.value })}
+                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
-      {/* Compare button — appears when exactly 2 routes selected */}
+      {/* Compare floating bar */}
       {compareIds.size === 2 && (
-        <div className="flex items-center gap-3">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
+          <span className="text-sm text-muted">2 routes selected</span>
           <button
             onClick={() => setShowCompareModal(true)}
-            className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors"
           >
-            {'\u2696\uFE0F'} Compare Routes
+            Compare Routes
           </button>
           <button
             onClick={() => setCompareIds(new Set())}
-            className="px-3 py-2 text-sm text-muted hover:text-white transition-colors"
+            className="text-sm text-muted hover:text-white transition-colors"
           >
-            Clear selection
+            Clear
           </button>
         </div>
       )}
@@ -818,28 +763,14 @@ export default function RoutesPage() {
                               }
                             }}
                           />
-                          <button
-                            type="submit"
-                            className="text-xs text-accent hover:text-accent/80"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsRenaming(false)}
-                            className="text-xs text-muted hover:text-white"
-                          >
-                            Cancel
-                          </button>
+                          <button type="submit" className="text-xs text-accent hover:text-accent/80">Save</button>
+                          <button type="button" onClick={() => setIsRenaming(false)} className="text-xs text-muted hover:text-white">Cancel</button>
                         </form>
                       ) : (
                         <>
                           <CardTitle>{selectedRoute.name}</CardTitle>
                           <button
-                            onClick={() => {
-                              setRenameValue(selectedRoute.name);
-                              setIsRenaming(true);
-                            }}
+                            onClick={() => { setRenameValue(selectedRoute.name); setIsRenaming(true); }}
                             className="text-xs text-muted hover:text-accent transition-colors"
                             aria-label="Rename route"
                           >
@@ -861,11 +792,7 @@ export default function RoutesPage() {
                         ⬇️ GPX
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('Delete this route?')) {
-                            deleteMutation.mutate(selectedRoute.id);
-                          }
-                        }}
+                        onClick={() => { if (confirm('Delete this route?')) deleteMutation.mutate(selectedRoute.id); }}
                         aria-label="Delete route"
                         className="px-3 py-1.5 text-xs font-medium text-warning hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
@@ -874,88 +801,103 @@ export default function RoutesPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <div className="px-6 pb-4">
-                  {/* Ride stats */}
-                  {selectedRouteSummary && selectedRouteSummary.ride_count > 0 && (
-                    <div className="flex items-center gap-4 p-3 bg-accent/10 border border-accent/20 rounded-lg mb-4">
-                      <div>
-                        <p className="text-lg font-bold text-accent">{selectedRouteSummary.ride_count}</p>
-                        <p className="text-xs text-muted">Total Rides</p>
-                      </div>
-                      {selectedRouteSummary.last_ridden_date && (
-                        <div>
-                          <p className="text-sm text-white">
-                            {new Date(selectedRouteSummary.last_ridden_date).toLocaleDateString()}
-                          </p>
-                          <p className="text-xs text-muted">Last Ridden</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
-                  <div className="flex flex-wrap gap-4 text-sm text-muted mb-4">
-                    <span>📏 {formatDistance(selectedRoute.distance_meters)}</span>
-                    {selectedRoute.elevation_gain_meters && (
-                      <span>⛰️ {fmtElevation(selectedRoute.elevation_gain_meters)}</span>
-                    )}
-                    {selectedRoute.estimated_time_seconds && (
-                      <span>⏱️ {fmtDurationShort(selectedRoute.estimated_time_seconds)}</span>
-                    )}
-                    <span>{selectedRoute.is_loop ? '🔄 Loop' : '➡️ Point to Point'}</span>
-                    {selectedRoute.country && (
-                      <span>📍 {selectedRoute.locality ? `${selectedRoute.locality}, ` : ''}{selectedRoute.country}</span>
-                    )}
-                  </div>
-
-                  {/* Provider Sources */}
-                  <div className="mb-4">
-                    <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">Provider Sources</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedRoute.sources.map((s) => (
-                        <span
-                          key={s.id}
-                          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
-                        >
-                          <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}
-                          <span className="text-white/60 text-[10px]">({s.provider})</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Map */}
-                <div className="px-6 pb-4">
-                  <RouteMap
-                    encodedPolyline={selectedRoute.encoded_polyline}
-                    isLoop={selectedRoute.is_loop}
-                    className="h-[350px]"
+                {/* Detail Tabs */}
+                <div className="px-6 pb-2">
+                  <TabGroup
+                    tabs={[
+                      { key: 'overview', label: 'Overview' },
+                      { key: 'map', label: 'Map & Profile' },
+                      { key: 'history', label: 'History' },
+                    ]}
+                    active={detailTab}
+                    onChange={(key) => setDetailTab(key as typeof detailTab)}
                   />
                 </div>
 
-                {/* Elevation Profile */}
-                {selectedRoute.elevation_profile?.elevations && (
-                  <div className="px-6 pb-4">
-                    <ElevationProfile
-                      encodedPolyline={selectedRoute.encoded_polyline}
-                      elevations={selectedRoute.elevation_profile.elevations}
-                    />
+                {/* Overview Tab */}
+                {detailTab === 'overview' && (
+                  <div className="px-6 pb-4 space-y-4">
+                    {/* Ride stats */}
+                    {selectedRouteSummary && selectedRouteSummary.ride_count > 0 && (
+                      <div className="flex items-center gap-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
+                        <div>
+                          <p className="text-lg font-bold text-accent">{selectedRouteSummary.ride_count}</p>
+                          <p className="text-xs text-muted">Total Rides</p>
+                        </div>
+                        {selectedRouteSummary.last_ridden_date && (
+                          <div>
+                            <p className="text-sm text-white">
+                              {new Date(selectedRouteSummary.last_ridden_date).toLocaleDateString()}
+                            </p>
+                            <p className="text-xs text-muted">Last Ridden</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-4 text-sm text-muted">
+                      <span>📏 {formatDistance(selectedRoute.distance_meters)}</span>
+                      {selectedRoute.elevation_gain_meters && (
+                        <span>⛰️ {fmtElevation(selectedRoute.elevation_gain_meters)}</span>
+                      )}
+                      {selectedRoute.estimated_time_seconds && (
+                        <span>⏱️ {fmtDurationShort(selectedRoute.estimated_time_seconds)}</span>
+                      )}
+                      <span>{selectedRoute.is_loop ? '🔄 Loop' : '➡️ Point to Point'}</span>
+                      {selectedRoute.country && (
+                        <span>📍 {selectedRoute.locality ? `${selectedRoute.locality}, ` : ''}{selectedRoute.country}</span>
+                      )}
+                    </div>
+
+                    {/* Provider Sources */}
+                    <div>
+                      <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">Provider Sources</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedRoute.sources.map((s) => (
+                          <span
+                            key={s.id}
+                            className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
+                          >
+                            <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}
+                            <span className="text-white/60 text-[10px]">({s.provider})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Surface Breakdown */}
-                <div className="px-6 pb-4">
-                  {selectedRoute.surface_profile ? (
-                    <SurfaceBreakdown surfaceProfile={selectedRoute.surface_profile} />
-                  ) : (
-                    <p className="text-xs text-muted">Surface data not available for this route</p>
-                  )}
-                </div>
+                {/* Map & Profile Tab */}
+                {detailTab === 'map' && (
+                  <div className="px-6 pb-4 space-y-4">
+                    <RouteMap
+                      encodedPolyline={selectedRoute.encoded_polyline}
+                      isLoop={selectedRoute.is_loop}
+                      className="h-[350px]"
+                    />
 
-                {/* Route History */}
-                <div className="px-6 pb-4">
-                  <RouteHistorySection routeId={selectedRoute.id} />
-                </div>
+                    {selectedRoute.elevation_profile?.elevations && (
+                      <ElevationProfile
+                        encodedPolyline={selectedRoute.encoded_polyline}
+                        elevations={selectedRoute.elevation_profile.elevations}
+                      />
+                    )}
+
+                    {selectedRoute.surface_profile ? (
+                      <SurfaceBreakdown surfaceProfile={selectedRoute.surface_profile} />
+                    ) : !selectedRoute.sources.some(s => s.provider === 'manual') ? (
+                      <p className="text-xs text-muted">Surface data not available for this route</p>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* History Tab */}
+                {detailTab === 'history' && (
+                  <div className="px-6 pb-4">
+                    <RouteHistorySection routeId={selectedRoute.id} />
+                  </div>
+                )}
               </Card>
             </div>
           ) : (

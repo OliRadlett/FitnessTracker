@@ -33,7 +33,7 @@ export function SummaryStatsBar({ activities }: { activities: Activity[] }) {
         <p className="text-xs text-muted">Total Time</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
-        <p className="text-lg font-bold text-purple-400">{Math.round(stats.totalTss)}</p>
+        <p className="text-lg font-bold text-accent">{Math.round(stats.totalTss)}</p>
         <p className="text-xs text-muted">Total TSS</p>
       </div>
     </div>
