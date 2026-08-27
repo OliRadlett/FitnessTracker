@@ -3,27 +3,7 @@
 import { useRef, useEffect } from 'react';
 import type { RouteSummary } from '@/lib/api';
 import { formatDistance } from '@/lib/utils';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtElevation(meters: number): string {
-  return `${Math.round(meters)} m`;
-}
-
-type DifficultyLevel = 'Easy' | 'Moderate' | 'Hard' | 'Extreme';
-
-function computeDifficulty(
-  elevationGainMeters: number | undefined | null,
-  distanceMeters: number,
-): DifficultyLevel | null {
-  if (!elevationGainMeters || elevationGainMeters <= 0) return null;
-  if (distanceMeters <= 0) return null;
-  const elevPerKm = elevationGainMeters / (distanceMeters / 1000);
-  if (elevPerKm < 10) return 'Easy';
-  if (elevPerKm < 20) return 'Moderate';
-  if (elevPerKm < 40) return 'Hard';
-  return 'Extreme';
-}
+import { computeDifficulty, fmtElevation } from '@/lib/routeUtils';
 
 // ── Map Browse View ──────────────────────────────────────────────────────────
 

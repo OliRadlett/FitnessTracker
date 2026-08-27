@@ -13,9 +13,10 @@ import type { Activity, ActivitySource } from '@/lib/api';
 
 function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
   if (!sources || sources.length === 0) return null;
+  const unique = Array.from(new Map(sources.map(s => [s.provider, s])).values());
   return (
     <div className="flex items-center gap-1">
-      {sources.map((s) => (
+      {unique.map((s) => (
         <span
           key={s.id}
           className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
@@ -58,56 +59,43 @@ export function ActivityCard({
       onClick={onSelect}
       className={isSelected ? 'border-accent/50' : ''}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          {showBulkCheckbox && (
+      <div className="space-y-2">
+        <div className="flex items-start gap-4">
+          {(showBulkCheckbox || (showCompareCheckbox && !showBulkCheckbox)) && (
             <label
-              className="flex items-center"
+              className="flex items-center mt-0.5"
               onClick={(e) => e.stopPropagation()}
-              title="Select for bulk action"
+              title={showBulkCheckbox ? "Select for bulk action" : "Select for comparison"}
             >
               <input
                 type="checkbox"
-                checked={isBulkSelected}
-                onChange={onToggleBulk}
+                checked={showBulkCheckbox ? isBulkSelected : isCompareSelected}
+                onChange={showBulkCheckbox ? onToggleBulk : onToggleCompare}
                 className="w-4 h-4 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
               />
             </label>
           )}
-          {showCompareCheckbox && !showBulkCheckbox && (
-            <label
-              className="flex items-center"
-              onClick={(e) => e.stopPropagation()}
-              title="Select for comparison"
-            >
-              <input
-                type="checkbox"
-                checked={isCompareSelected}
-                onChange={onToggleCompare}
-                className="w-4 h-4 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
-              />
-            </label>
-          )}
-          <Badge variant={getSportBadgeVariant(activity.sport_type)}>
-            {activity.sport_type}
-          </Badge>
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-medium text-white">{activity.name}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant={getSportBadgeVariant(activity.sport_type)}>
+                {activity.sport_type}
+              </Badge>
+              <p className="font-medium text-white truncate">{activity.name}</p>
               <SourceBadges sources={activity.sources} />
             </div>
-            <p className="text-xs text-muted">
-              {new Date(activity.start_date).toLocaleString()}
+            <p className="text-xs text-muted mt-0.5">
+              {new Date(activity.start_date).toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
               {activity.route_name && (
                 <span className="ml-2 text-accent">{'\u{1F4CD}'} {activity.route_name}</span>
               )}
               {activity.route_id && (
                 <Link
                   href={`/routes?route=${activity.route_id}`}
-                  className="ml-2 text-accent/70 hover:text-accent transition-colors"
+                  className="ml-2 text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-0.5"
                   title={`View route: ${activity.route_name || 'Route'}`}
                 >
-                  View route →
+                  View route
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </Link>
               )}
               <WeatherBadge
@@ -118,31 +106,21 @@ export function ActivityCard({
             </p>
           </div>
         </div>
-        <div className="flex items-center flex-wrap gap-6 text-right">
-          {!isStrength && activity.distance_meters && (
-            <div>
-              <p className="text-sm text-muted">{formatDistance(activity.distance_meters)}</p>
-              <p className="text-xs text-muted">Distance</p>
-            </div>
-          )}
-          {activity.duration_seconds && (
-            <div>
-              <p className="text-sm text-muted">{formatDuration(activity.duration_seconds)}</p>
-              <p className="text-xs text-muted">Duration</p>
-            </div>
-          )}
-          {!isStrength && activity.average_power && (
-            <div>
-              <p className="text-sm text-yellow-400">{activity.average_power} W</p>
-              <p className="text-xs text-muted">Avg Power</p>
-            </div>
-          )}
-          {activity.tss !== undefined && activity.tss !== null && (
-            <div>
-              <p className="text-sm text-blue-400">{activity.tss}</p>
-              <p className="text-xs text-muted">TSS</p>
-            </div>
-          )}
+
+        {/* Stats row — inline, not right-aligned (fixes mobile overflow) */}
+        <div className="flex items-center gap-4 text-sm pl-0">
+          {!isStrength && activity.distance_meters ? (
+            <span className="text-muted">{formatDistance(activity.distance_meters)}</span>
+          ) : null}
+          {activity.duration_seconds ? (
+            <span className="text-muted">{formatDuration(activity.duration_seconds)}</span>
+          ) : null}
+          {!isStrength && activity.average_power ? (
+            <span className="text-yellow-400">{activity.average_power} W</span>
+          ) : null}
+          {activity.tss != null && activity.tss > 0 ? (
+            <span className="text-blue-400">{activity.tss} TSS</span>
+          ) : null}
         </div>
       </div>
 

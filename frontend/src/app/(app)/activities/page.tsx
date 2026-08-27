@@ -219,6 +219,7 @@ export default function ActivitiesPage() {
   const fitInputRef = useRef<HTMLInputElement>(null);
   const [importLoading, setImportLoading] = useState<string | null>(null); // 'gpx' | 'fit' | null
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showImportMenu, setShowImportMenu] = useState(false);
 
   const handleFileImport = useCallback(async (file: File, type: 'gpx' | 'fit') => {
     setImportLoading(type);
@@ -560,85 +561,47 @@ export default function ActivitiesPage() {
           >
             {selectMode ? 'Cancel' : 'Select'}
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowImportMenu(!showImportMenu)}
+              className="px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-white border-surface-light hover:bg-surface-light/50 transition-colors"
+            >
+              Import
+            </button>
+            {showImportMenu && (
+              <div className="absolute right-0 mt-1 bg-surface border border-surface-light rounded-lg shadow-xl z-30 py-1 min-w-[140px]">
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-white hover:bg-surface-light/50 cursor-pointer">
+                  {'\u{1F4C4}'} Import GPX
+                  <input ref={gpxInputRef} type="file" accept=".gpx" className="hidden" disabled={!!importLoading}
+                    onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'gpx'); setShowImportMenu(false); }} />
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-white hover:bg-surface-light/50 cursor-pointer">
+                  {'\u231A'} Import FIT
+                  <input ref={fitInputRef} type="file" accept=".fit" className="hidden" disabled={!!importLoading}
+                    onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'fit'); setShowImportMenu(false); }} />
+                </label>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* File Import */}
-      <Card>
-        <div className="flex flex-wrap gap-4 items-center">
-          <span className="text-sm font-medium text-white">Import File</span>
-
-          {/* GPX upload */}
-          <label
-            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border cursor-pointer transition-colors ${
-              importLoading === 'gpx'
-                ? 'bg-accent/10 text-accent border-accent/30 opacity-60 cursor-wait'
-                : 'bg-surface-light border-surface-light text-muted hover:text-white hover:bg-surface-light/80'
-            }`}
-          >
-            {importLoading === 'gpx' ? (
-              <span className="inline-block w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-            ) : (
-              '\u{1F4C4}'
-            )}
-            {importLoading === 'gpx' ? 'Importing\u2026' : 'Import GPX'}
-            <input
-              ref={gpxInputRef}
-              type="file"
-              accept=".gpx"
-              className="hidden"
-              disabled={!!importLoading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileImport(file, 'gpx');
-              }}
-            />
-          </label>
-
-          {/* FIT upload */}
-          <label
-            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border cursor-pointer transition-colors ${
-              importLoading === 'fit'
-                ? 'bg-accent/10 text-accent border-accent/30 opacity-60 cursor-wait'
-                : 'bg-surface-light border-surface-light text-muted hover:text-white hover:bg-surface-light/80'
-            }`}
-          >
-            {importLoading === 'fit' ? (
-              <span className="inline-block w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-            ) : (
-              '\u231A'
-            )}
-            {importLoading === 'fit' ? 'Importing\u2026' : 'Import FIT'}
-            <input
-              ref={fitInputRef}
-              type="file"
-              accept=".fit"
-              className="hidden"
-              disabled={!!importLoading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileImport(file, 'fit');
-              }}
-            />
-          </label>
-
-          {/* Status message */}
-          {importMessage && (
-            <span
-              className={`text-sm ${importMessage.type === 'success' ? 'text-positive' : 'text-warning'}`}
-            >
-              {importMessage.type === 'success' ? '\u2713' : '\u2717'} {importMessage.text}
-            </span>
-          )}
+      {/* Import status banner */}
+      {importMessage && (
+        <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border ${
+          importMessage.type === 'success'
+            ? 'bg-positive/10 border-positive/20 text-positive'
+            : 'bg-warning/10 border-warning/20 text-warning'
+        }`}>
+          <span className="text-sm">{importMessage.type === 'success' ? '\u2713' : '\u2717'} {importMessage.text}</span>
+          <button onClick={() => setImportMessage(null)} className="text-sm opacity-60 hover:opacity-100">{'\u2715'}</button>
         </div>
-      </Card>
+      )}
 
-      {/* Filter Bar */}
+      {/* Filter Bar — Tier 1 (always visible) */}
       <Card>
-        <div className="flex flex-wrap gap-4 items-end">
-          {/* Text search */}
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs text-muted mb-1">Search</label>
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex-1 min-w-[160px]">
             <input
               type="text"
               value={searchText}
@@ -647,153 +610,115 @@ export default function ActivitiesPage() {
               className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
             />
           </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Sport Type</label>
-            <select
-              value={filters.sport_type || ''}
-              onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {SPORT_TYPES.map((type) => (
-                <option key={type} value={type}>{type || 'All'}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Start Date</label>
-            <input
-              type="date"
-              value={filters.start_date_after || ''}
-              onChange={(e) => setFilters({ ...filters, start_date_after: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">End Date</label>
-            <input
-              type="date"
-              value={filters.start_date_before || ''}
-              onChange={(e) => setFilters({ ...filters, start_date_before: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Source</label>
-            <select
-              value={filters.source || ''}
-              onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined })}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {SOURCES.map((src) => (
-                <option key={src} value={src}>{src || 'All'}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Sort</label>
-            <select
-              value={sortIndex}
-              onChange={(e) => setSortIndex(parseInt(e.target.value, 10))}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {SORT_OPTIONS.map((opt, i) => (
-                <option key={i} value={i}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={filters.sport_type || ''}
+            onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
+            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {SPORT_TYPES.map((type) => (
+              <option key={type} value={type}>{type || 'All Sports'}</option>
+            ))}
+          </select>
+          <select
+            value={sortIndex}
+            onChange={(e) => setSortIndex(parseInt(e.target.value, 10))}
+            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {SORT_OPTIONS.map((opt, i) => (
+              <option key={i} value={i}>{opt.label}</option>
+            ))}
+          </select>
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className={`px-3 py-2 text-sm border rounded-lg transition-colors ${
+            className={`px-3 py-2 text-sm border rounded-lg transition-colors inline-flex items-center gap-1.5 ${
               showAdvanced
                 ? 'bg-accent/20 text-accent border-accent/30'
                 : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
             }`}
           >
-            {showAdvanced ? '\u25B2' : '\u25BC'} Filters
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+            Filters
+            {hasActiveFilters && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] font-semibold bg-accent text-white rounded-full">
+                {[
+                  filters.sport_type && 1,
+                  filters.start_date_after && 1,
+                  filters.start_date_before && 1,
+                  filters.source && 1,
+                  advMinDist && 1,
+                  advMaxDist && 1,
+                  advMinDur && 1,
+                  advMaxDur && 1,
+                  advMinTss && 1,
+                  advMaxTss && 1,
+                ].filter(Boolean).length}
+              </span>
+            )}
           </button>
-          <button
-            onClick={clearAllFilters}
-            aria-label="Clear all filters"
-            className="px-4 py-2 text-sm text-muted hover:text-white border border-surface-light rounded-lg hover:bg-surface-light/50 transition-colors"
-          >
-            Clear
-          </button>
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="px-3 py-2 text-sm text-accent hover:text-accent/80 transition-colors"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
-        {/* Advanced filters row */}
+        {/* Tier 2 — collapsible advanced filters */}
         {showAdvanced && (
-          <div className="flex flex-wrap gap-4 items-end mt-4 pt-4 border-t border-surface-light/30">
+          <div className="mt-4 pt-4 border-t border-surface-light/30 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs text-muted mb-1">Start Date</label>
+              <input type="date" value={filters.start_date_after || ''}
+                onChange={(e) => setFilters({ ...filters, start_date_after: e.target.value || undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">End Date</label>
+              <input type="date" value={filters.start_date_before || ''}
+                onChange={(e) => setFilters({ ...filters, start_date_before: e.target.value || undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Source</label>
+              <select value={filters.source || ''}
+                onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined })}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent">
+                {SOURCES.map((src) => (
+                  <option key={src} value={src}>{src || 'All Sources'}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-xs text-muted mb-1">Min Distance (km)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={advMinDist}
-                onChange={(e) => setAdvMinDist(e.target.value)}
-                placeholder="0"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="0.1" value={advMinDist} onChange={(e) => setAdvMinDist(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max Distance (km)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={advMaxDist}
-                onChange={(e) => setAdvMaxDist(e.target.value)}
-                placeholder="999"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="0.1" value={advMaxDist} onChange={(e) => setAdvMaxDist(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Min Duration (min)</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={advMinDur}
-                onChange={(e) => setAdvMinDur(e.target.value)}
-                placeholder="0"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="1" value={advMinDur} onChange={(e) => setAdvMinDur(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max Duration (min)</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={advMaxDur}
-                onChange={(e) => setAdvMaxDur(e.target.value)}
-                placeholder="999"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="1" value={advMaxDur} onChange={(e) => setAdvMaxDur(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Min TSS</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={advMinTss}
-                onChange={(e) => setAdvMinTss(e.target.value)}
-                placeholder="0"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="1" value={advMinTss} onChange={(e) => setAdvMinTss(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max TSS</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={advMaxTss}
-                onChange={(e) => setAdvMaxTss(e.target.value)}
-                placeholder="999"
-                className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
-              />
+              <input type="number" min="0" step="1" value={advMaxTss} onChange={(e) => setAdvMaxTss(e.target.value)}
+                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
           </div>
         )}
