@@ -204,6 +204,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const totalWeeks = useMemo(() => getTotalWeeks(plan), [plan]);
   const [currentWeek, setCurrentWeek] = useState(() => getCurrentRealWeek(plan));
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const [showRoutePicker, setShowRoutePicker] = useState(false);
 
   const realCurrentWeek = getCurrentRealWeek(plan);
   const todayStr = toDateStr(new Date());
@@ -299,6 +300,13 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   }, [weekData]);
 
   const readiness = weekData?.readiness ?? null;
+
+  // Expanded day lookup — the day object for the currently expanded card, used
+  // by the full-width ExpandedPanel rendered below the 7-column grid.
+  const expandedDay = useMemo(() => {
+    if (!expandedDayId) return null;
+    return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === expandedDayId) ?? null;
+  }, [expandedDayId, weekDates, daysByDate]);
 
   // Conformity strip data: overall/trend are plan-wide; per-sport chips come
   // from the currently viewed week when available (else the latest scored one).
@@ -519,7 +527,6 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
                 day={day}
                 todayStr={todayStr}
                 expanded={expanded}
-                planId={plan.id}
                 onToggleExpand={() => day && setExpandedDayId(expanded ? null : day.id)}
                 onToggleCompleted={(completed) =>
                   day &&
@@ -528,13 +535,6 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
                     completed,
                   })
                 }
-                onAssignRoute={(routeId) =>
-                  day && assignRoute.mutate({ dayId: day.id, routeId })
-                }
-                onUnassignRoute={() =>
-                  day && unassignRoute.mutate(day.id)
-                }
-                onQuickEdit={(payload) => day && quickEdit.mutate({ dayId: day.id, payload })}
                 busy={
                   toggleCompleted.isPending ||
                   assignRoute.isPending ||
@@ -546,6 +546,65 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           })}
         </div>
       )}
+
+      {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}
+      {expandedDay && (
+        <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-white">
+              {expandedDay.sport === 'cycle'
+                ? '🚴'
+                : expandedDay.sport === 'strength'
+                  ? '🏋️'
+                  : '😴'}{' '}
+              {expandedDay.day_date.slice(0, 10)} details
+            </h4>
+            <button
+              onClick={() => setExpandedDayId(null)}
+              className="text-xs text-muted hover:text-white px-2 py-0.5 rounded hover:bg-surface-light/50 transition-colors"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <ExpandedPanel
+            day={expandedDay}
+            planId={plan.id}
+            busy={
+              toggleCompleted.isPending ||
+              assignRoute.isPending ||
+              unassignRoute.isPending ||
+              quickEdit.isPending
+            }
+            onAssignRoute={(routeId) =>
+              assignRoute.mutate({ dayId: expandedDay.id, routeId })
+            }
+            onUnassignRoute={() => unassignRoute.mutate(expandedDay.id)}
+            onQuickEdit={(payload) =>
+              quickEdit.mutate({ dayId: expandedDay.id, payload })
+            }
+            onOpenRoutePicker={() => setShowRoutePicker(true)}
+          />
+        </div>
+      )}
+
+      {/* Route picker modal — opened from the expanded panel */}
+      <RoutePickerModal
+        open={showRoutePicker}
+        onClose={() => setShowRoutePicker(false)}
+        onSelect={(routeId) => {
+          if (expandedDay) {
+            assignRoute.mutate({ dayId: expandedDay.id, routeId });
+          }
+          setShowRoutePicker(false);
+        }}
+        onUnassign={() => {
+          if (expandedDay) {
+            unassignRoute.mutate(expandedDay.id);
+          }
+          setShowRoutePicker(false);
+        }}
+        currentRouteId={expandedDay?.planned_route_id}
+      />
 
       {/* Events context (read-only hint when this week contains an event) */}
       {events?.some(
@@ -573,12 +632,8 @@ interface DayCardProps {
   day?: TrainingWeekDay;
   todayStr: string;
   expanded: boolean;
-  planId: string;
   onToggleExpand: () => void;
   onToggleCompleted: (completed: boolean) => void;
-  onAssignRoute: (routeId: string) => void;
-  onUnassignRoute: () => void;
-  onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
   busy: boolean;
 }
 
@@ -590,17 +645,12 @@ function DayCard({
   day,
   todayStr,
   expanded,
-  planId,
   onToggleExpand,
   onToggleCompleted,
-  onAssignRoute,
-  onUnassignRoute,
-  onQuickEdit,
   busy,
 }: DayCardProps) {
   const status = day ? getStatus(day, todayStr) : 'neutral';
   const badgeStatus = getBadgeStatus(day, status);
-  const [showRoutePicker, setShowRoutePicker] = useState(false);
 
   const statusColor = status === 'missed'
     ? 'border-l-warning/60'
@@ -638,7 +688,7 @@ function DayCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowRoutePicker(true);
+                onToggleExpand();
               }}
               className="text-[10px] px-1 rounded text-muted hover:text-accent"
               title={day?.planned_route_id ? 'Change route' : 'Assign route'}
@@ -775,18 +825,6 @@ function DayCard({
             <p className="text-[11px] text-muted/70 italic">Not logged</p>
           )}
 
-          {/* Expanded panel */}
-          {expanded && (
-            <ExpandedPanel
-              day={day}
-              planId={planId}
-              busy={busy}
-              onAssignRoute={onAssignRoute}
-              onUnassignRoute={onUnassignRoute}
-              onQuickEdit={onQuickEdit}
-              onOpenRoutePicker={() => setShowRoutePicker(true)}
-            />
-          )}
         </>
       )}
     </div>

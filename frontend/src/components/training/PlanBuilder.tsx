@@ -945,6 +945,18 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
     return () => { cancelled = true; };
   }, [day.sport, day.planned_type, day.planned_duration_min, authFetch]);
 
+  // Persist preview targets to the model so conformity scoring can read them
+  useEffect(() => {
+    if (!previewTargets) return;
+    const midPower = Math.round((previewTargets.target_power_low + previewTargets.target_power_high) / 2);
+    const midTss = Math.round((previewTargets.target_tss_low + previewTargets.target_tss_high) / 2);
+    const patch: Record<string, unknown> = {};
+    if (day.planned_power_watts !== midPower) patch.planned_power_watts = midPower;
+    if (day.planned_tss !== midTss) patch.planned_tss = midTss;
+    if (day.planned_zone !== previewTargets.zone_name) patch.planned_zone = previewTargets.zone_name;
+    if (Object.keys(patch).length > 0) onPatch(patch);
+  }, [previewTargets]);
+
   const handleCopySession = async () => {
     if (!selectedSessionId || isDraft) return;
     setCopyError(null);

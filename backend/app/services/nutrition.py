@@ -301,9 +301,6 @@ async def update_fuel_plan_actuals(
     db: AsyncSession,
     user_id: uuid.UUID,
     plan_id: uuid.UUID,
-    actual_pre: str | None = None,
-    actual_during: str | None = None,
-    actual_post: str | None = None,
     actual_water_ml: float | None = None,
     actual_carbs_g: float | None = None,
     actual_electrolytes_mg: float | None = None,
@@ -312,12 +309,6 @@ async def update_fuel_plan_actuals(
     plan = await get_fuel_plan(db, user_id, plan_id)
     if not plan:
         return None
-    if actual_pre is not None:
-        plan.actual_pre_ride_notes = actual_pre[:1000] if actual_pre else None
-    if actual_during is not None:
-        plan.actual_during_notes = actual_during[:1000] if actual_during else None
-    if actual_post is not None:
-        plan.actual_post_ride_notes = actual_post[:1000] if actual_post else None
     if actual_water_ml is not None:
         plan.actual_water_ml = actual_water_ml
     if actual_carbs_g is not None:
@@ -345,9 +336,6 @@ async def save_actuals_for_activity(
     db: AsyncSession,
     user_id: uuid.UUID,
     activity_id: uuid.UUID,
-    actual_pre: str | None = None,
-    actual_during: str | None = None,
-    actual_post: str | None = None,
     actual_water_ml: float | None = None,
     actual_carbs_g: float | None = None,
     actual_electrolytes_mg: float | None = None,
@@ -362,8 +350,7 @@ async def save_actuals_for_activity(
     if existing:
         plan = await update_fuel_plan_actuals(
             db, user_id, existing.id,
-            actual_pre=actual_pre, actual_during=actual_during,
-            actual_post=actual_post, actual_water_ml=actual_water_ml,
+            actual_water_ml=actual_water_ml,
             actual_carbs_g=actual_carbs_g,
             actual_electrolytes_mg=actual_electrolytes_mg,
         )
@@ -380,9 +367,6 @@ async def save_actuals_for_activity(
         during_sodium_mg_per_hour=0.0,
         post_ride_carbs_g=0.0,
         post_ride_protein_g=0.0,
-        actual_pre_ride_notes=actual_pre[:1000] if actual_pre else None,
-        actual_during_notes=actual_during[:1000] if actual_during else None,
-        actual_post_ride_notes=actual_post[:1000] if actual_post else None,
         actual_water_ml=actual_water_ml,
         actual_carbs_g=actual_carbs_g,
         actual_electrolytes_mg=actual_electrolytes_mg,

@@ -25,17 +25,11 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const [preNotes, setPreNotes] = useState(plan.actual_pre_ride_notes ?? '');
-  const [duringNotes, setDuringNotes] = useState(plan.actual_during_notes ?? '');
-  const [postNotes, setPostNotes] = useState(plan.actual_post_ride_notes ?? '');
   const [waterMl, setWaterMl] = useState(plan.actual_water_ml?.toString() ?? '');
   const [carbsG, setCarbsG] = useState(plan.actual_carbs_g?.toString() ?? '');
   const [electrolytesMg, setElectrolytesMg] = useState(plan.actual_electrolytes_mg?.toString() ?? '');
 
   useEffect(() => {
-    setPreNotes(plan.actual_pre_ride_notes ?? '');
-    setDuringNotes(plan.actual_during_notes ?? '');
-    setPostNotes(plan.actual_post_ride_notes ?? '');
     setWaterMl(plan.actual_water_ml?.toString() ?? '');
     setCarbsG(plan.actual_carbs_g?.toString() ?? '');
     setElectrolytesMg(plan.actual_electrolytes_mg?.toString() ?? '');
@@ -44,9 +38,6 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
   const saveMutation = useMutation({
     mutationFn: () => {
       const body = JSON.stringify({
-        actual_pre_ride_notes: preNotes || null,
-        actual_during_notes: duringNotes || null,
-        actual_post_ride_notes: postNotes || null,
         actual_water_ml: waterMl !== '' ? parseFloat(waterMl) : null,
         actual_carbs_g: carbsG !== '' ? parseFloat(carbsG) : null,
         actual_electrolytes_mg: electrolytesMg !== '' ? parseFloat(electrolytesMg) : null,
@@ -70,36 +61,6 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
 
   return (
     <div className="space-y-3">
-      <div>
-        <label className="block text-xs text-muted mb-1">What did you eat pre-ride?</label>
-        <textarea
-          value={preNotes}
-          onChange={(e) => setPreNotes(e.target.value)}
-          rows={2}
-          placeholder="e.g. Porridge with banana and honey"
-          className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-muted mb-1">During the ride?</label>
-        <textarea
-          value={duringNotes}
-          onChange={(e) => setDuringNotes(e.target.value)}
-          rows={2}
-          placeholder="e.g. 2 gels + 750ml electrolyte mix"
-          className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-muted mb-1">Post-ride recovery?</label>
-        <textarea
-          value={postNotes}
-          onChange={(e) => setPostNotes(e.target.value)}
-          rows={2}
-          placeholder="e.g. Recovery shake within 30 min"
-          className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
-        />
-      </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-xs text-muted mb-1">Water (ml)</label>
@@ -251,7 +212,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
             <p className="text-xs text-warning">Failed to generate fuel plan — try again.</p>
           )}
           <ActualsEditor
-            plan={plan ?? { actual_pre_ride_notes: null, actual_during_notes: null, actual_post_ride_notes: null, actual_water_ml: null, actual_carbs_g: null, actual_electrolytes_mg: null, id: '' } as RideFuelPlan}
+            plan={plan ?? { actual_water_ml: null, actual_carbs_g: null, actual_electrolytes_mg: null, id: '' } as RideFuelPlan}
             activityId={activity?.id}
           />
         </div>
