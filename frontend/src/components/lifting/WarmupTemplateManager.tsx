@@ -41,6 +41,9 @@ export function WarmupTemplateManager() {
       queryClient.invalidateQueries({ queryKey: ['warmup-templates'] });
       resetForm();
     },
+    onError: (err: Error) => {
+      console.error('[WarmupTemplateManager] Create failed:', err);
+    },
   });
 
   const updateMutation = useMutation({
@@ -53,6 +56,9 @@ export function WarmupTemplateManager() {
       queryClient.invalidateQueries({ queryKey: ['warmup-templates'] });
       resetForm();
     },
+    onError: (err: Error) => {
+      console.error('[WarmupTemplateManager] Update failed:', err);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -61,6 +67,9 @@ export function WarmupTemplateManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warmup-templates'] });
       setConfirmDeleteId(null);
+    },
+    onError: (err: Error) => {
+      console.error('[WarmupTemplateManager] Delete failed:', err);
     },
   });
 

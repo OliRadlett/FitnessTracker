@@ -88,6 +88,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
       setCheckNote('');
       invalidate();
     },
+    onError: (err: Error) => {
+      console.error('[GoalDetailModal] Check-in failed:', err);
+    },
   });
 
   const updateMutation = useMutation({
@@ -95,6 +98,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     onSuccess: () => {
       setEditing(false);
       invalidate();
+    },
+    onError: (err: Error) => {
+      console.error('[GoalDetailModal] Update failed:', err);
     },
   });
 
@@ -104,11 +110,17 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
       queryClient.invalidateQueries({ queryKey: ['goals'] });
       onClose();
     },
+    onError: (err: Error) => {
+      console.error('[GoalDetailModal] Delete failed:', err);
+    },
   });
 
   const reactivateMutation = useMutation({
     mutationFn: () => reactivateGoal(authFetch, goal.id),
     onSuccess: invalidate,
+    onError: (err: Error) => {
+      console.error('[GoalDetailModal] Reactivate failed:', err);
+    },
   });
 
   // Close on Escape

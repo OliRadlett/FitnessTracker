@@ -357,10 +357,13 @@ def sync_all_strava_activities() -> dict:
 
                     activities = await sync_wahoo_activities(db, conn.user_id)
                     wahoo_synced_count += len(activities)
-                    # Update watermark on success
+                    # Only advance watermark if we actually got data back.
+                    # If the API returned empty (or errored silently earlier),
+                    # holding the watermark prevents permanently skipping data.
                     from datetime import datetime
 
-                    conn.last_synced_at = datetime.now(UTC)
+                    if activities:
+                        conn.last_synced_at = datetime.now(UTC)
                     await db.commit()
                 except PermanentAuthError as e:
                     logger.warning(

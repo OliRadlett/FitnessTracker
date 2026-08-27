@@ -235,12 +235,15 @@ export default function RoutesPage() {
     staleTime: 300_000,
   });
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   // Sync mutation
   const syncMutation = useMutation({
     mutationFn: () => authFetch<RouteSyncResult[]>('/api/v1/routes/sync', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to sync routes'),
   });
 
   // Delete mutation
@@ -250,6 +253,7 @@ export default function RoutesPage() {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       handleSelectRoute(null);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to delete route'),
   });
 
   // Rename mutation
@@ -267,6 +271,7 @@ export default function RoutesPage() {
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       setIsRenaming(false);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to rename route'),
   });
 
   // GPX download
@@ -289,7 +294,7 @@ export default function RoutesPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('GPX download failed:', err);
+      setActionError(err instanceof Error ? err.message : 'GPX download failed');
     }
   }
 
@@ -360,6 +365,20 @@ export default function RoutesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Error banner */}
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-red-400 hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">

@@ -93,23 +93,25 @@ export default function TrainingPage() {
 
   // ── Queries ─────────────────────────────────────────────────────────
 
-  const { data: plans, isLoading: plansLoading } = useQuery<TrainingPlanSummary[]>({
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErrorMessage } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans'],
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
   });
 
-  const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
+  const { data: selectedPlan, isLoading: planLoading, isError: planError, error: planErrorMessage } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
     queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${selectedPlanId}`),
     enabled: !!selectedPlanId,
   });
 
-  const { data: events } = useQuery<Event[]>({
+  const { data: events, isError: eventsError, error: eventsErrorMessage } = useQuery<Event[]>({
     queryKey: ['events', 'upcoming'],
     queryFn: () => authFetch<Event[]>('/api/v1/events?upcoming_only=true'),
   });
 
-  const { data: periodizationChart } = useQuery<ChartData>({
+  const { data: periodizationChart, isError: chartError, error: chartErrorMessage } = useQuery<ChartData>({
     queryKey: ['chart-periodization'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
   });
@@ -126,6 +128,7 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       setSelectedPlanId(plan.id);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to generate plan'),
   });
 
   const createPlanMutation = useMutation({
@@ -138,6 +141,7 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       setSelectedPlanId(plan.id);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to create plan'),
   });
 
   const saveDaysMutation = useMutation({
@@ -150,6 +154,7 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to save days'),
   });
 
   const updatePlanMutation = useMutation({
@@ -168,6 +173,7 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to update plan'),
   });
 
   const deletePlanMutation = useMutation({
@@ -177,6 +183,7 @@ export default function TrainingPage() {
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       setSelectedPlanId(null);
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to delete plan'),
   });
 
   const createEventMutation = useMutation({
@@ -190,6 +197,7 @@ export default function TrainingPage() {
       setShowEventForm(false);
       setEventForm({ name: '', event_date: '', event_type: 'race', taper_days: 14 });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to create event'),
   });
 
   const deleteEventMutation = useMutation({
@@ -198,6 +206,7 @@ export default function TrainingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+    onError: (err: Error) => setActionError(err.message || 'Failed to delete event'),
   });
 
   return (
@@ -207,6 +216,20 @@ export default function TrainingPage() {
         <h1 className="text-3xl font-bold text-white">📋 Training Plans</h1>
         <p className="text-muted mt-1">Plan your training blocks, manage events, and track periodization.</p>
       </div>
+
+      {/* Error banner */}
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-red-400 hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 7-Day Weather Forecast */}
       <WeatherForecast />
@@ -221,6 +244,7 @@ export default function TrainingPage() {
             </CardHeader>
             <div className="space-y-2">
               {plansLoading && <p className="text-muted text-sm">Loading...</p>}
+              {plansError && <p className="text-red-400 text-sm">Failed to load plans: {plansErrorMessage?.message}</p>}
               {plans && plans.length === 0 && (
                 <p className="text-muted text-sm text-center py-4">No plans yet. Generate one to get started!</p>
               )}

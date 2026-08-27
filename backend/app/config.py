@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Backend
     secret_key: str = _DEFAULT_SECRET_KEY
-    debug: bool = True
+    debug: bool = False
     allowed_origins: str = "http://localhost:3000,https://localhost"
     public_url: str = "https://localhost"
     frontend_url: str = "https://localhost/fittrack"

@@ -50,6 +50,9 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
       onClose();
     },
+    onError: (err: Error) => {
+      console.error('[GoalCreateModal] Create failed:', err);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {

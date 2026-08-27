@@ -47,6 +47,9 @@ export function NotificationBell() {
         prev?.map((n) => (n.id === updated.id ? { ...n, read: true } : n)) ?? [],
       );
     },
+    onError: (err: Error) => {
+      console.error('[NotificationBell] Mark read failed:', err);
+    },
   });
 
   const markAll = useMutation({
@@ -55,6 +58,9 @@ export function NotificationBell() {
       queryClient.setQueryData<AppNotification[]>(queryKey, (prev) =>
         prev?.map((n) => ({ ...n, read: true })) ?? [],
       );
+    },
+    onError: (err: Error) => {
+      console.error('[NotificationBell] Mark all read failed:', err);
     },
   });
 
