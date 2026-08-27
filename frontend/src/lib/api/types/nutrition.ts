@@ -24,6 +24,9 @@ export interface RideFuelPlan {
   actual_pre_ride_notes: string | null;
   actual_during_notes: string | null;
   actual_post_ride_notes: string | null;
+  actual_water_ml: number | null;
+  actual_carbs_g: number | null;
+  actual_electrolytes_mg: number | null;
   source: string;
   created_at: string;
   updated_at: string;
@@ -39,4 +42,7 @@ export interface FuelActualsUpdatePayload {
   actual_pre_ride_notes?: string | null;
   actual_during_notes?: string | null;
   actual_post_ride_notes?: string | null;
+  actual_water_ml?: number | null;
+  actual_carbs_g?: number | null;
+  actual_electrolytes_mg?: number | null;
 }

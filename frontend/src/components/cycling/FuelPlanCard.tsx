@@ -28,11 +28,17 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
   const [preNotes, setPreNotes] = useState(plan.actual_pre_ride_notes ?? '');
   const [duringNotes, setDuringNotes] = useState(plan.actual_during_notes ?? '');
   const [postNotes, setPostNotes] = useState(plan.actual_post_ride_notes ?? '');
+  const [waterMl, setWaterMl] = useState(plan.actual_water_ml?.toString() ?? '');
+  const [carbsG, setCarbsG] = useState(plan.actual_carbs_g?.toString() ?? '');
+  const [electrolytesMg, setElectrolytesMg] = useState(plan.actual_electrolytes_mg?.toString() ?? '');
 
   useEffect(() => {
     setPreNotes(plan.actual_pre_ride_notes ?? '');
     setDuringNotes(plan.actual_during_notes ?? '');
     setPostNotes(plan.actual_post_ride_notes ?? '');
+    setWaterMl(plan.actual_water_ml?.toString() ?? '');
+    setCarbsG(plan.actual_carbs_g?.toString() ?? '');
+    setElectrolytesMg(plan.actual_electrolytes_mg?.toString() ?? '');
   }, [plan]);
 
   const saveMutation = useMutation({
@@ -43,6 +49,9 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
           actual_pre_ride_notes: preNotes || null,
           actual_during_notes: duringNotes || null,
           actual_post_ride_notes: postNotes || null,
+          actual_water_ml: waterMl !== '' ? parseFloat(waterMl) : null,
+          actual_carbs_g: carbsG !== '' ? parseFloat(carbsG) : null,
+          actual_electrolytes_mg: electrolytesMg !== '' ? parseFloat(electrolytesMg) : null,
         }),
       }),
     onSuccess: () => {
@@ -81,6 +90,41 @@ function ActualsEditor({ plan }: { plan: RideFuelPlan }) {
           placeholder="e.g. Recovery shake within 30 min"
           className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
         />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs text-muted mb-1">Water (ml)</label>
+          <input
+            type="number"
+            min={0}
+            value={waterMl}
+            onChange={(e) => setWaterMl(e.target.value)}
+            placeholder="0"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">Carbs (g)</label>
+          <input
+            type="number"
+            min={0}
+            value={carbsG}
+            onChange={(e) => setCarbsG(e.target.value)}
+            placeholder="0"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">Electrolytes (mg)</label>
+          <input
+            type="number"
+            min={0}
+            value={electrolytesMg}
+            onChange={(e) => setElectrolytesMg(e.target.value)}
+            placeholder="0"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <button

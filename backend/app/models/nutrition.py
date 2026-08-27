@@ -60,6 +60,9 @@ class RideFuelPlan(Base):
     actual_pre_ride_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     actual_during_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     actual_post_ride_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    actual_water_ml: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_carbs_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_electrolytes_mg: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     source: Mapped[str] = mapped_column(
         String(20), nullable=False, default="auto"

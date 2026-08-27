@@ -97,3 +97,41 @@ export async function copyPlanDayToDate(
     { method: 'POST' }
   );
 }
+
+// ── Workout preview (Feature 2) ──────────────────────────────────────────
+
+export interface WorkoutPreviewTargets {
+  difficulty: string;
+  zone_id: string;
+  zone_name: string;
+  duration_minutes: number;
+  target_power_low: number;
+  target_power_high: number;
+  target_if_low: number;
+  target_if_high: number;
+  target_tss_low: number;
+  target_tss_high: number;
+  estimated_calories_low: number;
+  estimated_calories_high: number;
+}
+
+export interface WorkoutPreviewResponse {
+  targets: WorkoutPreviewTargets | null;
+  ftp: number | null;
+  message: string | null;
+}
+
+export async function previewWorkout(
+  authFetch: AuthFetch,
+  workoutType: string,
+  durationMinutes: number
+): Promise<WorkoutPreviewResponse> {
+  const params = new URLSearchParams({
+    duration_minutes: String(durationMinutes),
+    workout_type: workoutType,
+  });
+  return authFetch<WorkoutPreviewResponse>(
+    `/api/v1/training-plans/preview-workout?${params}`,
+    { method: 'POST' }
+  );
+}

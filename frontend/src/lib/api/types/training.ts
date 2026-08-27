@@ -287,6 +287,7 @@ export interface TrainingWeekDay extends TrainingPlanDay {
   actual_lifting_session?: WeekActualLiftingSession | null;
   route_matches?: WeekRouteMatchEntry[] | null;
   warmup_template?: WarmupTemplateRead | null;
+  day_status?: 'pending' | 'completed' | 'partial' | 'missed' | 'rest';
 }
 
 /** One Monday-based week of a plan — GET /training-plans/{id}/week/{n}. */

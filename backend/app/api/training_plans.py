@@ -319,3 +319,73 @@ async def copy_day_to_date(
         code = 404 if "not found" in detail else 400
         raise HTTPException(status_code=code, detail=detail) from e
     return TrainingPlanDayRead.model_validate(day)
+
+
+# ── Workout preview (Feature 2) ──────────────────────────────────────────
+
+
+@router.post("/preview-workout")
+async def preview_workout(
+    duration_minutes: int,
+    workout_type: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Preview TSS/power/zone targets for a given workout type and duration.
+
+    Uses the user's current FTP from their cycling profile.  Returns None
+    fields when FTP is not set.
+    """
+    from app.services.training_plan import _TYPE_TO_DIFFICULTY
+    from app.services.workout_planner import plan_workout
+
+    difficulty = _TYPE_TO_DIFFICULTY.get(workout_type)
+    if not difficulty:
+        raise HTTPException(status_code=400, detail=f"Unknown workout type: {workout_type}")
+
+    # Fetch FTP from cycling profile
+    from sqlalchemy import select as sa_select
+
+    from app.models.cycling_profile import CyclingProfile
+
+    result = await db.execute(
+        sa_select(CyclingProfile).where(CyclingProfile.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+    ftp = profile.ftp_watts if profile and profile.ftp_watts else None
+
+    if not ftp:
+        return {
+            "targets": None,
+            "message": "FTP not set — cannot compute targets",
+        }
+
+    targets = plan_workout(
+        ftp=ftp,
+        lthr=profile.lthr if profile else None,
+        weight_kg=profile.weight_kg if profile else None,
+        difficulty=difficulty,
+        duration_minutes=duration_minutes,
+    )
+
+    if not targets:
+        return {"targets": None, "message": "Could not compute targets"}
+
+    return {
+        "targets": {
+            "difficulty": targets.difficulty,
+            "zone_id": targets.zone_id,
+            "zone_name": targets.zone_name,
+            "duration_minutes": targets.duration_minutes,
+            "target_power_low": targets.target_power_low,
+            "target_power_high": targets.target_power_high,
+            "target_if_low": targets.target_if_low,
+            "target_if_high": targets.target_if_high,
+            "target_tss_low": targets.target_tss_low,
+            "target_tss_high": targets.target_tss_high,
+            "estimated_calories_low": targets.estimated_calories_low,
+            "estimated_calories_high": targets.estimated_calories_high,
+        },
+        "ftp": ftp,
+        "message": None,
+    }

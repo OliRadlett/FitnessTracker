@@ -31,6 +31,8 @@ import {
   getLiftingSessions,
   copySessionToPlanDay,
   copyPlanDayToDate,
+  previewWorkout,
+  type WorkoutPreviewTargets,
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
@@ -924,6 +926,24 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [duplicateDate, setDuplicateDate] = useState('');
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [previewTargets, setPreviewTargets] = useState<WorkoutPreviewTargets | null>(null);
+
+  // Fetch workout preview when type/duration changes for cycle days
+  useEffect(() => {
+    if (day.sport !== 'cycle' || !day.planned_type || day.planned_type === 'rest' || !day.planned_duration_min) {
+      setPreviewTargets(null);
+      return;
+    }
+    let cancelled = false;
+    previewWorkout(authFetch, day.planned_type, day.planned_duration_min)
+      .then((res) => {
+        if (!cancelled) setPreviewTargets(res.targets);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewTargets(null);
+      });
+    return () => { cancelled = true; };
+  }, [day.sport, day.planned_type, day.planned_duration_min, authFetch]);
 
   const handleCopySession = async () => {
     if (!selectedSessionId || isDraft) return;
@@ -1148,43 +1168,42 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
         )}
       </div>
 
-      {/* Cycle extras */}
+      {/* Cycle extras — auto-computed from type + duration + FTP */}
       {day.sport === 'cycle' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div>
-            <label className={labelCls}>Power (W)</label>
-            <input
-              type="number"
-              min={0}
-              value={day.planned_power_watts ?? ''}
-              onChange={(e) =>
-                onPatch({
-                  planned_power_watts:
-                    e.target.value === '' ? null : parseFloat(e.target.value),
-                })
-              }
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Zone</label>
-            <input
-              type="text"
-              list="plan-zone-options"
-              maxLength={10}
-              placeholder="Z1–Z7"
-              value={day.planned_zone ?? ''}
-              onChange={(e) => onPatch({ planned_zone: e.target.value || null })}
-              className={inputCls}
-            />
-            <datalist id="plan-zone-options">
-              {['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7'].map((z) => (
-                <option key={z} value={z} />
-              ))}
-            </datalist>
-          </div>
-          <div>
-            <label className={labelCls}>Route</label>
+        <div className="space-y-3">
+          {previewTargets ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className={labelCls}>Zone</label>
+                <p className="text-sm text-white font-medium">{previewTargets.zone_name}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Power (W)</label>
+                <p className="text-sm text-white font-medium">
+                  {previewTargets.target_power_low}–{previewTargets.target_power_high}
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>TSS</label>
+                <p className="text-sm text-white font-medium">
+                  {Math.round(previewTargets.target_tss_low)}–{Math.round(previewTargets.target_tss_high)}
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>IF</label>
+                <p className="text-sm text-white font-medium">
+                  {previewTargets.target_if_low}–{previewTargets.target_if_high}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">
+              {day.planned_duration_min ? 'Set FTP in Cycling Profile to see computed targets' : 'Set duration to see targets'}
+            </p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Route</label>
             {day.planned_route_id ? (
               <div className="flex items-center gap-2">
                 <span className="inline-block text-xs px-2 py-1 rounded-full bg-positive/15 text-positive border border-positive/30">
@@ -1212,6 +1231,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
               </button>
             )}
           </div>
+        </div>
         </div>
       )}
 

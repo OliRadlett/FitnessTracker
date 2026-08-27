@@ -140,10 +140,21 @@ function tsbColor(tsb: number): string {
   return 'text-warning';
 }
 
-/** Simple status heuristic — real conformity scoring lands in Phase 5C. */
-type DayStatus = 'done' | 'planned' | 'missed' | 'neutral';
+/** Status from backend day_status field, falling back to local heuristic. */
+type DayStatus = 'done' | 'planned' | 'missed' | 'neutral' | 'partial';
 
 function getStatus(day: TrainingWeekDay, todayStr: string): DayStatus {
+  // Prefer backend-computed day_status when available
+  if (day.day_status) {
+    switch (day.day_status) {
+      case 'completed': return 'done';
+      case 'partial': return 'partial';
+      case 'missed': return 'missed';
+      case 'rest': return day.day_date >= todayStr ? 'planned' : 'neutral';
+      case 'pending': return 'planned';
+    }
+  }
+  // Fallback to local heuristic
   if (day.actual_activity || day.actual_lifting_session || day.completed) return 'done';
   if (day.sport === 'rest') return day.day_date >= todayStr ? 'planned' : 'neutral';
   if (day.day_date >= todayStr) return 'planned';
@@ -155,6 +166,7 @@ const STATUS_LABEL: Record<DayStatus, string> = {
   planned: 'Planned',
   missed: 'Missed',
   neutral: '—',
+  partial: 'Partial',
 };
 
 /**
@@ -166,6 +178,7 @@ const STATUS_LABEL: Record<DayStatus, string> = {
 function getBadgeStatus(day: TrainingWeekDay | undefined, status: DayStatus): string {
   if (!day || day.sport === 'rest') return 'rest';
   if (status === 'done') return 'done';
+  if (status === 'partial') return 'partial';
   if (status === 'missed') return 'missed';
   return 'pending';
 }
@@ -589,13 +602,21 @@ function DayCard({
   const badgeStatus = getBadgeStatus(day, status);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
 
+  const statusColor = status === 'missed'
+    ? 'border-l-warning/60'
+    : status === 'partial'
+      ? 'border-l-yellow-400/60'
+      : status === 'done'
+        ? 'border-l-positive/60'
+        : '';
+
   return (
     <div
       className={`rounded-xl border p-3 space-y-2 cursor-pointer transition-colors ${
         expanded
           ? 'bg-surface-light/40 border-accent/40'
           : 'bg-surface-light/20 border-surface-light/50 hover:bg-surface-light/30'
-      } ${isToday ? 'ring-1 ring-accent/60' : ''}`}
+      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
       onClick={onToggleExpand}
       role="button"
       tabIndex={0}
