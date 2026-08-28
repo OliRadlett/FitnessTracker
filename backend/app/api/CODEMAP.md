@@ -8,7 +8,7 @@
 | `connections.py` | `/connections/` | `GET /`, `DELETE /{id}`, `POST /{id}/sync` |
 | `activities.py` | `/activities/` | `GET /` (list+filter: sport_type, source, date range, q name search, distance/duration/tss ranges, sort_by/sort_order), `GET /calendar`, `GET /{id}`, `GET /{id}/streams`, `GET /{id}/analysis`, `GET/POST /{id}/ai-analysis` |
 | `lifting.py` | `/lifting/` | Sessions CRUD (`GET /sessions/active` = unfinished live-tracked session for `/lifting/live` resume; registered BEFORE `/{session_id}` so "active" isn't parsed as UUID), sets CRUD, PRs, volume trends, warmup templates, activity linking, `GET /sessions/{id}/analysis`, `GET/POST /sessions/{id}/ai-analysis`. Session create accepts `started_at`, PATCH accepts `started_at`/`ended_at` (live flow) |
-| `routes.py` | `/routes/` | Route CRUD, filtering (incl. `surface_type`), GPX download/upload, sync, merge, duplicates, `GET /{route_id}/history` (ride list + personal best) |
+| `routes.py` | `/routes/` | Route CRUD, filtering (incl. `surface_type`, `tag_ids`, `collection_id`, `is_favorite`, `min_quality_score`), GPX download/upload, sync, merge, duplicates + auto-merge. New: `/tags` (CRUD + assign/unassign), `/collections` (CRUD + smart from-filters), `/quality` (list + recompute), `/{id}/effort-estimate`, `/{id}/weather`, `/bulk/export-gpx`, `/bulk/delete`, `/duplicates/auto-merge` |
 | `cycling/` | `/cycling/` | Profile, FTP history, training load, power curve/zones, metrics, FTP estimation, backfill |
 | `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data; required params → 422, stream-heavy charts Redis-cached 5 min |
 | `dashboard/` | `/dashboard/` | `GET /summary`, `GET /weekly-report`, `GET /today` |

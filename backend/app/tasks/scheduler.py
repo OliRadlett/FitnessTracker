@@ -61,9 +61,7 @@ async def _run_task_guarded(task_name: str, _run) -> dict:
         SYNC_RUNS.labels(task=task_name, outcome="skipped_lock").inc()
         return {"status": "skipped_lock"}
     except Exception as e:
-        logger.warning(
-            f"{task_name}: Redis unavailable — running without a lock ({e})"
-        )
+        logger.warning(f"{task_name}: Redis unavailable — running without a lock ({e})")
         return await _run()
     try:
         result = await _run()
@@ -87,9 +85,7 @@ class _NoopLock:
         return False
 
 
-async def _try_acquire_user_lock(
-    user_id, provider: str, ttl: int = 1800
-):
+async def _try_acquire_user_lock(user_id, provider: str, ttl: int = 1800):
     """Best-effort acquire the ``sync:{user}:{provider}`` lock.
 
     Returns the lock context manager, ``None`` if it is genuinely held by
@@ -109,6 +105,7 @@ async def _try_acquire_user_lock(
             f"Redis unavailable for sync lock ({e}) — proceeding without lock"
         )
         return _NoopLock()
+
 
 # ── Beat schedule ─────────────────────────────────────────────────────────────
 
@@ -146,6 +143,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.sync_all_routes",
         "schedule": crontab(minute=0, hour="*/2"),
         "options": {"expires": 3600},
+    },
+    # Compute route quality scores weekly (Sunday 3 AM UTC)
+    "compute-route-quality": {
+        "task": "app.tasks.scheduler.compute_route_quality_scores",
+        "schedule": crontab(hour=3, minute=0, day_of_week=0),
     },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
@@ -288,7 +290,9 @@ def sync_all_strava_activities() -> dict:
                     try:
                         from app.services.conformity import link_activities_to_plan_days
 
-                        plan_linked = await link_activities_to_plan_days(db, conn.user_id)
+                        plan_linked = await link_activities_to_plan_days(
+                            db, conn.user_id
+                        )
                         plan_day_linked_count += plan_linked
                     except Exception as e:
                         logger.warning(
@@ -535,7 +539,10 @@ def generate_health_alerts() -> dict:
                                         severity="warning",
                                         title="HRV Decline Detected",
                                         description=f"Your HRV has dropped to {recent_hrv:.0f}ms (avg: {avg_hrv:.0f}ms). Consider reducing training load.",
-                                        evidence={"recent": recent_hrv, "average": avg_hrv},
+                                        evidence={
+                                            "recent": recent_hrv,
+                                            "average": avg_hrv,
+                                        },
                                         detected_date=date.today(),
                                     )
                                     db.add(alert)
@@ -565,7 +572,10 @@ def generate_health_alerts() -> dict:
                                         severity="warning",
                                         title="Sleep Decline Detected",
                                         description=f"Your recent sleep ({recent_sleep:.0f}min) is significantly below average ({avg_sleep:.0f}min).",
-                                        evidence={"recent": recent_sleep, "average": avg_sleep},
+                                        evidence={
+                                            "recent": recent_sleep,
+                                            "average": avg_sleep,
+                                        },
                                         detected_date=date.today(),
                                     )
                                     db.add(alert)
@@ -586,7 +596,9 @@ def generate_health_alerts() -> dict:
                         if rr_row.avg_rr:
                             baseline_rr = float(rr_row.avg_rr)
                             recent_rr_values = [
-                                m.respiratory_rate for m in metrics if m.respiratory_rate
+                                m.respiratory_rate
+                                for m in metrics
+                                if m.respiratory_rate
                             ]
                             if recent_rr_values:
                                 current_rr = recent_rr_values[0]
@@ -710,9 +722,7 @@ def sync_all_routes() -> dict:
 
                     await db.commit()
                 except PermanentAuthError as e:
-                    logger.warning(
-                        f"Route sync auth failure for user {user_id}: {e}"
-                    )
+                    logger.warning(f"Route sync auth failure for user {user_id}: {e}")
                     await db.rollback()
                 except TransientSyncError as e:
                     logger.warning(
@@ -741,6 +751,65 @@ def cleanup_old_data() -> dict:
         "deleted_streams": 0,
         "note": "Stream cleanup disabled — streams are retained indefinitely",
     }
+
+
+@celery_app.task(name="app.tasks.scheduler.compute_route_quality_scores")
+def compute_route_quality_scores() -> dict:
+    """Recompute route quality scores for all routes.
+
+    Runs weekly. For each route, computes completeness, popularity,
+    surface quality, and effort match scores, then persists to
+    the route_quality table and the routes.quality_score column.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.route import Route
+
+    async def _run():
+        from app.services.route_quality_service import compute_and_store_quality
+
+        async with task_session() as db:
+            # Get all users with routes
+            result = await db.execute(select(Route.user_id).distinct())
+            user_ids = [r for (r,) in result.all()]
+
+            total_routes = 0
+            updated_routes = 0
+
+            for user_id in user_ids:
+                try:
+                    result = await db.execute(
+                        select(Route).where(Route.user_id == user_id)
+                    )
+                    routes = list(result.scalars().all())
+
+                    for route in routes:
+                        try:
+                            await compute_and_store_quality(db, route, user_id)
+                            updated_routes += 1
+                        except Exception as e:
+                            logger.warning(
+                                f"Quality scoring failed for route {route.id}: {e}"
+                            )
+                    await db.commit()
+                    total_routes += len(routes)
+                except Exception as e:
+                    logger.error(
+                        f"Quality scoring batch failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "total_routes": total_routes,
+                "updated_routes": updated_routes,
+                "users_processed": len(user_ids),
+            }
+
+    return asyncio.run(_run_task_guarded("compute_route_quality_scores", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.auto_estimate_ftp_weekly")
@@ -939,7 +1008,9 @@ def sync_all_whoop_data() -> dict:
 
                 if not user_failed:
                     try:
-                        sleep_logs = await sync_whoop_sleep(db, conn.user_id, start=start)
+                        sleep_logs = await sync_whoop_sleep(
+                            db, conn.user_id, start=start
+                        )
                         synced_sleep += len(sleep_logs)
                     except PermanentAuthError as e:
                         skipped_reauth += 1
@@ -960,7 +1031,9 @@ def sync_all_whoop_data() -> dict:
 
                 if not user_failed:
                     try:
-                        enriched = await sync_whoop_workouts(db, conn.user_id, start=start)
+                        enriched = await sync_whoop_workouts(
+                            db, conn.user_id, start=start
+                        )
                         synced_workouts += len(enriched)
                     except PermanentAuthError as e:
                         skipped_reauth += 1

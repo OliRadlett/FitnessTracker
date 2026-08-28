@@ -445,7 +445,10 @@ async def get_route_by_id(
     """Get a single route by ID, ensuring it belongs to the user."""
     result = await db.execute(
         select(Route)
-        .options(selectinload(Route.sources))
+        .options(
+            selectinload(Route.sources),
+            selectinload(Route.tags),
+        )
         .where(Route.id == route_id, Route.user_id == user_id)
     )
     return result.scalar_one_or_none()

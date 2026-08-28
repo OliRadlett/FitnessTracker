@@ -15,6 +15,13 @@ from app.models.llm_analysis import LlmAnalysis
 from app.models.notification import Notification
 from app.models.nutrition import RideFuelPlan
 from app.models.route import Route, RouteSource
+from app.models.route_organize import (
+    RouteCollection,
+    RouteCollectionItem,
+    RouteQuality,
+    RouteTag,
+    RouteTagging,
+)
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import OAuthConnection, User
@@ -41,7 +48,12 @@ __all__ = [
     "PersonalRecord",
     "RideFuelPlan",
     "Route",
+    "RouteCollection",
+    "RouteCollectionItem",
+    "RouteQuality",
     "RouteSource",
+    "RouteTag",
+    "RouteTagging",
     "SleepLog",
     "StravaWebhookEvent",
     "TrainingPlan",
