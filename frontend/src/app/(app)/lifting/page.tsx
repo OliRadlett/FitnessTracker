@@ -812,7 +812,16 @@ export default function LiftingPage() {
                 <p className="text-xs text-muted mt-2 text-center">
                   {new Date(pr.achieved_date).toLocaleDateString()}
                 </p>
-                {pr.notes && <p className="text-xs text-accent mt-1 text-center">{pr.notes}</p>}
+                 {pr.notes && <p className="text-xs text-accent mt-1 text-center">{pr.notes}</p>}
+                {pr.activity_id && (
+                  <Link
+                    href={`/activities?activity=${pr.activity_id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-2 text-xs text-accent/70 hover:text-accent text-center block transition-colors"
+                  >
+                    View activity →
+                  </Link>
+                )}
               </div>
             );
           }

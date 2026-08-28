@@ -15,9 +15,22 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
-from app.models.lifting import LiftingSession
+from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.sleep import SleepLog
+from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import User
+from app.schemas.activity import (
+    ActivityCalendarEntry,
+    ActivityContextRead,
+    ActivityDetailRead,
+    ActivityRead,
+    ActivityStreamRead,
+    CalendarDayData,
+    DailyMetricSummary,
+    LinkedLiftingSessionSummary,
+    RideAnalysisResponse,
+    SleepLogSummary,
+)
 
 logger = logging.getLogger(__name__)
 from app.schemas.activity import (
@@ -925,3 +938,285 @@ async def trigger_activity_ai_analysis(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")
+
+
+# ── Activity Context (connections + analytical summary) ────────────────────────
+
+
+@router.get("/{activity_id}/context", response_model=ActivityContextRead)
+async def get_activity_context(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get full contextual data for an activity: system connections,
+    pre-activity health, ride analytics, and training-load position.
+
+    This endpoint aggregates data from across the app to answer the question
+    "what is this activity's story?" — what training plan it fulfilled,
+    what PRs it achieved, how the user's recovery looked, how it fits
+    in the training load cycle, and what the AI analysis says.
+
+    Rely-on computation is lazy (only for cycling ride metrics).
+    """
+    from app.models.llm_analysis import LlmAnalysis
+    from app.models.nutrition import RideFuelPlan
+    from app.services.cycling import (
+        compute_training_load,
+        get_daily_tss,
+        get_or_create_cycling_profile,
+    )
+    from app.services.session_analysis import analyze_ride
+
+    # ── Verify activity exists ────────────────────────────────────────────────
+    result = await db.execute(
+        select(Activity)
+        .options(
+            selectinload(Activity.sources),
+            selectinload(Activity.route),
+            selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
+        )
+        .where(Activity.id == activity_id, Activity.user_id == current_user.id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    activity_date = activity.start_date.date()
+
+    # ── 1. Connections ────────────────────────────────────────────────────────
+    # Training plan day
+    plan_result = await db.execute(
+        select(TrainingPlanDay, TrainingPlan)
+        .join(TrainingPlan, TrainingPlanDay.plan_id == TrainingPlan.id)
+        .where(TrainingPlanDay.activity_id == activity_id)
+        .limit(1)
+    )
+    plan_row = plan_result.first()
+    training_plan_day = None
+    if plan_row:
+        day, plan = plan_row
+        training_plan_day = {
+            "plan_id": plan.id,
+            "plan_name": plan.name,
+            "plan_type": plan.plan_type,
+            "day_date": day.day_date,
+            "day_number": (day.day_date - plan.start_date).days + 1,
+            "planned_type": day.planned_type,
+            "planned_focus": day.planned_focus,
+            "planned_tss": day.planned_tss,
+            "completed": day.completed,
+        }
+
+    # Personal records linked to this activity
+    pr_result = await db.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == current_user.id,
+            PersonalRecord.activity_id == activity_id,
+        )
+        .order_by(PersonalRecord.created_at.desc())
+    )
+    personal_records = [
+        {
+            "id": pr.id,
+            "exercise_name": pr.exercise_name,
+            "weight_kg": pr.weight_kg,
+            "reps": pr.reps,
+            "estimated_1rm": pr.estimated_1rm,
+            "achieved_date": pr.achieved_date,
+        }
+        for pr in pr_result.scalars().all()
+    ]
+
+    # AI analysis
+    ai_result = await db.execute(
+        select(LlmAnalysis)
+        .where(
+            LlmAnalysis.user_id == current_user.id,
+            LlmAnalysis.activity_id == activity_id,
+        )
+        .order_by(LlmAnalysis.created_at.desc())
+        .limit(1)
+    )
+    ai_analysis = ai_result.scalar_one_or_none()
+    ai_analysis_link = None
+    if ai_analysis:
+        raw_text = ai_analysis.analysis_text
+        summary_text = raw_text[:200]
+        if len(raw_text) > 200:
+            summary_text = summary_text.rsplit(' ', 1)[0] + '…'
+        ai_analysis_link = {
+            "id": ai_analysis.id,
+            "analysis_type": ai_analysis.analysis_type,
+            "summary": summary_text,
+            "model_used": ai_analysis.model_used,
+            "created_at": ai_analysis.created_at,
+        }
+
+    # Fuel plan
+    fuel_result = await db.execute(
+        select(RideFuelPlan).where(
+            RideFuelPlan.user_id == current_user.id,
+            RideFuelPlan.activity_id == activity_id,
+        ).limit(1)
+    )
+    fuel_plan_row = fuel_result.scalar_one_or_none()
+    fuel_plan_link = None
+    if fuel_plan_row:
+        fuel_plan_link = {
+            "id": fuel_plan_row.id,
+            "planned_duration_min": fuel_plan_row.planned_duration_min,
+            "pre_ride_carbs_g": fuel_plan_row.pre_ride_carbs_g,
+            "during_carbs_per_hour_g": fuel_plan_row.during_carbs_per_hour_g,
+            "source": fuel_plan_row.source,
+        }
+
+    # Linked lifting session
+    linked_lifting = None
+    if activity.lifting_session:
+        ls = activity.lifting_session
+        linked_lifting = {
+            "id": ls.id,
+            "session_date": ls.session_date,
+            "focus": ls.focus,
+            "set_count": len(ls.sets) if ls.sets else 0,
+            "total_volume_kg": ls.total_volume_kg,
+        }
+
+    connections = {
+        "training_plan_day": training_plan_day,
+        "personal_records": personal_records,
+        "ai_analysis": ai_analysis_link,
+        "fuel_plan": fuel_plan_link,
+        "linked_lifting_session": linked_lifting,
+    }
+
+    # ── 2. Health overlay (previous day's metrics + last night's sleep) ─────
+    from datetime import timedelta as _td
+
+    prev_date = activity_date - _td(days=1)
+    health_overlay = None
+    dm_result = await db.execute(
+        select(DailyMetric)
+        .where(
+            DailyMetric.user_id == current_user.id,
+            DailyMetric.metric_date == prev_date,
+        )
+        .order_by(DailyMetric.source)
+        .limit(1)
+    )
+    dm = dm_result.scalar_one_or_none()
+    if dm:
+        health_overlay = {
+            "date": prev_date,
+            "hrv_ms": dm.hrv_ms,
+            "recovery_score": dm.recovery_score,
+            "resting_hr": dm.resting_hr,
+            "sleep_duration_minutes": dm.sleep_duration_minutes,
+            "sleep_efficiency": dm.sleep_efficiency,
+        }
+
+    if health_overlay is None:
+        # Try DailyMetric where sleep_date matches (sleep often logged on wake date)
+        sleep_result = await db.execute(
+            select(SleepLog)
+            .where(
+                SleepLog.user_id == current_user.id,
+                SleepLog.sleep_date == prev_date,
+            )
+            .order_by(SleepLog.source)
+            .limit(1)
+        )
+        sleep = sleep_result.scalar_one_or_none()
+        if sleep:
+            health_overlay = {
+                "date": prev_date,
+                "hrv_ms": None,
+                "recovery_score": None,
+                "resting_hr": None,
+                "sleep_duration_minutes": sleep.total_sleep_seconds / 60 if sleep.total_sleep_seconds else None,
+                "sleep_efficiency": sleep.sleep_efficiency,
+            }
+
+    # ── 3. Ride metrics (cycling only, lazy computation) ───────────────────
+    ride_metrics = None
+    if activity.sport_type == "cycling":
+        analysis = await analyze_ride(db, current_user.id, activity_id)
+        if analysis is not None:
+            # Map the analysis dict to RideMetricsRead fields
+            power_zones = analysis.get("power_zones", [])
+            decoupling = analysis.get("decoupling")
+            climbing = analysis.get("climbing_analysis")
+            tss_bd = analysis.get("tss_breakdown", {})
+
+            # Top speed — check velocity stream
+            top_speed_kmh = await _compute_top_speed(db, activity_id)
+
+            ride_metrics = {
+                "power_zones": [
+                    {
+                        "zone_name": z.get("zone_name", ""),
+                        "zone_label": z.get("zone_label", ""),
+                        "seconds": z.get("seconds", 0),
+                        "pct": z.get("pct", 0),
+                    }
+                    for z in power_zones
+                ],
+                "normalized_power": analysis.get("normalized_power"),
+                "intensity_factor": analysis.get("intensity_factor"),
+                "variability_index": analysis.get("variability_index"),
+                "efficiency_factor": analysis.get("efficiency_factor"),
+                "vam": analysis.get("vam"),
+                "decoupling_pct": decoupling.get("decoupling_pct") if decoupling else None,
+                "decoupling_class": decoupling.get("classification") if decoupling else None,
+                "tss": tss_bd.get("total_tss") if tss_bd else activity.tss,
+                "tss_per_hour": tss_bd.get("tss_per_hour") if tss_bd else None,
+                "climbing_meters": climbing.get("total_climbing_m") if climbing else None,
+                "top_speed_kmh": top_speed_kmh,
+            }
+
+    # ── 4. Training load context (ATL/CTL/TSB on activity date) ─────────────
+    load_context = None
+    if activity.sport_type == "cycling":
+        profile = await get_or_create_cycling_profile(db, current_user.id)
+        if profile.ftp_watts:
+            lookback = 90
+            end_date = activity_date
+            start_date = end_date - _td(days=lookback + 42)
+            daily_tss = await get_daily_tss(db, current_user.id, start_date, end_date)
+            load_data = compute_training_load(daily_tss, end_date, lookback_days=lookback)
+            if load_data:
+                latest = load_data[-1]
+                load_context = {
+                    "atl": latest.get("atl"),
+                    "ctl": latest.get("ctl"),
+                    "tsb": latest.get("tsb"),
+                }
+
+    return ActivityContextRead(
+        activity_id=activity.id,
+        sport_type=activity.sport_type,
+        connections=connections,
+        health_overlay=health_overlay,
+        ride_metrics=ride_metrics,
+        load_context=load_context,
+    )
+
+
+async def _compute_top_speed(db: AsyncSession, activity_id: uuid.UUID) -> float | None:
+    """Compute max velocity in km/h from the activity's velocity stream(s)."""
+    result = await db.execute(
+        select(ActivityStream).where(
+            ActivityStream.activity_id == activity_id,
+            ActivityStream.stream_type.in_(["velocity", "velocity_smooth", "enhanced_speed"]),
+        )
+    )
+    stream = result.scalar_one_or_none()
+    if stream is None:
+        return None
+    raw = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+    values = [float(v) for v in raw if v is not None]
+    if not values:
+        return None
+    max_mps = max(values)
+    return round(max_mps * 3.6, 1)

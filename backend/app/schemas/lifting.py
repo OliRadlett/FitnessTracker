@@ -138,6 +138,7 @@ class PersonalRecordRead(BaseModel):
     estimated_1rm: float | None = None
     achieved_date: date
     session_id: uuid.UUID | None = None
+    activity_id: uuid.UUID | None = None
     notes: str | None = None
     created_at: datetime
 

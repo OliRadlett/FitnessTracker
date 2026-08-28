@@ -197,6 +197,8 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
+- **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. Phase B (`?include_context=true` bulk list enrichment) deferred to after performance testing.
+- **Background activity analysis**: Post-sync task to precompute activity context (zones, decoupling, load position) at sync time — future work
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation
 - **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, 4 test files in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference

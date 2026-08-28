@@ -198,3 +198,135 @@ class RideAnalysisResponse(BaseModel):
     vam: float | None
     tss_breakdown: dict  # total_tss, tss_per_hour
     climbing_analysis: dict | None
+
+
+# ── Activity Context (connections + analytical summary) ─────────────────────────
+
+
+class ActivityPlanDayLink(BaseModel):
+    """Training plan day linked to this activity."""
+
+    plan_id: uuid.UUID
+    plan_name: str
+    plan_type: str
+    day_date: date
+    day_number: int
+    planned_type: str
+    planned_focus: str | None = None
+    planned_tss: float | None = None
+    completed: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ActivityPrLink(BaseModel):
+    """Personal record achieved during this activity."""
+
+    id: uuid.UUID
+    exercise_name: str
+    weight_kg: float
+    reps: int
+    estimated_1rm: float | None = None
+    achieved_date: date
+
+    model_config = {"from_attributes": True}
+
+
+class ActivityAiAnalysisLink(BaseModel):
+    """AI analysis cached for this activity."""
+
+    id: uuid.UUID
+    analysis_type: str
+    summary: str | None = None
+    model_used: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ActivityFuelPlanLink(BaseModel):
+    """Ride fuel plan linked to this activity."""
+
+    id: uuid.UUID
+    planned_duration_min: int | None = None
+    pre_ride_carbs_g: float | None = None
+    during_carbs_per_hour_g: float | None = None
+    source: str
+
+    model_config = {"from_attributes": True}
+
+
+class ActivityConnectionsRead(BaseModel):
+    """All cross-system links for an activity."""
+
+    training_plan_day: ActivityPlanDayLink | None = None
+    personal_records: list[ActivityPrLink] = []
+    ai_analysis: ActivityAiAnalysisLink | None = None
+    fuel_plan: ActivityFuelPlanLink | None = None
+    linked_lifting_session: LinkedLiftingSessionSummary | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class HealthOverlayRead(BaseModel):
+    """Pre-activity health context (metrics from the day before / night before)."""
+
+    date: date
+    hrv_ms: float | None = None
+    recovery_score: float | None = None
+    resting_hr: float | None = None
+    sleep_duration_minutes: float | None = None
+    sleep_efficiency: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PowerZoneTime(BaseModel):
+    zone_name: str
+    zone_label: str
+    seconds: float
+    pct: float
+
+    model_config = {"from_attributes": True}
+
+
+class RideMetricsRead(BaseModel):
+    """Analytical summary for a cycling activity (computed, not stored)."""
+
+    power_zones: list[PowerZoneTime] = []
+    normalized_power: float | None = None
+    intensity_factor: float | None = None
+    variability_index: float | None = None
+    efficiency_factor: float | None = None
+    vam: float | None = None
+    decoupling_pct: float | None = None
+    decoupling_class: str | None = None
+    tss: float | None = None
+    tss_per_hour: float | None = None
+    climbing_meters: float | None = None
+    top_speed_kmh: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class LoadContextRead(BaseModel):
+    """Training load context (ATL/CTL/TSB) for the activity's date."""
+
+    atl: float | None = None
+    ctl: float | None = None
+    tsb: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ActivityContextRead(BaseModel):
+    """Full context for an activity: connections + health overlay + ride metrics."""
+
+    activity_id: uuid.UUID
+    sport_type: str
+    connections: ActivityConnectionsRead
+    health_overlay: HealthOverlayRead | None = None
+    ride_metrics: RideMetricsRead | None = None
+    load_context: LoadContextRead | None = None
+
+    model_config = {"from_attributes": True}

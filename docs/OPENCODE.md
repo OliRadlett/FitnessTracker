@@ -340,21 +340,23 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 **Registered in**: `tui.json` under `"plugin": [...]` (required — the auto-glob only picks up `*.ts`/`*.js`, not `.tsx`)
 **Requires**: opencode >= 1.18.x (validated on 1.18.23). Uses the **undocumented TUI plugin API** (`@opencode-ai/plugin/tui`) — may break on opencode upgrades.
 **What it shows** (in the right sidebar, between Context and LSP):
-- Status line: working / idle / retrying / compacting
-- Running tool calls with titles (`◆ edit: backend/app/api/goals.py`)
-- Todo counter (`✓ 3/7 steps · current item`)
-- Latest assistant text/reasoning snippet
+- Headline status line: lifecycle state + completed-step fraction + current in-progress todo (`● 3/6 · Updating service layer`, `○ 6/6 complete`, `○ ready`, `↻ 2/6 · retrying`, `◌ compacting`)
+- Todo progress bar (`▰▰▰▱▁▁ 3/6 steps`)
+- Recently completed todos (`✓ read schema · update service layer`)
 - Warning line when a permission/question is awaiting input
+- Tool error line on failure (`✗ bash: 2 tests failed`)
+
+The headline line is deliberately progress-focused — it does not mirror every in-flight tool call.
 
 **How it works**:
 1. Registers a component into the `sidebar_content` slot via `api.slots.register({ order: 200, slots: {...} })`
-2. Reads reactive state from `api.state.session.{messages,status,todo,permission,question}` — no polling; Solid signals re-render automatically
-3. Renders nothing on fresh/empty sessions to avoid sidebar noise
+2. Reads reactive state from `api.state.session.{status,todo,permission,question}` — no polling; Solid signals re-render automatically
+3. Renders nothing on fresh/empty sessions (hides until the first exchange or a todo exists) to avoid sidebar noise
 
 **Implementation notes**:
 - The host Babel-transforms external `.tsx` plugins with `babel-preset-solid` and aliases bare `solid-js` / `@opentui/solid` imports to its bundled copies — no local node_modules or tsconfig needed
 - Degrades silently if the API surface moves (feature-detects `api.slots`/`api.state`)
-- Tuning constants at top of file: snippet length, action title length, max shown tools
+- Tuning constants at top of file: snippet length, bar segment count
 
 ### `agent-waiting`
 **Purpose**: Shows OTHER sessions (incl. subagents) blocked waiting for user input.

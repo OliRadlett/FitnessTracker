@@ -34,6 +34,8 @@ export interface Activity {
   weather_temperature?: number | null;
   weather_conditions?: string | null;
   weather_wind_speed_kmh?: number | null;
+  weather_wind_direction?: string | null;
+  weather_precipitation_mm?: number | null;
   linked_lifting_session?: LinkedLiftingSessionSummary;
   encoded_polyline?: string;
   sources?: ActivitySource[];
@@ -133,6 +135,99 @@ export interface LinkedLiftingSessionSummary {
   focus?: string;
   set_count: number;
   total_volume_kg?: number;
+}
+
+// ─── Activity Context (connections + analytical summary) ─────────────────────
+
+export interface ActivityPlanDayLink {
+  plan_id: string;
+  plan_name: string;
+  plan_type: string;
+  day_date: string;
+  day_number: number;
+  planned_type: string;
+  planned_focus?: string;
+  planned_tss?: number;
+  completed: boolean;
+}
+
+export interface ActivityPrLink {
+  id: string;
+  exercise_name: string;
+  weight_kg: number;
+  reps: number;
+  estimated_1rm?: number;
+  achieved_date: string;
+}
+
+export interface ActivityAiAnalysisLink {
+  id: string;
+  analysis_type: string;
+  summary?: string | null;
+  model_used: string;
+  created_at: string;
+}
+
+export interface ActivityFuelPlanLink {
+  id: string;
+  planned_duration_min?: number;
+  pre_ride_carbs_g?: number;
+  during_carbs_per_hour_g?: number;
+  source: string;
+}
+
+export interface ActivityConnections {
+  training_plan_day: ActivityPlanDayLink | null;
+  personal_records: ActivityPrLink[];
+  ai_analysis: ActivityAiAnalysisLink | null;
+  fuel_plan: ActivityFuelPlanLink | null;
+  linked_lifting_session: LinkedLiftingSessionSummary | null;
+}
+
+export interface HealthOverlay {
+  date: string;
+  hrv_ms?: number;
+  recovery_score?: number;
+  resting_hr?: number;
+  sleep_duration_minutes?: number;
+  sleep_efficiency?: number;
+}
+
+export interface PowerZoneTime {
+  zone_name: string;
+  zone_label: string;
+  seconds: number;
+  pct: number;
+}
+
+export interface RideMetrics {
+  power_zones: PowerZoneTime[];
+  normalized_power?: number;
+  intensity_factor?: number;
+  variability_index?: number;
+  efficiency_factor?: number;
+  vam?: number;
+  decoupling_pct?: number;
+  decoupling_class?: string;
+  tss?: number;
+  tss_per_hour?: number;
+  climbing_meters?: number;
+  top_speed_kmh?: number;
+}
+
+export interface LoadContext {
+  atl?: number;
+  ctl?: number;
+  tsb?: number;
+}
+
+export interface ActivityContext {
+  activity_id: string;
+  sport_type: string;
+  connections: ActivityConnections;
+  health_overlay: HealthOverlay | null;
+  ride_metrics: RideMetrics | null;
+  load_context: LoadContext | null;
 }
 
 // ─── Merge Analysis ─────────────────────────────────────────────────────
