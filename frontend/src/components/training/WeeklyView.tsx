@@ -830,6 +830,13 @@ function DayCard({
                     {day.actual_activity.tss != null &&
                       ` · ${Math.round(day.actual_activity.tss)} TSS`}
                   </p>
+                  <Link
+                    href={`/activities?activity=${day.actual_activity.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-[10px] text-accent/70 hover:text-accent transition-colors"
+                  >
+                    View activity →
+                  </Link>
                 </>
               ) : (
                 <>

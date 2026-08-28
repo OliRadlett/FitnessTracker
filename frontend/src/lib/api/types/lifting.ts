@@ -49,6 +49,7 @@ export interface PersonalRecord {
   estimated_1rm?: number;
   achieved_date: string;
   session_id?: string;
+  activity_id?: string | null;
   notes?: string;
   created_at: string;
 }

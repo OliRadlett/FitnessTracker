@@ -72,3 +72,21 @@ export async function triggerActivityAiAnalysis(activityId: string): Promise<Llm
     method: 'POST',
   });
 }
+
+// ─── Activity Context ────────────────────────────────────────────────────────
+
+export async function getActivityContext(activityId: string): Promise<ActivityContext> {
+  return apiFetch<ActivityContext>(`/api/v1/activities/${activityId}/context`);
+}
+
+export async function getActivitiesWithContext(filters: ActivityFilters = {}): Promise<ActivityContext[]> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      params.append(key, String(value));
+    }
+  });
+  params.set('include_context', 'true');
+  const query = params.toString();
+  return apiFetch<ActivityContext[]>(`/api/v1/activities?${query}`);
+}

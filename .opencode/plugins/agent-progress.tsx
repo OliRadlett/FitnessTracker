@@ -2,32 +2,32 @@
  * Agent Progress — TUI sidebar widget (experimental, undocumented API)
  *
  * Registers into the `sidebar_content` slot (right-hand panel) between the
- * Context and LSP widgets and shows a live narrative of what the agent is
- * doing:
+ * Context and LSP widgets and shows a live progress snapshot of where the
+ * agent is in the current task:
  *
- *   Progress ● working
- *   ▰▰▰▱▱▱ 3/6 steps
- *   ◆ edit backend/app/api/goals.py
- *   ✓ read schema · ✓ update service layer
- *   "...adding validation helpers"
- *   ⚠ awaiting permission            (only when blocked)
- *   ✗ bash: 2 tests failed           (only on error)
+ *   Progress ● 3/6 · Updating service layer
+ *   ▰▰▰▱▱▁ 3/6 steps
+ *   ✓ read schema · update service layer
+ *   ⚠ awaiting permission (1)
+ *   ✗ bash: 2 tests failed
  *
- * When the agent goes idle the final snapshot freezes until the next task.
- * Data comes reactively from `api.state`; no polling.
+ * The headline line is a brief, progress-focused status: the agent's
+ * lifecycle state (working / idle / retrying / compacting), the completed
+ * step count out of total, and — while a step is in progress — that step's
+ * todo label. It deliberately does NOT mirror every in-flight tool call.
+ * Secondary lines below show the visual progress bar, recently completed
+ * steps, permission/question blockers, and the most recent tool error.
  *
  * Requires opencode >= 1.18.x (validated on 1.18.23). Uses the undocumented
- * TUI plugin API (`@opencode-ai/plugin/tui`) which may change between
- * versions — feature-detected below so drift degrades silently.
- * Registered explicitly in tui.json because the auto-glob only covers
- * *.ts/*.js, not *.tsx.
+ * TUI plugin API (`@opencode-ai/plugin/tui`) — feature-detected so drift
+ * degrades silently. Registered explicitly in tui.json because the
+ * auto-glob only covers *.ts/*.js, not *.tsx.
  */
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
-import { createComputed, createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 
 const LINE_CHARS = 30
 const TRAIL_ITEM_CHARS = 12
-const MAX_RUNNING_SHOWN = 1
 const RECENT_WINDOW = 15
 const BAR_MAX_SEGMENTS = 8
 
@@ -58,31 +58,6 @@ function fitTail(value: string, budget: number): string {
   return truncateLeft(value.replace(/\s+/g, " ").trim(), budget)
 }
 
-const VERBS: Record<string, string> = {
-  read: "reading",
-  edit: "editing",
-  multiedit: "editing",
-  write: "writing",
-  apply_patch: "patching",
-  bash: "running",
-  task: "delegating",
-  glob: "searching",
-  grep: "searching",
-  list: "listing",
-  webfetch: "fetching",
-  websearch: "searching",
-  todowrite: "planning",
-  question: "asking",
-}
-
-function targetOf(title: string): string {
-  const flat = title.replace(/\s+/g, " ").trim()
-  const path = flat.match(/([\w@.-]+[/\\])*([\w@.-]+\.[A-Za-z0-9]{1,8})\)?$/)
-  if (path) return path[2]
-  const tokens = flat.split(" ").filter(Boolean)
-  return tokens[tokens.length - 1] ?? flat
-}
-
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const theme = () => props.api.theme.current
 
@@ -102,26 +77,13 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     return out
   })
 
-  const runningTools = createMemo(() =>
-    recentParts()
-      .filter((part) => {
-        if (part.type !== "tool") return false
-        return part.state?.status === "running" || part.state?.status === "pending"
-      })
-      .slice(-MAX_RUNNING_SHOWN),
-  )
-
   const failedTool = createMemo(() => {
-    const failed = recentParts().filter((part) => part.type === "tool" && part.state?.status === "error")
+    const failed = recentParts().filter(
+      (part) => part.type === "tool" && part.state?.status === "error",
+    )
     const last = failed[failed.length - 1]
     if (!last) return ""
     return fitTail(last.state?.title || last.tool || "tool failed", LINE_CHARS)
-  })
-
-  const activeTodo = createMemo(() => {
-    const list = todos()
-    const current = list.find((item) => item.status === "in_progress")
-    return current ? truncate(current.content ?? "", LINE_CHARS) : ""
   })
 
   const blockedLine = createMemo(() => {
@@ -130,32 +92,6 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     return ""
   })
 
-  // Where-it's-at summary: running tool (verb + target) → active todo step
-  // → "thinking…" while the model generates between tools. Frozen via
-  // lastSummary so the snapshot persists when idle.
-  const liveSummary = createMemo<{ label: string; thinking: boolean } | null>(() => {
-    if (blockedLine()) return null
-    const running = runningTools()[runningTools().length - 1]
-    if (running) {
-      const tool = (running.tool ?? "").toLowerCase()
-      const verb = VERBS[tool] ?? `${tool || "working"}…`
-      const target = running.state?.title ? targetOf(running.state.title) : ""
-      const label = truncate(target ? `${verb} ${target}` : verb, LINE_CHARS)
-      return { label, thinking: false }
-    }
-    const active = activeTodo()
-    if (active) return { label: active, thinking: false }
-    if (status()?.type === "busy") return { label: "thinking…", thinking: true }
-    return null
-  })
-
-  const [lastSummary, setLastSummary] = createSignal<{ label: string; thinking: boolean } | null>(null)
-  createComputed(() => {
-    const current = liveSummary()
-    if (current) setLastSummary(current)
-  })
-  const summary = createMemo(() => liveSummary() ?? lastSummary())
-
   const trail = createMemo(() => {
     const done = todos().filter((item) => item.status === "completed")
     let items: string[]
@@ -163,7 +99,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       items = done.slice(-2).map((item) => truncate(item.content ?? "", TRAIL_ITEM_CHARS))
     } else {
       const completedTools = recentParts()
-        .filter((part) => part.type === "tool" && part.state?.status === "completed" && part.state?.title)
+        .filter(
+          (part) => part.type === "tool" && part.state?.status === "completed" && part.state?.title,
+        )
         .slice(-2)
       items = completedTools.map((part) => truncate(part.state?.title ?? "", TRAIL_ITEM_CHARS))
     }
@@ -182,17 +120,43 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     return `✓ ${done}/${list.length} steps`
   })
 
-  const statusInfo = createMemo(() => {
+  // Headline: a brief, progress-focused description of the task's current
+  // state — lifecycle status + completed-step fraction and, while a step is
+  // in progress, that step's todo label. Not a mirror of live tool calls.
+  const progressSummary = createMemo(() => {
+    const list = todos()
+    const count = list.length
+    const done = list.filter((item) => item.status === "completed").length
+    const active = list.find((item) => item.status === "in_progress")
+    const stepName = active ? truncate(active.content ?? "", LINE_CHARS) : ""
+    const fraction = `${done}/${count}`
+    const allDone = count > 0 && done === count
     const type = status()?.type ?? "idle"
-    if (type === "busy") return { label: "● working", fg: theme().accent }
-    if (type === "retry") return { label: "↻ retrying", fg: theme().warning }
-    if (type === "compacting") return { label: "◌ compacting", fg: theme().warning }
-    if (type === "idle") return { label: "○ idle", fg: theme().textMuted }
-    return { label: `● ${type}`, fg: theme().warning }
+
+    if (type === "busy") {
+      if (count === 0) return { fg: theme().accent, label: "● in progress" }
+      if (allDone) return { fg: theme().accent, label: `● ${fraction} complete` }
+      return {
+        fg: theme().accent,
+        label: stepName ? `● ${fraction} · ${stepName}` : `● ${fraction}`,
+      }
+    }
+    if (type === "retry") {
+      if (count === 0) return { fg: theme().warning, label: "↻ retrying" }
+      if (allDone) return { fg: theme().warning, label: `↻ ${fraction} complete` }
+      return { fg: theme().warning, label: `↻ ${fraction} · retrying` }
+    }
+    if (type === "compacting") {
+      return { fg: theme().warning, label: "◌ compacting" }
+    }
+    // idle
+    if (allDone) return { fg: theme().textMuted, label: `○ ${fraction} complete` }
+    if (count > 0) return { fg: theme().textMuted, label: `○ ${fraction}` }
+    return { fg: theme().textMuted, label: "○ ready" }
   })
 
   const visible = createMemo(
-    () => messages().length > 1 || todos().length > 0 || runningTools().length > 0,
+    () => messages().length > 1 || todos().length > 0,
   )
 
   return (
@@ -202,20 +166,10 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           <text fg={theme().text}>
             <b>Progress</b>
           </text>
-          <text fg={statusInfo().fg}>{statusInfo().label}</text>
+          <text fg={progressSummary().fg}>{progressSummary().label}</text>
         </box>
         <Show when={barLine()}>
           <text fg={theme().textMuted}>{barLine()}</text>
-        </Show>
-        <Show when={summary()}>
-          <box flexDirection="row" gap={1}>
-            <Show when={summary()!.thinking} fallback={<text fg={theme().accent}>◆</text>}>
-              <text fg={theme().textMuted}>◇</text>
-            </Show>
-            <text fg={summary()!.thinking ? theme().textMuted : theme().text} wrapMode="none">
-              {summary()!.label}
-            </text>
-          </box>
         </Show>
         <Show when={trail()}>
           <box flexDirection="row" gap={1}>

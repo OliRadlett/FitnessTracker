@@ -3,7 +3,15 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import type { Activity, ActivityDetail, ChartData, ActivityFilters, RideAnalysis } from '@/lib/api';
+import type {
+  Activity,
+  ActivityContext,
+  ActivityDetail,
+  CalendarDayData,
+  ChartData,
+  ActivityFilters,
+  RideAnalysis,
+} from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
@@ -24,8 +32,12 @@ import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
 import { ActivityCard } from '@/components/activities/ActivityCard';
+import { ActivityConnectionsBar } from '@/components/activities/ActivityConnectionsBar';
+import { ActivityContextBadges } from '@/components/activities/ActivityContextBadges';
+import { ActivityHealthOverlay } from '@/components/activities/ActivityHealthOverlay';
 import { CompareActivitiesModal } from '@/components/activities/CompareActivitiesModal';
-import { StatsView } from '@/components/activities/StatsView';
+import { TimelineView } from '@/components/activities/TimelineView';
+import { PatternsView } from '@/components/activities/PatternsView';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,9 +80,11 @@ function getWeekDateRange(weekKey: string, activities: Activity[]): string {
 function ActivityExpanded({
   activity,
   activityDetail,
+  context,
 }: {
   activity: Activity;
   activityDetail?: ActivityDetail;
+  context?: ActivityContext | null;
 }) {
   const { authFetch } = useAuthFetch();
   const streamTypes = activityDetail?.streams?.map((s) => s.stream_type) ?? [];
@@ -105,8 +119,32 @@ function ActivityExpanded({
       })()
     : null;
 
+  // Stop context propagation when clicking inside expanded detail
+  const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
+
   return (
-    <div className="mt-4 pt-4 border-t border-surface-light/50">
+    <div className="mt-4 pt-4 border-t border-surface-light/50" onClick={handleStopClick}>
+      {/* Connections Bar — PR/Plan/AI/Fuel badges */}
+      {context?.connections && (
+        <div className="mb-3">
+          <ActivityConnectionsBar connections={context.connections} activityId={activity.id} />
+        </div>
+      )}
+
+      {/* Analytical context badges (IF/VI/decoupling/speed/climbing/EF/load) */}
+      {context?.ride_metrics || context?.load_context ? (
+        <div className="mb-3">
+          <ActivityContextBadges context={context} />
+        </div>
+      ) : null}
+
+      {/* Health overlay (HRV/recovery/sleep from day before) */}
+      {context?.health_overlay && (
+        <div className="mb-3">
+          <ActivityHealthOverlay health={context.health_overlay} />
+        </div>
+      )}
+
       {/* Weather at activity time */}
       {(activity.weather_temperature != null || activity.weather_conditions) && (
         <div className="mb-3 text-sm text-muted">
@@ -114,6 +152,8 @@ function ActivityExpanded({
             temperature={activity.weather_temperature ?? null}
             conditions={activity.weather_conditions ?? null}
             wind_speed_kmh={activity.weather_wind_speed_kmh ?? null}
+            wind_direction={activity.weather_wind_direction ?? null}
+            precipitation_mm={activity.weather_precipitation_mm ?? null}
           />
         </div>
       )}
@@ -182,7 +222,7 @@ export default function ActivitiesPage() {
   const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'week' | 'stats'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns'>('list');
   const [allActivities, setAllActivities] = useState<Activity[] | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -282,6 +322,14 @@ export default function ActivitiesPage() {
       if (countHeader) setTotalCount(parseInt(countHeader, 10));
       return result.data;
     },
+  });
+
+  // Fetch context for the expanded activity (lazy / on-demand)
+  const { data: expandedContext } = useQuery<ActivityContext>({
+    queryKey: ['activity-context', selectedActivityId],
+    queryFn: () => authFetch<ActivityContext>(`/api/v1/activities/${selectedActivityId}/context`),
+    enabled: !!selectedActivityId,
+    staleTime: 1000 * 60 * 10, // 10 minutes — context doesn't change often
   });
 
   // Sync query data to local state for append behaviour
@@ -439,7 +487,7 @@ export default function ActivitiesPage() {
   const hasActiveFilters = Object.keys(filters).length > 0 || searchText.trim() !== '' || sortIndex !== 0
     || advMinDist !== '' || advMaxDist !== '' || advMinDur !== '' || advMaxDur !== '' || advMinTss !== '' || advMaxTss !== '';
 
-  // Fetch a larger dataset for stats view (last 6 months, up to 200 activities)
+  // Fetch a larger dataset for Timeline & Patterns views (last 6 months, up to 200 activities)
   const sixMonthsAgo = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -449,7 +497,23 @@ export default function ActivitiesPage() {
   const { data: statsActivities, isLoading: statsLoading } = useQuery<Activity[]>({
     queryKey: ['activities-stats'],
     queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=200&sort_by=start_date&sort_order=desc`),
-    enabled: viewMode === 'stats',
+    enabled: viewMode === 'timeline' || viewMode === 'patterns',
+  });
+
+  // Calendar data for timeline view (last 30 days by default)
+  const thirtyDaysAgo = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const { data: calendarData, isLoading: calendarLoading } = useQuery<CalendarDayData>({
+    queryKey: ['activities-calendar', thirtyDaysAgo, today],
+    queryFn: () => authFetch<CalendarDayData>(
+      `/api/v1/activities/calendar?start_date=${thirtyDaysAgo}&end_date=${today}`,
+    ),
+    enabled: viewMode === 'timeline',
   });
 
   function renderWeekGroup(weekKey: string, weekActivities: Activity[]) {
@@ -502,7 +566,7 @@ export default function ActivitiesPage() {
               onToggleCompare={() => toggleCompare(activity.id)}
             />
             {selectedActivityId === activity.id && (
-              <ActivityExpanded activity={activity} activityDetail={activityDetail} />
+              <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} />
             )}
           </React.Fragment>
         ))}
@@ -541,14 +605,24 @@ export default function ActivitiesPage() {
             Week
           </button>
           <button
-            onClick={() => setViewMode('stats')}
+            onClick={() => setViewMode('timeline')}
             role="tab"
-            aria-selected={viewMode === 'stats'}
+            aria-selected={viewMode === 'timeline'}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
-              viewMode === 'stats' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+              viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
           >
-            Stats
+            Timeline
+          </button>
+          <button
+            onClick={() => setViewMode('patterns')}
+            role="tab"
+            aria-selected={viewMode === 'patterns'}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+            }`}
+          >
+            Patterns
           </button>
         </div>
           <button
@@ -725,7 +799,7 @@ export default function ActivitiesPage() {
       </Card>
 
       {/* Summary Stats */}
-      {viewMode !== 'stats' && displayActivities.length > 0 && (
+      {viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && (
         <div className="space-y-2">
           <SummaryStatsBar activities={displayActivities} />
           {totalCount !== null && totalCount > displayActivities.length && (
@@ -736,18 +810,40 @@ export default function ActivitiesPage() {
         </div>
       )}
 
-      {/* Activity List / Stats */}
+      {/* Activity List / Timeline / Patterns */}
       <div aria-live="polite">
-      {viewMode === 'stats' ? (
-        statsLoading ? (
-          <div className="space-y-3" aria-label="Loading stats">
-            {Array.from({ length: 3 }).map((_, i) => (
+      {viewMode === 'timeline' ? (
+        calendarLoading ? (
+          <div className="space-y-3" aria-label="Loading timeline">
+            {Array.from({ length: 5 }).map((_, i) => (
               <SkeletonRow key={i} />
             ))}
           </div>
         ) : (
-          <StatsView activities={statsActivities ?? []} />
+          <TimelineView
+            startDate={thirtyDaysAgo}
+            endDate={today}
+            calendarData={calendarData ?? { activities: [], daily_metrics: [], sleep_logs: [] }}
+          />
         )
+      ) : viewMode === 'patterns' ? (
+        <PatternsView
+          activities={displayActivities}
+          statsActivities={statsActivities ?? []}
+          isLoading={statsLoading}
+          onPatternSelect={(newFilters) => {
+            setFilters(newFilters);
+            setSearchText('');
+            setSortIndex(0);
+            setAdvMinDist('');
+            setAdvMaxDist('');
+            setAdvMinDur('');
+            setAdvMaxDur('');
+            setAdvMinTss('');
+            setAdvMaxTss('');
+            setViewMode('list');
+          }}
+        />
       ) : isLoading ? (
         <div className="space-y-3" aria-label="Loading activities">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -775,7 +871,7 @@ export default function ActivitiesPage() {
                   onToggleBulk={() => toggleBulkSelect(activity.id)}
                 />
                 {selectedActivityId === activity.id && (
-                  <ActivityExpanded activity={activity} activityDetail={activityDetail} />
+                  <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} />
                 )}
               </React.Fragment>
             ))}
@@ -799,12 +895,12 @@ export default function ActivitiesPage() {
             isSelected
             onSelect={() => handleSelectActivity(null)}
           />
-          <ActivityExpanded activity={selectedActivity} activityDetail={activityDetail} />
+          <ActivityExpanded activity={selectedActivity} activityDetail={activityDetail} context={expandedContext} />
         </div>
       )}
 
       {/* Load More */}
-      {!isLoading && viewMode !== 'stats' && displayActivities.length > 0 && hasMore && (
+      {!isLoading && viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && hasMore && (
         <div className="text-center py-4">
           <button
             onClick={loadMore}
