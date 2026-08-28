@@ -46,6 +46,12 @@ class Route(Base):
     country: Mapped[str | None] = mapped_column(String(100), nullable=True)
     locality: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_loop: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false", index=True
+    )
+    quality_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -59,6 +65,20 @@ class Route(Base):
         back_populates="route", cascade="all, delete-orphan"
     )
     activities: Mapped[list["Activity"]] = relationship(back_populates="route")  # type: ignore[name-defined]
+    taggings: Mapped[list["RouteTagging"]] = relationship(  # type: ignore[name-defined]
+        "RouteTagging", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list["RouteTag"]] = relationship(  # type: ignore[name-defined]
+        secondary="route_taggings",
+        back_populates="routes",
+        viewonly=True,
+    )
+    collection_items: Mapped[list["RouteCollectionItem"]] = relationship(  # type: ignore[name-defined]
+        "RouteCollectionItem", cascade="all, delete-orphan"
+    )
+    quality: Mapped["RouteQuality | None"] = relationship(  # type: ignore[name-defined]
+        "RouteQuality", back_populates="route", uselist=False
+    )
 
 
 class RouteSource(Base):
