@@ -103,6 +103,8 @@ same commit** (Rule #9).
 
 ```bash
 # Push the feature branch (create it if needed)
+git checkout main
+git pull origin main
 git checkout -b feature/your-short-name
 git add <files>
 git commit -m "type(scope): concise message
@@ -121,11 +123,20 @@ Monitor CI:
 
 ```bash
 gh pr checks
-# or
 gh run watch <run_id>
 ```
 
-**Wait for CI to pass** on `main` before proceeding to deploy.
+**Wait for all checks to pass.**  GitHub Actions may queue for 50+ minutes
+during runner shortages — monitor, don't force.
+
+Merge the PR (squash preferred per Rule #4):
+
+```bash
+# GitHub won't let you approve your own PR, so merge directly with --admin
+gh pr merge --squash --admin
+```
+
+The PR lands on `main`.  Verify with `gh pr checks` that post-merge CI is green.
 
 ## Phase 5 — Release & Deploy
 

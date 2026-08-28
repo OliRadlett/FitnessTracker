@@ -47,6 +47,15 @@
       "description": "OpenCode TUI configuration, commands, skills, agents, and workflows"
     }
   },
+  "model": "openrouter/poolside/laguna-s-2.1:free",
+  "agent": {
+    "plan": {
+      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+    },
+    "general": {
+      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+    }
+  },
   "shell": "pwsh",
   "snapshot": true,
   "compaction": {
@@ -64,6 +73,8 @@
     "ignore": ["node_modules/**", "dist/**", ".git/**", "backups/**", "*.egg-info/**", "__pycache__/**"]
   },
   "permission": {
+    "websearch": "allow",
+    "webfetch": "allow",
     "bash": {
       "python fittrack.py *": "allow",
       "docker compose *": "allow",

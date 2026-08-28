@@ -44,8 +44,12 @@ export default function LiveLiftPage() {
   });
 
   const referenceMap = useMemo<Record<string, ExerciseReference>>(
-    () => buildLastSessionMap(sessions ?? []),
-    [sessions]
+    () =>
+      buildLastSessionMap(
+        sessions ?? [],
+        live.state?.sessionId ?? undefined
+      ),
+    [sessions, live.state?.sessionId]
   );
   const recentNames = useMemo(
     () => recentExerciseNames(sessions ?? []),
