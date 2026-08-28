@@ -311,6 +311,43 @@ class TestStrengthConformity:
         assert result["conformity_pct"] >= 90
         assert result["classification"] == "Excellent"
 
+    def test_strength_duration_deviation_uses_session_language(self):
+        """Strength duration text says 'Session was' not 'You rode'."""
+        planned = {"planned_duration_min": 60}
+        result = build_strength_conformity(
+            planned, fake_session(duration_seconds=72 * 60), []
+        )
+        assert any(
+            "Session was 20% longer" in d
+            for d in result["deviations"]
+        )
+
+    def test_rpe_deviation_shows_absolute_points(self):
+        """RPE deviation text uses points, not a misleading percentage."""
+        planned = {"planned_rpe": 8}
+        result = build_strength_conformity(
+            planned, fake_session(rpe_session=10), []
+        )
+        rpe_text = [d for d in result["deviations"] if "RPE" in d]
+        assert rpe_text
+        assert "±2 points" in rpe_text[0]
+
+    def test_exercises_deviation_shows_counts(self):
+        """Exercises deviation text shows completion as 'N of M'."""
+        planned = {
+            "planned_exercises": [
+                {"exercise": "Back Squat", "sets": 5, "reps": 5},
+                {"exercise": "Bench Press", "sets": 3, "reps": 10},
+                {"exercise": "Deadlift", "sets": 4, "reps": 3},
+            ],
+        }
+        result = build_strength_conformity(
+            planned, fake_session(), ["Back Squat"]
+        )
+        ex_text = [d for d in result["deviations"] if "exercises" in d]
+        assert ex_text
+        assert "1 of 3 planned exercises completed" in ex_text[0]
+
 
 # ── static shapes ───────────────────────────────────────────────────────────
 

@@ -986,21 +986,25 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const patchExercise = (idx: number, patch: Partial<PlannedExercise>) => {
     const list = [...(day.planned_exercises ?? [])];
     list[idx] = { ...list[idx], ...patch };
-    onPatch({ planned_exercises: list });
+    onPatch({ planned_exercises: list, planned_volume_kg: computedVolumeKg(list) });
   };
 
   const removeExercise = (idx: number) => {
+    const list = (day.planned_exercises ?? []).filter((_, i) => i !== idx);
     onPatch({
-      planned_exercises: (day.planned_exercises ?? []).filter((_, i) => i !== idx),
+      planned_exercises: list,
+      planned_volume_kg: computedVolumeKg(list),
     });
   };
 
   const addExercise = () => {
+    const list = [
+      ...(day.planned_exercises ?? []),
+      { exercise: '', sets: 3, reps: 8, weight_kg: null, rpe: null },
+    ];
     onPatch({
-      planned_exercises: [
-        ...(day.planned_exercises ?? []),
-        { exercise: '', sets: 3, reps: 8, weight_kg: null, rpe: null },
-      ],
+      planned_exercises: list,
+      planned_volume_kg: computedVolumeKg(list),
     });
   };
 

@@ -11,7 +11,7 @@ import re
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -647,6 +647,31 @@ async def delete_plan(db: AsyncSession, user_id: uuid.UUID, plan_id: uuid.UUID) 
     return True
 
 
+async def _estimate_strength_volume(
+    db: AsyncSession, user_id: uuid.UUID, focus: str | None
+) -> float | None:
+    """Estimate a planned volume from the athlete's recent sessions.
+
+    Uses the average ``total_volume_kg`` of the last handful of lifting
+    sessions (any focus) as a rough proxy.  Falls back to ``None`` when no
+    recent data exists so the conformity scorer drops the volume component
+    rather than scoring against a made-up number.
+    """
+    result = await db.execute(
+        select(func.avg(LiftingSession.total_volume_kg))
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.total_volume_kg.isnot(None),
+            LiftingSession.total_volume_kg > 0,
+            LiftingSession.session_date >= date.today() - timedelta(days=180),
+        )
+    )
+    avg = result.scalar_one()
+    if avg is not None:
+        return round(avg, -2)  # round to nearest 100 kg
+    return None
+
+
 async def generate_plan(
     db: AsyncSession, user_id: uuid.UUID, data: GeneratePlanRequest
 ) -> TrainingPlan:
@@ -665,6 +690,14 @@ async def generate_plan(
     days = _generate_plan_days(
         data.template_type, data.weeks, data.start_date, data.base_tss
     )
+
+    # Backfill planned_volume_kg for strength days by looking at the athlete's
+    # recent session history (templates ship with weight_kg=None).
+    for day_data in days:
+        if day_data.sport == "strength" and day_data.planned_volume_kg is None:
+            day_data.planned_volume_kg = await _estimate_strength_volume(
+                db, user_id, day_data.planned_focus
+            )
 
     plan = TrainingPlan(
         user_id=user_id,
@@ -755,6 +788,22 @@ async def update_plan_day(
         )
         if not result.scalar_one_or_none():
             raise ValueError("Route not found or not owned by you")
+
+    # Recompute planned_volume_kg from planned_exercises so the two stay
+    # in sync (exercises with weight_kg=None yield None volume).
+    if updates.get("planned_exercises") is not None:
+        ex_list = updates["planned_exercises"] or []
+        if any(ex.get("weight_kg") for ex in ex_list if isinstance(ex, dict)):
+            updates["planned_volume_kg"] = round(
+                sum(
+                    (ex.get("weight_kg") or 0) * ex.get("sets", 0) * ex.get("reps", 0)
+                    for ex in ex_list
+                    if isinstance(ex, dict)
+                ),
+                2,
+            )
+        else:
+            updates["planned_volume_kg"] = None
 
     for key, value in updates.items():
         setattr(day, key, value)
@@ -1088,6 +1137,10 @@ async def copy_session_to_plan_day(
         )
 
     day.planned_exercises = planned_exercises
+    day.planned_volume_kg = sum(
+        (ex["weight_kg"] or 0) * ex["sets"] * ex["reps"]
+        for ex in planned_exercises
+    ) if any(ex.get("weight_kg") for ex in planned_exercises) else None
     if not day.planned_focus and session.focus:
         day.planned_focus = _normalise_focus(session.focus)
 

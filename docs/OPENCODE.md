@@ -22,7 +22,7 @@ FitTrack uses OpenCode as its primary AI coding assistant. The TUI (Terminal Use
 
 - **5 subagents** for specialized tasks
 - **9 custom commands** for repetitive workflows
-- **4 skills** for complex feature additions
+  - **4 skills** for complex feature additions → **5 skills**
 - **1 plugin** for permission management
 - **9 file references** for context awareness
 
@@ -228,6 +228,16 @@ Skills are reusable instruction sets for complex tasks. Located in `.opencode/sk
 - Frontend settings card
 - Pitfalls: redirect_uri, token refresh, encrypted tokens
 
+### `finalise`
+**Purpose**: End-of-work checklist — commit, push, PR, and deploy.
+**When to use**: Finishing a feature or set of changes.
+**Covers**:
+- Pre-commit checks: lint, typecheck, tests, migration verification
+- Git discipline: status review, staging only session files
+- Commit + push + PR creation
+- Release deploy: merge main → prod, monitor CI
+- Pitfalls: concurrent git sessions, CI queue delays, stale test images
+
 ### `ssh-production-debugger`
 **Purpose**: Debug production issues via SSH.
 **When to use**: Investigating live server problems.
@@ -252,6 +262,16 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 **Example**:
 ```
 @backend Add a new endpoint for user preferences following the pattern in @backend/app/api/activities.py
+```
+
+### `@ask` (Ask Mode)
+**Purpose**: Non-agentic conversational chat for Q&A, general questions, code explanation, and web research.
+**Use for**: Answering questions, explaining concepts, brainstorming designs, clarifying code, researching external documentation — without modifying project files.
+**Permissions**: `edit`, `bash`, `todowrite`, `task` = **deny**. `read`, `glob`, `grep`, `websearch`, `webfetch`, `question` = **allow**.
+**How to switch**: Press `Tab` to cycle into Ask mode, or use the mode selector. Web search is globally permitted via `opencode.json` permissions (`websearch`/`webfetch: "allow"`).
+**Example**:
+```
+@ask How does the Strava webhook event queue work? Also search for best practices on HMAC signature verification in Python.
 ```
 
 ### `@frontend`
@@ -581,10 +601,11 @@ fitness-tracker/
 │   │   ├── migrate.md
 │   │   ├── status.md
 │   │   └── test.md
-│   ├── skills/                # 4 skill definitions
+│   ├── skills/                # 5 skill definitions
 │   │   ├── add-ai-analysis/
 │   │   ├── add-chart/
 │   │   ├── add-integration/
+│   │   ├── finalise/
 │   │   └── ssh-production-debugger/
 │   └── plugins/               # 3 plugins
 │       ├── permission-promoter.js
