@@ -31,7 +31,7 @@ const METRIC_META: Record<string, { label: string; unit?: string }> = {
   tss: { label: 'TSS' },
   route: { label: 'Route' },
   volume: { label: 'Volume', unit: 'kg' },
-  exercises: { label: 'Exercises', unit: '%' },
+  exercises: { label: 'Exercises' },
   rpe: { label: 'RPE' },
   focus: { label: 'Focus' },
 };
@@ -52,8 +52,6 @@ function fmtMetricValue(metric: string, v: number | null | undefined): string {
       return `${Math.round(v)}kg`;
     case 'min':
       return `${Math.round(v)}min`;
-    case '%':
-      return `${Math.round(v)}%`;
     case 'bpm':
       return `${Math.round(v)}bpm`;
     default:
@@ -61,13 +59,26 @@ function fmtMetricValue(metric: string, v: number | null | undefined): string {
   }
 }
 
+/** Format the Plan → Actual cell for metrics whose values aren't raw numbers. */
+function fmtMetricPair(metric: string, planned: number | null, actual: number | null): string {
+  if (metric === 'exercises') {
+    if (planned == null && actual == null) return '— → —';
+    return `${actual ?? 0} of ${planned ?? 0}`;
+  }
+  if (metric === 'focus') {
+    const matched = planned != null && actual != null && actual >= planned;
+    return matched ? 'Matched' : 'Not matched';
+  }
+  return `${fmtMetricValue(metric, planned)} → ${fmtMetricValue(metric, actual)}`;
+}
+
 function deviationColor(deviationPct: number | null): string {
   if (deviationPct == null || deviationPct === 0) return 'text-muted';
   return deviationPct > 0 ? 'text-warning' : 'text-blue-300';
 }
 
-function fmtDeviation(deviationPct: number | null): string {
-  if (deviationPct == null) return '—';
+function fmtDeviation(metric: string, deviationPct: number | null): string {
+  if (metric === 'focus' || deviationPct == null) return '—';
   const sign = deviationPct > 0 ? '+' : '';
   return `${sign}${Math.round(deviationPct)}%`;
 }
@@ -196,13 +207,12 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
                   {data.components.map((c: ConformityComponent) => (
                     <tr key={c.metric} className="border-t border-surface-light/30">
                       <td className="py-0.5 text-white/90">{metricLabel(c.metric)}</td>
-                      <td className="py-0.5">
-                        {fmtMetricValue(c.metric, c.planned)} →{' '}
-                        <span className="text-white/90">{fmtMetricValue(c.metric, c.actual)}</span>
+                       <td className="py-0.5">
+                        {fmtMetricPair(c.metric, c.planned, c.actual)}
                       </td>
-                      <td className={`py-0.5 ${deviationColor(c.deviation_pct)}`}>
-                        {fmtDeviation(c.deviation_pct)}
-                      </td>
+                       <td className={`py-0.5 ${deviationColor(c.deviation_pct)}`}>
+                         {fmtDeviation(c.metric, c.deviation_pct)}
+                       </td>
                       <td className="py-0.5">
                         <div className="h-1 w-full rounded-full bg-surface-light overflow-hidden">
                           <div

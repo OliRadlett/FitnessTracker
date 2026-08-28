@@ -71,8 +71,10 @@ class TrainingPlanDayRead(TrainingPlanDayBase):
 class TrainingPlanDayUpdate(BaseModel):
     """Partial single-day update (PATCH) — only provided fields are applied.
 
-    Server-managed columns (``activity_id``, ``lifting_session_id``,
-    ``planned_volume_kg``) are not client-settable here.
+    Server-managed columns (``activity_id``, ``lifting_session_id``) are not
+    client-settable here.  ``planned_volume_kg`` may be sent, but if
+    ``planned_exercises`` is also provided the server recomputes volume from
+    the exercise list to keep them in sync.
     """
 
     sport: Literal["cycle", "strength", "rest"] | None = None
@@ -82,6 +84,7 @@ class TrainingPlanDayUpdate(BaseModel):
     workout_description: str | None = Field(None, max_length=1000)
     planned_focus: str | None = Field(None, max_length=50)
     planned_exercises: list[dict[str, Any]] | None = None
+    planned_volume_kg: float | None = None
     planned_rpe: float | None = None
     planned_power_watts: float | None = None
     planned_zone: str | None = Field(None, max_length=10)

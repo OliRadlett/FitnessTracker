@@ -959,28 +959,31 @@ function ExpandedPanel({
       {/* Notes */}
       {day.notes && !notes && <p className="text-[11px] text-muted italic">{day.notes}</p>}
 
-      {/* Quick edit */}
-      <div className="flex gap-1">
-        <label className="block flex-1">
-          <span className="block text-[9px] text-muted mb-0.5">Min</span>
-          <input
-            type="number"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
-          />
-        </label>
-        <label className="block flex-1">
-          <span className="block text-[9px] text-muted mb-0.5">TSS</span>
-          <input
-            type="number"
-            value={tss}
-            onChange={(e) => setTss(e.target.value)}
-            className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
-          />
-        </label>
-      </div>
-      <input
+       {/* Quick edit (cycle days only — strength/week view is read-only for metrics) */}
+      {day.sport === 'cycle' && (
+        <div className="flex gap-1">
+          <label className="block flex-1">
+            <span className="block text-[9px] text-muted mb-0.5">Min</span>
+            <input
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
+            />
+          </label>
+          <label className="block flex-1">
+            <span className="block text-[9px] text-muted mb-0.5">TSS</span>
+            <input
+              type="number"
+              value={tss}
+              onChange={(e) => setTss(e.target.value)}
+              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
+            />
+          </label>
+        </div>
+      )}
+       {/* Notes (all sport types) */}
+       <input
         type="text"
         placeholder="Notes"
         value={notes}
