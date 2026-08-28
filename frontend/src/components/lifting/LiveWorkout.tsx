@@ -135,6 +135,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
   const [stepSizeIdx, setStepSizeIdx] = useState(1); // default 2.5kg
   const [undoArmed, setUndoArmed] = useState(false);
   const [logLocked, setLogLocked] = useState(false);
+  const logLockedRef = useRef(false);
 
   const stepSize = STEP_SIZES[stepSizeIdx];
 
@@ -224,9 +225,15 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
 
   const handleLogSet = () => {
     const name = exercise.trim();
-    if (!name || logLocked) return;
+    // Synchronous guard against double-taps — React state is async so a ref
+    // is the only reliable guard within a single event-loop tick.
+    if (!name || logLockedRef.current) return;
+    logLockedRef.current = true;
     setLogLocked(true);
-    setTimeout(() => setLogLocked(false), 600); // debounce double-taps
+    setTimeout(() => {
+      logLockedRef.current = false;
+      setLogLocked(false);
+    }, 600); // debounce double-taps
     const prText = isWarmup
       ? undefined
       : detectPr(name, weight, reps, prs, currentSets.filter((s) => !s.is_warmup)) ?? undefined;

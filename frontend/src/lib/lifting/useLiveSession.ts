@@ -42,6 +42,8 @@ export interface LiveSessionState {
   /** Staged by requestFinish, consumed by the syncer */
   rpe_session?: number;
   notes?: string;
+  /** Persisted by requestFinish so a flush that started pre-Finish still lands it */
+  finish_requested?: boolean;
 }
 
 export interface FinishMeta {
@@ -204,6 +206,10 @@ export function useLiveSession(authFetch: AuthFetch) {
             s.remoteId = created.sets.find((r) => r.client_id === s.clientId)?.id ?? null;
           }
         }
+        // CRITICAL: capture the remote session id. Without this every subsequent
+        // flush re-enters Step 1 (dedup returns the existing session) and Step
+        // 2/4 call PATCH/POST /sessions/null → 422, leaving the finish stuck.
+        working.sessionId = created.id;
         commit();
       }
 
@@ -227,8 +233,10 @@ export function useLiveSession(authFetch: AuthFetch) {
         commit();
       }
 
-      // Step 4: finish flow
-      if (working.phase === 'finishing') {
+      // Step 4: finish flow — gated on the durable finish_requested flag so a
+      // flush that started before requestFinish (snapshot had phase='active')
+      // still applies ended_at/rpe/notes from the persisted intent.
+      if (working.finish_requested) {
         const durationSeconds = Math.max(
           0,
           Math.round((Date.now() - new Date(working.startedAt).getTime()) / 1000)
@@ -356,7 +364,7 @@ export function useLiveSession(authFetch: AuthFetch) {
         ...prev,
         sets: prev.sets.filter((s) => s.clientId !== last.clientId),
         pendingDeletes:
-          last.remoteId && last.remoteId !== 'synced'
+          last.remoteId
             ? [...prev.pendingDeletes, last.remoteId]
             : prev.pendingDeletes,
       };
@@ -379,7 +387,7 @@ export function useLiveSession(authFetch: AuthFetch) {
     setSyncError(false);
     if (current?.sessionId) {
       const ids = current.sets
-        .filter((s) => s.remoteId && s.remoteId !== 'synced')
+        .filter((s) => s.remoteId)
         .map((s) => s.remoteId!);
       try {
         for (const id of ids) await deleteLiftingSet(authFetch, id);
@@ -405,9 +413,15 @@ export function useLiveSession(authFetch: AuthFetch) {
         phase: 'finishing',
         rpe_session: meta.rpe_session,
         notes: meta.notes,
+        finish_requested: true,
       };
       saveState(finishing);
       setState(finishing);
+      // Await the flush so the caller (sheet) knows whether finish landed.
+      // If a scheduled flush is already in-flight (syncingRef), flush() returns
+      // early — the in-flight flush's commit() picks up finish_requested via
+      // mergeWithStorage, and the background retry effect catches any remaining
+      // case. Either way the page renders the finishing overlay until state clears.
       const result = await flush();
       return !!result?.finished;
     },
@@ -417,6 +431,30 @@ export function useLiveSession(authFetch: AuthFetch) {
   const retrySync = useCallback(() => {
     void flush();
   }, [flush]);
+
+  // Background retry for the finishing state. If flush() can't run (busy) or
+  // fails (network), keep retrying with capped exponential backoff so a finish
+  // that failed mid-flight never leaves the user stuck on the overlay.
+  useEffect(() => {
+    if (!state?.finish_requested || !state?.sessionId) return;
+    if (syncingRef.current) return;
+
+    const backoff = [2000, 4000, 8000, 16000, 30000];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Schedule retries at cumulative delays (2s, 6s, 14s, 30s, 60s) so the
+    // finish is retried with increasing patience, capped at 5 attempts.
+    let cumulative = 0;
+    backoff.forEach((delay) => {
+      cumulative += delay;
+      const t = setTimeout(() => {
+        void flush();
+      }, cumulative);
+      timers.push(t);
+    });
+
+    return () => timers.forEach(clearTimeout);
+  }, [state?.finish_requested, state?.sessionId, flush]);
 
   // Derived helpers
   const setsForExercise = useCallback(
