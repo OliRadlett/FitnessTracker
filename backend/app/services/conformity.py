@@ -162,8 +162,12 @@ def _component(
     }
 
 
-def _deviation_text(comp: dict) -> str | None:
-    """Human sentence for a component deviating beyond the threshold."""
+def _deviation_text(comp: dict, sport: str = "cycle") -> str | None:
+    """Human sentence for a component deviating beyond the threshold.
+
+    ``sport`` ("cycle" or "strength") selects appropriate verbs so the copy
+    reads naturally for the session type (e.g. "You rode" vs "Session was").
+    """
     dev = comp.get("deviation_pct")
     if dev is None or abs(dev) <= DEVIATION_THRESHOLD_PCT:
         return None
@@ -172,7 +176,8 @@ def _deviation_text(comp: dict) -> str | None:
     metric = comp["metric"]
     if metric == "duration":
         verb = "longer" if over else "shorter"
-        return f"You rode {abs(dev):.0f}% {verb} than planned ({a:.0f}min vs {p:.0f}min target)"
+        pronoun = "You rode" if sport == "cycle" else "Session was"
+        return f"{pronoun} {abs(dev):.0f}% {verb} than planned ({a:.0f}min vs {p:.0f}min target)"
     if metric == "power":
         verb = "harder" if over else "easier"
         return f"You rode {abs(dev):.0f}% {verb} than planned ({a:.0f}W vs {p:.0f}W target)"
@@ -185,12 +190,13 @@ def _deviation_text(comp: dict) -> str | None:
     if metric == "exercises":
         return f"{a:.0f} of {p:.0f} planned exercises completed"
     if metric == "rpe":
-        verb = "higher" if over else "lower"
-        return f"RPE was {abs(dev):.0f}% {verb} than planned ({a} vs {p})"
+        point = "point" if abs(round(a - p)) == 1 else "points"
+        direction = "higher" if (a - p) > 0 else "lower"
+        return f"RPE was {direction} than planned ({a:.1f} vs {p:.1f}, ±{round(a - p)} {point})"
     return None
 
 
-def _assemble(components: list[dict]) -> dict:
+def _assemble(components: list[dict], sport: str = "cycle") -> dict:
     """Renormalise weights over scored components; compute overall result.
 
     Every attempted component is carried through in ``components`` so the
@@ -234,7 +240,7 @@ def _assemble(components: list[dict]) -> dict:
     result["conformity_pct"] = round(overall, 1)
     result["classification"] = classify_conformity(overall)
     result["status"] = "done" if overall >= 50 else "partial"
-    result["deviations"] = [t for c in scored if (t := _deviation_text(c))]
+    result["deviations"] = [t for c in scored if (t := _deviation_text(c, sport))]
     return result
 
 
@@ -343,7 +349,7 @@ def build_cycle_conformity(day_planned: dict, actual_activity) -> dict | None:
         )
     # planned route but no activity route → dropped entirely (renormalises)
 
-    return _assemble(components)
+    return _assemble(components, sport="cycle")
 
 
 # ── Strength conformity ───────────────────────────────────────────────────
@@ -477,7 +483,7 @@ def build_strength_conformity(
             )
         )
 
-    return _assemble(components)
+    return _assemble(components, sport="strength")
 
 
 # ── Day-level result (DB-facing) ──────────────────────────────────────────
