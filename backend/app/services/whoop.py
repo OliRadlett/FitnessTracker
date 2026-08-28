@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -545,7 +545,7 @@ async def sync_whoop_sleep(
     Handles both Whoop v2 (nested stage_summary) and v1 (flat score) formats.
 
     For each sleep record:
-    - sleep_date = record.start date
+    - sleep_date = record.end date (wake-up date, aligned with recovery cycles)
     - total_sleep_seconds = stage_summary.total_sleep_time_milli / 1000
       (computed from deep+rem+light if missing, or from bounds minus awake)
     - deep_sleep_seconds = stage_summary.total_slow_wave_sleep_time_milli / 1000
@@ -612,7 +612,7 @@ async def sync_whoop_sleep(
                 if end_str
                 else None
             )
-            sleep_date = sleep_start.date()
+            sleep_date = (sleep_end if sleep_end else sleep_start).date()
         except (ValueError, AttributeError):
             continue
 
@@ -1503,7 +1503,7 @@ async def backfill_whoop_data(
                 if end_str
                 else None
             )
-            sleep_date = sleep_start.date()
+            sleep_date = (sleep_end if sleep_end else sleep_start).date()
         except (ValueError, AttributeError):
             continue
 
@@ -1772,6 +1772,56 @@ async def backfill_whoop_data(
 _CHUNK_MONTHS = 3  # Each chunk covers 3 months
 
 
+async def _cleanup_whoop_sleep_data(
+    db: AsyncSession, user_id: uuid.UUID, start_dt: datetime, end_dt: datetime
+) -> int:
+    """Delete existing Whoop sleep logs and sleep-only DailyMetrics in the date range.
+
+    Called before backfill to ensure fresh data with corrected sleep_date
+    (wake-up date) rather than the old date (fall-asleep date). Only Whoop
+    source data is affected — Strava/Wahoo data remains untouched.
+    """
+    from app.models.daily_metric import DailyMetric
+
+    start_date = start_dt.date()
+    end_date = end_dt.date()
+
+    # Delete SleepLogs with Whoop source in the date range
+    sl_result = await db.execute(
+        delete(SleepLog).where(
+            SleepLog.user_id == user_id,
+            SleepLog.source == "whoop",
+            SleepLog.sleep_date >= start_date,
+            SleepLog.sleep_date <= end_date,
+        )
+    )
+    deleted_sleep = sl_result.rowcount
+
+    # Delete sleep-only DailyMetrics in the date range.
+    # A sleep-only metric has no strain/recovery data (raw_data = {"sleep_only": True}).
+    # Metrics with cycle data must be preserved — only sleep fields will be updated.
+    dm_result = await db.execute(
+        delete(DailyMetric).where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.source == "whoop",
+            DailyMetric.metric_date >= start_date,
+            DailyMetric.metric_date <= end_date,
+            DailyMetric.strain.is_(None),
+            DailyMetric.recovery_score.is_(None),
+        )
+    )
+    deleted_metrics = dm_result.rowcount
+
+    total = deleted_sleep + deleted_metrics
+    if total > 0:
+        logger.info(
+            f"Cleaned up {deleted_sleep} Whoop SleepLogs and "
+            f"{deleted_metrics} sleep-only DailyMetrics for user {user_id} "
+            f"in range {start_date} to {end_date}"
+        )
+    return total
+
+
 async def backfill_whoop_chunked(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -1810,6 +1860,17 @@ async def backfill_whoop_chunked(
     chunks_failed = 0
 
     _CHUNK_DELAY_SECONDS = 5  # Pause between chunks to avoid Whoop rate limits
+
+    # Fresh-start cleanup: delete existing Whoop sleep data in the backfill
+    # window so new records with corrected sleep_date (wake-up date) are created
+    # rather than upserting onto stale rows with the old date.
+    cleanup_start, cleanup_end = chunks[0][0], chunks[-1][1]
+    cleaned = await _cleanup_whoop_sleep_data(db, user_id, cleanup_start, cleanup_end)
+    if cleaned > 0:
+        await db.commit()
+        logger.info(
+            f"Whoop backfill fresh-start: removed {cleaned} stale records for user {user_id}"
+        )
 
     # Emit an initial progress event so the UI shows a bar immediately. The
     # first real chunk's data fetch (rate-limited recovery lookups) can take
