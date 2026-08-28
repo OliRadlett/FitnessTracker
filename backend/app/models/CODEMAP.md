@@ -7,7 +7,8 @@
 | `user.py` | `User`, `OAuthConnection` | User has many OAuthConnections |
 | `activity.py` | `Activity`, `ActivitySource`, `ActivityStream` | Activity has many Sources/Streams; optionally links to LiftingSession + Route |
 | `lifting.py` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `WarmupTemplate`, `WarmupTemplateStep` | Session has many Sets; Template has many Steps. Live-sync idempotency keys: `LiftingSession.live_key` (unique, nullable) + `LiftingSet.client_id` (unique per session, nullable) — NULL = manual entry, exempt |
-| `route.py` | `Route`, `RouteSource` | Route has many Sources; has many Activities (via route_id) |
+| `route.py` | `Route`, `RouteSource` | Route has many Sources; has many Activities. Tags via secondary link. Quality via FK. `is_favorite`, `quality_score` (denormalized for fast filtering) |
+| `route_organize.py` | `RouteTag`, `RouteTagging`, `RouteCollection`, `RouteCollectionItem`, `RouteQuality` | Tags flat multi-assign via route_taggings. Collections manual + smart (rules JSONB). Quality per-route scores computed nightly |
 | `cycling.py` | `CyclingProfile`, `FtpHistory` | One profile per user; FTP changes tracked over time |
 | `daily_metric.py` | `DailyMetric` | Recovery, HRV, strain per day per source |
 | `sleep.py` | `SleepLog` | Sleep stages, efficiency |

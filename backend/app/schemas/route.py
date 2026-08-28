@@ -18,6 +18,71 @@ class RouteSourceRead(BaseModel):
     synced_at: datetime
 
 
+# ── Route Tag ──────────────────────────────────────────────────────────────────
+
+
+class RouteTagRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    name: str
+    color: str | None = None
+    created_at: datetime
+
+
+class RouteTagCreate(BaseModel):
+    name: str
+    color: str | None = None
+
+
+class RouteTagUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+
+
+class RouteTaggingRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    route_id: uuid.UUID
+    tag_id: uuid.UUID
+    tagged_at: datetime
+
+
+# ── Route Collection ───────────────────────────────────────────────────────────
+
+
+class RouteCollectionRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    is_smart: bool = False
+    rules: dict | None = None
+    sort_order: int = 0
+    created_at: datetime
+
+
+class RouteCollectionCreate(BaseModel):
+    name: str
+    description: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    is_smart: bool = False
+    rules: dict | None = None
+
+
+class RouteCollectionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    rules: dict | None = None
+    sort_order: int | None = None
+
+
 # ── Route ────────────────────────────────────────────────────────────────────
 
 
@@ -40,7 +105,10 @@ class RouteRead(BaseModel):
     country: str | None = None
     locality: str | None = None
     is_loop: bool
+    is_favorite: bool = False
+    quality_score: float | None = None
     sources: list[RouteSourceRead] = []
+    tags: list[RouteTagRead] = []
     created_at: datetime
     updated_at: datetime
 
@@ -63,8 +131,11 @@ class RouteSummary(BaseModel):
     country: str | None = None
     locality: str | None = None
     is_loop: bool
+    is_favorite: bool = False
+    quality_score: float | None = None
     sources: list[RouteSourceRead] = []
     surface_profile: dict | None = None
+    tags: list[RouteTagRead] = []
     ride_count: int = 0
     is_ridden: bool = False
     last_ridden_date: datetime | None = None
@@ -87,6 +158,7 @@ class RouteCreate(BaseModel):
 class RouteUpdate(BaseModel):
     name: str | None = None
     sport_type: str | None = None
+    is_favorite: bool | None = None
 
 
 # ── List params ──────────────────────────────────────────────────────────────
@@ -96,11 +168,17 @@ class RouteListParams(BaseModel):
     sport_type: str | None = None
     source: str | None = None
     is_loop: bool | None = None
+    is_ridden: bool | None = None
+    is_favorite: bool | None = None
+    tag_ids: list[str] | None = None
+    collection_id: str | None = None
     min_distance: float | None = None
     max_distance: float | None = None
     min_elevation: float | None = None
     max_elevation: float | None = None
+    min_quality_score: float | None = None
     q: str | None = None
+    surface_type: str | None = None
     sort_by: str | None = None
     sort_order: str = "desc"
     limit: int = Field(default=50, le=200)
@@ -119,6 +197,12 @@ class DuplicatePair(BaseModel):
     route_a: RouteRead
     route_b: RouteRead
     score: float
+
+
+class MergeManyRequest(BaseModel):
+    """Bulk merge: list of (primary, duplicate) pairs."""
+
+    pairs: list[MergeRequest]
 
 
 # ── Sync result ──────────────────────────────────────────────────────────────
@@ -168,3 +252,44 @@ class RouteHistoryResponse(BaseModel):
     total_rides: int
     personal_best: RouteHistoryPersonalBest | None = None
     rides: list[RouteHistoryRide] = []
+
+
+# ── Quality ──────────────────────────────────────────────────────────────────
+
+
+class RouteQualityRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    route_id: uuid.UUID
+    user_id: uuid.UUID
+    completeness_score: float | None = None
+    popularity_score: float | None = None
+    surface_quality_score: float | None = None
+    effort_match_score: float | None = None
+    overall_score: float | None = None
+    computed_at: datetime
+
+
+# ── Effort Estimation ─────────────────────────────────────────────────────────
+
+
+class EffortEstimateRequest(BaseModel):
+    ftp_watts: float
+    weight_kg: float
+    bike_type: str = "road"  # road | gravel | mtb
+    target_intensity: str = (
+        "threshold"  # endurance | tempo | threshold | vo2max | anaerobic
+    )
+
+
+class EffortEstimateResponse(BaseModel):
+    """Power-based effort estimate for a route."""
+
+    estimated_time_seconds: int
+    estimated_tss: float
+    intensity_factor: float | None = None
+    normalized_power: float | None = None
+    estimated_kcal: float | None = None
+    zone_name: str | None = None
+    description: str | None = None
