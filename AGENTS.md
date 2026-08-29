@@ -217,6 +217,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 5. **Before pushing a release, check the delta**: `git log --oneline origin/main..origin/prod` and `git diff --stat origin/main origin/prod` — the diff should be exactly the intended release content, nothing else.
 6. **CI (`test.yml`) runs on `push`/`pull_request` for `[main, prod]`.** If CI on a `prod` push is stuck `queued` (GitHub Actions runner availability), the deploy is blocked — do not try to force it; monitor `gh run watch <id>` or the Actions tab. (Aug 2026: runners queued 50+ min intermittently.)
 7. **`prod` is a release branch, not a working branch.** Never commit directly to it. Commit locally, PR into `main`, then merge `main` → `prod` to ship.
+8. **Fetch before pull/merge**: `git pull` fails when the working tree has uncommitted changes (yours or another session's). Before fetching or pulling, run `git status` and `git fetch origin` first. If another session's files appear as modified, stash only those files (`git stash push <file1> <file2>`) before rebasing/merging, then `git stash pop` afterwards. Never `git stash --include-untracked` blindly — untracked files may belong to a running task in another session.
 
 ## Quick Reference
 
