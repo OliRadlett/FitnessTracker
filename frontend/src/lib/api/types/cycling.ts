@@ -304,28 +304,3 @@ export interface RideAnalysis {
     time_descending_s?: number;
   };
 }
-
-// ─── Suggested Training Cycle ──────────────────────────────────────────────
-
-export interface SuggestedDay {
-  day_name: string;
-  date: string;
-  workout_type: string;
-  label: string;
-  description: string;
-  target_tss?: number;
-  intensity: 'low' | 'moderate' | 'high' | 'none';
-  icon: string;
-}
-
-export interface SuggestedCycleResponse {
-  readiness: 'green' | 'yellow' | 'red';
-  readiness_message: string;
-  current_tsb?: number;
-  current_ctl?: number;
-  current_atl?: number;
-  latest_recovery?: number;
-  latest_hrv?: number;
-  days: SuggestedDay[];
-  summary: string;
-}
