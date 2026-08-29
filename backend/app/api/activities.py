@@ -31,20 +31,9 @@ from app.schemas.activity import (
     RideAnalysisResponse,
     SleepLogSummary,
 )
+from app.services.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-from app.schemas.activity import (
-    ActivityCalendarEntry,
-    ActivityDetailRead,
-    ActivityRead,
-    ActivityStreamRead,
-    CalendarDayData,
-    DailyMetricSummary,
-    LinkedLiftingSessionSummary,
-    RideAnalysisResponse,
-    SleepLogSummary,
-)
-from app.services.auth import get_current_user
 
 router = APIRouter()
 

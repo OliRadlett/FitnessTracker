@@ -1,5 +1,5 @@
 import { apiFetch, apiUpload } from './fetch';
-import type { Activity, ActivityDetail, ActivityFilters, LlmAnalysis, MergeThresholdResult, RideAnalysis } from './types';
+import type { Activity, ActivityContext, ActivityDetail, ActivityFilters, LlmAnalysis, MergeThresholdResult, RideAnalysis } from './types';
 
 export async function getActivities(filters: ActivityFilters = {}): Promise<Activity[]> {
   const params = new URLSearchParams();
