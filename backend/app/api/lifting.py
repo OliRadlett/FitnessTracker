@@ -76,7 +76,9 @@ async def list_sessions(
         try:
             filter_date = _date.fromisoformat(session_date)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+            raise HTTPException(
+                status_code=400, detail="Invalid date format. Use YYYY-MM-DD."
+            )
         count_query = count_query.where(LiftingSession.session_date == filter_date)
     count_result = await db.execute(count_query)
     total_count = int(count_result.scalar() or 0)
@@ -309,7 +311,12 @@ async def create_exercise_endpoint(
         ex = await create_exercise(db, current_user.id, name, category, aliases)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases}
+    return {
+        "id": str(ex.id),
+        "name": ex.name,
+        "category": ex.category,
+        "aliases": ex.aliases,
+    }
 
 
 @router.patch("/exercises/{exercise_id}")
@@ -334,7 +341,13 @@ async def update_exercise_endpoint(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases, "is_active": ex.is_active}
+    return {
+        "id": str(ex.id),
+        "name": ex.name,
+        "category": ex.category,
+        "aliases": ex.aliases,
+        "is_active": ex.is_active,
+    }
 
 
 @router.delete("/exercises/{exercise_id}", status_code=status.HTTP_204_NO_CONTENT)
