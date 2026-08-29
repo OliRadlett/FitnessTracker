@@ -53,6 +53,7 @@ async def list_plans(
             event_id=p.event_id,
             day_count=len(p.days),
             completed_days=sum(1 for d in p.days if d.completed),
+            updated_at=p.updated_at,
         )
         for p in plans
     ]

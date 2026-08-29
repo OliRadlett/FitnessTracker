@@ -95,12 +95,13 @@ export default function RoutesPage() {
   };
 
   // Fetch routes
-  const { data: routesData, isLoading, refetch } = useQuery<{
+  const { data: routesData, isLoading, isError, error: routesError, refetch } = useQuery<{
     routes: RouteSummary[];
     totalCount: number;
   }>({
     queryKey: ['routes', queryFilters],
     queryFn: () => getRoutes(queryFilters, token),
+    enabled: !!token,
     staleTime: 60_000,
   });
 
@@ -307,6 +308,15 @@ export default function RoutesPage() {
                   </div>
                 )}
               </>
+            ) : isError ? (
+              <div className="p-8">
+                <EmptyState
+                  icon="⚠️"
+                  title="Failed to load routes"
+                  description={routesError ? (routesError as Error)?.message : 'There was a problem fetching your routes. Try syncing again or check your connection.'}
+                  action={{ label: 'Retry', onClick: () => refetch() }}
+                />
+              </div>
             ) : (
               <div className="p-8">
                 <EmptyState
