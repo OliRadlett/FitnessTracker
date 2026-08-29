@@ -154,7 +154,6 @@ def parse_gpx(gpx_xml: str, *, include_timestamps: bool = False) -> dict:
         raise ValueError(f"Invalid GPX XML: {e}") from e
 
     # Handle namespace
-    ns = {"gpx": GPX_NS} if root.tag.startswith(f"{{{GPX_NS}}}") else {"gpx": ""}
     ns_prefix = f"{{{GPX_NS}}}" if root.tag.startswith(f"{{{GPX_NS}}}") else ""
 
     # Extract name from metadata or first track
