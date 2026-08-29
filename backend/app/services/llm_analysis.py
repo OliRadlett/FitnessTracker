@@ -73,6 +73,32 @@ async def _big_lift_pbs(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
     return pbs
 
 
+async def _store_analysis(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    analysis_type: str,
+    stats: dict,
+    analysis_text: str,
+    **extra_fields,
+) -> LlmAnalysis:
+    """Create and store an LlmAnalysis record, then return it."""
+    from datetime import date as date_type
+
+    record = LlmAnalysis(
+        user_id=user_id,
+        analysis_type=analysis_type,
+        analysis_date=date_type.today(),
+        stats_json=_make_json_serializable(stats),
+        analysis_text=analysis_text,
+        model_used=GEMINI_MODEL,
+        **extra_fields,
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    return record
+
+
 async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """Compile a comprehensive JSON payload of the user's cycling stats for the last 4 weeks.
 
@@ -626,8 +652,8 @@ Be specific, reference actual numbers from the data, and provide science-backed 
                 logger.warning(
                     "Gemini cycling analysis truncated (finish_reason=%s)", finish
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Gemini response parsing failed (non-critical): %s", e)
 
     return response.text
 
@@ -640,23 +666,9 @@ async def run_llm_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
     3. Create and store LlmAnalysis record
     4. Return the record
     """
-    from datetime import date as date_type
-
     stats = await compile_cycling_stats(db, user_id)
     analysis_text = await analyze_with_gemini(stats)
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        analysis_type="cycling",
-        analysis_date=date_type.today(),
-        stats_json=stats,
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+    return await _store_analysis(db, user_id, "cycling", stats, analysis_text)
 
 
 async def compile_activity_context(
@@ -926,8 +938,8 @@ Be specific and reference actual numbers from the data. Keep the total response 
                 logger.warning(
                     "Gemini activity analysis truncated (finish_reason=%s)", finish
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Gemini response parsing failed (non-critical): %s", e)
 
     return response.text
 
@@ -953,20 +965,7 @@ async def run_activity_ai_analysis(
         return None
 
     analysis_text = await analyze_activity_with_gemini(context)
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        activity_id=activity_id,
-        analysis_type="activity",
-        analysis_date=date_type.today(),
-        stats_json=context,
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+    return await _store_analysis(db, user_id, "activity", context, analysis_text, activity_id=activity_id)
 
 
 # ── Per-Lifting-Session AI Analysis ──────────────────────────────────────────
@@ -1282,8 +1281,8 @@ Be specific and reference actual numbers from the data. Keep the total response 
                 logger.warning(
                     "Gemini lifting analysis truncated (finish_reason=%s)", finish
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Gemini response parsing failed (non-critical): %s", e)
 
     return response.text
 
@@ -1309,20 +1308,7 @@ async def run_lifting_session_ai_analysis(
         return None
 
     analysis_text = await analyze_lifting_session_with_gemini(context)
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        lifting_session_id=session_id,
-        analysis_type="lifting_session",
-        analysis_date=date_type.today(),
-        stats_json=context,
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+    return await _store_analysis(db, user_id, "lifting_session", context, analysis_text, lifting_session_id=session_id)
 
 
 # ── Health AI Analysis ──────────────────────────────────────────────────────
@@ -1675,8 +1661,8 @@ Be specific, reference actual numbers from the data. Keep the total response und
                 logger.warning(
                     "Gemini health analysis truncated (finish_reason=%s)", finish
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Gemini response parsing failed (non-critical): %s", e)
 
     return response.text
 
@@ -1693,19 +1679,7 @@ async def run_health_ai_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAna
 
     stats = await compile_health_stats(db, user_id)
     analysis_text = await analyze_health_with_gemini(stats)
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        analysis_type="health",
-        analysis_date=date_type.today(),
-        stats_json=stats,
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+    return await _store_analysis(db, user_id, "health", stats, analysis_text)
 
 
 # ── Event AI Analysis ───────────────────────────────────────────────────────
@@ -1953,8 +1927,8 @@ Be specific, reference actual numbers from the data. Tailor advice to the days-u
                 logger.warning(
                     "Gemini event analysis truncated (finish_reason=%s)", finish
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Gemini response parsing failed (non-critical): %s", e)
 
     return response.text
 
@@ -1973,24 +1947,9 @@ async def run_event_ai_analysis(
 
     Returns None if the event doesn't exist.
     """
-    from datetime import date as date_type
-
     stats = await compile_event_stats(db, user_id, event_id)
     if stats is None:
         return None
 
     analysis_text = await analyze_event_with_gemini(stats)
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        event_id=event_id,
-        analysis_type="event",
-        analysis_date=date_type.today(),
-        stats_json=stats,
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+    return await _store_analysis(db, user_id, "event", stats, analysis_text, event_id=event_id)
