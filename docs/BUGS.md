@@ -359,7 +359,7 @@
 - **Status:** FIXED
 - **File:** `backend/app/services/whoop.py`, `backend/app/tasks/scheduler.py`
 - **Issue:** All Whoop sync functions passed no date filter, defaulting to limit=500 records. Every 30-min run fetched up to 500 cycles + 500 sleep + 500 workouts. Recovery second-pass had no date bound, re-scanning all history forever. Took 21+ minutes per run.
-- **Fix:** Added `last_synced_at` watermark to `OAuthConnection` (migration 031). Scheduler passes `start=` filters derived from watermark (−24h overlap). Recovery second-pass bounded to cycle dates fetched this run.
+- **Fix:** Added `last_synced_at` watermark to `OAuthConnection` (migration 031). Scheduler passes `start=` filters derived from watermark (−24h overlap). Recovery second-pass bounded to the incremental window (start → today), covering stale records from prior runs (see BUG-087).
 
 ### BUG-054: Wahoo Sync Walks Full History Every 30 Minutes
 - **Status:** FIXED
@@ -577,4 +577,10 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **Files:** `backend/app/services/whoop.py` (`sync_whoop_cycles`, `backfill_whoop_data`), `scripts/fix_whoop_recovery_dates.py`
 - **Issue:** Whoop cycles span a sleep period from one evening to wake-up the next day (or later for multi-day cycles). Recovery belongs to the waking day. Both `sync_whoop_cycles` and `backfill_whoop_data` derived `metric_date` from `cycle.start` (bedtime) instead of `cycle.end` (wake time), shifting recovery records ~1 day earlier. This fix was repeatedly reverted by concurrent sessions.
 - **Fix:** In both functions, extract `end_str = cycle.get("end")` and use `date_str = end_str or start_str` for `metric_date` computation. A data migration script (`scripts/fix_whoop_recovery_dates.py`) corrects existing records by detecting start-based dates and re-creating them at end-based dates.
+
+### BUG-087: Whoop Recovery Second-Pass Backfill Excludes Stale Dates Outside Current Window
+- **Status:** FIXED
+- **File:** `backend/app/services/whoop.py:494-510`
+- **Issue:** The second-pass recovery backfill in `sync_whoop_cycles()` derived its date bounds (`pass_min`/`pass_max`) from `synced_dates` — the dates of cycles fetched *this run*. But Whoop cycles are filtered by `cycle.start` (bedtime) while `metric_date` is derived from `cycle.end` (wake time). A cycle producing `metric_date = D` has `cycle.start` on the evening of `D-1`. Once `last_synced_at` advances past `D+23:00`, subsequent syncs' 24h `start` filter exceeds the cycle's start time, so the cycle is no longer re-fetched. However, the `DailyMetric` for day `D` (created in an earlier sync when recovery wasn't scored yet) persists with `recovery_score=None` and `raw_data` containing the cycle ID. The backfill should catch this stale record, but it only searched within `synced_dates[0] → synced_dates[-1]` — the dates of this run's cycles. If the cycle for day `D` wasn't fetched this run, `D` was excluded from the backfill range, and the recovery was permanently missed until a full backfill.
+- **Fix:** Prioritise the `start` filter date as `pass_min` and `date.today()` as `pass_max` when `start` is available (normal scheduled sync), covering the full incremental window. The narrower `synced_dates` range is now only used as a fallback when `start` is None (first sync, no watermark).
 

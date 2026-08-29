@@ -118,9 +118,9 @@ async def refresh_if_needed(
 ) -> OAuthConnection:
     """Refresh the Whoop access token if it's expired (hardened path).
 
-    Row-locked and health-state-aware via
-    :func:`app.services.connection_health.refresh_connection`.
-Uses the JWT ``exp`` claim (with DB fallback) for expiry detection.
+        Row-locked and health-state-aware via
+        :func:`app.services.connection_health.refresh_connection`.
+    Uses the JWT ``exp`` claim (with DB fallback) for expiry detection.
     """
     from app.integrations.whoop_client import whoop_client
     from app.services.connection_health import refresh_connection
@@ -241,9 +241,7 @@ async def _backfill_missing_recovery(
     if date_max is not None:
         conditions.append(DailyMetric.metric_date <= date_max)
 
-    missing_recovery_result = await db.execute(
-        select(DailyMetric).where(*conditions)
-    )
+    missing_recovery_result = await db.execute(select(DailyMetric).where(*conditions))
     missing_records = list(missing_recovery_result.scalars().all())
     backfilled = 0
     for dm in missing_records:
@@ -257,7 +255,9 @@ async def _backfill_missing_recovery(
             for _retry in range(3):
                 await asyncio.sleep(_RECOVERY_FETCH_DELAY_SECONDS)
                 try:
-                    recovery = await whoop_client.get_recovery_for_cycle(token, cycle_id)
+                    recovery = await whoop_client.get_recovery_for_cycle(
+                        token, cycle_id
+                    )
                     break
                 except PermanentAuthError:
                     raise
@@ -272,7 +272,9 @@ async def _backfill_missing_recovery(
                         continue
                     raise
             else:
-                logger.warning(f"Backfill recovery exhausted retries for cycle {cycle_id}")
+                logger.warning(
+                    f"Backfill recovery exhausted retries for cycle {cycle_id}"
+                )
                 continue
 
             if recovery and recovery.get("score_state") == "SCORED":
@@ -491,16 +493,19 @@ async def sync_whoop_cycles(
         if metric:
             synced.append(metric)
 
-    # Second pass: fill in missing recovery data for existing DailyMetric records
-    # within the date range of cycles fetched this run.  This catches days where
-    # recovery fetch previously failed (rate limit, network, etc.) without
-    # re-scanning the entire history every 30 minutes.
-    if synced:
-        synced_dates = sorted({m.metric_date for m in synced})
-        pass_min, pass_max = synced_dates[0], synced_dates[-1]
-    elif start:
+    # Second pass: fill in missing recovery data for existing DailyMetric records.
+    # The range must cover the full incremental window (start → today), not just
+    # the dates of cycles fetched *this* run. A cycle whose Whoop `start` (bedtime)
+    # falls before the start filter won't be re-fetched, but its DailyMetric
+    # (created in an earlier sync when recovery wasn't scored yet) may still be
+    # in the window with recovery_score=None. Those stale records must stay in
+    # the backfill scope. See BUG-087.
+    if start:
         pass_min = datetime.fromisoformat(start.replace("Z", "+00:00")).date()
         pass_max = date.today()
+    elif synced:
+        synced_dates = sorted({m.metric_date for m in synced})
+        pass_min, pass_max = synced_dates[0], synced_dates[-1]
     else:
         pass_min = pass_max = None
 
@@ -514,8 +519,7 @@ async def sync_whoop_cycles(
         synced_dates = sorted({m.metric_date for m in synced})
         min_date, max_date = synced_dates[0], synced_dates[-1]
         all_days = {
-            min_date + timedelta(days=i)
-            for i in range((max_date - min_date).days + 1)
+            min_date + timedelta(days=i) for i in range((max_date - min_date).days + 1)
         }
         gap_days = sorted(all_days - set(synced_dates))
         if gap_days:
@@ -1354,7 +1358,9 @@ async def backfill_whoop_data(
 
                 recovery = None
                 for _retry in range(3):
-                    await asyncio.sleep(_RECOVERY_FETCH_DELAY_SECONDS)  # Rate limit: space recovery fetches
+                    await asyncio.sleep(
+                        _RECOVERY_FETCH_DELAY_SECONDS
+                    )  # Rate limit: space recovery fetches
                     try:
                         recovery = await whoop_client.get_recovery_for_cycle(
                             token, cycle_id
@@ -1456,7 +1462,9 @@ async def backfill_whoop_data(
     # Second pass: retry recovery fetches for records synced without complete
     # recovery data (rate limits, transient errors). Scoped to the backfill window.
     backfilled = await _backfill_missing_recovery(
-        db, user_id, token,
+        db,
+        user_id,
+        token,
         date_min=start_date.date() if start_date else None,
         date_max=end_date.date() if end_date else None,
     )
