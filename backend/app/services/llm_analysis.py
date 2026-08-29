@@ -1,4 +1,9 @@
-"""LLM Analysis service — compile cycling stats and analyze with Google Gemini."""
+"""LLM Analysis service — compile domain stats and analyze with Google Gemini.
+
+Domain-specific logic (compile_* and analyze_* functions) lives in this module.
+Shared utilities (Gemini client, record storage, JSON serialization) are in
+``app.services.llm_base``.
+"""
 
 import json
 import logging
@@ -12,91 +17,15 @@ from app.models.activity import Activity
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import PersonalRecord
 from app.models.llm_analysis import LlmAnalysis
-
-logger = logging.getLogger(__name__)
-
-# Canonical Gemini model name — used for all API calls and stored in model_used field.
-GEMINI_MODEL = "gemini-3.6-flash"
-
-# Timeout (seconds) for Gemini API calls.
-GEMINI_TIMEOUT_S = 60
-
-
-def _make_json_serializable(obj):
-    """Recursively convert date/datetime objects to ISO strings."""
-    if isinstance(obj, dict):
-        return {k: _make_json_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_make_json_serializable(item) for item in obj]
-    elif isinstance(obj, (date, datetime)):
-        return obj.isoformat()
-    return obj
-
-
-async def _big_lift_pbs(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
-    """All-time best estimated-1RM PR per big lift, with the date achieved.
-
-    Gives the LLM historical strength context even when the PBs are months old
-    (recent_prs only covers the last 4 weeks).
-    """
-    from app.services.exercise_db import BIG_3_ORDER
-
-    result = await db.execute(
-        select(PersonalRecord).where(
-            PersonalRecord.user_id == user_id,
-            PersonalRecord.exercise_name.in_(BIG_3_ORDER),
-            PersonalRecord.record_type == "1rm",
-            PersonalRecord.estimated_1rm.isnot(None),
-        )
-    )
-    best: dict[str, PersonalRecord] = {}
-    for pr in result.scalars().all():
-        current = best.get(pr.exercise_name)
-        if current is None or (pr.estimated_1rm or 0) > (current.estimated_1rm or 0):
-            best[pr.exercise_name] = pr
-
-    pbs = []
-    for lift in BIG_3_ORDER:
-        pr = best.get(lift)
-        if pr is not None:
-            pbs.append(
-                {
-                    "exercise": pr.exercise_name,
-                    "weight_kg": pr.weight_kg,
-                    "reps": pr.reps,
-                    "estimated_1rm": round(pr.estimated_1rm, 1)
-                    if pr.estimated_1rm is not None
-                    else None,
-                    "date_achieved": str(pr.achieved_date),
-                }
-            )
-    return pbs
-
-
-async def _store_analysis(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    analysis_type: str,
-    stats: dict,
-    analysis_text: str,
-    **extra_fields,
-) -> LlmAnalysis:
-    """Create and store an LlmAnalysis record, then return it."""
-    from datetime import date as date_type
-
-    record = LlmAnalysis(
-        user_id=user_id,
-        analysis_type=analysis_type,
-        analysis_date=date_type.today(),
-        stats_json=_make_json_serializable(stats),
-        analysis_text=analysis_text,
-        model_used=GEMINI_MODEL,
-        **extra_fields,
-    )
-    db.add(record)
-    await db.flush()
-    await db.refresh(record)
-    return record
+from app.services.llm_base import (
+    GEMINI_MODEL,
+    GEMINI_TIMEOUT_S,
+    _big_lift_pbs,
+    _call_gemini,
+    _make_json_serializable,
+    _store_analysis,
+    logger,
+)
 
 
 async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
@@ -551,16 +480,6 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
 async def analyze_with_gemini(stats_json: dict) -> str:
     """Call Google Gemini API to analyze cycling stats and return the analysis text."""
-    from google import genai
-    from google.genai import types
-
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not configured")
-
     prompt = f"""You are an expert cycling coach, strength coach, and sports scientist. Analyze the following comprehensive training data and provide a detailed performance assessment.
 
 ## Training Data
@@ -614,48 +533,7 @@ Provide your analysis in the following structure:
 
 Be specific, reference actual numbers from the data, and provide science-backed explanations. Keep the total response under 1000 words."""
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
-        logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response. Please try again.")
-
-    # Log if response was truncated due to token limit
-    try:
-        if response.candidates and response.candidates[0].finish_reason:
-            finish = str(response.candidates[0].finish_reason)
-            if "MAX" in finish.upper():
-                logger.warning(
-                    "Gemini cycling analysis truncated (finish_reason=%s)", finish
-                )
-    except Exception as e:
-        logger.debug("Gemini response parsing failed (non-critical): %s", e)
-
-    return response.text
+    return await _call_gemini(prompt, "cycling")
 
 
 async def run_llm_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
@@ -844,16 +722,6 @@ async def compile_activity_context(
 
 async def analyze_activity_with_gemini(context: dict) -> str:
     """Call Google Gemini API to analyze a single ride with training context."""
-    from google import genai
-    from google.genai import types
-
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not configured")
-
     prompt = f"""You are an expert cycling coach and sports scientist. Analyze the following individual ride data in the context of the rider's recent training.
 
 ## Ride Data
@@ -901,47 +769,7 @@ Provide a detailed analysis of THIS specific ride in the following structure:
 
 Be specific and reference actual numbers from the data. Keep the total response under 600 words."""
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
-        logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response. Please try again.")
-
-    try:
-        if response.candidates and response.candidates[0].finish_reason:
-            finish = str(response.candidates[0].finish_reason)
-            if "MAX" in finish.upper():
-                logger.warning(
-                    "Gemini activity analysis truncated (finish_reason=%s)", finish
-                )
-    except Exception as e:
-        logger.debug("Gemini response parsing failed (non-critical): %s", e)
-
-    return response.text
+    return await _call_gemini(prompt, "activity")
 
 
 async def run_activity_ai_analysis(
@@ -958,8 +786,6 @@ async def run_activity_ai_analysis(
 
     Returns None if the activity doesn't exist.
     """
-    from datetime import date as date_type
-
     context = await compile_activity_context(db, user_id, activity_id)
     if context is None:
         return None
@@ -1185,16 +1011,6 @@ async def compile_lifting_session_context(
 
 async def analyze_lifting_session_with_gemini(context: dict) -> str:
     """Call Google Gemini API to analyze a single lifting session with training context."""
-    from google import genai
-    from google.genai import types
-
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not configured")
-
     prompt = f"""You are an expert strength coach and sports scientist. Analyze the following lifting session data in the context of the athlete's recent training.
 
 ## Session Summary
@@ -1244,47 +1060,7 @@ Provide a detailed analysis of THIS specific lifting session in the following st
 
 Be specific and reference actual numbers from the data. Keep the total response under 600 words."""
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
-        logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response. Please try again.")
-
-    try:
-        if response.candidates and response.candidates[0].finish_reason:
-            finish = str(response.candidates[0].finish_reason)
-            if "MAX" in finish.upper():
-                logger.warning(
-                    "Gemini lifting analysis truncated (finish_reason=%s)", finish
-                )
-    except Exception as e:
-        logger.debug("Gemini response parsing failed (non-critical): %s", e)
-
-    return response.text
+    return await _call_gemini(prompt, "lifting session")
 
 
 async def run_lifting_session_ai_analysis(
@@ -1301,8 +1077,6 @@ async def run_lifting_session_ai_analysis(
 
     Returns None if the session doesn't exist.
     """
-    from datetime import date as date_type
-
     context = await compile_lifting_session_context(db, user_id, session_id)
     if context is None:
         return None
@@ -1567,16 +1341,6 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
 async def analyze_health_with_gemini(stats_json: dict) -> str:
     """Call Google Gemini API to analyze health data and return analysis text."""
-    from google import genai
-    from google.genai import types
-
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not configured")
-
     prompt = f"""You are an expert sports medicine physician and health data analyst. Analyze the following health and wellness data and provide a detailed interpretation.
 
 ## Health Data
@@ -1624,47 +1388,7 @@ Provide a narrative health interpretation (not just threshold alerts) in the fol
 
 Be specific, reference actual numbers from the data. Keep the total response under 800 words."""
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
-        logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response. Please try again.")
-
-    try:
-        if response.candidates and response.candidates[0].finish_reason:
-            finish = str(response.candidates[0].finish_reason)
-            if "MAX" in finish.upper():
-                logger.warning(
-                    "Gemini health analysis truncated (finish_reason=%s)", finish
-                )
-    except Exception as e:
-        logger.debug("Gemini response parsing failed (non-critical): %s", e)
-
-    return response.text
+    return await _call_gemini(prompt, "health")
 
 
 async def run_health_ai_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
@@ -1833,16 +1557,6 @@ async def compile_event_stats(
 
 async def analyze_event_with_gemini(stats_json: dict) -> str:
     """Call Google Gemini API to analyze event preparation data."""
-    from google import genai
-    from google.genai import types
-
-    from app.config import get_settings
-
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not configured")
-
     prompt = f"""You are an expert cycling coach and race strategist. Analyze the following event and training data to provide a comprehensive race preparation plan.
 
 ## Event & Training Data
@@ -1890,47 +1604,7 @@ Provide a detailed race/event preparation analysis in the following structure:
 
 Be specific, reference actual numbers from the data. Tailor advice to the days-until-event timeframe. Keep the total response under 800 words."""
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
-        logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response. Please try again.")
-
-    try:
-        if response.candidates and response.candidates[0].finish_reason:
-            finish = str(response.candidates[0].finish_reason)
-            if "MAX" in finish.upper():
-                logger.warning(
-                    "Gemini event analysis truncated (finish_reason=%s)", finish
-                )
-    except Exception as e:
-        logger.debug("Gemini response parsing failed (non-critical): %s", e)
-
-    return response.text
+    return await _call_gemini(prompt, "event")
 
 
 async def run_event_ai_analysis(
