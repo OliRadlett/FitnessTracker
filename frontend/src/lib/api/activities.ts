@@ -1,5 +1,5 @@
 import { apiFetch, apiUpload } from './fetch';
-import type { Activity, ActivityContext, ActivityDetail, ActivityFilters, LlmAnalysis, MergeThresholdResult, RideAnalysis } from './types';
+import type { Activity, ActivityContext, ActivityDetail, ActivityFilters, ActivitySummary, LlmAnalysis, MergeThresholdResult, RideAnalysis } from './types';
 
 export async function getActivities(filters: ActivityFilters = {}): Promise<Activity[]> {
   const params = new URLSearchParams();
@@ -10,6 +10,17 @@ export async function getActivities(filters: ActivityFilters = {}): Promise<Acti
   });
   const query = params.toString();
   return apiFetch<Activity[]>(`/api/v1/activities${query ? `?${query}` : ''}`);
+}
+
+export async function getActivitySummary(filters: ActivityFilters = {}): Promise<ActivitySummary> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '' && !['sort_by', 'sort_order', 'limit', 'offset'].includes(key)) {
+      params.append(key, String(value));
+    }
+  });
+  const query = params.toString();
+  return apiFetch<ActivitySummary>(`/api/v1/activities/summary${query ? `?${query}` : ''}`);
 }
 
 export async function getActivity(id: string): Promise<ActivityDetail> {

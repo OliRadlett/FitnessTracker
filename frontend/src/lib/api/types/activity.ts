@@ -116,6 +116,13 @@ export interface ActivityFilters {
   offset?: number;
 }
 
+export interface ActivitySummary {
+  count: number;
+  total_distance_meters: number;
+  total_duration_seconds: number;
+  total_tss: number;
+}
+
 export interface LinkedActivity {
   id: string;
   source: string;
