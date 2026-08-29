@@ -571,3 +571,10 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **File:** `backend/app/services/whoop.py` (`sync_whoop_sleep`)
 - **Issue:** The Whoop sleep sync stored every SCORED sleep record including daytime naps, inflating overnight sleep totals in the calendar/dashboard. Whoop marks naps with the record-level `nap` boolean.
 - **Fix:** Skip records where `record.get("nap")` is truthy before upserting into `SleepLog`.
+
+### BUG-086: Whoop Recovery Dates Assigned to Wrong Day (sleep start vs wake end)
+- **Status:** FIXED
+- **Files:** `backend/app/services/whoop.py` (`sync_whoop_cycles`, `backfill_whoop_data`), `scripts/fix_whoop_recovery_dates.py`
+- **Issue:** Whoop cycles span a sleep period from one evening to wake-up the next day (or later for multi-day cycles). Recovery belongs to the waking day. Both `sync_whoop_cycles` and `backfill_whoop_data` derived `metric_date` from `cycle.start` (bedtime) instead of `cycle.end` (wake time), shifting recovery records ~1 day earlier. This fix was repeatedly reverted by concurrent sessions.
+- **Fix:** In both functions, extract `end_str = cycle.get("end")` and use `date_str = end_str or start_str` for `metric_date` computation. A data migration script (`scripts/fix_whoop_recovery_dates.py`) corrects existing records by detecting start-based dates and re-creating them at end-based dates.
+

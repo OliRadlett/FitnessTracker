@@ -1,5 +1,5 @@
 // FitTrack Service Worker — runtime caching (no build-time precache)
-const CACHE_NAME = 'fittrack-v1';
+const CACHE_NAME = 'fittrack-v2';
 const OFFLINE_URL = '/fittrack';
 
 // Install: cache the app shell
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() => caches.match(OFFLINE_URL))
+        .catch(() => caches.match(OFFLINE_URL) || fetch(request))
     );
     return;
   }
@@ -60,22 +60,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API GETs: network-first, cache fallback (last-seen data when offline)
+  // API GETs: network-only (never cache API responses — auth tokens vary per user)
   if (url.pathname.startsWith('/fittrack/api/v1/') || url.pathname.includes('/api/v1/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(request))
-    );
+    event.respondWith(fetch(request));
     return;
   }
 
   // Everything else: network-first
-  event.respondWith(fetch(request).catch(() => caches.match(request)));
+  event.respondWith(
+    fetch(request).catch(() => caches.match(request).then((cached) => cached || new Response(null, { status: 503 })))
+  );
 });

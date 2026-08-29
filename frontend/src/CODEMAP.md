@@ -25,7 +25,7 @@
 | `fetch.ts` | — | `apiFetch`, `apiFetchWithHeaders`, `apiUpload`, `useAuthFetch` hook |
 | `types.ts` | — | Barrel re-exports from `types/` domain modules |
 | `types/llm.ts` | — | `LlmAnalysis`, `LlmAnalysisSummary` interfaces |
-| `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis` |
+| `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis`, `getActivitySummary` |
 | `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `getActiveSession`, `updateSession`, `addSet`, `deleteSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
 | `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |

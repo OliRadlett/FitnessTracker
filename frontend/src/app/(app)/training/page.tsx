@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -100,7 +100,23 @@ export default function TrainingPage() {
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
   });
 
+  // Auto-select the most recent active plan on initial load
+  useEffect(() => {
+    if (plans && !selectedPlanId) {
+      const activePlans = plans.filter(p => p.status === 'active')
+        .sort((a, b) => {
+          const aTime = new Date(a.updated_at ?? a.start_date).getTime();
+          const bTime = new Date(b.updated_at ?? b.start_date).getTime();
+          return bTime - aTime;
+        });
+      if (activePlans.length > 0) {
+        setSelectedPlanId(activePlans[0].id);
+      }
+    }
+  }, [plans, selectedPlanId]);
+
   const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
+    queryKey: ['training-plan', selectedPlanId],
     queryKey: ['training-plan', selectedPlanId],
     queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${selectedPlanId}`),
     enabled: !!selectedPlanId,

@@ -110,7 +110,6 @@ export default function CyclingPage() {
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -124,7 +123,6 @@ export default function CyclingPage() {
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
     queryKey: ['power-vs-hr'],
     queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -137,7 +135,6 @@ export default function CyclingPage() {
   const { data: chartPowerCurve } = useQuery<ChartData>({
     queryKey: ['chart-stream-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -146,7 +143,6 @@ export default function CyclingPage() {
   const { data: chartPowerComparison } = useQuery<ChartData>({
     queryKey: ['chart-power-comparison', comparisonDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 
@@ -160,7 +156,6 @@ export default function CyclingPage() {
   const { data: chartDailyTss } = useQuery<ChartData>({
     queryKey: ['chart-daily-tss', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 120_000,
   });
 
@@ -237,7 +232,6 @@ export default function CyclingPage() {
   const { data: chartWeightTrend } = useQuery<ChartData>({
     queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
-    enabled: visibleSections.has('powerCurve'),
     staleTime: 300_000,
   });
 

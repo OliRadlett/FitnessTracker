@@ -85,6 +85,15 @@ class ActivityListParams(BaseModel):
     offset: int = 0
 
 
+class ActivitySummary(BaseModel):
+    """Aggregate totals across all activities matching the filter criteria."""
+
+    count: int
+    total_distance_meters: float
+    total_duration_seconds: float
+    total_tss: float
+
+
 # ── Activity Stream ───────────────────────────────────────────────────────────
 
 
