@@ -115,8 +115,7 @@ export default function TrainingPage() {
     }
   }, [plans, selectedPlanId]);
 
-  const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
-    queryKey: ['training-plan', selectedPlanId],
+   const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
     queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${selectedPlanId}`),
     enabled: !!selectedPlanId,
