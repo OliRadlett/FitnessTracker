@@ -357,13 +357,17 @@ async def sync_whoop_cycles(
         if not score:
             continue
 
-        # Extract date from cycle start
+        # A Whoop cycle spans the sleep that begins one evening to the wake-up
+        # the next day (or later for multi-day cycles). Recovery belongs to the
+        # waking day, so metric_date should be the end date, not the start date.
         start_str = cycle.get("start")
-        if not start_str:
+        end_str = cycle.get("end")
+        date_str = end_str or start_str
+        if not date_str:
             continue
         try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            metric_date = start_dt.date()
+            date_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            metric_date = date_dt.date()
         except (ValueError, AttributeError):
             continue
 
@@ -1319,12 +1323,15 @@ async def backfill_whoop_data(
         if not score:
             continue
 
+        # A Whoop cycle spans sleep→wake; recovery belongs to the waking day.
         start_str = cycle.get("start")
-        if not start_str:
+        end_str = cycle.get("end")
+        date_str = end_str or start_str
+        if not date_str:
             continue
         try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            metric_date = start_dt.date()
+            date_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            metric_date = date_dt.date()
         except (ValueError, AttributeError):
             continue
 
