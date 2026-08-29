@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type {
   TrainingPlan,
   TrainingPlanDay,
@@ -902,7 +902,6 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
-  const queryClient = useQueryClient();
   const { authFetch } = useAuthFetch();
 
   const { data: warmupTemplates } = useQuery({

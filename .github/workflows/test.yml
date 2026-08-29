@@ -111,6 +111,10 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      - name: Run typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
       - name: Build
         working-directory: frontend
         run: npm run build

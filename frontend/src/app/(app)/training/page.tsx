@@ -100,18 +100,18 @@ export default function TrainingPage() {
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
   });
 
-  const { data: selectedPlan, isLoading: planLoading, isError: planError, error: planErrorMessage } = useQuery<TrainingPlan>({
+  const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
     queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${selectedPlanId}`),
     enabled: !!selectedPlanId,
   });
 
-  const { data: events, isError: eventsError, error: eventsErrorMessage } = useQuery<Event[]>({
+  const { data: events } = useQuery<Event[]>({
     queryKey: ['events', 'upcoming'],
     queryFn: () => authFetch<Event[]>('/api/v1/events?upcoming_only=true'),
   });
 
-  const { data: periodizationChart, isError: chartError, error: chartErrorMessage } = useQuery<ChartData>({
+  const { data: periodizationChart } = useQuery<ChartData>({
     queryKey: ['chart-periodization'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
   });

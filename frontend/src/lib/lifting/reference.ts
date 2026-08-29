@@ -1,4 +1,4 @@
-import type { LiftingSet, LiftingSession, PersonalRecord } from '@/lib/api/types';
+import type { LiftingSession, PersonalRecord } from '@/lib/api/types';
 
 // ─── Estimated 1RM (Brzycki) ─────────────────────────────────────────────────
 

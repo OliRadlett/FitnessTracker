@@ -1,4 +1,3 @@
-import { apiFetch } from './fetch';
 import type {
   LiftingSession,
   LiftingSet,

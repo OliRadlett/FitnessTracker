@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import type { RouteSummary } from '@/lib/api/types';
 import { Card } from '@/components/ui/Card';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';

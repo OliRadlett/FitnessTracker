@@ -83,10 +83,6 @@ export function TimelineView({ startDate, endDate, calendarData }: TimelineViewP
 
   // Compute max values for relative sizing
   const maxTss = Math.max(...days.map((d) => d.tss), 1);
-  const maxDistance = Math.max(
-    ...days.flatMap((d) => d.activities.map((a) => a.distance_meters ?? 0)),
-    1,
-  );
 
   // Color intensity for daily TSS bar
   function tssBarWidth(tss: number): string {

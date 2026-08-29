@@ -96,7 +96,6 @@ test.describe('Routes Page', () => {
     await routeCard.click();
     await page.waitForTimeout(1000);
 
-    const downloadBtn = page.getByRole('button', { name: /download gpx|gpx/i });
     // May or may not be visible depending on route detail
     await expect(page.locator('main h1')).toContainText(/routes/i);
   });

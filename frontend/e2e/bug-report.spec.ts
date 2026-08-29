@@ -7,7 +7,7 @@
  * Run: npx playwright test e2e/bug-report.spec.ts --reporter=list
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, Page } from '@playwright/test';
 
 const BASE = 'https://localhost/fittrack';
 

@@ -1,10 +1,9 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { RouteSummary, RouteData } from '@/lib/api/types';
+import type { RouteSummary } from '@/lib/api/types';
 import { formatDistance } from '@/lib/utils';
 import { computeDifficulty, fmtElevation } from '@/lib/routeUtils';
-import { QualityBadge } from '@/components/routes/QualityBadge';
 import { useRoutesStore } from '@/lib/stores/routesStore';
 
 export function RoutesMapView({
