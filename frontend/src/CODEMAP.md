@@ -29,7 +29,7 @@
 | `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `getActiveSession`, `updateSession`, `addSet`, `deleteSet`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
 | `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
 | `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
-| `routes.ts` | `/api/v1/routes/` | `fetchRoutes`, `createRoute`, `uploadGpx`, `mergeRoutes`, **`getRouteHistory`** (Phase 8B: `GET /{id}/history` — rides + PB) |
+| `routes.ts` | `/api/v1/routes/` | `getRoutes`, `getRoute`, `deleteRoute`, `updateRoute`, `syncRoutes`, `getRouteHistory`, `downloadRouteGpx`, `uploadRouteGpx` + new: **tags CRUD** (`getTags`, `createTag`, `deleteTag`, `addRouteTag`, `removeRouteTag`), **collections** (`getCollections`, `createCollection`, `createSmartCollection`, `addToCollection`, `removeFromCollection`), **quality** (`getRouteQualityScores`, `recomputeRouteQuality`), **effort** (`getEffortEstimate`, `postEffortEstimate`), **duplicates** (`getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`), **bulk** (`bulkExportGpx`, `bulkDeleteRoutes`) |
 | `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
 | `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`), `getTsbProjection` (`GET /tsb/{planId}?days=N`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TsbProjectionResponse`, `TrendInfo`, `ProjectionPoint`, `TsbProjectionPoint` |
 | `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |
@@ -105,14 +105,27 @@
 |-----------|---------|
 | `HealthAiAnalysisCard` | AI health analysis (HRV, sleep, recovery — on-demand Gemini) |
 
+### `routes/` — Route components
+| Component | Purpose |
+|-----------|---------|
+| `RoutesSidebar` | Collapsible tag/collection tree with smart collections, tag chips, drag-drop support |
+| `RouteFilterBar` | Unified filter bar with search, sort, advanced filters (distance, elevation, surface, quality, favorite), keyboard shortcuts |
+| `RoutesMapView` | Map-first browse with custom markers showing quality scores, popups with route info |
+| `RoutesListView` | Card-based list with route stats, difficulty badges, provider icons |
+| `RoutesGridView` | Grid of route cards for visual/mobile browsing, touch-friendly |
+| `RouteDetailPanel` | Slide-over detail panel with tabs (Overview, Map & Profile, History), edit/favorite/delete actions |
+| `QualityBadge` | Circular quality score indicator with color tiers (Excellent/Good/Average/Fair/Poor) |
+| `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
+| `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
+| `RouteHistorySection` | Ride history table with personal best summary |
+| `CompareRoutesModal` | Side-by-side route comparison with overlaid elevation profiles |
+
 ### `maps/` — Map components
 | Component | Purpose |
 |-----------|---------|
-| `RouteMap` | Leaflet map with route polyline |
+| `RouteMap` | Leaflet map with route polyline, start/end markers, isLoop indicator |
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
-
-### `activities/` — Activity page components
 | Component | Purpose |
 |-----------|---------|
 | `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
@@ -182,7 +195,7 @@
 - **Auth**: `useAuthFetch()` hook returns `{ authFetch, authFetchWithHeaders }` — injects JWT from session
 - **Data fetching**: React Query `useQuery` + `useMutation`. Query keys are string arrays like `['activities', filters]`
 - **Styling**: Tailwind with custom dark theme tokens. No CSS modules
-- **State**: Local `useState` for UI state. React Query for server state. No global state manager
+- **State**: Local `useState` for UI state. React Query for server state. Zustand stores for cross-component state (`lib/stores/routesStore.ts`: view mode, selection, tags, filters, detail tab, compare mode). No global Redux
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
 - **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-first navigations, stale-while-revalidate static, network-first API GETs with cache fallback), `PwaRegister.tsx` (production-only SW registration)
