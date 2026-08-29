@@ -108,7 +108,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | Task | Schedule | Notes |
 |------|----------|-------|
 | `sync_all_strava_activities` | 30 min | Incremental via `last_synced_at` watermark (−24h overlap). Also syncs Wahoo, backfills route links |
-| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to fetched date range |
+| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to incremental window (start → today) |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today). Also fires `goal_milestone` notifications on 50/75/100% crossings |
