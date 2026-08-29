@@ -253,6 +253,7 @@ class TrainingPlanSummary(BaseModel):
     event_id: uuid.UUID | None = None
     day_count: int = 0
     completed_days: int = 0
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

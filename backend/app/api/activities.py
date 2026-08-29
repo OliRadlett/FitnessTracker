@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, asc, cast, desc, func, select
+from sqlalchemy import Date, asc, case, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -25,6 +25,7 @@ from app.schemas.activity import (
     ActivityDetailRead,
     ActivityRead,
     ActivityStreamRead,
+    ActivitySummary,
     CalendarDayData,
     DailyMetricSummary,
     LinkedLiftingSessionSummary,
@@ -198,6 +199,88 @@ async def list_activities(
     return JSONResponse(
         content=[a.model_dump(mode="json") for a in enriched],
         headers={"X-Total-Count": str(total_count)},
+    )
+
+
+STRENGTH_SPORT_TYPES = ("weighttraining", "workout", "crossfit", "strength_training")
+
+
+@router.get("/summary", response_model=ActivitySummary)
+async def get_activity_summary(
+    sport_type: str | None = Query(None),
+    source: str | None = Query(None),
+    start_date_after: datetime | None = Query(None),
+    start_date_before: datetime | None = Query(None),
+    q: str | None = Query(None, description="Search activity name (case-insensitive)"),
+    min_distance: float | None = Query(None, ge=0),
+    max_distance: float | None = Query(None, ge=0),
+    min_duration: int | None = Query(None, ge=0),
+    max_duration: int | None = Query(None, ge=0),
+    min_tss: float | None = Query(None, ge=0),
+    max_tss: float | None = Query(None, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get aggregate totals for all activities matching the filter criteria.
+
+    Returns count, total distance, total duration, and total TSS across every
+    matching activity (not just a single paginated page). Strenth activities are
+    excluded from the distance total to match the frontend stats bar.
+    """
+    # Validate min/max pairs
+    if min_distance is not None and max_distance is not None and min_distance > max_distance:
+        raise HTTPException(status_code=422, detail="min_distance must be <= max_distance")
+    if min_duration is not None and max_duration is not None and min_duration > max_duration:
+        raise HTTPException(status_code=422, detail="min_duration must be <= max_duration")
+    if min_tss is not None and max_tss is not None and min_tss > max_tss:
+        raise HTTPException(status_code=422, detail="min_tss must be <= max_tss")
+
+    where = [Activity.user_id == current_user.id, Activity.source != "wahoo"]
+    if sport_type:
+        where.append(Activity.sport_type == sport_type)
+    if source:
+        where.append(Activity.source == source)
+    if start_date_after:
+        where.append(Activity.start_date >= start_date_after)
+    if start_date_before:
+        where.append(Activity.start_date <= start_date_before)
+    if q:
+        where.append(Activity.name.ilike(f"%{q}%"))
+    if min_distance is not None:
+        where.append(Activity.distance_meters >= min_distance)
+    if max_distance is not None:
+        where.append(Activity.distance_meters <= max_distance)
+    if min_duration is not None:
+        where.append(Activity.duration_seconds >= min_duration)
+    if max_duration is not None:
+        where.append(Activity.duration_seconds <= max_duration)
+    if min_tss is not None:
+        where.append(Activity.tss >= min_tss)
+    if max_tss is not None:
+        where.append(Activity.tss <= max_tss)
+
+    result = await db.execute(
+        select(
+            func.count(Activity.id).label("count"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Activity.sport_type.notin_(STRENGTH_SPORT_TYPES), Activity.distance_meters),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("total_distance"),
+            func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_duration"),
+            func.coalesce(func.sum(Activity.tss), 0).label("total_tss"),
+        ).where(*where)
+    )
+    row = result.one()
+    return ActivitySummary(
+        count=int(row.count or 0),
+        total_distance_meters=float(row.total_distance or 0),
+        total_duration_seconds=float(row.total_duration or 0),
+        total_tss=float(row.total_tss or 0),
     )
 
 

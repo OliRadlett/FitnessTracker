@@ -7,6 +7,7 @@ import type {
   Activity,
   ActivityContext,
   ActivityDetail,
+  ActivitySummary,
   CalendarDayData,
   ChartData,
   ActivityFilters,
@@ -425,6 +426,23 @@ export default function ActivitiesPage() {
     enabled: !!selectedActivityId,
   });
 
+  // Fetch aggregate totals across ALL matching activities (not just the current page)
+  const summaryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    Object.entries(effectiveFilters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '' && !['sort_by', 'sort_order', 'limit', 'offset'].includes(key)) {
+        params.append(key, String(value));
+      }
+    });
+    return params.toString();
+  }, [effectiveFilters]);
+
+  const { data: activitySummary } = useQuery<ActivitySummary>({
+    queryKey: ['activity-summary', summaryParams],
+    queryFn: () => authFetch<ActivitySummary>(`/api/v1/activities/summary${summaryParams ? `?${summaryParams}` : ''}`),
+    enabled: viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0,
+  });
+
   // Deep-linked activity that isn't in the currently loaded list (e.g. opened
   // from route history or calendar) — render its detail from the fetched record.
   const selectedActivity = useMemo(() => {
@@ -801,7 +819,10 @@ export default function ActivitiesPage() {
       {/* Summary Stats */}
       {viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && (
         <div className="space-y-2">
-          <SummaryStatsBar activities={displayActivities} />
+          <SummaryStatsBar
+            activities={displayActivities}
+            summary={activitySummary ?? undefined}
+          />
           {totalCount !== null && totalCount > displayActivities.length && (
             <p className="text-xs text-muted text-center">
               Showing {displayActivities.length} of {totalCount} activities
