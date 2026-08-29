@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.activities import _enrich_activity_read
 from app.database import get_db
 from app.models.lifting import LiftingSession
 from app.models.user import User
@@ -180,7 +181,7 @@ async def get_linkable_activities(
     activities = await lifting_service.find_linkable_activities(
         db, current_user.id, session_id
     )
-    return [ActivityRead.model_validate(a) for a in activities]
+    return [_enrich_activity_read(a) for a in activities]
 
 
 @router.post("/backfill-links")

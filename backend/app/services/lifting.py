@@ -310,7 +310,13 @@ async def find_linkable_activities(
     linked_ids = set(linked_result.scalars().all())
 
     result = await db.execute(
-        select(Activity).where(
+        select(Activity)
+        .options(
+            selectinload(Activity.sources),
+            selectinload(Activity.route),
+            selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
+        )
+        .where(
             Activity.user_id == user_id,
             Activity.source == "strava",
             Activity.sport_type.in_(
