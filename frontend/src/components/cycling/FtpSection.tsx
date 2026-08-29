@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import type { ChartData, FtpHistoryEntry, FtpEstimate, BackfillFtpResult, LifetimePBsResponse, CyclingProfile } from '@/lib/api';
+import type { ChartData, FtpHistoryEntry, FtpEstimate, LifetimePBsResponse, CyclingProfile } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 

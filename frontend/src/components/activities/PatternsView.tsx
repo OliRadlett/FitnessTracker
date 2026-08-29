@@ -60,7 +60,7 @@ interface PatternsViewProps {
   onPatternSelect: (filters: ActivityFilters) => void;
 }
 
-export function PatternsView({ activities, statsActivities, isLoading, onPatternSelect }: PatternsViewProps) {
+export function PatternsView({ activities, statsActivities, onPatternSelect }: PatternsViewProps) {
   const [selectedPattern, setSelectedPattern] = useState<string | null>(null);
 
   const combinedActivities = useMemo(() => {

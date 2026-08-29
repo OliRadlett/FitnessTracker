@@ -134,7 +134,6 @@ test.describe('Global — Loading States', () => {
       await page.goto(`https://localhost/fittrack${pageDef.path}`);
 
       // Should show some loading indicator (spinner or skeleton)
-      const loadingIndicator = page.locator('.animate-spin, .animate-pulse').first();
       // Loading may be very brief, so just check the page eventually loads
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(500);

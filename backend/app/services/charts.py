@@ -521,7 +521,6 @@ class ChartService:
         # Generate insights
         insights = []
         if zones:
-            total_time = sum(z["time_seconds"] for z in zones) or 1
             z2_pct = next((z["percentage"] for z in zones if z["zone"] == "Z2"), 0)
             z4_pct = next((z["percentage"] for z in zones if z["zone"] == "Z4"), 0)
             z5_pct = next((z["percentage"] for z in zones if z["zone"] == "Z5"), 0)
@@ -1040,12 +1039,6 @@ class ChartService:
         for i in range(len(hrv_values)):
             window = hrv_values[max(0, i - 29) : i + 1]
             rolling_30.append(round(sum(window) / len(window), 1))
-
-        # Personal baseline (±1 std dev from mean)
-        mean_hrv = sum(hrv_values) / len(hrv_values)
-        std_hrv = (
-            sum((v - mean_hrv) ** 2 for v in hrv_values) / len(hrv_values)
-        ) ** 0.5
 
         return ChartData(
             chart_type="line",

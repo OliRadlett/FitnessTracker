@@ -16,7 +16,7 @@ import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { goalProgressPct, goalAlignmentBadge } from '@/components/ui/GoalCard';
-import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 
 const SPORT_OPTIONS = [
   { value: '', label: 'All sports' },

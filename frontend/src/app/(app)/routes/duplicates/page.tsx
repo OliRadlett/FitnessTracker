@@ -14,8 +14,6 @@ import { Badge } from '@/components/ui/Badge';
 import { formatDistance } from '@/lib/utils';
 import { fmtElevation, computeDifficulty, DifficultyBadge } from '@/lib/routeUtils';
 import {
-  Trash2,
-  Check,
   X,
   GitMerge,
   RefreshCw,
@@ -24,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function DuplicatesPage() {
-  const { authFetch, token } = useAuthFetch();
+  const { token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const [autoMerging, setAutoMerging] = useState(false);
@@ -37,7 +35,7 @@ export default function DuplicatesPage() {
 
   const autoMergeMutation = useMutation({
     mutationFn: (threshold: number) => autoMergeDuplicates(threshold, token),
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
@@ -220,13 +218,6 @@ function DuplicatePairCard({
   onDismiss: (a: string, b: string) => void;
   isMerging: boolean;
 }) {
-  const scoreColor =
-    pair.score >= 0.9
-      ? 'text-warning'
-      : pair.score >= 0.75
-      ? 'text-yellow-400'
-      : 'text-muted';
-
   return (
     <Card>
       <div className="p-4">

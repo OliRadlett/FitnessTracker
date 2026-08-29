@@ -11,8 +11,8 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     echo=False,  # Use logging.getLogger("sqlalchemy.engine").setLevel(DEBUG) when needed
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
 )
 
 async_session_factory = async_sessionmaker(
@@ -55,8 +55,8 @@ async def task_session() -> AsyncGenerator[AsyncSession, None]:
     task_engine = create_async_engine(
         settings.database_url,
         echo=False,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
     )
     task_factory = async_sessionmaker(
         task_engine,

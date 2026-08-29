@@ -9,16 +9,6 @@ interface RideAnalysisCardProps {
   analysis: RideAnalysis;
 }
 
-const ZONE_COLORS: Record<string, string> = {
-  Z1: '#6b7280', // grey
-  Z2: '#3b82f6', // blue
-  Z3: '#22c55e', // green
-  Z4: '#eab308', // yellow
-  Z5: '#f97316', // orange
-  Z6: '#ef4444', // red
-  Z7: '#a855f7', // purple
-};
-
 function decouplingColor(pct: number): string {
   if (pct < 3) return 'text-positive';
   if (pct < 5) return 'text-warning';

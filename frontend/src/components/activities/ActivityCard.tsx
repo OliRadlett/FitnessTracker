@@ -115,7 +115,7 @@ export function ActivityCard({
         </div>
 
         {/* Connections Bar — PR/Plan/AI/Fuel badges */}
-        {context?.connections && Object.keys(context.connections).some(k => {
+        {context?.connections && Object.keys(context.connections).some(() => {
           const c = context.connections;
           return c.training_plan_day || (c.personal_records?.length ?? 0) > 0 || c.ai_analysis || c.fuel_plan || c.linked_lifting_session;
         }) && (

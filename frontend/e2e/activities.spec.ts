@@ -42,8 +42,6 @@ test.describe('Activities Page', () => {
   // ── View Mode Toggle ────────────────────────────────────────────────────
 
   test('list/week view toggle is present', async ({ authenticatedPage: page }) => {
-    const listBtn = page.getByRole('button', { name: /list/i });
-    const weekBtn = page.getByRole('button', { name: /week/i });
     // At least one view toggle should be visible
     const toggleCount = await page.locator('button').filter({ hasText: /list|week/i }).count();
     expect(toggleCount).toBeGreaterThanOrEqual(1);

@@ -195,7 +195,6 @@ async def get_cycling_metrics_summary(
     uid = current_user.id
     cutoff_7d = date.today() - timedelta(days=7)
     cutoff_28d = date.today() - timedelta(days=28)
-    cutoff_90d = date.today() - timedelta(days=90)
 
     # Recent cycling stats (7 days)
     result = await db.execute(

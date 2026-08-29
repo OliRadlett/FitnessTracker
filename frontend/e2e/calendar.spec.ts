@@ -66,7 +66,6 @@ test.describe('Calendar Page', () => {
 
   test('today is highlighted in the calendar', async ({ authenticatedPage: page }) => {
     // Today should have a distinctive style (ring, border, or background)
-    const todayCell = page.locator('[class*="ring-accent"], [class*="bg-accent"], [class*="today"]').first();
     // Today highlight may use various CSS approaches — just verify page is still functional
     await expect(page.locator('main h1')).toContainText('Calendar');
   });

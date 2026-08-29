@@ -370,8 +370,6 @@ async def sync_whoop_cycles(
         # Map Whoop cycle fields to DailyMetric
         strain = score.get("strain")
         kilojoule = score.get("kilojoule")
-        avg_hr = score.get("average_heart_rate")
-        max_hr = score.get("max_heart_rate")
 
         calories = round(kilojoule * 0.239006, 1) if kilojoule else None
 
@@ -1562,20 +1560,6 @@ async def backfill_whoop_data(
                 total_sleep_seconds = total_in_bed - awake
 
         # BUG-035: Use upsert instead of select+update/insert to avoid race conditions
-        sleep_log = SleepLog(
-            user_id=user_id,
-            sleep_date=sleep_date,
-            source="whoop",
-            total_sleep_seconds=total_sleep_seconds,
-            deep_sleep_seconds=deep_sleep_seconds,
-            rem_sleep_seconds=rem_sleep_seconds,
-            light_sleep_seconds=light_sleep_seconds,
-            awake_seconds=awake_seconds,
-            sleep_efficiency=efficiency,
-            sleep_start=sleep_start,
-            sleep_end=sleep_end,
-            raw_data=record,
-        )
         await db.execute(
             pg_insert(SleepLog)
             .values(

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { RouteData } from '@/lib/api/types';
-import { formatRelativeTime, weatherEmoji } from '@/lib/utils';
+import { weatherEmoji } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 
 export function RouteWeatherCard({ route }: { route: RouteData }) {

@@ -201,7 +201,7 @@ export function ProfileEditor({
               </div>
               {!ftpEstimate.accepted && (
                 <button
-                  onClick={onAcceptEstimate}
+            onClick={ftpEstimate ? onAcceptEstimate : onEstimateFtp}
                   className="px-3 py-1.5 text-xs bg-green-500/20 text-positive border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
                 >
                   ✓ Accept & Save

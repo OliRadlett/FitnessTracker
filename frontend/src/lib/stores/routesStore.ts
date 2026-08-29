@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { RouteSummary, RouteFilters, RouteTag, RouteCollection } from '@/lib/api/types';
+import type { RouteFilters } from '@/lib/api/types';
 
 export type RoutesViewMode = 'map' | 'list' | 'grid';
 export type DetailTab = 'overview' | 'map' | 'history' | 'weather' | 'effort';
