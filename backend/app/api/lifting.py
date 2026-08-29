@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.activities import _enrich_activity_read
 from app.database import get_db
 from app.models.lifting import LiftingSession
 from app.models.user import User
@@ -76,7 +77,9 @@ async def list_sessions(
         try:
             filter_date = _date.fromisoformat(session_date)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+            raise HTTPException(
+                status_code=400, detail="Invalid date format. Use YYYY-MM-DD."
+            )
         count_query = count_query.where(LiftingSession.session_date == filter_date)
     count_result = await db.execute(count_query)
     total_count = int(count_result.scalar() or 0)
@@ -178,7 +181,7 @@ async def get_linkable_activities(
     activities = await lifting_service.find_linkable_activities(
         db, current_user.id, session_id
     )
-    return [ActivityRead.model_validate(a) for a in activities]
+    return [_enrich_activity_read(a) for a in activities]
 
 
 @router.post("/backfill-links")
@@ -309,7 +312,12 @@ async def create_exercise_endpoint(
         ex = await create_exercise(db, current_user.id, name, category, aliases)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases}
+    return {
+        "id": str(ex.id),
+        "name": ex.name,
+        "category": ex.category,
+        "aliases": ex.aliases,
+    }
 
 
 @router.patch("/exercises/{exercise_id}")
@@ -334,7 +342,13 @@ async def update_exercise_endpoint(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return {"id": str(ex.id), "name": ex.name, "category": ex.category, "aliases": ex.aliases, "is_active": ex.is_active}
+    return {
+        "id": str(ex.id),
+        "name": ex.name,
+        "category": ex.category,
+        "aliases": ex.aliases,
+        "is_active": ex.is_active,
+    }
 
 
 @router.delete("/exercises/{exercise_id}", status_code=status.HTTP_204_NO_CONTENT)
