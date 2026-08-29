@@ -467,8 +467,13 @@ The `npm install` output reports 7 vulnerabilities (3 moderate, 2 high, 2 critic
 | PENDING | P2 | Add global React Query defaults in `Providers.tsx` | Performance | Small | Low |
 | PENDING | P2 | Make DB pool size configurable via env vars | Config | Trivial | Low |
 | PENDING | P3 | Split large backend files (>1000 lines) | Refactoring | Large | High |
-| PENDING | P3 | Split large frontend files (>1000 lines) | Refactoring | Large | High |
-| PENDING | P3 | Add frontend CODEMAP for `lib/api/` and `lib/lifting/` | Docs | Small | Low |
+| DONE | P3 | Add frontend CODEMAP for `lib/api/` and `lib/lifting/` | Docs | Small | Low |
+| PENDING | P2 | Refactor `charts.py` (1,929 lines) — extract per-chart-type functions | Refactoring | Medium | Medium |
+| PENDING | P2 | Refactor `whoop.py` (1,940 lines) — extract sync/backfill flows | Refactoring | Medium | Medium |
+| PENDING | P2 | Refactor `api/routes.py` (1,217 lines) — split route CRUD from sync endpoints | Refactoring | Medium | Medium |
+| PENDING | P2 | Fix `npm audit` vulnerabilities (7 total — all require Next.js 14→16 major upgrade) | Security | Large | Variable |
+| PENDING | P3 | Split large backend files >1000 lines (scheduler, activities, training_plan, conformity) | Refactoring | Large | High |
+| PENDING | P3 | Split large frontend files >1000 lines (PlanBuilder, WeeklyView, activities, wiki, lifting) | Refactoring | Large | High |
 
 > **Note on ESLint**: The `npm run lint` script exists (`next lint`) but ESLint is not installed as a dependency and no config file exists. Installing ESLint + `@typescript-eslint` would add ~15 packages. Since `tsc --noEmit --noUnusedLocals --noUnusedParameters` now catches structural issues in CI, ESLint is deferred. The `lint` script in package.json is left as-is for future use.
 
