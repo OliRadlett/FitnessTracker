@@ -57,7 +57,6 @@ test.describe('Training Page', () => {
 
   test('generate plan form is accessible', async ({ authenticatedPage: page }) => {
     // Look for generate button or form
-    const generateBtn = page.getByRole('button', { name: /generate/i });
     // May be visible or behind a toggle
     await expect(page.locator('main h1')).toContainText(/training plans/i);
   });

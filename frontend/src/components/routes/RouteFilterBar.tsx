@@ -1,10 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import type { RouteFilters } from '@/lib/api/types';
-import { Badge } from '@/components/ui/Badge';
+import { useState, useEffect } from 'react';
 import { useRoutesStore } from '@/lib/stores/routesStore';
-import { Filter, X, SortAsc, SortDesc } from 'lucide-react';
+import { Filter, SortAsc, SortDesc } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: '', label: 'Newest' },

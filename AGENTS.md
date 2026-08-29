@@ -108,7 +108,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | Task | Schedule | Notes |
 |------|----------|-------|
 | `sync_all_strava_activities` | 30 min | Incremental via `last_synced_at` watermark (−24h overlap). Also syncs Wahoo, backfills route links |
-| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to fetched date range |
+| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to incremental window (start → today) |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today). Also fires `goal_milestone` notifications on 50/75/100% crossings |
@@ -176,13 +176,17 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
-16. **`frontend/src/lib/api/routes.ts` uses `NEXT_PUBLIC_API_URL`** in `downloadRouteGpx()`: This violates Pitfall #4. Should use relative URL like other API clients.
+16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:223`.
 17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
 18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
 19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
 20. **SSE backfill sessions own their commits**: The Strava/Whoop backfill endpoints create their session via `async_session_factory()` (never `get_db`), so anything only `flush()`ed is rolled back when the endpoint closes it. The generators must `await db.commit()` explicitly (Whoop per-chunk, Strava at the end) — see BUG-073/074.
 21. **Token refresh commits immediately**: `refresh_connection()` commits rotated tokens/health state on its own so a later per-user rollback can't discard them. It also `SELECT … FOR UPDATE`s the row — don't "optimise" that away or strict-rotation providers (Wahoo) can invalidate the loser's refresh token.
 22. **Webhook POSTs are queued, not processed**: `POST /webhooks/strava` only HMAC-verifies (empty secret → 503) and persists to `strava_webhook_events`; the `process_strava_webhook_events` Celery task drains the queue. Add new event handling in `app/services/strava/webhook_queue.py`, not inline in the API handler.
+23. **ServiceWorker must not cache API responses**: The SW's `fetch` handler was caching API GETs and returning `undefined` when network failed (no cached entry), causing "non-Response value 'undefined'" errors. API calls are authenticated/user-specific. Fix: use `event.respondWith(fetch(request))` network-only for `/api/v1/` paths. Always return a `Response` object (e.g. `new Response(null, { status: 503 })`) in `.catch()` — never `undefined`. Bump `CACHE_NAME` to force SW update on deployed fixes.
+24. **React Query `enabled: !!token` required for auth queries**: Queries that need a JWT will fire before `session.backendToken` is ready, causing 401s that SWs swallow into silent failures. Always add `enabled: !!token` to `useQuery` calls that pass a token to the API.
+25. **Remove IntersectionObserver for essential queries**: Lazy-loading via `enabled: visibleSections.has('powerCurve')` causes intermittent data not loading (observer race conditions, scroll timing). Only use it for genuinely optional/expired data (VO2max, FTP history). Core power data, daily TSS, and weight trends should load eagerly.
+26. **Schema field changes require 3-layer updates**: Adding a field to a Pydantic summary schema requires changes in: (1) the schema class `app/schemas/`, (2) the API endpoint's manual model construction in `app/api/`, and (3) the frontend type interface in `src/lib/api/types/`. If the endpoint uses `.model_validate()` no API change needed, but manual construction does.
 
 ## Development Lessons
 
@@ -191,6 +195,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 3. **Check logs after sync/service changes**: `python fittrack.py logs backend --tail 30`
 4. **Quick backend checks**: `python fittrack.py exec backend python -c "from app.models.activity import Activity; print(Activity.__table__.columns.keys())"`
 5. **OAuth callbacks need `user_id`**: Callback runs server-side without session — look up user explicitly via JWT state parameter
+6. **Stash other sessions' files before branch switches**: Before `git checkout` to another branch, run `git status`. If another session's files are modified, `git stash push <specific_files` (not `git stash -u`) to preserve them. Never commit files you didn't modify in this session.
 
 ## Planned / Incomplete
 

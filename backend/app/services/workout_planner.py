@@ -232,9 +232,6 @@ def plan_workout(
 
     zone_id, zone_name, if_low, if_high = zone_def
 
-    # Midpoint IF for calorie estimation
-    if_mid = (if_low + if_high) / 2
-
     # Power targets
     power_low = round(ftp * if_low)
     power_high = round(ftp * if_high)
@@ -539,7 +536,6 @@ def _compute_route_match_score(
 
     # TSS match (35%)
     if avg_tss is not None and target_tss_mid > 0:
-        tss_ratio = min(avg_tss, target_tss_mid) / max(avg_tss, target_tss_mid)
         # Give some leniency: within 50% is still decent
         tss_score = max(0, 1 - abs(avg_tss - target_tss_mid) / target_tss_mid)
         score += tss_score * 0.35

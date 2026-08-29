@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { RouteTag, RouteCollection } from '@/lib/api/types';
-import { Plus, Tag, Folder, FolderOpen, X, MoreVertical, Edit2, Trash2, Check } from 'lucide-react';
+import { Tag, Folder, FolderOpen, X, Check } from 'lucide-react';
 import { useRoutesStore } from '@/lib/stores/routesStore';
 
 export function RoutesSidebar({
@@ -14,19 +13,13 @@ export function RoutesSidebar({
   onTagClick?: () => void;
   onCollectionClick?: () => void;
 }) {
-  const { authFetch, token } = useAuthFetch();
-  const queryClient = useQueryClient();
+  const { authFetch } = useAuthFetch();
   const {
     selectedTagIds,
     toggleTag,
     setActiveCollectionId,
     activeCollectionId,
   } = useRoutesStore();
-
-  const [showNewTagPopover, setShowNewTagPopover] = useState(false);
-  const [newTagInput, setNewTagInput] = useState('');
-  const [showNewCollectionPopover, setShowNewCollectionPopover] = useState(false);
-  const [newCollectionInput, setNewCollectionInput] = useState('');
 
   // Fetch tags
   const { data: tags = [] } = useQuery({
@@ -41,28 +34,6 @@ export function RoutesSidebar({
     queryFn: () => authFetch<RouteCollection[]>('/api/v1/routes/collections'),
     staleTime: 120_000,
   });
-
-  // Create tag mutation
-  const createTagMutation = useMutation({
-    mutationFn: (data: { name: string }) =>
-      authFetch<RouteTag>('/api/v1/routes/tags', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['route-tags'] });
-      setNewTagInput('');
-      setShowNewTagPopover(false);
-      onTagClick?.();
-    },
-  });
-
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTagInput.trim()) {
-      createTagMutation.mutate({ name: newTagInput.trim() });
-    }
-  };
 
   const handleToggleTag = (id: string) => {
     toggleTag(id);
@@ -118,13 +89,6 @@ export function RoutesSidebar({
                 )}
               </button>
             ))}
-            <button
-              onClick={() => setShowNewCollectionPopover(true)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-muted hover:text-white hover:bg-surface-light/50 rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Collection</span>
-            </button>
           </div>
         )}
 
@@ -137,13 +101,6 @@ export function RoutesSidebar({
         <div className="px-2">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-xs text-muted uppercase tracking-wider px-2">Tags</h3>
-            <button
-              onClick={() => setShowNewTagPopover(true)}
-              className="p-1 text-muted hover:text-white hover:bg-surface-light/50 rounded transition-colors"
-              aria-label="Add tag"
-            >
-              <Plus className="w-3 h-4" />
-            </button>
           </div>
 
           {activeTags.length > 0 && (
@@ -173,8 +130,8 @@ export function RoutesSidebar({
             </div>
           )}
 
-          {tags.length === 0 && !showNewTagPopover ? (
-            <p className="text-xs text-muted px-2 py-1">No tags yet. Click + to create one.</p>
+          {tags.length === 0 ? (
+            <p className="text-xs text-muted px-2 py-1">No tags yet.</p>
           ) : (
             tags.map((tag) => {
               const tagColor = tag.color || '#64748b';

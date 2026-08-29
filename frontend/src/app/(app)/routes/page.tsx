@@ -23,7 +23,7 @@ import { MapPin, List, Grid3x3, RefreshCw, Upload } from 'lucide-react';
 
 export default function RoutesPage() {
   usePageTitle('Routes');
-  const { authFetch, token } = useAuthFetch();
+  const { token } = useAuthFetch();
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
 
@@ -32,13 +32,11 @@ export default function RoutesPage() {
     setViewMode,
     selectedRouteId,
     setSelectedRouteId,
-    selectedRouteIds,
     clearSelection,
     selectedTagIds,
     activeCollectionId,
     filters,
     setFilters,
-    showFilters,
     showImportModal,
     setShowImportModal,
   } = useRoutesStore();
@@ -142,15 +140,6 @@ export default function RoutesPage() {
 
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
-
-  const handleDownloadGpx = (routeId: string, routeName: string) => {
-    const a = document.createElement('a');
-    a.href = `/api/v1/routes/${routeId}/gpx`;
-    a.download = `${routeName.replace(/ /g, '_').replace(/\//g, '_')}.gpx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
 
   // View mode buttons
   const viewModes = [

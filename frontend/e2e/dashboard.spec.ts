@@ -59,7 +59,6 @@ test.describe('Dashboard Page', () => {
 
   test('Today tab shows readiness indicator when available', async ({ authenticatedPage: page }) => {
     // Readiness data is mocked — check for readiness-related content
-    const readinessSection = page.locator('[class*="readiness"], [class*="recovery"]').first();
     // Readiness indicator may or may not be visible depending on data
     // Just verify the page loaded without errors
     await expect(page.locator('main h1')).toBeVisible();
@@ -80,7 +79,6 @@ test.describe('Dashboard Page', () => {
     await page.waitForTimeout(1000);
 
     // Look for activities section
-    const activitiesSection = page.getByText(/recent activities/i);
     // May or may not be visible depending on data
     await expect(page.locator('main h1')).toBeVisible();
   });
@@ -116,7 +114,6 @@ test.describe('Dashboard Page', () => {
     await page.goto('/fittrack/dashboard');
 
     // Should show some loading indicator
-    const spinner = page.locator('.animate-spin, .animate-pulse').first();
     // Loading state may be brief
     await page.waitForLoadState('networkidle');
   });

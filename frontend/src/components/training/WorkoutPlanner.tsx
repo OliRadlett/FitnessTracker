@@ -205,7 +205,6 @@ function FitBar({
   targetHigh: number;
   unit: string;
 }) {
-  const targetMid = (targetLow + targetHigh) / 2;
   const maxVal = Math.max(actual, targetHigh) * 1.2;
   const actualPct = Math.min((actual / maxVal) * 100, 100);
   const lowPct = (targetLow / maxVal) * 100;

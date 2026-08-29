@@ -72,7 +72,7 @@ class TestStravaSyncErrorIsolation:
              patch("app.services.merge_service.backfill_activity_route_links", return_value=0), \
              patch("app.services.weather.tag_recent_activities", return_value=0), \
              patch("app.services.conformity.link_activities_to_plan_days", return_value=0):
-            result = sync_all_strava_activities()
+            sync_all_strava_activities()
 
         # Both users attempted
         assert call_count == 2
@@ -94,7 +94,6 @@ class TestStravaSyncErrorIsolation:
         # Mock Wahoo query to return empty (no Wahoo connections)
         wahoo_result = MagicMock()
         wahoo_result.scalars.return_value.all.return_value = []
-        original_execute = db.execute
 
         async def execute_side_effect(*args, **kwargs):
             # First call: Strava connections; second call: Wahoo connections
@@ -225,7 +224,7 @@ class TestWhoopSyncErrorIsolation:
              patch("app.services.whoop.sync_whoop_sleep", return_value=[]), \
              patch("app.services.whoop.sync_whoop_workouts", return_value=[]), \
              patch("app.services.whoop.sync_whoop_weight", return_value=None):
-            result = sync_all_whoop_data()
+            sync_all_whoop_data()
 
         assert cycle_count == 2
         assert db.rollback.call_count >= 1
@@ -260,7 +259,7 @@ class TestWeatherTaskErrorIsolation:
         with patch("app.database.task_session", lambda: _mock_task_session(db)), \
              patch("app.services.weather.resolve_user_coords", side_effect=mock_resolve), \
              patch("app.services.weather.get_forecast", side_effect=mock_forecast):
-            result = refresh_weather_forecasts()
+            refresh_weather_forecasts()
 
         assert call_count == 2
         assert db.rollback.call_count >= 1
@@ -308,7 +307,7 @@ class TestGoalCheckinErrorIsolation:
 
         with patch("app.database.task_session", lambda: _mock_task_session(db)), \
              patch("app.services.goals.record_all_check_ins", side_effect=mock_checkins):
-            result = record_goal_checkins()
+            record_goal_checkins()
 
         assert checkin_count == 2
         assert db.rollback.call_count >= 1

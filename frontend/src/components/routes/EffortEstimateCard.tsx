@@ -3,12 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { EffortEstimateResponse } from '@/lib/api/types';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDuration } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 
-export function EffortEstimateCard({ routeId, distanceMeters }: {
+export function EffortEstimateCard({ routeId }: {
   routeId: string;
-  distanceMeters: number;
 }) {
   const { authFetch } = useAuthFetch();
 

@@ -17,11 +17,10 @@ export function ActivityContextBadges({ context }: ActivityContextBadgesProps) {
   // Load context (ATL/CTL/TSB)
   if (load_context) {
     const { atl, ctl, tsb } = load_context;
-    let tsbLabel = 'Neutral';
     let tsbColor = 'text-blue-400';
     if (tsb !== undefined) {
-      if (tsb > 25) { tsbLabel = 'Fresh'; tsbColor = 'text-positive'; }
-      else if (tsb < -30) { tsbLabel = 'Fatigued'; tsbColor = 'text-warning'; }
+      if (tsb > 25) { tsbColor = 'text-positive'; }
+      else if (tsb < -30) { tsbColor = 'text-warning'; }
     }
     items.push(
       <span

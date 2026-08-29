@@ -437,7 +437,7 @@ export default function ActivitiesPage() {
     return params.toString();
   }, [effectiveFilters]);
 
-  const { data: activitySummary, isLoading: summaryLoading } = useQuery<ActivitySummary>({
+  const { data: activitySummary } = useQuery<ActivitySummary>({
     queryKey: ['activity-summary', summaryParams],
     queryFn: () => authFetch<ActivitySummary>(`/api/v1/activities/summary${summaryParams ? `?${summaryParams}` : ''}`),
     enabled: viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0,

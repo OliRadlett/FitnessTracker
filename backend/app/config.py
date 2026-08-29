@@ -16,6 +16,8 @@ _DEFAULT_DATABASE_URL = (
 class Settings(BaseSettings):
     # Database
     database_url: str = _DEFAULT_DATABASE_URL
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

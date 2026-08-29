@@ -19,7 +19,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   TrainingPlan,
   TrainingWeekDay,
-  WeekRouteMatchEntry,
   UpdateTrainingPlanDayPayload,
   Event,
 } from '@/lib/api';
@@ -122,12 +121,6 @@ function getCurrentRealWeek(plan: TrainingPlan): number {
 // ─── Small formatters ─────────────────────────────────────────────────────
 
 /** Route match / confidence scores are 0–1 ratios; tolerate 0–100 too. */
-function toPercent(v: number | null | undefined): string {
-  if (v == null) return '—';
-  const pct = v > 1 ? v : v * 100;
-  return `${Math.round(pct)}%`;
-}
-
 function fmtKg(v: number | null | undefined): string {
   if (v == null) return '—';
   return v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`;
@@ -599,10 +592,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
               assignRoute.isPending ||
               unassignRoute.isPending ||
               quickEdit.isPending
-            }
-            onAssignRoute={(routeId) =>
-              assignRoute.mutate({ dayId: expandedDay.id, routeId })
-            }
+             }
             onUnassignRoute={() => unassignRoute.mutate(expandedDay.id)}
             onQuickEdit={(payload) =>
               quickEdit.mutate({ dayId: expandedDay.id, payload })
@@ -869,7 +859,6 @@ function ExpandedPanel({
   day,
   planId,
   busy,
-  onAssignRoute,
   onUnassignRoute,
   onQuickEdit,
   onOpenRoutePicker,
@@ -877,7 +866,6 @@ function ExpandedPanel({
   day: TrainingWeekDay;
   planId: string;
   busy: boolean;
-  onAssignRoute: (routeId: string) => void;
   onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
   onOpenRoutePicker: () => void;

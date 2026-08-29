@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { downloadRouteGpx, useAuthFetch } from '@/lib/api';
 import type { RouteData } from '@/lib/api/types';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
+import { Card, CardTitle } from '@/components/ui/Card';
 import { TabGroup } from '@/components/ui/TabGroup';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { QualityBadge } from '@/components/routes/QualityBadge';
@@ -14,7 +13,6 @@ import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 import { RouteHistorySection } from '@/components/routes/RouteHistorySection';
-import { RouteWeatherCard } from '@/components/routes/RouteWeatherCard';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { formatDistance } from '@/lib/utils';
 import { X, Edit2, Download, Trash2, Star } from 'lucide-react';
@@ -22,10 +20,9 @@ import { X, Edit2, Download, Trash2, Star } from 'lucide-react';
 interface RouteDetailPanelProps {
   route: RouteData | null;
   onClose: () => void;
-  onOpenWeatherTab?: () => void;
 }
 
-export function RouteDetailPanel({ route, onClose, onOpenWeatherTab }: RouteDetailPanelProps) {
+export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -168,16 +165,7 @@ export function RouteDetailPanel({ route, onClose, onOpenWeatherTab }: RouteDeta
                 <Star className="w-4 h-4" fill={route.is_favorite ? 'currentColor' : 'none'} />
               </button>
               <button
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = `/api/v1/routes/${route.id}/gpx`;
-                  link.download = `${route.name}.gpx`;
-                  link.target = '_blank';
-                  link.rel = 'noopener noreferrer';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }}
+                onClick={() => downloadRouteGpx(route.id, route.name, token)}
                 aria-label="Download GPX"
                 className="p-1.5 text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
               >
@@ -276,7 +264,7 @@ export function RouteDetailPanel({ route, onClose, onOpenWeatherTab }: RouteDeta
             {/* Overview Tab */}
             {detailTab === 'overview' && (
               <div className="px-4 pb-4 space-y-4">
-                <EffortEstimateCard routeId={route.id} distanceMeters={route.distance_meters} />
+                <EffortEstimateCard routeId={route.id} />
               </div>
             )}
 

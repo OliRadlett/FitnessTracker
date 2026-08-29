@@ -1,5 +1,3 @@
-import { type RouteQualityScore } from '@/lib/api/types';
-
 export interface QualityBadgeProps {
   score: number | null | undefined;
   size?: 'sm' | 'default';

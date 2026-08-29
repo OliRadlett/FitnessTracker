@@ -61,7 +61,7 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   useEffect(() => {
     loadConnections();

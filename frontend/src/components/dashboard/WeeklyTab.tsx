@@ -85,7 +85,6 @@ export function WeeklyTab({
   strainVsRecovery,
   activities,
   activitiesLoading,
-  sessions,
   sessionsLoading,
   recentSessions,
   streaks,
