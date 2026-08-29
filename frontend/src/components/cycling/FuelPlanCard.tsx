@@ -25,14 +25,26 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
+  const MG_PER_TABLET = 800;
   const [waterMl, setWaterMl] = useState(plan.actual_water_ml?.toString() ?? '');
   const [carbsG, setCarbsG] = useState(plan.actual_carbs_g?.toString() ?? '');
-  const [electrolytesMg, setElectrolytesMg] = useState(plan.actual_electrolytes_mg?.toString() ?? '');
+  const [electrolyteTablets, setElectrolyteTablets] = useState(() => {
+    if (plan.actual_electrolytes_mg != null) {
+      return Math.round(plan.actual_electrolytes_mg / MG_PER_TABLET).toString();
+    }
+    return '';
+  });
+
+  const calculatedElectrolytesMg = electrolyteTablets !== '' ? parseFloat(electrolyteTablets) * MG_PER_TABLET : 0;
 
   useEffect(() => {
     setWaterMl(plan.actual_water_ml?.toString() ?? '');
     setCarbsG(plan.actual_carbs_g?.toString() ?? '');
-    setElectrolytesMg(plan.actual_electrolytes_mg?.toString() ?? '');
+    setElectrolyteTablets(
+      plan.actual_electrolytes_mg != null
+        ? Math.round(plan.actual_electrolytes_mg / MG_PER_TABLET).toString()
+        : ''
+    );
   }, [plan]);
 
   const saveMutation = useMutation({
@@ -40,7 +52,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
       const body = JSON.stringify({
         actual_water_ml: waterMl !== '' ? parseFloat(waterMl) : null,
         actual_carbs_g: carbsG !== '' ? parseFloat(carbsG) : null,
-        actual_electrolytes_mg: electrolytesMg !== '' ? parseFloat(electrolytesMg) : null,
+        actual_electrolytes_mg: electrolyteTablets !== '' ? parseFloat(electrolyteTablets) * MG_PER_TABLET : null,
       });
       if (plan.id) {
         return authFetch<RideFuelPlan>(`/api/v1/nutrition/fuel-plan/${plan.id}`, {
@@ -88,15 +100,18 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Electrolytes (mg)</label>
+          <label className="block text-xs text-muted mb-1">Electrolyte Tablets (×{MG_PER_TABLET}mg)</label>
           <input
             type="number"
             min={0}
-            value={electrolytesMg}
-            onChange={(e) => setElectrolytesMg(e.target.value)}
+            value={electrolyteTablets}
+            onChange={(e) => setElectrolyteTablets(e.target.value)}
             placeholder="0"
             className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
+          {electrolyteTablets !== '' && (
+            <p className="text-xs text-muted mt-1">{calculatedElectrolytesMg}mg electrolytes</p>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-3">

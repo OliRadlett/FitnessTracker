@@ -152,6 +152,7 @@ export interface TrainingPlanSummary {
   event_id?: string | null;
   day_count: number;
   completed_days: number;
+  updated_at?: string;
 }
 
 export interface CreateTrainingPlanPayload {
