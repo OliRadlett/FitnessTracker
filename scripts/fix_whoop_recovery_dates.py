@@ -2,9 +2,13 @@
 """Fix Whoop recovery DailyMetric records that were assigned to the wrong date.
 
 Bug: sync_whoop_cycles() and backfill_whoop_data() derived metric_date from
-cycle.start (bedtime) instead of cycle.end (wake-up time). This script shifts
-affected records to the correct day, merging conflicts when multiple records
-map to the same date.
+the cycle end time in UTC (BUG-086 fix), but Whoop displays recovery by the
+local bedtime date (cycle.start + timezone_offset). For cycles whose bedtime
+crosses UTC midnight (e.g. start at 23:07 UTC +01:00 → local 00:07 next day),
+this shifts the record to the wrong day.
+
+This script shifts affected records to the correct local bedtime date,
+merging conflicts when multiple records map to the same date.
 
 Usage:
     1. Stop the Celery worker + beat to prevent writes during migration.
@@ -13,11 +17,12 @@ Usage:
 
 Idempotent: records already at the correct date are skipped.
 """
+
 import argparse
 import asyncio
 import logging
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
 from app.database import async_session_factory
 from app.models.daily_metric import DailyMetric
@@ -33,27 +38,48 @@ logger = logging.getLogger("fix_whoop_recovery_dates")
 UTC = timezone.utc
 
 DATA_COLS = [
-    "recovery_score", "hrv_ms", "resting_hr", "respiratory_rate",
-    "sleep_duration_minutes", "sleep_efficiency",
-    "strain", "calories",
+    "recovery_score",
+    "hrv_ms",
+    "resting_hr",
+    "respiratory_rate",
+    "sleep_duration_minutes",
+    "sleep_efficiency",
+    "strain",
+    "calories",
 ]
 
 
-def _resolve_correct_date(raw_data: dict | None) -> date | None:
-    """Return the correct date for a DailyMetric based on cycle.end.
+def _parse_tz_offset(tz_str: str | None) -> timedelta:
+    """Parse a timezone offset string like '+01:00' into a timedelta."""
+    if not tz_str:
+        return timedelta(0)
+    try:
+        sign = 1 if tz_str[0] == "+" else -1
+        parts = tz_str[1:].split(":")
+        return timedelta(hours=sign * int(parts[0]), minutes=sign * int(parts[1]))
+    except (ValueError, IndexError):
+        return timedelta(0)
 
-    Falls back to cycle.start if end is missing. Returns None if the date
+
+def _resolve_correct_date(raw_data: dict | None) -> date | None:
+    """Return the correct local bedtime date for a DailyMetric.
+
+    Uses cycle.start (bedtime) + timezone_offset to compute the local date,
+    matching how the Whoop app displays recovery. Falls back to cycle.end
+    if start is missing, then to the UTC date. Returns None if the date
     cannot be determined.
     """
     if not raw_data or not isinstance(raw_data, dict):
         return None
-    end_str = raw_data.get("end")
+    tz_offset = raw_data.get("timezone_offset")
     start_str = raw_data.get("start")
-    date_str = end_str or start_str
+    date_str = start_str or raw_data.get("end")
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace("Z", "+00:00")).astimezone(UTC).date()
+        utc_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        local_dt = utc_dt + _parse_tz_offset(tz_offset)
+        return local_dt.date()
     except (ValueError, AttributeError):
         return None
 
@@ -222,19 +248,29 @@ async def fix_whoop_recovery_dates(dry_run: bool = True):
                             delete(DailyMetric).where(DailyMetric.id == src.id)
                         )
                     # Then update target (delete + re-insert to handle unique constraint)
-                    await db.execute(delete(DailyMetric).where(DailyMetric.id == target.id))
+                    await db.execute(
+                        delete(DailyMetric).where(DailyMetric.id == target.id)
+                    )
                     await db.execute(
                         pg_insert(DailyMetric)
                         .values(
                             user_id=target.user_id,
                             metric_date=target_date,
                             source=target.source,
-                            recovery_score=updates.get("recovery_score", target.recovery_score),
+                            recovery_score=updates.get(
+                                "recovery_score", target.recovery_score
+                            ),
                             hrv_ms=updates.get("hrv_ms", target.hrv_ms),
                             resting_hr=updates.get("resting_hr", target.resting_hr),
-                            respiratory_rate=updates.get("respiratory_rate", target.respiratory_rate),
-                            sleep_duration_minutes=updates.get("sleep_duration_minutes", target.sleep_duration_minutes),
-                            sleep_efficiency=updates.get("sleep_efficiency", target.sleep_efficiency),
+                            respiratory_rate=updates.get(
+                                "respiratory_rate", target.respiratory_rate
+                            ),
+                            sleep_duration_minutes=updates.get(
+                                "sleep_duration_minutes", target.sleep_duration_minutes
+                            ),
+                            sleep_efficiency=updates.get(
+                                "sleep_efficiency", target.sleep_efficiency
+                            ),
                             strain=updates.get("strain", target.strain),
                             calories=updates.get("calories", target.calories),
                             raw_data=merged_raw,
@@ -244,12 +280,23 @@ async def fix_whoop_recovery_dates(dry_run: bool = True):
                         .on_conflict_do_update(
                             index_elements=["user_id", "metric_date", "source"],
                             set_={
-                                "recovery_score": updates.get("recovery_score", target.recovery_score),
+                                "recovery_score": updates.get(
+                                    "recovery_score", target.recovery_score
+                                ),
                                 "hrv_ms": updates.get("hrv_ms", target.hrv_ms),
-                                "resting_hr": updates.get("resting_hr", target.resting_hr),
-                                "respiratory_rate": updates.get("respiratory_rate", target.respiratory_rate),
-                                "sleep_duration_minutes": updates.get("sleep_duration_minutes", target.sleep_duration_minutes),
-                                "sleep_efficiency": updates.get("sleep_efficiency", target.sleep_efficiency),
+                                "resting_hr": updates.get(
+                                    "resting_hr", target.resting_hr
+                                ),
+                                "respiratory_rate": updates.get(
+                                    "respiratory_rate", target.respiratory_rate
+                                ),
+                                "sleep_duration_minutes": updates.get(
+                                    "sleep_duration_minutes",
+                                    target.sleep_duration_minutes,
+                                ),
+                                "sleep_efficiency": updates.get(
+                                    "sleep_efficiency", target.sleep_efficiency
+                                ),
                                 "strain": updates.get("strain", target.strain),
                                 "calories": updates.get("calories", target.calories),
                                 "raw_data": merged_raw,
