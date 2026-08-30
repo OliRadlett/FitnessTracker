@@ -35,6 +35,41 @@ logger = logging.getLogger(__name__)
 # paginated cycle/sleep/workout list calls on top.
 _RECOVERY_FETCH_DELAY_SECONDS = 1.0
 
+# ── Date helpers ───────────────────────────────────────────────────────────
+
+
+def _parse_tz_offset(tz_offset: str | None) -> timedelta:
+    """Parse a Whoop timezone_offset string like '+01:00' into a timedelta."""
+    if not tz_offset:
+        return timedelta(0)
+    try:
+        sign = 1 if tz_offset[0] == "+" else -1
+        parts = tz_offset[1:].split(":")
+        return timedelta(hours=sign * int(parts[0]), minutes=sign * int(parts[1]))
+    except (ValueError, IndexError):
+        return timedelta(0)
+
+
+def _local_date_from_utc(utc_str: str | None, tz_offset: str | None) -> date | None:
+    """Convert a UTC ISO timestamp to a local date using the timezone offset.
+
+    Whoop returns cycle and sleep timestamps in UTC (with 'Z' suffix) and
+    includes a ``timezone_offset`` field (e.g. '+01:00'). The recovery date
+    shown in the Whoop app corresponds to the **local bedtime** date — i.e.
+    the date of ``cycle.start`` when converted to the user's local timezone.
+    Using the UTC date or the UTC wake-up date can shift the record by ±1 day
+    for cycles whose bedtime crosses a UTC midnight boundary.
+    """
+    if not utc_str:
+        return None
+    try:
+        utc_dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        local_dt = utc_dt + _parse_tz_offset(tz_offset)
+        return local_dt.date()
+    except (ValueError, AttributeError):
+        return None
+
+
 # ── Sport type mapping ──────────────────────────────────────────────────────
 
 _WHOOP_SPORT_MAP: dict[str, str] = {
@@ -359,18 +394,20 @@ async def sync_whoop_cycles(
         if not score:
             continue
 
-        # A Whoop cycle spans the sleep that begins one evening to the wake-up
-        # the next day (or later for multi-day cycles). Recovery belongs to the
-        # waking day, so metric_date should be the end date, not the start date.
+        # A Whoop cycle spans a sleep period from bedtime to wake-up.
+        # Recovery is dated to the bedtime day in the user's local timezone
+        # (matching the Whoop app display), NOT the wake-up day in UTC.
+        # Using the UTC end date shifts records by +1 day; using the UTC start
+        # date is also wrong for cycles whose bedtime crosses midnight UTC.
+        # Apply timezone_offset to the cycle.start timestamp to get the correct
+        # local date.
         start_str = cycle.get("start")
-        end_str = cycle.get("end")
-        date_str = end_str or start_str
-        if not date_str:
-            continue
-        try:
-            date_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            metric_date = date_dt.date()
-        except (ValueError, AttributeError):
+        tz_offset = cycle.get("timezone_offset")
+        metric_date = _local_date_from_utc(start_str, tz_offset)
+        if metric_date is None:
+            # Fallback: try end timestamp if start is missing
+            metric_date = _local_date_from_utc(cycle.get("end"), tz_offset)
+        if metric_date is None:
             continue
 
         # Map Whoop cycle fields to DailyMetric
@@ -618,7 +655,13 @@ async def sync_whoop_sleep(
                 if end_str
                 else None
             )
-            sleep_date = (sleep_end if sleep_end else sleep_start).date()
+            # Date sleep by the local bedtime date (start + timezone_offset),
+            # matching how the Whoop app displays sleep. Using UTC end date
+            # can shift the date by +1 for sleeps near midnight UTC.
+            tz_offset = record.get("timezone_offset")
+            sleep_date = _local_date_from_utc(start_str, tz_offset)
+            if sleep_date is None:
+                sleep_date = (sleep_end if sleep_end else sleep_start).date()
         except (ValueError, AttributeError):
             continue
 
@@ -1325,16 +1368,14 @@ async def backfill_whoop_data(
         if not score:
             continue
 
-        # A Whoop cycle spans sleep→wake; recovery belongs to the waking day.
+        # A Whoop cycle spans sleep→wake; recovery is dated to the bedtime
+        # day in the user's local timezone (cycle.start + timezone_offset).
         start_str = cycle.get("start")
-        end_str = cycle.get("end")
-        date_str = end_str or start_str
-        if not date_str:
-            continue
-        try:
-            date_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            metric_date = date_dt.date()
-        except (ValueError, AttributeError):
+        tz_offset = cycle.get("timezone_offset")
+        metric_date = _local_date_from_utc(start_str, tz_offset)
+        if metric_date is None:
+            metric_date = _local_date_from_utc(cycle.get("end"), tz_offset)
+        if metric_date is None:
             continue
 
         strain = score.get("strain")
@@ -1516,7 +1557,12 @@ async def backfill_whoop_data(
                 if end_str
                 else None
             )
-            sleep_date = (sleep_end if sleep_end else sleep_start).date()
+            # Date sleep by the local bedtime date (start + timezone_offset),
+            # matching how the Whoop app displays sleep.
+            tz_offset = record.get("timezone_offset")
+            sleep_date = _local_date_from_utc(start_str, tz_offset)
+            if sleep_date is None:
+                sleep_date = (sleep_end if sleep_end else sleep_start).date()
         except (ValueError, AttributeError):
             continue
 

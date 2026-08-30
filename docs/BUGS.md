@@ -572,11 +572,11 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **Issue:** The Whoop sleep sync stored every SCORED sleep record including daytime naps, inflating overnight sleep totals in the calendar/dashboard. Whoop marks naps with the record-level `nap` boolean.
 - **Fix:** Skip records where `record.get("nap")` is truthy before upserting into `SleepLog`.
 
-### BUG-086: Whoop Recovery Dates Assigned to Wrong Day (sleep start vs wake end)
-- **Status:** FIXED
-- **Files:** `backend/app/services/whoop.py` (`sync_whoop_cycles`, `backfill_whoop_data`), `scripts/fix_whoop_recovery_dates.py`
-- **Issue:** Whoop cycles span a sleep period from one evening to wake-up the next day (or later for multi-day cycles). Recovery belongs to the waking day. Both `sync_whoop_cycles` and `backfill_whoop_data` derived `metric_date` from `cycle.start` (bedtime) instead of `cycle.end` (wake time), shifting recovery records ~1 day earlier. This fix was repeatedly reverted by concurrent sessions.
-- **Fix:** In both functions, extract `end_str = cycle.get("end")` and use `date_str = end_str or start_str` for `metric_date` computation. A data migration script (`scripts/fix_whoop_recovery_dates.py`) corrects existing records by detecting start-based dates and re-creating them at end-based dates.
+### BUG-086: Whoop Recovery Dates Assigned to Wrong Day (UTC end vs local bedtime)
+- **Status:** FIXED (corrected)
+- **Files:** `backend/app/services/whoop.py` (`sync_whoop_cycles`, `sync_whoop_sleep`, `backfill_whoop_data`), `scripts/fix_whoop_local_dates.py`
+- **Issue:** Whoop returns cycle/sleep timestamps in UTC with a `timezone_offset` field. The original code derived `metric_date` from `cycle.start` in UTC (without applying timezone offset). The initial "fix" (BUG-086) changed to `cycle.end` in UTC — but this was **wrong**: Whoop's app displays recovery/sleep by the **local bedtime date** (cycle.start + timezone_offset), not the UTC wake-up date. Using UTC end shifts records +1 day; using UTC start is wrong for cycles whose bedtime crosses UTC midnight (e.g. start at 23:07 UTC +01:00 → local 00:07 next day). The initial BUG-086 fix was repeatedly reverted by concurrent sessions because it moved dates in the wrong direction.
+- **Fix:** Use `cycle.start` (or `sleep.start` for sleep) adjusted by `timezone_offset` to compute the local date. Added `_parse_tz_offset()` and `_local_date_from_utc()` helpers. Existing records corrected via `scripts/fix_whoop_local_dates.py` (full re-sync of cycles + sleep from Whoop API with correct local-start dates, removes duplicates caused by the end-based code).
 
 ### BUG-087: Whoop Recovery Second-Pass Backfill Excludes Stale Dates Outside Current Window
 - **Status:** FIXED

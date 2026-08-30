@@ -187,6 +187,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 24. **React Query `enabled: !!token` required for auth queries**: Queries that need a JWT will fire before `session.backendToken` is ready, causing 401s that SWs swallow into silent failures. Always add `enabled: !!token` to `useQuery` calls that pass a token to the API.
 25. **Remove IntersectionObserver for essential queries**: Lazy-loading via `enabled: visibleSections.has('powerCurve')` causes intermittent data not loading (observer race conditions, scroll timing). Only use it for genuinely optional/expired data (VO2max, FTP history). Core power data, daily TSS, and weight trends should load eagerly.
 26. **Schema field changes require 3-layer updates**: Adding a field to a Pydantic summary schema requires changes in: (1) the schema class `app/schemas/`, (2) the API endpoint's manual model construction in `app/api/`, and (3) the frontend type interface in `src/lib/api/types/`. If the endpoint uses `.model_validate()` no API change needed, but manual construction does.
+27. **Whoop dates must use local bedtime, not UTC wake-up**: Whoop API returns cycle/sleep timestamps in UTC with a `timezone_offset` field. The correct date is `cycle.start + timezone_offset` (local bedtime), NOT `cycle.end` in UTC (which shifts +1 day) or `cycle.start` in UTC (wrong for cycles crossing UTC midnight). See `_local_date_from_utc()` in `app/services/whoop.py`.
 
 ## Development Lessons
 
