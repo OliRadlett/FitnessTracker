@@ -647,12 +647,17 @@ async def recompute_quality(
 @router.get("/{route_id}/effort-estimate", response_model=EffortEstimateResponse)
 async def get_effort_estimate(
     route_id: uuid.UUID,
+    intensity: str = Query(
+        "tempo",
+        description="Target intensity zone: endurance, tempo, threshold, vo2max, anaerobic",
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Estimate cycling effort for a route using the user's cycling profile.
 
     Falls back to query params if the user has no cycling profile configured.
+    Defaults to tempo (Z3) — a moderate, rideable effort.
     """
     route = await route_service.get_route_by_id(db, route_id, current_user.id)
     if not route:
@@ -672,7 +677,7 @@ async def get_effort_estimate(
             ftp_watts=profile.ftp_watts,
             weight_kg=profile.weight_kg,
             bike_type="road",
-            target_intensity="threshold",
+            target_intensity=intensity,
         )
     else:
         result = {
