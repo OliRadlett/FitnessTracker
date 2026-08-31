@@ -1,5 +1,5 @@
 // FitTrack Service Worker — runtime caching (no build-time precache)
-const CACHE_NAME = 'fittrack-v2';
+const CACHE_NAME = 'fittrack-v3';
 const OFFLINE_URL = '/fittrack';
 
 // Install: cache the app shell
@@ -62,7 +62,9 @@ self.addEventListener('fetch', (event) => {
 
   // API GETs: network-only (never cache API responses — auth tokens vary per user)
   if (url.pathname.startsWith('/fittrack/api/v1/') || url.pathname.includes('/api/v1/')) {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request).catch(() => new Response(null, { status: 503 }))
+    );
     return;
   }
 

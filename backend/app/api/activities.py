@@ -228,10 +228,22 @@ async def get_activity_summary(
     excluded from the distance total to match the frontend stats bar.
     """
     # Validate min/max pairs
-    if min_distance is not None and max_distance is not None and min_distance > max_distance:
-        raise HTTPException(status_code=422, detail="min_distance must be <= max_distance")
-    if min_duration is not None and max_duration is not None and min_duration > max_duration:
-        raise HTTPException(status_code=422, detail="min_duration must be <= max_duration")
+    if (
+        min_distance is not None
+        and max_distance is not None
+        and min_distance > max_distance
+    ):
+        raise HTTPException(
+            status_code=422, detail="min_distance must be <= max_distance"
+        )
+    if (
+        min_duration is not None
+        and max_duration is not None
+        and min_duration > max_duration
+    ):
+        raise HTTPException(
+            status_code=422, detail="min_duration must be <= max_duration"
+        )
     if min_tss is not None and max_tss is not None and min_tss > max_tss:
         raise HTTPException(status_code=422, detail="min_tss must be <= max_tss")
 
@@ -265,13 +277,18 @@ async def get_activity_summary(
             func.coalesce(
                 func.sum(
                     case(
-                        (Activity.sport_type.notin_(STRENGTH_SPORT_TYPES), Activity.distance_meters),
+                        (
+                            Activity.sport_type.notin_(STRENGTH_SPORT_TYPES),
+                            Activity.distance_meters,
+                        ),
                         else_=0,
                     )
                 ),
                 0,
             ).label("total_distance"),
-            func.coalesce(func.sum(Activity.duration_seconds), 0).label("total_duration"),
+            func.coalesce(func.sum(Activity.duration_seconds), 0).label(
+                "total_duration"
+            ),
             func.coalesce(func.sum(Activity.tss), 0).label("total_tss"),
         ).where(*where)
     )
@@ -403,63 +420,6 @@ async def get_activities_calendar(
         daily_metrics=daily_metric_entries,
         sleep_logs=sleep_log_entries,
     )
-
-
-@router.get("/{activity_id}", response_model=ActivityDetailRead)
-async def get_activity(
-    activity_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get a single activity by ID (with stream data)."""
-    result = await db.execute(
-        select(Activity)
-        .options(
-            selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
-            selectinload(Activity.sources),
-            selectinload(Activity.route),
-            selectinload(Activity.streams),
-        )
-        .where(
-            Activity.id == activity_id,
-            Activity.user_id == current_user.id,
-        )
-    )
-    activity = result.scalar_one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
-    read = _enrich_activity_read(activity)
-    return ActivityDetailRead(
-        **read.model_dump(),
-        streams=[
-            ActivityStreamRead.model_validate(s) for s in (activity.streams or [])
-        ],
-    )
-
-
-@router.get("/{activity_id}/streams", response_model=list[ActivityStreamRead])
-async def get_activity_streams(
-    activity_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get all streams for an activity."""
-    # Verify activity belongs to user
-    result = await db.execute(
-        select(Activity).where(
-            Activity.id == activity_id,
-            Activity.user_id == current_user.id,
-        )
-    )
-    activity = result.scalar_one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    result = await db.execute(
-        select(ActivityStream).where(ActivityStream.activity_id == activity_id)
-    )
-    streams = list(result.scalars().all())
-    return [ActivityStreamRead.model_validate(s) for s in streams]
 
 
 @router.post("/backfill")
@@ -1082,7 +1042,8 @@ async def get_activity_context(
 
     # Personal records linked to this activity
     pr_result = await db.execute(
-        select(PersonalRecord).where(
+        select(PersonalRecord)
+        .where(
             PersonalRecord.user_id == current_user.id,
             PersonalRecord.activity_id == activity_id,
         )
@@ -1116,7 +1077,7 @@ async def get_activity_context(
         raw_text = ai_analysis.analysis_text
         summary_text = raw_text[:200]
         if len(raw_text) > 200:
-            summary_text = summary_text.rsplit(' ', 1)[0] + '…'
+            summary_text = summary_text.rsplit(" ", 1)[0] + "…"
         ai_analysis_link = {
             "id": ai_analysis.id,
             "analysis_type": ai_analysis.analysis_type,
@@ -1127,10 +1088,12 @@ async def get_activity_context(
 
     # Fuel plan
     fuel_result = await db.execute(
-        select(RideFuelPlan).where(
+        select(RideFuelPlan)
+        .where(
             RideFuelPlan.user_id == current_user.id,
             RideFuelPlan.activity_id == activity_id,
-        ).limit(1)
+        )
+        .limit(1)
     )
     fuel_plan_row = fuel_result.scalar_one_or_none()
     fuel_plan_link = None
@@ -1206,7 +1169,9 @@ async def get_activity_context(
                 "hrv_ms": None,
                 "recovery_score": None,
                 "resting_hr": None,
-                "sleep_duration_minutes": sleep.total_sleep_seconds / 60 if sleep.total_sleep_seconds else None,
+                "sleep_duration_minutes": sleep.total_sleep_seconds / 60
+                if sleep.total_sleep_seconds
+                else None,
                 "sleep_efficiency": sleep.sleep_efficiency,
             }
 
@@ -1239,11 +1204,17 @@ async def get_activity_context(
                 "variability_index": analysis.get("variability_index"),
                 "efficiency_factor": analysis.get("efficiency_factor"),
                 "vam": analysis.get("vam"),
-                "decoupling_pct": decoupling.get("decoupling_pct") if decoupling else None,
-                "decoupling_class": decoupling.get("classification") if decoupling else None,
+                "decoupling_pct": decoupling.get("decoupling_pct")
+                if decoupling
+                else None,
+                "decoupling_class": decoupling.get("classification")
+                if decoupling
+                else None,
                 "tss": tss_bd.get("total_tss") if tss_bd else activity.tss,
                 "tss_per_hour": tss_bd.get("tss_per_hour") if tss_bd else None,
-                "climbing_meters": climbing.get("total_climbing_m") if climbing else None,
+                "climbing_meters": climbing.get("total_climbing_m")
+                if climbing
+                else None,
                 "top_speed_kmh": top_speed_kmh,
             }
 
@@ -1256,7 +1227,9 @@ async def get_activity_context(
             end_date = activity_date
             start_date = end_date - _td(days=lookback + 42)
             daily_tss = await get_daily_tss(db, current_user.id, start_date, end_date)
-            load_data = compute_training_load(daily_tss, end_date, lookback_days=lookback)
+            load_data = compute_training_load(
+                daily_tss, end_date, lookback_days=lookback
+            )
             if load_data:
                 latest = load_data[-1]
                 load_context = {
@@ -1275,12 +1248,74 @@ async def get_activity_context(
     )
 
 
+# ── Dynamic /{activity_id} routes ────────────────────────────────────────────────
+
+
+@router.get("/{activity_id}", response_model=ActivityDetailRead)
+async def get_activity(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a single activity by ID (with stream data)."""
+    result = await db.execute(
+        select(Activity)
+        .options(
+            selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
+            selectinload(Activity.sources),
+            selectinload(Activity.route),
+            selectinload(Activity.streams),
+        )
+        .where(
+            Activity.id == activity_id,
+            Activity.user_id == current_user.id,
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    read = _enrich_activity_read(activity)
+    return ActivityDetailRead(
+        **read.model_dump(),
+        streams=[
+            ActivityStreamRead.model_validate(s) for s in (activity.streams or [])
+        ],
+    )
+
+
+@router.get("/{activity_id}/streams", response_model=list[ActivityStreamRead])
+async def get_activity_streams(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all streams for an activity."""
+    # Verify activity belongs to user
+    result = await db.execute(
+        select(Activity).where(
+            Activity.id == activity_id,
+            Activity.user_id == current_user.id,
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    result = await db.execute(
+        select(ActivityStream).where(ActivityStream.activity_id == activity_id)
+    )
+    streams = list(result.scalars().all())
+    return [ActivityStreamRead.model_validate(s) for s in streams]
+
+
 async def _compute_top_speed(db: AsyncSession, activity_id: uuid.UUID) -> float | None:
     """Compute max velocity in km/h from the activity's velocity stream(s)."""
     result = await db.execute(
         select(ActivityStream).where(
             ActivityStream.activity_id == activity_id,
-            ActivityStream.stream_type.in_(["velocity", "velocity_smooth", "enhanced_speed"]),
+            ActivityStream.stream_type.in_(
+                ["velocity", "velocity_smooth", "enhanced_speed"]
+            ),
         )
     )
     stream = result.scalar_one_or_none()

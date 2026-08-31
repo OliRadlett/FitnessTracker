@@ -65,13 +65,14 @@ export function TodayTab({
   respiratoryRate,
   upcomingEvents,
 }: TodayTabProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   // ── Training load chart (CTL / ATL / TSB trend) ─────────────────────────
   const { data: trainingLoadChart, isLoading: trainingLoadLoading } = useQuery<ChartData>({
     queryKey: ['chart-training-load', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/training_load?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   // ── Active plan → today's planned workout ───────────────────────────────
@@ -79,6 +80,7 @@ export function TodayTab({
     queryKey: ['training-plans', 'active'],
     queryFn: () => getTrainingPlans(authFetch, 'active'),
     staleTime: 60_000,
+    enabled: !!token,
   });
 
   const activePlan = activePlans && activePlans.length > 0 ? activePlans[0] : null;
@@ -91,7 +93,7 @@ export function TodayTab({
     queryKey: ['plan-week', activePlan?.id, currentWeek],
     queryFn: () => getPlanWeek(authFetch, activePlan!.id, currentWeek),
     staleTime: 60_000,
-    enabled: !!activePlan,
+    enabled: !!token && !!activePlan,
   });
 
   const todayStr = toDateStr(new Date());

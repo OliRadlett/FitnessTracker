@@ -108,18 +108,20 @@ export function WeeklyTab({
   onDownloadReport,
   getCurrentMonday,
 }: WeeklyTabProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: hrvChart, isLoading: hrvLoading } = useQuery<ChartData>({
     queryKey: ['chart-hrv-trend-detailed', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/hrv_trend_detailed?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: heatmapChart, isLoading: heatmapLoading } = useQuery<ChartData>({
     queryKey: ['chart-consistency-heatmap', 182],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/consistency_heatmap?days=182'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   return (

@@ -20,13 +20,14 @@ const SPORT_OPTIONS = [
  * estimated_1rm, sport select for activity-count/distance/TSS metrics).
  */
 export function GoalCreateModal({ onClose }: { onClose: () => void }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const { data: metrics } = useQuery({
     queryKey: ['goal-metrics'],
     queryFn: () => getGoalMetrics(authFetch),
     staleTime: Infinity,
+    enabled: !!token,
   });
 
   const [metricKey, setMetricKey] = useState('');

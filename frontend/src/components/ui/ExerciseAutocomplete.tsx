@@ -44,7 +44,7 @@ export function ExerciseAutocomplete({
   autoFocus = false,
   className = '',
 }: ExerciseAutocompleteProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const [inputValue, setInputValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -56,6 +56,7 @@ export function ExerciseAutocomplete({
   const { data: suggestions } = useQuery<ExerciseSuggestion[]>({
     queryKey: ['exercise-suggestions', debouncedQuery],
     queryFn: () => authFetch<ExerciseSuggestion[]>(`/api/v1/lifting/exercises?q=${encodeURIComponent(debouncedQuery)}&limit=15`),
+    enabled: !!token && !!debouncedQuery,
   });
 
   // Sync external value changes

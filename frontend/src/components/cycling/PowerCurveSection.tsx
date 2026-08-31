@@ -46,18 +46,20 @@ export function PowerCurveSection({
   chartDailyTss,
   chartWeightTrend,
 }: PowerCurveSectionProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: wkgChart, isLoading: wkgLoading } = useQuery<ChartData>({
     queryKey: ['chart-wkg-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/wkg_power_curve?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: percentileChart, isLoading: percentileLoading } = useQuery<ChartData>({
     queryKey: ['chart-power-duration-percentile', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_duration_percentile?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   // Power vs HR chart data

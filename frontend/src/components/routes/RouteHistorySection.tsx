@@ -8,11 +8,12 @@ import { formatDistance, formatDuration } from '@/lib/utils';
 import Link from 'next/link';
 
 export function RouteHistorySection({ routeId }: { routeId: string }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: history, isLoading } = useQuery<RouteHistoryResponse>({
     queryKey: ['route-history', routeId],
     queryFn: () => authFetch<RouteHistoryResponse>(`/api/v1/routes/${routeId}/history`),
+    enabled: !!token,
     staleTime: 300_000,
   });
 

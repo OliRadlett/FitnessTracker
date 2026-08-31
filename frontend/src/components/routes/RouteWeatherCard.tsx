@@ -7,7 +7,7 @@ import { weatherEmoji } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 
 export function RouteWeatherCard({ route }: { route: RouteData }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   // Get weather for route start location
   const { data: weather, isPending, isError } = useQuery({
@@ -23,6 +23,7 @@ export function RouteWeatherCard({ route }: { route: RouteData }) {
       forecast?: { days: Array<{ date: string; conditions: string; temp_max: number; temp_min: number; wind_speed_max: number; precipitation_probability: number }> };
     }>(`/api/v1/weather/route/${route.id}`),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   if (isError) {

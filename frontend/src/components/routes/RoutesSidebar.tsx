@@ -13,7 +13,7 @@ export function RoutesSidebar({
   onTagClick?: () => void;
   onCollectionClick?: () => void;
 }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const {
     selectedTagIds,
     toggleTag,
@@ -25,6 +25,7 @@ export function RoutesSidebar({
   const { data: tags = [] } = useQuery({
     queryKey: ['route-tags'],
     queryFn: () => authFetch<RouteTag[]>('/api/v1/routes/tags'),
+    enabled: !!token,
     staleTime: 120_000,
   });
 
@@ -32,6 +33,7 @@ export function RoutesSidebar({
   const { data: collections = [] } = useQuery({
     queryKey: ['route-collections'],
     queryFn: () => authFetch<RouteCollection[]>('/api/v1/routes/collections'),
+    enabled: !!token,
     staleTime: 120_000,
   });
 
