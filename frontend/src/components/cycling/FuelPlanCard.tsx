@@ -134,10 +134,10 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
 }
 
 export function FuelPlanCard({ activity }: FuelPlanCardProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const enabled = !!activity?.id;
+  const enabled = !!token && !!activity?.id;
 
   const { data: plan, isLoading, isError, error } = useQuery<RideFuelPlan | null>({
     queryKey: ['fuel-plan', activity?.id ?? 'none'],

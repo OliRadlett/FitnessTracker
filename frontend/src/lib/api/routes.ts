@@ -33,7 +33,7 @@ export async function getRoutes(
   });
   const query = params.toString();
   const result = await apiFetchWithHeaders<RouteSummary[]>(
-    `/api/v1/routes${query ? `?${query}` : ''}`,
+    `/api/v1/routes/${query ? `?${query}` : ''}`,
     {},
     token,
   );

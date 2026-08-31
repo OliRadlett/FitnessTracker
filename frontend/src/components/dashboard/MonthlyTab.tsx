@@ -29,18 +29,20 @@ export function MonthlyTab({
   yearlySummary,
   yearlyLoading,
 }: MonthlyTabProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: sleepChart, isLoading: sleepLoading } = useQuery<ChartData>({
     queryKey: ['chart-sleep-consistency', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/sleep_consistency?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: restDayChart, isLoading: restDayLoading } = useQuery<ChartData>({
     queryKey: ['chart-rest-day-analysis', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/rest_day_analysis?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   if (isLoading) {

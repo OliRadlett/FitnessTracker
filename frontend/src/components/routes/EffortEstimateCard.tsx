@@ -9,11 +9,12 @@ import { Badge } from '@/components/ui/Badge';
 export function EffortEstimateCard({ routeId }: {
   routeId: string;
 }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: estimate, isPending, isError } = useQuery<EffortEstimateResponse>({
     queryKey: ['route-effort', routeId],
     queryFn: () => authFetch<EffortEstimateResponse>(`/api/v1/routes/${routeId}/effort-estimate`),
+    enabled: !!token,
     staleTime: 300_000,
   });
 

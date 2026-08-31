@@ -17,16 +17,18 @@ export function CompareActivitiesModal({
   activityB: Activity;
   onClose: () => void;
 }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: streamsA, isLoading: loadingA } = useQuery<ActivityStream[]>({
     queryKey: ['activity-streams', activityA.id],
     queryFn: () => authFetch<ActivityStream[]>(`/api/v1/activities/${activityA.id}/streams`),
+    enabled: !!token,
   });
 
   const { data: streamsB, isLoading: loadingB } = useQuery<ActivityStream[]>({
     queryKey: ['activity-streams', activityB.id],
     queryFn: () => authFetch<ActivityStream[]>(`/api/v1/activities/${activityB.id}/streams`),
+    enabled: !!token,
   });
 
   const isLoading = loadingA || loadingB;

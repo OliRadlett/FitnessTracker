@@ -29,7 +29,7 @@ const SPORT_OPTIONS = [
  * manual check-in form, edit/delete/reactivate lifecycle actions.
  */
 export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => void }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -51,18 +51,20 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     queryKey: ['goal-metrics'],
     queryFn: () => getGoalMetrics(authFetch),
     staleTime: Infinity,
+    enabled: !!token,
   });
 
   const { data: checkIns, isLoading: checkInsLoading } = useQuery({
     queryKey: ['goal-checkins', goal.id],
     queryFn: () => getCheckIns(authFetch, goal.id),
+    enabled: !!token,
   });
 
   const { data: projection } = useQuery({
     queryKey: ['goal-projection', goal.id],
     queryFn: () => getGoalProjection(authFetch, goal.id),
     staleTime: 5 * 60_000,
-    enabled: goal.status === 'active',
+    enabled: !!token && goal.status === 'active',
   });
 
   const metricDef = useMemo(

@@ -20,7 +20,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export function ExerciseManager() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -32,6 +32,7 @@ export function ExerciseManager() {
     queryKey: ['exercises-list', search],
     queryFn: () => searchExercises(authFetch, search, 200),
     staleTime: 30_000,
+    enabled: !!token,
   });
 
   const createMut = useMutation({
