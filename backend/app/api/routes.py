@@ -276,76 +276,6 @@ async def list_routes(
     )
 
 
-# ─── Route Detail ──────────────────────────────────────────────────────────────
-
-
-@router.get("/{route_id}", response_model=RouteRead)
-async def get_route(
-    route_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get route detail with all sources and tags."""
-    route = await route_service.get_route_by_id(db, route_id, current_user.id)
-    if not route:
-        raise HTTPException(status_code=404, detail="Route not found")
-    return RouteRead.model_validate(route)
-
-
-@router.get("/{route_id}/history", response_model=RouteHistoryResponse)
-async def get_route_history(
-    route_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get ride history for a route, including personal best."""
-    route = await route_service.get_route_by_id(db, route_id, current_user.id)
-    if not route:
-        raise HTTPException(status_code=404, detail="Route not found")
-
-    activities_result = await db.execute(
-        select(Activity)
-        .where(
-            Activity.route_id == route_id,
-            Activity.user_id == current_user.id,
-        )
-        .order_by(Activity.start_date.desc())
-    )
-    activities = list(activities_result.scalars().all())
-
-    rides = [
-        RouteHistoryRide(
-            activity_id=a.id,
-            date=a.start_date,
-            duration_seconds=a.duration_seconds,
-            distance_meters=a.distance_meters,
-            average_power=a.average_power,
-            tss=a.tss,
-        )
-        for a in activities
-    ]
-
-    # Personal best = shortest duration ride
-    pb_ride = None
-    if rides:
-        pb = min(rides, key=lambda r: r.duration_seconds or float("inf"))
-        if pb.duration_seconds is not None:
-            pb_ride = RouteHistoryPersonalBest(
-                activity_id=pb.activity_id,
-                date=pb.date,
-                duration_seconds=pb.duration_seconds,
-                average_power=pb.average_power,
-            )
-
-    return RouteHistoryResponse(
-        route_id=route_id,
-        route_name=route.name,
-        total_rides=len(rides),
-        personal_best=pb_ride,
-        rides=rides,
-    )
-
-
 # ─── Tags ──────────────────────────────────────────────────────────────────────
 
 
@@ -1215,3 +1145,78 @@ async def sync_routes(
 
     await db.commit()
     return sync_results
+
+
+# ─── Dynamic Route Detail & Sub-Resources (after all static routes) ─────────────
+# IMPORTANT: All /{route_id} dynamic GET routes MUST be registered after every
+# static single-segment GET route (e.g. /tags, /collections, /quality,
+# /duplicates).  FastAPI matches routes in registration order, so a /{route_id}
+# route registered before /tags would shadow it — "tags" is not a valid UUID,
+# resulting in a 422 ValidationError instead of routing to the intended handler.
+
+
+@router.get("/{route_id}", response_model=RouteRead)
+async def get_route(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get route detail with all sources and tags."""
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return RouteRead.model_validate(route)
+
+
+@router.get("/{route_id}/history", response_model=RouteHistoryResponse)
+async def get_route_history(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get ride history for a route, including personal best."""
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    activities_result = await db.execute(
+        select(Activity)
+        .where(
+            Activity.route_id == route_id,
+            Activity.user_id == current_user.id,
+        )
+        .order_by(Activity.start_date.desc())
+    )
+    activities = list(activities_result.scalars().all())
+
+    rides = [
+        RouteHistoryRide(
+            activity_id=a.id,
+            date=a.start_date,
+            duration_seconds=a.duration_seconds,
+            distance_meters=a.distance_meters,
+            average_power=a.average_power,
+            tss=a.tss,
+        )
+        for a in activities
+    ]
+
+    # Personal best = shortest duration ride
+    pb_ride = None
+    if rides:
+        pb = min(rides, key=lambda r: r.duration_seconds or float("inf"))
+        if pb.duration_seconds is not None:
+            pb_ride = RouteHistoryPersonalBest(
+                activity_id=pb.activity_id,
+                date=pb.date,
+                duration_seconds=pb.duration_seconds,
+                average_power=pb.average_power,
+            )
+
+    return RouteHistoryResponse(
+        route_id=route_id,
+        route_name=route.name,
+        total_rides=len(rides),
+        personal_best=pb_ride,
+        rides=rides,
+    )
