@@ -68,12 +68,12 @@ INTENSITY_ZONES = {
     "tempo": {
         "name": "Tempo (Z3)",
         "factor": 0.75,
-        "description": "Comfortably hard, sustainable for ~40 min.",
+        "description": "Moderately hard, sustainable for 20-40 min.",
     },
     "threshold": {
         "name": "Threshold (Z4)",
-        "factor": 0.90,
-        "description": "Halfway between marathon and 5K pace effort.",
+        "factor": 0.975,
+        "description": "Comfortably hard, sustainable for ~40 min at lactate threshold.",
     },
     "vo2max": {
         "name": "VO2 Max (Z5)",
@@ -153,7 +153,7 @@ def estimate_required_power(
     # This is a cubic in v: 0.5*rho*CdA*v³ + (Crr*m*g + m*g*grade)*v - P = 0
 
     # For the estimate, we'll iterate: assume FTP is sustainable, find the speed
-    available_power = ftp_watts * 0.90  # assume threshold effort for the estimate
+    available_power = ftp_watts  # speed at FTP is the reference for all zones
     # Use the target intensity factor if provided by caller context
 
     a = 0.5 * AIR_DENSITY * cda
