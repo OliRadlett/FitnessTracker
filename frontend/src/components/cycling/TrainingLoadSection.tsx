@@ -22,18 +22,20 @@ export function TrainingLoadSection({
   loadDays,
   setLoadDays,
 }: TrainingLoadSectionProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: rampRateChart, isLoading: rampLoading } = useQuery<ChartData>({
     queryKey: ['chart-ramp-rate', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ramp_rate?weeks=16'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: loadBalanceChart, isLoading: loadBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-training-load-balance', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/training_load_balance?weeks=16'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   return (

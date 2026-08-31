@@ -14,7 +14,7 @@ interface ActivityAiAnalysisCardProps {
 }
 
 export function ActivityAiAnalysisCard({ activityId }: ActivityAiAnalysisCardProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['activity-ai-analysis', activityId];
 
@@ -22,6 +22,7 @@ export function ActivityAiAnalysisCard({ activityId }: ActivityAiAnalysisCardPro
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>(`/api/v1/activities/${activityId}/ai-analysis`),
     staleTime: 1000 * 60 * 30, // 30 minutes — don't re-fetch cached analysis
+    enabled: !!token,
   });
 
   const mutation = useMutation({

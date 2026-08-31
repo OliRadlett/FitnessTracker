@@ -11,13 +11,14 @@ import { formatRelativeTime } from '@/lib/utils';
 const STALE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
 export function SyncHealthBanner() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const [dismissed, setDismissed] = useState(false);
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
     queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
     staleTime: 5 * 60 * 1000,
+    enabled: !!token,
     refetchInterval: 5 * 60 * 1000,
     retry: 1,
   });
