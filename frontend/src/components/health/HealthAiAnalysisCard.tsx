@@ -10,7 +10,7 @@ import { renderAnalysisText, relativeTime } from '@/lib/analysisRenderer';
 /* ── Component ─────────────────────────────────────────────────────────── */
 
 export function HealthAiAnalysisCard() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['health-ai-analysis'];
 
@@ -18,6 +18,7 @@ export function HealthAiAnalysisCard() {
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>('/api/v1/metrics/health-ai-analysis'),
     staleTime: 1000 * 60 * 30,
+    enabled: !!token,
   });
 
   const mutation = useMutation({

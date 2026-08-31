@@ -31,13 +31,14 @@ const TOGGLES: { key: keyof NotificationPreferences; label: string; description:
 ];
 
 export function NotificationSettings() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['notification-preferences'] as const;
 
   const { data: prefs } = useQuery<NotificationPreferences>({
     queryKey,
     queryFn: () => getNotificationPreferences(authFetch),
+    enabled: !!token,
   });
 
   const update = useMutation({

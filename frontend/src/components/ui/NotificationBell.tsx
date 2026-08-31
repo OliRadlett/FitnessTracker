@@ -25,7 +25,7 @@ const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
 /* ── Component ─────────────────────────────────────────────────────────── */
 
 export function NotificationBell() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -36,6 +36,7 @@ export function NotificationBell() {
     queryKey,
     queryFn: () => listNotifications(authFetch, 50),
     refetchInterval: 30_000,
+    enabled: !!token,
   });
 
   const unreadCount = notifications.filter((n) => !n.read).length;

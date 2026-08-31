@@ -14,7 +14,7 @@ interface WarmupStepRow {
 }
 
 export function WarmupTemplateManager() {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -29,6 +29,7 @@ export function WarmupTemplateManager() {
   const { data: templates, isLoading } = useQuery<WarmupTemplate[]>({
     queryKey: ['warmup-templates'],
     queryFn: () => authFetch<WarmupTemplate[]>('/api/v1/lifting/warmup-templates'),
+    enabled: !!token,
   });
 
   const createMutation = useMutation({

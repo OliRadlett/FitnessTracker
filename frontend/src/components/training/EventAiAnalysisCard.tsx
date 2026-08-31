@@ -14,7 +14,7 @@ interface EventAiAnalysisCardProps {
 }
 
 export function EventAiAnalysisCard({ eventId }: EventAiAnalysisCardProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['event-ai-analysis', eventId];
 
@@ -22,6 +22,7 @@ export function EventAiAnalysisCard({ eventId }: EventAiAnalysisCardProps) {
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>(`/api/v1/events/${eventId}/ai-analysis`),
     staleTime: 1000 * 60 * 30,
+    enabled: !!token,
   });
 
   const mutation = useMutation({

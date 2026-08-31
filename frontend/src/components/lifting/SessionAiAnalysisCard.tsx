@@ -14,7 +14,7 @@ interface SessionAiAnalysisCardProps {
 }
 
 export function SessionAiAnalysisCard({ sessionId }: SessionAiAnalysisCardProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['lifting-session-ai-analysis', sessionId];
 
@@ -22,6 +22,7 @@ export function SessionAiAnalysisCard({ sessionId }: SessionAiAnalysisCardProps)
     queryKey,
     queryFn: () => authFetch<LlmAnalysis | null>(`/api/v1/lifting/sessions/${sessionId}/ai-analysis`),
     staleTime: 1000 * 60 * 30, // 30 minutes — don't re-fetch cached analysis
+    enabled: !!token,
   });
 
   const mutation = useMutation({
