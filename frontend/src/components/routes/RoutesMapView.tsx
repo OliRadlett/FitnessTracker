@@ -68,11 +68,11 @@ export function RoutesMapView({
             blur: 25,
             maxZoom: 17,
             gradient: {
-              0.2: '#3b82f6',
-              0.4: '#60a5fa',
-              0.6: '#fbbf24',
-              0.8: '#f59e0b',
-              1.0: '#ef4444',
+              0.2: '#1e40af',  // dark blue
+              0.4: '#065f46',  // dark teal
+              0.6: '#9a3412',  // dark orange
+              0.8: '#dc2626',  // bright red
+              1.0: '#991b1b',  // dark red
             },
           },
         );
@@ -81,7 +81,7 @@ export function RoutesMapView({
         // Draw home area circle
         L.circle(L.latLng(center_lat, center_lng), {
           radius: radius_km * 1000,
-          color: '#fbbf24',
+          color: '#9a3412',  // dark orange
           weight: 2,
           dashArray: '5, 5',
           fill: false,
