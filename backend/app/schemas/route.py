@@ -15,6 +15,7 @@ class RouteSourceRead(BaseModel):
     provider: str
     provider_route_id: str
     provider_name: str
+    encoded_polyline: str
     synced_at: datetime
 
 
@@ -293,3 +294,64 @@ class EffortEstimateResponse(BaseModel):
     estimated_kcal: float | None = None
     zone_name: str | None = None
     description: str | None = None
+
+
+# ── Merged Route View ──────────────────────────────────────────────────────────
+
+
+class RiddenSegment(BaseModel):
+    model_config = {"from_attributes": True}
+
+    activity_id: uuid.UUID
+    encoded_polyline: str
+    date: datetime
+    distance_meters: float | None = None
+    duration_seconds: int | None = None
+
+
+class MergedRouteView(BaseModel):
+    """Route detail with each contributing source's polyline and ridden activity segments."""
+
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    name: str
+    sport_type: str
+    distance_meters: float
+    elevation_gain_meters: float | None = None
+    estimated_time_seconds: int | None = None
+    encoded_polyline: str
+    elevation_profile: dict | None = None
+    surface_profile: dict | None = None
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+    country: str | None = None
+    locality: str | None = None
+    is_loop: bool
+    is_favorite: bool = False
+    quality_score: float | None = None
+    sources: list[RouteSourceRead] = []
+    ridden_segments: list[RiddenSegment] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Home Area Heatmap ──────────────────────────────────────────────────────────
+
+
+class HomeAreaActivityPoint(BaseModel):
+    """A single lat/lng point from a user's activity near their home area."""
+
+    lat: float
+    lng: float
+
+
+class HomeAreaHeatmapResponse(BaseModel):
+    """Activity points near the user's home for heatmap rendering."""
+
+    center_lat: float
+    center_lng: float
+    radius_km: float
+    points: list[HomeAreaActivityPoint]

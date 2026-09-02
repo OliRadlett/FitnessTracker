@@ -15,6 +15,8 @@ import type {
   RouteQualityScore,
   EffortEstimateResponse,
   EffortEstimateRequest,
+  MergedRouteView,
+  HomeAreaHeatmapResponse,
 } from './types';
 
 export async function getRoutes(
@@ -244,4 +246,23 @@ export async function uploadRouteGpx(file: File, token?: string): Promise<RouteD
     fd.append('file', file);
     return fd;
   })(), token);
+}
+
+// ─── Merged Route View ────────────────────────────────────────────────────────
+
+export async function getMergedRouteView(routeId: string, token?: string): Promise<MergedRouteView> {
+  return apiFetch<MergedRouteView>(`/api/v1/routes/${routeId}/merged-view`, {}, token);
+}
+
+// ─── Home Area Heatmap ────────────────────────────────────────────────────────
+
+export async function getHomeAreaHeatmap(
+  radiusKm: number = 20,
+  token?: string,
+): Promise<HomeAreaHeatmapResponse> {
+  return apiFetch<HomeAreaHeatmapResponse>(
+    `/api/v1/routes/heatmap/home?radius_km=${radiusKm}`,
+    {},
+    token,
+  );
 }

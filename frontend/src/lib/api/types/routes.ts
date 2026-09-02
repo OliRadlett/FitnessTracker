@@ -5,6 +5,7 @@ export interface RouteSource {
   provider: string;
   provider_route_id: string;
   provider_name: string;
+  encoded_polyline: string;
   synced_at: string;
 }
 
@@ -197,4 +198,53 @@ export interface EffortEstimateRequest {
   weight_kg: number;
   bike_type?: string;
   target_intensity?: string;
+}
+
+// ── Merged Route View ─────────────────────────────────────────────────────────
+
+export interface RiddenSegment {
+  activity_id: string;
+  encoded_polyline: string;
+  date: string;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+}
+
+export interface MergedRouteView {
+  id: string;
+  name: string;
+  sport_type: string;
+  distance_meters: number;
+  elevation_gain_meters?: number;
+  estimated_time_seconds?: number;
+  encoded_polyline: string;
+  elevation_profile?: { elevations: (number | null)[] };
+  surface_profile?: Record<string, number>;
+  start_lat: number;
+  start_lng: number;
+  end_lat: number;
+  end_lng: number;
+  country?: string;
+  locality?: string;
+  is_loop: boolean;
+  is_favorite: boolean;
+  quality_score?: number;
+  sources: RouteSource[];
+  ridden_segments: RiddenSegment[];
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Home Area Heatmap ─────────────────────────────────────────────────────────
+
+export interface HomeAreaActivityPoint {
+  lat: number;
+  lng: number;
+}
+
+export interface HomeAreaHeatmapResponse {
+  center_lat: number;
+  center_lng: number;
+  radius_km: number;
+  points: HomeAreaActivityPoint[];
 }

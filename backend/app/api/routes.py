@@ -10,6 +10,7 @@ Extended with:
 
 import json
 import logging
+import math
 import uuid
 from datetime import datetime
 from io import BytesIO
@@ -37,8 +38,12 @@ from app.schemas.route import (
     DuplicatePair,
     EffortEstimateRequest,
     EffortEstimateResponse,
+    HomeAreaHeatmapResponse,
+    HomeAreaActivityPoint,
     MergeManyRequest,
     MergeRequest,
+    MergedRouteView,
+    RiddenSegment,
     RouteCollectionCreate,
     RouteCollectionRead,
     RouteCollectionUpdate,
@@ -60,6 +65,9 @@ from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx
 from app.services.polyline_utils import encode_polyline, polyline_total_distance
+
+# Reuse the polyline extraction helper from the activities API
+from app.api.activities import _extract_encoded_polyline
 
 logger = logging.getLogger(__name__)
 
@@ -1058,6 +1066,106 @@ async def auto_merge_duplicates(
     return {"merged": merged_count, "threshold": threshold}
 
 
+# ─── Home Area Heatmap ────────────────────────────────────────────────────────
+
+
+@router.get("/heatmap/home", response_model=HomeAreaHeatmapResponse)
+async def get_home_area_heatmap(
+    radius_km: float = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get activity points near the user's home area for heatmap rendering.
+
+    Resolves the user's home location (CyclingProfile.home_lat/home_lng) and
+    samples lat/lng points from recent activity polylines within the radius.
+    """
+    from app.services.weather import resolve_user_coords
+    from app.services.polyline_utils import decode_polyline, haversine_distance
+
+    home = await resolve_user_coords(db, current_user.id)
+    if not home:
+        raise HTTPException(
+            status_code=200,
+            detail="No home location set. Configure Cycling Profile in Settings.",
+            headers={"X-Has-Home": "false"},
+        )
+
+    home_lat, home_lng = home
+
+    # Fetch activities with polylines — we'll filter by distance to home in Python
+    lat_delta = radius_km / 111.0
+    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(home_lat)), 0.1))
+
+    activities_result = await db.execute(
+        select(Activity)
+        .options(selectinload(Activity.route))
+        .where(
+            Activity.user_id == current_user.id,
+            Activity.sport_type.in_(["cycling", "running"]),
+            Activity.raw_data.isnot(None),
+        )
+        .order_by(Activity.start_date.desc())
+        .limit(500)
+    )
+
+    activities = list(activities_result.scalars().all())
+
+    points: list[HomeAreaActivityPoint] = []
+    seen: set[tuple[float, float]] = set()
+
+    for activity in activities:
+        encoded = _extract_encoded_polyline(activity)
+        if not encoded:
+            continue
+
+        # Quick bounding box filter on start point from raw_data
+        start_coords = None
+        if isinstance(activity.raw_data, dict):
+            start_coords = activity.raw_data.get("start_latlng")
+            if isinstance(start_coords, list) and len(start_coords) >= 2:
+                s_lat, s_lng = float(start_coords[0]), float(start_coords[1])
+                if (
+                    abs(s_lat - home_lat) > lat_delta
+                    or abs(s_lng - home_lng) > lng_delta
+                ):
+                    continue
+
+        # Also check linked route start coordinates as a fallback
+        if start_coords is None and activity.route:
+            s_lat, s_lng = (
+                float(activity.route.start_lat),
+                float(activity.route.start_lng),
+            )
+            if abs(s_lat - home_lat) > lat_delta or abs(s_lng - home_lng) > lng_delta:
+                continue
+
+        try:
+            decoded = decode_polyline(encoded)
+        except Exception:
+            continue
+
+        # Sample points within radius, dedupe to avoid excessive density
+        for lat, lng in decoded:
+            dist = haversine_distance(lat, lng, home_lat, home_lng)
+            if dist <= radius_km * 1000:
+                # Round to ~5m precision for dedup
+                key = (round(lat * 1e4) / 1e4, round(lng * 1e4) / 1e4)
+                if key not in seen:
+                    seen.add(key)
+                    points.append(HomeAreaActivityPoint(lat=lat, lng=lng))
+
+    return HomeAreaHeatmapResponse(
+        center_lat=home_lat,
+        center_lng=home_lng,
+        radius_km=radius_km,
+        points=points,
+    )
+
+
+# ─── Sync ──────────────────────────────────────────────────────────────────────
+
+
 @router.post("/sync", response_model=list[RouteSyncResult])
 async def sync_routes(
     current_user: User = Depends(get_current_user),
@@ -1225,3 +1333,52 @@ async def get_route_history(
         personal_best=pb_ride,
         rides=rides,
     )
+
+
+# ─── Merged Route View / Heatmap ──────────────────────────────────────────────
+
+
+@router.get("/{route_id}/merged-view", response_model=MergedRouteView)
+async def get_merged_route_view(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a merged route with each contributing source's polyline and ridden segments.
+
+    Returns the route detail along with source-level polylines (for drawing each
+    contributing route variant) and activity polylines for rides on this route
+    (for highlighting ridden sections).
+    """
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Build the merged view from the route
+    merged = MergedRouteView.model_validate(route)
+
+    # Collect ridden segments: activities linked to this route with polyline data
+    activities_result = await db.execute(
+        select(Activity)
+        .where(
+            Activity.route_id == route_id,
+            Activity.user_id == current_user.id,
+        )
+        .order_by(Activity.start_date.desc())
+    )
+    activities = list(activities_result.scalars().all())
+
+    for activity in activities:
+        encoded = _extract_encoded_polyline(activity)
+        if encoded:
+            merged.ridden_segments.append(
+                RiddenSegment(
+                    activity_id=activity.id,
+                    encoded_polyline=encoded,
+                    date=activity.start_date,
+                    distance_meters=activity.distance_meters,
+                    duration_seconds=activity.duration_seconds,
+                )
+            )
+
+    return merged

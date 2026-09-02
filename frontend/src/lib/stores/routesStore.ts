@@ -47,12 +47,14 @@ export interface RoutesState {
   toggleCompare: (id: string) => void;
 
   // UI state
-  showFilters: boolean;
-  setShowFilters: (show: boolean) => void;
-  showImportModal: boolean;
-  setShowImportModal: (show: boolean) => void;
-  showNewTagModal: boolean;
-  setShowNewTagModal: (show: boolean) => void;
+   showFilters: boolean;
+   setShowFilters: (show: boolean) => void;
+   showImportModal: boolean;
+   setShowImportModal: (show: boolean) => void;
+   showNewTagModal: boolean;
+   setShowNewTagModal: (show: boolean) => void;
+   showHeatmap: boolean;
+   setShowHeatmap: (show: boolean) => void;
 }
 
 const initialFilters: RouteFilters = {};
@@ -133,12 +135,14 @@ export const useRoutesStore = create<RoutesState>()(
         return { compareRouteB: id };
       }),
 
-    // UI state
-    showFilters: false,
-    setShowFilters: (show) => set({ showFilters: show }),
-    showImportModal: false,
-    setShowImportModal: (show) => set({ showImportModal: show }),
-    showNewTagModal: false,
-    setShowNewTagModal: (show) => set({ showNewTagModal: show }),
-  })),
+     // UI state
+     showFilters: false,
+     setShowFilters: (show) => set({ showFilters: show }),
+     showImportModal: false,
+     setShowImportModal: (show) => set({ showImportModal: show }),
+     showNewTagModal: false,
+     setShowNewTagModal: (show) => set({ showNewTagModal: show }),
+     showHeatmap: false,
+     setShowHeatmap: (show) => set({ showHeatmap: show }),
+   })),
 );
