@@ -4,9 +4,20 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import type { MergedRouteView } from '@/lib/api/types';
 import { decodePolyline } from '@/lib/polyline';
 
+const SOURCE_COLORS = [
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#10b981', // green
+  '#f59e0b', // amber
+  '#8b5cf6', // purple
+  '#ec4899', // pink
+  '#14b8a3', // teal
+  '#f97316', // orange
+];
+
 /**
- * Renders a merged route with ride frequency heatmap coloring.
- * Sections ridden more often appear in warmer/darker colors.
+ * Renders a merged route with source polylines and ride frequency heatmap.
+ * Source routes shown as dashed lines; ridden sections colored by frequency.
  */
 export function MergedRouteMapView({
   mergedRoute,
@@ -21,6 +32,15 @@ export function MergedRouteMapView({
   const decodedMain = useMemo(
     () => decodePolyline(encoded_polyline),
     [encoded_polyline],
+  );
+
+  const decodedSources = useMemo(
+    () =>
+      sources.map((s) => ({
+        source: s,
+        points: decodePolyline(s.encoded_polyline),
+      })),
+    [sources],
   );
 
   const decodedSegments = useMemo(
@@ -158,6 +178,24 @@ export function MergedRouteMapView({
         }
       }
 
+      // Draw individual source polylines as dashed lines
+      for (let i = 0; i < decodedSources.length; i++) {
+        const { points } = decodedSources[i];
+        if (points.length < 2) continue;
+        const latLngs: [number, number][] = points.map(([lat, lng]) => [lat, lng]);
+        allBounds.push(...latLngs);
+
+        const color = SOURCE_COLORS[i % SOURCE_COLORS.length];
+
+        L.polyline(latLngs, {
+          color,
+          weight: 3,
+          opacity: 0.7,
+          lineCap: 'round',
+          dashArray: '6, 8',
+        }).addTo(map);
+      }
+
       // Fit map to bounds
       if (allBounds.length > 0) {
         map.fitBounds(L.latLngBounds(allBounds).pad(0.15));
@@ -174,7 +212,7 @@ export function MergedRouteMapView({
     return () => {
       if (cleanup) cleanup();
     };
-  }, [decodedMain, frequencyData]);
+  }, [decodedMain, decodedSources, frequencyData]);
 
   const maxFreq = useMemo(() => {
     if (!frequencyData) return 0;
@@ -213,6 +251,32 @@ export function MergedRouteMapView({
           <span className="text-muted">Most</span>
         </div>
       </div>
+
+      {/* Source routes legend */}
+      {decodedSources.length > 1 && (
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-muted font-medium">Source routes:</span>
+          {decodedSources.map(({ source }, i) => {
+            const color = SOURCE_COLORS[i % SOURCE_COLORS.length];
+            const hasPolyline = source.encoded_polyline && source.encoded_polyline.length > 0;
+            return (
+              <div
+                key={source.id}
+                className="inline-flex items-center gap-1.5"
+              >
+                <span
+                  className="inline-block w-4 h-0.5 rounded"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-muted">
+                  {source.provider_name || source.provider}
+                </span>
+                {!hasPolyline && <span className="text-yellow-500">⚠</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="text-xs text-muted">
