@@ -187,7 +187,7 @@ export function RoutesMapView({
     return () => {
       if (cleanup) cleanup();
     };
-  }, [routes, onSelectRoute, selectedRouteId]);
+  }, [routes, onSelectRoute, selectedRouteId, showHeatmap, heatmapData]);
 
   if (routes.length === 0) {
     return (
