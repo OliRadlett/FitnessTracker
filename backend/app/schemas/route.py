@@ -198,6 +198,7 @@ class DuplicatePair(BaseModel):
     route_a: RouteRead
     route_b: RouteRead
     score: float
+    requires_confirmation: bool = False  # True for scores 0.40–0.89
 
 
 class MergeManyRequest(BaseModel):

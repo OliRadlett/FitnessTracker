@@ -165,6 +165,7 @@ export interface DuplicatePair {
   route_a: RouteData;
   route_b: RouteData;
   score: number;
+  requires_confirmation: boolean;
 }
 
 // ── Quality ──────────────────────────────────────────────────────────────────
