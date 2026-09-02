@@ -1,7 +1,10 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { RouteSummary } from '@/lib/api/types';
+import { useQuery } from '@tanstack/react-query';
+import type { RouteSummary, HomeAreaHeatmapResponse } from '@/lib/api/types';
+import { useAuthFetch } from '@/lib/api';
+import { getHomeAreaHeatmap } from '@/lib/api/routes';
 import { formatDistance } from '@/lib/utils';
 import { computeDifficulty, fmtElevation } from '@/lib/routeUtils';
 import { useRoutesStore } from '@/lib/stores/routesStore';
@@ -9,13 +12,25 @@ import { useRoutesStore } from '@/lib/stores/routesStore';
 export function RoutesMapView({
   routes,
   onSelectRoute,
+  showHeatmap = false,
 }: {
   routes: RouteSummary[];
   onSelectRoute: (id: string) => void;
+  showHeatmap?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const { selectedRouteId } = useRoutesStore();
+  const { token } = useAuthFetch();
+
+  // Fetch home area heatmap data
+  const { data: heatmapData } = useQuery<HomeAreaHeatmapResponse>({
+    queryKey: ['home-area-heatmap', showHeatmap],
+    queryFn: () => getHomeAreaHeatmap(showHeatmap ? 20 : 0, token),
+    enabled: !!token && showHeatmap,
+    staleTime: 300_000,
+    retry: false,
+  });
 
   useEffect(() => {
     if (!mapRef.current || routes.length === 0) return;
@@ -40,6 +55,40 @@ export function RoutesMapView({
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map);
+
+      // Heatmap layer: density of activity points around home area
+      if (heatmapData && heatmapData.points.length > 0) {
+        const { center_lat, center_lng, radius_km, points } = heatmapData;
+
+        // Use leaflet.heat plugin for proper heatmap rendering
+        const heatLayer = (L as any).heatLayer(
+          points.map((p) => [p.lat, p.lng, 0.6]),
+          {
+            radius: 15,
+            blur: 25,
+            maxZoom: 17,
+            gradient: {
+              0.2: '#3b82f6',
+              0.4: '#60a5fa',
+              0.6: '#fbbf24',
+              0.8: '#f59e0b',
+              1.0: '#ef4444',
+            },
+          },
+        );
+        heatLayer.addTo(map);
+
+        // Draw home area circle
+        L.circle(L.latLng(center_lat, center_lng), {
+          radius: radius_km * 1000,
+          color: '#fbbf24',
+          weight: 2,
+          dashArray: '5, 5',
+          fill: false,
+        }).addTo(map).bindPopup(
+          `<div style="font-size:12px;"><strong>Home Area</strong><br/>${radius_km} km radius · ${points.length} activity points</div>`
+        );
+      }
 
       const allBounds: [number, number][] = [];
 

@@ -1,14 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadRouteGpx, useAuthFetch } from '@/lib/api';
-import type { RouteData } from '@/lib/api/types';
+import type { RouteData, MergedRouteView } from '@/lib/api/types';
+import { getMergedRouteView } from '@/lib/api/routes';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { TabGroup } from '@/components/ui/TabGroup';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { QualityBadge } from '@/components/routes/QualityBadge';
 import { EffortEstimateCard } from '@/components/routes/EffortEstimateCard';
+import { RouteWeatherCard } from '@/components/routes/RouteWeatherCard';
+import { MergedRouteMapView } from '@/components/routes/MergedRouteMapView';
 import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
@@ -27,7 +30,7 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
   const queryClient = useQueryClient();
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
-  const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history'>('overview');
+   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort'>('overview');
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
@@ -255,6 +258,9 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
                   { key: 'overview', label: 'Overview' },
                   { key: 'map', label: 'Map & Profile' },
                   { key: 'history', label: 'History' },
+                  { key: 'merged', label: 'Merged View' },
+                  { key: 'weather', label: 'Weather' },
+                  { key: 'effort', label: 'Effort' },
                 ]}
                 active={detailTab}
                 onChange={(key) => setDetailTab(key as typeof detailTab)}
@@ -296,9 +302,65 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
                 <RouteHistorySection routeId={route.id} />
               </div>
             )}
+
+            {/* Merged View Tab */}
+            {detailTab === 'merged' && (
+              <div className="px-4 pb-4">
+                {route.sources.length > 1 ? (
+                  <MergedRouteDetail routeId={route.id} />
+                ) : (
+                  <p className="text-sm text-muted">
+                    This route has only one source — no merging was applied.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Weather Tab */}
+            {detailTab === 'weather' && (
+              <div className="px-4 pb-4">
+                <RouteWeatherCard route={route} />
+              </div>
+            )}
+
+            {/* Effort Tab */}
+            {detailTab === 'effort' && (
+              <div className="px-4 pb-4">
+                <EffortEstimateCard routeId={route.id} />
+              </div>
+            )}
           </Card>
         </div>
       </div>
     </div>
   );
+}
+
+function MergedRouteDetail({ routeId }: { routeId: string }) {
+  const { token } = useAuthFetch();
+  const { data: mergedRoute, isLoading, isError } = useQuery<MergedRouteView>({
+    queryKey: ['merged-route', routeId],
+    queryFn: () => getMergedRouteView(routeId, token),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="animate-pulse space-y-3">
+        <div className="h-4 bg-surface-light rounded w-3/4" />
+        <div className="h-3 bg-surface-light rounded w-1/2" />
+      </div>
+    );
+  }
+
+  if (isError || !mergedRoute) {
+    return (
+      <p className="text-sm text-muted">
+        Unable to load merged route view.
+      </p>
+    );
+  }
+
+  return <MergedRouteMapView mergedRoute={mergedRoute} />;
 }

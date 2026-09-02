@@ -27,7 +27,7 @@ export default function RoutesPage() {
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
 
-  const {
+   const {
     viewMode,
     setViewMode,
     selectedRouteId,
@@ -39,6 +39,8 @@ export default function RoutesPage() {
     setFilters,
     showImportModal,
     setShowImportModal,
+    showHeatmap,
+    setShowHeatmap,
   } = useRoutesStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -217,16 +219,31 @@ export default function RoutesPage() {
                 Upload GPX
               </button>
 
-              <button
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
-                aria-label="Sync routes from providers"
-                className="px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-              >
-                <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                {syncMutation.isPending ? 'Syncing...' : 'Sync'}
-              </button>
-            </div>
+               <button
+                 onClick={() => syncMutation.mutate()}
+                 disabled={syncMutation.isPending}
+                 aria-label="Sync routes from providers"
+                 className="px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+               >
+                 <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                 {syncMutation.isPending ? 'Syncing...' : 'Sync'}
+               </button>
+
+               {viewMode === 'map' && (
+                 <button
+                   onClick={() => setShowHeatmap(!showHeatmap)}
+                   aria-label="Toggle heatmap"
+                   className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                     showHeatmap
+                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                       : 'bg-surface-light hover:bg-surface-light/80 text-white'
+                   }`}
+                 >
+                   <MapPin className="w-4 h-4" />
+                   {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
+                 </button>
+               )}
+             </div>
           </div>
         </div>
 
@@ -268,15 +285,16 @@ export default function RoutesPage() {
               </div>
             ) : routes.length > 0 ? (
               <>
-                {viewMode === 'map' && (
-                  <div className="p-4">
-                    <Card>
-                      <RoutesMapView
-                        routes={routes}
-                        onSelectRoute={handleSelectRoute}
-                      />
-                    </Card>
-                  </div>
+                 {viewMode === 'map' && (
+                   <div className="p-4">
+                     <Card>
+                       <RoutesMapView
+                         routes={routes}
+                         onSelectRoute={handleSelectRoute}
+                         showHeatmap={showHeatmap}
+                       />
+                     </Card>
+                   </div>
                 )}
 
                 {viewMode === 'list' && (
