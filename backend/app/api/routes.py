@@ -1075,9 +1075,9 @@ async def get_home_area_heatmap(
 ):
     """Get activity route points for heatmap rendering.
 
-    Returns all points from all activities (no deduplication) so that
-    sections ridden more often naturally have higher density. The map
-    centers on the user's home location.
+    Uses activities with fine deduplication (1m precision) so GPS variance
+    allows frequency signal without points stacking infinitely. Sections
+    ridden more often have more unique points.
     """
     from app.services.polyline_utils import decode_polyline
     from app.services.weather import resolve_user_coords
@@ -1107,6 +1107,7 @@ async def get_home_area_heatmap(
     activities = list(activities_result.scalars().all())
 
     points: list[HomeAreaActivityPoint] = []
+    seen: set[tuple[float, float]] = set()
 
     for activity in activities:
         encoded = _extract_encoded_polyline(activity)
@@ -1119,8 +1120,13 @@ async def get_home_area_heatmap(
             logger.warning(f"Failed to decode polyline for activity {activity.id}")
             continue
 
+        # Fine dedup: ~1m precision allows GPS variance to create
+        # separate points for the same route, giving frequency signal
         for lat, lng in decoded:
-            points.append(HomeAreaActivityPoint(lat=lat, lng=lng))
+            key = (round(lat * 1e5) / 1e5, round(lng * 1e5) / 1e5)
+            if key not in seen:
+                seen.add(key)
+                points.append(HomeAreaActivityPoint(lat=lat, lng=lng))
 
     return HomeAreaHeatmapResponse(
         center_lat=home_lat,
