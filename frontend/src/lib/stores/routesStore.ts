@@ -142,7 +142,7 @@ export const useRoutesStore = create<RoutesState>()(
      setShowImportModal: (show) => set({ showImportModal: show }),
      showNewTagModal: false,
      setShowNewTagModal: (show) => set({ showNewTagModal: show }),
-     showHeatmap: false,
+     showHeatmap: true,
      setShowHeatmap: (show) => set({ showHeatmap: show }),
    })),
 );
