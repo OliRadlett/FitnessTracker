@@ -33,6 +33,10 @@ export async function getRoutes(
       }
     }
   });
+  // Default to 200 (backend max) unless caller specified a limit
+  if (!params.has('limit')) {
+    params.set('limit', '200');
+  }
   const query = params.toString();
   const result = await apiFetchWithHeaders<RouteSummary[]>(
     `/api/v1/routes/${query ? `?${query}` : ''}`,
