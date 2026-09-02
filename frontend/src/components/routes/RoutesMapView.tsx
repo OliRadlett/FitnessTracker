@@ -62,18 +62,22 @@ export function RoutesMapView({
         const { center_lat, center_lng, radius_km, points } = heatmapData;
 
         // Use leaflet.heat plugin for proper heatmap rendering
+        // max controls the intensity scale — higher means popular routes
+        // don't immediately max out the color range
         const heatLayer = (L as any).heatLayer(
-          points.map((p) => [p.lat, p.lng, 0.6]),
+          points.map((p) => [p.lat, p.lng, 0.3]),
           {
             radius: 8,
             blur: 12,
             maxZoom: 17,
+            max: 8,
             gradient: {
-              0.2: '#1e40af',  // dark blue
-              0.4: '#065f46',  // dark teal
-              0.6: '#9a3412',  // dark orange
-              0.8: '#dc2626',  // bright red
-              1.0: '#991b1b',  // dark red
+              0.1: '#1e40af',  // dark blue
+              0.25: '#065f46',  // dark teal
+              0.4: '#9a3412',  // dark orange
+              0.6: '#dc2626',  // bright red
+              0.8: '#991b1b',  // dark red
+              1.0: '#7f1d1d',  // very dark red
             },
           },
         );
