@@ -61,16 +61,26 @@ export function RoutesMapView({
       if (heatmapData && heatmapData.points.length > 0) {
         const { center_lat, center_lng, radius_km, points } = heatmapData;
 
+        // Compute max dynamically from point density
+        // Use a grid to count points per cell, then take 90th percentile
+        const grid: Record<string, number> = {};
+        const cellSize = 0.001; // ~100m cells
+        for (const p of points) {
+          const key = `${Math.floor(p.lat / cellSize)}_${Math.floor(p.lng / cellSize)}`;
+          grid[key] = (grid[key] || 0) + 1;
+        }
+        const counts = Object.values(grid).sort((a, b) => a - b);
+        const p90 = counts[Math.floor(counts.length * 0.9)] || 1;
+        const maxIntensity = Math.max(p90 * 1.5, 2);
+
         // Use leaflet.heat plugin for proper heatmap rendering
-        // max controls the intensity scale — higher means popular routes
-        // don't immediately max out the color range
         const heatLayer = (L as any).heatLayer(
-          points.map((p) => [p.lat, p.lng, 0.3]),
+          points.map((p) => [p.lat, p.lng, 1]),
           {
             radius: 8,
             blur: 12,
             maxZoom: 17,
-            max: 8,
+            max: maxIntensity,
             gradient: {
               0.1: '#1e40af',  // dark blue
               0.25: '#065f46',  // dark teal
