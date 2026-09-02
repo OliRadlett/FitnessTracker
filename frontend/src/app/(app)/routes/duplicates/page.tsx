@@ -56,8 +56,21 @@ export default function DuplicatesPage() {
   };
 
   const handleAutoMergeLower = () => {
+    const needsConfirmation = visiblePairs.some(
+      (p) => p.score >= 0.4 && p.score < 0.9 && p.requires_confirmation,
+    );
+    if (needsConfirmation) {
+      if (
+        !confirm(
+          'This will auto-merge pairs below the 90% confidence threshold, ' +
+          'including some that require manual review. Are you sure?',
+        )
+      ) {
+        return;
+      }
+    }
     setAutoMerging(true);
-    autoMergeMutation.mutate(0.75);
+    autoMergeMutation.mutate(0.4);
   };
 
   const handleMergePair = (a: string, b: string) => {
@@ -119,11 +132,11 @@ export default function DuplicatesPage() {
             </button>
             <button
               onClick={handleAutoMergeLower}
-              disabled={autoMerging || mediumConfidence.length === 0}
+              disabled={autoMerging || (mediumConfidence.length + lowConfidence.length) === 0}
               className="px-3 py-2 text-sm bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
             >
               <GitMerge className="w-4 h-4" />
-              {`Auto-Merge All (${visiblePairs.length})`}
+              {`Auto-Merge All (${mediumConfidence.length + lowConfidence.length})`}
             </button>
           </div>
         </div>
@@ -228,6 +241,11 @@ function DuplicatePairCard({
           >
             {Math.round(pair.score * 100)}% match
           </Badge>
+          {pair.requires_confirmation && (
+            <Badge variant="muted" className="text-xs ml-2">
+              Review required
+            </Badge>
+          )}
           <div className="flex gap-2">
             <button
               onClick={() => onDismiss(pair.route_a.id, pair.route_b.id)}

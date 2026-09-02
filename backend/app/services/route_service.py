@@ -38,7 +38,12 @@ def _proximity_score(
     existing_end_lat: float,
     existing_end_lng: float,
 ) -> float:
-    """Score based on start/end point proximity. 0.0–1.0."""
+    """Score based on start/end point proximity. 0.0–1.0.
+
+    Tightened: requires both start AND end within 500m for a high score.
+    Routes sharing an origin (e.g. city exit paths) but diverging will
+    naturally get a low score unless both endpoints converge.
+    """
     start_dist = haversine_distance(
         new_start_lat, new_start_lng, existing_start_lat, existing_start_lng
     )
@@ -46,14 +51,10 @@ def _proximity_score(
         new_end_lat, new_end_lng, existing_end_lat, existing_end_lng
     )
 
-    if start_dist < 200 and end_dist < 200:
+    if start_dist < 500 and end_dist < 500:
         return 1.0
-    elif start_dist < 500 and end_dist < 500:
-        return 0.7
-    elif start_dist < 1000 and end_dist < 1000:
+    elif start_dist < 500 or end_dist < 500:
         return 0.3
-    elif start_dist < 2000 and end_dist < 2000:
-        return 0.15
     else:
         return 0.0
 
@@ -92,7 +93,11 @@ def _compute_match_score(
 ) -> float:
     """Compute weighted match score between a candidate route and an existing route.
 
-    Score = proximity × 0.40 + distance × 0.30 + name × 0.15 + shape × 0.15
+    Score = proximity × 0.20 + distance × 0.20 + name × 0.10 + shape × 0.50
+
+    Returns 0.0 if there's insufficient spatial overlap (proximity < 0.3 or
+    shape similarity < 0.2), preventing false merges of routes that merely
+    share a starting point (e.g. city-exit paths).
     """
     proximity = _proximity_score(
         new_start_lat,
@@ -104,11 +109,24 @@ def _compute_match_score(
         existing.end_lat,
         existing.end_lng,
     )
-    distance = _distance_score(new_distance, existing.distance_meters)
-    name = _name_score(new_name, existing.name)
     shape = shape_similarity(new_encoded_polyline, existing.encoded_polyline)
 
-    return (proximity * 0.25) + (distance * 0.25) + (name * 0.15) + (shape * 0.35)
+    # Early exit: no meaningful spatial overlap → not a match
+    if proximity < 0.3 or shape < 0.2:
+        return 0.0
+
+    distance = _distance_score(new_distance, existing.distance_meters)
+    name = _name_score(new_name, existing.name)
+
+    score = (proximity * 0.20) + (distance * 0.20) + (name * 0.10) + (shape * 0.50)
+
+    logger.debug(
+        f"Merge score for '{new_name}' vs '{existing.name}': "
+        f"proximity={proximity:.2f} distance={distance:.2f} "
+        f"name={name:.2f} shape={shape:.2f} → total={score:.3f}"
+    )
+
+    return score
 
 
 # ── Core CRUD operations ─────────────────────────────────────────────────────
@@ -152,11 +170,13 @@ async def find_duplicate_route(
     best_score = 0.0
 
     for route in existing_routes:
-        # Quick pre-filter: skip if start points are > 5km apart
+        # Quick pre-filter: skip if start points are > 500m apart.
+        # Tightened from 5km to 500m: city-exit routes all start at home
+        # so a 5km pre-filter allowed false candidates into scoring.
         start_dist = haversine_distance(
             start_lat, start_lng, route.start_lat, route.start_lng
         )
-        if start_dist > 5000:
+        if start_dist > 500:
             continue
 
         score = _compute_match_score(
@@ -172,12 +192,24 @@ async def find_duplicate_route(
         if score > best_score:
             best_score = score
             best_route = route
+            logger.debug(
+                f"New best match: '{route.name}' score={score:.3f} "
+                f"(proximity, distance, name, shape breakdown logged in _compute_match_score)"
+            )
 
     if best_score >= settings.route_match_threshold and best_route is not None:
         logger.info(
-            f"Found duplicate route '{best_route.name}' with score {best_score:.2f}"
+            f"Found duplicate route '{best_route.name}' (id={best_route.id}) "
+            f"with score {best_score:.3f} (threshold={settings.route_match_threshold})"
         )
         return best_route
+
+    if best_route is not None:
+        logger.info(
+            f"No duplicate found for '{name}'. Best match was "
+            f"'{best_route.name}' with score {best_score:.3f} "
+            f"(below threshold {settings.route_match_threshold})"
+        )
 
     return None
 
@@ -559,6 +591,7 @@ async def find_potential_duplicates(
                         "route_a": a,
                         "route_b": b,
                         "score": round(score, 3),
+                        "requires_confirmation": score < settings.route_match_threshold,
                     }
                 )
 
