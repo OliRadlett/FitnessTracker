@@ -176,17 +176,18 @@ def sample_polyline(encoded: str, n_points: int = 20) -> list[tuple[float, float
     return sampled
 
 
-def shape_similarity(encoded1: str, encoded2: str, n_points: int = 30) -> float:
+def shape_similarity(encoded1: str, encoded2: str, n_points: int = 50) -> float:
     """Compute shape similarity between two polylines (0.0–1.0).
 
     Samples N evenly-spaced points from each and computes the average
     distance between corresponding points, normalised so that:
-    - avg distance < 50m → 1.0
-    - avg distance < 150m → linearly interpolated
-    - avg distance >= 150m → 0.0
+    - avg distance < 30m → 1.0
+    - avg distance < 100m → linearly interpolated
+    - avg distance >= 100m → 0.0
 
-    Tightened from 100m/500m to 50m/150m to better distinguish routes
-    that share a start point but diverge (e.g. city-exit paths).
+    Tightened thresholds (30m/100m) and increased sample count (50) to
+    better distinguish routes that share a start point but diverge
+    (e.g. city-exit paths going different directions).
     """
     sample1 = sample_polyline(encoded1, n_points)
     sample2 = sample_polyline(encoded2, n_points)
@@ -206,12 +207,12 @@ def shape_similarity(encoded1: str, encoded2: str, n_points: int = 30) -> float:
 
     avg_dist = total_dist / n
 
-    if avg_dist <= 50:
+    if avg_dist <= 30:
         return 1.0
-    elif avg_dist >= 150:
+    elif avg_dist >= 100:
         return 0.0
     else:
-        return 1.0 - (avg_dist - 50) / 100
+        return 1.0 - (avg_dist - 30) / 70
 
 
 # ── Provider-specific conversions ────────────────────────────────────────────
