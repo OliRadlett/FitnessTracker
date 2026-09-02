@@ -77,8 +77,8 @@ export function RoutesMapView({
         const heatLayer = (L as any).heatLayer(
           points.map((p) => [p.lat, p.lng, 1]),
           {
-            radius: 8,
-            blur: 12,
+            radius: 12,
+            blur: 16,
             maxZoom: 17,
             max: maxIntensity,
             gradient: {
