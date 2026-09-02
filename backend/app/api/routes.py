@@ -22,6 +22,8 @@ from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+# Reuse the polyline extraction helper from the activities API
+from app.api.activities import _extract_encoded_polyline
 from app.database import get_db
 from app.models.activity import Activity
 from app.models.route import Route, RouteSource
@@ -38,11 +40,11 @@ from app.schemas.route import (
     DuplicatePair,
     EffortEstimateRequest,
     EffortEstimateResponse,
-    HomeAreaHeatmapResponse,
     HomeAreaActivityPoint,
+    HomeAreaHeatmapResponse,
+    MergedRouteView,
     MergeManyRequest,
     MergeRequest,
-    MergedRouteView,
     RiddenSegment,
     RouteCollectionCreate,
     RouteCollectionRead,
@@ -65,9 +67,6 @@ from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx
 from app.services.polyline_utils import encode_polyline, polyline_total_distance
-
-# Reuse the polyline extraction helper from the activities API
-from app.api.activities import _extract_encoded_polyline
 
 logger = logging.getLogger(__name__)
 
@@ -1080,8 +1079,8 @@ async def get_home_area_heatmap(
     Resolves the user's home location (CyclingProfile.home_lat/home_lng) and
     samples lat/lng points from recent activity polylines within the radius.
     """
-    from app.services.weather import resolve_user_coords
     from app.services.polyline_utils import decode_polyline, haversine_distance
+    from app.services.weather import resolve_user_coords
 
     home = await resolve_user_coords(db, current_user.id)
     if not home:
@@ -1143,6 +1142,7 @@ async def get_home_area_heatmap(
         try:
             decoded = decode_polyline(encoded)
         except Exception:
+            logger.warning(f"Failed to decode polyline for activity {activity.id}")
             continue
 
         # Sample points within radius, dedupe to avoid excessive density
