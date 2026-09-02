@@ -1073,9 +1073,9 @@ async def get_home_area_heatmap(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all activity route points for heatmap rendering.
+    """Get activity route points for heatmap rendering.
 
-    Returns sampled lat/lng points from all activity polylines.
+    Uses activities — intensity increases the more a section is ridden.
     The map centers on the user's home location.
     """
     from app.services.polyline_utils import decode_polyline
@@ -1094,7 +1094,6 @@ async def get_home_area_heatmap(
     # Fetch all activities with polylines
     activities_result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.route))
         .where(
             Activity.user_id == current_user.id,
             Activity.sport_type.in_(["cycling", "running"]),
@@ -1120,7 +1119,7 @@ async def get_home_area_heatmap(
             logger.warning(f"Failed to decode polyline for activity {activity.id}")
             continue
 
-        # Sample points from all activities, dedupe to avoid excessive density
+        # Sample points from activity, dedupe to avoid excessive density
         for lat, lng in decoded:
             # Round to ~5m precision for dedup
             key = (round(lat * 1e4) / 1e4, round(lng * 1e4) / 1e4)
