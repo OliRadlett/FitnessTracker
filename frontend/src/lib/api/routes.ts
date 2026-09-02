@@ -261,11 +261,10 @@ export async function getMergedRouteView(routeId: string, token?: string): Promi
 // ─── Home Area Heatmap ────────────────────────────────────────────────────────
 
 export async function getHomeAreaHeatmap(
-  radiusKm: number = 20,
   token?: string,
 ): Promise<HomeAreaHeatmapResponse> {
   return apiFetch<HomeAreaHeatmapResponse>(
-    `/api/v1/routes/heatmap/home?radius_km=${radiusKm}`,
+    `/api/v1/routes/heatmap/home`,
     {},
     token,
   );

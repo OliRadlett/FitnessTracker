@@ -26,7 +26,7 @@ export function RoutesMapView({
   // Fetch home area heatmap data
   const { data: heatmapData } = useQuery<HomeAreaHeatmapResponse>({
     queryKey: ['home-area-heatmap', showHeatmap],
-    queryFn: () => getHomeAreaHeatmap(showHeatmap ? 20 : 0, token),
+    queryFn: () => getHomeAreaHeatmap(token),
     enabled: !!token && showHeatmap,
     staleTime: 300_000,
     retry: false,
