@@ -47,6 +47,12 @@ export async function getLiftingSession(authFetch: AuthFetch, id: string): Promi
   return authFetch<LiftingSession>(`/api/v1/lifting/sessions/${id}`);
 }
 
+export async function deleteLiftingSession(authFetch: AuthFetch, id: string): Promise<void> {
+  return authFetch<void>(`/api/v1/lifting/sessions/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function addSetToSession(authFetch: AuthFetch, sessionId: string, payload: AddSetPayload): Promise<LiftingSet> {
   return authFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
     method: 'POST',

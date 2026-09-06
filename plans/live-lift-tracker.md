@@ -1,6 +1,9 @@
 # Live Lift Tracker (Phase: Live Strength Sessions)
 
 > **Status: IMPLEMENTED (2026-08-24).** Migration `028` (verified down/up), API smoke-tested, Whoop match rule unit-tested, frontend build clean.
+>
+> **Hardening (2026-09-05).** Reliability pass after production reports of repeated logins on screen-off, sessions not saving, sessions not starting, and wrong last-session weights. See `plans/live-lift-hardening.md` for the issue→fix map.
+> **Enhancements (2026-09-06).** Follow-up round (E1–E8): same-device resume from `GET /sessions/active`, "Load from today's plan" suggest-only chip, post-finish summary screen, honest `⟳ N to sync` pill, 12-week reference window, refetch-on-token-change, `deleteLiftingSession` client fn, and backend orphan auto-heal in `cleanup_old_data`. Details and per-item files in `plans/live-lift-hardening.md`.
 > Locked decisions:
 > - Weight entry: smart prefill from last logged set of that exercise; stepper step size configurable in settings
 > - Rest tracking: **count-up pill since last set** — informational only, no countdown/enforcement, no setting needed

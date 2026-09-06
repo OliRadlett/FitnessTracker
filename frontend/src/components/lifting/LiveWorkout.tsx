@@ -196,13 +196,11 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
         return;
       }
       const ref = referenceMap[name];
-      if (ref && ref.sets.length > 0) {
-        // Most common working prescription from last time
-        const top = [...ref.sets].sort(
-          (a, b) => b.weight_kg * b.reps - a.weight_kg * a.reps
-        )[0];
-        setWeight(top.weight_kg);
-        setReps(top.reps);
+      if (ref) {
+        // Prefill the actual last logged working set, not the highest-volume
+        // one — a pyramid/wave session should continue from where you left off.
+        setWeight(ref.lastSet.weight_kg);
+        setReps(ref.lastSet.reps);
         return;
       }
     };
@@ -259,6 +257,9 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
   if (!state) return null;
 
   const canLog = exercise.trim().length > 0;
+  // Sets + deletes not yet confirmed by the server — the "to sync" meter.
+  const pendingCount =
+    state.sets.filter((s) => !s.remoteId).length + state.pendingDeletes.length;
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
@@ -304,6 +305,13 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
               >
                 Offline — will retry ↻
               </button>
+            ) : pendingCount > 0 ? (
+              <span
+                className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
+                title="Sets shown are queued locally and will reach the server on the next network opportunity"
+              >
+                ⟳ {pendingCount} to sync
+              </span>
             ) : (
               <span className="px-3 py-1 rounded-full text-xs bg-positive/10 text-positive">
                 ✓ Synced

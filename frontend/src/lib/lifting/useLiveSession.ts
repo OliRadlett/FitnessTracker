@@ -7,7 +7,7 @@ import {
   deleteLiftingSet,
   updateLiftingSession,
 } from '@/lib/api/lifting';
-import type { AddSetPayload } from '@/lib/api/types';
+import type { AddSetPayload, LiftingSession } from '@/lib/api/types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
 
@@ -44,6 +44,9 @@ export interface LiveSessionState {
   notes?: string;
   /** Persisted by requestFinish so a flush that started pre-Finish still lands it */
   finish_requested?: boolean;
+  /** Wall-clock end time fixed at requestFinish — not recomputed at sync time,
+   *  so a delayed retry still records the true end of the session. */
+  endedAt?: string;
 }
 
 export interface FinishMeta {
@@ -75,9 +78,13 @@ function loadState(): LiveSessionState | null {
  * those mutations. Sync progress always wins for remoteIds; user data wins
  * from storage.
  */
-function mergeWithStorage(working: LiveSessionState): LiveSessionState {
+function mergeWithStorage(working: LiveSessionState): LiveSessionState | null {
   const stored = loadState();
-  if (!stored || stored.startedAt !== working.startedAt) return working;
+  // The session was discarded mid-flush — stop syncing it and never resurrect
+  // it locally (B2). Any remote rows this flush already created are orphaned,
+  // which is acceptable; the local state is authoritative.
+  if (!stored) return null;
+  if (stored.startedAt !== working.startedAt) return working;
 
   const workingById = new Map(working.sets.map((s) => [s.clientId, s]));
   // Newest set data from storage; overlay any remoteId learned during the flush
@@ -86,18 +93,21 @@ function mergeWithStorage(working: LiveSessionState): LiveSessionState {
     if (!w) return s;
     return w.remoteId && !s.remoteId ? { ...s, remoteId: w.remoteId } : s;
   });
-  // Sets the flush snapshot knew about but storage lost (defensive — should not happen)
+  // Sets the flush snapshot knew about but storage lost. If the user removed a
+  // set while its create was mid-flight (undo raced the sync), the server may
+  // have already persisted it — do NOT resurrect the set locally; instead queue
+  // the newly-learned remote id for deletion so the server copy is cleaned up.
+  const pendingDeletes = new Set([...working.pendingDeletes, ...stored.pendingDeletes]);
   for (const w of working.sets) {
-    if (!sets.some((s) => s.clientId === w.clientId)) sets.push(w);
+    if (sets.some((s) => s.clientId === w.clientId)) continue;
+    if (w.remoteId) pendingDeletes.add(w.remoteId);
   }
 
   return {
     ...stored,
     sessionId: working.sessionId ?? stored.sessionId,
     sets,
-    pendingDeletes: Array.from(
-      new Set([...working.pendingDeletes, ...stored.pendingDeletes])
-    ),
+    pendingDeletes: Array.from(pendingDeletes),
   };
 }
 
@@ -117,6 +127,17 @@ function saveState(state: LiveSessionState | null) {
 function newClientId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Calendar date in the user's LOCAL timezone (not UTC). Using UTC shifts a
+ *  late-evening session onto the wrong date when the clock crosses midnight. */
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function toPayload(set: LoggedSet): AddSetPayload {
@@ -142,6 +163,13 @@ export function useLiveSession(authFetch: AuthFetch) {
 
   const syncingRef = useRef(false);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // `authFetch` is recreated by useAuthFetch whenever the backend token changes
+  // (re-login, silent refresh). Network callbacks with [] deps must read the
+  // latest one via this ref, otherwise a refreshed token is never picked up and
+  // every sync 401s with the stale closure.
+  const authFetchRef = useRef(authFetch);
+  authFetchRef.current = authFetch;
 
   // Hydrate from localStorage once
   useEffect(() => {
@@ -172,11 +200,18 @@ export function useLiveSession(authFetch: AuthFetch) {
     let working = current;
     // Fold sync progress into the freshest storage state (which may have been
     // mutated mid-flight) and mirror it into React state. The extra spread
-    // guarantees a new reference so setState always re-renders.
-    const commit = () => {
-      working = { ...mergeWithStorage(working) };
+    // guarantees a new reference so setState always re-renders. Returns false
+    // if the session was discarded mid-flush — the sync must stop.
+    const commit = (): boolean => {
+      const merged = mergeWithStorage(working);
+      if (merged === null) {
+        syncingRef.current = false;
+        return false;
+      }
+      working = { ...merged };
       setState(working);
       saveState(working);
+      return true;
     };
     try {
       // Step 1: create remote session if needed
@@ -188,8 +223,8 @@ export function useLiveSession(authFetch: AuthFetch) {
           setSyncError(false);
           return;
         }
-        const created = await createLiftingSession(authFetch, {
-          session_date: new Date(working.startedAt).toISOString().slice(0, 10),
+        const created = await createLiftingSession(authFetchRef.current, {
+          session_date: localDateStr(working.startedAt),
           program_name: working.programName,
           focus: working.focus,
           started_at: working.startedAt,
@@ -210,17 +245,17 @@ export function useLiveSession(authFetch: AuthFetch) {
         // flush re-enters Step 1 (dedup returns the existing session) and Step
         // 2/4 call PATCH/POST /sessions/null → 422, leaving the finish stuck.
         working.sessionId = created.id;
-        commit();
+        if (!commit()) return { finished: false };
       }
 
       // Step 2: push unsynced sets individually (idempotent via client_id)
       const unsynced = working.sets.filter((s) => !s.remoteId);
       for (const set of unsynced) {
         try {
-          const remote = await addSetToSession(authFetch, working.sessionId!, toPayload(set));
+          const remote = await addSetToSession(authFetchRef.current, working.sessionId!, toPayload(set));
           const target = working.sets.find((s) => s.clientId === set.clientId);
           if (target && !target.remoteId) target.remoteId = remote.id;
-          commit();
+          if (!commit()) return { finished: false };
         } catch {
           throw new Error('add-set-failed');
         }
@@ -228,21 +263,23 @@ export function useLiveSession(authFetch: AuthFetch) {
 
       // Step 3: push pending deletes
       for (const remoteId of [...working.pendingDeletes]) {
-        await deleteLiftingSet(authFetch, remoteId);
+        await deleteLiftingSet(authFetchRef.current, remoteId);
         working.pendingDeletes = working.pendingDeletes.filter((id) => id !== remoteId);
-        commit();
+        if (!commit()) return { finished: false };
       }
 
       // Step 4: finish flow — gated on the durable finish_requested flag so a
       // flush that started before requestFinish (snapshot had phase='active')
       // still applies ended_at/rpe/notes from the persisted intent.
       if (working.finish_requested) {
+        const endedAt = working.endedAt ?? new Date().toISOString();
         const durationSeconds = Math.max(
           0,
-          Math.round((Date.now() - new Date(working.startedAt).getTime()) / 1000)
+          Math.round((new Date(endedAt).getTime() - new Date(working.startedAt).getTime()) / 1000)
         );
-        await updateLiftingSession(authFetch, working.sessionId!, {
-          ended_at: new Date().toISOString(),
+        await updateLiftingSession(authFetchRef.current, working.sessionId!, {
+          session_date: localDateStr(working.startedAt),
+          ended_at: endedAt,
           duration_seconds: durationSeconds,
           rpe_session: working.rpe_session,
           notes: working.notes,
@@ -255,22 +292,47 @@ export function useLiveSession(authFetch: AuthFetch) {
       }
 
       setSyncError(false);
+      // If the user mutated sets while this flush was in flight (B4), those
+      // mutations are in storage but were not in our snapshot — schedule one
+      // more pass so they actually reach the server rather than lingering as
+      // "unsynced" until the next online/visibility trigger.
+      const fresh = loadState();
+      const stillPending =
+        fresh &&
+        ((fresh.sets ?? []).some((s) => !s.remoteId) ||
+          (fresh.pendingDeletes && fresh.pendingDeletes.length > 0) ||
+          fresh.finish_requested);
+      if (stillPending) void followUpFlush();
       syncingRef.current = false;
       return { finished: false };
     } catch {
-      // Network/API failure — keep everything queued, retry on next trigger
+      // Network/API failure — keep everything queued, retry on next trigger.
+      // Use a long delay here (not the tight 1.5s follow-up) so a dead backend
+      // token or offline network isn't hammered while the finish is pending;
+      // the finish-retry effect (4s) and online/visibility listeners also
+      // trigger retries.
       setSyncError(true);
+      void followUpFlush(8000);
       syncingRef.current = false;
       return { finished: false };
     }
   }, []);
 
-  const scheduleFlush = useCallback(() => {
+  // Stable handle for the current scheduleFlush so `flush` can schedule a
+  // follow-up pass without a circular useCallback dependency.
+  const followUpFlush = useCallback((delayMs = 1500) => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     flushTimerRef.current = setTimeout(() => {
-      void flush();
-    }, 1500);
-  }, [flush]);
+      void flushRef.current();
+    }, delayMs);
+  }, []);
+
+  const flushRef = useRef<() => Promise<{ finished: boolean } | undefined>>(async () => undefined);
+  flushRef.current = flush;
+
+  const scheduleFlush = useCallback(() => {
+    followUpFlush();
+  }, [followUpFlush]);
 
   // Retry on reconnect / app foreground
   useEffect(() => {
@@ -306,6 +368,7 @@ export function useLiveSession(authFetch: AuthFetch) {
       };
       setState(fresh);
       saveState(fresh);
+      setSyncError(false);
     },
     []
   );
@@ -390,8 +453,8 @@ export function useLiveSession(authFetch: AuthFetch) {
         .filter((s) => s.remoteId)
         .map((s) => s.remoteId!);
       try {
-        for (const id of ids) await deleteLiftingSet(authFetch, id);
-        await updateLiftingSession(authFetch, current.sessionId, { ended_at: new Date().toISOString(), notes: '(discarded)' });
+        for (const id of ids) await deleteLiftingSet(authFetchRef.current, id);
+        await updateLiftingSession(authFetchRef.current, current.sessionId, { ended_at: new Date().toISOString(), notes: '(discarded)' });
       } catch {
         // orphaned remote rows are acceptable; local state is authoritative
       }
@@ -414,6 +477,9 @@ export function useLiveSession(authFetch: AuthFetch) {
         rpe_session: meta.rpe_session,
         notes: meta.notes,
         finish_requested: true,
+        // Capture the wall-clock end now so a delayed retry records the true
+        // end of the workout rather than whatever time the sync finally lands.
+        endedAt: new Date().toISOString(),
       };
       saveState(finishing);
       setState(finishing);
@@ -421,9 +487,11 @@ export function useLiveSession(authFetch: AuthFetch) {
       // If a scheduled flush is already in-flight (syncingRef), flush() returns
       // early — the in-flight flush's commit() picks up finish_requested via
       // mergeWithStorage, and the background retry effect catches any remaining
-      // case. Either way the page renders the finishing overlay until state clears.
+      // case. Treat that as "progressing" (not a failure) so the sheet closes
+      // and the finishing overlay shows the retry state.
       const result = await flush();
-      return !!result?.finished;
+      if (result !== undefined) return !!result.finished;
+      return true;
     },
     [flush]
   );
@@ -432,29 +500,57 @@ export function useLiveSession(authFetch: AuthFetch) {
     void flush();
   }, [flush]);
 
+  /**
+   * Rebuild a live session from a server-side unfinished session (localStorage
+   * was cleared/lost on this device, e.g. after a killed tab). Sets already have
+   * remote ids, so nothing re-creates; new logging appends to the same session.
+   */
+  const resumeSession = useCallback((remote: LiftingSession) => {
+    if (state && state.phase !== 'finishing') return; // never clobber a live session
+    const sets: LoggedSet[] = (remote.sets ?? []).map((s) => ({
+      clientId: s.client_id ?? `resume-${s.id}`,
+      remoteId: s.id,
+      exercise_name: s.exercise_name,
+      set_number: s.set_number,
+      weight_kg: s.weight_kg,
+      reps: s.reps,
+      rpe: s.rpe,
+      is_warmup: s.is_warmup,
+      is_amrap: s.is_amrap,
+    }));
+    const firstSetIsWarmup = sets.find((s) => !s.is_warmup) ?? sets[0];
+    const fresh: LiveSessionState = {
+      phase: 'active',
+      sessionId: remote.id,
+      liveKey: newClientId(),
+      startedAt: remote.started_at ?? remote.created_at,
+      programName: remote.program_name || undefined,
+      focus: remote.focus,
+      currentExercise: firstSetIsWarmup?.exercise_name ?? null,
+      sets,
+      pendingDeletes: [],
+      lastSetAt: null,
+    };
+    setState(fresh);
+    saveState(fresh);
+    setSyncError(false);
+  }, [state]);
+
   // Background retry for the finishing state. If flush() can't run (busy) or
-  // fails (network), keep retrying with capped exponential backoff so a finish
-  // that failed mid-flight never leaves the user stuck on the overlay.
+  // fails (network/API), keep retrying with capped backoff so a finish that
+  // failed mid-flight never leaves the user stuck on the overlay. Note this
+  // runs even when `sessionId` is still null — a create that failed (e.g. dead
+  // backend token) must be retried too, not abandoned.
   useEffect(() => {
-    if (!state?.finish_requested || !state?.sessionId) return;
+    if (!state?.finish_requested) return;
     if (syncingRef.current) return;
 
-    const backoff = [2000, 4000, 8000, 16000, 30000];
-    const timers: ReturnType<typeof setTimeout>[] = [];
+    const timer = setTimeout(() => {
+      void flush();
+    }, 4000);
 
-    // Schedule retries at cumulative delays (2s, 6s, 14s, 30s, 60s) so the
-    // finish is retried with increasing patience, capped at 5 attempts.
-    let cumulative = 0;
-    backoff.forEach((delay) => {
-      cumulative += delay;
-      const t = setTimeout(() => {
-        void flush();
-      }, cumulative);
-      timers.push(t);
-    });
-
-    return () => timers.forEach(clearTimeout);
-  }, [state?.finish_requested, state?.sessionId, flush]);
+    return () => clearTimeout(timer);
+  }, [state?.finish_requested, state?.sessionId, state?.endedAt, flush]);
 
   // Derived helpers
   const setsForExercise = useCallback(
@@ -490,6 +586,7 @@ export function useLiveSession(authFetch: AuthFetch) {
     discardSession,
     requestFinish,
     retrySync,
+    resumeSession,
     setsForExercise,
     nextSetNumberFor,
   };

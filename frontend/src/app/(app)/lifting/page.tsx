@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { useAuthFetch, deleteLiftingSession } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
@@ -333,8 +333,7 @@ export default function LiftingPage() {
   });
 
   const deleteSessionMutation = useMutation({
-    mutationFn: (sessionId: string) =>
-      authFetch<void>(`/api/v1/lifting/sessions/${sessionId}`, { method: 'DELETE' }),
+    mutationFn: (sessionId: string) => deleteLiftingSession(authFetch, sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['personal-records'] });

@@ -26,6 +26,9 @@ const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '')
 declare module 'next-auth' {
   interface Session {
     backendToken?: string;
+    /** True when the backend JWT is missing or already expired. Every API call
+     *  will 401 until it is refreshed or the user re-signs in. */
+    backendTokenExpired?: boolean;
     user: {
       id: string;
     } & DefaultSession['user'];
@@ -102,11 +105,22 @@ export const authOptions: NextAuthOptions = {
       // failing backend from being hammered on every session check.
       const needsRefresh =
         !token.backendToken || exp === null || exp - nowS < REFRESH_MARGIN_S;
+      // If the backend token is already expired (not just within the refresh
+      // margin) every API call 401s. A dead token must be refreshed promptly on
+      // wake, not suppressed by the 1-hour backoff that is meant for a
+      // *healthy* token nearing expiry or a failing backend.  Use a short
+      // backoff so a recovered backend is picked up quickly instead of forcing
+      // the user to re-login.
+      const tokenAlreadyExpired =
+        !token.backendToken || exp === null || exp - nowS <= 0;
+      const backoffS = tokenAlreadyExpired
+        ? Math.min(SYNC_RETRY_BACKOFF_S, 60)
+        : SYNC_RETRY_BACKOFF_S;
       const canSync = Boolean(token.email && provider && providerUserId);
 
       const shouldSync =
         (account && canSync) ||
-        (needsRefresh && canSync && nowS - lastAttempt > SYNC_RETRY_BACKOFF_S);
+        (needsRefresh && canSync && nowS - lastAttempt > backoffS);
 
       if (shouldSync) {
         if (!account) token.backendSyncAttemptedAt = nowS;
@@ -143,6 +157,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.sub ?? '';
         session.backendToken = token.backendToken;
+        const exp = backendTokenExpiry(token.backendToken);
+        session.backendTokenExpired =
+          !token.backendToken || exp === null || exp * 1000 <= Date.now();
       }
       return session;
     },
