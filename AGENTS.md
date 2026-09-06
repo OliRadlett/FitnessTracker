@@ -1,6 +1,6 @@
 # FitTrack — Agent Context Guide
 
-> **Rule**: Update this file when changing the codebase. Keep under 10KB — compress or remove discoverable content.
+> **Rule**: Update this file when changing the codebase. This file has grown beyond the original 10KB guideline — keep new additions concise and prefer CODEMAP files for detailed reference. If significantly expanding, consider moving content to `docs/`.
 
 ## Context Routing
 
@@ -46,6 +46,7 @@ Delegate to specialized agents when the task clearly fits their domain:
 | Debugging errors/logs | `@debugger` | "The Strava sync is failing with 401 — investigate token refresh in @backend/app/integrations/strava_client.py" |
 | OAuth/integration/sync issues | `@sync-engineer` | "Whoop token refresh is broken — check @backend/app/services/whoop.py and @backend/app/integrations/whoop_client.py" |
 | Production issues (SSH) | `@production` | "Users reporting 500 errors — check backend logs on the Droplet and verify DB connectivity" |
+| Q&A / code explanation | `@ask` | "Explain the token refresh flow in @backend/app/services/connection_health.py" |
 
 **When NOT to delegate**: Quick single-file edits, AGENTS.md updates, config changes, or tasks under 3 tool calls. Just do it directly.
 
@@ -64,7 +65,7 @@ FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates St
 2. **Services** (`services/`) — Business logic, accept `(db: AsyncSession, user_id, ...)`
 3. **Models** (`models/`) — SQLAlchemy 2.0 ORM with `Mapped` annotations, UUID PKs, inherit from `Base`
 
-**Frontend** (`frontend/src/`): Next.js App Router, all pages `'use client'`, React Query, `useAuthFetch` hook for JWT-injected fetch. See [`api/fetch.ts`](frontend/src/lib/api/fetch.ts:28). API client split by domain in `api/` with barrel at `api/index.ts`.
+**Frontend** (`frontend/src/`): Next.js App Router, all pages `'use client'`, React Query, `useAuthFetch` hook for JWT-injected fetch. See [`api/fetch.ts`](frontend/src/lib/api/fetch.ts:84). API client split by domain in `api/` with barrel at `api/index.ts`.
 
 ### CODEMAP Files
 
@@ -77,15 +78,15 @@ Quick reference maps in each package — use these for orientation before readin
 
 ### Authentication (two systems bridged)
 
-1. **Frontend**: NextAuth.js (Google/GitHub OAuth) → [`signIn` callback](frontend/src/lib/auth.ts:38) calls `POST /api/v1/auth/sync-user` → gets JWT → stored as `session.backendToken`
+1. **Frontend**: NextAuth.js (Google/GitHub OAuth) → `signIn` callback checks email allowlist → `jwt` callback calls `POST /api/v1/auth/sync-user` → gets JWT → stored as `token.backendToken` → `session()` callback copies to `session.backendToken`
 2. **Backend**: JWT via [`create_access_token()`](backend/app/services/auth.py:24) (7-day HS256). [`get_current_user`](backend/app/services/auth.py) decodes `Authorization: Bearer <token>`
-3. **Fitness integrations**: Separate OAuth flows → [`/api/v1/auth/oauth/{provider}/authorize`](backend/app/api/auth.py:95) → tokens stored in [`OAuthConnection`](backend/app/models/user.py:30)
+3. **Fitness integrations**: Separate OAuth flows → [`/api/v1/auth/oauth/{provider}/authorize`](backend/app/api/auth.py:115) → tokens stored in [`OAuthConnection`](backend/app/models/user.py:88)
 
 ## Key Algorithms & Thresholds
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (29 tables, UUID PKs)
+## Database (34 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -102,6 +103,10 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `Goal` | `GoalCheckIn` | has many |
 | `User` | `RideFuelPlan` | has many |
 | `User` | `CachedWeather` | has many |
+| `Route` | `RouteTag` | has many (via `RouteTagging` secondary) |
+| `RouteCollection` | `RouteCollectionItem` | has many (collections are manual + smart rules JSONB) |
+| `Route` | `RouteQuality` | has one (computed nightly; also has `quality_score` denormalized on Route) |
+| `User` | `StravaWebhookEvent` | has many (async queue for webhook processing)
 
 ## Celery Tasks
 
@@ -147,7 +152,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Client-side rendering**: All pages `'use client'` with React Query
 - **Query keys**: `['lifting-sessions']`, `['activities', filters]`, etc. — string arrays, domain-prefixed
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
-- **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`
+- **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`, `routes/`, `goals/`, `dashboard/`, `health/`, `calendar/`, `activities/`, `settings/`, `sync/`
 - **Responsive sidebar**: Mobile hamburger menu via SidebarProvider context
 - **Responsive mobile**: Grids use `grid-cols-1 sm:grid-cols-N` pattern; `pt-16` clearance for fixed hamburger; calendar has mobile agenda view (`md:hidden`)
 - **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Use instead of hand-rolling modals
@@ -156,19 +161,19 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **File uploads**: [`apiUpload`](frontend/src/lib/api/fetch.ts) for multipart/form-data (GPX, FIT imports)
 - **Adding a new page**: Create `app/(app)/yourpage/page.tsx` (`'use client'`), add nav item in [`Sidebar.tsx`](frontend/src/components/Sidebar.tsx:8), add API client in `lib/api/`
 - **Adding a new API client**: Create `lib/api/yourDomain.ts`, export functions using `useAuthFetch`, add barrel export in `lib/api/index.ts`
-- **Auth flow**: [`signIn` callback](frontend/src/lib/auth.ts) syncs with backend in `jwt` callback → `token.backendToken` → `session.backendToken` → [`useAuthFetch`](frontend/src/lib/api/fetch.ts:84) injects Bearer header
+- **Auth flow**: `jwt` callback calls `POST /api/v1/auth/sync-user` → `token.backendToken` → `session()` callback copies to `session.backendToken` → [`useAuthFetch`](frontend/src/lib/api/fetch.ts:84) injects Bearer header
 - **Local dev OAuth**: browse `https://dev.oliradlett.co.uk/fittrack` (hosts file → 127.0.0.1). Backed by gitignored `infra/Caddyfile.local` + `docker-compose.override.yml` (local TLS via Caddy internal CA, root cert installed in Windows store). Strava suffix-matches its single callback domain so one app serves dev + prod. Start the stack via `python fittrack.py up` — a bare `docker compose up` omits `docker-compose.dev.yml`, producing a mount-less frontend that serves stale chunks
 
 ## Critical Pitfalls
 
 1. **Celery tasks must use `asyncio.run()`** with a fresh DB session — workers are synchronous
-2. **NextAuth signIn timing**: [`pendingBackendToken`](frontend/src/lib/auth.ts:9) is fragile module-level state
-3. **`docker compose exec` doesn't work**: Use `docker compose run --rm <service>`
+2. **NextAuth `jwt` callback token sync timing**: The `jwt` callback in `frontend/src/lib/auth.ts` calls `POST /api/v1/auth/sync-user` to mint backend JWTs. It uses a backoff (`SYNC_RETRY_BACKOFF_S = 3600s`) so a failing backend isn't hammered on every session check. If sync fails, `token.backendToken` stays stale/expired, causing every API call to 401 until the next retry window (up to 1 hour). The `signIn` callback only checks the email allowlist — it does NOT call sync-user.
+3. **`docker compose exec` doesn't work**: Use `python fittrack.py exec backend <command>`
 4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→038(head)
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→040(head)
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
@@ -242,6 +247,8 @@ python fittrack.py migrate         # Apply migrations
 
 Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.
 
+**Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers that delegate to `python fittrack.py`. DEPLOY.md uses these shell scripts for production commands; both are functionally equivalent.
+
 ## OpenCode TUI Tips
 
 - **Paste on Windows**: `Ctrl+V` works — bound explicitly to Windows Terminal's paste action (`{ "id": "Terminal.PasteFromClipboard", "keys": ["ctrl+v", "ctrl+shift+v"] }` in settings.json). WT's paste inserts clipboard text via bracketed paste, which opencode handles. Do NOT unbind ctrl+v — passing the raw key through to opencode does not work. Alternatively, use the OpenCode Desktop app.
@@ -249,4 +256,4 @@ Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Cele
 - **File references**: Use `@filename` to include file context in prompts.
 - **Quick commands**: Use `!command` to run shell commands and include output.
 - **Plan mode**: Press `Tab` to switch to Plan mode for analysis without changes.
-- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, or `@production` in prompts to delegate to specialized agents.
+- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, `@production`, or `@ask` in prompts to delegate to specialized agents.
