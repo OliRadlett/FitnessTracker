@@ -1,4 +1,4 @@
-import type { ActivityWeather, CurrentWeather, ForecastResponse } from './types';
+import type { CurrentWeather, ForecastResponse } from './types';
 
 /**
  * Weather API client.
@@ -45,8 +45,4 @@ export async function getForecast(token?: string, days = 7, lat?: number, lng?: 
     `/api/v1/weather/forecast?days=${days}${locationQuery(lat, lng)}`,
     token,
   );
-}
-
-export async function getActivityWeather(token?: string, activityId?: string): Promise<ActivityWeather | null> {
-  return weatherRequest<ActivityWeather | null>(`/api/v1/weather/for-activity/${activityId}`, token);
 }

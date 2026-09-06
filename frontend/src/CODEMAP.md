@@ -20,29 +20,25 @@
 
 ## API Clients (`lib/api/`)
 
+> **2026-09 dead-client sweep**: the `activities`, `cycling`, `dashboard`, `nutrition`,
+> `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth` client modules were
+> deleted (zero importers — those pages call endpoints inline via `authFetch`), and dead
+> functions were pruned from survivors. Domain **types** under `types/` are unaffected.
+
 | File | Backend Prefix | Key Functions |
 |------|---------------|---------------|
 | `fetch.ts` | — | `apiFetch`, `apiFetchWithHeaders`, `apiUpload`, `useAuthFetch` hook |
 | `types.ts` | — | Barrel re-exports from `types/` domain modules |
-| `types/llm.ts` | — | `LlmAnalysis`, `LlmAnalysisSummary` interfaces |
-| `activities.ts` | `/api/v1/activities/` | `fetchActivities`, `fetchActivity`, `fetchCalendar`, `fetchStreams`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis`, `getActivitySummary` |
-| `lifting.ts` | `/api/v1/lifting/` | `fetchSessions`, `createSession`, `getActiveSession`, `updateSession`, `addSet`, `deleteSet`, `deleteSession`, `fetchPRs`, `fetchWarmupTemplates`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` |
-| `cycling.ts` | `/api/v1/cycling/` | `fetchProfile`, `fetchTrainingLoad`, `fetchPowerCurve`, `fetchPowerZones` |
-| `dashboard.ts` | `/api/v1/dashboard/` | `fetchSummary`, `fetchWeeklyReport`, `fetchToday` |
-| `routes.ts` | `/api/v1/routes/` | `getRoutes`, `getRoute`, `deleteRoute`, `updateRoute`, `syncRoutes`, `getRouteHistory`, `downloadRouteGpx`, `uploadRouteGpx`, **merged view** (`getMergedRouteView` — per-source polylines + ridden segments), **heatmap** (`getHomeAreaHeatmap` — activity points near home) + tags CRUD (`getTags`, `createTag`, `deleteTag`, `addRouteTag`, `removeRouteTag`), collections (`getCollections`, `createCollection`, `createSmartCollection`, `addToCollection`, `removeFromCollection`), quality (`getRouteQualityScores`, `recomputeRouteQuality`), effort (`getEffortEstimate`, `postEffortEstimate`), duplicates (`getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`), bulk (`bulkExportGpx`, `bulkDeleteRoutes`) |
-| `goals.ts` | `/api/v1/goals/` | `fetchGoals`, `createGoal`, `updateGoal`, `deleteGoal` |
-| `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`), `getTsbProjection` (`GET /tsb/{planId}?days=N`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TsbProjectionResponse`, `TrendInfo`, `ProjectionPoint`, `TsbProjectionPoint` |
-| `deficiency.ts` | `/api/v1/deficiency/` | `getDeficiency` — weakness/deficiency analysis (`types/deficiency.ts`: `DeficiencyResponse`, `WeaknessItem`) |
-| `nutrition.ts` | `/api/v1/nutrition/` | `createFuelPlan`, `getFuelPlan`, `getFuelPlanForActivity`, `updateFuelPlanActuals`, `deleteFuelPlan` (`types/nutrition.ts`: `RideFuelPlan`, `FuelScheduleEntry`, `CreateFuelPlanPayload`, `FuelActualsUpdatePayload`) |
-| `weather.ts` | `/api/v1/weather/` | `getCurrentWeather`, `getForecast`, `getActivityWeather` — 404 → `null` (no location set / untagged); takes backend JWT explicitly since `apiFetch` can't distinguish 404s (`types/weather.ts`: `CurrentWeather`, `ForecastResponse`, `ForecastDay`, `ActivityWeather`) |
-| `trainingPlans.ts` | `/api/v1/training-plans/` | `fetchPlans`, `createPlan`, `generatePlan`, `getPlanWeek` (Phase 5B: `GET /{id}/week/{n}?include_weather`), `updatePlanDay` (Phase 5B: targeted single-day `PATCH /{id}/days/{dayId}`) — weekly types in `types/training.ts`: `TrainingWeekResponse`, `TrainingWeekDay`, `DayWeather`, `BadWeather`, `WeekActualActivity`, `WeekActualLiftingSession`, `WeekRouteMatchEntry`, `WeekReadiness`, `UpdateTrainingPlanDayPayload` |
+| `lifting.ts` | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates` |
+| `routes.ts` | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, **duplicates** (`getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`), `downloadRouteGpx`, **merged view** (`getMergedRouteView` — per-source polylines + ridden segments), **heatmap** (`getHomeAreaHeatmap` — activity points near home). Tag/collection/quality/effort/bulk operations are called inline by the routes UI |
+| `goals.ts` | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` |
+| `trainingPlans.ts` | `/api/v1/training-plans/` | `getTrainingPlans`, **week view** (`getPlanWeek` — `GET /{id}/week/{n}?include_weather`), targeted day edits (`updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`), **workout preview** (`previewWorkout` + `WorkoutPreviewTargets`/`WorkoutPreviewResponse` types — used by PlanBuilder) |
 | `conformity.ts` | `/api/v1/training-plans/` | Phase 5C conformity: `getPlanConformity` (`GET /{id}/conformity?weeks=N`), `getDayConformity` (`GET /{id}/days/{dayId}/conformity`), `linkPlanActivities` (`POST /{id}/link-activities`) — types in `types/conformity.ts`: `PlanConformityResponse`, `WeekConformity`, `DayConformityResponse`, `ConformityComponent`, `DayConformityStatus`, `LinkActivitiesResponse` |
-| `events.ts` | `/api/v1/events/` | `fetchEvents`, `createEvent`, `updateEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
-| `llmAnalysis.ts` | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` |
-| `auth.ts` | — | NextAuth config, `authOptions`, JWT/session callbacks |
-| `exercises.ts` | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `updateExercise`, `deleteExercise` — DB-backed exercise library CRUD |
+| `weather.ts` | `/api/v1/weather/` | `getCurrentWeather`, `getForecast` — 404 → `null` (no location set / untagged); takes backend JWT explicitly since `apiFetch` can't distinguish 404s (`types/weather.ts`: `CurrentWeather`, `ForecastResponse`, `ForecastDay`) |
+| `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TrendInfo`, `ProjectionPoint` |
+| `exercises.ts` | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` — DB-backed exercise library CRUD (`types`: `ExerciseEntry`, `ExerciseDetail`) |
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
-| `index.ts` | — | Barrel re-exports all modules |
+| `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
 
 ## Components
 
@@ -85,7 +81,6 @@
 | `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
 | `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) |
-| `SuggestedCycleCard` | ⚠️ **Orphaned/unused** since Phase 5B — removed from cycling page (route matching absorbed by `training/WeeklyView`); file + `suggested-cycle` client/types kept for potential reuse. No component renders it and the `'suggested-cycle'` query no longer runs |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -199,7 +194,7 @@
 - **State**: Local `useState` for UI state. React Query for server state. Zustand stores for cross-component state (`lib/stores/routesStore.ts`: view mode, selection, tags, filters, detail tab, compare mode). No global Redux
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
-- **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-first navigations, stale-while-revalidate static, network-first API GETs with cache fallback), `PwaRegister.tsx` (production-only SW registration)
+- **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only), `PwaRegister.tsx` (production-only SW registration)
 - **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
 - **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
 - **Deep-links**: `useDeepLink` hook in `lib/useDeepLink.ts` — reads URL query params once on mount and updates them via `history.replaceState` (no Suspense needed). Powers record deep-linking: `/activities?activity=`, `/routes?route=`, `/lifting?session=`

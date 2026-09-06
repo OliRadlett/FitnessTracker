@@ -1,9 +1,5 @@
 import type {
-  TrainingPlan,
   TrainingPlanSummary,
-  CreateTrainingPlanPayload,
-  UpdateTrainingPlanPayload,
-  GeneratePlanPayload,
   TrainingWeekResponse,
   UpdateTrainingPlanDayPayload,
   TrainingPlanDay,
@@ -14,37 +10,6 @@ type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
 export async function getTrainingPlans(authFetch: AuthFetch, statusFilter?: string): Promise<TrainingPlanSummary[]> {
   const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : '';
   return authFetch<TrainingPlanSummary[]>(`/api/v1/training-plans${query}`);
-}
-
-export async function getTrainingPlan(authFetch: AuthFetch, id: string): Promise<TrainingPlan> {
-  return authFetch<TrainingPlan>(`/api/v1/training-plans/${id}`);
-}
-
-export async function createTrainingPlan(authFetch: AuthFetch, payload: CreateTrainingPlanPayload): Promise<TrainingPlan> {
-  return authFetch<TrainingPlan>('/api/v1/training-plans', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateTrainingPlan(authFetch: AuthFetch, id: string, payload: UpdateTrainingPlanPayload): Promise<TrainingPlan> {
-  return authFetch<TrainingPlan>(`/api/v1/training-plans/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function deleteTrainingPlan(authFetch: AuthFetch, id: string): Promise<void> {
-  return authFetch<void>(`/api/v1/training-plans/${id}`, {
-    method: 'DELETE',
-  });
-}
-
-export async function generateTrainingPlan(authFetch: AuthFetch, payload: GeneratePlanPayload): Promise<TrainingPlan> {
-  return authFetch<TrainingPlan>('/api/v1/training-plans/generate', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
 }
 
 /** Phase 5B — one Monday-based week of a plan with weather/actuals/route matches. */
