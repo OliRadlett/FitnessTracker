@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-06 · **Status**: Proposed backlog (untriaged, unstarted)
+> **Date**: 2026-09-06 · **Status**: In progress — Phase A §2.1–2.3 done (dead-client sweep, sidebar/nav fixes, minor correctness); unstarted §0.2, §1.1–1.4, Part 3+.
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -71,14 +71,14 @@ AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zo
 **Recommendation**: B for the modules where the client is *nearly* used (`lifting: 9/21`, `routes: 9/32`, `trainingPlans: 6/11`, `goals`, `conformity`, `notifications`, `weather`, `exercises`, `projections`), A for the 8 fully-dead modules. Then rebuild `CODEMAP.md` from the survivors.
 - [ ] Decision recorded; then items in §0.2 CODEMAP become mechanical.
 
-### 2.2 Sidebar & navigation fixes (S)
-- [ ] `/routes/duplicates` page exists but is **unreachable** from nav (`Sidebar.tsx:8-20`) — add an entry (or a links row on the routes page).
-- [ ] Active-state bug: `Sidebar.tsx:181` uses exact `pathname === href`, so `/lifting/live` and `/routes/duplicates` never highlight their parents — switch to prefix matching.
-- [ ] Dead **Delete Account** button (`settings/page.tsx:715`) has no handler — wire it to real deletion (§3.9) or remove it.
+### 2.2 Sidebar & navigation fixes (S) — done 2026-09-06
+- [x] `/routes/duplicates` page was **unreachable** from nav — added a "Duplicates" link in the routes page header actions (Upload GPX / Duplicates / Sync).
+- [x] Active-state bug: `Sidebar.tsx` used exact `pathname === href` — switched to longest-prefix matching so `/routes/duplicates` and query-string deep-links highlight their parents, and child items (`/lifting/live`) win over parents on their own pages.
+- [x] Dead **Delete Account** button (`settings/page.tsx:715`) had no handler — **removed** the Danger Zone card. Re-add with a real confirm modal + `POST /account/delete` as part of §3.9.
 
-### 2.3 Minor correctness (XS-S)
-- [ ] `dismiss_health_alert` accepts `alert_id: str` not UUID → malformed id causes a DB-level 500 instead of 422 (`api/metrics.py:336`).
-- [ ] `GET /charts/available` has no auth dependency (`api/charts.py:94-105`) — harmless but inconsistent; require auth.
+### 2.3 Minor correctness (XS-S) — done 2026-09-06
+- [x] `dismiss_health_alert` accepted `alert_id: str` not UUID — malformed id caused a DB-level 500 instead of 422 (`api/metrics.py:334`). Now `uuid.UUID`.
+- [x] `GET /charts/available` had no auth dependency (`api/charts.py:94-105`) — now requires the authenticated user.
 
 ---
 
@@ -129,7 +129,7 @@ In-app notifications exist (`Notification` model: `type/link/read`, dedup key) b
 ### 3.9 Full JSON data export + account deletion (M)
 CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story is incomplete.
 - [ ] Backend: `GET /export/json` (full user data incl. streams/weights/goals checks) + `POST /account/delete` (async task, cascade-aware), obfuscate-or-purge OAuth tokens.
-- [ ] Frontend: wire the dead `settings/page.tsx:715` button to a confirm modal.
+- [ ] Frontend: add the confirm modal + wire the settings button (the old dead button + Danger Zone card were removed in §2.2; re-add them here).
 
 ### 3.10 Onboarding / first-run wizard (M)
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.

@@ -92,7 +92,9 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
 
 
 @router.get("/available")
-async def list_available_charts():
+async def list_available_charts(
+    current_user: User = Depends(get_current_user),
+):
     """List all available chart types."""
     return {
         "charts": [

@@ -19,7 +19,8 @@ import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
 import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { MapPin, List, Grid3x3, RefreshCw, Upload } from 'lucide-react';
+import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy } from 'lucide-react';
+import Link from 'next/link';
 
 export default function RoutesPage() {
   usePageTitle('Routes');
@@ -218,6 +219,14 @@ export default function RoutesPage() {
                 <Upload className="w-4 h-4" />
                 Upload GPX
               </button>
+
+              <Link
+                href="/routes/duplicates"
+                className="px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicates
+              </Link>
 
                <button
                  onClick={() => syncMutation.mutate()}

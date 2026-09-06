@@ -178,7 +178,16 @@ export function Sidebar() {
 
         <nav className={`flex-1 p-4 space-y-1 ${isCollapsed ? 'md:px-2' : ''}`}>
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            // Longest-prefix match so sub-pages (e.g. /routes/duplicates)
+            // highlight their parent item, and child items win over parents
+            // (e.g. /lifting/live over /lifting) on their own pages.
+            const activeHref = navItems
+              .filter((i) => pathname === i.href || pathname.startsWith(i.href + '/'))
+              .reduce<string | undefined>(
+                (best, i) => (!best || i.href.length > best.length ? i.href : best),
+                undefined,
+              );
+            const isActive = activeHref === item.href;
             return (
               <Link
                 key={item.href}

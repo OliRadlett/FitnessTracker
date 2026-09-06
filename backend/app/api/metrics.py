@@ -1,5 +1,6 @@
 """Metrics API — readiness, sleep intelligence, respiratory rate, weight, health alerts endpoints."""
 
+import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -333,7 +334,7 @@ async def get_health_alerts(
 
 @router.patch("/health-alerts/{alert_id}/dismiss")
 async def dismiss_health_alert(
-    alert_id: str,
+    alert_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

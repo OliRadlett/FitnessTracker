@@ -702,21 +702,6 @@ export default function SettingsPage() {
 
       {/* Notifications */}
       <NotificationSettings />
-
-      {/* Danger Zone */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-warning">Danger Zone</CardTitle>
-        </CardHeader>
-        <div className="px-6 pb-6">
-          <p className="text-sm text-muted mb-4">
-            Delete your account and all associated data. This action cannot be undone.
-          </p>
-          <button className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors">
-            Delete Account
-          </button>
-        </div>
-      </Card>
     </div>
   );
 }
