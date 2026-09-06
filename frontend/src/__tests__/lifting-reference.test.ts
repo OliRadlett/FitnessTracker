@@ -65,6 +65,52 @@ describe('buildLastSessionMap', () => {
     expect(map.Squat).toBeUndefined();
     expect(map.Deadlift).toBeDefined();
   });
+
+  it('tracks the true last set for prefill (repeated pairs still resolve)', () => {
+    const map = buildLastSessionMap(sessions);
+    expect(map.Squat.lastSet).toEqual({ weight_kg: 105, reps: 5 });
+    expect(map.Bench.lastSet).toEqual({ weight_kg: 80, reps: 5 });
+    expect(map.Deadlift.lastSet).toEqual({ weight_kg: 140, reps: 3 });
+  });
+
+  it('caps the display list by heaviest sets, not encounter order', () => {
+    const sets = Array.from({ length: 12 }, (_, i) =>
+      makeSet({ exercise_name: 'Squat', weight_kg: 40 + i * 5, reps: 5 })
+    );
+    const s = [
+      { id: 'cap', session_date: '2026-08-24', sets },
+    ] as unknown as LiftingSession[];
+    const map = buildLastSessionMap(s);
+    expect(map.Squat.sets).toHaveLength(8);
+    // The heaviest sets (95, 90, 85, 80, 75, 70, 65, 60) survive the cap, not
+    // merely the first 8 encountered (40..75).
+    const topWeights = map.Squat.sets.map((x) => x.weight_kg);
+    expect(Math.max(...topWeights)).toBe(95);
+    expect(Math.min(...topWeights)).toBe(60);
+  });
+
+  it('ignores sessions older than the 12-week reference window', () => {
+    const isoDaysAgo = (days: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - days);
+      return d.toISOString().slice(0, 10);
+    };
+    const old = {
+      id: 'stale',
+      session_date: isoDaysAgo(200),
+      sets: [makeSet({ exercise_name: 'Squat', weight_kg: 200, reps: 5 })],
+    } as unknown as LiftingSession;
+    const recent = {
+      id: 'recent',
+      session_date: isoDaysAgo(10),
+      sets: [makeSet({ exercise_name: 'Squat', weight_kg: 105, reps: 5 })],
+    } as unknown as LiftingSession;
+    // Stale-only → no reference at all (falls back to nothing, not the old weight)
+    expect(buildLastSessionMap([old])).toEqual({});
+    // Recent wins over stale even with a very tight custom window
+    const tight = buildLastSessionMap([old, recent], undefined, 30);
+    expect(tight.Squat?.lastSet.weight_kg).toBe(105);
+  });
 });
 
 describe('detectPr', () => {

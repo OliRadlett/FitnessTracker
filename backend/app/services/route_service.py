@@ -37,12 +37,17 @@ def _proximity_score(
     existing_start_lng: float,
     existing_end_lat: float,
     existing_end_lng: float,
+    new_is_loop: bool | None = None,
+    existing_is_loop: bool | None = None,
 ) -> float:
     """Score based on start/end point proximity. 0.0–1.0.
 
-    Tightened: requires both start AND end within 500m for a high score.
-    Routes sharing an origin (e.g. city exit paths) but diverging will
-    naturally get a low score unless both endpoints converge.
+    Loop-aware: loops have start≈end, so both checks double-count the
+    same point. For loops we only compare start distance; for
+    point-to-point we require both ends to converge. City-exit loops
+    (e.g. Edinburgh diverging routes) therefore stay low unless shape
+    also matches, while East Coast point-to-point variants (different
+    village entry points but same corridor) get a lenient 0.6.
     """
     start_dist = haversine_distance(
         new_start_lat, new_start_lng, existing_start_lat, existing_start_lng
@@ -51,9 +56,39 @@ def _proximity_score(
         new_end_lat, new_end_lng, existing_end_lat, existing_end_lng
     )
 
+    # Infer loop status if not provided (LOOP_THRESHOLD_M = 200)
+    if new_is_loop is None:
+        new_is_loop = (
+            haversine_distance(new_start_lat, new_start_lng, new_end_lat, new_end_lng)
+            < LOOP_THRESHOLD_M
+        )
+    if existing_is_loop is None:
+        existing_is_loop = (
+            haversine_distance(
+                existing_start_lat,
+                existing_start_lng,
+                existing_end_lat,
+                existing_end_lng,
+            )
+            < LOOP_THRESHOLD_M
+        )
+
+    # Both loops: start≈end, so only start matters
+    if new_is_loop and existing_is_loop:
+        if start_dist < 500:
+            return 1.0
+        elif start_dist < 1000:
+            return 0.3
+        else:
+            return 0.0
+
+    # Point-to-point / out-and-back: be lenient for corridor variants
+    # (e.g. East Coast via different villages but same A198 spine)
     if start_dist < 500 and end_dist < 500:
         return 1.0
-    elif start_dist < 500 or end_dist < 500:
+    elif start_dist < 1000 or end_dist < 1000:
+        return 0.6
+    elif start_dist < 2000 or end_dist < 2000:
         return 0.3
     else:
         return 0.0
@@ -99,6 +134,12 @@ def _compute_match_score(
     shape similarity < 0.2), preventing false merges of routes that merely
     share a starting point (e.g. city-exit paths).
     """
+    new_is_loop = compute_is_loop(
+        new_start_lat, new_start_lng, new_end_lat, new_end_lng
+    )
+    existing_is_loop = compute_is_loop(
+        existing.start_lat, existing.start_lng, existing.end_lat, existing.end_lng
+    )
     proximity = _proximity_score(
         new_start_lat,
         new_start_lng,
@@ -108,6 +149,8 @@ def _compute_match_score(
         existing.start_lng,
         existing.end_lat,
         existing.end_lng,
+        new_is_loop,
+        existing_is_loop,
     )
     shape = shape_similarity(new_encoded_polyline, existing.encoded_polyline)
 
@@ -169,14 +212,20 @@ async def find_duplicate_route(
     best_route = None
     best_score = 0.0
 
+    new_is_loop = compute_is_loop(start_lat, start_lng, end_lat, end_lng)
     for route in existing_routes:
-        # Quick pre-filter: skip if start points are > 500m apart.
-        # Tightened from 5km to 500m: city-exit routes all start at home
-        # so a 5km pre-filter allowed false candidates into scoring.
+        # Loop-aware pre-filter: loops share origin (home) → 500m is enough
+        # and blocks city-exit false candidates. Point-to-point corridor
+        # variants (e.g. East Coast via different villages) can start 1-2km
+        # apart but share the same spine, so allow 2000m for non-loops.
+        existing_is_loop = compute_is_loop(
+            route.start_lat, route.start_lng, route.end_lat, route.end_lng
+        )
+        prefilter_m = 500 if (new_is_loop and existing_is_loop) else 2000
         start_dist = haversine_distance(
             start_lat, start_lng, route.start_lat, route.start_lng
         )
-        if start_dist > 500:
+        if start_dist > prefilter_m:
             continue
 
         score = _compute_match_score(

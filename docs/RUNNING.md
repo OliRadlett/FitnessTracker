@@ -134,6 +134,8 @@ python fittrack.py exec backend alembic upgrade head
 
 Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.
 
+> **Note**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers around `python fittrack.py` — use either interchangeably. DEPLOY.md references the shell scripts; AGENTS.md and this file use `python fittrack.py` directly.
+
 Specialized agents (`@backend`, `@frontend`, `@debugger`, `@sync-engineer`) already allow `python fittrack.py exec backend *`.
 
 ## Git Discipline

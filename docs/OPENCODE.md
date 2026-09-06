@@ -20,11 +20,11 @@
 
 FitTrack uses OpenCode as its primary AI coding assistant. The TUI (Terminal User Interface) is configured with:
 
-- **5 subagents** for specialized tasks
+- **6 subagents** for specialized tasks
 - **9 custom commands** for repetitive workflows
-  - **4 skills** for complex feature additions → **5 skills**
-- **1 plugin** for permission management
-- **9 file references** for context awareness
+  - **5 skills** for complex feature additions
+- **3 plugins** for permission management and TUI enhancements
+- **11 references** for context awareness
 
 ### Quick Start
 
@@ -69,10 +69,17 @@ Main configuration file with references, permissions, and tool settings.
     "ignore": ["node_modules/**", "dist/**", ".git/**", "backups/**"]
   },
   "permission": {
+    "websearch": "allow",
+    "webfetch": "allow",
     "bash": {
       "python fittrack.py *": "allow",
       "docker compose *": "allow",
       "npm *": "allow",
+      "npx *": "allow",
+      "pip *": "allow",
+      "alembic *": "allow",
+      "ruff *": "allow",
+      "uvicorn *": "allow",
       "git *": "allow",
       "*": "ask"
     }
@@ -85,7 +92,8 @@ Main configuration file with references, permissions, and tool settings.
 - `snapshot: true` — Enables undo/redo for file changes
 - `compaction` — Auto-compacts long sessions, prunes old tool outputs
 - `formatter` — Ruff for Python formatting
-- `permission.bash` — Auto-allows common dev commands, prompts for others
+- `permission.bash` — Auto-allows common dev commands (python fittrack.py, docker compose, npm, npx, pip, alembic, ruff, uvicorn, git), prompts for others
+- `permission.websearch`/`webfetch` — Globally allowed for all modes (used by `@ask` for external research)
 
 ### `tui.json` (TUI Config)
 
@@ -94,6 +102,10 @@ Terminal-specific settings for appearance and behavior.
 ```json
 {
   "$schema": "https://opencode.ai/tui.json",
+  "plugin": [
+    "./.opencode/plugins/agent-progress.tsx",
+    "./.opencode/plugins/agent-waiting.tsx"
+  ],
   "scroll_speed": 3,
   "diff_style": "auto",
   "cursor": { "style": "block", "blinking": true },
@@ -587,7 +599,8 @@ fitness-tracker/
 ├── tui.json                   # TUI config (attention, keybinds)
 ├── AGENTS.md                  # Agent context guide
 ├── .opencode/
-│   ├── agents/                # 5 subagent definitions
+│   ├── agents/                # 6 subagent definitions
+│   │   ├── ask.md
 │   │   ├── backend.md
 │   │   ├── frontend.md
 │   │   ├── debugger.md
