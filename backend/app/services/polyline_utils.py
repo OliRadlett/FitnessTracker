@@ -181,13 +181,12 @@ def shape_similarity(encoded1: str, encoded2: str, n_points: int = 50) -> float:
 
     Samples N evenly-spaced points from each and computes the average
     distance between corresponding points, normalised so that:
-    - avg distance < 30m → 1.0
-    - avg distance < 100m → linearly interpolated
-    - avg distance >= 100m → 0.0
+    - avg distance < 90m → 1.0
+    - avg distance < 220m → linearly interpolated
+    - avg distance >= 220m → 0.0
 
-    Tightened thresholds (30m/100m) and increased sample count (50) to
-    better distinguish routes that share a start point but diverge
-    (e.g. city-exit paths going different directions).
+    Widened 30/100 → 40/120 → 80/200 → 90/220 for East Coast corridor
+    variants (loop-aware proximity still gates city-exit false merges).
     """
     sample1 = sample_polyline(encoded1, n_points)
     sample2 = sample_polyline(encoded2, n_points)
@@ -207,12 +206,12 @@ def shape_similarity(encoded1: str, encoded2: str, n_points: int = 50) -> float:
 
     avg_dist = total_dist / n
 
-    if avg_dist <= 30:
+    if avg_dist <= 90:
         return 1.0
-    elif avg_dist >= 100:
+    elif avg_dist >= 220:
         return 0.0
     else:
-        return 1.0 - (avg_dist - 30) / 70
+        return 1.0 - (avg_dist - 90) / 130
 
 
 # ── Provider-specific conversions ────────────────────────────────────────────

@@ -57,52 +57,51 @@ export function RoutesMapView({
         maxZoom: 19,
       }).addTo(map);
 
-      // Heatmap layer: density of activity points around home area
+      // Heatmap layer: activity density — compressed so frequent routes don't drown out rare ones
       if (heatmapData && heatmapData.points.length > 0) {
-        const { center_lat, center_lng, radius_km, points } = heatmapData;
+        const { points } = heatmapData;
 
-        // Compute max dynamically from point density
-        // Use a grid to count points per cell, then take 90th percentile
+        // Count points per ~55 m grid cell for density-aware weighting
+        const cellSize = 0.0005;
         const grid: Record<string, number> = {};
-        const cellSize = 0.001; // ~100m cells
         for (const p of points) {
           const key = `${Math.floor(p.lat / cellSize)}_${Math.floor(p.lng / cellSize)}`;
           grid[key] = (grid[key] || 0) + 1;
         }
         const counts = Object.values(grid).sort((a, b) => a - b);
-        const p90 = counts[Math.floor(counts.length * 0.9)] || 1;
-        const maxIntensity = Math.max(p90 * 1.5, 2);
+        // Use sqrt-compressed percentiles so hotspots don't saturate.
+        // Prod: cell 0.0005 → p50=1 p75=4 p95=18 max=444. Old linear max=15 → 30×.
+        // Tuned via demo: 5.0/3.0 @ 5/7 was too faint (p95 0.71). 4.2/2.6 @ 6/8 is balanced — med 0.22, p95 0.92.
+        const p50 = counts[Math.floor(counts.length * 0.5)] || 1;
+        const p75 = counts[Math.floor(counts.length * 0.75)] || p50;
+        // sqrt dampening: a cell with N pts contributes sqrt(N), not N
+        const maxIntensity = Math.max(Math.sqrt(p50) * 4.2, Math.sqrt(p75) * 2.6, 2.5);
 
-        // Use leaflet.heat plugin for proper heatmap rendering
-        const heatLayer = (L as any).heatLayer(
-          points.map((p) => [p.lat, p.lng, 1]),
-          {
-            radius: 12,
-            blur: 16,
-            maxZoom: 17,
-            max: maxIntensity,
-            gradient: {
-              0.1: '#1e40af',  // dark blue
-              0.25: '#065f46',  // dark teal
-              0.4: '#9a3412',  // dark orange
-              0.6: '#dc2626',  // bright red
-              0.8: '#991b1b',  // dark red
-              1.0: '#7f1d1d',  // very dark red
-            },
+        // Weight each point inversely to sqrt(local density) so dense cells
+        // don't accumulate linearly.  Resulting per-cell intensity ~= sqrt(count).
+        const weightedPoints: [number, number, number][] = points.map((p) => {
+          const key = `${Math.floor(p.lat / cellSize)}_${Math.floor(p.lng / cellSize)}`;
+          const count = grid[key] || 1;
+          const w = 1 / Math.sqrt(count);
+          return [p.lat, p.lng, w];
+        });
+
+        const heatLayer = (L as any).heatLayer(weightedPoints, {
+          radius: 6,
+          blur: 8,
+          minOpacity: 0.5,
+          maxZoom: 17,
+          max: maxIntensity,
+          gradient: {
+            0.0: 'rgba(0,0,0,0)',
+            0.25: '#3b82f6', // blue — sparse rides visible but not dominant
+            0.45: '#06b6d4', // cyan
+            0.6: '#f59e0b', // amber
+            0.8: '#ef4444', // red — only repeated segments
+            1.0: '#7f1d1d', // very dark red — densest overlaps
           },
-        );
+        });
         heatLayer.addTo(map);
-
-        // Draw home area circle
-        L.circle(L.latLng(center_lat, center_lng), {
-          radius: radius_km * 1000,
-          color: '#9a3412',  // dark orange
-          weight: 2,
-          dashArray: '5, 5',
-          fill: false,
-        }).addTo(map).bindPopup(
-          `<div style="font-size:12px;"><strong>Home Area</strong><br/>${radius_km} km radius · ${points.length} activity points</div>`
-        );
       }
 
       const allBounds: [number, number][] = [];
