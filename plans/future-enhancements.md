@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B backend wins done (Part 4.1/4.3/4.4, §3.12, §3.1 weight CRUD, §5.1–5.3) — pending verification runs, commit + push; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -231,7 +231,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 ## Suggested execution order
 
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
-2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ All implemented (backend half of §3.1 done; weight UI is Phase C). Awaiting commit, push, and `main`→`prod` release.
+2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page.
 4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
