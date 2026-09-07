@@ -11,6 +11,7 @@ const navItems = [
   { href: '/activities', label: 'Activities', icon: '🏃' },
   { href: '/calendar', label: 'Calendar', icon: '📅' },
   { href: '/cycling', label: 'Cycling', icon: '🚴' },
+  { href: '/health', label: 'Health', icon: '🩺' },
   { href: '/lifting', label: 'Lifting', icon: '🏋️' },
   { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
   { href: '/goals', label: 'Goals', icon: '🎯' },
