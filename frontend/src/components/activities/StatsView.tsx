@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { Activity, ChartData } from '@/lib/api';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
+import { getActiveLocale } from '@/lib/utils';
 
 function getISOWeek(date: Date): string {
   const d = new Date(date);
@@ -23,7 +24,7 @@ export function StatsView({ activities }: { activities: Activity[] }) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+      const label = d.toLocaleDateString(getActiveLocale(), { month: 'short', year: '2-digit' });
       months.push({ key, label, distance: 0 });
     }
     for (const a of activities) {

@@ -18,7 +18,7 @@
 | `/routes` | `routes/page.tsx` | Route management — **List/Map view toggle**, filtering (status, sport, source, **surface type**, route type, distance, elevation, sort, search), route list with **difficulty badges** (Easy/Moderate/Hard/Extreme from elevation/distance ratio), **compare checkboxes** (pick 2 → overlaid elevation profiles + stats delta modal), route detail with tabs (Overview, Map & Profile, History, Merged View, Weather, Effort), GPX upload/download. **Heatmap toggle** on map view shows Strava-style activity density around home area. Deep-link `?route=<id>` selects a route; ride-history rows deep-link to `/activities?activity=` |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — 10 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. Sticky sidebar nav with IntersectionObserver scroll highlighting. Feature mentions hyperlink to the owning page via a shared `WikiLink` helper |
 | `/notifications` | `notifications/page.tsx` | **Notifications page (Phase C §3.5)** — full history of typed notifications (severity/type badges, deep links), unread dot + mark-read/mark-all, tabbed **preferences panel** (per-type toggles persist to `/notifications/preferences`, syncs `NotificationSettings`) |
-| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences, **exercise library management** (add/search exercises) |
+| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, **exercise library management** (add/search exercises), **Preferences card (§3.6)** — unit system (kg/km vs lb/mi), date locale (en-GB/en-US), time format (12/24h) pill toggles via `useUnits()` → `/user/preferences` |
 
 ## API Clients (`lib/api/`)
 
@@ -42,6 +42,7 @@
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
 | `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD (types via `types/health.ts` `WeightEntry` incl. `id`/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
+| `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
 | `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
 
 ## Components
@@ -184,7 +185,8 @@
 | File | Purpose |
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
-| `utils.ts` | `formatDuration`, `formatDistance`, `weatherEmoji` (conditions → emoji mapping shared by weather UI) |
+| `utils.ts` | `formatDuration`, `formatDistance`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
+| `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import type { ActivityCalendarEntry, CalendarDayData, DailyMetricSummary } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import { getRecoveryColor } from '@/lib/sportUtils';
 
 interface TimelineViewProps {
@@ -47,7 +47,7 @@ function computeTimelineDays(
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
-    const dayName = current.toLocaleDateString('en-GB', { weekday: 'short' });
+    const dayName = current.toLocaleDateString(getActiveLocale(), { weekday: 'short' });
     const activities = activitiesByDate[dateStr] ?? [];
     const tss = activities.reduce((s, a) => s + (a.tss ?? 0), 0);
     days.push({
@@ -105,7 +105,7 @@ export function TimelineView({ startDate, endDate, calendarData }: TimelineViewP
                 {/* Date column */}
                 <div className="w-24 text-right">
                   <div className="text-sm font-medium text-white">
-                    {day.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {day.date.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })}
                   </div>
                   <div className="text-xs text-muted">{day.dayName}</div>
                 </div>
@@ -183,7 +183,7 @@ export function TimelineView({ startDate, endDate, calendarData }: TimelineViewP
             <Card key={day.dateStr} className="p-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="text-sm font-medium text-white">
-                  {day.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  {day.date.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })}
                 </div>
                 <div className="text-xs text-muted">{day.dayName}</div>
               </div>

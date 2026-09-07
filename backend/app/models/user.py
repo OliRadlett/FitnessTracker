@@ -24,6 +24,10 @@ class User(Base):
     # {"health_alert": true, "pr": true, "goal_milestone": true, "plan_reminder": true}.
     # NULL means all-on (service falls back to defaults).
     notification_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Per-user UI preferences, e.g. {"unit_system": "metric"|"imperial",
+    # "locale": "en-GB"|"en-US", "time_format": "24h"|"12h"}.
+    # NULL means defaults (services fall back).
+    preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

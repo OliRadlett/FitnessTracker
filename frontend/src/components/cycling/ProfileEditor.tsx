@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import type { CyclingProfile, CyclingProfileUpdate, FtpEstimate } from '@/lib/api';
+import { useUnits } from '@/lib/units';
+import { displayWeightToKg, kgToDisplayWeight } from '@/lib/utils';
 
 export function ProfileEditor({
   profile,
@@ -27,12 +29,13 @@ export function ProfileEditor({
   const [homeLat, setHomeLat] = useState('');
   const [homeLng, setHomeLng] = useState('');
   const [initialized, setInitialized] = useState(false);
+  const { isImperial } = useUnits();
 
   // Sync local state when profile loads (once)
   useEffect(() => {
     if (profile && !initialized) {
       if (profile.ftp_watts) setFtp(profile.ftp_watts.toString());
-      if (profile.weight_kg) setWeight(profile.weight_kg.toString());
+      if (profile.weight_kg) setWeight(kgToDisplayWeight(profile.weight_kg).toFixed(1));
       if (profile.lactate_threshold_hr) setLthr(profile.lactate_threshold_hr.toString());
       if (profile.home_lat != null) setHomeLat(profile.home_lat.toString());
       if (profile.home_lng != null) setHomeLng(profile.home_lng.toString());
@@ -62,13 +65,13 @@ export function ProfileEditor({
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Weight (kg)</label>
+          <label className="block text-xs text-muted mb-1">Weight ({isImperial ? 'lb' : 'kg'})</label>
           <input
             type="number"
             step="0.1"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
-            placeholder="e.g. 75"
+            placeholder={isImperial ? 'e.g. 166' : 'e.g. 75'}
             className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
@@ -108,7 +111,7 @@ export function ProfileEditor({
           onClick={() => {
             const payload: CyclingProfileUpdate = {};
             if (ftp) payload.ftp_watts = parseFloat(ftp);
-            if (weight) payload.weight_kg = parseFloat(weight);
+            if (weight) payload.weight_kg = displayWeightToKg(parseFloat(weight));
             if (lthr) payload.lactate_threshold_hr = parseFloat(lthr);
             if (homeLat) payload.home_lat = parseFloat(homeLat);
             if (homeLng) payload.home_lng = parseFloat(homeLng);

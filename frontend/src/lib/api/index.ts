@@ -14,3 +14,4 @@ export * from './exercises';
 export * from './notifications';
 export * from './weight';
 export * from './search';
+export * from './preferences';

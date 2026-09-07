@@ -10,9 +10,45 @@ import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { useUnits } from '@/lib/units';
 import { formatRelativeTime } from '@/lib/utils';
 
 const BASE_PATH = '/fittrack';
+
+function PreferenceRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <span className="text-sm text-muted">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function PreferencePills({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const integrations = [
   {
@@ -58,6 +94,7 @@ export default function SettingsPage() {
   usePageTitle('Settings');
   const { data: session } = useSession();
   const { authFetch } = useAuthFetch();
+  const units = useUnits();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -278,6 +315,51 @@ export default function SettingsPage() {
               <p className="text-muted">{session?.user?.email}</p>
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Preferences</CardTitle>
+        </CardHeader>
+        <div className="px-6 pb-6 space-y-5">
+          <p className="text-sm text-muted">
+            Units and locale apply across the app (distances, weights, dates, times).
+          </p>
+
+          <PreferenceRow label="Unit system">
+            <PreferencePills
+              value={units.preferences?.unit_system ?? 'metric'}
+              options={[
+                { value: 'metric', label: 'Metric (kg, km)' },
+                { value: 'imperial', label: 'Imperial (lb, mi)' },
+              ]}
+              onChange={(v) => units.setPreference({ unit_system: v as 'metric' | 'imperial' })}
+            />
+          </PreferenceRow>
+
+          <PreferenceRow label="Date & number locale">
+            <PreferencePills
+              value={units.preferences?.locale ?? 'en-GB'}
+              options={[
+                { value: 'en-GB', label: '🇬🇧 en-GB' },
+                { value: 'en-US', label: '🇺🇸 en-US' },
+              ]}
+              onChange={(v) => units.setPreference({ locale: v as 'en-GB' | 'en-US' })}
+            />
+          </PreferenceRow>
+
+          <PreferenceRow label="Time format">
+            <PreferencePills
+              value={units.preferences?.time_format ?? '24h'}
+              options={[
+                { value: '24h', label: '24-hour (14:35)' },
+                { value: '12h', label: '12-hour (2:35 PM)' },
+              ]}
+              onChange={(v) => units.setPreference({ time_format: v as '24h' | '12h' })}
+            />
+          </PreferenceRow>
         </div>
       </Card>
 

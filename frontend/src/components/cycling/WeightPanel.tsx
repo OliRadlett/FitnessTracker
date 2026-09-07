@@ -10,7 +10,13 @@ import {
   updateWeightEntry,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { formatDateDMY } from '@/lib/utils';
+import { useUnits } from '@/lib/units';
+import {
+  displayWeightToKg,
+  formatDateDMY,
+  formatWeight,
+  kgToDisplayWeight,
+} from '@/lib/utils';
 
 const WEIGHT_QUERY_KEY = ['weight-history'] as const;
 
@@ -23,6 +29,7 @@ interface WeightPanelProps {
 
 export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
   const { authFetch, token } = useAuthFetch();
+  const { isImperial } = useUnits();
   const queryClient = useQueryClient();
 
   const [weightInput, setWeightInput] = useState('');
@@ -76,12 +83,12 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
 
   const submitAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    const kg = parseFloat(weightInput);
-    if (!Number.isFinite(kg) || kg <= 0) {
-      setError('Enter a valid weight in kg.');
+    const value = parseFloat(weightInput);
+    if (!Number.isFinite(value) || value <= 0) {
+      setError(`Enter a valid weight in ${isImperial ? 'lb' : 'kg'}.`);
       return;
     }
-    addMutation.mutate(kg);
+    addMutation.mutate(displayWeightToKg(value));
   };
 
   // Latest rolling average for a summary line.
@@ -104,18 +111,18 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
       <form onSubmit={submitAdd} className="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-surface-light/50">
         <div>
           <label htmlFor="weight-panel-kg" className="block text-xs text-muted mb-1">
-            Weight (kg)
+            Weight ({isImperial ? 'lb' : 'kg'})
           </label>
           <input
             id="weight-panel-kg"
             type="number"
             inputMode="decimal"
             step="0.1"
-            min="20"
-            max="300"
+            min={isImperial ? 45 : 20}
+            max={isImperial ? 660 : 300}
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
-            placeholder="e.g. 75.5"
+            placeholder={isImperial ? 'e.g. 166.5' : 'e.g. 75.5'}
             className="w-32 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
@@ -149,11 +156,11 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-light/50">
           <div>
             <p className="text-[11px] text-muted">7-day average</p>
-            <p className="text-lg font-semibold text-white">{latestAvg.weight_kg.toFixed(1)} kg</p>
+            <p className="text-lg font-semibold text-white">{formatWeight(latestAvg.weight_kg)}</p>
           </div>
           {avgDelta !== null && avgDelta !== 0 && (
             <span className={`text-xs font-medium ${avgDelta > 0 ? 'text-warning' : 'text-positive'}`}>
-              {avgDelta > 0 ? '+' : ''}{avgDelta.toFixed(1)} kg
+              {avgDelta > 0 ? '+' : ''}{formatWeight(Math.abs(avgDelta))}
             </span>
           )}
         </div>
@@ -191,9 +198,9 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                     />
                     <button
                       onClick={() => {
-                        const kg = parseFloat(editingValue);
-                        if (Number.isFinite(kg) && kg > 0) {
-                          editMutation.mutate({ id: entry.id, kg });
+                        const value = parseFloat(editingValue);
+                        if (Number.isFinite(value) && value > 0) {
+                          editMutation.mutate({ id: entry.id, kg: displayWeightToKg(value) });
                         }
                       }}
                       className="text-xs text-positive hover:text-positive/80 font-medium"
@@ -210,7 +217,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                 ) : (
                   <>
                     <span className="font-medium text-white">
-                      {entry.weight_kg.toFixed(1)} kg
+                      {formatWeight(entry.weight_kg)}
                     </span>
                     {isWhoop ? (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-400 uppercase font-medium">
@@ -227,7 +234,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                           <button
                             onClick={() => {
                               setEditingId(entry.id);
-                              setEditingValue(entry.weight_kg.toString());
+                              setEditingValue(kgToDisplayWeight(entry.weight_kg).toFixed(1));
                             }}
                             aria-label={`Edit weight for ${entry.date}`}
                             className="text-xs text-accent hover:text-accent/80"

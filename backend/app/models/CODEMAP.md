@@ -4,7 +4,7 @@
 
 | File | Models | Key Relationships |
 |------|--------|-------------------|
-| `user.py` | `User`, `OAuthConnection` | User has many OAuthConnections |
+| `user.py` | `User`, `OAuthConnection` | User has many OAuthConnections. `User.preferences` (JSONB, §3.6) holds UI prefs: unit_system/locale/time_format |
 | `activity.py` | `Activity`, `ActivitySource`, `ActivityStream` | Activity has many Sources/Streams; optionally links to LiftingSession + Route |
 | `lifting.py` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `WarmupTemplate`, `WarmupTemplateStep` | Session has many Sets; Template has many Steps. Live-sync idempotency keys: `LiftingSession.live_key` (unique, nullable) + `LiftingSet.client_id` (unique per session, nullable) — NULL = manual entry, exempt |
 | `route.py` | `Route`, `RouteSource` | Route has many Sources; has many Activities. Tags via secondary link. Quality via FK. `is_favorite`, `quality_score` (denormalized for fast filtering) |
