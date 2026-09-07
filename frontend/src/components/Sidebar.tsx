@@ -11,11 +11,13 @@ const navItems = [
   { href: '/activities', label: 'Activities', icon: '🏃' },
   { href: '/calendar', label: 'Calendar', icon: '📅' },
   { href: '/cycling', label: 'Cycling', icon: '🚴' },
+  { href: '/health', label: 'Health', icon: '🩺' },
   { href: '/lifting', label: 'Lifting', icon: '🏋️' },
   { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
   { href: '/goals', label: 'Goals', icon: '🎯' },
   { href: '/routes', label: 'Routes', icon: '🗺️' },
   { href: '/wiki', label: 'Wiki', icon: '📖' },
+  { href: '/notifications', label: 'Notifications', icon: '🔔' },
   { href: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
@@ -177,6 +179,19 @@ export function Sidebar() {
         </div>
 
         <nav className={`flex-1 p-4 space-y-1 ${isCollapsed ? 'md:px-2' : ''}`}>
+          <button
+            onClick={() => window.dispatchEvent(new Event('fittrack:command-palette'))}
+            title={isCollapsed ? 'Search (Ctrl+P)' : undefined}
+            className={`flex items-center rounded-lg text-sm font-medium transition-colors w-full text-left ${
+              isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
+            } text-muted hover:text-white hover:bg-surface-light/50 border border-surface-light/30 mb-1`}
+          >
+            <span className="text-lg" aria-hidden="true">🔍</span>
+            <span className={`flex-1 ${isCollapsed ? 'md:hidden' : ''}`}>Search</span>
+            <kbd className={`hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[10px] text-muted ${isCollapsed ? 'md:hidden' : ''}`}>
+              Ctrl+P
+            </kbd>
+          </button>
           {navItems.map((item) => {
             // Longest-prefix match so sub-pages (e.g. /routes/duplicates)
             // highlight their parent item, and child items win over parents

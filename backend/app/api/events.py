@@ -1,7 +1,7 @@
 """Events API — CRUD for race/event planning with auto-calculated taper."""
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -10,8 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.event import Event
 from app.models.user import User
-from app.schemas.event import EventCreate, EventUpdate, EventWithCountdown
+from app.schemas.event import (
+    EventCreate,
+    EventResultUpdate,
+    EventUpdate,
+    EventWithCountdown,
+)
 from app.services.auth import get_current_user
+from app.services.notifications import notify
 
 router = APIRouter()
 
@@ -41,6 +47,7 @@ def _enrich_event(event: Event) -> EventWithCountdown:
         taper_start_date=taper_start,
         days_until_taper=days_until_taper,
         is_in_taper=is_in_taper,
+        result=event.result,
     )
 
 
@@ -126,6 +133,80 @@ async def update_event(
     await db.commit()
     await db.refresh(event)
     return _enrich_event(event)
+
+
+@router.put("/{event_id}/result", response_model=EventWithCountdown)
+async def set_event_result(
+    event_id: uuid.UUID,
+    data: EventResultUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record the result of a completed event (race retro)."""
+    result = await db.execute(
+        select(Event).where(Event.id == event_id, Event.user_id == current_user.id)
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    payload = data.model_dump(exclude_none=True)
+    event.result = payload if payload else None
+    event.result_updated_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(event)
+
+    created = await notify(
+        db,
+        current_user.id,
+        "event_result",
+        title=f"Result logged — {event.name}",
+        message=_format_result_summary(event.name, payload),
+        link="/training?tab=races",
+        dedup_key=f"event_result:{event.id}",
+    )
+    if created:
+        await db.commit()
+
+    return _enrich_event(event)
+
+
+@router.delete("/{event_id}/result", response_model=EventWithCountdown)
+async def clear_event_result(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clear the recorded result for an event."""
+    result = await db.execute(
+        select(Event).where(Event.id == event_id, Event.user_id == current_user.id)
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    event.result = None
+    event.result_updated_at = None
+    await db.commit()
+    await db.refresh(event)
+    return _enrich_event(event)
+
+
+def _format_result_summary(name: str, result: dict | None) -> str:
+    if not result:
+        return f"Result cleared for {name}."
+    parts = []
+    if result.get("finishing_position"):
+        parts.append(f"#{result['finishing_position']} overall")
+    if result.get("class_position"):
+        parts.append(f"#{result['class_position']} class")
+    if result.get("finishing_time"):
+        parts.append(result["finishing_time"])
+    if result.get("personal_best"):
+        parts.append("🏅 personal best")
+    if not parts:
+        return f"Result logged for {name}."
+    return f"{name}: {', '.join(parts)}."
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)

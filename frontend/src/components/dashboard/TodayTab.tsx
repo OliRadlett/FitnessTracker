@@ -25,6 +25,7 @@ import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { RestDayBanner } from './RestDayBanner';
 import { MetricCard, RespiratoryRateCard, formatDistance, formatDuration, ListSkeleton } from './helpers';
+import { WeightPanel } from '@/components/cycling/WeightPanel';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
 
@@ -219,6 +220,11 @@ export function TodayTab({
           icon="🔔"
           tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies. Check the Weekly tab for details."
         />
+      </div>
+
+      {/* ── Quick Body-Weight Log ─────────────────────────────────────────── */}
+      <div className="max-w-2xl">
+        <WeightPanel compact />
       </div>
 
       {/* ── Today's Plan ────────────────────────────────────────────────────── */}

@@ -38,6 +38,16 @@ const TOGGLES: { key: keyof NotificationPreferences; label: string; description:
     label: 'FTP drift',
     description: 'Weekly suggestion to re-test your FTP when recent power data diverges',
   },
+  {
+    key: 'event_result',
+    label: 'Race results',
+    description: 'Confirmation when you log a race result',
+  },
+  {
+    key: 'race_day',
+    label: 'Race day',
+    description: "Morning reminder on the day of an upcoming race or event",
+  },
 ];
 
 export function NotificationSettings() {

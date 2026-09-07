@@ -336,6 +336,15 @@ export interface Event {
   taper_start_date?: string;
   days_until_taper?: number;
   is_in_taper: boolean;
+  result?: EventResult | null;
+}
+
+export interface EventResult {
+  finishing_time?: string | null;
+  finishing_position?: number | null;
+  class_position?: number | null;
+  personal_best?: boolean | null;
+  notes?: string | null;
 }
 
 export interface CreateEventPayload {

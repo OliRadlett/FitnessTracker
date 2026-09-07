@@ -29,6 +29,7 @@ import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
+import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function CyclingPage() {
@@ -583,6 +584,11 @@ export default function CyclingPage() {
           chartDailyTss={chartDailyTss}
           chartWeightTrend={chartWeightTrend}
         />
+      </div>
+
+      {/* Weight Management */}
+      <div className="max-w-2xl">
+        <WeightPanel />
       </div>
 
       {/* Decoupling Section */}

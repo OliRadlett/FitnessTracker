@@ -206,6 +206,7 @@ from app.api.notifications import router as notifications_router
 from app.api.nutrition import router as nutrition_router
 from app.api.projections import router as projections_router
 from app.api.routes import router as routes_router
+from app.api.search import router as search_router
 from app.api.training_plans import router as training_plans_router
 from app.api.weather import router as weather_router
 from app.api.webhooks import router as webhooks_router
@@ -221,6 +222,7 @@ app.include_router(charts_router, prefix="/api/v1/charts", tags=["charts"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(routes_router, prefix="/api/v1/routes", tags=["routes"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])

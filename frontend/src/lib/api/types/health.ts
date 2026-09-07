@@ -56,6 +56,7 @@ export interface WhoopWeeklySummary {
 }
 
 export interface WeightEntry {
+  id: string;
   date: string;
   weight_kg: number;
   source: string;

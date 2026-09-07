@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B backend wins done (Part 4.1/4.3/4.4, §3.12, §3.1 weight CRUD, §5.1–5.3) — pending verification runs, commit + push; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; Phase C §3.5 + §3.1 UI done (unshipped), §3.3 result-logging + race-day notify + §3.4 ⌘P search + §3.2 Health page done (unshipped); unstarted §0.2, §1.1–1.4, Part 3 (D onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -87,24 +87,25 @@ AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zo
 ### 3.1 Body-weight logging UI — the biggest data gap (M)
 `WeightLog` model + `GET /metrics/weight` + `weight_trend` chart exist, but weight is **Whoop-only**: no manual entry endpoint, no UI. DailyMetric/cycle-profile weight is separate. Users without a Whoop scale can't log weight at all, and W/kg + percentile charts degrade ("Log your body weight to enable it").
 - [x] Backend: `POST/PATCH/DELETE /metrics/weight` (`source="manual"` — the unique `(user_id, date, source)` constraint already designed for it), serialization. POST upserts on `(user, date, source)` and syncs the cycling profile reference weight. Done in Phase B.
-- [ ] Frontend: quick-add weigh-in (profile editor + dashboard today strip), editable history, integrate with W/kg charts and body-weight goal metric.
+- [x] Frontend: quick-add weigh-in (profile editor + dashboard today strip), editable history, integrate with W/kg charts and body-weight goal metric. Done in Phase C — `WeightPanel` (quick-add form, editable/deletable history, 7-day rolling avg) on the Cycling page + a compact quick-add on the dashboard Today strip; invalidates W/kg + weight-trend charts on mutation.
 - [ ] Optional: a weight tab combining trend, 7-day EMA, deltas.
 
 ### 3.2 Dedicated Health page (M)
 Health data is fragmented (dashboard Today/Weekly, calendar day panel, activity overlays) and **three ready endpoints are never rendered**: `SleepConsistencyResponse`, `SleepDebtResponse`, `OptimalBedtimeResponse` (`lib/api/types/health.ts`, backend `/metrics/sleep-*`).
-- [ ] `/health` page: recovery + HRV + resting-HR + respiratory-rate trend charts, sleep (quality/consistency/debt/optimal bedtime), strain, health-alert history, AI health card.
-- [ ] Backend: add the missing charts (§4.1) so this page is fully chart-driven.
-- [ ] Nav: add "Health" item alongside the existing 11.
+- [x] `/health` page: recovery + HRV + resting-HR + respiratory-rate trend charts, sleep (quality/consistency/debt/optimal bedtime), strain, health-alert history, AI health card. Done in Phase C — renders the §4.1 registry charts + all three sleep endpoints + ReadinessIndicator + strain/sleep metric cards + tabbed alert history with dismiss + `HealthAiAnalysisCard`.
+- [x] Backend: add the missing charts (§4.1) so this page is fully chart-driven. Done in Phase B (`resting_hr_trend`, `respiration_trend`, `whoop_recovery_trend`).
+- [x] Nav: add "Health" item alongside the existing 11.
 
 ### 3.3 Race / event results & post-race retrospective (M)
 `Event` is planning-only (`api/events.py`, no `services/events.py`, no result/outcome fields, no activity link). Training page lists upcoming only; `updateEvent` client exists with zero UI callers.
-- [ ] Backend: `Event.result` block (finish time, placing, goal-met, notes), auto-link to the day's best-matching `Activity`, `services/events.py` extraction, past-events view.
-- [ ] Frontend: "Add result" action, post-race retrospective comparing actual vs TSB race-day projection and planned conformity.
-- [ ] Notification on event day.
+- [x] Backend: `Event.result` block (finish time, placing, PB, notes) as JSONB + `result_updated_at`, `PUT/DELETE /{id}/result` with `event_result` notify (deduped per event), `race_day` notification type + Celery task (daily 6:30 AM UTC). Migration `041`. Done in Phase C.
+- [x] Frontend: `EventResultPanel` (log/edit/clear result on event cards, past-event gate, result badges), wired into the Training page events list.
+- [x] Notification on event day — `race_day` beat task + bell/settings toggle.
+- [ ] Post-race retrospective comparing actual vs TSB race-day projection and planned conformity (deferred — needs activity↔event linking).
 
 ### 3.4 Global ⌘K search (M)
 Only per-page filters exist (activities, routes, exercises, routes-picker). No app-shell-level finder.
-- [ ] Command-palette lookup across activities, routes, lifting sessions, exercises, PRs, goals; navigation to deep links (already supported: `?activity=`, `?route=`, `?session=`).
+- [x] Command-palette lookup across activities, routes, lifting sessions, exercises, PRs, goals; navigation to deep links (already supported: `?activity=`, `?route=`, `?session=`). Done in Phase C — new `GET /api/v1/search` backend endpoint + `CommandPalette` component (Ctrl+P/⌘P + sidebar Search button) mounted in the app shell; deep links for activities/routes/lifting sessions, page nav for exercises/goals/events.
 
 ### 3.5 Notifications page (S)
 Bell dropdown only, hard-capped at 50 (`NotificationBell.tsx:35-40`), no history/pagination.
@@ -231,8 +232,8 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 ## Suggested execution order
 
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
-2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ All implemented (backend half of §3.1 done; weight UI is Phase C). Awaiting commit, push, and `main`→`prod` release.
-3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page.
+2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
+3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done on `main` (unshipped — Phase C complete, awaiting release).
 4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).

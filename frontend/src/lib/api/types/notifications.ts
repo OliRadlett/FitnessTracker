@@ -6,7 +6,9 @@ export type NotificationType =
   | 'goal_milestone'
   | 'plan_reminder'
   | 'connection_reauth'
-  | 'ftp_stale';
+  | 'ftp_stale'
+  | 'event_result'
+  | 'race_day';
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 export interface AppNotification {
@@ -28,6 +30,8 @@ export interface NotificationPreferences {
   plan_reminder: boolean;
   connection_reauth: boolean;
   ftp_stale: boolean;
+  event_result: boolean;
+  race_day: boolean;
 }
 
 export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;

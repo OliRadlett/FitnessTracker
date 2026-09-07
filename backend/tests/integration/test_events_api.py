@@ -141,6 +141,54 @@ class TestDeleteEvent:
         assert resp.status_code == 404
 
 
+# ── Event Result ───────────────────────────────────────────────────────────
+
+
+class TestEventResult:
+    """PUT/DELETE /api/v1/events/{id}/result — records a race result."""
+
+    async def test_set_result(self, client, test_event):
+        """PUT stores the result block and serialises it back."""
+        resp = await client.put(
+            f"/api/v1/events/{test_event.id}/result",
+            json={
+                "finishing_time": "3:24:10",
+                "finishing_position": 12,
+                "class_position": 3,
+                "personal_best": True,
+                "notes": "Negative split, felt strong",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["result"]["finishing_position"] == 12
+        assert data["result"]["class_position"] == 3
+        assert data["result"]["personal_best"] is True
+        assert data["result"]["finishing_time"] == "3:24:10"
+
+    async def test_clearing_result(self, client, test_event):
+        """DELETE clears the result block."""
+        await client.put(
+            f"/api/v1/events/{test_event.id}/result",
+            json={"finishing_position": 5},
+        )
+        resp = await client.delete(f"/api/v1/events/{test_event.id}/result")
+        assert resp.status_code == 200
+        assert resp.json()["result"] is None
+
+    async def test_result_creates_notification(self, client, test_event):
+        """Setting a result fires an event_result notification."""
+        resp = await client.put(
+            f"/api/v1/events/{test_event.id}/result",
+            json={"finishing_position": 1, "personal_best": True},
+        )
+        assert resp.status_code == 200
+        nresp = await client.get("/api/v1/notifications")
+        assert nresp.status_code == 200
+        types = [n["type"] for n in nresp.json()]
+        assert "event_result" in types
+
+
 # ── Event AI Analysis ─────────────────────────────────────────────────────
 
 

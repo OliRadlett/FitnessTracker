@@ -22,6 +22,7 @@ import { PlanBuilder } from '@/components/training/PlanBuilder';
 import { WeeklyView } from '@/components/training/WeeklyView';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
+import { EventResultPanel } from '@/components/training/EventResultPanel';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -417,6 +418,7 @@ export default function TrainingPage() {
                       Taper starts in {evt.days_until_taper} days
                     </p>
                   )}
+                  <EventResultPanel event={evt} />
                 </div>
               ))}
             </div>

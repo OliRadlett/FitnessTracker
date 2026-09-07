@@ -190,6 +190,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.send_plan_reminders",
         "schedule": crontab(hour=7, minute=0),
     },
+    # Daily event/race-day notification (6:30 AM UTC)
+    "send-event-day-notifications": {
+        "task": "app.tasks.scheduler.send_event_day_notifications",
+        "schedule": crontab(hour=6, minute=30),
+    },
     # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
     "backfill-streams": {
         "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
@@ -1647,6 +1652,63 @@ def send_plan_reminders() -> dict:
                 except Exception as e:
                     logger.warning(
                         f"Plan reminder failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+        return {"notified": notified}
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.send_event_day_notifications")
+def send_event_day_notifications() -> dict:
+    """Notify users whose event/race is today.
+
+    Fires a single ``race_day`` notification per event (dedup keyed on the
+    event id) at 6:30 UTC. Per-user failures are isolated.
+    """
+    import asyncio
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.event import Event
+    from app.models.user import User
+    from app.services.notifications import notify
+
+    async def _run():
+        today = date.today()
+        notified = 0
+        async with task_session() as db:
+            events = list(
+                (await db.execute(select(Event).where(Event.event_date == today)))
+                .scalars()
+                .all()
+            )
+            for event in events:
+                user_id = event.user_id
+                try:
+                    created = await notify(
+                        db,
+                        user_id,
+                        type="race_day",
+                        title=f"🏁 Race day — {event.name}",
+                        body=(
+                            "Good luck today!"
+                            if event.event_type == "race"
+                            else f"Today is your {event.event_type} event: {event.name}."
+                        ),
+                        severity="info",
+                        link="/training",
+                        dedup_key=f"race_day:{event.id}",
+                    )
+                    if created is not None:
+                        notified += 1
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Event-day notification failed for user {user_id}: {e}",
                         exc_info=True,
                     )
                     await db.rollback()

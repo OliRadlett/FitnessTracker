@@ -12,3 +12,5 @@ export * from './conformity';
 export * from './projections';
 export * from './exercises';
 export * from './notifications';
+export * from './weight';
+export * from './search';

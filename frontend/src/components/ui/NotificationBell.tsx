@@ -5,24 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from '@/lib/api';
-import type { AppNotification, NotificationSeverity, NotificationType } from '@/lib/api';
+import type { AppNotification } from '@/lib/api';
+import { SEVERITY_BADGE, TYPE_ICONS } from '@/lib/notificationMeta';
 import { relativeTime } from '@/lib/analysisRenderer';
-
-const TYPE_ICONS: Record<NotificationType, string> = {
-  health_alert: '🩺',
-  pr: '🏆',
-  goal_milestone: '🎯',
-  plan_reminder: '📋',
-  connection_reauth: '🔗',
-  ftp_stale: '🚴',
-};
-
-const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
-  error: 'bg-red-500/15 text-red-400',
-  warning: 'bg-amber-500/15 text-amber-400',
-  success: 'bg-emerald-500/15 text-emerald-400',
-  info: 'bg-blue-500/15 text-blue-400',
-};
 
 /* ── Component ─────────────────────────────────────────────────────────── */
 
@@ -119,15 +104,23 @@ export function NotificationBell() {
         <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-surface-light/50 shadow-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-surface-light/50">
             <h2 className="text-sm font-semibold text-white">Notifications</h2>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => markAll.mutate()}
-                disabled={markAll.isPending}
-                className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+                onClick={() => router.push('/notifications')}
+                className="text-xs text-muted hover:text-accent transition-colors"
               >
-                Mark all read
+                View all
               </button>
-            )}
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAll.mutate()}
+                  disabled={markAll.isPending}
+                  className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
