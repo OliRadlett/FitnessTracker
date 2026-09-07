@@ -9,6 +9,8 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
   plan_reminder: '📋',
   connection_reauth: '🔗',
   ftp_stale: '🚴',
+  event_result: '🏁',
+  race_day: '🏁',
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
@@ -25,4 +27,6 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   plan_reminder: 'Plans',
   connection_reauth: 'Connections',
   ftp_stale: 'Cycling',
+  event_result: 'Race results',
+  race_day: 'Race day',
 };

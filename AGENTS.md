@@ -118,6 +118,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today). Also fires `goal_milestone` notifications on 50/75/100% crossings |
 | `send_plan_reminders` | Daily 7AM UTC | Fires a `plan_reminder` notification per user when today's active plan has a non-rest session (dedup per date) |
+| `send_event_day_notifications` | Daily 6:30AM UTC | Fires a `race_day` notification per user with an event today (dedup per event id) |
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |

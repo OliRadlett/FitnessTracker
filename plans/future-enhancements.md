@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; Phase C §3.5 + §3.1 UI done (unshipped); continuing §3.2/3.3/3.4; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; Phase C §3.5 + §3.1 UI done (unshipped), §3.3 result-logging + race-day notify done (unshipped), §3.2/3.6/3.8 pending; unstarted §0.2, §1.1–1.4, Part 3 (D onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -98,9 +98,10 @@ Health data is fragmented (dashboard Today/Weekly, calendar day panel, activity 
 
 ### 3.3 Race / event results & post-race retrospective (M)
 `Event` is planning-only (`api/events.py`, no `services/events.py`, no result/outcome fields, no activity link). Training page lists upcoming only; `updateEvent` client exists with zero UI callers.
-- [ ] Backend: `Event.result` block (finish time, placing, goal-met, notes), auto-link to the day's best-matching `Activity`, `services/events.py` extraction, past-events view.
-- [ ] Frontend: "Add result" action, post-race retrospective comparing actual vs TSB race-day projection and planned conformity.
-- [ ] Notification on event day.
+- [x] Backend: `Event.result` block (finish time, placing, PB, notes) as JSONB + `result_updated_at`, `PUT/DELETE /{id}/result` with `event_result` notify (deduped per event), `race_day` notification type + Celery task (daily 6:30 AM UTC). Migration `041`. Done in Phase C.
+- [x] Frontend: `EventResultPanel` (log/edit/clear result on event cards, past-event gate, result badges), wired into the Training page events list.
+- [x] Notification on event day — `race_day` beat task + bell/settings toggle.
+- [ ] Post-race retrospective comparing actual vs TSB race-day projection and planned conformity (deferred — needs activity↔event linking).
 
 ### 3.4 Global ⌘K search (M)
 Only per-page filters exist (activities, routes, exercises, routes-picker). No app-shell-level finder.
@@ -232,7 +233,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
-3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page.
+3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1 UI + §3.5 + §3.3 (result logging, race-day notify) done on `main` (unshipped — awaiting §3.2 + §3.4 before release).
 4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).

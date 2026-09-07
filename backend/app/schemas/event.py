@@ -1,7 +1,19 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class EventResultUpdate(BaseModel):
+    """Structured result for a completed event."""
+
+    finishing_time: str | None = Field(None, description="e.g. 3:24:10 (HH:MM:SS)")
+    finishing_position: int | None = Field(None, ge=1, description="Overall position")
+    class_position: int | None = Field(
+        None, ge=1, description="Age/class category position"
+    )
+    personal_best: bool | None = None
+    notes: str | None = Field(None, max_length=500)
 
 
 class EventBase(BaseModel):
@@ -42,3 +54,4 @@ class EventWithCountdown(EventRead):
     taper_start_date: date | None = None
     days_until_taper: int | None = None
     is_in_taper: bool = False
+    result: dict | None = None

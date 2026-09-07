@@ -17,6 +17,8 @@ NOTIFICATION_TYPES = (
     "plan_reminder",
     "connection_reauth",
     "ftp_stale",
+    "event_result",
+    "race_day",
 )
 
 

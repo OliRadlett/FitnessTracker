@@ -27,6 +27,8 @@ class NotificationPreferences(BaseModel):
     plan_reminder: bool
     connection_reauth: bool
     ftp_stale: bool
+    event_result: bool
+    race_day: bool
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -36,3 +38,5 @@ class NotificationPreferencesUpdate(BaseModel):
     plan_reminder: bool | None = None
     connection_reauth: bool | None = None
     ftp_stale: bool | None = None
+    event_result: bool | None = None
+    race_day: bool | None = None

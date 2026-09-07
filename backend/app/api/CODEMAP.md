@@ -15,7 +15,7 @@
 | `webhooks.py` | `/webhooks/` | `GET /strava` (challenge), `POST /strava` (event receiver — HMAC-verifies + persists to `strava_webhook_events` queue for async Celery processing; never processes inline) |
 | `export.py` | `/export/` | Data export endpoints |
 | `training_plans.py` | `/training-plans/` | Thin router → `services/training_plan.py`. Plan CRUD, `POST /generate` (mixed-week template: rest Sun, strength Tue/Thu, cycle rides), `event_id` on POST/PATCH links event + auto-taper; PATCH days are non-destructive upsert by `day_date`; `GET /{plan_id}/week/{n}` (weekly view: Monday-aligned weeks, readiness CTL/ATL/TSB, weather + bad-weather badges, actual activity/lifting summaries, route matches on cycle days; `include_weather` query), `PATCH /{plan_id}/days/{day_id}` (targeted single-day partial update) |
-| `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `GET/POST /{id}/ai-analysis` |
+| `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `PUT/DELETE /{id}/result` (race retro → notifies `event_result`, deduped per event), `GET/POST /{id}/ai-analysis` |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |
 | `metrics.py` | `/metrics/` | Health metrics CRUD, health analysis, `GET/POST /health-ai-analysis` |
 | `deficiency.py` | `/deficiency/` | `GET /` (`weeks` query, 4–26) — weakness analysis: strength standards, Big-3 ratios, push/pull balance, VO2max/FTP mismatch, decoupling, zone distribution |

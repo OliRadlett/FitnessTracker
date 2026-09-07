@@ -17,6 +17,8 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "plan_reminder": True,
     "connection_reauth": True,
     "ftp_stale": True,
+    "event_result": True,
+    "race_day": True,
 }
 
 
