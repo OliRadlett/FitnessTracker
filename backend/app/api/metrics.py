@@ -1,5 +1,6 @@
 """Metrics API — readiness, sleep intelligence, respiratory rate, weight, health alerts endpoints."""
 
+import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +13,7 @@ from app.models.health_alert import HealthAlert
 from app.models.sleep import SleepLog
 from app.models.user import User
 from app.models.weight import WeightLog
+from app.schemas.metrics import WeightEntryCreate, WeightEntryUpdate
 from app.services.auth import get_current_user
 from app.services.whoop import (
     compute_readiness,
@@ -272,6 +274,7 @@ async def get_weight_history(
 
     entries = [
         {
+            "id": str(log.id),
             "date": log.date.isoformat(),
             "weight_kg": log.weight_kilogram,
             "source": log.source,
@@ -293,6 +296,117 @@ async def get_weight_history(
             for i in range(len(rolling))
         ],
     }
+
+
+@router.post("/weight")
+async def create_weight_entry(
+    payload: WeightEntryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create or update a manual weight entry for a date (source="manual").
+
+    Upserts on the (user_id, date, source) unique key so a repeated weigh-in
+    on the same day replaces the earlier one. Also keeps the cycling profile's
+    reference weight (W/kg charts) in sync with the latest manual value.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.services.cycling import get_or_create_cycling_profile
+
+    log_date = payload.date or date.today()
+    stmt = (
+        pg_insert(WeightLog)
+        .values(
+            user_id=current_user.id,
+            date=log_date,
+            weight_kilogram=payload.weight_kg,
+            source="manual",
+        )
+        .on_conflict_do_update(
+            index_elements=["user_id", "date", "source"],
+            set_={"weight_kilogram": payload.weight_kg},
+        )
+        .returning(WeightLog)
+    )
+    result = await db.execute(stmt)
+    log = result.scalar_one()
+
+    profile = await get_or_create_cycling_profile(db, current_user.id)
+    profile.weight_kg = payload.weight_kg
+    await db.flush()
+
+    return {
+        "id": str(log.id),
+        "date": log.date.isoformat(),
+        "weight_kg": log.weight_kilogram,
+        "source": log.source,
+    }
+
+
+async def _get_owned_manual_weight(
+    db: AsyncSession, user_id: uuid.UUID, log_id: uuid.UUID
+) -> WeightLog | None:
+    result = await db.execute(
+        select(WeightLog).where(
+            WeightLog.id == log_id,
+            WeightLog.user_id == user_id,
+            WeightLog.source == "manual",
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+@router.patch("/weight/{log_id}")
+async def update_weight_entry(
+    log_id: uuid.UUID,
+    payload: WeightEntryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a manual weight entry's value."""
+    log = await _get_owned_manual_weight(db, current_user.id, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Weight entry not found")
+    log.weight_kilogram = payload.weight_kg
+
+    # Re-sync the profile reference weight when this is the latest manual entry.
+    latest_date = (
+        await db.execute(
+            select(func.max(WeightLog.date)).where(
+                WeightLog.user_id == current_user.id,
+                WeightLog.source == "manual",
+            )
+        )
+    ).scalar()
+    if latest_date == log.date:
+        from app.services.cycling import get_or_create_cycling_profile
+
+        profile = await get_or_create_cycling_profile(db, current_user.id)
+        profile.weight_kg = payload.weight_kg
+    await db.flush()
+
+    return {
+        "id": str(log.id),
+        "date": log.date.isoformat(),
+        "weight_kg": log.weight_kilogram,
+        "source": log.source,
+    }
+
+
+@router.delete("/weight/{log_id}")
+async def delete_weight_entry(
+    log_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a manual weight entry."""
+    log = await _get_owned_manual_weight(db, current_user.id, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Weight entry not found")
+    await db.delete(log)
+    await db.flush()
+    return {"deleted": True}
 
 
 # ── Health Alerts ────────────────────────────────────────────────────────────
@@ -333,7 +447,7 @@ async def get_health_alerts(
 
 @router.patch("/health-alerts/{alert_id}/dismiss")
 async def dismiss_health_alert(
-    alert_id: str,
+    alert_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

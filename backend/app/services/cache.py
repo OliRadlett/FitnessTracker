@@ -158,3 +158,30 @@ async def invalidate_prefix(prefix: str) -> int:
     except Exception as e:
         logger.debug("Cache invalidation failed for prefix %s: %s", prefix, e)
         return 0
+
+
+async def check_rate_limit(
+    key: str,
+    limit: int,
+    window_seconds: int = 60,
+) -> bool:
+    """Redis fixed-window rate limiter shared across workers.
+
+    Tracks requests for ``key`` over a ``window_seconds`` sliding window using
+    an INCR + EXPIRE pair. Returns True when the request is allowed, False when
+    the ``limit`` has been reached. Fail-open on Redis outage so an unreachable
+    store never hard-blocks traffic (mirrors ``_run_task_guarded``).
+    """
+    import time
+
+    r = _get_redis()
+    window_bucket = int(time.time() // window_seconds)
+    counter_key = f"fittrack:ratelimit:{key}:{window_bucket}"
+    try:
+        current = await r.incr(counter_key)
+        if current == 1:
+            await r.expire(counter_key, window_seconds)
+        return current <= limit
+    except Exception as e:
+        logger.debug("Rate-limit check failed for %s: %s", key, e)
+        return True

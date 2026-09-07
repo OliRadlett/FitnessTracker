@@ -1,6 +1,12 @@
 // ─── In-app notifications ────────────────────────────────────────────────────
 
-export type NotificationType = 'health_alert' | 'pr' | 'goal_milestone' | 'plan_reminder';
+export type NotificationType =
+  | 'health_alert'
+  | 'pr'
+  | 'goal_milestone'
+  | 'plan_reminder'
+  | 'connection_reauth'
+  | 'ftp_stale';
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 export interface AppNotification {
@@ -20,6 +26,8 @@ export interface NotificationPreferences {
   pr: boolean;
   goal_milestone: boolean;
   plan_reminder: boolean;
+  connection_reauth: boolean;
+  ftp_stale: boolean;
 }
 
 export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;

@@ -35,17 +35,6 @@ export async function createExercise(
   });
 }
 
-export async function updateExercise(
-  authFetch: ReturnType<typeof useAuthFetch>['authFetch'],
-  exerciseId: string,
-  data: { name?: string; category?: string; aliases?: string[]; is_active?: boolean },
-): Promise<ExerciseDetail> {
-  return authFetch<ExerciseDetail>(`/api/v1/lifting/exercises/${exerciseId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
-}
-
 export async function deleteExercise(
   authFetch: ReturnType<typeof useAuthFetch>['authFetch'],
   exerciseId: string,

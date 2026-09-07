@@ -131,9 +131,7 @@ async def refresh_connection(
         ) from e
 
     connection.access_token = token_data["access_token"]
-    connection.refresh_token = token_data.get(
-        "refresh_token", connection.refresh_token
-    )
+    connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
     set_expiry(connection, token_data)
     connection.last_refreshed_at = datetime.now(UTC)
     connection.consecutive_failures = 0
@@ -142,13 +140,13 @@ async def refresh_connection(
     # Commit immediately: the freshly rotated token must survive a later
     # rollback of this user's sync work.
     await db.commit()
-    logger.info(
-        f"Refreshed {connection.provider} token for user {connection.user_id}"
-    )
+    logger.info(f"Refreshed {connection.provider} token for user {connection.user_id}")
     return connection
 
 
-async def reset_connection_health(db: AsyncSession, connection: OAuthConnection) -> None:
+async def reset_connection_health(
+    db: AsyncSession, connection: OAuthConnection
+) -> None:
     """Clear failure state after a successful connect/reconnect OAuth flow."""
     connection.status = CONNECTION_STATUS_ACTIVE
     connection.consecutive_failures = 0
@@ -171,6 +169,32 @@ async def _mark_reauth(
     connection.last_error = message[:500]
     connection.last_error_at = datetime.now(UTC)
     connection.consecutive_failures = (connection.consecutive_failures or 0) + 1
+    try:
+        from app.services.notifications import notify
+
+        # Keyed per "episode": the last successful refresh timestamp. A fresh
+        # episode after reconnecting gets a fresh notification.
+        episode = (
+            connection.last_refreshed_at.isoformat()
+            if connection.last_refreshed_at
+            else "never"
+        )
+        await notify(
+            db,
+            connection.user_id,
+            type="connection_reauth",
+            title=f"{connection.provider} needs re-authentication",
+            body="Your connection stopped syncing. Reconnect from Settings to keep data fresh.",
+            severity="error",
+            link="/settings",
+            dedup_key=f"reauth:{connection.id}:{episode}",
+            metadata={"provider": connection.provider},
+        )
+    except Exception as e:  # a notification must never break reauth handling
+        logger.warning(
+            f"Failed to queue connection_reauth notification for "
+            f"{connection.provider} user {connection.user_id}: {e}"
+        )
     await db.commit()
     try:
         from app.metrics import CONNECTION_REAUTH

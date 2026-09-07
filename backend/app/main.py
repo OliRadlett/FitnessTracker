@@ -105,20 +105,22 @@ async def correlation_id_middleware(request: Request, call_next):
 
 
 # ── Stricter rate limit for auth/token endpoints (20 req/min) ─────────
-_AUTH_RATE_LIMIT = None  # lazily parsed
+# Backed by Redis (services.cache.check_rate_limit) so the budget is shared
+# across workers rather than per-process in-memory (slowapi default).
 
 
 @app.middleware("http")
 async def auth_rate_limit_middleware(request: Request, call_next):
     """Apply a stricter 20 req/min limit on auth/token endpoints."""
-    global _AUTH_RATE_LIMIT
-    if request.url.path.startswith("/api/v1/auth"):
-        if _AUTH_RATE_LIMIT is None:
-            from limits import parse as limits_parse
+    from app.services.cache import check_rate_limit
 
-            _AUTH_RATE_LIMIT = limits_parse("20/minute")
-        rate_key = f"auth:{get_remote_address(request)}"
-        if not limiter.limiter.hit(_AUTH_RATE_LIMIT, rate_key):
+    if request.url.path.startswith("/api/v1/auth"):
+        allowed = await check_rate_limit(
+            f"auth:{get_remote_address(request)}",
+            limit=20,
+            window_seconds=60,
+        )
+        if not allowed:
             return Response(
                 content='{"detail":"Rate limit exceeded for auth endpoints"}',
                 status_code=429,
@@ -226,9 +228,7 @@ app.include_router(
     notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
 )
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
-app.include_router(
-    deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"]
-)
+app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])
 app.include_router(
     projections_router, prefix="/api/v1/projections", tags=["projections"]

@@ -154,6 +154,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
         "schedule": crontab(hour=4, minute=0, day_of_week=0),
     },
+    # FTP drift scan for non-auto users (Sunday 4:15 AM UTC, post auto-estimate)
+    "check-stale-ftp": {
+        "task": "app.tasks.scheduler.check_stale_ftp",
+        "schedule": crontab(hour=4, minute=15, day_of_week=0),
+    },
     # Sync Whoop data every 30 minutes (cycles, recovery, sleep, workouts)
     "sync-whoop-data": {
         "task": "app.tasks.scheduler.sync_all_whoop_data",
@@ -484,6 +489,7 @@ def generate_health_alerts() -> dict:
         analyze_overtraining,
         upsert_alert,
     )
+    from app.services.notifications import notify
 
     async def _run():
         async with task_session() as db:
@@ -546,6 +552,17 @@ def generate_health_alerts() -> dict:
                                         detected_date=date.today(),
                                     )
                                     db.add(alert)
+                                    await notify(
+                                        db,
+                                        user.id,
+                                        type="health_alert",
+                                        title=alert.title,
+                                        body=alert.description,
+                                        severity="warning",
+                                        link="/dashboard",
+                                        dedup_key=f"health-alert:hrv_drop:{date.today().isoformat()}",
+                                        metadata={"alert_type": "hrv_drop"},
+                                    )
                                     alerts_created += 1
 
                         # Sleep decline
@@ -579,6 +596,17 @@ def generate_health_alerts() -> dict:
                                         detected_date=date.today(),
                                     )
                                     db.add(alert)
+                                    await notify(
+                                        db,
+                                        user.id,
+                                        type="health_alert",
+                                        title=alert.title,
+                                        body=alert.description,
+                                        severity="warning",
+                                        link="/dashboard",
+                                        dedup_key=f"health-alert:sleep_decline:{date.today().isoformat()}",
+                                        metadata={"alert_type": "sleep_decline"},
+                                    )
                                     alerts_created += 1
 
                         # Respiratory rate elevation
@@ -629,6 +657,19 @@ def generate_health_alerts() -> dict:
                                             detected_date=date.today(),
                                         )
                                         db.add(alert)
+                                        await notify(
+                                            db,
+                                            user.id,
+                                            type="health_alert",
+                                            title=alert.title,
+                                            body=alert.description,
+                                            severity="warning",
+                                            link="/dashboard",
+                                            dedup_key=f"health-alert:respiratory_rate_elevated:{date.today().isoformat()}",
+                                            metadata={
+                                                "alert_type": "respiratory_rate_elevated"
+                                            },
+                                        )
                                         alerts_created += 1
 
                     await db.commit()
@@ -937,6 +978,112 @@ def auto_estimate_ftp_weekly() -> dict:
             return {
                 "users_checked": len(profiles),
                 "ftp_estimated": estimated_count,
+            }
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.check_stale_ftp")
+def check_stale_ftp() -> dict:
+    """Weekly FTP drift scan — notifies when the stored FTP looks stale.
+
+    Complements ``auto_estimate_ftp_weekly`` (which silently keeps opted-in
+    users' FTP current): this scan is the "suggest a re-test" signal for
+    everyone else. When recent 90-day power data estimates an FTP that
+    diverges >10% (or >20 W) from the stored value, fires an ``ftp_stale``
+    notification; also prompts users who have power data but no FTP at all.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.cycling import CyclingProfile
+    from app.services.cycling import (
+        compute_power_curve_from_streams,
+        estimate_ftp_from_power_curve,
+    )
+    from app.services.notifications import notify
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(
+                select(CyclingProfile).where(
+                    CyclingProfile.auto_estimate_ftp == False,
+                )
+            )
+            profiles = list(result.scalars().all())
+            notified = 0
+            missed = 0
+
+            for profile in profiles:
+                try:
+                    best_power = await compute_power_curve_from_streams(
+                        db, profile.user_id, days=90
+                    )
+                    if not best_power:
+                        continue
+
+                    estimated_ftp = estimate_ftp_from_power_curve(best_power)
+                    if not estimated_ftp:
+                        continue
+
+                    current = profile.ftp_watts
+                    if current:
+                        # Divergence threshold: >10% or >20 W away from the
+                        # performance-based estimate looks like drift/detraining.
+                        if (
+                            abs(estimated_ftp - current) / current <= 0.10
+                            and abs(estimated_ftp - current) <= 20
+                        ):
+                            continue
+                        direction = "higher" if estimated_ftp > current else "lower"
+                        title = f"FTP may now be {direction} — consider a re-test"
+                        body = (
+                            f"Recent power data suggests ~{estimated_ftp:.0f} W "
+                            f"(current FTP {current:.0f} W). Run a 20-min all-out "
+                            "test to confirm."
+                        )
+                        dedup_key = f"ftp-stale:{profile.user_id}:{int(estimated_ftp)}"
+                    else:
+                        title = "Set a baseline FTP"
+                        body = (
+                            f"This week's power data suggests ~{estimated_ftp:.0f} W. "
+                            "Run a 20-min all-out test and log it to unlock W/kg and "
+                            "power-zone charts."
+                        )
+                        dedup_key = f"ftp-stale:{profile.user_id}:baseline"
+
+                    created = await notify(
+                        db,
+                        profile.user_id,
+                        type="ftp_stale",
+                        title=title,
+                        body=body,
+                        severity="warning",
+                        link="/cycling",
+                        dedup_key=dedup_key,
+                        metadata={
+                            "current_ftp": current,
+                            "estimated_ftp": round(estimated_ftp, 1),
+                        },
+                    )
+                    if created:
+                        notified += 1
+                    await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to check stale FTP for user {profile.user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+                    missed += 1
+
+            return {
+                "users_checked": len(profiles),
+                "ftp_stale_notified": notified,
+                "users_failed": missed,
             }
 
     return asyncio.run(_run())

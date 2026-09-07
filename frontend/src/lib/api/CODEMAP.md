@@ -4,6 +4,13 @@
 > See `CODEMAP.md` for the high-level overview — this file documents each module's
 > exports, backend endpoints, and return types.
 
+> **2026-09 dead-client sweep**: the `activities`, `cycling`, `dashboard`,
+> `nutrition`, `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth`
+> API-client modules were deleted (zero importers — pages call those endpoints
+> inline via `authFetch`). Dead functions were pruned from the surviving modules.
+> The domain **types** in `types/` are unaffected and still exported via
+> `types.ts`.
+
 ## API Client Modules (`src/lib/api/`)
 
 All API functions use `apiFetch<T>()` (from `fetch.ts`) which issues relative URL
@@ -18,43 +25,34 @@ requests with an optional JWT Bearer token and `credentials: 'include'`.
 | `useAuthFetch()` | `hook` | Returns `{ authFetch, authFetchWithHeaders }` — injects JWT from NextAuth session. |
 
 ### `index.ts` — Barrel file
-Re-exports from: `types`, `fetch`, `auth`, `activities`, `lifting`, `routes`, `cycling`, `dashboard`, `goals`, `trainingPlans`, `events`, `llmAnalysis`, `workoutPlanner`, `deficiency`, `nutrition`, `weather`, `conformity`, `projections`, `exercises`, `notifications`.
+Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `weather`, `conformity`, `projections`, `exercises`, `notifications`.
 
 ### Per-module API surface
 
 | Module | Backend Prefix | Exported Functions | Key Types |
 |--------|---------------|-------------------|-----------|
-| **`activities.ts`** | `/api/v1/activities/` | `getActivities`, `getActivity`, `backfillActivities`, `backfillRouteLinks`, `analyzeMergeThresholds`, `importGpxFile`, `importFitFile`, `getActivityAnalysis`, `getActivityAiAnalysis`, `triggerActivityAiAnalysis`, `getActivityContext`, `getActivitiesWithContext` | `Activity`, `ActivityDetail`, `ActivityContext`, `RideAnalysis`, `ActivityFilters`, `MergeThresholdResult` |
-| **`cycling.ts`** | `/api/v1/cycling/` | `getCyclingProfile`, `updateCyclingProfile`, `getFtpHistory`, `getFtpHistoryEntry`, `createFtpHistoryEntry`, `getTrainingLoad`, `getPowerCurve`, `getPowerZones`, `getHrZones`, `getCyclingMetricsSummary`, `getPowerVsHr`, `recalculateTss`, `estimateFtp`, `backfillStreams`, `getLifetimePBs`, `backfillFtpHistory`, `getVo2max`, `getVo2maxHistory`, `getDecouplingHistory`, `getDecouplingForActivity` | `CyclingProfile`, `FtpHistoryEntry`, `PowerCurveResponse`, `PowerZonesResponse`, `HrZonesResponse`, `TrainingLoadResponse`, `Vo2maxResponse`, `DecouplingHistoryResponse`, `DecouplingSingleResponse` |
-| **`routes.ts`** | `/api/v1/routes/` | `getRoutes`, `getRoute`, `deleteRoute`, `updateRoute`, `syncRoutes`, `getRouteHistory`, `downloadRouteGpx`, `uploadRouteGpx`, `getTags`, `createTag`, `updateTag`, `deleteTag`, `addRouteTag`, `removeRouteTag`, `getCollections`, `createCollection`, `createSmartCollection`, `updateCollection`, `deleteCollection`, `addToCollection`, `removeFromCollection`, `getRouteQualityScores`, `recomputeRouteQuality`, `getEffortEstimate`, `postEffortEstimate`, `getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`, `bulkExportGpx`, `bulkDeleteRoutes` | `RouteData`, `RouteTag`, `RouteCollection`, `RouteQualityScore`, `EffortEstimate`, `DuplicatePair`, `RouteSyncResult` |
-| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `getLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getVolumeTrends`, `linkSession`, `getLinkableActivities`, `backfillLinks`, `getWarmupTemplates`, `getWarmupTemplate`, `createWarmupTemplate`, `updateWarmupTemplate`, `deleteWarmupTemplate`, `getLiftingAnalysis`, `getSessionAiAnalysis`, `triggerSessionAiAnalysis` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `VolumeTrendResponse`, `WarmupTemplate`, `LiftingAnalysis`, `LlmAnalysis` |
-| **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getTrainingPlan`, `createTrainingPlan`, `updateTrainingPlan`, `deleteTrainingPlan`, `generateTrainingPlan`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout` | `TrainingPlan`, `TrainingPlanSummary`, `TrainingWeekResponse`, `TrainingWeekDay`, `UpdateTrainingPlanDayPayload`, `GeneratePlanPayload`, `WorkoutPlanRequest`, `WorkoutPlanResponse` |
-| **`dashboard.ts`** | `/api/v1/dashboard/` | `getDashboardSummary`, `getDashboardWeeklyReport`, `getMonthlySummary`, `getTrainingStreaks`, `getChart`, `getYearlySummary`, `getTodaySummary` | `DashboardSummary`, `WeeklyReport`, `MonthlySummaryItem`, `TrainingStreaks`, `ChartData`, `YearlySummary`, `TodaySummary` |
-| **`goals.ts`** | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` | `Goal`, `MetricInfo`, `GoalCheckIn`, `CreateGoalPayload`, `UpdateGoalPayload` |
-| **`events.ts`** | `/api/v1/events/` | `getEvents`, `getEvent`, `createEvent`, `updateEvent`, `deleteEvent`, `getEventAiAnalysis`, `triggerEventAiAnalysis` | `Event`, `CreateEventPayload`, `UpdateEventPayload` |
-| **`llmAnalysis.ts`** | `/api/v1/cycling/llm-analysis/` | `getLatestLlmAnalysis`, `triggerLlmAnalysis`, `getLlmAnalysisHistory`, `getHealthAiAnalysis`, `triggerHealthAiAnalysis`, `getEventAiAnalysis`, `triggerEventAiAnalysis` | `LlmAnalysis`, `LlmAnalysisSummary` |
-| **`workoutPlanner.ts`** | `/api/v1/workout-planner/` | `getWorkoutZones`, `planWorkout`, `matchRoutes` | `WorkoutZonesResponse`, `WorkoutPlanRequest`, `WorkoutPlanResponse`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
-| **`conformity.ts`** | `/api/v1/training-plans/` | `getPlanConformity`, `getDayConformity`, `linkPlanActivities` | `PlanConformityResponse`, `WeekConformity`, `DayConformityResponse` |
-| **`deficiency.ts`** | `/api/v1/deficiency/` | `getDeficiency` | `DeficiencyResponse`, `WeaknessItem` |
-| **`nutrition.ts`** | `/api/v1/nutrition/` | `createFuelPlan`, `getFuelPlan`, `getFuelPlanForActivity`, `updateFuelPlanActuals`, `deleteFuelPlan` | `RideFuelPlan`, `CreateFuelPlanPayload`, `FuelActualsUpdatePayload` |
-| **`weather.ts`** | `/api/v1/weather/` | `getCurrentWeather`, `getForecast`, `getActivityWeather` | `CurrentWeather`, `ForecastResponse`, `ForecastDay`, `ActivityWeather` |
-| **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection`, `getTsbProjection` | `GoalProjectionResponse`, `TsbProjectionResponse`, `ProjectionPoint` |
-| **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `updateExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
-| **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences` |
-| **`auth.ts`** | — | `getOAuthAuthorizeUrl(provider)`, `getCurrentUser()` | `User` |
+| **`routes.ts`** | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, `getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`, `downloadRouteGpx`, `getMergedRouteView`, `getHomeAreaHeatmap` | `RouteSummary`, `RouteData`, `RouteFilters`, `RouteSyncResult`, `DuplicatePair`, `MergedRouteView`, `HomeAreaHeatmapResponse` |
+| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate` |
+| **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout` | `TrainingPlanSummary`, `TrainingWeekResponse`, `UpdateTrainingPlanDayPayload`, `TrainingPlanDay`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
+| **`goals.ts`** | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` | `Goal`, `GoalCheckIn`, `MetricInfo`, `CreateGoalPayload`, `UpdateGoalPayload`, `GoalCheckInPayload`, `ReactivateResponse` |
+| **`conformity.ts`** | `/api/v1/training-plans/` | `getPlanConformity`, `getDayConformity`, `linkPlanActivities` | `PlanConformityResponse`, `DayConformityResponse`, `LinkActivitiesResponse` |
+| **`weather.ts`** | `/api/v1/weather/` | `getCurrentWeather`, `getForecast` | `CurrentWeather`, `ForecastResponse` |
+| **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection` | `GoalProjectionResponse` |
+| **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
+| **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
+
+> Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
+> analysis, workout planner, deficiency) call their endpoints **inline** via
+> `authFetch` instead of a typed client — that's why only 9 API-client modules
+> remain.
 
 ### `types/` subdirectory
 Domain type modules re-exported via `types.ts`:
-- `types/lifting.ts` — `LiftingSession`, `LiftingSet`, `CreateSessionPayload`, `AddSetPayload`, etc.
-- `types/activities.ts` — `Activity`, `ActivityDetail`, `ActivityFilters`, `ActivityContext`, etc.
-- `types/cycling.ts` — `CyclingProfile`, `PowerCurveResponse`, `TrainingLoadResponse`, etc.
-- `types/routes.ts` — `RouteData`, `RouteTag`, `RouteCollection`, `RouteQualityScore`, etc.
-- `types/training.ts` — `TrainingPlan`, `TrainingWeekDay`, `UpdateTrainingPlanDayPayload`, etc.
-- `types/dashboard.ts` — `DashboardSummary`, `WeeklyReport`, `TodaySummary`, etc.
-- `types/llm.ts` — `LlmAnalysis`, `LlmAnalysisSummary`
-- `types/goals.ts`, `types/events.ts`, `types/nutrition.ts`, `types/weather.ts`,
-  `types/projections.ts`, `types/conformity.ts`, `types/deficiency.ts`,
-  `types/notifications.ts`
+- `types/common.ts`, `types/activity.ts`, `types/lifting.ts`, `types/routes.ts`,
+  `types/cycling.ts`, `types/health.ts`, `types/dashboard.ts`,
+  `types/training.ts`, `types/llm.ts`, `types/deficiency.ts`,
+  `types/nutrition.ts`, `types/weather.ts`, `types/conformity.ts`,
+  `types/projections.ts`, `types/notifications.ts`
 
 ## Lifting Utilities (`src/lib/lifting/`)
 

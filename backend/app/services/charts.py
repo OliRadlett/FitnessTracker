@@ -62,6 +62,35 @@ class ChartData:
     reference_areas: list[ReferenceArea] = field(default_factory=list)
 
 
+def _heart_rate_insight(values: list[float]) -> str:
+    avg = sum(values) / len(values)
+    latest = values[-1]
+    delta = latest - avg
+    direction = "above" if delta > 0 else "below"
+    return (
+        f"Resting HR is {abs(round(delta, 1))} bpm {direction} the "
+        f"{len(values)}-day average."
+    )
+
+
+def _respiration_insight(values: list[float]) -> str:
+    avg = sum(values) / len(values)
+    latest = values[-1]
+    if not 12 <= latest <= 20:
+        return (
+            f"Respiratory rate ({latest:.1f}/min) is outside the normal 12-20 "
+            f"range — worth monitoring."
+        )
+    return f"Respiratory rate averaged {avg:.1f}/min over the period, within the normal range."
+
+
+def _recovery_insight(values: list[float]) -> str:
+    avg = sum(values) / len(values)
+    latest = values[-1]
+    zone = "green" if latest >= 66 else ("yellow" if latest >= 33 else "red")
+    return f"Today's recovery is {latest:.0f} ({zone} zone); period average {avg:.0f}."
+
+
 # ── Chart Service ─────────────────────────────────────────────────────────────
 
 
@@ -366,15 +395,27 @@ class ChartService:
         tsb_max = max(tsb_values) if tsb_values else 100
         reference_areas = [
             ReferenceArea(
-                y1=tsb_min, y2=-30, color="#ef4444", opacity=0.06, label="Overtrained",
+                y1=tsb_min,
+                y2=-30,
+                color="#ef4444",
+                opacity=0.06,
+                label="Overtrained",
                 y_axis="right",
             ),
             ReferenceArea(
-                y1=-30, y2=5, color="#3b82f6", opacity=0.04, label="Neutral",
+                y1=-30,
+                y2=5,
+                color="#3b82f6",
+                opacity=0.04,
+                label="Neutral",
                 y_axis="right",
             ),
             ReferenceArea(
-                y1=5, y2=tsb_max, color="#22c55e", opacity=0.06, label="Fresh",
+                y1=5,
+                y2=tsb_max,
+                color="#22c55e",
+                opacity=0.06,
+                label="Fresh",
                 y_axis="right",
             ),
         ]
@@ -1053,6 +1094,178 @@ class ChartService:
             y_label="HRV (ms)",
         )
 
+    # ── Resting HR, respiration and recovery ────────────────────────────────
+
+    async def resting_hr_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """Resting heart rate over time with a 7-day rolling average (Whoop)."""
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.source == "whoop",
+                DailyMetric.resting_hr.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        if not metrics:
+            return ChartData(
+                chart_type="line",
+                title="Resting HR Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Resting HR (bpm)",
+            )
+
+        labels = [m.metric_date.isoformat() for m in metrics]
+        rhr = [m.resting_hr for m in metrics]
+        rolling_7 = [
+            round(
+                sum(rhr[max(0, i - 6) : i + 1]) / len(rhr[max(0, i - 6) : i + 1]),
+                1,
+            )
+            for i in range(len(rhr))
+        ]
+
+        return ChartData(
+            chart_type="line",
+            title="Resting HR Trend",
+            labels=labels,
+            series=[
+                ChartSeries(name="Resting HR", data=rhr, color="#22c55e"),
+                ChartSeries(name="7-day Average", data=rolling_7, color="#3b82f6"),
+            ],
+            x_label="Date",
+            y_label="Resting HR (bpm)",
+            insights=[_heart_rate_insight(rhr)],
+        )
+
+    async def respiration_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
+        """Respiratory rate over time with a 7-day rolling average (Whoop).
+
+        Green band = normal adult range (12-20 breaths/min).
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.source == "whoop",
+                DailyMetric.respiratory_rate.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        if not metrics:
+            return ChartData(
+                chart_type="line",
+                title="Respiratory Rate Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Respirations (per min)",
+            )
+
+        labels = [m.metric_date.isoformat() for m in metrics]
+        resp = [m.respiratory_rate for m in metrics]
+        rolling_7 = [
+            round(
+                sum(resp[max(0, i - 6) : i + 1]) / len(resp[max(0, i - 6) : i + 1]),
+                1,
+            )
+            for i in range(len(resp))
+        ]
+
+        return ChartData(
+            chart_type="line",
+            title="Respiratory Rate Trend",
+            labels=labels,
+            series=[
+                ChartSeries(name="Respiratory Rate", data=resp, color="#22c55e"),
+                ChartSeries(name="7-day Average", data=rolling_7, color="#3b82f6"),
+            ],
+            x_label="Date",
+            y_label="Respirations (per min)",
+            reference_areas=[
+                ReferenceArea(
+                    y1=12,
+                    y2=20,
+                    color="#22c55e",
+                    opacity=0.05,
+                    label="Normal range",
+                )
+            ],
+            insights=[_respiration_insight(resp)],
+        )
+
+    async def whoop_recovery_trend(
+        self, user_id: uuid.UUID, days: int = 90
+    ) -> ChartData:
+        """Whoop recovery score over time with a 7-day rolling average.
+
+        Green band = high recovery (>= 66, the "green zone").
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.source == "whoop",
+                DailyMetric.recovery_score.isnot(None),
+                DailyMetric.metric_date >= cutoff,
+            )
+            .order_by(DailyMetric.metric_date)
+        )
+        metrics = list(result.scalars().all())
+
+        if not metrics:
+            return ChartData(
+                chart_type="line",
+                title="Whoop Recovery Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Recovery score",
+            )
+
+        labels = [m.metric_date.isoformat() for m in metrics]
+        recovery = [m.recovery_score for m in metrics]
+        rolling_7 = [
+            round(
+                sum(recovery[max(0, i - 6) : i + 1])
+                / len(recovery[max(0, i - 6) : i + 1]),
+                1,
+            )
+            for i in range(len(recovery))
+        ]
+
+        return ChartData(
+            chart_type="line",
+            title="Whoop Recovery Trend",
+            labels=labels,
+            series=[
+                ChartSeries(name="Recovery", data=recovery, color="#22c55e"),
+                ChartSeries(name="7-day Average", data=rolling_7, color="#3b82f6"),
+            ],
+            x_label="Date",
+            y_label="Recovery score",
+            reference_areas=[
+                ReferenceArea(
+                    y1=66, y2=100, color="#22c55e", opacity=0.05, label="High recovery"
+                )
+            ],
+            insights=[_recovery_insight(recovery)],
+        )
+
     # ── Weight trend ────────────────────────────────────────────────────────
 
     async def weight_trend(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
@@ -1173,9 +1386,9 @@ class ChartService:
         }
 
         # Whoop strain per week (sum of daily strain)
-        week_start_strain = func.date_trunc(
-            "week", DailyMetric.metric_date
-        ).label("week_start")
+        week_start_strain = func.date_trunc("week", DailyMetric.metric_date).label(
+            "week_start"
+        )
         strain_result = await self.db.execute(
             select(
                 week_start_strain,
@@ -1480,16 +1693,26 @@ class ChartService:
         deltas: list[float | None] = []
         for i in range(1, len(week_starts)):
             labels.append(week_starts[i].isoformat())
-            deltas.append(round(weekly_ctl[week_starts[i]] - weekly_ctl[week_starts[i - 1]], 1))
+            deltas.append(
+                round(weekly_ctl[week_starts[i]] - weekly_ctl[week_starts[i - 1]], 1)
+            )
 
         values = [d for d in deltas if d is not None]
         lo = min(values) if values else -10.0
         hi = max(values) if values else 10.0
         reference_areas = [
-            ReferenceArea(y1=lo, y2=-2, color="#ef4444", opacity=0.06, label="Detraining"),
-            ReferenceArea(y1=-2, y2=3, color="#3b82f6", opacity=0.04, label="Maintenance"),
-            ReferenceArea(y1=3, y2=8, color="#22c55e", opacity=0.06, label="Optimal build"),
-            ReferenceArea(y1=8, y2=hi, color="#f59e0b", opacity=0.08, label="Risky ramp"),
+            ReferenceArea(
+                y1=lo, y2=-2, color="#ef4444", opacity=0.06, label="Detraining"
+            ),
+            ReferenceArea(
+                y1=-2, y2=3, color="#3b82f6", opacity=0.04, label="Maintenance"
+            ),
+            ReferenceArea(
+                y1=3, y2=8, color="#22c55e", opacity=0.06, label="Optimal build"
+            ),
+            ReferenceArea(
+                y1=8, y2=hi, color="#f59e0b", opacity=0.08, label="Risky ramp"
+            ),
         ]
 
         insights = []
@@ -1544,7 +1767,9 @@ class ChartService:
         best = await compute_power_curve_from_streams(self.db, user_id, days)
         weight = await self._latest_body_weight(user_id)
 
-        available = [(sec, label) for sec, label in POWER_DURATION_BUCKETS if sec in best]
+        available = [
+            (sec, label) for sec, label in POWER_DURATION_BUCKETS if sec in best
+        ]
         labels = [label for _, label in available]
 
         if weight:
@@ -1589,16 +1814,26 @@ class ChartService:
         best = await compute_power_curve_from_streams(self.db, user_id, days)
         weight = await self._latest_body_weight(user_id)
 
-        duration_labels = {
-            sec: label for sec, label in POWER_DURATION_BUCKETS
-        }
+        duration_labels = {sec: label for sec, label in POWER_DURATION_BUCKETS}
         labels = [duration_labels.get(sec, f"{sec}s") for sec in PROFILE_DURATIONS]
         colors = {"50": "#94a3b8", "75": "#3b82f6", "90": "#8b5cf6"}
 
         series = [
-            ChartSeries(name="50th %ile", data=[percentile_wkg_at(s, 50) for s in PROFILE_DURATIONS], color=colors["50"]),
-            ChartSeries(name="75th %ile", data=[percentile_wkg_at(s, 75) for s in PROFILE_DURATIONS], color=colors["75"]),
-            ChartSeries(name="90th %ile", data=[percentile_wkg_at(s, 90) for s in PROFILE_DURATIONS], color=colors["90"]),
+            ChartSeries(
+                name="50th %ile",
+                data=[percentile_wkg_at(s, 50) for s in PROFILE_DURATIONS],
+                color=colors["50"],
+            ),
+            ChartSeries(
+                name="75th %ile",
+                data=[percentile_wkg_at(s, 75) for s in PROFILE_DURATIONS],
+                color=colors["75"],
+            ),
+            ChartSeries(
+                name="90th %ile",
+                data=[percentile_wkg_at(s, 90) for s in PROFILE_DURATIONS],
+                color=colors["90"],
+            ),
         ]
         insights: list[str] = []
 
@@ -1607,16 +1842,23 @@ class ChartService:
                 round(best[sec] / weight, 2) if sec in best else None
                 for sec in PROFILE_DURATIONS
             ]
-            series.insert(0, ChartSeries(name="You (W/kg)", data=you_data, color="#22c55e"))
+            series.insert(
+                0, ChartSeries(name="You (W/kg)", data=you_data, color="#22c55e")
+            )
 
             # Classify the 20-min effort against the norms
             ref_sec = 1200
             if ref_sec in best:
                 your_wkg = best[ref_sec] / weight
-                achieved = max(
-                    p for p in POWER_PROFILE_WKG[ref_sec]
-                    if your_wkg >= POWER_PROFILE_WKG[ref_sec][p] * 0.97
-                ) if your_wkg >= POWER_PROFILE_WKG[ref_sec][25] * 0.97 else None
+                achieved = (
+                    max(
+                        p
+                        for p in POWER_PROFILE_WKG[ref_sec]
+                        if your_wkg >= POWER_PROFILE_WKG[ref_sec][p] * 0.97
+                    )
+                    if your_wkg >= POWER_PROFILE_WKG[ref_sec][25] * 0.97
+                    else None
+                )
                 if achieved:
                     insights.append(
                         f"Your 20-min best ({your_wkg:.2f} W/kg) sits around the {achieved}th percentile."
@@ -1642,7 +1884,9 @@ class ChartService:
 
     # ── Consistency heatmap (daily TSS calendar) ────────────────────────────────
 
-    async def consistency_heatmap(self, user_id: uuid.UUID, days: int = 182) -> ChartData:
+    async def consistency_heatmap(
+        self, user_id: uuid.UUID, days: int = 182
+    ) -> ChartData:
         """Daily TSS over the trailing window, rendered as a calendar heatmap."""
         days = min(days, 365)
         end_date = date.today()
@@ -1671,7 +1915,9 @@ class ChartService:
                 f"{active_days} training days out of {len(data)} ({pct:.0f}% consistency)."
             )
             if longest_streak >= 3:
-                insights.append(f"Longest active streak: {longest_streak} consecutive days.")
+                insights.append(
+                    f"Longest active streak: {longest_streak} consecutive days."
+                )
 
         return ChartData(
             chart_type="heatmap",

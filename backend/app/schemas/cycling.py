@@ -5,6 +5,12 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+# Sanity bounds for FTP write paths. Mirror the estimator clamp in
+# `services/cycling/power_curve.py` (estimate_ftp_from_power_curve_detailed
+# returns None outside 50-600W) so manual entries can't drift from it.
+FTP_MIN_WATTS = 50
+FTP_MAX_WATTS = 600
+
 # ── Cycling Profile ──────────────────────────────────────────────────────────
 
 
@@ -29,7 +35,10 @@ class CyclingProfileRead(BaseModel):
 
 class CyclingProfileUpdate(BaseModel):
     ftp_watts: float | None = Field(
-        None, gt=0, le=1000, description="Functional Threshold Power in watts"
+        None,
+        ge=FTP_MIN_WATTS,
+        le=FTP_MAX_WATTS,
+        description="Functional Threshold Power in watts",
     )
     weight_kg: float | None = Field(
         None, gt=20, le=300, description="Body weight in kg"
@@ -64,7 +73,7 @@ class FtpHistoryRead(BaseModel):
 
 
 class FtpHistoryCreate(BaseModel):
-    ftp_watts: float = Field(..., gt=0, le=1000)
+    ftp_watts: float = Field(..., ge=FTP_MIN_WATTS, le=FTP_MAX_WATTS)
     effective_date: date
     source: str = "manual"
     notes: str | None = None
