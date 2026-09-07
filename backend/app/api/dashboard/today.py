@@ -1,5 +1,6 @@
 """Dashboard API — today endpoint."""
 
+import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
@@ -19,6 +20,7 @@ from app.schemas.dashboard import (
     TodaySummary,
 )
 from app.services.auth import get_current_user
+from app.services.cache import cached
 
 router = APIRouter()
 
@@ -36,14 +38,31 @@ def _safe_agg(val, default=0.0):
         return default
 
 
+@cached(ttl=300, key_prefix="dashboard-today-load")
+async def _today_load_values(db: AsyncSession, user_id: uuid.UUID) -> list[float]:
+    """Current CTL/ATL/TSB tail values from the 90-day TSS chain.
+
+    Cached in Redis for 5 minutes (mirrors ``CACHED_CHARTS``) so the heavy
+    TSS chain + training-load computation isn't repeated on every dashboard
+    load (§5.3). Fail-open: a Redis outage just recomputes.
+    """
+    from app.services.cycling import compute_training_load, get_daily_tss
+
+    start_date = date.today() - timedelta(days=90)
+    daily_tss = await get_daily_tss(db, user_id, start_date, date.today())
+    load_data = compute_training_load(daily_tss, date.today(), lookback_days=90)
+    if load_data:
+        last = load_data[-1]
+        return [float(last["ctl"]), float(last["atl"]), float(last["tsb"])]
+    return [0.0, 0.0, 0.0]
+
+
 @router.get("/today", response_model=TodaySummary)
 async def dashboard_today(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get today's training data summary."""
-    from app.services.cycling import compute_training_load, get_daily_tss
-
     today = date.today()
     uid = current_user.id
 
@@ -176,13 +195,8 @@ async def dashboard_today(
         if dm_sleep and dm_sleep.sleep_duration_minutes:
             latest_sleep_hours = round(dm_sleep.sleep_duration_minutes / 60, 1)
 
-    # Training load (CTL / ATL / TSB)
-    start_date = today - timedelta(days=90)
-    daily_tss = await get_daily_tss(db, uid, start_date, today)
-    load_data = compute_training_load(daily_tss, today, lookback_days=90)
-    current_ctl = load_data[-1]["ctl"] if load_data else 0.0
-    current_atl = load_data[-1]["atl"] if load_data else 0.0
-    current_tsb = load_data[-1]["tsb"] if load_data else 0.0
+    # Training load (CTL / ATL / TSB) — computed via the 5-min Redis cache
+    current_ctl, current_atl, current_tsb = await _today_load_values(db, uid)
 
     # Active alerts
     result = await db.execute(

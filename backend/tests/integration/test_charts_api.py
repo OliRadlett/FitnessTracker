@@ -132,3 +132,51 @@ class TestNewCharts:
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200
+
+
+# ── Whoop Health Charts (§4.1) ──────────────────────────────────────────
+
+
+class TestWhoopHealthCharts:
+    """RHR, respiration and recovery-trend charts added in §4.1."""
+
+    async def test_resting_hr_trend(self, client, test_daily_metric):
+        resp = await client.get("/api/v1/charts/resting_hr_trend?days=90")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+        assert data["title"] == "Resting HR Trend"
+        assert len(data["labels"]) == 1
+        assert data["labels"][0] == (date.today() - timedelta(days=1)).isoformat()
+        assert data["series"][0]["data"][0] == 58.0
+        assert len(data["insights"]) == 1
+
+    async def test_resting_hr_trend_empty(self, client):
+        resp = await client.get("/api/v1/charts/resting_hr_trend?days=90")
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
+    async def test_respiration_trend(self, client, test_daily_metric):
+        resp = await client.get("/api/v1/charts/respiration_trend?days=90")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+        assert data["series"][0]["data"][0] == 15.2
+        assert data["reference_areas"][0]["label"] == "Normal range"
+
+    async def test_whoop_recovery_trend(self, client, test_daily_metric):
+        resp = await client.get("/api/v1/charts/whoop_recovery_trend?days=90")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+        assert data["series"][0]["data"][0] == 72.0
+        assert data["reference_areas"][0]["label"] == "High recovery"
+        assert "green zone" in data["insights"][0]
+
+    async def test_available_includes_new_charts(self, client):
+        resp = await client.get("/api/v1/charts/available")
+        assert resp.status_code == 200
+        names = [c["name"] for c in resp.json()["charts"]]
+        assert "resting_hr_trend" in names
+        assert "respiration_trend" in names
+        assert "whoop_recovery_trend" in names

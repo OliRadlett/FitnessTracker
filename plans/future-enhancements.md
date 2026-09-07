@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-06 · **Status**: In progress — Phase A §2.1–2.3 done (dead-client sweep, sidebar/nav fixes, minor correctness); unstarted §0.2, §1.1–1.4, Part 3+.
+> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B backend wins done (Part 4.1/4.3/4.4, §3.12, §3.1 weight CRUD, §5.1–5.3) — pending verification runs, commit + push; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -86,7 +86,7 @@ AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zo
 
 ### 3.1 Body-weight logging UI — the biggest data gap (M)
 `WeightLog` model + `GET /metrics/weight` + `weight_trend` chart exist, but weight is **Whoop-only**: no manual entry endpoint, no UI. DailyMetric/cycle-profile weight is separate. Users without a Whoop scale can't log weight at all, and W/kg + percentile charts degrade ("Log your body weight to enable it").
-- [ ] Backend: `POST/PATCH/DELETE /metrics/weight` (`source="manual"` — the unique `(user_id, date, source)` constraint is already designed for it), serialization.
+- [x] Backend: `POST/PATCH/DELETE /metrics/weight` (`source="manual"` — the unique `(user_id, date, source)` constraint already designed for it), serialization. POST upserts on `(user, date, source)` and syncs the cycling profile reference weight. Done in Phase B.
 - [ ] Frontend: quick-add weigh-in (profile editor + dashboard today strip), editable history, integrate with W/kg charts and body-weight goal metric.
 - [ ] Optional: a weight tab combining trend, 7-day EMA, deltas.
 
@@ -144,7 +144,7 @@ Conformity (5C), readiness, deficiency, projections, health analysis are all com
 Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control; `performance_decline` alert type is declared-but-unimplemented; sleep consistency and resting-HR trend are computed but never scored.
 - [ ] Per-user override table (`user_preferences` JSONB): severity thresholds, weight overrides, snooze (per type + global quiet hours).
 - [ ] Implement `performance_decline` (FTP/VO2max drop vs history) + sleep-consistency + resting-HR-elevation signals.
-- [ ] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify.
+- [x] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify. (Done in Phase B — daily-deduped `health_alert` notifications added to all three legacy blocks.)
 
 ### 3.13 Ride segment analysis (L)
 `ActivityStream` has 1s power/HR, routes have geometry/history/PBs — enough for Strava-style in-ride segments.
@@ -176,18 +176,19 @@ Add a 3D terrain-aware viewport for rides and routes — a "relive your ride" fl
 
 ### 4.1 Missing charts (S — registry pattern makes these near-trivial)
 Fields exist with **no chart**: resting HR, respiratory rate, standalone recovery score trend, calories (`DailyMetric`), lifting RPE trend, volume-per-muscle-group. `estimated_1rm_history`, `weekly_volume`, `sleep_quality_trend`, `whoop_strain_trend`, `recovery_vs_performance` are registered-but-unrendered (mark renderer TODO in CODEMAP).
-- [ ] Add RHR + respiration + recovery-trend charts to the registry (`api/charts.py`) and render on the new Health page (§3.2).
+- [x] Add RHR + respiration + recovery-trend charts to the registry (`api/charts.py`) and render on the new Health page (§3.2). `resting_hr_trend`, `respiration_trend`, `whoop_recovery_trend` added to `services/charts.py`; rendering on the /health page deferred to §3.2 (Phase C).
 
 ### 4.2 Event results plumbing (see §3.3)
 `no services/events.py` — business logic lives inline in the API layer; extract a service module before adding result fields.
 
 ### 4.3 FTP write-path validation + drift detection (S)
 `POST /ftp-history` / `PATCH /profile` accept any `ftp_watts`; the 50–600W clamp exists only inside the estimator. No stale-FTP / detraining detection.
-- [ ] Clamp + sanity-check write paths (400 on out-of-range, log).
-- [ ] Weekly scan: suggest re-test when FTP is old or load/performance diverges from it (feed `auto_estimate_ftp_weekly`).
+- [x] Clamp + sanity-check write paths (422 on out-of-range — mirrors every other numeric field; bounds `ge=50, le=600` mirroring the estimator clamp in `services/cycling/power_curve.py`).
+- [x] Weekly scan: suggest re-test when FTP is old or load/performance diverges from it (feed `auto_estimate_ftp_weekly`). New `check_stale_ftp` Celery task (Sun 4:15 AM) notifies `ftp_stale` on >10%/>20W divergence or missing FTP for `auto_estimate_ftp=False` profiles.
 
 ### 4.4 Notification type expansion (S–M)
 Natural additions mirror existing features (no new infra): FTP auto-estimate / significant FTP change, connection `needs_reauth`, event countdown + taper-start, bad-weather ride-day alert, weekly summary / streak milestone, deload-started. Each needs the type added to all three lists (`services/notifications.py:13-18`, `models/notification.py:13`, `NotificationBell.tsx`).
+- [x] Added `connection_reauth` (fired from `_mark_reauth` in `services/connection_health.py`) and `ftp_stale` (from `check_stale_ftp`). Both threaded through the 4 sync points (NOTIFICATION_TYPES, DEFAULT_PREFERENCES, schemas, frontend types/Bell/Settings). Event countdown/taper/weather/streak/deload types deferred.
 
 ---
 
@@ -198,7 +199,8 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 | 5.1 | **Injury-risk query bomb** | `analyze_injury_risk` issues ~18+ queries/user/run (3 per week × 6 weeks) in a daily per-user task | 2–3 aggregated SQL queries (volume sums, counts per week) | S |
 | 5.2 | **In-memory rate limiter** | `slowapi` + `get_remote_address` (AGENTS-documented) — breaks across workers | Redis-backed limiter | S |
 | 5.3 | **`/dashboard/today` uncached CTL/ATL/TSB** | recomputes 90-day TSS chain per request (`api/dashboard/today.py:181-185`) | 5-min Redis cache (mirror `CACHED_CHARTS`) | S |
-| 5.4 | **Power-curve O(n²)** | inner sliding-window scan per duration bucket (`power_curve.py:266-278`) | reuse a single stream pass; extend the 1h in-memory cache | M |
+
+> 5.1 ✅ — `analyze_injury_risk` now uses 2 grouped queries (per-week lifting volume+count, per-week activity count) instead of the 18-query loop. 5.2 ✅ — auth/token rate limit moved to a Redis fixed-window limiter (`services/cache.check_rate_limit`) shared across workers, fail-open on Redis outage. 5.3 ✅ — `/dashboard/today` CTL/ATL/TSB tail cached 5 min in Redis via the `cached` decorator (`_today_load_values`).| 5.4 | **Power-curve O(n²)** | inner sliding-window scan per duration bucket (`power_curve.py:266-278`) | reuse a single stream pass; extend the 1h in-memory cache | M |
 | 5.5 | **LLM context builders** | 15+ sequential queries per analysis (`llm_analysis.py`) | batch aggregate queries | M |
 | 5.6 | **`notify()` extra `select(User)`** | one query per notification (`services/notifications.py:63-64`) — ×users in plan reminders | include user or cache | XS |
 | 5.7 | **Unbounded export reads** | full-table per user (`export.py`) | optional `start_date`/`end_date` window | XS |
@@ -229,7 +231,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 ## Suggested execution order
 
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
-2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications.
+2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ All implemented (backend half of §3.1 done; weight UI is Phase C). Awaiting commit, push, and `main`→`prod` release.
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page.
 4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.

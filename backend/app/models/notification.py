@@ -10,7 +10,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 # Supported notification types. Mirrors the per-user preference keys.
-NOTIFICATION_TYPES = ("health_alert", "pr", "goal_milestone", "plan_reminder")
+NOTIFICATION_TYPES = (
+    "health_alert",
+    "pr",
+    "goal_milestone",
+    "plan_reminder",
+    "connection_reauth",
+    "ftp_stale",
+)
 
 
 class Notification(Base):
@@ -49,7 +56,9 @@ class Notification(Base):
     read: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     dedup_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # SQLAlchemy reserves the attribute name `metadata`, so the Python property
     # is `payload` mapped onto the DB column `metadata`.

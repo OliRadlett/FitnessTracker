@@ -76,6 +76,10 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     # VO2max and decoupling charts
     "vo2max_trend": {"method": "vo2max_trend", "params": ["months"]},
     "decoupling_trend": {"method": "decoupling_trend", "params": ["days"]},
+    # Whoop-derived health charts (Health page §3.2)
+    "resting_hr_trend": {"method": "resting_hr_trend", "params": ["days"]},
+    "respiration_trend": {"method": "respiration_trend", "params": ["days"]},
+    "whoop_recovery_trend": {"method": "whoop_recovery_trend", "params": ["days"]},
     # Training plan periodization
     "periodization": {"method": "periodization", "params": ["weeks"]},
     # New intelligence charts

@@ -28,6 +28,16 @@ const TOGGLES: { key: keyof NotificationPreferences; label: string; description:
     label: 'Plan reminders',
     description: "Daily morning reminder of today's planned session",
   },
+  {
+    key: 'connection_reauth',
+    label: 'Connection re-authentication',
+    description: 'When a synced provider (Strava, Whoop, Wahoo) needs reconnecting',
+  },
+  {
+    key: 'ftp_stale',
+    label: 'FTP drift',
+    description: 'Weekly suggestion to re-test your FTP when recent power data diverges',
+  },
 ];
 
 export function NotificationSettings() {

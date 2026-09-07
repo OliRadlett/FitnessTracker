@@ -15,6 +15,8 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "pr": True,
     "goal_milestone": True,
     "plan_reminder": True,
+    "connection_reauth": True,
+    "ftp_stale": True,
 }
 
 

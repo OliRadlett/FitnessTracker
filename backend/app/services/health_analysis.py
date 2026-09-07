@@ -9,7 +9,7 @@ import math
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -409,43 +409,54 @@ async def analyze_injury_risk(
     Always returns a dict with score, severity, title, description, and evidence.
     """
     today = date.today()
+    window_start = today - timedelta(weeks=6)
 
-    # Get weekly lifting volumes AND activity presence for last 6 weeks
+    # Aggregate the last 6 weeks into rolling 7-day buckets with two grouped
+    # queries (was 18 per-user queries in the old per-week loop). The bucket for
+    # a session aged N days is floor((N-1)/7), which matches the old
+    # [today-W-itw, today-itw) window semantics exactly (a session exactly
+    # 7k days old belongs to bucket k-1). PG integer division truncates toward
+    # zero, so age 0 lands in bucket 0 just like the old week_start check.
+    lifting_week = func.greatest(
+        (cast(today, Date) - LiftingSession.session_date - 1) / 7, 0
+    ).label("week_idx")
+    result = await db.execute(
+        select(
+            lifting_week,
+            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0),
+            func.count(LiftingSession.id),
+        )
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.session_date >= window_start,
+            LiftingSession.session_date <= today,
+        )
+        .group_by(lifting_week)
+    )
+    lifting_by_week = {
+        int(idx): (float(volume), int(count)) for idx, volume, count in result.all()
+    }
+
+    activity_week = func.greatest(
+        (cast(today, Date) - Activity.start_date - 1) / 7, 0
+    ).label("week_idx")
+    result = await db.execute(
+        select(activity_week, func.count(Activity.id))
+        .where(
+            Activity.user_id == user_id,
+            Activity.start_date >= window_start,
+            Activity.start_date <= today,
+        )
+        .group_by(activity_week)
+    )
+    activity_by_week = {int(idx): int(count) for idx, count in result.all()}
+
     week_volumes = []
     week_active = []
     for i in range(6):
-        week_start = today - timedelta(weeks=i + 1)
-        week_end = today - timedelta(weeks=i)
-
-        # Lifting volume
-        result = await db.execute(
-            select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0)).where(
-                LiftingSession.user_id == user_id,
-                LiftingSession.session_date >= week_start,
-                LiftingSession.session_date < week_end,
-            )
-        )
-        week_volumes.append(float(result.scalar() or 0))
-
-        # Check for ANY activity (lifting OR cardio) in this week
-        act_result = await db.execute(
-            select(func.count(Activity.id)).where(
-                Activity.user_id == user_id,
-                Activity.start_date >= week_start,
-                Activity.start_date < week_end,
-            )
-        )
-        lift_result = await db.execute(
-            select(func.count(LiftingSession.id)).where(
-                LiftingSession.user_id == user_id,
-                LiftingSession.session_date >= week_start,
-                LiftingSession.session_date < week_end,
-            )
-        )
-        has_activity = (
-            int(act_result.scalar() or 0) + int(lift_result.scalar() or 0)
-        ) > 0
-        week_active.append(has_activity)
+        volume, lifting_count = lifting_by_week.get(i, (0.0, 0))
+        week_volumes.append(volume)
+        week_active.append((lifting_count + activity_by_week.get(i, 0)) > 0)
 
     current_week_vol = week_volumes[0] if week_volumes else 0
     prior_week_vols = week_volumes[1:] if len(week_volumes) > 1 else []

@@ -25,6 +25,8 @@ class NotificationPreferences(BaseModel):
     pr: bool
     goal_milestone: bool
     plan_reminder: bool
+    connection_reauth: bool
+    ftp_stale: bool
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -32,3 +34,5 @@ class NotificationPreferencesUpdate(BaseModel):
     pr: bool | None = None
     goal_milestone: bool | None = None
     plan_reminder: bool | None = None
+    connection_reauth: bool | None = None
+    ftp_stale: bool | None = None

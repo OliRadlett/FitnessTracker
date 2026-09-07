@@ -13,6 +13,8 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   pr: '🏆',
   goal_milestone: '🎯',
   plan_reminder: '📋',
+  connection_reauth: '🔗',
+  ftp_stale: '🚴',
 };
 
 const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
