@@ -57,3 +57,11 @@ export function formatRelativeTime(dateStr?: string | null): string {
   if (diffDays < 7) return `${diffDays}d ago`;
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+
+/** Format an ISO date string (YYYY-MM-DD) as "21 Mar 2026". */
+export function formatDateDMY(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}

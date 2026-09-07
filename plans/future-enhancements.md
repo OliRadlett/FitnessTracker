@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; Phase C §3.5 + §3.1 UI done (unshipped); continuing §3.2/3.3/3.4; unstarted §0.2, §1.1–1.4, Part 3 (C onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -87,7 +87,7 @@ AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zo
 ### 3.1 Body-weight logging UI — the biggest data gap (M)
 `WeightLog` model + `GET /metrics/weight` + `weight_trend` chart exist, but weight is **Whoop-only**: no manual entry endpoint, no UI. DailyMetric/cycle-profile weight is separate. Users without a Whoop scale can't log weight at all, and W/kg + percentile charts degrade ("Log your body weight to enable it").
 - [x] Backend: `POST/PATCH/DELETE /metrics/weight` (`source="manual"` — the unique `(user_id, date, source)` constraint already designed for it), serialization. POST upserts on `(user, date, source)` and syncs the cycling profile reference weight. Done in Phase B.
-- [ ] Frontend: quick-add weigh-in (profile editor + dashboard today strip), editable history, integrate with W/kg charts and body-weight goal metric.
+- [x] Frontend: quick-add weigh-in (profile editor + dashboard today strip), editable history, integrate with W/kg charts and body-weight goal metric. Done in Phase C — `WeightPanel` (quick-add form, editable/deletable history, 7-day rolling avg) on the Cycling page + a compact quick-add on the dashboard Today strip; invalidates W/kg + weight-trend charts on mutation.
 - [ ] Optional: a weight tab combining trend, 7-day EMA, deltas.
 
 ### 3.2 Dedicated Health page (M)
