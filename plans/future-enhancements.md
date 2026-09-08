@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences done + §3.7 PWA core (install prompt, offline banner, dashboard last-known snapshot) done (on `main`, unshipped); §3.7 Live Lift offline mode + §3.8–3.10 pending; unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences done + §3.7 PWA core (install prompt, offline banner, dashboard last-known snapshot) done + §3.8 Web Push done + §3.9 JSON export + account deletion done (all on `main`, unshipped); §3.7 Live Lift offline mode + §3.10 onboarding pending; unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -129,8 +129,8 @@ In-app notifications exist (`Notification` model: `type/link/read`, dedup key) b
 
 ### 3.9 Full JSON data export + account deletion (M)
 CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story is incomplete.
-- [ ] Backend: `GET /export/json` (full user data incl. streams/weights/goals checks) + `POST /account/delete` (async task, cascade-aware), obfuscate-or-purge OAuth tokens.
-- [ ] Frontend: add the confirm modal + wire the settings button (the old dead button + Danger Zone card were removed in §2.2; re-add them here).
+- [x] Backend: `GET /export/json` (full user data incl. streams/weights/goals checks) + `POST /account/delete` (async task, cascade-aware), obfuscate-or-purge OAuth tokens. — **Done** (commit `…§3.9`): `services/data_export.py` serializes all 26 per-user collections (simple tables + one-to-one cycling profile + trees: activities+streams/sources, lifting_sessions+sets, warmup_templates+steps, goals+check_ins, training_plans+days, routes+sources/quality/tag_ids/collection_ids) into one JSON doc; `GET /api/v1/export/json` (attachment download, ISO dates, excludes shared global Exercise seeds + webhook queue); `DELETE /api/v1/account/delete` requires exact `confirm_email` in body then deletes the users row — all children cascade via DB `ON DELETE CASCADE` FKs (purges encrypted OAuth tokens too). Synchronous (personal-scale dataset) rather than a Celery task; documented in commit.
+- [x] Frontend: add the confirm modal + wire the settings button (the old dead button + Danger Zone card were removed in §2.2; re-add them here). — **Done**: `DataPortabilityCard` in Settings (Download JSON via client-side blob of the export response; Delete account → email-confirm modal → `DELETE /account/delete` → `signOut({callbackUrl:'/'})`). Due to `apiFetch` auto-JSON, download and delete both reuse the authFetch clients (`lib/api/account.ts`).
 
 ### 3.10 Onboarding / first-run wizard (M)
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.
@@ -234,7 +234,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done, **shipped to prod 2026-09-07**. Phase C complete.
-4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 done, §3.9 next.
+4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 done, §3.9 done, §3.10 next.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).
 7. **Phase G — performance/infra (Part 5.4–5.9 + 6)**: caching, codegen, CI E2E, alerting.

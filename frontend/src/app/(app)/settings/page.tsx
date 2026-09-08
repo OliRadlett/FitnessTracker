@@ -10,6 +10,7 @@ import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { WebPushCard } from '@/components/settings/WebPushCard';
+import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useUnits } from '@/lib/units';
 import { formatRelativeTime } from '@/lib/utils';
@@ -786,6 +787,9 @@ export default function SettingsPage() {
       {/* Notifications */}
       <NotificationSettings />
       <WebPushCard />
+
+      {/* Data & account */}
+      <DataPortabilityCard />
     </div>
   );
 }

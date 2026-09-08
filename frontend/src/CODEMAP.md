@@ -43,6 +43,7 @@
 | `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD (types via `types/health.ts` `WeightEntry` incl. `id`/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
 | `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
+| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download). Types in `types/export.ts` |
 | `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
 
 ## Components
@@ -180,6 +181,7 @@
 | `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
 | `NotificationSettings` | Per-type notification toggles (health alerts / PRs / goal milestones / plan reminders) — `['notification-preferences']` query, PATCH on toggle. Rendered on `/settings` page |
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
+| `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
 
 ### `lib/` — Shared utilities
