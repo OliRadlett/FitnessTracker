@@ -13,7 +13,11 @@ from app.models.health_alert import HealthAlert
 from app.models.sleep import SleepLog
 from app.models.user import User
 from app.models.weight import WeightLog
-from app.schemas.metrics import WeightEntryCreate, WeightEntryUpdate
+from app.schemas.metrics import (
+    HealthPreferencesUpdate,
+    WeightEntryCreate,
+    WeightEntryUpdate,
+)
 from app.services.auth import get_current_user
 from app.services.whoop import (
     compute_readiness,
@@ -480,61 +484,91 @@ async def run_health_analysis(
         analyze_illness,
         analyze_injury_risk,
         analyze_overtraining,
+        get_health_preferences,
         upsert_alert,
     )
+
+    disabled = set(get_health_preferences(current_user)["disabled"])
 
     all_results = []
     alerts_generated = 0
 
-    try:
-        overtraining = await analyze_overtraining(db, current_user.id)
-        if overtraining:
-            await upsert_alert(db, current_user.id, overtraining)
-            alerts_generated += 1
-        all_results.append(
-            {
-                "type": "overtraining",
-                "label": "Overtraining Risk",
-                "result": overtraining,
-            }
-        )
-    except Exception as e:
-        all_results.append(
-            {"type": "overtraining", "label": "Overtraining Risk", "error": str(e)}
-        )
+    if "overtraining" not in disabled:
+        try:
+            overtraining = await analyze_overtraining(db, current_user.id)
+            if overtraining:
+                await upsert_alert(db, current_user.id, overtraining)
+                alerts_generated += 1
+            all_results.append(
+                {
+                    "type": "overtraining",
+                    "label": "Overtraining Risk",
+                    "result": overtraining,
+                }
+            )
+        except Exception as e:
+            all_results.append(
+                {"type": "overtraining", "label": "Overtraining Risk", "error": str(e)}
+            )
+
+    if "injury_risk" not in disabled:
+        try:
+            injury = await analyze_injury_risk(db, current_user.id)
+            if injury:
+                await upsert_alert(db, current_user.id, injury)
+                alerts_generated += 1
+            all_results.append(
+                {
+                    "type": "injury_risk",
+                    "label": "Injury Risk",
+                    "result": injury,
+                }
+            )
+        except Exception as e:
+            all_results.append(
+                {"type": "injury_risk", "label": "Injury Risk", "error": str(e)}
+            )
+
+    if "illness" not in disabled:
+        try:
+            illness = await analyze_illness(db, current_user.id)
+            if illness:
+                await upsert_alert(db, current_user.id, illness)
+                alerts_generated += 1
+            all_results.append(
+                {
+                    "type": "illness_risk",
+                    "label": "Illness Risk",
+                    "result": illness,
+                }
+            )
+        except Exception as e:
+            all_results.append(
+                {"type": "illness_risk", "label": "Illness Risk", "error": str(e)}
+            )
+
+    # §3.12 regeneration signals (performance decline, sleep consistency,
+    # resting-HR elevation) — honor per-user health preferences.
+    from app.services.health_analysis import analyze_regeneration_signals
 
     try:
-        injury = await analyze_injury_risk(db, current_user.id)
-        if injury:
-            await upsert_alert(db, current_user.id, injury)
-            alerts_generated += 1
-        all_results.append(
-            {
-                "type": "injury_risk",
-                "label": "Injury Risk",
-                "result": injury,
-            }
-        )
+        for reg in await analyze_regeneration_signals(db, current_user.id):
+            if await upsert_alert(db, current_user.id, reg):
+                alerts_generated += 1
+            all_results.append(
+                {
+                    "type": reg.get("alert_type"),
+                    "label": reg.get("alert_type", "").replace("_", " ").title(),
+                    "result": reg,
+                }
+            )
     except Exception as e:
         all_results.append(
-            {"type": "injury_risk", "label": "Injury Risk", "error": str(e)}
-        )
-
-    try:
-        illness = await analyze_illness(db, current_user.id)
-        if illness:
-            await upsert_alert(db, current_user.id, illness)
-            alerts_generated += 1
-        all_results.append(
             {
-                "type": "illness_risk",
-                "label": "Illness Risk",
-                "result": illness,
+                "type": "regeneration_signals",
+                "label": "Regeneration Signals",
+                "error": str(e),
             }
-        )
-    except Exception as e:
-        all_results.append(
-            {"type": "illness_risk", "label": "Illness Risk", "error": str(e)}
         )
 
     await db.commit()
@@ -543,6 +577,40 @@ async def run_health_analysis(
         "analysis_results": all_results,
         "alerts_generated": alerts_generated,
     }
+
+
+@router.get("/health-preferences")
+async def get_health_preferences_endpoint(
+    current_user: User = Depends(get_current_user),
+):
+    """Get the user's health-alert preferences (§3.12) — disabled types,
+    snoozed types, and per-signal threshold overrides."""
+    from app.services.health_analysis import get_health_preferences
+
+    return get_health_preferences(current_user)
+
+
+@router.put("/health-preferences")
+async def put_health_preferences_endpoint(
+    payload: HealthPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply partial health-alert preference updates (§3.12).
+
+    Body keys (all optional): ``disabled`` (list of alert types), ``snoozed``
+    (dict of alert type → ISO date), ``thresholds`` (dict of signal type →
+    field overrides such as ``drop_pct`` / ``stddev_min`` / ``bpm``).
+    """
+    from app.services.health_analysis import set_health_preferences
+
+    prefs = await set_health_preferences(
+        db,
+        current_user,
+        payload.model_dump(exclude_none=True),
+    )
+    await db.flush()
+    return prefs
 
 
 # ── Health AI Analysis ──────────────────────────────────────────────────────

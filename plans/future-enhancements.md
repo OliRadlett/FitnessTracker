@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phase A §2.1–2.3 done & pushed; Phase B (Part 4.1/4.3/4.4, §3.12, §3.1 backend, §5.1–5.3) done, merged to `prod`, deployed; Phase C §3.5 + §3.1 UI + §3.3 result-logging + race-day notify + §3.4 ⌘P search + §3.2 Health page all done and **shipped to prod (2026-09-07)**; unstarted §0.2, §1.1–1.4, Part 3 (D onwards).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done (both unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.15–3.16).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -113,47 +113,51 @@ Bell dropdown only, hard-capped at 50 (`NotificationBell.tsx:35-40`), no history
 
 ### 3.6 Unit & locale preferences (M)
 Everything is hardcoded metric; locale literals are mixed (`'en-GB'` in activities/TimelineView/PatternsView/StatsView vs `'en-US'` in WeeklyView/PlanBuilder). No timezone or 12/24h preference.
-- [ ] Settings section: unit system (kg/lb, km/mi), time format, date locale; centralize through `lib/utils.ts` (`formatDistance` is the single choke point) + a `useUnits`/`useLocale` hook.
-- [ ] Normalize the mixed locale literals to the preference.
+- [x] Settings section: unit system (kg/lb, km/mi), time format, date locale; centralize through `lib/utils.ts` (`formatDistance` is the single choke point) + a `useUnits`/`useLocale` hook. Done in Phase D — `User.preferences` JSONB + `GET/PATCH /user/preferences` (migration 042), `UnitsProvider`/`useUnits()` in `lib/units.tsx` (mounted in app layout, syncs a utils singleton so every `formatDistance`/`formatDateDMY`/`formatTime`/`formatWeight` call honors the preference), Settings "Preferences" card with pill toggles. Weight conversion wired into `WeightPanel` + `ProfileEditor`.
+- [x] Normalize the mixed locale literals to the preference. Done — activities page, PatternsView, StatsView, TimelineView, WeeklyView, PlanBuilder now use `getActiveLocale()`.
 
 ### 3.7 PWA offline + installability (M)
 SW is network-only for `/api/v1/`, caches only the login shell, and there is **no `beforeinstallprompt` flow**. Live Lift is local-first but still gated on network for sync.
-- [ ] Install prompt + `appinstalled` state in `PwaRegister.tsx`.
-- [ ] Offline shell for the dashboard using last-known data (cache a snapshot of recent summaries), with a clear "offline — data may be stale" banner; keep API calls network-only (Pitfall 23).
+- [x] Install prompt + `appinstalled` state in `PwaRegister.tsx`. Done — `beforeinstallprompt` capture → in-app Install pill (bottom-center, localStorage-dismissable) + `appinstalled` resets state.
+- [x] Offline shell for the dashboard using last-known data (cache a snapshot of recent summaries), with a clear "offline — data may be stale" banner; keep API calls network-only (Pitfall 23). Done — `OfflineSnapshot` persists `dashboard*` query data to localStorage (7-day TTL, debounced) and restores it stale (`updatedAt: 0`) so the next successful fetch replaces it; `OfflineBanner` shows last-sync staleness while offline.
 - [ ] Live Lift: surfacing its own pending-sync queue offline is already designed; formalise an explicit offline mode.
 
 ### 3.8 Web Push notifications (M)
 In-app notifications exist (`Notification` model: `type/link/read`, dedup key) but **no VAPID/webpush anywhere**. Four types fire today (pr, health_alert, goal_milestone, plan_reminder).
-- [ ] VAPID keys + PushSubscription model + `web-push` delivery in `notify()`; SW `push`/`notificationclick` handlers.
-- [ ] Per-type opt-in reuse of settings `NotificationSettings` toggles.
+- [x] VAPID keys + PushSubscription model + `web-push` delivery in `notify()`; SW `push`/`notificationclick` handlers. — **Done** (commit `…§3.8`, migration **043**): `PushSubscription` model, `services/push.py` (`register/unregister/list/send_push_to_user`, VAPID, per-endpoint failure tracking + pruning on 410/404/≥5 failures, skips when keys unset), `api/push.py` (`GET /vapid-public-key` 404-when-unset, `GET/POST/DELETE /subscriptions`), `notify()` now dispatches push best-effort (never raises). Frontend: SW push/notificationclick in `public/sw.js` (CACHE_NAME→`fittrack-v4`), `lib/webPush.ts` (subscribe/unsubscribe/count, urlBase64↔Uint8Array), Settings `WebPushCard`. Deploy needs `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` + Docker rebuild (pywebpush dep).
+- [x] Per-type opt-in reuse of settings `NotificationSettings` toggles. — Push delivery is gated by the same in-app per-type toggles; `WebPushCard` lives under the Notifications card and notes this. Distribution is all-or-nothing per device (browser-level permission) — per-type is enforced server-side at send time.
 
 ### 3.9 Full JSON data export + account deletion (M)
 CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story is incomplete.
-- [ ] Backend: `GET /export/json` (full user data incl. streams/weights/goals checks) + `POST /account/delete` (async task, cascade-aware), obfuscate-or-purge OAuth tokens.
-- [ ] Frontend: add the confirm modal + wire the settings button (the old dead button + Danger Zone card were removed in §2.2; re-add them here).
+- [x] Backend: `GET /export/json` (full user data incl. streams/weights/goals checks) + `POST /account/delete` (async task, cascade-aware), obfuscate-or-purge OAuth tokens. — **Done** (commit `…§3.9`): `services/data_export.py` serializes all 26 per-user collections (simple tables + one-to-one cycling profile + trees: activities+streams/sources, lifting_sessions+sets, warmup_templates+steps, goals+check_ins, training_plans+days, routes+sources/quality/tag_ids/collection_ids) into one JSON doc; `GET /api/v1/export/json` (attachment download, ISO dates, excludes shared global Exercise seeds + webhook queue); `DELETE /api/v1/account/delete` requires exact `confirm_email` in body then deletes the users row — all children cascade via DB `ON DELETE CASCADE` FKs (purges encrypted OAuth tokens too). Synchronous (personal-scale dataset) rather than a Celery task; documented in commit.
+- [x] Frontend: add the confirm modal + wire the settings button (the old dead button + Danger Zone card were removed in §2.2; re-add them here). — **Done**: `DataPortabilityCard` in Settings (Download JSON via client-side blob of the export response; Delete account → email-confirm modal → `DELETE /account/delete` → `signOut({callbackUrl:'/'})`). Due to `apiFetch` auto-JSON, download and delete both reuse the authFetch clients (`lib/api/account.ts`).
 
 ### 3.10 Onboarding / first-run wizard (M)
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.
-- [ ] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block.
+- [x] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block. — **Done** (commit `…§3.10`): `components/onboarding/OnboardingWizard.tsx` — 4 soft-prompt steps (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-shows on first run (~1.2s after auth) unless `fittrack-onboarding-done` is set; `Skip`/Get started marks done; `OnboardingToggle` re-opens it via custom event. No backend/migration needed — first-run state is localStorage. Fullscreen Modal (reuses `Modal`) with step progress bars; mounted in `(app)/layout.tsx` inside `UnitsProvider`.
 
 ### 3.11 Adaptive training suggestions (L)
 Conformity (5C), readiness, deficiency, projections, health analysis are all computed — combine them into actionable weekly advice.
 - [ ] Backend: `services/adaptive.py` producing a "shift" recommendation per week (volume/intensity/rest) from conformity deviations + TSB trajectory + deficiency priorities + recovery state.
 - [ ] Frontend: suggestion card in `WeeklyView` with one-tap "apply" to plan days.
 
-### 3.12 Alert tuning + new alert signals (M)
+### 3.12 Alert tuning + new alert signals (M) ✅ Done (2026-09-08)
 Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control; `performance_decline` alert type is declared-but-unimplemented; sleep consistency and resting-HR trend are computed but never scored.
-- [ ] Per-user override table (`user_preferences` JSONB): severity thresholds, weight overrides, snooze (per type + global quiet hours).
-- [ ] Implement `performance_decline` (FTP/VO2max drop vs history) + sleep-consistency + resting-HR-elevation signals.
+- [x] Per-user preferences (`User.health_preferences` JSONB): **disabled** alert types (all 9 — composite + regeneration + legacy), **snooze** until a date per type, and per-signal **threshold overrides** (merged over defaults). Scheduler + on-demand analyze both honor them.
+- [x] Implement `performance_decline` (FTP drop vs history, needs ≥4 FtpHistory rows), `sleep_consistency` (nightly-duration `pstdev` over last 7 days, needs ≥3 nights), `resting_hr_elevation` (recent-3 vs 30-day baseline, needs ≥5 readings).
 - [x] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify. (Done in Phase B — daily-deduped `health_alert` notifications added to all three legacy blocks.)
 
 ### 3.13 Ride segment analysis (L)
 `ActivityStream` has 1s power/HR, routes have geometry/history/PBs — enough for Strava-style in-ride segments.
 - [ ] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self.
 
-### 3.14 Race-day prep PDF (S)
+### 3.14 Race-day prep PDF (S) ✅ Done
 ReportLab generator exists; one new report wrapping conformity + TSB projection + weather forecast + fuel plan + taper checklist for an event date.
-- [ ] `generate_event_report(event_id)` + export link from the training page event card.
+- [x] `generate_event_report(event_id)` + export link from the training page event card.
+  - `pdf_report.generate_event_report(db, user_id, event_id)` — sections: event overview, readiness (TSB projection toward event day via `compute_tsb_projection`, projection tail table), plan conformity (overall/trend + per-week table + observations), taper checklist (plan days in the taper window), fuel plan (`compute_fuel_targets` with race-day planned duration or target-TSS-derived duration, IF 0.75), race-week weather (event-day highlight + full table from `get_forecast`).
+  - Endpoint `GET /api/v1/export/event-report/{event_id}` (404 when event not found, mirrors weekly/monthly report patterns).
+  - Frontend "📄 Export Prep PDF" button per event card on the Training page (blob download via Bearer token).
+  - Integration tests: `tests/integration/test_event_report.py` (no-plan render, linked-plan render, 404).
 
 ### 3.15 Stale-data refresh UX (S)
 `refetchOnWindowFocus: false` + 2–10 min `staleTime`s + no refetch buttons = silent staleness.
@@ -234,7 +238,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done, **shipped to prod 2026-09-07**. Phase C complete.
-4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding.
+4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6, §3.8, §3.9, §3.10 all done; §3.7 core done (Live Lift offline mode pending) — remaining Phase D item is §3.7 Live Lift offline mode.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).
 7. **Phase G — performance/infra (Part 5.4–5.9 + 6)**: caching, codegen, CI E2E, alerting.

@@ -25,7 +25,7 @@ import type {
 import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities } from '@/lib/api';
 import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
-import { formatDuration, weatherEmoji } from '@/lib/utils';
+import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
@@ -525,10 +525,10 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           {weekDates.map((date) => {
             const day = daysByDate.get(date);
-            const dowLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+            const dowLabel = new Date(date + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
               weekday: 'short',
             });
-            const dayLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+            const dayLabel = new Date(date + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
               day: 'numeric',
               month: 'short',
             });

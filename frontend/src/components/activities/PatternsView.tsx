@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { Activity, ActivityFilters } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 
@@ -95,7 +95,7 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
   }, [selectedPattern, combinedActivities]);
 
   const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    new Date(iso).toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' });
 
   return (
     <div className="space-y-6">

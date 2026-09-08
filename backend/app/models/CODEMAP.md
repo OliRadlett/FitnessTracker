@@ -4,7 +4,7 @@
 
 | File | Models | Key Relationships |
 |------|--------|-------------------|
-| `user.py` | `User`, `OAuthConnection` | User has many OAuthConnections |
+| `user.py` | `User`, `OAuthConnection` | User has many OAuthConnections. `User.preferences` (JSONB, §3.6) holds UI prefs: unit_system/locale/time_format |
 | `activity.py` | `Activity`, `ActivitySource`, `ActivityStream` | Activity has many Sources/Streams; optionally links to LiftingSession + Route |
 | `lifting.py` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `WarmupTemplate`, `WarmupTemplateStep` | Session has many Sets; Template has many Steps. Live-sync idempotency keys: `LiftingSession.live_key` (unique, nullable) + `LiftingSet.client_id` (unique per session, nullable) — NULL = manual entry, exempt |
 | `route.py` | `Route`, `RouteSource` | Route has many Sources; has many Activities. Tags via secondary link. Quality via FK. `is_favorite`, `quality_score` (denormalized for fast filtering) |
@@ -22,3 +22,4 @@
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |
 | `webhook_event.py` | `StravaWebhookEvent` | Async Strava webhook queue: raw payload, received_at, processed_at, attempts, status (pending/processed/failed), error. Drained by `process_strava_webhook_events` Celery task |
 | `notification.py` | `Notification` | In-app notifications: type (health_alert/pr/goal_milestone/plan_reminder), title/body, severity, link, read/read_at, dedup_key (partial unique (user_id, dedup_key)), `payload` Python attr → DB column `metadata` (SQLAlchemy reserves the attr name). Per-user toggles live in `User.notification_preferences` (JSONB) |
+| `push.py` | `PushSubscription` | §3.8 Web Push device subscription: user_id + endpoint (unique pair), p256dh/auth base64url keys, `consecutive_failures`, `last_error_at`, `created_at`. Delivered by `services/push.send_push_to_user` (VAPID), pruned on 410/404 or after MAX failures (5) |

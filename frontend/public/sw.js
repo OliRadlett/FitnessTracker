@@ -1,6 +1,48 @@
 // FitTrack Service Worker — runtime caching (no build-time precache)
-const CACHE_NAME = 'fittrack-v3';
+const CACHE_NAME = 'fittrack-v4';
 const OFFLINE_URL = '/fittrack';
+
+// ── §3.8 Web Push ─────────────────────────────────────────────────────────
+// Payload sent by the backend: {type, title, body, link, notification_id}.
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // Malformed payload — still show something rather than drop silently.
+    data = { title: 'FitTrack', body: '' };
+  }
+  const title = data.title || 'FitTrack';
+  const link = typeof data.link === 'string' && data.link.startsWith('/') ? data.link : '';
+  const options = {
+    body: data.body || '',
+    icon: '/fittrack/icons/icon-192.png',
+    badge: '/fittrack/icons/icon-192.png',
+    tag: data.notification_id || undefined,
+    // In-app links are app paths (e.g. "/lifting") — open under the /fittrack base.
+    data: { url: link ? `/fittrack${link}` : '/fittrack' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  const notification = event.notification;
+  const target = (notification.data && notification.data.url) || '/fittrack';
+  notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(target);
+      }
+    })
+  );
+});
 
 // Install: cache the app shell
 self.addEventListener('install', (event) => {

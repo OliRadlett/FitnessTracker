@@ -10,6 +10,10 @@ import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncHealthBanner } from '@/components/sync/SyncHealthBanner';
 import { CommandPalette } from '@/components/ui/CommandPalette';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { OfflineSnapshot } from '@/components/ui/OfflineSnapshot';
+import { UnitsProvider } from '@/lib/units';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 
 const SESSION_COOKIE = 'next-auth.session-token';
 
@@ -77,21 +81,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen bg-background">
-        <PageLoadingBar />
-        <MobileMenuButton />
-        <NotificationBell />
-        <CommandPalette />
-        <Sidebar />
-        <main role="main" className="flex-1 overflow-auto">
-          <div className="p-4 pt-16 md:p-8">
-            <SyncHealthBanner />
-            <ErrorBoundary>
-              {children}
-            </ErrorBoundary>
+<UnitsProvider>
+        <OfflineSnapshot>
+          <div className="flex min-h-screen bg-background">
+            <PageLoadingBar />
+            <MobileMenuButton />
+            <NotificationBell />
+            <CommandPalette />
+            <OnboardingWizard />
+            <Sidebar />
+            <main role="main" className="flex-1 overflow-auto">
+              <div className="p-4 pt-16 md:p-8">
+                <SyncHealthBanner />
+                <OfflineBanner />
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
+              </div>
+            </main>
           </div>
-        </main>
-      </div>
+        </OfflineSnapshot>
+      </UnitsProvider>
     </SidebarProvider>
   );
 }

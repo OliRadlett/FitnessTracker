@@ -7,7 +7,7 @@
 | Route | File | Description |
 |-------|------|-------------|
 | `/dashboard` | `dashboard/page.tsx` | Main dashboard — Today/Weekly/Monthly tabs. **Today**: rest-day banner, readiness strip, today's planned workout (from active training plan), KPI grid, form trend chart (CTL/ATL/TSB), side-by-side activities + lifting cards. **Weekly**: readiness, events, KPIs, charts, streaks, goals, AI analysis. **Monthly**: summary cards + year-in-review. Cross-links: event cards → `/training`, CTL/ATL/TSB cards → `/cycling`, weather-location + Whoop/Strava connect prompts → `/settings`, recent activity/session rows deep-link to `/activities?activity=` / `/lifting?session=` |
-| `/training` | `training/page.tsx` | Training plans, events, periodization chart; segmented view toggle (**Plan Builder \| This Week** — WeeklyView) above the main pane when a plan is selected. Workout-planner FTP prompt links to `/cycling`; route picker has a "Route library →" link to `/routes` |
+| `/training` | `training/page.tsx` | Training plans, events, periodization chart; segmented view toggle (**Plan Builder \| This Week** — WeeklyView) above the main pane when a plan is selected. Workout-planner FTP prompt links to `/cycling`; route picker has a "Route library →" link to `/routes`. Each event card has a "📄 Export Prep PDF" button (§3.14) — blob-downloads `/api/v1/export/event-report/{id}` with the Bearer token |
 | `/activities` | `activities/page.tsx` | Activity list with advanced filters (text search, min/max distance/duration/TSS), sort dropdown, List/Week/Stats view toggle, stream-overlay comparison (pick 2 rides → overlaid power/HR charts + stats delta table), weekly summary with mini inline bars. Deep-link `?activity=<id>` selects/expands a specific activity (rendered from fetched detail when not in the loaded list); "View route →" deep-links to `/routes?route=` |
 | `/calendar` | `calendar/page.tsx` | Calendar view of activities + lifting. Day-detail activity titles → `/activities?activity=`, standalone lifting sessions → `/lifting?session=` |
 | `/cycling` | `cycling/page.tsx` | Cycling analytics — power curve, zones, training load, FTP, VO2max (SuggestedCycleCard removed in Phase 5B). Weight-trend empty state links to `/settings` |
@@ -18,7 +18,7 @@
 | `/routes` | `routes/page.tsx` | Route management — **List/Map view toggle**, filtering (status, sport, source, **surface type**, route type, distance, elevation, sort, search), route list with **difficulty badges** (Easy/Moderate/Hard/Extreme from elevation/distance ratio), **compare checkboxes** (pick 2 → overlaid elevation profiles + stats delta modal), route detail with tabs (Overview, Map & Profile, History, Merged View, Weather, Effort), GPX upload/download. **Heatmap toggle** on map view shows Strava-style activity density around home area. Deep-link `?route=<id>` selects a route; ride-history rows deep-link to `/activities?activity=` |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — 10 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections. Sticky sidebar nav with IntersectionObserver scroll highlighting. Feature mentions hyperlink to the owning page via a shared `WikiLink` helper |
 | `/notifications` | `notifications/page.tsx` | **Notifications page (Phase C §3.5)** — full history of typed notifications (severity/type badges, deep links), unread dot + mark-read/mark-all, tabbed **preferences panel** (per-type toggles persist to `/notifications/preferences`, syncs `NotificationSettings`) |
-| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, preferences, **exercise library management** (add/search exercises) |
+| `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, **exercise library management** (add/search exercises), **Preferences card (§3.6)** — unit system (kg/km vs lb/mi), date locale (en-GB/en-US), time format (12/24h) pill toggles via `useUnits()` → `/user/preferences` |
 
 ## API Clients (`lib/api/`)
 
@@ -42,6 +42,8 @@
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
 | `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD (types via `types/health.ts` `WeightEntry` incl. `id`/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
+| `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
+| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download). Types in `types/export.ts` |
 | `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
 
 ## Components
@@ -178,13 +180,25 @@
 |-----------|---------|
 | `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
 | `NotificationSettings` | Per-type notification toggles (health alerts / PRs / goal milestones / plan reminders) — `['notification-preferences']` query, PATCH on toggle. Rendered on `/settings` page |
+| `HealthAlertSettings` | **§3.12 Health-alert tuning card** — per-signal enable toggle, snooze (3/7/14/30 days), and threshold inputs for the new performance-decline / sleep-consistency / resting-HR signals (persist via `GET/PUT /metrics/health-preferences`). Rendered on `/settings` page |
+| `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
+| `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
+
+#### `onboarding/` — First-run wizard (§3.10)
+| Component | Purpose |
+|-----------|---------|
+| `OnboardingWizard` | 4-step soft-prompt modal (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-opens ~1.2s after auth unless `fittrack-onboarding-done` (localStorage) is set; opens via `fittrack:onboarding` custom event. Mounted in `(app)/layout.tsx` inside `UnitsProvider` |
+| `OnboardingToggle` | "Re-run onboarding" button in Settings — dispatches `fittrack:onboarding` |
 
 ### `lib/` — Shared utilities
 | File | Purpose |
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
-| `utils.ts` | `formatDuration`, `formatDistance`, `weatherEmoji` (conditions → emoji mapping shared by weather UI) |
+| `utils.ts` | `formatDuration`, `formatDistance`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
+| `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
+| `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |
+| `healthPrefs.ts` | **§3.12 Health-alert preferences client** — `getHealthPreferences` / `updateHealthPreferences` (`GET/PUT /metrics/health-preferences`; types + `HEALTH_SIGNAL_LABELS` in `lib/api/types/health.ts`). Used by `settings/HealthAlertSettings` |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic
@@ -201,7 +215,7 @@
 - **State**: Local `useState` for UI state. React Query for server state. Zustand stores for cross-component state (`lib/stores/routesStore.ts`: view mode, selection, tags, filters, detail tab, compare mode). No global Redux
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
-- **PWA**: `manifest.ts` (App Router metadata route), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only), `PwaRegister.tsx` (production-only SW registration)
+- **PWA**: `manifest.ts` (App Router metadata route; installable — icons, standalone), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only; **§3.8 Web Push**: `push` → `showNotification`, `notificationclick` → focus/open under `/fittrack` base; CACHE_NAME `fittrack-v4`), `PwaRegister.tsx` (production-only SW registration + **§3.7 install prompt**: `beforeinstallprompt` capture → in-app Install pill w/ localStorage dismiss + `appinstalled`). `lib/useOnlineStatus.ts` (online/offline state + last-online stamp) → `OfflineBanner` (amber "You're offline" bar, §3.7) and `OfflineSnapshot` (§3.7 — persists last-known `dashboard*` query data to localStorage, restores stale on next load so the dashboard works offline; refreshed on first successful refetch)
 - **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
 - **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
 - **Deep-links**: `useDeepLink` hook in `lib/useDeepLink.ts` — reads URL query params once on mount and updates them via `history.replaceState` (no Suspense needed). Powers record deep-linking: `/activities?activity=`, `/routes?route=`, `/lifting?session=`

@@ -14,6 +14,7 @@ from app.models.lifting import (
 from app.models.llm_analysis import LlmAnalysis
 from app.models.notification import Notification
 from app.models.nutrition import RideFuelPlan
+from app.models.push import PushSubscription
 from app.models.route import Route, RouteSource
 from app.models.route_organize import (
     RouteCollection,
@@ -46,6 +47,7 @@ __all__ = [
     "Notification",
     "OAuthConnection",
     "PersonalRecord",
+    "PushSubscription",
     "RideFuelPlan",
     "Route",
     "RouteCollection",

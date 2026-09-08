@@ -3,7 +3,50 @@
  *
  * Single source of truth for duration/distance formatting — previously each
  * page had its own inconsistent copy (BUG-044).
+ *
+ * Distance/date/time formatting honors the active user preference when set
+ * (`setActivePreferences` from `lib/units.tsx` — the UnitsProvider in
+ * (app)/layout.tsx syncs the fetched server-side prefs here). Falls back to
+ * metric / en-GB / 24h.
  */
+
+import type { DateLocale, TimeFormat, UnitSystem } from '@/lib/api/types/preferences';
+
+let activeUnitSystem: UnitSystem = 'metric';
+let activeLocale: DateLocale = 'en-GB';
+let activeTimeFormat: TimeFormat = '24h';
+
+/** Sync the module-level formatting preferences (called by UnitsProvider). */
+export function setActivePreferences(prefs: {
+  unit_system?: UnitSystem;
+  locale?: DateLocale;
+  time_format?: TimeFormat;
+}): void {
+  activeUnitSystem = prefs.unit_system ?? activeUnitSystem;
+  activeLocale = prefs.locale ?? activeLocale;
+  activeTimeFormat = prefs.time_format ?? activeTimeFormat;
+}
+
+export function getActiveUnitSystem(): UnitSystem {
+  return activeUnitSystem;
+}
+
+export function getActiveLocale(): DateLocale {
+  return activeLocale;
+}
+
+export function getActiveTimeFormat(): TimeFormat {
+  return activeTimeFormat;
+}
+
+/** metres → "12.5 km" or miles when imperial is active. */
+export function formatDistance(meters: number | null | undefined, precision = 2, unitSystem: UnitSystem = activeUnitSystem): string {
+  if (meters == null || meters < 0) return '—';
+  if (unitSystem === 'imperial') {
+    return `${(meters / 1609.344).toFixed(precision)} mi`;
+  }
+  return `${(meters / 1000).toFixed(precision)} km`;
+}
 
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return '—';
@@ -14,11 +57,6 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (hrs > 0) return `${hrs}h ${mins}m`;
   if (mins > 0) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   return `${secs}s`;
-}
-
-export function formatDistance(meters: number | null | undefined, precision = 2): string {
-  if (meters == null || meters < 0) return '—';
-  return `${(meters / 1000).toFixed(precision)} km`;
 }
 
 /**
@@ -58,10 +96,47 @@ export function formatRelativeTime(dateStr?: string | null): string {
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** Format an ISO date string (YYYY-MM-DD) as "21 Mar 2026". */
-export function formatDateDMY(dateStr: string | null | undefined): string {
+/** kilograms → "75.5 kg" / "166.4 lb" — honors active unit system. */
+export function formatWeight(kg: number | null | undefined, unitSystem: UnitSystem = activeUnitSystem): string {
+  if (kg == null || !Number.isFinite(kg)) return '—';
+  if (unitSystem === 'imperial') {
+    return `${(kg * 2.2046226218).toFixed(1)} lb`;
+  }
+  return `${kg.toFixed(1)} kg`;
+}
+
+/** Convert a display-side weight value (lb or kg) into kilograms. */
+export function displayWeightToKg(value: number, unitSystem: UnitSystem = activeUnitSystem): number {
+  if (unitSystem === 'imperial') return value / 2.2046226218;
+  return value;
+}
+
+/** Convert kilograms into the active display unit (lb or kg), numeric value. */
+export function kgToDisplayWeight(kg: number, unitSystem: UnitSystem = activeUnitSystem): number {
+  if (unitSystem === 'imperial') return kg * 2.2046226218;
+  return kg;
+}
+
+/** Format an ISO date string (YYYY-MM-DD) as "21 Mar 2026". Honors active locale. */
+export function formatDateDMY(dateStr: string | null | undefined, locale: DateLocale = activeLocale): string {
   if (!dateStr) return '—';
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Format an ISO timestamp as a short time ("14:35" / "2:35 PM"). Honors 12/24h. */
+export function formatTime(
+  iso: string | null | undefined,
+  locale: DateLocale = activeLocale,
+  timeFormat: TimeFormat = activeTimeFormat,
+): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: timeFormat === '12h',
+  });
 }

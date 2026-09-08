@@ -36,6 +36,7 @@ import {
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { getActiveLocale } from '@/lib/utils';
 import { RoutePickerModal } from './RoutePickerModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ function getTotalWeeks(startDate?: string, endDate?: string): number {
 }
 
 function getDayOfWeek(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
     weekday: 'short',
   });
 }

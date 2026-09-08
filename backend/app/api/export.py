@@ -1,12 +1,13 @@
-"""Export API — CSV/GPX data export endpoints."""
+"""Export API — CSV/GPX/JSON data export endpoints."""
 
 import csv
 import io
+import json
 import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,6 +20,24 @@ from app.services.auth import get_current_user
 from app.services.gpx import activity_to_gpx
 
 router = APIRouter()
+
+
+@router.get("/json")
+async def export_json(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export every per-user collection as a single JSON document (§3.9)."""
+    from app.services.data_export import build_full_export
+
+    payload = await build_full_export(db, current_user.id, current_user)
+    body = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    filename = f"fittrack_export_{date.today().isoformat()}.json"
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/lifting/csv")
@@ -276,6 +295,30 @@ async def export_monthly_report(
         raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
 
     filename = f"fittrack_monthly_{month}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/event-report/{event_id}")
+async def export_event_report(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a PDF race-day prep report for an event (§3.14)."""
+    from app.services.pdf_report import generate_event_report
+
+    try:
+        pdf_bytes = await generate_event_report(db, current_user.id, event_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
+
+    filename = f"fittrack_event_{event_id}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",

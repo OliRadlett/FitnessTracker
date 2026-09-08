@@ -189,6 +189,7 @@ Instrumentator(
 # All routes are versioned under /api/v1/. See docs/api-versioning.md
 # for the versioning and deprecation policy.
 # Import and include routers
+from app.api.account import router as account_router
 from app.api.activities import router as activities_router
 from app.api.auth import router as auth_router
 from app.api.charts import router as charts_router
@@ -204,7 +205,9 @@ from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
 from app.api.notifications import router as notifications_router
 from app.api.nutrition import router as nutrition_router
+from app.api.preferences import router as preferences_router
 from app.api.projections import router as projections_router
+from app.api.push import router as push_router
 from app.api.routes import router as routes_router
 from app.api.search import router as search_router
 from app.api.training_plans import router as training_plans_router
@@ -213,6 +216,7 @@ from app.api.webhooks import router as webhooks_router
 from app.api.workout_planner import router as workout_planner_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(account_router, prefix="/api/v1/account", tags=["account"])
 app.include_router(
     connections_router, prefix="/api/v1/connections", tags=["connections"]
 )
@@ -229,6 +233,10 @@ app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(
     notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
 )
+app.include_router(
+    preferences_router, prefix="/api/v1/user/preferences", tags=["preferences"]
+)
+app.include_router(push_router, prefix="/api/v1/push", tags=["push"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])

@@ -28,7 +28,7 @@ import { Card } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
@@ -73,7 +73,7 @@ function getWeekDateRange(weekKey: string, activities: Activity[]): string {
   const dates = weekActivities.map((a) => new Date(a.start_date));
   const min = new Date(Math.min(...dates.map((d) => d.getTime())));
   const max = new Date(Math.max(...dates.map((d) => d.getTime())));
-  return `${min.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2013 ${max.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  return `${min.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })} \u2013 ${max.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })}`;
 }
 
 // ── Expanded Activity Detail ─────────────────────────────────────────────────

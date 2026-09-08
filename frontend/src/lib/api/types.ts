@@ -16,3 +16,5 @@ export * from './types/weather';
 export * from './types/conformity';
 export * from './types/projections';
 export * from './types/notifications';
+export * from './types/preferences';
+export * from './types/export';
