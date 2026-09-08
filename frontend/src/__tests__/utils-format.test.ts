@@ -6,6 +6,7 @@ import {
   kgToDisplayWeight,
   formatTime,
   formatDateDMY,
+  formatUpdatedAt,
   setActivePreferences,
   getActiveUnitSystem,
 } from '@/lib/utils';
@@ -82,6 +83,26 @@ describe('unit & locale formatting (§3.6)', () => {
       expect(formatDateDMY('2026-03-21')).toMatch(/Mar 21, 2026/);
       setActivePreferences({ locale: 'en-GB' });
       expect(formatDateDMY('2026-03-21')).toBe('21 Mar 2026');
+    });
+  });
+
+  describe('formatUpdatedAt (§3.15)', () => {
+    it('formats an epoch-ms timestamp as HH:MM in 24h', () => {
+      const ts = new Date(2026, 8, 8, 9, 42).getTime();
+      expect(formatUpdatedAt(ts, 'en-GB', '24h')).toBe('09:42');
+    });
+
+    it('honors the active 12h preference', () => {
+      const ts = new Date(2026, 8, 8, 14, 35).getTime();
+      const out = formatUpdatedAt(ts, 'en-US', '12h');
+      expect(out.toLowerCase()).toContain('2:35 pm');
+    });
+
+    it('returns em-dash for null/zero/invalid', () => {
+      expect(formatUpdatedAt(null)).toBe('—');
+      expect(formatUpdatedAt(0)).toBe('—');
+      expect(formatUpdatedAt(-5)).toBe('—');
+      expect(formatUpdatedAt(NaN)).toBe('—');
     });
   });
 

@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done (both unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.15–3.16).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done. Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.7-live-offline).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -159,9 +159,9 @@ ReportLab generator exists; one new report wrapping conformity + TSB projection 
   - Frontend "📄 Export Prep PDF" button per event card on the Training page (blob download via Bearer token).
   - Integration tests: `tests/integration/test_event_report.py` (no-plan render, linked-plan render, 404).
 
-### 3.15 Stale-data refresh UX (S)
+### 3.15 Stale-data refresh UX (S) ✅ Done (2026-09-08)
 `refetchOnWindowFocus: false` + 2–10 min `staleTime`s + no refetch buttons = silent staleness.
-- [ ] Dashboard "last updated" timestamp + manual refresh; consider selective `refetchOnWindowFocus` for the dashboard only.
+- [x] Dashboard "last updated" timestamp + manual refresh; consider selective `refetchOnWindowFocus` for the dashboard only. — **Done**: `components/dashboard/DashboardRefresh.tsx` (Last updated HH:MM from freshest `dataUpdatedAt` across the 16 dashboard queries via `queryCache.subscribe`, spinning ↻ refresh button refetching by query-key prefix, `useIsFetching` "Syncing…" state); all 16 dashboard `useQuery`s now set `refetchOnWindowFocus: true` while the global default stays off; `formatUpdatedAt` util + unit tests.
 - [ ] Optional: light theme (dark-only today, hardcoded tokens — a full CSS-var migration, so deliberately **P3 / long-horizon**).
 
 ### 3.16 3D cycle activity visualisations (P2, L)
