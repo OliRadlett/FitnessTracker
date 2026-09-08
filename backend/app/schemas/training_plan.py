@@ -29,16 +29,16 @@ class TrainingPlanDayBase(BaseModel):
     planned_tss: float | None = None
     planned_duration_min: int | None = None
     planned_type: str = "rest"  # rest, easy, moderate, hard, race
-    workout_description: str | None = Field(None, max_length=1000)
+    workout_description: str | None = Field(default=None, max_length=1000)
     planned_focus: str | None = Field(
-        None, max_length=50
+        default=None, max_length=50
     )  # squat, bench, deadlift, overhead_press, accessories, full_body,
     # push, pull, legs, upper, lower
     planned_exercises: list[dict[str, Any]] | None = None
     planned_volume_kg: float | None = None
     planned_rpe: float | None = None
     planned_power_watts: float | None = None
-    planned_zone: str | None = Field(None, max_length=10)
+    planned_zone: str | None = Field(default=None, max_length=10)
     planned_route_id: uuid.UUID | None = None
     lifting_session_id: uuid.UUID | None = None
     warmup_template_id: uuid.UUID | None = None
@@ -81,16 +81,16 @@ class TrainingPlanDayUpdate(BaseModel):
     planned_tss: float | None = None
     planned_duration_min: int | None = None
     planned_type: str | None = None  # rest, easy, moderate, hard, race
-    workout_description: str | None = Field(None, max_length=1000)
-    planned_focus: str | None = Field(None, max_length=50)
+    workout_description: str | None = Field(default=None, max_length=1000)
+    planned_focus: str | None = Field(default=None, max_length=50)
     planned_exercises: list[dict[str, Any]] | None = None
     planned_volume_kg: float | None = None
     planned_rpe: float | None = None
     planned_power_watts: float | None = None
-    planned_zone: str | None = Field(None, max_length=10)
+    planned_zone: str | None = Field(default=None, max_length=10)
     planned_route_id: uuid.UUID | None = None
     warmup_template_id: uuid.UUID | None = None
-    notes: str | None = Field(None, max_length=500)
+    notes: str | None = Field(default=None, max_length=500)
     completed: bool | None = None
 
     @field_validator("planned_exercises")

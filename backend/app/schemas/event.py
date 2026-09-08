@@ -7,13 +7,17 @@ from pydantic import BaseModel, Field
 class EventResultUpdate(BaseModel):
     """Structured result for a completed event."""
 
-    finishing_time: str | None = Field(None, description="e.g. 3:24:10 (HH:MM:SS)")
-    finishing_position: int | None = Field(None, ge=1, description="Overall position")
+    finishing_time: str | None = Field(
+        default=None, description="e.g. 3:24:10 (HH:MM:SS)"
+    )
+    finishing_position: int | None = Field(
+        default=None, ge=1, description="Overall position"
+    )
     class_position: int | None = Field(
-        None, ge=1, description="Age/class category position"
+        default=None, ge=1, description="Age/class category position"
     )
     personal_best: bool | None = None
-    notes: str | None = Field(None, max_length=500)
+    notes: str | None = Field(default=None, max_length=500)
 
 
 class EventBase(BaseModel):

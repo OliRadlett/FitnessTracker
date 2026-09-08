@@ -152,8 +152,10 @@ class RouteCreate(BaseModel):
 
     name: str
     sport_type: str = "cycling"
-    gpx_data: str | None = Field(None, description="GPX XML string")
-    encoded_polyline: str | None = Field(None, description="Google-encoded polyline")
+    gpx_data: str | None = Field(default=None, description="GPX XML string")
+    encoded_polyline: str | None = Field(
+        default=None, description="Google-encoded polyline"
+    )
 
 
 class RouteUpdate(BaseModel):

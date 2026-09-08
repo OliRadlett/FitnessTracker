@@ -116,7 +116,7 @@ class RouteMatchRequest(BaseModel):
         pattern="^z[1-5]$",
     )
     duration_minutes: int | None = Field(
-        None,
+        default=None,
         gt=0,
         le=600,
         description="Planned ride duration in minutes (optional for matching)",
