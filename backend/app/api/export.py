@@ -300,3 +300,27 @@ async def export_monthly_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/event-report/{event_id}")
+async def export_event_report(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a PDF race-day prep report for an event (§3.14)."""
+    from app.services.pdf_report import generate_event_report
+
+    try:
+        pdf_bytes = await generate_event_report(db, current_user.id, event_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {e}")
+
+    filename = f"fittrack_event_{event_id}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

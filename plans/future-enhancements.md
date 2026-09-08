@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences, §3.7 PWA core (install prompt, offline banner, dashboard snapshot), §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding all done on `main` (unshipped); remaining Phase D item: §3.7 Live Lift offline mode. Unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** started — §3.14 Race-day prep PDF done (unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11–3.13, 3.15–3.16).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -151,9 +151,13 @@ Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control
 `ActivityStream` has 1s power/HR, routes have geometry/history/PBs — enough for Strava-style in-ride segments.
 - [ ] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self.
 
-### 3.14 Race-day prep PDF (S)
+### 3.14 Race-day prep PDF (S) ✅ Done
 ReportLab generator exists; one new report wrapping conformity + TSB projection + weather forecast + fuel plan + taper checklist for an event date.
-- [ ] `generate_event_report(event_id)` + export link from the training page event card.
+- [x] `generate_event_report(event_id)` + export link from the training page event card.
+  - `pdf_report.generate_event_report(db, user_id, event_id)` — sections: event overview, readiness (TSB projection toward event day via `compute_tsb_projection`, projection tail table), plan conformity (overall/trend + per-week table + observations), taper checklist (plan days in the taper window), fuel plan (`compute_fuel_targets` with race-day planned duration or target-TSS-derived duration, IF 0.75), race-week weather (event-day highlight + full table from `get_forecast`).
+  - Endpoint `GET /api/v1/export/event-report/{event_id}` (404 when event not found, mirrors weekly/monthly report patterns).
+  - Frontend "📄 Export Prep PDF" button per event card on the Training page (blob download via Bearer token).
+  - Integration tests: `tests/integration/test_event_report.py` (no-plan render, linked-plan render, 404).
 
 ### 3.15 Stale-data refresh UX (S)
 `refetchOnWindowFocus: false` + 2–10 min `staleTime`s + no refetch buttons = silent staleness.

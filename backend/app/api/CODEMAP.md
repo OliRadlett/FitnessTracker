@@ -13,7 +13,7 @@
 | `charts.py` | `/charts/` | `GET /available`, `GET /{chart_name}` — registry-driven chart data; required params → 422, stream-heavy charts Redis-cached 5 min |
 | `dashboard/` | `/dashboard/` | `GET /summary`, `GET /weekly-report`, `GET /today` |
 | `webhooks.py` | `/webhooks/` | `GET /strava` (challenge), `POST /strava` (event receiver — HMAC-verifies + persists to `strava_webhook_events` queue for async Celery processing; never processes inline) |
-| `export.py` | `/export/` | Data export endpoints |
+| `export.py` | `/export/` | Data export endpoints: `GET /json` (§3.9 full portability export), `GET /lifting/csv`, `GET /activities/csv`, `GET /prs/csv`, `GET /activities/{id}/gpx`, PDF reports `GET /weekly-report/{week_start}`, `GET /monthly-report/{month}`, `GET /event-report/{event_id}` (§3.14 race-day prep PDF — 404 when event not found) |
 | `training_plans.py` | `/training-plans/` | Thin router → `services/training_plan.py`. Plan CRUD, `POST /generate` (mixed-week template: rest Sun, strength Tue/Thu, cycle rides), `event_id` on POST/PATCH links event + auto-taper; PATCH days are non-destructive upsert by `day_date`; `GET /{plan_id}/week/{n}` (weekly view: Monday-aligned weeks, readiness CTL/ATL/TSB, weather + bad-weather badges, actual activity/lifting summaries, route matches on cycle days; `include_weather` query), `PATCH /{plan_id}/days/{day_id}` (targeted single-day partial update) |
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `PUT/DELETE /{id}/result` (race retro → notifies `event_result`, deduped per event), `GET/POST /{id}/ai-analysis` |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |

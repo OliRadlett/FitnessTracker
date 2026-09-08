@@ -79,12 +79,13 @@ function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
 
 export default function TrainingPage() {
   usePageTitle('Training');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [view, setView] = useState<'builder' | 'week'>('builder');
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [exportingEventId, setExportingEventId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState<CreateEventPayload>({
     name: '',
     event_date: '',
@@ -224,6 +225,31 @@ export default function TrainingPage() {
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to delete event'),
   });
+
+  const downloadEventReport = async (eventId: string) => {
+    try {
+      setExportingEventId(eventId);
+      const res = await fetch(`/api/v1/export/event-report/${eventId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fittrack_event_${eventId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download event report', err);
+      setActionError(err instanceof Error ? err.message : 'Failed to download report');
+    } finally {
+      setExportingEventId(null);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -419,6 +445,15 @@ export default function TrainingPage() {
                     </p>
                   )}
                   <EventResultPanel event={evt} />
+                  <div className="mt-2">
+                    <button
+                      onClick={() => downloadEventReport(evt.id)}
+                      disabled={exportingEventId === evt.id}
+                      className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+                    >
+                      {exportingEventId === evt.id ? 'Preparing…' : '📄 Export Prep PDF'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
