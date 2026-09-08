@@ -184,6 +184,12 @@
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
 
+#### `onboarding/` — First-run wizard (§3.10)
+| Component | Purpose |
+|-----------|---------|
+| `OnboardingWizard` | 4-step soft-prompt modal (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-opens ~1.2s after auth unless `fittrack-onboarding-done` (localStorage) is set; opens via `fittrack:onboarding` custom event. Mounted in `(app)/layout.tsx` inside `UnitsProvider` |
+| `OnboardingToggle` | "Re-run onboarding" button in Settings — dispatches `fittrack:onboarding` |
+
 ### `lib/` — Shared utilities
 | File | Purpose |
 |------|---------|

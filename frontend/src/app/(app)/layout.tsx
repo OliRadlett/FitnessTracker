@@ -13,6 +13,7 @@ import { CommandPalette } from '@/components/ui/CommandPalette';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { OfflineSnapshot } from '@/components/ui/OfflineSnapshot';
 import { UnitsProvider } from '@/lib/units';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 
 const SESSION_COOKIE = 'next-auth.session-token';
 
@@ -87,6 +88,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <MobileMenuButton />
             <NotificationBell />
             <CommandPalette />
+            <OnboardingWizard />
             <Sidebar />
             <main role="main" className="flex-1 overflow-auto">
               <div className="p-4 pt-16 md:p-8">

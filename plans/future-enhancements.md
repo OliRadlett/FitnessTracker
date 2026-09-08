@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences done + §3.7 PWA core (install prompt, offline banner, dashboard last-known snapshot) done + §3.8 Web Push done + §3.9 JSON export + account deletion done (all on `main`, unshipped); §3.7 Live Lift offline mode + §3.10 onboarding pending; unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences, §3.7 PWA core (install prompt, offline banner, dashboard snapshot), §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding all done on `main` (unshipped); remaining Phase D item: §3.7 Live Lift offline mode. Unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -134,7 +134,7 @@ CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story
 
 ### 3.10 Onboarding / first-run wizard (M)
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.
-- [ ] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block.
+- [x] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block. — **Done** (commit `…§3.10`): `components/onboarding/OnboardingWizard.tsx` — 4 soft-prompt steps (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-shows on first run (~1.2s after auth) unless `fittrack-onboarding-done` is set; `Skip`/Get started marks done; `OnboardingToggle` re-opens it via custom event. No backend/migration needed — first-run state is localStorage. Fullscreen Modal (reuses `Modal`) with step progress bars; mounted in `(app)/layout.tsx` inside `UnitsProvider`.
 
 ### 3.11 Adaptive training suggestions (L)
 Conformity (5C), readiness, deficiency, projections, health analysis are all computed — combine them into actionable weekly advice.
@@ -234,7 +234,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done, **shipped to prod 2026-09-07**. Phase C complete.
-4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 done, §3.9 done, §3.10 next.
+4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6, §3.8, §3.9, §3.10 all done; §3.7 core done (Live Lift offline mode pending) — remaining Phase D item is §3.7 Live Lift offline mode.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).
 7. **Phase G — performance/infra (Part 5.4–5.9 + 6)**: caching, codegen, CI E2E, alerting.

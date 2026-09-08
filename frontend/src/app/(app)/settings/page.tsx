@@ -11,6 +11,7 @@ import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
+import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useUnits } from '@/lib/units';
 import { formatRelativeTime } from '@/lib/utils';
@@ -790,6 +791,20 @@ export default function SettingsPage() {
 
       {/* Data & account */}
       <DataPortabilityCard />
+
+      {/* Onboarding */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Onboarding</CardTitle>
+        </CardHeader>
+        <div className="px-6 pb-6">
+          <p className="text-sm text-muted mb-3">
+            Walk through the first-run setup again — preferences, connections,
+            fitness profile, and an optional first goal.
+          </p>
+          <OnboardingToggle />
+        </div>
+      </Card>
     </div>
   );
 }
