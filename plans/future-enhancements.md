@@ -124,8 +124,8 @@ SW is network-only for `/api/v1/`, caches only the login shell, and there is **n
 
 ### 3.8 Web Push notifications (M)
 In-app notifications exist (`Notification` model: `type/link/read`, dedup key) but **no VAPID/webpush anywhere**. Four types fire today (pr, health_alert, goal_milestone, plan_reminder).
-- [ ] VAPID keys + PushSubscription model + `web-push` delivery in `notify()`; SW `push`/`notificationclick` handlers.
-- [ ] Per-type opt-in reuse of settings `NotificationSettings` toggles.
+- [x] VAPID keys + PushSubscription model + `web-push` delivery in `notify()`; SW `push`/`notificationclick` handlers. — **Done** (commit `…§3.8`, migration **043**): `PushSubscription` model, `services/push.py` (`register/unregister/list/send_push_to_user`, VAPID, per-endpoint failure tracking + pruning on 410/404/≥5 failures, skips when keys unset), `api/push.py` (`GET /vapid-public-key` 404-when-unset, `GET/POST/DELETE /subscriptions`), `notify()` now dispatches push best-effort (never raises). Frontend: SW push/notificationclick in `public/sw.js` (CACHE_NAME→`fittrack-v4`), `lib/webPush.ts` (subscribe/unsubscribe/count, urlBase64↔Uint8Array), Settings `WebPushCard`. Deploy needs `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` + Docker rebuild (pywebpush dep).
+- [x] Per-type opt-in reuse of settings `NotificationSettings` toggles. — Push delivery is gated by the same in-app per-type toggles; `WebPushCard` lives under the Notifications card and notes this. Distribution is all-or-nothing per device (browser-level permission) — per-type is enforced server-side at send time.
 
 ### 3.9 Full JSON data export + account deletion (M)
 CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story is incomplete.
@@ -234,7 +234,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done, **shipped to prod 2026-09-07**. Phase C complete.
-4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 next.
+4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 done, §3.9 next.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).
 7. **Phase G — performance/infra (Part 5.4–5.9 + 6)**: caching, codegen, CI E2E, alerting.

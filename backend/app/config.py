@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # Google Gemini (for LLM analysis)
     gemini_api_key: str = ""
 
+    # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
+    # Generate a keypair with:
+    #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:admin@oliradlett.co.uk"
+
     # Database backup
     backup_dir: str = "/backups"
 
@@ -75,7 +82,9 @@ class Settings(BaseSettings):
         0.55  # lowered from 0.60 to catch near-identical rides from different devices
     )
     activity_route_link_threshold: float = 0.70
-    route_match_threshold: float = 0.55  # lowered from 0.60 to catch same-route variants
+    route_match_threshold: float = (
+        0.55  # lowered from 0.60 to catch same-route variants
+    )
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -135,6 +144,11 @@ class Settings(BaseSettings):
                 "Missing required configuration for production:\n  - "
                 + "\n  - ".join(errors)
             )
+
+    @property
+    def push_enabled(self) -> bool:
+        """True when the VAPID keypair is configured so Web Push can send."""
+        return bool(self.vapid_public_key and self.vapid_private_key)
 
     @property
     def allowed_email_list(self) -> list[str]:

@@ -206,6 +206,7 @@ from app.api.notifications import router as notifications_router
 from app.api.nutrition import router as nutrition_router
 from app.api.preferences import router as preferences_router
 from app.api.projections import router as projections_router
+from app.api.push import router as push_router
 from app.api.routes import router as routes_router
 from app.api.search import router as search_router
 from app.api.training_plans import router as training_plans_router
@@ -233,6 +234,7 @@ app.include_router(
 app.include_router(
     preferences_router, prefix="/api/v1/user/preferences", tags=["preferences"]
 )
+app.include_router(push_router, prefix="/api/v1/push", tags=["push"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])

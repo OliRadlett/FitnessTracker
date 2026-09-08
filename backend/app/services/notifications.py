@@ -1,5 +1,6 @@
 """Notification service — preference-gated, dedup-keyed in-app notifications."""
 
+import logging
 import uuid
 
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 # Default enabled-state per type. A user's stored preferences are merged over
 # these, so a NULL column (pre-migration or untouched) means "all on".
@@ -93,4 +96,23 @@ async def notify(
     )
     db.add(notification)
     await db.flush()
+
+    # §3.8 Web Push: deliver to the user's devices when VAPID is configured.
+    # Best-effort — failures are tracked/pruned inside push.py, never raised so
+    # the in-app notification transaction keeps its commit/rollback semantics.
+    from app.services.push import send_push_to_user
+
+    try:
+        await send_push_to_user(
+            db,
+            user_id,
+            type=type,
+            title=title,
+            body=body,
+            link=link,
+            notification_id=str(notification.id),
+        )
+    except Exception:
+        logger.warning("Web push dispatch failed for notification %s", notification.id)
+
     return notification
