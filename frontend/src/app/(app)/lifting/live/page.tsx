@@ -237,7 +237,9 @@ export default function LiveLiftPage() {
         <div className="space-y-3">
           <p className="text-white font-semibold">Finishing session…</p>
           <p className="text-muted text-sm">
-            Waiting for the network to save your session.
+            {live.isOffline
+              ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
+              : 'Waiting for the network to save your session.'}
             {live.syncError && ' You can leave this page — it will resume automatically.'}
           </p>
           <button

@@ -159,10 +159,27 @@ export function useLiveSession(authFetch: AuthFetch) {
   const [state, setState] = useState<LiveSessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [syncError, setSyncError] = useState(false);
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
+  );
   const [prEvents, setPrEvents] = useState<{ id: string; exercise_name: string; text: string }[]>([]);
 
   const syncingRef = useRef(false);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Explicit offline mode: the browser's own connectivity signal. Distinct from
+  // `syncError` (which also fires on API failure / bad token while online) so
+  // the UI can promise "logging locally, syncs on reconnect" instead of "will retry".
+  useEffect(() => {
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
 
   // `authFetch` is recreated by useAuthFetch whenever the backend token changes
   // (re-login, silent refresh). Network callbacks with [] deps must read the
@@ -307,11 +324,17 @@ export function useLiveSession(authFetch: AuthFetch) {
       return { finished: false };
     } catch {
       // Network/API failure — keep everything queued, retry on next trigger.
-      // Use a long delay here (not the tight 1.5s follow-up) so a dead backend
-      // token or offline network isn't hammered while the finish is pending;
-      // the finish-retry effect (4s) and online/visibility listeners also
-      // trigger retries.
+      // If the BROWSER says we're offline, don't schedule timer retries that are
+      // just going to fail again — the 'online' event listener flushes the backlog
+      // the moment connectivity returns, so logging stays responsive and quiet.
       setSyncError(true);
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        syncingRef.current = false;
+        return { finished: false };
+      }
+      // Online but failing — use a long delay here (not the tight 1.5s follow-up)
+      // so a dead backend token or flaky network isn't hammered while the finish
+      // is pending; the finish-retry effect (4s) and visibility listeners retry too.
       void followUpFlush(8000);
       syncingRef.current = false;
       return { finished: false };
@@ -331,6 +354,10 @@ export function useLiveSession(authFetch: AuthFetch) {
   flushRef.current = flush;
 
   const scheduleFlush = useCallback(() => {
+    // Deterministically offline → skip the attempt; the 'online' event flush
+    // is already wired and replays everything queued. This keeps the "to sync"
+    // meter honest about how much is waiting without firing doomed requests.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     followUpFlush();
   }, [followUpFlush]);
 
@@ -572,10 +599,30 @@ export function useLiveSession(authFetch: AuthFetch) {
     new Set((state?.sets ?? []).map((s) => s.exercise_name))
   );
 
+  // Sets + deletes not yet confirmed by the server — the "to sync" meter.
+  const pendingCount =
+    (state?.sets ?? []).filter((s) => !s.remoteId).length +
+    (state?.pendingDeletes?.length ?? 0);
+
+  // Deterministic ordering: offline (browser says so) beats it all — logging
+  // still works and everything is queued; syncError means we're online but the
+  // server isn't accepting writes right now; pending is normal back pressure.
+  type LiveSyncStatus = 'synced' | 'pending' | 'offline' | 'error';
+  const syncStatus: LiveSyncStatus = isOffline
+    ? 'offline'
+    : syncError
+      ? 'error'
+      : pendingCount > 0
+        ? 'pending'
+        : 'synced';
+
   return {
     state,
     hydrated,
     syncError,
+    isOffline,
+    pendingCount,
+    syncStatus,
     prEvents,
     totalVolume,
     exercises,

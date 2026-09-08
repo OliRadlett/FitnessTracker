@@ -258,8 +258,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
 
   const canLog = exercise.trim().length > 0;
   // Sets + deletes not yet confirmed by the server — the "to sync" meter.
-  const pendingCount =
-    state.sets.filter((s) => !s.remoteId).length + state.pendingDeletes.length;
+  const pendingCount = live.pendingCount;
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
@@ -298,12 +297,19 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             ) : (
               <span className="px-3 py-1 rounded-full text-sm bg-surface-light text-muted">First set</span>
             )}
-            {live.syncError ? (
+            {live.syncStatus === 'offline' ? (
+              <span
+                className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
+                title="You're offline — sets are saved on this device and will upload automatically when you're back online"
+              >
+                📴 Offline · {pendingCount} to sync
+              </span>
+            ) : live.syncStatus === 'error' ? (
               <button
                 onClick={live.retrySync}
                 className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
               >
-                Offline — will retry ↻
+                Sync failing — retry ↻
               </button>
             ) : pendingCount > 0 ? (
               <span
