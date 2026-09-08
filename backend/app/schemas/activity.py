@@ -73,6 +73,11 @@ class ActivityRead(ActivityBase):
     created_at: datetime
     updated_at: datetime
 
+    # §1.2 Phase B — bulk-list ride metrics served from the sync-time `Activity.context`
+    # cache (`?include_context=true`). Same shape as `RideMetricsRead`; load context
+    # (ATL/CTL/TSB) deliberately excluded (moving window, stays on-demand).
+    ride_context: dict | None = None
+
     model_config = {"from_attributes": True}
 
 

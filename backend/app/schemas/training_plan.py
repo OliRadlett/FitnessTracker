@@ -33,7 +33,7 @@ class TrainingPlanDayBase(BaseModel):
     planned_focus: str | None = Field(
         None, max_length=50
     )  # squat, bench, deadlift, overhead_press, accessories, full_body,
-       # push, pull, legs, upper, lower
+    # push, pull, legs, upper, lower
     planned_exercises: list[dict[str, Any]] | None = None
     planned_volume_kg: float | None = None
     planned_rpe: float | None = None
@@ -254,6 +254,52 @@ class TrainingPlanSummary(BaseModel):
     day_count: int = 0
     completed_days: int = 0
     updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+# ── Adaptive suggestions (§3.11) ──────────────────────────────────────────
+
+
+class AdaptiveAction(BaseModel):
+    """One-tap apply action targeting a plan day."""
+
+    label: str
+    plan_id: str
+    day_id: str
+    fields: dict[str, Any]
+
+
+class AdaptiveSuggestion(BaseModel):
+    """A single recommendation with optional apply actions."""
+
+    type: str
+    title: str
+    detail: str
+    severity: str
+    actions: list[AdaptiveAction] = []
+
+
+class AdaptiveAxis(BaseModel):
+    """One analysed signal axis (load / recovery / conformity / health)."""
+
+    key: str
+    title: str
+    stance: str
+    severity: str
+    guidance: str
+
+
+class AdaptiveSuggestionsResponse(BaseModel):
+    """Weekly adaptive recommendation envelope (§3.11)."""
+
+    generated_at: datetime
+    plan_id: str | None = None
+    plan_name: str | None = None
+    fatigue: str | None = None
+    summary: str
+    axes: list[AdaptiveAxis] = []
+    suggestions: list[AdaptiveSuggestion] = []
 
     model_config = {"from_attributes": True}
 

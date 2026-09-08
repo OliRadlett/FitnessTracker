@@ -122,7 +122,10 @@
 | `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
 | `RouteHistorySection` | Ride history table with personal best summary |
-| `CompareRoutesModal` | Side-by-side route comparison with overlaid elevation profiles |
+| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
+| `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
+| `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
+| `VirtualRouteList` | Virtualised list fallback for route browse (perf, no map) |
 
 ### `maps/` — Map components
 | Component | Purpose |
@@ -130,18 +133,15 @@
 | `RouteMap` | Leaflet map with route polyline, start/end markers, isLoop indicator |
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
+
+### `activities/` — Activity page components
 | Component | Purpose |
 |-----------|---------|
 | `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
 | `ActivityCard` | Activity list item card with sport badge, source badges, weather, compare checkbox, linked lifting indicator |
 | `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 selected activities |
+| `Replay3D` | **§3.16 3D fly-through** — three.js scene (speed-coloured path, growing ridden trail, rider marker, orbit/zoom, play/scrub/1·4·8×) fed by `buildReplay()` from `lib/replay`; lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG power/HR overlay with synced playhead. Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`) |
 | `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
-
-### `routes/` — Route page components
-| Component | Purpose |
-|-----------|---------|
-| `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
-| `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
 
 ### `calendar/` — Calendar page components
 | Component | Purpose |
@@ -156,6 +156,7 @@
 | `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
 | `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
+| `DashboardRefresh` | **§3.15 stale-data UX** — "Last updated" timestamp (freshest `dataUpdatedAt` across the 16 dashboard queries, via `queryCache.subscribe`) + manual refresh button (`refetchQueries` by query-key prefix) + spinning "Syncing…" state (`useIsFetching` predicate). Hero header next to `WeatherWidget`; all dashboard queries also set `refetchOnWindowFocus: true` |
 
 ### `goals/` — Goal management
 | Component | Purpose |
@@ -171,6 +172,7 @@
 | `WeeklyView` | Weekly planning view (Phase 5B, sibling of PlanBuilder — toggle "This Week" on training page): Monday-aligned week navigation (week math mirrors backend: `week1 = start − weekday(start)`), readiness strip (CTL/ATL/TSB + recommended-zone dot), **conformity summary strip (Phase 5C, `['plan-conformity', planId]` staleTime 60s)** — overall % big number, trend arrow (↑/↓/→), per-sport chips from the viewed week's `by_sport`, warning-tinted patterns box, "Link activities" button (`POST /link-activities`); **TSB projection strip (Phase 7, `['tsb-projection', planId]` — event-linked plans only)** — race-day TSB + freshness assessment; 7 responsive day cards with weather emoji + bad-weather chips, actual activity/lifting summaries in green blocks, `ConformityBadge` status per day (done/pending/missed; rest hidden), expandable panel with planned-exercise table + route matches ("Assign" → single-day PATCH `{planned_route_id}`) + quick-edit (duration/TSS/notes) + `DayConformityPanel`. Queries `['plan-week', planId, week]`; edits use targeted `updatePlanDay` PATCHes and invalidate week + both conformity queries — unlike PlanBuilder's full-array saves |
 | `ConformityBadge` | Tiny inline day-status badge (Phase 5C): done → green dot + %, partial → yellow, missed → muted-red "Missed", extra → blue "Extra", pending → gray "—", rest → renders nothing; tooltip = classification when present (optional `title` override used by WeeklyView's heuristic labels) |
 | `EventResultPanel` | **Race result logging (Phase C §3.3)** — renders on past event cards (Training page) with result badges (#overall / #class / PB / finish time), inline add/edit form (time-or-seconds, overall/class position, PB checkbox, notes) via `PUT /events/{id}/result`, clear via `DELETE`; invalidates `['events']` + `['notifications']` |
+| `AdaptiveSuggestionsCard` | **§3.11** Weekly adaptive advice card (mounted in `WeeklyView`): `['adaptive-suggestions', planId]` query (GET `/training-plans/{planId}/suggestions`); fatigue badge + summary; per-axis stance chips (recover/rest/ease/maintain/build) with severity dots; suggestion list with one-tap apply buttons → `updatePlanDay` PATCH mutation invalidating `plan-week`/`plan-conformity`/`adaptive-suggestions`/`training-plan`/`training-plans`. Hides itself when there's no advice yet |
 | `DayConformityPanel` | Expanded plan-vs-actual detail for one day (Phase 5C): lazy `['day-conformity', dayId]` query fetched only while mounted (WeeklyView expanded panel), header badge + classification, weighted component table (humanized metric labels, planned → actual with units W/kg/min/%, deviation colored red-over/blue-under, weight %, component-score mini bar), "→" deviation notes in warning color, loading skeleton rows, status-appropriate empty message ("Not yet logged" / "Nothing planned") |
 | `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
 | `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
@@ -217,7 +219,9 @@
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
 - **PWA**: `manifest.ts` (App Router metadata route; installable — icons, standalone), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only; **§3.8 Web Push**: `push` → `showNotification`, `notificationclick` → focus/open under `/fittrack` base; CACHE_NAME `fittrack-v4`), `PwaRegister.tsx` (production-only SW registration + **§3.7 install prompt**: `beforeinstallprompt` capture → in-app Install pill w/ localStorage dismiss + `appinstalled`). `lib/useOnlineStatus.ts` (online/offline state + last-online stamp) → `OfflineBanner` (amber "You're offline" bar, §3.7) and `OfflineSnapshot` (§3.7 — persists last-known `dashboard*` query data to localStorage, restores stale on next load so the dashboard works offline; refreshed on first successful refetch)
 - **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
+- **3D replay (§3.16)**: `lib/replay.ts` — pure flight-path math (`buildReplay`: polyline→local metric plane, velocity×resolution→cumulative distance→polyline mapping, altitude z-exaggeration, `maxSamples` decimation; `projectPolyline`/`cumulativeFromVelocity`/`timeFmt`). Rendered by `components/activities/Replay3D.tsx` (three.js, lazily imported `ssr:false`). No external tile/API-key dependency — local-plane projection only
 - **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
 - **Deep-links**: `useDeepLink` hook in `lib/useDeepLink.ts` — reads URL query params once on mount and updates them via `history.replaceState` (no Suspense needed). Powers record deep-linking: `/activities?activity=`, `/routes?route=`, `/lifting?session=`
+- **Live Lift sync**: `lib/lifting/useLiveSession.ts` — local-first session state (localStorage), lazy idempotent sync (create→set→delete→finish via `live_key`/`client_id`, backend contract in AGENTS pitfall 18), finish-retry backoff, resume-from-server. **§3.7b explicit offline mode**: tracks `navigator.onLine` (`isOffline`), `pendingCount`, 4-state `syncStatus` (`synced`/`pending`/`offline`/`error`); flush scheduling is skipped while browser-offline and the whole backlog replays on the `online` event
 - **Collapsible sidebar**: Desktop sidebar collapses to icon-only (`w-16`) via localStorage-persisted toggle. Mobile unaffected
 - **Chart zoom**: Recharts `Brush` on line/area charts when >20 data points (dark theme styled)

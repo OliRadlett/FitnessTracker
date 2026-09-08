@@ -1,12 +1,21 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityStream, ChartData } from '@/lib/api';
+import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
 import { Chart } from '@/components/charts/Chart';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration, formatDistance } from '@/lib/utils';
+
+// Lazy-loaded: three.js stays out of the modal's (and first) bundle unless the
+// user opens the 3D view (§3.16 side-by-side replay).
+const Replay3D = dynamic(
+  () => import('@/components/activities/Replay3D').then((mod) => mod.Replay3D),
+  { ssr: false, loading: () => <div className="h-[300px] animate-pulse bg-surface-light/20 rounded" /> }
+);
 
 export function CompareActivitiesModal({
   activityA,
@@ -40,6 +49,42 @@ export function CompareActivitiesModal({
     const data = s.data as Record<string, unknown>;
     return (data?.data as number[]) ?? [];
   }
+
+  function streamInput(
+    streams: ActivityStream[] | undefined,
+    type: string
+  ): { values: number[]; resolution: number } | undefined {
+    const s = streams?.find((x) => x.stream_type === type);
+    if (!s) return undefined;
+    const data = s.data as Record<string, unknown>;
+    const values = (data?.data as number[]) ?? [];
+    return values.length ? { values, resolution: s.resolution ?? 1 } : undefined;
+  }
+
+  // §3.16 side-by-side replay: build a ReplayBuildResult (pure) for each ride.
+  function buildReplayFor(
+    activity: Activity,
+    streams: ActivityStream[] | undefined
+  ): ReplayBuildResult | null {
+    const velocity = streamInput(streams, 'velocity');
+    if (!velocity || !activity.encoded_polyline) return null;
+    const res = buildReplay({
+      polyline: activity.encoded_polyline,
+      velocity,
+      altitude: streamInput(streams, 'altitude'),
+      power: streamInput(streams, 'watts'),
+      hr: streamInput(streams, 'heartrate'),
+      maxSamples: 800,
+    });
+    return res;
+  }
+
+  const replayA = useMemo(() => buildReplayFor(activityA, streamsA), [activityA, streamsA]);
+  const replayB = useMemo(() => buildReplayFor(activityB, streamsB), [activityB, streamsB]);
+  const canCompare3d = replayA !== null && replayB !== null;
+  const [view, setView] = useState<'charts' | '3d'>('charts');
+  // Auto-switch to the 3D tab once both builds are ready (and hide it if not).
+  const show3d = canCompare3d;
 
   const powerA = getStreamValues(streamsA, 'power');
   const powerB = getStreamValues(streamsB, 'power');
@@ -156,14 +201,53 @@ export function CompareActivitiesModal({
           </div>
         </div>
 
+          {show3d && (
+            <div className="flex items-center gap-1 mb-4 text-xs uppercase tracking-wide">
+              <button
+                onClick={() => setView('charts')}
+                className={`px-3 py-1 rounded ${view === 'charts' ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-surface-light/40'}`}
+              >
+                Charts
+              </button>
+              <button
+                onClick={() => setView('3d')}
+                className={`px-3 py-1 rounded ${view === '3d' ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-surface-light/40'}`}
+              >
+                3D Side-by-Side
+              </button>
+            </div>
+          )}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" />
           </div>
         ) : (
-          <>
-            {/* Stream charts */}
-            {powerChart && (
+          <div className="space-y-6">
+            {view === '3d' ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted mb-1">
+                      {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
+                    </p>
+                    <Replay3D name={activityA.name} build={replayA!} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted mb-1">
+                      {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
+                    </p>
+                    <Replay3D name={activityB.name} build={replayB!} />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted">
+                  Two independent fly-throughs (§3.16). Synced-playback across
+                  both is a documented follow-up.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Stream charts */}
+                {powerChart && (
               <div className="mb-6">
                 <Chart data={powerChart} height={250} />
               </div>
@@ -208,6 +292,8 @@ export function CompareActivitiesModal({
               </div>
             </div>
           </>
+        )}
+        </div>
         )}
     </Modal>
   );

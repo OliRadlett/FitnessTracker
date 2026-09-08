@@ -220,7 +220,9 @@ async def sync_activities(
 
             # Parse activity data
             start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
-            sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+            sport_type = _map_strava_type(
+                sa.get("sport_type", sa.get("type", "Unknown"))
+            )
             duration_seconds = int(sa.get("moving_time") or 0)
             distance_meters = sa.get("distance")
 
@@ -240,7 +242,9 @@ async def sync_activities(
                     "name": sa.get("name"),
                     "duration_seconds": duration_seconds,
                     "distance_meters": _safe_float(distance_meters),
-                    "elevation_gain_meters": _safe_float(sa.get("total_elevation_gain")),
+                    "elevation_gain_meters": _safe_float(
+                        sa.get("total_elevation_gain")
+                    ),
                     "average_heartrate": _safe_float(sa.get("average_heartrate")),
                     "max_heartrate": _safe_float(sa.get("max_heartrate")),
                     "average_power": _safe_float(sa.get("average_watts")),
@@ -260,7 +264,9 @@ async def sync_activities(
                 synced.append(duplicate)
             else:
                 # Create new activity
-                activity = await _create_activity_from_strava(db, sa, user_id, connection)
+                activity = await _create_activity_from_strava(
+                    db, sa, user_id, connection
+                )
                 synced.append(activity)
 
         fetched_total += len(strava_activities)
@@ -326,6 +332,19 @@ async def sync_activities(
         for activity in synced:
             if activity.sport_type == "cycling" and activity.tss is None:
                 await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
+        await db.flush()
+
+    # Precompute immutable ride context (zones, decoupling, climbing, top speed,
+    # TSS breakdown) now that streams are stored — §1.3. Stored on Activity.context
+    # so the /context read path avoids a full analyze_ride + stream recompute per
+    # expanded-card render. Best-effort: failures stay None and are healed by the
+    # weekly backfill or the on-read fallback.
+    from app.services.activity_context import ensure_activity_contexts
+
+    context_stored = await ensure_activity_contexts(
+        db, [a for a in synced if a.sport_type == "cycling"]
+    )
+    if context_stored:
         await db.flush()
 
     # Auto-link newly synced strength activities to lifting sessions
@@ -418,7 +437,9 @@ async def backfill_all_activities_stream(
                     continue
 
                 # Parse and create
-                start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
+                start_date = datetime.fromisoformat(
+                    sa["start_date"].replace("Z", "+00:00")
+                )
                 sport_type = _map_strava_type(
                     sa.get("sport_type", sa.get("type", "Unknown"))
                 )
@@ -445,7 +466,9 @@ async def backfill_all_activities_stream(
                         "average_heartrate": _safe_float(sa.get("average_heartrate")),
                         "max_heartrate": _safe_float(sa.get("max_heartrate")),
                         "average_power": _safe_float(sa.get("average_watts")),
-                        "normalized_power": _safe_float(sa.get("weighted_average_watts")),
+                        "normalized_power": _safe_float(
+                            sa.get("weighted_average_watts")
+                        ),
                         "average_speed": _safe_float(sa.get("average_speed")),
                         "average_cadence": _safe_float(sa.get("average_cadence")),
                         "calories": _safe_float(sa.get("calories")),
@@ -547,6 +570,16 @@ async def backfill_all_activities_stream(
         )
     await db.flush()
 
+    # Precompute ride context (§1.3) for the freshly streamed activities. Same
+    # cache as the sync path — prevents a full analyze_ride per read below.
+    from app.services.activity_context import ensure_activity_contexts_by_id
+
+    context_stored = await ensure_activity_contexts_by_id(
+        db, [aid for (aid, _) in synced_cycling]
+    )
+    if context_stored:
+        await db.flush()
+
     # Auto-link newly synced activities to lifting sessions and routes.
     yield {
         "type": "progress",
@@ -607,7 +640,10 @@ async def backfill_all_activities_stream(
         # 5. Link activities using pre-fetched data (no per-activity DB queries)
         for activity in activities:
             # -- Strength activity → lifting session matching --
-            if activity.sport_type in STRENGTH_SPORT_TYPES and not activity.lifting_session:
+            if (
+                activity.sport_type in STRENGTH_SPORT_TYPES
+                and not activity.lifting_session
+            ):
                 activity_date = (
                     activity.start_date.date()
                     if activity.start_date.tzinfo
@@ -623,7 +659,10 @@ async def backfill_all_activities_stream(
                     best_session, best_score = scored[0]
                     if best_score >= MATCH_THRESHOLD:
                         best_session.activity_id = activity.id
-                        if not best_session.duration_seconds and activity.duration_seconds:
+                        if (
+                            not best_session.duration_seconds
+                            and activity.duration_seconds
+                        ):
                             best_session.duration_seconds = activity.duration_seconds
 
             # -- GPS activity → route matching --
@@ -647,7 +686,10 @@ async def backfill_all_activities_stream(
                                 ):
                                     continue
                                 start_dist = haversine_distance(
-                                    start_lat, start_lng, route.start_lat, route.start_lng
+                                    start_lat,
+                                    start_lng,
+                                    route.start_lat,
+                                    route.start_lng,
                                 )
                                 if start_dist > 5000:
                                     continue
@@ -788,7 +830,9 @@ async def backfill_streams_for_all_activities(
                         db.add(stream)
                 backfilled += 1
             except Exception as e:
-                logger.warning(f"Failed to fetch streams for activity {activity.id}: {e}")
+                logger.warning(
+                    f"Failed to fetch streams for activity {activity.id}: {e}"
+                )
 
         # Commit per user to save progress
         await db.commit()

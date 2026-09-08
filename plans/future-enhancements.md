@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done (both unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.15–3.16).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). Unstarted §1.1, §1.4, §3.16 remaining sub-items (deferred on DEM tiles), and §3.17 (website changelog — lowest priority).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -18,14 +18,15 @@
 - [ ] Commit/PR the live-lift hardening + routes heatmap/merged-view work; publish `main`; then merge `main`→`prod` per the release process.
 - [ ] Note: `plans/live-lift-hardening.md` already documents the E1–E8 round — keep it in sync with whatever actually ships.
 
-### 0.2 Reconcile stale documentation (separately runnable, tiny commits)
+### 0.2 Reconcile stale documentation (separately runnable, tiny commits) ✅ (2026-09-08)
+Audit (grep-verified against actual exports/component files) found most §0.2 stale-facts already resolved by the 2026-09 dead-client sweep: the `fetch*` phantom names, `getFtpHistoryEntry`, `getEventAiAnalysis` are absent; the PWA description already reads "network-only for `/api/v1/`"; `SuggestedCycleCard`/`Skeleton` notes are historical (not phantom); AGENTS.md Celery table already covers `compute-route-quality` + `cleanup_old_data` auto-close. **One real fix applied**: merged the duplicate `routes/` component blocks (`CompareRoutesModal` listed twice; second `routes/` — Route page components block removed), added the missing `### activities/` section header (was an orphan `| Component | Purpose |`), and documented `VirtualRouteList`. Remaining large work (`~25 phantom names` rewrite, full `lib/api` attribution) is folded into §2.1 dead-client cleanup per the recorded decision — not repeated here.
+
 | Doc | Stale facts | Fix |
 |-----|------------|-----|
-| `frontend/src/CODEMAP.md` | ~25 phantom function names (`fetch*` era), mis-attributed modules (`getEventAiAnalysis` in events row), PWA line "network-first API GETs with cache fallback" (SW is **network-only** for `/api/v1/`), orphan note claims `SuggestedCycleCard`/`skeleton` files exist (they're deleted) | Rewrite the API-client table to actual exports; fix PWA description |
-| `frontend/src/lib/api/CODEMAP.md` | Same phantom names, `getFtpHistoryEntry` doesn't exist, wrong module attribution | Same sweep |
-| `AGENTS.md` | Celery table omits `compute-route-quality-scores` (weekly Sun 3AM); `cleanup_old_data` row misses the new orphaned-live-session auto-close (E5) | Add rows/notes |
-| `docs/algorithms.md` | Reads like a Phase-5 snapshot. Undocumented but implemented: health composite scoring, FTP multi-method estimation + confidence, sleep intelligence (readiness/consistency/debt/bedtime), goal projections (OLS/badges/TSB), deficiency analysis, effort estimation, route quality scoring, nutrition fuel plans, HR/LTHR zones, HR-TSS/VI/VAM | Expand to a full algorithm inventory (one line each) |
-| `frontend/src/CODEMAP.md` routes section | Two duplicate `routes/` component blocks + `CompareRoutesModal` listed twice | Merge |
+| `frontend/src/CODEMAP.md` | Duplicate `routes/` component blocks + `CompareRoutesModal` listed twice; orphan activities table header; `VirtualRouteList` undocumented | Merged duplicates, added section header + `VirtualRouteList` ✅ |
+| `frontend/src/lib/api/CODEMAP.md` | Already accurate (2026-09 sweep) — no action | Verified ✅ |
+| `AGENTS.md` | Already accurate (Celery rows present) — no action | Verified ✅ |
+| `docs/algorithms.md` | Reads like Phase-5 snapshot; implemented algos undocumented | Folded into docs backlog (§0.2 large work → §2.1) |
 
 **Decision needed (recorded for Part 2): the whole CODEMAP cleanup is folded into the dead-client cleanup (§2.1).**
 
@@ -40,14 +41,14 @@ Fully specced in `plans/roadmap-2026-08.md`, zero code exists (no `LiftVideo`, n
 - [ ] `VideoEmbed` component, per-session + per-PR chips, `/videos` Video Bank page with exercise/date/source filters.
 - **Skips cleanly**: no S3 config → upload returns 501; URL mode still works.
 
-### 1.2 Activities page Phase B — `?include_context=true` (M)
+### 1.2 Activities page Phase B — `?include_context=true` (M) ✅ (2026-09-08)
 Deferred pending performance testing in Phase 8A. Bulk-list activity enrichment (zones, decoupling, load position, linked route/session summaries) without N+1.
-- [ ] Profile the current list endpoint, then add the include-context path with eager-loaded relations and a single summary-fetch pass.
+- [x] Profile the current list endpoint, then add the include-context path with eager-loaded relations and a single summary-fetch pass. — **Done (now trivial thanks to §1.3)**: `GET /activities?include_context=true` attaches each cycling activity's cached `ride_context` (the §1.3 `Activity.context` JSONB, via `context_to_ride_metrics`) — **zero extra queries** (it's an already-loaded column). `ActivityRead.ride_context` field added; linked route/session summaries were already eager-loaded. Load position (ATL/CTL/TSB) stays out of the bulk shape (moving window — on-demand `.  /{id}/context`). Activities page sends the flag and renders the analytical badges instantly for expanded rows (fallback chain: fetched full context → bulk `ride_context`) instead of waiting on the per-card `/context` round-trip.
 
-### 1.3 Post-sync background activity analysis (M)
+### 1.3 Post-sync background activity analysis (M) ✅ (2026-09-08)
 AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zone time, decoupling, load position, effort metrics) **at sync time** instead of on-demand chart reads.
-- [ ] New `compute_activity_context(activity_id)` service + hook into Strava/Wahoo sync; store on `Activity` or `ActivitySource` (`context` JSONB).
-- [ ] Long-term: makes list views/detail instant without per-call computation.
+- [x] New `compute_activity_context(activity_id)` service + hook into Strava/Wahoo sync; store on `Activity` or `ActivitySource` (`context` JSONB). — **Done**: `services/activity_context.py` computes the **immutable** ride analytics (power-zone seconds, decoupling, climbing, top speed, TSS breakdown) once at Strava sync and stream-backfill into `Activity.context` (JSONB, migration 046). Pure mapping fns (`ride_context_from_analysis`/`context_to_ride_metrics`) + FTP-staleness check (`should_recompute_for_ftp` — power zones recompute if `profile.ftp_watts` moved); `ensure_activity_contexts*` best-effort (sync never fails on context). `GET /{activity_id}/context` serves the cache (falls back to on-demand `analyze_ride` when stale/missing); `_compute_top_speed` moved from the API into the service.
+- [x] Long-term: makes list views/detail instant without per-call computation. — Read path avoids `analyze_ride` + stream reads on cache hits. **Deliberate exception**: load position (ATL/CTL/TSB) stays computed on demand — it is a moving 90-day window that shifts with every new ride, so a stored copy would be stale immediately. Weekly `backfill_activity_context` (Sun 3:30 AM UTC) heals pre-feature rows and any sync-time compute gaps.
 
 ### 1.4 Deferred bug backlog (mostly architecture, do with care)
 | Ref | Item | Evidence | Effort | Risk |
@@ -120,7 +121,7 @@ Everything is hardcoded metric; locale literals are mixed (`'en-GB'` in activiti
 SW is network-only for `/api/v1/`, caches only the login shell, and there is **no `beforeinstallprompt` flow**. Live Lift is local-first but still gated on network for sync.
 - [x] Install prompt + `appinstalled` state in `PwaRegister.tsx`. Done — `beforeinstallprompt` capture → in-app Install pill (bottom-center, localStorage-dismissable) + `appinstalled` resets state.
 - [x] Offline shell for the dashboard using last-known data (cache a snapshot of recent summaries), with a clear "offline — data may be stale" banner; keep API calls network-only (Pitfall 23). Done — `OfflineSnapshot` persists `dashboard*` query data to localStorage (7-day TTL, debounced) and restores it stale (`updatedAt: 0`) so the next successful fetch replaces it; `OfflineBanner` shows last-sync staleness while offline.
-- [ ] Live Lift: surfacing its own pending-sync queue offline is already designed; formalise an explicit offline mode.
+- [x] Live Lift: surfacing its own pending-sync queue offline is already designed; formalise an explicit offline mode. — **Done**: `useLiveSession` now tracks `navigator.onLine` (`isOffline`, distinct from `syncError` which also means API failure while online), derives a 4-state `syncStatus` (`synced`/`pending`/`offline`/`error`) + `pendingCount`, and **gates flush scheduling while deterministically offline** (no doomed timer retries; the `online` listener flushes the whole backlog on reconnect). LiveWorkout shows a "📴 Offline · N to sync" pill; the finishing overlay explains the session is saved on-device and uploads on reconnect.
 
 ### 3.8 Web Push notifications (M)
 In-app notifications exist (`Notification` model: `type/link/read`, dedup key) but **no VAPID/webpush anywhere**. Four types fire today (pr, health_alert, goal_milestone, plan_reminder).
@@ -136,10 +137,12 @@ CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.
 - [x] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block. — **Done** (commit `…§3.10`): `components/onboarding/OnboardingWizard.tsx` — 4 soft-prompt steps (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-shows on first run (~1.2s after auth) unless `fittrack-onboarding-done` is set; `Skip`/Get started marks done; `OnboardingToggle` re-opens it via custom event. No backend/migration needed — first-run state is localStorage. Fullscreen Modal (reuses `Modal`) with step progress bars; mounted in `(app)/layout.tsx` inside `UnitsProvider`.
 
-### 3.11 Adaptive training suggestions (L)
+### 3.11 Adaptive training suggestions (L) ✅ Done (2026-09-08)
 Conformity (5C), readiness, deficiency, projections, health analysis are all computed — combine them into actionable weekly advice.
-- [ ] Backend: `services/adaptive.py` producing a "shift" recommendation per week (volume/intensity/rest) from conformity deviations + TSB trajectory + deficiency priorities + recovery state.
-- [ ] Frontend: suggestion card in `WeeklyView` with one-tap "apply" to plan days.
+- [x] Backend: `services/adaptive.py` — `derive_adaptive_advice()` pure inference (TSB fatigue zones −20/+5, recovery <40 ⇒ rest day, conformity <70% ⇒ ease / ≥90% non-declining ⇒ build; health alerts gate everything; deficiency weaknesses as advisory) + `generate_adaptive_suggestions()` gluing `get_daily_tss`+`compute_training_load` TSB, latest `DailyMetric.recovery_score`, `get_plan_conformity`, active `HealthAlert`s and `analyze_deficiencies`, then attaching one-tap apply actions (`_actions_for`) targeting the next ≤3 upcoming training days (cycle power/duration/TSS or strength volume/RPE scaled ×0.85 / ×1.08; rest-day swap sets sport+planned_type to rest).
+- [x] API: `GET /api/v1/training-plans/{plan_id}/suggestions` → `AdaptiveSuggestionsResponse` (`schemas/training_plan.py`); 404 when plan not found/not owned. Actions apply via the existing `PATCH /{plan_id}/days/{day_id}`.
+- [x] Frontend: `components/training/AdaptiveSuggestionsCard.tsx` mounted in `WeeklyView` — fatigue badge, summary line, per-axis stance chips (recover/rest/ease/maintain/build), suggestion list with one-tap apply buttons (mutation → `updatePlanDay` → invalidates `plan-week`/`plan-conformity`/`adaptive-suggestions`/`training-plan`).
+- [x] Unit tests: `tests/test_adaptive.py` (12 pure-inference cases: deep fatigue ⇒ cut ×0.85, freshness ⇒ raise ×1.08, balanced maintain, low recovery ⇒ rest, conformity ease/build/declining, health-alert override, deficiency advisory, insufficient data).
 
 ### 3.12 Alert tuning + new alert signals (M) ✅ Done (2026-09-08)
 Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control; `performance_decline` alert type is declared-but-unimplemented; sleep consistency and resting-HR trend are computed but never scored.
@@ -147,9 +150,13 @@ Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control
 - [x] Implement `performance_decline` (FTP drop vs history, needs ≥4 FtpHistory rows), `sleep_consistency` (nightly-duration `pstdev` over last 7 days, needs ≥3 nights), `resting_hr_elevation` (recent-3 vs 30-day baseline, needs ≥5 readings).
 - [x] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify. (Done in Phase B — daily-deduped `health_alert` notifications added to all three legacy blocks.)
 
-### 3.13 Ride segment analysis (L)
+### 3.13 Ride segment analysis (L) ✅ Done (2026-09-08)
 `ActivityStream` has 1s power/HR, routes have geometry/history/PBs — enough for Strava-style in-ride segments.
-- [ ] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self.
+- [x] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self. — **Done**: climb segments defined from each route's polyline + elevation profile (`detect_climb_segments`: sustained climbs ≥150m built on ≤200m flat/saddle tails, summit-trimmed, ≥30m gain at ≥3% average; Strava-style `climb_category` HC/1–4). Per-ride efforts are computed by distance-aligning linked activity streams (velocity × resolution integration) to the segment window (`compute_effort_for_window`: elapsed, avg power/HR, avg speed, VAM, ≥90% coverage + 25m alignment tolerance). Migration `045`: `segments` + `segment_efforts` tables (unique route-range and segment-activity).
+- [x] Backend: `services/segments.py` (`sync_route_segments`, `recompute_all_user_segments`), API `GET /api/v1/segments` (+`?route_id=`), `GET /segments/{id}` (leaderboard), `GET /routes/{id}/segments`, `POST /routes/{id}/segments/recompute` (404 when route not owned); weekly Celery `recompute_ride_segments` (Sun 3:15 UTC, post route-quality).
+- [x] Frontend: `SegmentsCard` in `RouteDetailPanel`'s new Segments tab — category badge, PR time/rides/best-W, expandable leaderboard-of-self rows, recompute button.
+- [x] Unit tests: `tests/test_segments.py` (climb detection flat/sustained/short/split, category bands, window effort coverage/VAM/tolerance).
+- [ ] **Future**: cluster the same climb across *different* routes via a geometry key (start/end snap + bearing) for a route-independent "segments" leaderboard; add `distance` to Strava stream fetch for exact point alignment instead of velocity integration.
 
 ### 3.14 Race-day prep PDF (S) ✅ Done
 ReportLab generator exists; one new report wrapping conformity + TSB projection + weather forecast + fuel plan + taper checklist for an event date.
@@ -159,21 +166,28 @@ ReportLab generator exists; one new report wrapping conformity + TSB projection 
   - Frontend "📄 Export Prep PDF" button per event card on the Training page (blob download via Bearer token).
   - Integration tests: `tests/integration/test_event_report.py` (no-plan render, linked-plan render, 404).
 
-### 3.15 Stale-data refresh UX (S)
+### 3.15 Stale-data refresh UX (S) ✅ Done (2026-09-08)
 `refetchOnWindowFocus: false` + 2–10 min `staleTime`s + no refetch buttons = silent staleness.
-- [ ] Dashboard "last updated" timestamp + manual refresh; consider selective `refetchOnWindowFocus` for the dashboard only.
+- [x] Dashboard "last updated" timestamp + manual refresh; consider selective `refetchOnWindowFocus` for the dashboard only. — **Done**: `components/dashboard/DashboardRefresh.tsx` (Last updated HH:MM from freshest `dataUpdatedAt` across the 16 dashboard queries via `queryCache.subscribe`, spinning ↻ refresh button refetching by query-key prefix, `useIsFetching` "Syncing…" state); all 16 dashboard `useQuery`s now set `refetchOnWindowFocus: true` while the global default stays off; `formatUpdatedAt` util + unit tests.
 - [ ] Optional: light theme (dark-only today, hardcoded tokens — a full CSS-var migration, so deliberately **P3 / long-horizon**).
 
-### 3.16 3D cycle activity visualisations (P2, L)
+### 3.16 3D cycle activity visualisations (P2, L) — MVP ✅ (2026-09-08)
 Add a 3D terrain-aware viewport for rides and routes — a "relive your ride" fly-through + 3D elevation/terrain route browsing. The data is already in-house: `ActivityStream` 1s power/HR/cadence/velocity/altitude streams, encoded route polylines, and `start_latlng`. The app currently renders everything in 2D on a Leaflet map + an `ElevationProfile` chart.
 
-- [ ] **Ride replay (MVP)** — activity detail gets a 3D camera fly-through along the recording path, with a scrubber that scrubs through the activity and syncs an overlay of power/HR/cadence/altitude/velocity from the stream data (colour-map speed or HR on the path line). Reuses the existing per-activity stream endpoint; no new data required.
-- [ ] **3D route view** — routes page detail: terrain extrusion + route polyline draped on it (replaces/augments the 2D `ElevationProfile`); zoom/rotate/pitch; quality / surface colouring overlaid.
-- [ ] **Tech stack** — evaluate `maplibre-gl` (terrain 3D, open-source successor to the bundled Leaflet, lightest option with raster/elevation tiles) vs `deck.gl` (large stream-point rendering, best for overlays) vs `three.js` (full control, heaviest). Likely: **MapLibre GL terrain for routes + a lightweight three.js (or MapLibre camera path) fly-through for replay**.
-- [ ] **Performance & capture plan** — lazy-load the 3D bundle only when a replay/3D view is opened (PWA + mobile: keep main bundle lean, guard <640px tap targets, respect reduced-motion); fall back to the existing 2D map/profile when WebGL is unavailable; decimate >1s streams to ~1s for camera path when needed.
-- [ ] **3D comparison (stretch)** — extend the existing `CompareActivitiesModal`/`CompareRoutesModal` flow so the two picked rides can be replayed side-by-side in 3D with synced telemetry.
+- [x] **Ride replay (MVP)** — activity detail gets a 3D camera fly-through along the recording path, with a scrubber that scrubs through the activity and syncs an overlay of power/HR/cadence/altitude/velocity from the stream data (colour-map speed or HR on the path line). Reuses the existing per-activity stream endpoint; no new data required. — **Done**: `three` fly-through in `components/activities/Replay3D.tsx` (vertex-coloured-by-speed path, growing ridden-trail, rider marker, orbit/zoom, play/pause + 1/4/8×, scrubber, `TelemetryStrip` power/HR SVG overlay with synced playhead). Pure path math in `lib/replay.ts` (`buildReplay`: polyline→local metric plane, velocity×resolution→cumulative distance→polyline mapping, altitude z-exaggeration, `maxSamples` decimation) with 12 unit tests. Lazy-loaded via `next/dynamic` `ssr:false` (three.js lives in a separate on-demand chunk — `three` was NOT pulled into `/activities` first-load), falls back to the 2D map when WebGL is unavailable, respects `prefers-reduced-motion` (no autoplay). Wired into `app/(app)/activities/page.tsx` `ActivityExpanded` for cycling rides with a polyline + velocity stream.
+- [ ] **3D route view** — routes page detail: terrain extrusion + route polyline draped on it (replaces/augments the 2D `ElevationProfile`); zoom/rotate/pitch; quality / surface colouring overlaid. **Deferred** — needs a DEM terrain tile source (MapLibre terrain needs an elevation-tile provider/API key; the three.js route view could reuse the §3.16 path projection).
+- [x] **Tech stack** — evaluate `maplibre-gl` (terrain 3D, open-source successor to the bundled Leaflet, lightest option with raster/elevation tiles) vs `deck.gl` (large stream-point rendering, best for overlays) vs `three.js` (full control, heaviest). Likely: **MapLibre GL terrain for routes + a lightweight three.js (or MapLibre camera path) fly-through for replay**. — **Decision**: `three` ^0.185 for the replay MVP (no tiles/API keys needed — local-plane projection), as streamed-path overlays are the primary use. MapLibre only if/when DEM terrain becomes wanted for the route view.
+- [x] **Performance & capture plan** — lazy-load the 3D bundle only when a replay/3D view is opened (PWA + mobile: keep main bundle lean, guard <640px tap targets, respect reduced-motion); fall back to the existing 2D map/profile when WebGL is unavailable; decimate >1s streams to ~1s for camera path when needed. — **Done**: `next/dynamic` `ssr:false` (separate chunk, no first-load impact), WebGL try/catch fallback message, scrubber is a full-width range input (tap target OK), `buildReplay` decimates to ≤800 path samples.
+- [x] **3D comparison (stretch)** — extended `CompareActivitiesModal` with a Charts/3D tab; the 3D tab renders the two picked rides as side-by-side `Replay3D` canvases (built from `buildReplay` — pure, unit-tested), each with independent playback. **Synced telemetry/playback across both and `CompareRoutesModal` route-side-by-side remain deferred** (would require exposing a controlled playback API on `Replay3D` and the MapLibre three merge from §3.16 route view), so the modal ships them independently with a documented follow-up note.
 
 **Dependencies/links**: activity streams fetch endpoint (`api/activities.py`), route polylines (`RouteMap`/`ElevationProfile`), stream-overlay compare (§8A), ride segments (§3.13). Add a skill note if it becomes a repeatable pattern (like `add-chart`).
+
+### 3.17 Website changelog — "What's new" log of major changes (P3, **lowest priority**)
+A changelist area on the website showing major changes/releases, so a returning user can see what's new without reading the repo docs.
+- [ ] `/changelog` page (or accordion on an existing low-traffic page e.g. `/wiki` or Settings) listing releases/versions with a title + short bullets — **major** changes only (per-feature, not commits).
+- [ ] Static data source — a versioned frontend data file (e.g. `lib/changelog.ts` exporting entries `{ version, date, title, bullets[] }`), rendered by a shared `Changelog` component. No backend model/API needed (single-user app; doc-driving code keeps it DRY).
+- [ ] Nav/footer link; entries added as features ship (keep a small convention note in AGENTS.md or the plan so it doesn't rot).
+- **Deliberately static**: P3 because any dynamic (per-user/Admin) version would need a backend + auth surface for ~zero benefit at this scale.
 
 ---
 
@@ -205,7 +219,8 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 | 5.2 | **In-memory rate limiter** | `slowapi` + `get_remote_address` (AGENTS-documented) — breaks across workers | Redis-backed limiter | S |
 | 5.3 | **`/dashboard/today` uncached CTL/ATL/TSB** | recomputes 90-day TSS chain per request (`api/dashboard/today.py:181-185`) | 5-min Redis cache (mirror `CACHED_CHARTS`) | S |
 
-> 5.1 ✅ — `analyze_injury_risk` now uses 2 grouped queries (per-week lifting volume+count, per-week activity count) instead of the 18-query loop. 5.2 ✅ — auth/token rate limit moved to a Redis fixed-window limiter (`services/cache.check_rate_limit`) shared across workers, fail-open on Redis outage. 5.3 ✅ — `/dashboard/today` CTL/ATL/TSB tail cached 5 min in Redis via the `cached` decorator (`_today_load_values`).| 5.4 | **Power-curve O(n²)** | inner sliding-window scan per duration bucket (`power_curve.py:266-278`) | reuse a single stream pass; extend the 1h in-memory cache | M |
+> 5.1 ✅ — `analyze_injury_risk` now uses 2 grouped queries (per-week lifting volume+count, per-week activity count) instead of the 18-query loop. 5.2 ✅ — auth/token rate limit moved to a Redis fixed-window limiter (`services/cache.check_rate_limit`) shared across workers, fail-open on Redis outage. 5.3 ✅ — `/dashboard/today` CTL/ATL/TSB tail cached 5 min in Redis via the `cached` decorator (`_today_load_values`). 5.4 ✅ — unified the duplicated sliding-window best-average into one prefix-sum helper `best_power_rolling_average` (O(n) per bucket, single impl shared by the read path + monthly backfill) in `app/services/cycling/power_curve.py`; removed the backfill's redundant O(n) `sum(power_data[:d])` re-init per bucket; pure unit tests added (`tests/test_power_curve.py`).
+| 5.4 | **Power-curve dup + backfill re-init** | read path already prefix-sum (O(n·B)); backfill re-inited each window with `sum(power_data[:d])` (O(n)) and duplicated the best-window logic | single `best_power_rolling_average` helper shared by both; backfill no longer re-dumps | S |
 | 5.5 | **LLM context builders** | 15+ sequential queries per analysis (`llm_analysis.py`) | batch aggregate queries | M |
 | 5.6 | **`notify()` extra `select(User)`** | one query per notification (`services/notifications.py:63-64`) — ×users in plan reminders | include user or cache | XS |
 | 5.7 | **Unbounded export reads** | full-table per user (`export.py`) | optional `start_date`/`end_date` window | XS |

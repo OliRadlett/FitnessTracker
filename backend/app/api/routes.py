@@ -62,7 +62,8 @@ from app.schemas.route import (
     RouteTagUpdate,
     RouteUpdate,
 )
-from app.services import route_service
+from app.schemas.segment import SegmentRead, SegmentRecomputeResponse
+from app.services import route_service, segment_service
 from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx
@@ -721,6 +722,38 @@ async def post_effort_estimate(
         target_intensity=body.target_intensity,
     )
     return EffortEstimateResponse(**result)
+
+
+# ── Segments (§3.13) ──────────────────────────────────────────────────────
+
+
+@router.get("/{route_id}/segments", response_model=list[SegmentRead])
+async def get_route_segments(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Climb segments defined on this route (PR-first)."""
+    from app.api.segments import _segment_read
+
+    segments = await segment_service.list_segments(db, current_user.id, route_id)
+    return [_segment_read(seg) for seg in segments]
+
+
+@router.post("/{route_id}/segments/recompute", response_model=SegmentRecomputeResponse)
+async def recompute_route_segments(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recompute climb segments + efforts for this route."""
+    try:
+        created = await segment_service.sync_route_segments(
+            db, current_user.id, route_id
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return SegmentRecomputeResponse(route_id=route_id, recomputed=len(created))
 
 
 # ─── Route CRUD ────────────────────────────────────────────────────────────────

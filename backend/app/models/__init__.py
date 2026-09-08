@@ -23,6 +23,7 @@ from app.models.route_organize import (
     RouteTag,
     RouteTagging,
 )
+from app.models.segment import Segment, SegmentEffort
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import OAuthConnection, User
@@ -56,6 +57,8 @@ __all__ = [
     "RouteSource",
     "RouteTag",
     "RouteTagging",
+    "Segment",
+    "SegmentEffort",
     "SleepLog",
     "StravaWebhookEvent",
     "TrainingPlan",

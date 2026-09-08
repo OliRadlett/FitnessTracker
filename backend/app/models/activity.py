@@ -80,6 +80,11 @@ class Activity(Base):
     )  # compass, e.g. "NW"
     weather_precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # §1.3 — precomputed ride context (zones, decoupling, climbing, top speed,
+    # TSS breakdown) written at sync time so expanded-card renders avoid the
+    # full analyze_ride + stream recompute per request. See services/activity_context.py.
+    # Intentionally NOT a relationship with computed columns — plain JSONB cache.
+    context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -150,7 +155,9 @@ class ActivityStream(Base):
     __table_args__ = (
         # One stream per type per activity — prevents duplicate stream rows
         # when the weekly backfill and a manual backfill race.
-        UniqueConstraint("activity_id", "stream_type", name="uq_activity_streams_activity_type"),
+        UniqueConstraint(
+            "activity_id", "stream_type", name="uq_activity_streams_activity_type"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

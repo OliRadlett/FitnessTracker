@@ -1,11 +1,15 @@
 'use client';
 
 import React from 'react';
-import type { ActivityContext } from '@/lib/api';
+import type { LoadContext, RideMetrics } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 
 interface ActivityContextBadgesProps {
-  context: ActivityContext;
+  context: {
+    sport_type: string;
+    ride_metrics: RideMetrics | null;
+    load_context: LoadContext | null;
+  };
 }
 
 export function ActivityContextBadges({ context }: ActivityContextBadgesProps) {

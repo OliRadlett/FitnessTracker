@@ -140,3 +140,20 @@ export function formatTime(
     hour12: timeFormat === '12h',
   });
 }
+
+/** Format a data-fetch timestamp (epoch ms) as "14:35" for the "last updated"
+ * label. Returns "—" for null/zero/invalid (§3.15). */
+export function formatUpdatedAt(
+  epochMs: number | null | undefined,
+  locale: DateLocale = activeLocale,
+  timeFormat: TimeFormat = activeTimeFormat,
+): string {
+  if (!epochMs || epochMs <= 0) return '—';
+  const d = new Date(epochMs);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: timeFormat === '12h',
+  });
+}

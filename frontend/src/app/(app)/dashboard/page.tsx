@@ -25,6 +25,7 @@ import type {
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { getGreeting } from '@/components/dashboard/helpers';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
+import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
@@ -47,12 +48,14 @@ export default function DashboardPage() {
     queryKey: ['today-summary'],
     queryFn: () => authFetch<TodaySummary>('/api/v1/dashboard/today'),
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: summary, isLoading: summaryLoading } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: () => authFetch<DashboardSummary>('/api/v1/dashboard/summary'),
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
@@ -60,6 +63,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_tss?weeks=12'),
     enabled: activeTab === 'weekly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
@@ -67,6 +71,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<Activity[]>('/api/v1/activities?limit=5'),
     enabled: activeTab === 'weekly',
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
@@ -74,18 +79,21 @@ export default function DashboardPage() {
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=5'),
     enabled: activeTab === 'weekly',
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: readiness } = useQuery<ReadinessResponse>({
     queryKey: ['readiness'],
     queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: respiratoryRate } = useQuery<RespiratoryRateResponse>({
     queryKey: ['respiratory-rate'],
     queryFn: () => authFetch<RespiratoryRateResponse>('/api/v1/metrics/respiratory-rate'),
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: whoopWeekly } = useQuery<WhoopWeeklySummary>({
@@ -93,6 +101,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<WhoopWeeklySummary>('/api/v1/dashboard/whoop-weekly'),
     enabled: activeTab === 'weekly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: strainVsRecovery } = useQuery<ChartData>({
@@ -100,6 +109,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strain_vs_recovery?days=30'),
     enabled: activeTab === 'weekly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: monthlySummary, isLoading: monthlyLoading } = useQuery<MonthlySummaryItem[]>({
@@ -107,6 +117,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<MonthlySummaryItem[]>('/api/v1/dashboard/monthly-summary?months=6'),
     enabled: activeTab === 'weekly' || activeTab === 'monthly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: streaks } = useQuery<TrainingStreaks>({
@@ -114,6 +125,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<TrainingStreaks>('/api/v1/dashboard/streaks'),
     enabled: activeTab === 'weekly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: goals } = useQuery<Goal[]>({
@@ -121,6 +133,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<Goal[]>('/api/v1/goals'),
     enabled: activeTab === 'weekly',
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: yearlySummary, isLoading: yearlyLoading } = useQuery<YearlySummary>({
@@ -128,12 +141,14 @@ export default function DashboardPage() {
     queryFn: () => authFetch<YearlySummary>(`/api/v1/dashboard/yearly-summary/${selectedYear}`),
     enabled: activeTab === 'weekly' || activeTab === 'monthly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: upcomingEvents } = useQuery<Event[]>({
     queryKey: ['events', 'upcoming'],
     queryFn: () => authFetch<Event[]>('/api/v1/events?upcoming_only=true'),
     staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: llmAnalysis, isLoading: llmLoading } = useQuery<LlmAnalysis | null>({
@@ -141,6 +156,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<LlmAnalysis | null>('/api/v1/cycling/llm-analysis/latest'),
     enabled: activeTab === 'weekly',
     staleTime: 300_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
@@ -148,6 +164,7 @@ export default function DashboardPage() {
     queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
     enabled: activeTab === 'weekly',
     staleTime: 600_000,  // 10 min — expensive server-side computation
+    refetchOnWindowFocus: true,
   });
 
   /* ── Mutations ─────────────────────────────────────────────────────────── */
@@ -237,6 +254,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-end gap-4">
+          <DashboardRefresh />
           <WeatherWidget />
           {hasReadiness && (
             <ReadinessIndicator

@@ -16,6 +16,7 @@ import { RouteMap } from '@/components/maps/RouteMap';
 import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 import { RouteHistorySection } from '@/components/routes/RouteHistorySection';
+import { SegmentsCard } from '@/components/routes/SegmentsCard';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { formatDistance } from '@/lib/utils';
 import { X, Edit2, Download, Trash2, Star } from 'lucide-react';
@@ -30,7 +31,7 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
   const queryClient = useQueryClient();
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
-   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort'>('overview');
+   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
@@ -261,6 +262,7 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
                   { key: 'merged', label: 'Merged View' },
                   { key: 'weather', label: 'Weather' },
                   { key: 'effort', label: 'Effort' },
+                  { key: 'segments', label: 'Segments' },
                 ]}
                 active={detailTab}
                 onChange={(key) => setDetailTab(key as typeof detailTab)}
@@ -327,6 +329,13 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
             {detailTab === 'effort' && (
               <div className="px-4 pb-4">
                 <EffortEstimateCard routeId={route.id} />
+              </div>
+            )}
+
+            {/* Segments Tab (§3.13) */}
+            {detailTab === 'segments' && (
+              <div className="px-4 pb-4">
+                <SegmentsCard routeId={route.id} />
               </div>
             )}
           </Card>
