@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences done (backend JSONB + Settings UI + `UnitsProvider`, on `main`, unshipped); §3.7–3.10 (PWA offline, web push, JSON export + delete, onboarding) pending; unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
+> **Date**: 2026-09-07 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** started — §3.6 unit & locale preferences done + §3.7 PWA core (install prompt, offline banner, dashboard last-known snapshot) done (on `main`, unshipped); §3.7 Live Lift offline mode + §3.8–3.10 pending; unstarted §0.2, §1.1–1.4, Part 3 (E onwards).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -118,8 +118,8 @@ Everything is hardcoded metric; locale literals are mixed (`'en-GB'` in activiti
 
 ### 3.7 PWA offline + installability (M)
 SW is network-only for `/api/v1/`, caches only the login shell, and there is **no `beforeinstallprompt` flow**. Live Lift is local-first but still gated on network for sync.
-- [ ] Install prompt + `appinstalled` state in `PwaRegister.tsx`.
-- [ ] Offline shell for the dashboard using last-known data (cache a snapshot of recent summaries), with a clear "offline — data may be stale" banner; keep API calls network-only (Pitfall 23).
+- [x] Install prompt + `appinstalled` state in `PwaRegister.tsx`. Done — `beforeinstallprompt` capture → in-app Install pill (bottom-center, localStorage-dismissable) + `appinstalled` resets state.
+- [x] Offline shell for the dashboard using last-known data (cache a snapshot of recent summaries), with a clear "offline — data may be stale" banner; keep API calls network-only (Pitfall 23). Done — `OfflineSnapshot` persists `dashboard*` query data to localStorage (7-day TTL, debounced) and restores it stale (`updatedAt: 0`) so the next successful fetch replaces it; `OfflineBanner` shows last-sync staleness while offline.
 - [ ] Live Lift: surfacing its own pending-sync queue offline is already designed; formalise an explicit offline mode.
 
 ### 3.8 Web Push notifications (M)
@@ -234,7 +234,7 @@ Natural additions mirror existing features (no new infra): FTP auto-estimate / s
 1. **Phase A — hygiene (Part 0 + 2)**: land in-flight work → dead-client decision + cleanup → docs sweep → sidebar fixes. Re-sync `main`/`prod`.
 2. **Phase B — quick backend wins (Part 4 + 5.1, 5.2, 5.3)**: new charts, weight CRUD, manual FTP clamp, legacy-alert notify fix, reauth/FTP event notifications. ✅ Implemented and released to `prod` 2026-09-07 (merge `79ff864`; backend half of §3.1 done — weight UI is Phase C).
 3. **Phase C — user-facing (Part 3.1–3.5)**: weight UI, Health page, race results, ⌘K search, notifications page. ✅ §3.1–§3.5 all done, **shipped to prod 2026-09-07**. Phase C complete.
-4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done (unshipped), §3.7 next.
+4. **Phase D — platform (Part 3.6–3.10)**: units/locale, PWA offline+install, web push, JSON export + delete, onboarding. — **in progress**: §3.6 done, §3.7 core done (Live Lift offline mode pending), §3.8 next.
 5. **Phase E — video + analytics (1.1, 1.3, 3.11–3.14)**: video system, post-sync analysis, adaptive suggestions, segments, alert tuning, race-prep PDF.
 6. **Phase F — 3D visualisations (3.16)**: ride replay fly-through + 3D route terrain view (lazy-loaded, WebGL-guarded).
 7. **Phase G — performance/infra (Part 5.4–5.9 + 6)**: caching, codegen, CI E2E, alerting.
