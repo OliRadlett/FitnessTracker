@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done. Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.7-live-offline).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, **§3.11 Adaptive training suggestions done**. Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.13, 3.16–3.18, 3.7-live-offline).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -136,10 +136,12 @@ CSV/GPX/PDF exist; **Delete Account is a decorative button**. GDPR/privacy story
 **No onboarding exists** — only the login page and scattered empty-state CTAs. Data completeness (FTP, weight, home location, provider connects) gates deficiency, projections, weather, effort estimates.
 - [x] 3–4 step wizard (profile → providers → home/weight → first goal/plan), dismissible, re-openable from settings; gate only soft-prompt, never block. — **Done** (commit `…§3.10`): `components/onboarding/OnboardingWizard.tsx` — 4 soft-prompt steps (preferences → connections → fitness profile FTP/weight/home → optional first goal). Auto-shows on first run (~1.2s after auth) unless `fittrack-onboarding-done` is set; `Skip`/Get started marks done; `OnboardingToggle` re-opens it via custom event. No backend/migration needed — first-run state is localStorage. Fullscreen Modal (reuses `Modal`) with step progress bars; mounted in `(app)/layout.tsx` inside `UnitsProvider`.
 
-### 3.11 Adaptive training suggestions (L)
+### 3.11 Adaptive training suggestions (L) ✅ Done (2026-09-08)
 Conformity (5C), readiness, deficiency, projections, health analysis are all computed — combine them into actionable weekly advice.
-- [ ] Backend: `services/adaptive.py` producing a "shift" recommendation per week (volume/intensity/rest) from conformity deviations + TSB trajectory + deficiency priorities + recovery state.
-- [ ] Frontend: suggestion card in `WeeklyView` with one-tap "apply" to plan days.
+- [x] Backend: `services/adaptive.py` — `derive_adaptive_advice()` pure inference (TSB fatigue zones −20/+5, recovery <40 ⇒ rest day, conformity <70% ⇒ ease / ≥90% non-declining ⇒ build; health alerts gate everything; deficiency weaknesses as advisory) + `generate_adaptive_suggestions()` gluing `get_daily_tss`+`compute_training_load` TSB, latest `DailyMetric.recovery_score`, `get_plan_conformity`, active `HealthAlert`s and `analyze_deficiencies`, then attaching one-tap apply actions (`_actions_for`) targeting the next ≤3 upcoming training days (cycle power/duration/TSS or strength volume/RPE scaled ×0.85 / ×1.08; rest-day swap sets sport+planned_type to rest).
+- [x] API: `GET /api/v1/training-plans/{plan_id}/suggestions` → `AdaptiveSuggestionsResponse` (`schemas/training_plan.py`); 404 when plan not found/not owned. Actions apply via the existing `PATCH /{plan_id}/days/{day_id}`.
+- [x] Frontend: `components/training/AdaptiveSuggestionsCard.tsx` mounted in `WeeklyView` — fatigue badge, summary line, per-axis stance chips (recover/rest/ease/maintain/build), suggestion list with one-tap apply buttons (mutation → `updatePlanDay` → invalidates `plan-week`/`plan-conformity`/`adaptive-suggestions`/`training-plan`).
+- [x] Unit tests: `tests/test_adaptive.py` (12 pure-inference cases: deep fatigue ⇒ cut ×0.85, freshness ⇒ raise ×1.08, balanced maintain, low recovery ⇒ rest, conformity ease/build/declining, health-alert override, deficiency advisory, insufficient data).
 
 ### 3.12 Alert tuning + new alert signals (M) ✅ Done (2026-09-08)
 Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control; `performance_decline` alert type is declared-but-unimplemented; sleep consistency and resting-HR trend are computed but never scored.

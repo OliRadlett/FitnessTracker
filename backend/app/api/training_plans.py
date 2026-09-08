@@ -14,6 +14,7 @@ from app.schemas.conformity import (
     PlanConformityResponse,
 )
 from app.schemas.training_plan import (
+    AdaptiveSuggestionsResponse,
     GeneratePlanRequest,
     TrainingPlanCreate,
     TrainingPlanDayRead,
@@ -212,10 +213,32 @@ async def get_day_conformity(
             db, current_user.id, plan_id, day_id
         )
     except ValueError as e:
-        detail = str(e)
-        code = 404 if "not found" in detail else 400
-        raise HTTPException(status_code=code, detail=detail) from e
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return result
+
+
+# ── Adaptive suggestions (§3.11) ───────────────────────────────────────────
+
+
+@router.get("/{plan_id}/suggestions", response_model=AdaptiveSuggestionsResponse)
+async def get_adaptive_suggestions(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Weekly adaptive training suggestions for a plan (§3.11).
+
+    Combines conformity (5C), training-load TSB trajectory, latest recovery,
+    active health alerts and deficiency priorities into an actionable
+    recommendation with optional one-tap day-level apply actions.
+    """
+    from app.services.adaptive import generate_adaptive_suggestions
+
+    try:
+        result = await generate_adaptive_suggestions(db, current_user.id, plan_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return AdaptiveSuggestionsResponse.model_validate(result)
 
 
 @router.post("/{plan_id}/link-activities", response_model=LinkActivitiesResponse)
@@ -342,7 +365,9 @@ async def preview_workout(
 
     difficulty = _TYPE_TO_DIFFICULTY.get(workout_type)
     if not difficulty:
-        raise HTTPException(status_code=400, detail=f"Unknown workout type: {workout_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown workout type: {workout_type}"
+        )
 
     # Fetch FTP from cycling profile
     from sqlalchemy import select as sa_select

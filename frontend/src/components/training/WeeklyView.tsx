@@ -29,6 +29,7 @@ import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
+import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -461,6 +462,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           )}
         </div>
       )}
+
+      {/* Adaptive suggestions card (§3.11) */}
+      <AdaptiveSuggestionsCard planId={plan.id} />
 
       {/* TSB projection strip (Phase 7) — event-linked plans only */}
       {tsbProjectionQuery.data && (() => {

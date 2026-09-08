@@ -155,6 +155,41 @@ export interface TrainingPlanSummary {
   updated_at?: string;
 }
 
+// ─── Adaptive suggestions (§3.11) ───────────────────────────────────────
+
+export interface AdaptiveAction {
+  label: string;
+  plan_id: string;
+  day_id: string;
+  fields: Record<string, string | number>;
+}
+
+export interface AdaptiveSuggestion {
+  type: string;
+  title: string;
+  detail: string;
+  severity: string;
+  actions: AdaptiveAction[];
+}
+
+export interface AdaptiveAxis {
+  key: string;
+  title: string;
+  stance: string;
+  severity: string;
+  guidance: string;
+}
+
+export interface AdaptiveSuggestionsResponse {
+  generated_at: string;
+  plan_id: string | null;
+  plan_name: string | null;
+  fatigue: string | null;
+  summary: string;
+  axes: AdaptiveAxis[];
+  suggestions: AdaptiveSuggestion[];
+}
+
 export interface CreateTrainingPlanPayload {
   name: string;
   description?: string;
