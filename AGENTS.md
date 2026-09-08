@@ -217,7 +217,8 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Background activity analysis**: Post-sync task to precompute activity context (zones, decoupling, load position) at sync time — future work
 - **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). Phases 2-4: calendar planner integration, social popularity, full E2E tests.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
-- **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, 4 test files in `src/__tests__/`). Expand coverage for charts, pages, API clients.
+- **3D visualisations (§3.16)**: Ride-replay MVP done (three.js `Replay3D` + `lib/replay`). 3D route view (needs DEM terrain tiles) and side-by-side 3D comparison deferred — see the plan
+- **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
 ## Git & Deployment Strategy

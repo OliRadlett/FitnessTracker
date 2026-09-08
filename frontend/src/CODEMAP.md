@@ -136,6 +136,7 @@
 | `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
 | `ActivityCard` | Activity list item card with sport badge, source badges, weather, compare checkbox, linked lifting indicator |
 | `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 selected activities |
+| `Replay3D` | **§3.16 3D fly-through** — three.js scene (speed-coloured path, growing ridden trail, rider marker, orbit/zoom, play/scrub/1·4·8×) fed by `buildReplay()` from `lib/replay`; lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG power/HR overlay with synced playhead. Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`) |
 | `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
 
 ### `routes/` — Route page components
@@ -220,6 +221,7 @@
 - **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
 - **PWA**: `manifest.ts` (App Router metadata route; installable — icons, standalone), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only; **§3.8 Web Push**: `push` → `showNotification`, `notificationclick` → focus/open under `/fittrack` base; CACHE_NAME `fittrack-v4`), `PwaRegister.tsx` (production-only SW registration + **§3.7 install prompt**: `beforeinstallprompt` capture → in-app Install pill w/ localStorage dismiss + `appinstalled`). `lib/useOnlineStatus.ts` (online/offline state + last-online stamp) → `OfflineBanner` (amber "You're offline" bar, §3.7) and `OfflineSnapshot` (§3.7 — persists last-known `dashboard*` query data to localStorage, restores stale on next load so the dashboard works offline; refreshed on first successful refetch)
 - **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
+- **3D replay (§3.16)**: `lib/replay.ts` — pure flight-path math (`buildReplay`: polyline→local metric plane, velocity×resolution→cumulative distance→polyline mapping, altitude z-exaggeration, `maxSamples` decimation; `projectPolyline`/`cumulativeFromVelocity`/`timeFmt`). Rendered by `components/activities/Replay3D.tsx` (three.js, lazily imported `ssr:false`). No external tile/API-key dependency — local-plane projection only
 - **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
 - **Deep-links**: `useDeepLink` hook in `lib/useDeepLink.ts` — reads URL query params once on mount and updates them via `history.replaceState` (no Suspense needed). Powers record deep-linking: `/activities?activity=`, `/routes?route=`, `/lifting?session=`
 - **Collapsible sidebar**: Desktop sidebar collapses to icon-only (`w-16`) via localStorage-persisted toggle. Mobile unaffected

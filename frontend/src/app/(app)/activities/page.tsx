@@ -24,11 +24,16 @@ const RouteMap = dynamic(
   () => import('@/components/maps/RouteMap').then((mod) => mod.RouteMap),
   { ssr: false, loading: () => <div className="h-[250px] bg-surface-light/20 rounded-lg animate-pulse" /> },
 );
+const Replay3D = dynamic(
+  () => import('@/components/activities/Replay3D').then((mod) => mod.Replay3D),
+  { ssr: false, loading: () => <div className="h-[400px] bg-surface-light/20 rounded-lg animate-pulse" /> },
+);
 import { Card } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
+import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
@@ -120,6 +125,29 @@ function ActivityExpanded({
       })()
     : null;
 
+  // ── 3D replay data (cycling rides with a route + streams) — §3.16 ──────
+  const replayBuild: ReplayBuildResult | null = useMemo(() => {
+    if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
+    const streams = activityDetail.streams!;
+    const findStream = (type: string) => {
+      const s = streams.find((st) => st.stream_type === type);
+      if (!s) return undefined;
+      const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
+      if (!data || data.length === 0) return undefined;
+      return { values: data, resolution: s.resolution ?? 1 };
+    };
+    const velocity = findStream('velocity');
+    if (!velocity) return null;
+    return buildReplay({
+      polyline: activity.encoded_polyline,
+      velocity,
+      altitude: findStream('altitude'),
+      power: findStream('watts'),
+      hr: findStream('heartrate'),
+      maxSamples: 800,
+    });
+  }, [activity, activityDetail, isCycling]);
+
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -163,6 +191,13 @@ function ActivityExpanded({
       {activity.encoded_polyline && (
         <div className="mb-4">
           <RouteMap encodedPolyline={activity.encoded_polyline} className="h-[250px]" />
+        </div>
+      )}
+
+      {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
+      {replayBuild && replayBuild.points.length >= 2 && (
+        <div className="mb-4">
+          <Replay3D name={activity.name} build={replayBuild} />
         </div>
       )}
 
