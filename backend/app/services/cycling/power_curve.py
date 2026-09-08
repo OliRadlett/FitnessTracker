@@ -193,6 +193,42 @@ _power_curve_cache: dict[str, tuple[float, dict[int, float]]] = {}
 _POWER_CURVE_CACHE_TTL_SEC = 3600  # 1 hour
 
 
+def best_power_rolling_average(
+    power_data: list[float], duration_sec: int
+) -> float | None:
+    """Best (max) rolling average power (W) over a fixed `duration_sec` window.
+
+    §5.4 single-pass, prefix-sum implementation shared by the read path
+    (`compute_power_curve_from_streams`) and the monthly backfill
+    (`backfill_ftp_estimates`) so the two can never diverge. O(n) per duration
+    bucket via a running prefix-sum; returns `None` when the data is shorter than
+    the requested duration (caller skips).
+    """
+    n = len(power_data)
+    if duration_sec > n:
+        return None
+    prefix = 0.0
+    best_sum = 0.0
+    # Rolling window of exactly `duration_sec` using a circular buffer over the
+    # running sum — one pass, no per-bucket slice.
+    window: list[float] = [0.0] * duration_sec
+    head = 0
+    filled = 0
+    for v in power_data:
+        # advance running prefix sum
+        prefix += v
+        # drop the value leaving the window, if full
+        if filled == duration_sec:
+            prefix -= window[head]
+        window[head] = v
+        head = (head + 1) % duration_sec
+        if filled < duration_sec:
+            filled += 1
+        else:
+            best_sum = max(best_sum, prefix)
+    return round(best_sum / duration_sec, 1)
+
+
 async def compute_power_curve_from_streams(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -257,25 +293,16 @@ async def compute_power_curve_from_streams(
         if n < 2:
             continue
 
-        # Build prefix sums once per stream — O(n)
-        prefix = [0.0] * (n + 1)
-        for i in range(n):
-            prefix[i + 1] = prefix[i] + power_data[i]
-
-        # Single pass over all duration buckets using the prefix sums
+        # §5.4 single-pass prefix-sum rolling average per bucket; sorted_buckets
+        # is ascending so we can stop early once a window exceeds the data.
         for duration_sec, _ in sorted_buckets:
             if duration_sec > n:
                 break  # remaining buckets are even longer
-
-            # Find the window [i, i+duration_sec) with the highest average
-            max_window_sum = 0.0
-            for i in range(n - duration_sec + 1):
-                window_sum = prefix[i + duration_sec] - prefix[i]
-                max_window_sum = max(max_window_sum, window_sum)
-
-            best_avg = max_window_sum / duration_sec
+            best_avg = best_power_rolling_average(power_data, duration_sec)
+            if best_avg is None:
+                continue
             if duration_sec not in best_power or best_avg > best_power[duration_sec]:
-                best_power[duration_sec] = round(best_avg, 1)
+                best_power[duration_sec] = best_avg
 
     _power_curve_cache[cache_key] = (now, best_power)
     return best_power
@@ -342,21 +369,15 @@ async def backfill_ftp_estimates(
             for duration_sec, _ in POWER_DURATION_BUCKETS:
                 if duration_sec > len(power_data):
                     continue
-                window_sum = sum(power_data[:duration_sec])
-                best_avg = window_sum / duration_sec
-                for j in range(1, len(power_data) - duration_sec + 1):
-                    window_sum = (
-                        window_sum
-                        - power_data[j - 1]
-                        + power_data[j + duration_sec - 1]
-                    )
-                    avg = window_sum / duration_sec
-                    best_avg = max(best_avg, avg)
+                # §5.4 single-pass prefix-sum window max (shared with read path).
+                best_avg = best_power_rolling_average(power_data, duration_sec)
+                if best_avg is None:
+                    continue
                 if (
                     duration_sec not in best_power
                     or best_avg > best_power[duration_sec]
                 ):
-                    best_power[duration_sec] = round(best_avg, 1)
+                    best_power[duration_sec] = best_avg
 
         estimated_ftp = estimate_ftp_from_power_curve(best_power)
         if not estimated_ftp:

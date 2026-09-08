@@ -10,6 +10,7 @@ from app.services.cycling.power_curve import (
     _power_curve_cache,
     _riegel_extrapolate,
     backfill_ftp_estimates,
+    best_power_rolling_average,
     compute_power_curve_from_streams,
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
