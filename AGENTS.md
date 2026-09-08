@@ -214,7 +214,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
-- **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. Phase B (`?include_context=true` bulk list enrichment) deferred to after performance testing.
+- **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. **Phase B done (§1.2, 2026-09-08)** — `?include_context=true` serves the §1.3 cached `ride_context` inline (zero extra queries; load position stays on-demand).
 - **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
 - **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). Phases 2-4: calendar planner integration, social popularity, full E2E tests.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)

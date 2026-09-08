@@ -40,9 +40,9 @@ Fully specced in `plans/roadmap-2026-08.md`, zero code exists (no `LiftVideo`, n
 - [ ] `VideoEmbed` component, per-session + per-PR chips, `/videos` Video Bank page with exercise/date/source filters.
 - **Skips cleanly**: no S3 config → upload returns 501; URL mode still works.
 
-### 1.2 Activities page Phase B — `?include_context=true` (M)
+### 1.2 Activities page Phase B — `?include_context=true` (M) ✅ (2026-09-08)
 Deferred pending performance testing in Phase 8A. Bulk-list activity enrichment (zones, decoupling, load position, linked route/session summaries) without N+1.
-- [ ] Profile the current list endpoint, then add the include-context path with eager-loaded relations and a single summary-fetch pass.
+- [x] Profile the current list endpoint, then add the include-context path with eager-loaded relations and a single summary-fetch pass. — **Done (now trivial thanks to §1.3)**: `GET /activities?include_context=true` attaches each cycling activity's cached `ride_context` (the §1.3 `Activity.context` JSONB, via `context_to_ride_metrics`) — **zero extra queries** (it's an already-loaded column). `ActivityRead.ride_context` field added; linked route/session summaries were already eager-loaded. Load position (ATL/CTL/TSB) stays out of the bulk shape (moving window — on-demand `.  /{id}/context`). Activities page sends the flag and renders the analytical badges instantly for expanded rows (fallback chain: fetched full context → bulk `ride_context`) instead of waiting on the per-card `/context` round-trip.
 
 ### 1.3 Post-sync background activity analysis (M) ✅ (2026-09-08)
 AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zone time, decoupling, load position, effort metrics) **at sync time** instead of on-demand chart reads.

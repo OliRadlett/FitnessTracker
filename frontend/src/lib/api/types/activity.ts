@@ -38,6 +38,7 @@ export interface Activity {
   weather_precipitation_mm?: number | null;
   linked_lifting_session?: LinkedLiftingSessionSummary;
   encoded_polyline?: string;
+  ride_context?: RideMetrics | null;
   sources?: ActivitySource[];
   synced_at: string;
   created_at: string;

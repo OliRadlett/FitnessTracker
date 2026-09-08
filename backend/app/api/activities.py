@@ -32,6 +32,7 @@ from app.schemas.activity import (
     RideAnalysisResponse,
     SleepLogSummary,
 )
+from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -63,13 +64,24 @@ def _extract_encoded_polyline(activity: Activity) -> str | None:
     return map_data.get("summary_polyline") or map_data.get("polyline") or None
 
 
-def _enrich_activity_read(activity: Activity) -> ActivityRead:
-    """Build an ActivityRead with computed fields (sources, route_name, polyline, linked session)."""
+def _enrich_activity_read(
+    activity: Activity, include_context: bool = False
+) -> ActivityRead:
+    """Build an ActivityRead with computed fields (sources, route_name, polyline, linked session).
+
+    With `include_context=True`, attach the §1.2 ride metrics directly from the
+    sync-time `Activity.context` cache (zero extra queries — it's a loaded column).
+    """
     read = ActivityRead.model_validate(activity)
     read.linked_lifting_session = _build_linked_session_summary(activity)
     read.encoded_polyline = _extract_encoded_polyline(activity)
     # Populate route_name from the route relationship
     read.route_name = activity.route.name if activity.route else None
+    # Ride metrics from the §1.3 cache (cycling activities only; None otherwise).
+    # FTP staleness is handled by the /{id}/context read path — bulk list serves
+    # the cached values as-is since power zones are still valid until FTP changes.
+    if include_context:
+        read.ride_context = context_to_ride_metrics(activity.context)
     return read
 
 
@@ -104,6 +116,10 @@ async def list_activities(
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    include_context: bool = Query(
+        False,
+        description="Attach cached §1.3 ride metrics to each cycling activity (no extra queries)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -195,7 +211,7 @@ async def list_activities(
     result = await db.execute(query)
     activities = list(result.scalars().all())
 
-    enriched = [_enrich_activity_read(a) for a in activities]
+    enriched = [_enrich_activity_read(a, include_context) for a in activities]
     return JSONResponse(
         content=[a.model_dump(mode="json") for a in enriched],
         headers={"X-Total-Count": str(total_count)},

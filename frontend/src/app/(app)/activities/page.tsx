@@ -12,6 +12,8 @@ import type {
   ChartData,
   ActivityFilters,
   RideAnalysis,
+  LoadContext,
+  RideMetrics,
 } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
@@ -82,6 +84,36 @@ function getWeekDateRange(weekKey: string, activities: Activity[]): string {
 }
 
 // ── Expanded Activity Detail ─────────────────────────────────────────────────
+
+type BadgesContext = {
+  sport_type: string;
+  ride_metrics: RideMetrics | null;
+  load_context: LoadContext | null;
+};
+
+// §1.2 Phase B — hand the analytical badges the widest available source:
+// the fetched full context (ride + load) if present, else the bulk-list cached
+// ride metrics (renders instantly with the page — no context round-trip).
+function badgesContextFrom(
+  activity: Activity,
+  context?: ActivityContext | null,
+): BadgesContext | null {
+  if (context?.ride_metrics || context?.load_context) {
+    return {
+      sport_type: context.sport_type,
+      ride_metrics: context.ride_metrics,
+      load_context: context.load_context,
+    };
+  }
+  if (activity.ride_context) {
+    return {
+      sport_type: activity.sport_type,
+      ride_metrics: activity.ride_context,
+      load_context: null,
+    };
+  }
+  return null;
+}
 
 function ActivityExpanded({
   activity,
@@ -161,11 +193,11 @@ function ActivityExpanded({
       )}
 
       {/* Analytical context badges (IF/VI/decoupling/speed/climbing/EF/load) */}
-      {context?.ride_metrics || context?.load_context ? (
+      {badgesContextFrom(activity, context) && (
         <div className="mb-3">
-          <ActivityContextBadges context={context} />
+          <ActivityContextBadges context={badgesContextFrom(activity, context)!} />
         </div>
-      ) : null}
+      )}
 
       {/* Health overlay (HRV/recovery/sleep from day before) */}
       {context?.health_overlay && (
@@ -346,6 +378,9 @@ export default function ActivitiesPage() {
     });
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', '0');
+    // §1.2 Phase B — serve cached ride metrics inline so analytical badges
+    // (IF/VI/decoupling/speed/climbing/EF) render with the list, no extra fetch.
+    params.set('include_context', 'true');
     const query = params.toString();
     return `/api/v1/activities${query ? `?${query}` : ''}`;
   }, [effectiveFilters]);
