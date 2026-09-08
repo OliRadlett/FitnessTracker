@@ -7,6 +7,7 @@ export * from './lifting';
 export * from './routes';
 export * from './goals';
 export * from './trainingPlans';
+export * from './segments';
 export * from './weather';
 export * from './conformity';
 export * from './projections';

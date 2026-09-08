@@ -122,6 +122,7 @@
 | `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
 | `RouteHistorySection` | Ride history table with personal best summary |
+| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
 | `CompareRoutesModal` | Side-by-side route comparison with overlaid elevation profiles |
 
 ### `maps/` — Map components

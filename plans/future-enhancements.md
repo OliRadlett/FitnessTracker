@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, **§3.11 Adaptive training suggestions done**. Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.13, 3.16–3.18, 3.7-live-offline).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**. Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.16–3.18, 3.7-live-offline).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -149,9 +149,13 @@ Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control
 - [x] Implement `performance_decline` (FTP drop vs history, needs ≥4 FtpHistory rows), `sleep_consistency` (nightly-duration `pstdev` over last 7 days, needs ≥3 nights), `resting_hr_elevation` (recent-3 vs 30-day baseline, needs ≥5 readings).
 - [x] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify. (Done in Phase B — daily-deduped `health_alert` notifications added to all three legacy blocks.)
 
-### 3.13 Ride segment analysis (L)
+### 3.13 Ride segment analysis (L) ✅ Done (2026-09-08)
 `ActivityStream` has 1s power/HR, routes have geometry/history/PBs — enough for Strava-style in-ride segments.
-- [ ] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self.
+- [x] Define segments from route history clustering (or full-ride splits), compute best efforts per segment, historical segment PRs, leaderboard-of-self. — **Done**: climb segments defined from each route's polyline + elevation profile (`detect_climb_segments`: sustained climbs ≥150m built on ≤200m flat/saddle tails, summit-trimmed, ≥30m gain at ≥3% average; Strava-style `climb_category` HC/1–4). Per-ride efforts are computed by distance-aligning linked activity streams (velocity × resolution integration) to the segment window (`compute_effort_for_window`: elapsed, avg power/HR, avg speed, VAM, ≥90% coverage + 25m alignment tolerance). Migration `045`: `segments` + `segment_efforts` tables (unique route-range and segment-activity).
+- [x] Backend: `services/segments.py` (`sync_route_segments`, `recompute_all_user_segments`), API `GET /api/v1/segments` (+`?route_id=`), `GET /segments/{id}` (leaderboard), `GET /routes/{id}/segments`, `POST /routes/{id}/segments/recompute` (404 when route not owned); weekly Celery `recompute_ride_segments` (Sun 3:15 UTC, post route-quality).
+- [x] Frontend: `SegmentsCard` in `RouteDetailPanel`'s new Segments tab — category badge, PR time/rides/best-W, expandable leaderboard-of-self rows, recompute button.
+- [x] Unit tests: `tests/test_segments.py` (climb detection flat/sustained/short/split, category bands, window effort coverage/VAM/tolerance).
+- [ ] **Future**: cluster the same climb across *different* routes via a geometry key (start/end snap + bearing) for a route-independent "segments" leaderboard; add `distance` to Strava stream fetch for exact point alignment instead of velocity integration.
 
 ### 3.14 Race-day prep PDF (S) ✅ Done
 ReportLab generator exists; one new report wrapping conformity + TSB projection + weather forecast + fuel plan + taper checklist for an event date.
