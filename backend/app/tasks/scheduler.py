@@ -154,6 +154,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.recompute_ride_segments",
         "schedule": crontab(hour=3, minute=15, day_of_week=0),
     },
+    # Backfill cached ride context weekly (§1.3 — Sunday 3:30 AM UTC, post streams/segments)
+    "backfill-activity-context": {
+        "task": "app.tasks.scheduler.backfill_activity_context",
+        "schedule": crontab(hour=3, minute=30, day_of_week=0),
+    },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
@@ -972,6 +977,64 @@ def recompute_ride_segments() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("recompute_ride_segments", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.backfill_activity_context")
+def backfill_activity_context() -> dict:
+    """Precompute cached ride context (§1.3) for cycling activities that have
+    streams but no `context` yet — rows predating the sync-time compute, or
+    activities whose streams were backfilled later. Idempotent (skips rows
+    that already have context).
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity
+
+    async def _run():
+        from app.services.activity_context import ensure_activity_contexts_by_id
+
+        async with task_session() as db:
+            result = await db.execute(
+                select(Activity.user_id)
+                .where(
+                    Activity.sport_type == "cycling",
+                    Activity.context.is_(None),
+                )
+                .distinct()
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            total_stored = 0
+            done = 0
+            for user_id in user_ids:
+                try:
+                    ids_result = await db.execute(
+                        select(Activity.id).where(
+                            Activity.user_id == user_id,
+                            Activity.sport_type == "cycling",
+                            Activity.context.is_(None),
+                        )
+                    )
+                    ids = [r for (r,) in ids_result.all()]
+                    total_stored += await ensure_activity_contexts_by_id(db, ids)
+                    await db.commit()
+                    done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Context backfill failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "users_processed": done,
+                "contexts_stored": total_stored,
+            }
+
+    return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.auto_estimate_ftp_weekly")

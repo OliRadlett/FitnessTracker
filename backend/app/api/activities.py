@@ -993,6 +993,12 @@ async def get_activity_context(
     """
     from app.models.llm_analysis import LlmAnalysis
     from app.models.nutrition import RideFuelPlan
+    from app.services.activity_context import (
+        compute_top_speed,
+        context_to_ride_metrics,
+        ride_context_from_analysis,
+        should_recompute_for_ftp,
+    )
     from app.services.cycling import (
         compute_training_load,
         get_daily_tss,
@@ -1175,53 +1181,32 @@ async def get_activity_context(
                 "sleep_efficiency": sleep.sleep_efficiency,
             }
 
-    # ── 3. Ride metrics (cycling only, lazy computation) ───────────────────
+    # ── 3+4. Ride metrics + load context (cycling only) ────────────────────
     ride_metrics = None
-    if activity.sport_type == "cycling":
-        analysis = await analyze_ride(db, current_user.id, activity_id)
-        if analysis is not None:
-            # Map the analysis dict to RideMetricsRead fields
-            power_zones = analysis.get("power_zones", [])
-            decoupling = analysis.get("decoupling")
-            climbing = analysis.get("climbing_analysis")
-            tss_bd = analysis.get("tss_breakdown", {})
-
-            # Top speed — check velocity stream
-            top_speed_kmh = await _compute_top_speed(db, activity_id)
-
-            ride_metrics = {
-                "power_zones": [
-                    {
-                        "zone_name": z.get("zone_name", ""),
-                        "zone_label": z.get("zone_label", ""),
-                        "seconds": z.get("seconds", 0),
-                        "pct": z.get("pct", 0),
-                    }
-                    for z in power_zones
-                ],
-                "normalized_power": analysis.get("normalized_power"),
-                "intensity_factor": analysis.get("intensity_factor"),
-                "variability_index": analysis.get("variability_index"),
-                "efficiency_factor": analysis.get("efficiency_factor"),
-                "vam": analysis.get("vam"),
-                "decoupling_pct": decoupling.get("decoupling_pct")
-                if decoupling
-                else None,
-                "decoupling_class": decoupling.get("classification")
-                if decoupling
-                else None,
-                "tss": tss_bd.get("total_tss") if tss_bd else activity.tss,
-                "tss_per_hour": tss_bd.get("tss_per_hour") if tss_bd else None,
-                "climbing_meters": climbing.get("total_climbing_m")
-                if climbing
-                else None,
-                "top_speed_kmh": top_speed_kmh,
-            }
-
-    # ── 4. Training load context (ATL/CTL/TSB on activity date) ─────────────
     load_context = None
     if activity.sport_type == "cycling":
         profile = await get_or_create_cycling_profile(db, current_user.id)
+        # §1.3: serve the sync-time-precomputed ride context (zones, decoupling,
+        # climbing, top speed, TSS breakdown). Power zones depend on FTP, so if
+        # the profile FTP moved since the cache was written we recompute rather
+        # than serve stale zones. Top speed/decoupling/climbing never go stale.
+        if not should_recompute_for_ftp(activity.context, profile.ftp_watts):
+            ride_metrics = context_to_ride_metrics(activity.context)
+        else:
+            analysis = await analyze_ride(db, current_user.id, activity_id)
+            if analysis is not None:
+                ctx = ride_context_from_analysis(
+                    analysis,
+                    await compute_top_speed(db, activity_id),
+                    profile.ftp_watts,
+                    activity.tss,
+                )
+                ride_metrics = context_to_ride_metrics(ctx)
+
+        # ── 4. Training load context (ATL/CTL/TSB on activity date) ─────────
+        # Deliberately computed on demand (never cached): it is a moving 90-day
+        # window that shifts with every new ride, so a stored copy would go
+        # stale immediately.
         if profile.ftp_watts:
             lookback = 90
             end_date = activity_date
@@ -1306,24 +1291,3 @@ async def get_activity_streams(
     )
     streams = list(result.scalars().all())
     return [ActivityStreamRead.model_validate(s) for s in streams]
-
-
-async def _compute_top_speed(db: AsyncSession, activity_id: uuid.UUID) -> float | None:
-    """Compute max velocity in km/h from the activity's velocity stream(s)."""
-    result = await db.execute(
-        select(ActivityStream).where(
-            ActivityStream.activity_id == activity_id,
-            ActivityStream.stream_type.in_(
-                ["velocity", "velocity_smooth", "enhanced_speed"]
-            ),
-        )
-    )
-    stream = result.scalar_one_or_none()
-    if stream is None:
-        return None
-    raw = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-    values = [float(v) for v in raw if v is not None]
-    if not values:
-        return None
-    max_mps = max(values)
-    return round(max_mps * 3.6, 1)

@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). Unstarted §0.2, §1.1–1.4, §3.16 remaining sub-items.
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). Unstarted §0.2, §1.1–1.2, §1.4, §3.16 remaining sub-items, and §3.17 (website changelog — lowest priority).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -44,10 +44,10 @@ Fully specced in `plans/roadmap-2026-08.md`, zero code exists (no `LiftVideo`, n
 Deferred pending performance testing in Phase 8A. Bulk-list activity enrichment (zones, decoupling, load position, linked route/session summaries) without N+1.
 - [ ] Profile the current list endpoint, then add the include-context path with eager-loaded relations and a single summary-fetch pass.
 
-### 1.3 Post-sync background activity analysis (M)
+### 1.3 Post-sync background activity analysis (M) ✅ (2026-09-08)
 AGENTS.md "Planned/Incomplete": a Celery task that computes activity context (zone time, decoupling, load position, effort metrics) **at sync time** instead of on-demand chart reads.
-- [ ] New `compute_activity_context(activity_id)` service + hook into Strava/Wahoo sync; store on `Activity` or `ActivitySource` (`context` JSONB).
-- [ ] Long-term: makes list views/detail instant without per-call computation.
+- [x] New `compute_activity_context(activity_id)` service + hook into Strava/Wahoo sync; store on `Activity` or `ActivitySource` (`context` JSONB). — **Done**: `services/activity_context.py` computes the **immutable** ride analytics (power-zone seconds, decoupling, climbing, top speed, TSS breakdown) once at Strava sync and stream-backfill into `Activity.context` (JSONB, migration 046). Pure mapping fns (`ride_context_from_analysis`/`context_to_ride_metrics`) + FTP-staleness check (`should_recompute_for_ftp` — power zones recompute if `profile.ftp_watts` moved); `ensure_activity_contexts*` best-effort (sync never fails on context). `GET /{activity_id}/context` serves the cache (falls back to on-demand `analyze_ride` when stale/missing); `_compute_top_speed` moved from the API into the service.
+- [x] Long-term: makes list views/detail instant without per-call computation. — Read path avoids `analyze_ride` + stream reads on cache hits. **Deliberate exception**: load position (ATL/CTL/TSB) stays computed on demand — it is a moving 90-day window that shifts with every new ride, so a stored copy would be stale immediately. Weekly `backfill_activity_context` (Sun 3:30 AM UTC) heals pre-feature rows and any sync-time compute gaps.
 
 ### 1.4 Deferred bug backlog (mostly architecture, do with care)
 | Ref | Item | Evidence | Effort | Risk |
@@ -180,6 +180,13 @@ Add a 3D terrain-aware viewport for rides and routes — a "relive your ride" fl
 - [ ] **3D comparison (stretch)** — extend the existing `CompareActivitiesModal`/`CompareRoutesModal` flow so the two picked rides can be replayed side-by-side in 3D with synced telemetry. **Deferred**.
 
 **Dependencies/links**: activity streams fetch endpoint (`api/activities.py`), route polylines (`RouteMap`/`ElevationProfile`), stream-overlay compare (§8A), ride segments (§3.13). Add a skill note if it becomes a repeatable pattern (like `add-chart`).
+
+### 3.17 Website changelog — "What's new" log of major changes (P3, **lowest priority**)
+A changelist area on the website showing major changes/releases, so a returning user can see what's new without reading the repo docs.
+- [ ] `/changelog` page (or accordion on an existing low-traffic page e.g. `/wiki` or Settings) listing releases/versions with a title + short bullets — **major** changes only (per-feature, not commits).
+- [ ] Static data source — a versioned frontend data file (e.g. `lib/changelog.ts` exporting entries `{ version, date, title, bullets[] }`), rendered by a shared `Changelog` component. No backend model/API needed (single-user app; doc-driving code keeps it DRY).
+- [ ] Nav/footer link; entries added as features ship (keep a small convention note in AGENTS.md or the plan so it doesn't rot).
+- **Deliberately static**: P3 because any dynamic (per-user/Admin) version would need a backend + auth surface for ~zero benefit at this scale.
 
 ---
 

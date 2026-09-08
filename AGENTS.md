@@ -124,6 +124,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
 | `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs for all cycling routes |
+| `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
 | `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
@@ -214,7 +215,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
 - **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. Phase B (`?include_context=true` bulk list enrichment) deferred to after performance testing.
-- **Background activity analysis**: Post-sync task to precompute activity context (zones, decoupling, load position) at sync time — future work
+- **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
 - **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). Phases 2-4: calendar planner integration, social popularity, full E2E tests.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
 - **3D visualisations (§3.16)**: Ride-replay MVP done (three.js `Replay3D` + `lib/replay`). 3D route view (needs DEM terrain tiles) and side-by-side 3D comparison deferred — see the plan
