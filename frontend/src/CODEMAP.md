@@ -123,7 +123,9 @@
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
 | `RouteHistorySection` | Ride history table with personal best summary |
 | `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
-| `CompareRoutesModal` | Side-by-side route comparison with overlaid elevation profiles |
+| `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
+| `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
+| `VirtualRouteList` | Virtualised list fallback for route browse (perf, no map) |
 
 ### `maps/` — Map components
 | Component | Purpose |
@@ -131,6 +133,8 @@
 | `RouteMap` | Leaflet map with route polyline, start/end markers, isLoop indicator |
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
+
+### `activities/` — Activity page components
 | Component | Purpose |
 |-----------|---------|
 | `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
@@ -138,12 +142,6 @@
 | `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 selected activities |
 | `Replay3D` | **§3.16 3D fly-through** — three.js scene (speed-coloured path, growing ridden trail, rider marker, orbit/zoom, play/scrub/1·4·8×) fed by `buildReplay()` from `lib/replay`; lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG power/HR overlay with synced playhead. Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`) |
 | `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
-
-### `routes/` — Route page components
-| Component | Purpose |
-|-----------|---------|
-| `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
-| `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
 
 ### `calendar/` — Calendar page components
 | Component | Purpose |
