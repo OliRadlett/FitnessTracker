@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
+import { HealthAlertSettings } from '@/components/settings/HealthAlertSettings';
 import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
@@ -788,6 +789,9 @@ export default function SettingsPage() {
       {/* Notifications */}
       <NotificationSettings />
       <WebPushCard />
+
+      {/* Health alerts */}
+      <HealthAlertSettings />
 
       {/* Data & account */}
       <DataPortabilityCard />

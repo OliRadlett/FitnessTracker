@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** started — §3.14 Race-day prep PDF done (unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11–3.13, 3.15–3.16).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C shipped to `prod`; **Phase D (platform)** done (§3.6 unit & locale preferences, §3.7 PWA core, §3.8 Web Push, §3.9 JSON export + account deletion, §3.10 onboarding — all on `main`, unshipped) except §3.7 Live Lift offline mode; **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done (both unshipped). Unstarted §0.2, §1.1–1.4, rest of Part 3 (3.11, 3.13, 3.15–3.16).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -141,10 +141,10 @@ Conformity (5C), readiness, deficiency, projections, health analysis are all com
 - [ ] Backend: `services/adaptive.py` producing a "shift" recommendation per week (volume/intensity/rest) from conformity deviations + TSB trajectory + deficiency priorities + recovery state.
 - [ ] Frontend: suggestion card in `WeeklyView` with one-tap "apply" to plan days.
 
-### 3.12 Alert tuning + new alert signals (M)
+### 3.12 Alert tuning + new alert signals (M) ✅ Done (2026-09-08)
 Signal thresholds/weights are hardcoded in `health_analysis.py`; no user control; `performance_decline` alert type is declared-but-unimplemented; sleep consistency and resting-HR trend are computed but never scored.
-- [ ] Per-user override table (`user_preferences` JSONB): severity thresholds, weight overrides, snooze (per type + global quiet hours).
-- [ ] Implement `performance_decline` (FTP/VO2max drop vs history) + sleep-consistency + resting-HR-elevation signals.
+- [x] Per-user preferences (`User.health_preferences` JSONB): **disabled** alert types (all 9 — composite + regeneration + legacy), **snooze** until a date per type, and per-signal **threshold overrides** (merged over defaults). Scheduler + on-demand analyze both honor them.
+- [x] Implement `performance_decline` (FTP drop vs history, needs ≥4 FtpHistory rows), `sleep_consistency` (nightly-duration `pstdev` over last 7 days, needs ≥3 nights), `resting_hr_elevation` (recent-3 vs 30-day baseline, needs ≥5 readings).
 - [x] **Fix: legacy threshold alerts (`hrv_drop`, `sleep_decline`, `respiratory_rate_elevated` in scheduler) insert `HealthAlert` rows without `notify()`** — inconsistent with the composite path (`health_analysis.py:748-762`). Add notify. (Done in Phase B — daily-deduped `health_alert` notifications added to all three legacy blocks.)
 
 ### 3.13 Ride segment analysis (L)

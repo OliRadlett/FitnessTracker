@@ -28,6 +28,14 @@ class User(Base):
     # "locale": "en-GB"|"en-US", "time_format": "24h"|"12h"}.
     # NULL means defaults (services fall back).
     preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Per-user health-alert tuning (§3.12), e.g.
+    # {"disabled": ["resting_hr_elevation"],
+    #  "snoozed": {"overtraining": "2026-09-15"},
+    #  "thresholds": {"performance_decline": {"drop_pct": 8},
+    #                 "sleep_consistency": {"stddev_min": 60},
+    #                 "resting_hr_elevation": {"bpm": 5}}}.
+    # NULL means defaults (signals run with built-in thresholds).
+    health_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

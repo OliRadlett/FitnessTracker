@@ -6,6 +6,7 @@ weighted risk scores that produce actionable health alerts.
 
 import logging
 import math
+import statistics
 import uuid
 from datetime import date, timedelta
 
@@ -13,10 +14,12 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
+from app.models.cycling import FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.health_alert import HealthAlert
 from app.models.lifting import LiftingSession
 from app.models.sleep import SleepLog
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -772,3 +775,390 @@ async def upsert_alert(
         metadata={"alert_type": analysis["alert_type"]},
     )
     return True
+
+
+# ── §3.12 Alert tuning — new signals + per-user preferences ─────────────────
+
+# Known alert types, including the legacy hrv_drop / sleep_decline /
+# respiratory_rate_elevated checks that run in the scheduler.
+HEALTH_ALERT_TYPES: list[str] = [
+    "overtraining",
+    "injury_risk",
+    "illness",
+    "performance_decline",
+    "sleep_consistency",
+    "resting_hr_elevation",
+    "hrv_drop",
+    "sleep_decline",
+    "respiratory_rate_elevated",
+]
+
+# Default threshold specs for the three §3.12 signals. User overrides merge
+# over these per field.
+DEFAULT_HEALTH_THRESHOLDS: dict[str, dict] = {
+    "performance_decline": {"drop_pct": 8.0, "critical_pct": 15.0},
+    "sleep_consistency": {"stddev_min": 60.0, "critical_stddev_min": 120.0},
+    "resting_hr_elevation": {"bpm": 5.0, "critical_bpm": 8.0},
+}
+
+
+def get_health_preferences(user: User) -> dict:
+    """Return the effective health-alert prefs (disabled list, snoozes, thresholds)."""
+    stored = user.health_preferences or {}
+    disabled = [t for t in (stored.get("disabled") or []) if t in HEALTH_ALERT_TYPES]
+    snoozed = {
+        k: str(v)[:10]
+        for k, v in (stored.get("snoozed") or {}).items()
+        if k in HEALTH_ALERT_TYPES and v
+    }
+    thresholds: dict[str, dict] = {}
+    for t, spec in DEFAULT_HEALTH_THRESHOLDS.items():
+        thresholds[t] = {
+            **spec,
+            **((stored.get("thresholds") or {}).get(t) or {}),
+        }
+    return {
+        "disabled": disabled,
+        "snoozed": snoozed,
+        "thresholds": thresholds,
+        "signal_types": HEALTH_ALERT_TYPES,
+    }
+
+
+async def set_health_preferences(
+    db: AsyncSession,
+    user: User,
+    updates: dict,
+) -> dict:
+    """Apply partial health-alert preference updates and return effective prefs."""
+    stored = user.health_preferences or {}
+
+    if updates.get("disabled") is not None:
+        stored["disabled"] = [t for t in updates["disabled"] if t in HEALTH_ALERT_TYPES]
+
+    if updates.get("snoozed") is not None:
+        snoozed: dict[str, str] = {}
+        for k, v in (updates["snoozed"] or {}).items():
+            if k not in HEALTH_ALERT_TYPES or not v:
+                continue
+            try:
+                iso = str(v)[:10]
+                date.fromisoformat(iso)
+                snoozed[k] = iso
+            except ValueError:
+                continue
+        stored["snoozed"] = snoozed
+
+    if updates.get("thresholds") is not None:
+        known: dict[str, dict] = {}
+        for t, spec in (updates["thresholds"] or {}).items():
+            if t not in DEFAULT_HEALTH_THRESHOLDS or not isinstance(spec, dict):
+                continue
+            clean: dict[str, float] = {}
+            for k in (
+                "drop_pct",
+                "critical_pct",
+                "stddev_min",
+                "critical_stddev_min",
+                "bpm",
+                "critical_bpm",
+            ):
+                if k in spec and spec[k] is not None:
+                    try:
+                        val = float(spec[k])
+                        if val >= 0:
+                            clean[k] = val
+                    except (TypeError, ValueError):
+                        continue
+            if clean:
+                known[t] = clean
+        stored["thresholds"] = {
+            **(stored.get("thresholds") or {}),
+            **known,
+        }
+
+    user.health_preferences = stored
+    await db.flush()
+    return get_health_preferences(user)
+
+
+async def _analyze_performance_decline(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    cfg: dict,
+) -> dict:
+    """FTP drop vs recent history → performance decline signal.
+
+    Compares the mean of the two most recent ``FtpHistory`` entries against the
+    two before them. Needs ≥4 history rows.
+    """
+    today = date.today()
+    result = await db.execute(
+        select(FtpHistory)
+        .where(
+            FtpHistory.user_id == user_id,
+            FtpHistory.effective_date <= today,
+        )
+        .order_by(FtpHistory.effective_date.desc())
+        .limit(6)
+    )
+    entries = list(result.scalars().all())[::-1]  # chronological
+
+    def _none(reason: str) -> dict:
+        return {
+            "alert_type": "performance_decline",
+            "severity": "none",
+            "title": "Performance Decline",
+            "description": reason,
+            "score": 0.0,
+            "evidence": {"required_history_points": 4, "found": len(entries)},
+        }
+
+    if len(entries) < 4:
+        return _none(
+            f"Not enough FTP history yet — need at least 4 records (found {len(entries)})."
+        )
+
+    recent_avg = round(sum(e.ftp_watts for e in entries[-2:]) / 2, 1)
+    baseline_avg = round(sum(e.ftp_watts for e in entries[-4:-2]) / 2, 1)
+    if baseline_avg <= 0:
+        return _none("FTP baseline is unavailable.")
+
+    drop_pct = (baseline_avg - recent_avg) / baseline_avg * 100.0
+    if drop_pct >= cfg["critical_pct"]:
+        severity = "critical"
+    elif drop_pct >= cfg["drop_pct"]:
+        severity = "warning"
+    else:
+        severity = "none"
+
+    return {
+        "alert_type": "performance_decline",
+        "severity": severity,
+        "title": "Performance Decline Detected",
+        "description": (
+            f"Your FTP has dropped {drop_pct:.0f}% vs recent history "
+            f"({recent_avg:.0f} W vs {baseline_avg:.0f} W baseline). "
+            "Consider whether fatigue or illness is driving the drop."
+            if severity != "none"
+            else f"FTP holding steady ({recent_avg:.0f} W vs {baseline_avg:.0f} W baseline)."
+        ),
+        "score": round(min(max(drop_pct, 0.0), 100.0), 1),
+        "evidence": {
+            "recent_avg_watts": recent_avg,
+            "baseline_avg_watts": baseline_avg,
+            "drop_pct": round(max(drop_pct, 0.0), 1),
+            "recent_dates": [e.effective_date.isoformat() for e in entries[-2:]],
+            "baseline_dates": [e.effective_date.isoformat() for e in entries[-4:-2]],
+            "threshold": cfg["drop_pct"],
+        },
+    }
+
+
+async def _analyze_sleep_consistency(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    cfg: dict,
+) -> dict:
+    """Nightly sleep-duration variability → consistency signal."""
+    today = date.today()
+    result = await db.execute(
+        select(SleepLog)
+        .where(
+            SleepLog.user_id == user_id,
+            SleepLog.sleep_date >= today - timedelta(days=7),
+        )
+        .order_by(SleepLog.sleep_date)
+    )
+    logs = list(result.scalars().all())
+    durations_min = [
+        round(s.effective_total_sleep_seconds / 60, 1)
+        for s in logs
+        if s.effective_total_sleep_seconds
+    ]
+
+    def _none(reason: str) -> dict:
+        return {
+            "alert_type": "sleep_consistency",
+            "severity": "none",
+            "title": "Sleep Consistency",
+            "description": reason,
+            "score": 0.0,
+            "evidence": {"nights": len(durations_min), "required_nights": 3},
+        }
+
+    if len(durations_min) < 3:
+        return _none(
+            f"Not enough sleep data — need at least 3 nights in the last 7 days "
+            f"(found {len(durations_min)})."
+        )
+
+    sd_min = round(statistics.pstdev(durations_min), 1)
+    mean_min = round(sum(durations_min) / len(durations_min), 1)
+
+    if sd_min >= cfg["critical_stddev_min"]:
+        severity = "critical"
+    elif sd_min >= cfg["stddev_min"]:
+        severity = "warning"
+    else:
+        severity = "none"
+
+    return {
+        "alert_type": "sleep_consistency",
+        "severity": severity,
+        "title": "Irregular Sleep Pattern",
+        "description": (
+            f"Sleep duration varies by {sd_min:.0f} min across the last "
+            f"{len(durations_min)} nights (avg {mean_min:.0f} min). Highly "
+            "variable sleep is linked to fatigue and slower recovery."
+            if severity != "none"
+            else f"Sleep duration is consistent (σ {sd_min:.0f} min over "
+            f"{len(durations_min)} nights, avg {mean_min:.0f} min)."
+        ),
+        "score": round(min(max(sd_min, 0.0), 100.0), 1),
+        "evidence": {
+            "stddev_min": sd_min,
+            "mean_min": mean_min,
+            "range_min": round(max(durations_min) - min(durations_min), 1),
+            "nights": len(durations_min),
+            "threshold_stddev_min": cfg["stddev_min"],
+        },
+    }
+
+
+async def _analyze_resting_hr_elevation(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    cfg: dict,
+) -> dict:
+    """Resting HR elevation vs 30-day baseline → recovery/stress signal."""
+    today = date.today()
+    baseline_result = await db.execute(
+        select(DailyMetric.resting_hr, DailyMetric.metric_date)
+        .where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.resting_hr.isnot(None),
+            DailyMetric.metric_date >= today - timedelta(days=30),
+        )
+        .order_by(DailyMetric.metric_date)
+    )
+    rows = list(baseline_result.all())
+    if len(rows) < 5:
+        return {
+            "alert_type": "resting_hr_elevation",
+            "severity": "none",
+            "title": "Resting Heart Rate",
+            "description": (
+                f"Not enough resting-HR data — need at least 5 readings in the "
+                f"last 30 days (found {len(rows)})."
+            ),
+            "score": 0.0,
+            "evidence": {"readings_30d": len(rows), "required": 5},
+        }
+
+    # Recent = most recent 3 readings; baseline = the rest.
+    recent = [r[0] for r in rows[-3:]]
+    baseline = [r[0] for r in rows[:-3]]
+    recent_avg = round(sum(recent) / len(recent), 1)
+    baseline_avg = round(sum(baseline) / len(baseline), 1)
+    elevation = round(recent_avg - baseline_avg, 1)
+
+    if elevation >= cfg["critical_bpm"]:
+        severity = "critical"
+    elif elevation >= cfg["bpm"]:
+        severity = "warning"
+    else:
+        severity = "none"
+
+    return {
+        "alert_type": "resting_hr_elevation",
+        "severity": severity,
+        "title": "Resting Heart Rate Elevated",
+        "description": (
+            f"Resting HR is {elevation:+.0f} bpm vs your 30-day baseline "
+            f"({recent_avg:.0f} vs {baseline_avg:.0f} bpm). Elevated resting HR "
+            "can signal insufficient recovery or mounting stress."
+            if severity != "none"
+            else f"Resting HR stable ({recent_avg:.0f} vs baseline {baseline_avg:.0f} bpm)."
+        ),
+        "score": round(min(max(elevation, 0.0), 20.0) * 5, 1),
+        "evidence": {
+            "recent_bpm": recent_avg,
+            "baseline_bpm": baseline_avg,
+            "elevation_bpm": elevation,
+            "recent_days": [r[1].isoformat() for r in rows[-3:]],
+            "threshold_bpm": cfg["bpm"],
+        },
+    }
+
+
+async def analyze_regeneration_signals(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[dict]:
+    """Run the three §3.12 regeneration signals for a user, honoring prefs.
+
+    Returns a list of analysis dicts (one per signal type). Severity ``none``
+    means no alert should be created (clear, disabled, or snoozed). Never
+    raises for signal computation errors — those are logged and downgraded.
+    """
+    user = await db.get(User, user_id)
+    stored = user.health_preferences if user else {}
+    stored = stored or {}
+    disabled = set(stored.get("disabled") or [])
+    snoozed = stored.get("snoozed") or {}
+    user_thresholds = stored.get("thresholds") or {}
+    today = date.today()
+
+    signal_fn = [
+        ("performance_decline", _analyze_performance_decline),
+        ("sleep_consistency", _analyze_sleep_consistency),
+        ("resting_hr_elevation", _analyze_resting_hr_elevation),
+    ]
+
+    signals: list[dict] = []
+    for signal_type, fn in signal_fn:
+        if signal_type in disabled:
+            signals.append(
+                {
+                    "alert_type": signal_type,
+                    "severity": "none",
+                    "title": "Disabled",
+                    "description": "Disabled in health alert preferences.",
+                    "score": 0.0,
+                    "evidence": {"disabled": True},
+                }
+            )
+            continue
+        snooze_until = snoozed.get(signal_type)
+        if snooze_until:
+            try:
+                if today < date.fromisoformat(str(snooze_until)[:10]):
+                    signals.append(
+                        {
+                            "alert_type": signal_type,
+                            "severity": "none",
+                            "title": "Snoozed",
+                            "description": f"Snoozed until {snooze_until}.",
+                            "score": 0.0,
+                            "evidence": {"snoozed_until": str(snooze_until)[:10]},
+                        }
+                    )
+                    continue
+            except ValueError:
+                pass
+        cfg = {
+            **DEFAULT_HEALTH_THRESHOLDS.get(signal_type, {}),
+            **(user_thresholds.get(signal_type) or {}),
+        }
+        try:
+            result = await fn(db, user_id, cfg)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(
+                "health_analysis %s failed for user %s: %s", signal_type, user_id, e
+            )
+            continue
+        if result is not None:
+            signals.append(result)
+
+    return signals

@@ -91,3 +91,28 @@ export interface HealthAnalysisResult {
   };
   error?: string;
 }
+
+export interface HealthPreferences {
+  disabled: string[];
+  snoozed: Record<string, string>;
+  thresholds: Record<string, { [field: string]: number }>;
+  signal_types: string[];
+}
+
+export interface HealthPreferencesUpdate {
+  disabled?: string[] | null;
+  snoozed?: Record<string, string> | null;
+  thresholds?: Record<string, { [field: string]: number }> | null;
+}
+
+export const HEALTH_SIGNAL_LABELS: Record<string, { label: string; description: string }> = {
+  overtraining: { label: 'Overtraining risk', description: 'TSB + recovery + HRV + sleep efficiency' },
+  injury_risk: { label: 'Injury risk', description: 'Volume spikes and insufficient rest days' },
+  illness: { label: 'Illness risk', description: 'Respiratory rate, HRV and sleep deterioration' },
+  performance_decline: { label: 'Performance decline', description: 'FTP drop vs your recent history' },
+  sleep_consistency: { label: 'Sleep consistency', description: 'Night-to-night variability in sleep duration' },
+  resting_hr_elevation: { label: 'Resting HR elevation', description: 'Resting HR above your 30-day baseline' },
+  hrv_drop: { label: 'HRV drop', description: '7-day HRV decline (legacy threshold)' },
+  sleep_decline: { label: 'Sleep decline', description: '7-day sleep drop (legacy threshold)' },
+  respiratory_rate_elevated: { label: 'Respiratory rate elevated', description: 'Elevated resting respiratory rate (legacy threshold)' },
+};

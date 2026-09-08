@@ -180,6 +180,7 @@
 |-----------|---------|
 | `ExerciseManager` | Exercise library management — search, add custom exercises with aliases, view all exercises by category. Rendered on `/settings` page |
 | `NotificationSettings` | Per-type notification toggles (health alerts / PRs / goal milestones / plan reminders) — `['notification-preferences']` query, PATCH on toggle. Rendered on `/settings` page |
+| `HealthAlertSettings` | **§3.12 Health-alert tuning card** — per-signal enable toggle, snooze (3/7/14/30 days), and threshold inputs for the new performance-decline / sleep-consistency / resting-HR signals (persist via `GET/PUT /metrics/health-preferences`). Rendered on `/settings` page |
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
@@ -197,6 +198,7 @@
 | `utils.ts` | `formatDuration`, `formatDistance`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
 | `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |
+| `healthPrefs.ts` | **§3.12 Health-alert preferences client** — `getHealthPreferences` / `updateHealthPreferences` (`GET/PUT /metrics/health-preferences`; types + `HEALTH_SIGNAL_LABELS` in `lib/api/types/health.ts`). Used by `settings/HealthAlertSettings` |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic

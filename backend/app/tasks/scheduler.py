@@ -492,6 +492,7 @@ def generate_health_alerts() -> dict:
         analyze_illness,
         analyze_injury_risk,
         analyze_overtraining,
+        analyze_regeneration_signals,
         upsert_alert,
     )
     from app.services.notifications import notify
@@ -504,18 +505,34 @@ def generate_health_alerts() -> dict:
 
             for user in users:
                 try:
+                    # §3.12 alert tuning — user-disabled alert types are skipped.
+                    disabled_set = set(
+                        (user.health_preferences or {}).get("disabled") or []
+                    )
+
                     # ── Composite analysis (Phase 6) ──────────────────────────
-                    overtraining = await analyze_overtraining(db, user.id)
-                    if await upsert_alert(db, user.id, overtraining):
-                        alerts_created += 1
+                    if "overtraining" not in disabled_set:
+                        overtraining = await analyze_overtraining(db, user.id)
+                        if await upsert_alert(db, user.id, overtraining):
+                            alerts_created += 1
 
-                    injury = await analyze_injury_risk(db, user.id)
-                    if await upsert_alert(db, user.id, injury):
-                        alerts_created += 1
+                    if "injury_risk" not in disabled_set:
+                        injury = await analyze_injury_risk(db, user.id)
+                        if await upsert_alert(db, user.id, injury):
+                            alerts_created += 1
 
-                    illness = await analyze_illness(db, user.id)
-                    if await upsert_alert(db, user.id, illness):
-                        alerts_created += 1
+                    if "illness" not in disabled_set:
+                        illness = await analyze_illness(db, user.id)
+                        if await upsert_alert(db, user.id, illness):
+                            alerts_created += 1
+
+                    # ── §3.12 regeneration signals ───────────────────────────
+                    # performance_decline, sleep_consistency,
+                    # resting_hr_elevation — respect per-user health preferences
+                    # (disabled / snoozed / threshold overrides).
+                    for reg in await analyze_regeneration_signals(db, user.id):
+                        if await upsert_alert(db, user.id, reg):
+                            alerts_created += 1
 
                     # ── Simple threshold checks (legacy) ──────────────────────
                     cutoff = date.today() - timedelta(days=7)
@@ -532,7 +549,7 @@ def generate_health_alerts() -> dict:
                     if len(metrics) >= 3:
                         # HRV decline (>20% drop from average)
                         hrv_values = [m.hrv_ms for m in metrics if m.hrv_ms]
-                        if len(hrv_values) >= 3:
+                        if len(hrv_values) >= 3 and "hrv_drop" not in disabled_set:
                             avg_hrv = sum(hrv_values) / len(hrv_values)
                             recent_hrv = hrv_values[0]
                             if recent_hrv < avg_hrv * 0.8:
@@ -576,7 +593,10 @@ def generate_health_alerts() -> dict:
                             for m in metrics
                             if m.sleep_duration_minutes
                         ]
-                        if len(sleep_values) >= 3:
+                        if (
+                            len(sleep_values) >= 3
+                            and "sleep_decline" not in disabled_set
+                        ):
                             avg_sleep = sum(sleep_values) / len(sleep_values)
                             recent_sleep = sleep_values[0]
                             if recent_sleep < avg_sleep * 0.75:
@@ -633,7 +653,10 @@ def generate_health_alerts() -> dict:
                                 for m in metrics
                                 if m.respiratory_rate
                             ]
-                            if recent_rr_values:
+                            if (
+                                recent_rr_values
+                                and "respiratory_rate_elevated" not in disabled_set
+                            ):
                                 current_rr = recent_rr_values[0]
                                 if current_rr > baseline_rr * 1.1:
                                     existing = await db.execute(

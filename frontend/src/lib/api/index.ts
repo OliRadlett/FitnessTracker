@@ -16,3 +16,4 @@ export * from './weight';
 export * from './search';
 export * from './preferences';
 export * from './account';
+export * from './healthPrefs';

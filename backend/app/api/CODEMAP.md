@@ -18,7 +18,7 @@
 | `events.py` | `/events/` | Event CRUD with countdown/taper info, `upcoming_only` filter, `PUT/DELETE /{id}/result` (race retro → notifies `event_result`, deduped per event), `GET/POST /{id}/ai-analysis` |
 | `workout_planner.py` | `/workout-planner/` | `GET /zones`, `POST /plan`, `POST /match-routes` — intensity zones, workout targets, route matching |
 | `search.py` | `/search/` | Global ⌘P command-palette lookup — ILIKE across activities, routes, lifting sessions, exercises, goals, events; per-domain results with deep-link ids |
-| `metrics.py` | `/metrics/` | Health metrics CRUD, health analysis, `GET/POST /health-ai-analysis` |
+| `metrics.py` | `/metrics/` | Health metrics CRUD, health analysis (`POST /health-alerts/analyze` — composite + regeneration signals, honors disabled prefs), `GET/PUT /health-preferences` (§3.12), `GET/POST /health-ai-analysis`, `GET /readiness` |
 | `deficiency.py` | `/deficiency/` | `GET /` (`weeks` query, 4–26) — weakness analysis: strength standards, Big-3 ratios, push/pull balance, VO2max/FTP mismatch, decoupling, zone distribution |
 | `nutrition.py` | `/nutrition/` | Ride fuel plans: `POST /fuel-plan` (generate from activity_id or planned_duration_min/planned_if), `GET/PATCH/DELETE /fuel-plan/{id}` (PATCH logs actuals), `GET /fuel-plan/activity/{activity_id}` — endpoint has error logging; actuals clearing (empty string → null) supported; regenerate/delete UI on frontend |
 | `notifications.py` | `/notifications/` | In-app notifications: `GET /` (limit, unread_only), `PATCH /{id}/read`, `POST /read-all`, `GET/PATCH /preferences` (per-type toggles). Rows created by `services/notifications.notify()` from health alerts, PRs, goal milestones, plan reminders |
