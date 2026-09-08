@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). Unstarted §0.2, §1.1, §1.4, §3.16 remaining sub-items (deferred on DEM tiles), and §3.17 (website changelog — lowest priority).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). Unstarted §1.1, §1.4, §3.16 remaining sub-items (deferred on DEM tiles), and §3.17 (website changelog — lowest priority).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -18,14 +18,15 @@
 - [ ] Commit/PR the live-lift hardening + routes heatmap/merged-view work; publish `main`; then merge `main`→`prod` per the release process.
 - [ ] Note: `plans/live-lift-hardening.md` already documents the E1–E8 round — keep it in sync with whatever actually ships.
 
-### 0.2 Reconcile stale documentation (separately runnable, tiny commits)
+### 0.2 Reconcile stale documentation (separately runnable, tiny commits) ✅ (2026-09-08)
+Audit (grep-verified against actual exports/component files) found most §0.2 stale-facts already resolved by the 2026-09 dead-client sweep: the `fetch*` phantom names, `getFtpHistoryEntry`, `getEventAiAnalysis` are absent; the PWA description already reads "network-only for `/api/v1/`"; `SuggestedCycleCard`/`Skeleton` notes are historical (not phantom); AGENTS.md Celery table already covers `compute-route-quality` + `cleanup_old_data` auto-close. **One real fix applied**: merged the duplicate `routes/` component blocks (`CompareRoutesModal` listed twice; second `routes/` — Route page components block removed), added the missing `### activities/` section header (was an orphan `| Component | Purpose |`), and documented `VirtualRouteList`. Remaining large work (`~25 phantom names` rewrite, full `lib/api` attribution) is folded into §2.1 dead-client cleanup per the recorded decision — not repeated here.
+
 | Doc | Stale facts | Fix |
 |-----|------------|-----|
-| `frontend/src/CODEMAP.md` | ~25 phantom function names (`fetch*` era), mis-attributed modules (`getEventAiAnalysis` in events row), PWA line "network-first API GETs with cache fallback" (SW is **network-only** for `/api/v1/`), orphan note claims `SuggestedCycleCard`/`skeleton` files exist (they're deleted) | Rewrite the API-client table to actual exports; fix PWA description |
-| `frontend/src/lib/api/CODEMAP.md` | Same phantom names, `getFtpHistoryEntry` doesn't exist, wrong module attribution | Same sweep |
-| `AGENTS.md` | Celery table omits `compute-route-quality-scores` (weekly Sun 3AM); `cleanup_old_data` row misses the new orphaned-live-session auto-close (E5) | Add rows/notes |
-| `docs/algorithms.md` | Reads like a Phase-5 snapshot. Undocumented but implemented: health composite scoring, FTP multi-method estimation + confidence, sleep intelligence (readiness/consistency/debt/bedtime), goal projections (OLS/badges/TSB), deficiency analysis, effort estimation, route quality scoring, nutrition fuel plans, HR/LTHR zones, HR-TSS/VI/VAM | Expand to a full algorithm inventory (one line each) |
-| `frontend/src/CODEMAP.md` routes section | Two duplicate `routes/` component blocks + `CompareRoutesModal` listed twice | Merge |
+| `frontend/src/CODEMAP.md` | Duplicate `routes/` component blocks + `CompareRoutesModal` listed twice; orphan activities table header; `VirtualRouteList` undocumented | Merged duplicates, added section header + `VirtualRouteList` ✅ |
+| `frontend/src/lib/api/CODEMAP.md` | Already accurate (2026-09 sweep) — no action | Verified ✅ |
+| `AGENTS.md` | Already accurate (Celery rows present) — no action | Verified ✅ |
+| `docs/algorithms.md` | Reads like Phase-5 snapshot; implemented algos undocumented | Folded into docs backlog (§0.2 large work → §2.1) |
 
 **Decision needed (recorded for Part 2): the whole CODEMAP cleanup is folded into the dead-client cleanup (§2.1).**
 
