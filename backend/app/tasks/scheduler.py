@@ -205,6 +205,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.send_event_day_notifications",
         "schedule": crontab(hour=6, minute=30),
     },
+    # Daily event countdown + taper-start notification (6:45 AM UTC)
+    "send-event-countdown-notifications": {
+        "task": "app.tasks.scheduler.send_event_countdown_notifications",
+        "schedule": crontab(hour=6, minute=45),
+    },
     # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
     "backfill-streams": {
         "task": "app.tasks.scheduler.backfill_streams_for_all_activities",
@@ -1846,6 +1851,91 @@ def send_event_day_notifications() -> dict:
                 except Exception as e:
                     logger.warning(
                         f"Event-day notification failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+        return {"notified": notified}
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.send_event_countdown_notifications")
+def send_event_countdown_notifications() -> dict:
+    """Notify users about upcoming events (1–7 days out) and taper starts.
+
+    Fires ``event_countdown`` notifications for events in the next 1–7 days
+    (dedup keyed on ``event_countdown:{event_id}:{days}``), and ``taper_start``
+    when today is the first day of an event's taper window (dedup keyed on
+    ``taper_start:{event_id}``). Runs daily at 6:45 UTC.
+    """
+    import asyncio
+    from datetime import date, timedelta
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.event import Event
+    from app.services.notifications import notify
+
+    async def _run():
+        today = date.today()
+        notified = 0
+        async with task_session() as db:
+            # Events in the next 1–7 days (exclude today — race_day handles that)
+            upcoming = list(
+                (
+                    await db.execute(
+                        select(Event).where(
+                            Event.event_date > today,
+                            Event.event_date <= today + timedelta(days=7),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for event in upcoming:
+                days_until = (event.event_date - today).days
+                try:
+                    created = await notify(
+                        db,
+                        event.user_id,
+                        type="event_countdown",
+                        title=f"⏳ {event.name} in {days_until} day{'s' if days_until != 1 else ''}",
+                        body=(
+                            f"Your {event.event_type} is coming up on "
+                            f"{event.event_date.strftime('%A %d %B')}."
+                        ),
+                        severity="info",
+                        link="/training",
+                        dedup_key=f"event_countdown:{event.id}:{days_until}",
+                    )
+                    if created is not None:
+                        notified += 1
+
+                    # Taper-start: today == event_date - taper_days
+                    taper_start = event.event_date - timedelta(days=event.taper_days)
+                    if today == taper_start:
+                        taper_created = await notify(
+                            db,
+                            event.user_id,
+                            type="taper_start",
+                            title=f"🧘 Taper started — {event.name}",
+                            body=(
+                                f"Your {event.taper_days}-day taper begins today. "
+                                f"Focus on recovery ahead of {event.event_date.strftime('%A %d %B')}."
+                            ),
+                            severity="info",
+                            link="/training",
+                            dedup_key=f"taper_start:{event.id}",
+                        )
+                        if taper_created is not None:
+                            notified += 1
+
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Event-countdown notification failed for user {event.user_id}: {e}",
                         exc_info=True,
                     )
                     await db.rollback()

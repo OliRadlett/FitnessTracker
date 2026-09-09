@@ -8,7 +8,9 @@ export type NotificationType =
   | 'connection_reauth'
   | 'ftp_stale'
   | 'event_result'
-  | 'race_day';
+  | 'race_day'
+  | 'event_countdown'
+  | 'taper_start';
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 export interface AppNotification {
@@ -32,6 +34,8 @@ export interface NotificationPreferences {
   ftp_stale: boolean;
   event_result: boolean;
   race_day: boolean;
+  event_countdown: boolean;
+  taper_start: boolean;
 }
 
 export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;

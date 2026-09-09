@@ -22,6 +22,8 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "ftp_stale": True,
     "event_result": True,
     "race_day": True,
+    "event_countdown": True,
+    "taper_start": True,
 }
 
 
