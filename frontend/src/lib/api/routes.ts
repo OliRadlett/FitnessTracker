@@ -7,6 +7,8 @@ import type {
   DuplicatePair,
   MergedRouteView,
   HomeAreaHeatmapResponse,
+  RouteCollection,
+  RouteCollectionCreate,
 } from './types';
 
 export async function getRoutes(
@@ -102,6 +104,19 @@ export async function getHomeAreaHeatmap(
   return apiFetch<HomeAreaHeatmapResponse>(
     `/api/v1/routes/heatmap/home`,
     {},
+    token,
+  );
+}
+
+// ─── Collections ──────────────────────────────────────────────────────────────
+
+export async function createCollectionFromFilters(
+  payload: RouteCollectionCreate,
+  token?: string,
+): Promise<RouteCollection> {
+  return apiFetch<RouteCollection>(
+    '/api/v1/routes/collections/from-filters',
+    { method: 'POST', body: JSON.stringify(payload) },
     token,
   );
 }

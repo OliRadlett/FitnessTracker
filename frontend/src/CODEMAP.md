@@ -117,7 +117,7 @@
 | Component | Purpose |
 |-----------|---------|
 | `RoutesSidebar` | Collapsible tag/collection tree with smart collections, tag chips, drag-drop support |
-| `RouteFilterBar` | Unified filter bar with search, sort, advanced filters (distance, elevation, surface, quality, favorite), keyboard shortcuts |
+| `RouteFilterBar` | Unified filter bar with search, sort, advanced filters (distance, elevation, surface, quality, favorite), keyboard shortcuts, **"Save as Collection" button** (serializes active filters → smart collection via `POST /collections/from-filters`) |
 | `RoutesMapView` | Map-first browse with custom markers showing quality scores, popups with route info. Heatmap toggle shows activity density around home area |
 | `RoutesListView` | Card-based list with route stats, difficulty badges, provider icons |
 | `RoutesGridView` | Grid of route cards for visual/mobile browsing, touch-friendly |
