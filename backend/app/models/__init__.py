@@ -2,6 +2,7 @@ from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.cycling import CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
+from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.health_alert import HealthAlert
 from app.models.lifting import (
@@ -39,6 +40,7 @@ __all__ = [
     "CyclingProfile",
     "DailyMetric",
     "Event",
+    "Exercise",
     "FtpHistory",
     "Goal",
     "HealthAlert",

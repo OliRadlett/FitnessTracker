@@ -217,14 +217,15 @@ def best_power_rolling_average(
     for v in power_data:
         # advance running prefix sum
         prefix += v
-        # drop the value leaving the window, if full
+        # drop the value leaving the window, once it is full
         if filled == duration_sec:
             prefix -= window[head]
         window[head] = v
         head = (head + 1) % duration_sec
         if filled < duration_sec:
             filled += 1
-        else:
+        # evaluate the window once it is full (and on every later slide)
+        if filled == duration_sec:
             best_sum = max(best_sum, prefix)
     return round(best_sum / duration_sec, 1)
 

@@ -56,8 +56,8 @@ async def test_json_export_includes_collections(
 @pytest.mark.asyncio
 async def test_account_delete_confirmation_mismatch(client) -> None:
     """Deleting with the wrong confirmation email is rejected."""
-    r = await client.delete(
-        "/api/v1/account/delete", json={"confirm_email": "wrong@example.com"}
+    r = await client.request(
+        "DELETE", "/api/v1/account/delete", json={"confirm_email": "wrong@example.com"}
     )
     assert r.status_code == 422
 
@@ -66,8 +66,8 @@ async def test_account_delete_confirmation_mismatch(client) -> None:
 async def test_account_delete_cascades(client, db_session, test_user) -> None:
     """Deleting the account removes the user and cascade-linked data."""
     # Confirm there is data to delete
-    r = await client.delete(
-        "/api/v1/account/delete", json={"confirm_email": test_user.email}
+    r = await client.request(
+        "DELETE", "/api/v1/account/delete", json={"confirm_email": test_user.email}
     )
     assert r.status_code == 200
     assert r.json()["deleted"] is True

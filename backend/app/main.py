@@ -235,9 +235,7 @@ app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(
     notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
 )
-app.include_router(
-    preferences_router, prefix="/api/v1/user/preferences", tags=["preferences"]
-)
+app.include_router(preferences_router, prefix="/api/v1/user", tags=["preferences"])
 app.include_router(push_router, prefix="/api/v1/push", tags=["push"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])
