@@ -11,6 +11,7 @@ export const changelog: ChangelogEntry[] = [
     date: '2026-09-09',
     title: 'Strength Videos + Route Polish',
     bullets: [
+      '3D route terrain (3.16) — drape any route over a real Copernicus DEM heightmap in three.js; colour the path by elevation or gradient, orbit/zoom/pan, toggle from the route Map & Profile tab',
       'Strength video system — record or link YouTube/Vimeo videos to lifting sessions and PRs; Video Bank page with exercise/date/source filters',
       'Mobile route detail — tapping a route on mobile now opens a slide-up bottom sheet instead of doing nothing',
       'Save filters as smart collection — the routes filter bar now has a "Save as Collection" button that creates a reusable smart collection from your active filters',
