@@ -2,6 +2,56 @@
 
 import type { LinkedActivity } from './activity';
 
+// ─── Strength Videos (§1.1) ──────────────────────────────────────────────────
+
+export type VideoSource = 'upload' | 'url';
+
+export interface LiftVideo {
+  id: string;
+  user_id: string;
+  source: VideoSource;
+  external_url?: string | null;
+  r2_key?: string | null;
+  file_name?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  duration_seconds?: number | null;
+  exercise_name?: string | null;
+  lifting_session_id?: string | null;
+  personal_record_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoUploadRequest {
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+export interface VideoUploadResponse {
+  upload_url: string;
+  key: string;
+  fields: Record<string, string>;
+}
+
+export interface VideoStreamUrl {
+  url: string;
+  mode: 'embed' | 'direct';
+}
+
+export interface LiftVideoListParams {
+  source?: VideoSource;
+  exercise_name?: string;
+  lifting_session_id?: string;
+  personal_record_id?: string;
+  after?: string;
+  before?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface LiftingSession {
   id: string;
   user_id: string;

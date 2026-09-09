@@ -287,6 +287,10 @@ class LiftVideoListParams(BaseModel):
 
     source: str | None = None  # "upload" | "url"
     exercise_name: str | None = None
+    lifting_session_id: uuid.UUID | None = None
+    personal_record_id: uuid.UUID | None = None
+    after: date | None = None  # filter created_at >= after
+    before: date | None = None  # filter created_at <= before
     limit: int = 50
     offset: int = 0
 

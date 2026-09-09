@@ -6,6 +6,11 @@ import type {
   CreateSessionPayload,
   UpdateSessionPayload,
   WarmupTemplate,
+  LiftVideo,
+  VideoUploadRequest,
+  VideoUploadResponse,
+  VideoStreamUrl,
+  LiftVideoListParams,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -64,4 +69,60 @@ export async function getPersonalRecords(authFetch: AuthFetch): Promise<Personal
 export async function getWarmupTemplates(authFetch: AuthFetch, exerciseName?: string): Promise<WarmupTemplate[]> {
   const query = exerciseName ? `?exercise_name=${encodeURIComponent(exerciseName)}` : '';
   return authFetch<WarmupTemplate[]>(`/api/v1/lifting/warmup-templates${query}`);
+}
+
+// ─── Strength Videos (§1.1) ─────────────────────────────────────────────────────
+
+export async function getLiftVideos(
+  authFetch: AuthFetch,
+  params?: LiftVideoListParams,
+): Promise<LiftVideo[]> {
+  const query = new URLSearchParams();
+  if (params?.source) query.set('source', params.source);
+  if (params?.exercise_name) query.set('exercise_name', params.exercise_name);
+  if (params?.lifting_session_id) query.set('lifting_session_id', params.lifting_session_id);
+  if (params?.personal_record_id) query.set('personal_record_id', params.personal_record_id);
+  if (params?.after) query.set('after', params.after);
+  if (params?.before) query.set('before', params.before);
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.offset) query.set('offset', String(params.offset));
+  const qs = query.toString();
+  return authFetch<LiftVideo[]>(`/api/v1/lifting/videos${qs ? `?${qs}` : ''}`);
+}
+
+export async function getLiftVideo(authFetch: AuthFetch, videoId: string): Promise<LiftVideo> {
+  return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`);
+}
+
+export async function createLiftVideo(
+  authFetch: AuthFetch,
+  payload: Omit<LiftVideo, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
+): Promise<LiftVideo> {
+  return authFetch<LiftVideo>('/api/v1/lifting/videos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getVideoUploadUrl(
+  authFetch: AuthFetch,
+  payload: VideoUploadRequest,
+): Promise<VideoUploadResponse> {
+  return authFetch<VideoUploadResponse>('/api/v1/lifting/videos/upload-url', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getVideoStreamUrl(
+  authFetch: AuthFetch,
+  videoId: string,
+): Promise<VideoStreamUrl> {
+  return authFetch<VideoStreamUrl>(`/api/v1/lifting/videos/${videoId}/stream-url`);
+}
+
+export async function deleteLiftVideo(authFetch: AuthFetch, videoId: string): Promise<LiftVideo> {
+  return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`, {
+    method: 'DELETE',
+  });
 }

@@ -14,6 +14,7 @@ const navItems = [
   { href: '/health', label: 'Health', icon: '🩺' },
   { href: '/lifting', label: 'Lifting', icon: '🏋️' },
   { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
+  { href: '/lifting/videos', label: 'Videos', icon: '📹' },
   { href: '/goals', label: 'Goals', icon: '🎯' },
   { href: '/routes', label: 'Routes', icon: '🗺️' },
   { href: '/wiki', label: 'Wiki', icon: '📖' },
