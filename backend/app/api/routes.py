@@ -63,7 +63,8 @@ from app.schemas.route import (
     RouteUpdate,
 )
 from app.schemas.segment import SegmentRead, SegmentRecomputeResponse
-from app.services import route_service, segment_service
+from app.services import route_service
+from app.services import segments as segment_service
 from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx

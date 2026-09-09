@@ -254,3 +254,67 @@ class LiftingAnalysisResponse(BaseModel):
     session_density: float | None  # kg per minute
     exercise_count: int
     working_sets_count: int
+
+
+# ── Strength videos (§1.1) ─────────────────────────────────────────────────────
+
+
+class VideoUploadRequest(BaseModel):
+    """Request a presigned PUT URL for a new video upload."""
+
+    file_name: str
+    content_type: str
+    size_bytes: int
+
+
+class VideoUploadResponse(BaseModel):
+    """Presigned PUT URL + object key returned by /upload-url."""
+
+    upload_url: str
+    key: str
+    fields: dict
+
+
+class VideoStreamUrl(BaseModel):
+    """Resolved playback URL for a video."""
+
+    url: str
+    mode: str  # "embed" (external_url) | "direct" (R2 presigned GET)
+
+
+class LiftVideoListParams(BaseModel):
+    """Query params for listing a user's strength videos."""
+
+    source: str | None = None  # "upload" | "url"
+    exercise_name: str | None = None
+    limit: int = 50
+    offset: int = 0
+
+    model_config = {"from_attributes": False}
+
+
+class LiftVideoBase(BaseModel):
+    source: str
+    external_url: str | None = None
+    r2_key: str | None = None
+    file_name: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    duration_seconds: int | None = None
+    exercise_name: str | None = None
+    lifting_session_id: uuid.UUID | None = None
+    personal_record_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class LiftVideoCreate(LiftVideoBase):
+    pass
+
+
+class LiftVideoRead(LiftVideoBase):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

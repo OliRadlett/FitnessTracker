@@ -21,6 +21,9 @@ class TestPreferencesService:
         assert prefs.time_format == "24h"
 
     async def test_partial_update_merges(self, db_session, test_user):
+        from sqlalchemy import select
+
+        from app.models.user import User
         from app.services.preferences import get_preferences, set_preferences
 
         updated = await set_preferences(
@@ -29,8 +32,12 @@ class TestPreferencesService:
         assert updated.unit_system == "imperial"
         assert updated.locale == "en-GB"  # untouched default preserved
 
-        db_session.expire_all()
-        prefs = get_preferences(test_user)
+        # Re-fetch the user asynchronously (the async session can't auto-refresh
+        # an expired attribute synchronously — that raises MissingGreenlet).
+        persisted = (
+            await db_session.execute(select(User).where(User.id == test_user.id))
+        ).scalar_one()
+        prefs = get_preferences(persisted)
         assert prefs.unit_system == "imperial"
         assert prefs.time_format == "24h"
 

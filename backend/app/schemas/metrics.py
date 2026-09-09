@@ -1,6 +1,6 @@
 """Schemas for metrics endpoints (readiness, sleep intelligence, weight, health alerts)."""
 
-from datetime import date
+from datetime import date as date_type
 
 from pydantic import BaseModel, Field
 
@@ -10,9 +10,7 @@ WEIGHT_MAX_KG = 300
 
 
 class WeightEntryCreate(BaseModel):
-    date: date | None = Field(
-        None, description="Log date — defaults to today when omitted"
-    )
+    date: date_type | None = None
     weight_kg: float = Field(..., ge=WEIGHT_MIN_KG, le=WEIGHT_MAX_KG)
 
 

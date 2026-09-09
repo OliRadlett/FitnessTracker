@@ -28,11 +28,11 @@ class TestGlobalSearch:
         assert "Summer Century Ride" in names
 
     async def test_finds_route_by_name(self, client, test_route):
-        resp = await client.get("/api/v1/search?q=test")
+        resp = await client.get("/api/v1/search?q=richmond")
         assert resp.status_code == 200
         data = resp.json()
         names = [r["name"] for r in data["routes"]]
-        assert any("test" in r_name.lower() for r_name in names)
+        assert any("richmond" in r_name.lower() for r_name in names)
 
     async def test_no_match_returns_empty_groups(self, client):
         resp = await client.get("/api/v1/search?q=zzzz_not_a_real_query")

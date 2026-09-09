@@ -441,7 +441,7 @@ async def analyze_injury_risk(
     }
 
     activity_week = func.greatest(
-        (cast(today, Date) - Activity.start_date - 1) / 7, 0
+        (cast(today, Date) - cast(Activity.start_date, Date) - 1) / 7, 0
     ).label("week_idx")
     result = await db.execute(
         select(activity_week, func.count(Activity.id))

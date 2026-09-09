@@ -212,6 +212,7 @@ from app.api.routes import router as routes_router
 from app.api.search import router as search_router
 from app.api.segments import router as segments_router
 from app.api.training_plans import router as training_plans_router
+from app.api.videos import router as videos_router
 from app.api.weather import router as weather_router
 from app.api.webhooks import router as webhooks_router
 from app.api.workout_planner import router as workout_planner_router
@@ -223,6 +224,9 @@ app.include_router(
 )
 app.include_router(activities_router, prefix="/api/v1/activities", tags=["activities"])
 app.include_router(lifting_router, prefix="/api/v1/lifting", tags=["lifting"])
+app.include_router(
+    videos_router, prefix="/api/v1/lifting/videos", tags=["lifting-videos"]
+)
 app.include_router(charts_router, prefix="/api/v1/charts", tags=["charts"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
@@ -235,9 +239,7 @@ app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(
     notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
 )
-app.include_router(
-    preferences_router, prefix="/api/v1/user/preferences", tags=["preferences"]
-)
+app.include_router(preferences_router, prefix="/api/v1/user", tags=["preferences"])
 app.include_router(push_router, prefix="/api/v1/push", tags=["push"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])

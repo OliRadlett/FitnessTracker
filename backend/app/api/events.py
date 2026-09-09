@@ -161,7 +161,7 @@ async def set_event_result(
         current_user.id,
         "event_result",
         title=f"Result logged — {event.name}",
-        message=_format_result_summary(event.name, payload),
+        body=_format_result_summary(event.name, payload),
         link="/training?tab=races",
         dedup_key=f"event_result:{event.id}",
     )

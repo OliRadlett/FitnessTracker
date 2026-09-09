@@ -127,8 +127,79 @@ def derive_adaptive_advice(
     axes: list[dict] = []
     suggestions: list[dict] = []
 
+    # ── Recovery — the strongest single rest signal ────────────────────────
+    # Recovery gating overrides the raw TSB load axis: when recovery is low the
+    # headline advice is a rest day, so the recovery "rest" axis leads (axes[0])
+    # and the intensity axis is suppressed to avoid two conflicting load stances.
+    recovery_low = recovery is not None and recovery < RECOVERY_LOW
+    if recovery_low:
+        axes.append(
+            {
+                "key": "recovery",
+                "title": "Recovery",
+                "stance": "rest",
+                "severity": "warning",
+                "guidance": (
+                    f"Latest recovery is {recovery:.0f}/100 — below the {RECOVERY_LOW:.0f} "
+                    "threshold. Consider swapping the next training day for rest."
+                ),
+            }
+        )
+        suggestions.append(
+            {
+                "type": "rest_day",
+                "title": "Swap in a rest day",
+                "detail": "Turn the next non-rest session into a rest day so recovery can catch up.",
+                "severity": "warning",
+                "actions": [],
+            }
+        )
+
+    # ── Plan conformity ────────────────────────────────────────────────────
+    # Low conformity ("plan too ambitious") leads with an "ease" headline axis;
+    # full+stable conformity leads with a "build" headline axis. Both prepend so
+    # the dominant signal is axes[0].
+    conformity_low = conformity_pct is not None and conformity_pct < CONFORMITY_EASY_LOW
+    full_conformity = (
+        conformity_pct is not None
+        and conformity_pct >= CONFORMITY_FULL_HIGH
+        and conformity_trend != "declining"
+    )
+    if conformity_low:
+        axes.append(
+            {
+                "key": "conformity",
+                "title": "Plan vs actual",
+                "stance": "ease",
+                "severity": "warning",
+                "guidance": (
+                    f"Only {conformity_pct:.0f}% of planned sessions matched targets "
+                    f"({conformity_classification or 'deviation'}). The plan is writing cheques "
+                    "your current form can't cash — lower planned intensity to loop back in."
+                ),
+            }
+        )
+    elif full_conformity:
+        axes.append(
+            {
+                "key": "conformity",
+                "title": "Plan vs actual",
+                "stance": "build",
+                "severity": "info",
+                "guidance": (
+                    f"Plan conformity is {conformity_pct:.0f}% — the current load is "
+                    "comfortably absorbed. Add a little progressive overload."
+                ),
+            }
+        )
+
     # ── Load trajectory (fitness vs fatigue) ───────────────────────────────
-    if tsb is not None:
+    # Runs after recovery/conformity so a headline rest/ease/build axis already
+    # occupies axes[0]. The load axis is only added when it adds a distinct
+    # signal: it is suppressed when recovery-low (which already drove "rest") so
+    # the two don't fight, but kept otherwise to back the cut/maintain/raise
+    # suggestions.
+    if tsb is not None and not recovery_low:
         stance, _factor, reasons = _decide_intensity(
             tsb, recovery, conformity_pct, conformity_trend
         )
@@ -169,8 +240,10 @@ def derive_adaptive_advice(
                     "severity": "critical"
                     if tsb <= TSB_FATIGUE_THRESHOLD
                     else "warning",
+                    "actions": [],
                 }
             )
+
         else:
             axes.append(
                 {
@@ -193,59 +266,7 @@ def derive_adaptive_advice(
                         f"on the next training days. {reasons[0] if reasons else ''}"
                     ).strip(),
                     "severity": "warning",
-                }
-            )
-
-    # ── Recovery — the strongest single rest signal ────────────────────────
-    if recovery is not None and recovery < RECOVERY_LOW:
-        axes.append(
-            {
-                "key": "recovery",
-                "title": "Recovery",
-                "stance": "rest",
-                "severity": "warning",
-                "guidance": (
-                    f"Latest recovery is {recovery:.0f}/100 — below the {RECOVERY_LOW:.0f} "
-                    "threshold. Consider swapping the next training day for rest."
-                ),
-            }
-        )
-        suggestions.append(
-            {
-                "type": "rest_day",
-                "title": "Swap in a rest day",
-                "detail": "Turn the next non-rest session into a rest day so recovery can catch up.",
-                "severity": "warning",
-            }
-        )
-
-    # ── Plan conformity ────────────────────────────────────────────────────
-    if conformity_pct is not None:
-        if conformity_pct < CONFORMITY_EASY_LOW:
-            axes.append(
-                {
-                    "key": "conformity",
-                    "title": "Plan vs actual",
-                    "stance": "ease",
-                    "severity": "warning",
-                    "guidance": (
-                        f"Only {conformity_pct:.0f}% of planned sessions matched targets "
-                        f"({conformity_classification or 'deviation'}). The plan is writing cheques "
-                        "your current form can't cash — lower planned intensity to loop back in."
-                    ),
-                }
-            )
-        elif conformity_pct >= CONFORMITY_FULL_HIGH and conformity_trend != "declining":
-            axes.append(
-                {
-                    "key": "conformity",
-                    "title": "Plan vs actual",
-                    "stance": "build",
-                    "severity": "info",
-                    "guidance": (
-                        f"Plan conformity is {conformity_pct:.0f}% — the current load is "
-                        "comfortably absorbed. Add a little progressive overload."
-                    ),
+                    "actions": [],
                 }
             )
 
@@ -256,6 +277,7 @@ def derive_adaptive_advice(
                 "title": "Pattern noticed",
                 "detail": pattern,
                 "severity": "info",
+                "actions": [],
             }
         )
 
@@ -280,6 +302,7 @@ def derive_adaptive_advice(
                 "title": "Clear health alerts first",
                 "detail": f"{active_alerts} active alert(s) — review the Health page before this week's plan.",
                 "severity": sev,
+                "actions": [],
             }
         )
 
@@ -291,6 +314,7 @@ def derive_adaptive_advice(
                 "title": "Priority weakness",
                 "detail": top_deficiency,
                 "severity": "info",
+                "actions": [],
             }
         )
 
