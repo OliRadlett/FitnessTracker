@@ -87,7 +87,7 @@ export async function getLiftVideos(
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.offset) query.set('offset', String(params.offset));
   const qs = query.toString();
-  return authFetch<LiftVideo[]>(`/api/v1/lifting/videos${qs ? `?${qs}` : ''}`);
+  return authFetch<LiftVideo[]>(`/api/v1/lifting/videos/${qs ? `?${qs}` : ''}`);
 }
 
 export async function getLiftVideo(authFetch: AuthFetch, videoId: string): Promise<LiftVideo> {
@@ -98,7 +98,7 @@ export async function createLiftVideo(
   authFetch: AuthFetch,
   payload: Omit<LiftVideo, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
 ): Promise<LiftVideo> {
-  return authFetch<LiftVideo>('/api/v1/lifting/videos', {
+  return authFetch<LiftVideo>('/api/v1/lifting/videos/', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
