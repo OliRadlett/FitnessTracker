@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # Strava Webhook
     strava_verify_token: str = "fittrack_strava_webhook"
 
+    # Cloudflare R2 (S3-compatible) for §1.1 strength-video uploads — optional.
+    # When any of these is unset, `_s3_configured()` is False and the upload
+    # endpoints degrade to 501 (URL-only embeds keep working).
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+
     # Google Gemini (for LLM analysis)
     gemini_api_key: str = ""
 

@@ -8,6 +8,7 @@ from app.models.health_alert import HealthAlert
 from app.models.lifting import (
     LiftingSession,
     LiftingSet,
+    LiftVideo,
     PersonalRecord,
     WarmupTemplate,
     WarmupTemplateStep,
@@ -44,6 +45,7 @@ __all__ = [
     "FtpHistory",
     "Goal",
     "HealthAlert",
+    "LiftVideo",
     "LiftingSession",
     "LiftingSet",
     "LlmAnalysis",
