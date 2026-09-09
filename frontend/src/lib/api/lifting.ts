@@ -78,7 +78,6 @@ export async function getLiftVideos(
   params?: LiftVideoListParams,
 ): Promise<LiftVideo[]> {
   const query = new URLSearchParams();
-  if (params?.source) query.set('source', params.source);
   if (params?.exercise_name) query.set('exercise_name', params.exercise_name);
   if (params?.lifting_session_id) query.set('lifting_session_id', params.lifting_session_id);
   if (params?.personal_record_id) query.set('personal_record_id', params.personal_record_id);

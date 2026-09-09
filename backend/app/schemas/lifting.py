@@ -276,16 +276,14 @@ class VideoUploadResponse(BaseModel):
 
 
 class VideoStreamUrl(BaseModel):
-    """Resolved playback URL for a video."""
+    """Presigned GET for playback of an R2-uploaded video."""
 
     url: str
-    mode: str  # "embed" (external_url) | "direct" (R2 presigned GET)
 
 
 class LiftVideoListParams(BaseModel):
     """Query params for listing a user's strength videos."""
 
-    source: str | None = None  # "upload" | "url"
     exercise_name: str | None = None
     lifting_session_id: uuid.UUID | None = None
     personal_record_id: uuid.UUID | None = None
@@ -298,8 +296,6 @@ class LiftVideoListParams(BaseModel):
 
 
 class LiftVideoBase(BaseModel):
-    source: str
-    external_url: str | None = None
     r2_key: str | None = None
     file_name: str | None = None
     content_type: str | None = None
