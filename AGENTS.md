@@ -179,7 +179,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
 8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→040(head)
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
-10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
+10. **fitparse/reportlab/boto3**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
 12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
@@ -212,6 +212,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 
 ## Planned / Incomplete
 
+- **Strength-video R2 uploads** — **fully implemented** (presigned PUT/GET/delete, CORS bootstrap via `python -m app.scripts.r2_bootstrap`, boto3 dep); user must create a Cloudflare R2 bucket + token and populate the `R2_*` env vars. Walkthrough: [`docs/R2_SETUP.md`](docs/R2_SETUP.md). Until then uploads return 501 and URL-only mode keeps working.
 - **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)

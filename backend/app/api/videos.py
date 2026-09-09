@@ -1,12 +1,15 @@
 """Strength video API (§1.1).
 
-Endpoints mounted under `/api/v1/lifting/videos/`. The MVP implements
-**URL-only** mode (externally hosted YouTube/Vimeo embeds) end-to-end.
-Upload-via-R2 is stubbed: `POST /upload-url` returns 501 when Cloudflare R2
-credentials aren't configured, so the feature degrades gracefully and the
-URL-only flow keeps working.
+Endpoints mounted under `/api/v1/lifting/videos/`. Two modes:
+
+- **URL-only**: externally hosted YouTube/Vimeo embeds.
+- **Upload-via-R2**: presigned PUT from the browser into Cloudflare R2, then a
+  `LiftVideo` row referencing the object key. Requires the `R2_*` env vars +
+  a bucket CORS rule (see `docs/R2_SETUP.md`); otherwise upload endpoints
+  degrade to 501 and the URL-only flow keeps working.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,7 +30,12 @@ from app.schemas.lifting import (
 )
 from app.services.auth import get_current_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+ALLOWED_CONTENT_TYPES = {"video/mp4", "video/quicktime", "video/webm"}
 
 
 def _s3_configured() -> bool:
@@ -93,6 +101,14 @@ async def create_video(
             501,
             "R2 storage is not configured — use url mode (external_url) instead",
         )
+    if payload.source == "upload" and (
+        payload.content_type not in ALLOWED_CONTENT_TYPES
+        or not (0 < payload.size_bytes <= MAX_UPLOAD_BYTES)
+    ):
+        raise HTTPException(
+            400,
+            "invalid content_type or size_bytes for upload-mode video",
+        )
 
     video = LiftVideo(
         user_id=current_user.id,
@@ -141,17 +157,30 @@ async def create_upload_url(
 ):
     """Request a Cloudflare R2 presigned PUT URL for uploading a video.
 
+    Server-side size + type validation (mirrors the frontend's own checks) so
+    the issued presign is honoured only for an acceptably-sized video.
     Returns 501 when R2 is not configured (the URL-only flow keeps working).
     """
+    if not (payload.content_type in ALLOWED_CONTENT_TYPES):
+        raise HTTPException(
+            400,
+            f"content_type must be one of: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}",
+        )
+    if not (0 < payload.size_bytes <= MAX_UPLOAD_BYTES):
+        raise HTTPException(
+            400,
+            f"size_bytes must be between 1 and {MAX_UPLOAD_BYTES} "
+            f"({MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+        )
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
     try:
         from app.integrations.r2 import create_presigned_put  # lazy import
-    except ImportError as exc:  # boto3 optional until §1.1 follow-up
+    except ImportError as exc:  # boto3 optional until R2 configured
         raise HTTPException(501, "R2 storage client is not installed") from exc
 
     key = await create_presigned_put(
-        current_user, payload.file_name, payload.content_type, payload.size_bytes
+        current_user.id, payload.file_name, payload.content_type, payload.size_bytes
     )
     return key
 
@@ -185,7 +214,7 @@ async def get_stream_url(
             raise HTTPException(501, "R2 storage is not configured on this instance")
         try:
             from app.integrations.r2 import create_presigned_get  # lazy
-        except ImportError as exc:  # boto3 optional until §1.1 follow-up
+        except ImportError as exc:  # boto3 optional until R2 configured
             raise HTTPException(501, "R2 storage client is not installed") from exc
         url = await create_presigned_get(video.r2_key)
         return VideoStreamUrl(url=url, mode="direct")
@@ -201,7 +230,12 @@ async def delete_video(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a strength video (owner only)."""
+    """Delete a strength video (owner only).
+
+    Upload-mode videos also delete their R2 object (best-effort — if the
+    object delete fails, the DB row is still removed and the error logged, so
+    a stale row can never orphan the UI; a later sweep can reclaim the file).
+    """
     video = (
         await db.execute(
             select(LiftVideo).where(
@@ -211,6 +245,15 @@ async def delete_video(
     ).scalar_one_or_none()
     if video is None:
         raise HTTPException(404, "Video not found")
+
+    if video.source == "upload" and video.r2_key and _s3_configured():
+        try:
+            from app.integrations.r2 import delete_object
+
+            await delete_object(video.r2_key)
+        except Exception as e:  # never fail the delete on R2 errors
+            logger.warning("Failed to delete R2 object %s: %s", video.r2_key, e)
+
     await db.delete(video)
     await db.commit()
     return video
