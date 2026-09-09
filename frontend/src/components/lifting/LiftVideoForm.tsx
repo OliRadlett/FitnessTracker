@@ -27,8 +27,6 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [sourceMode, setSourceMode] = useState<'url' | 'upload'>('url');
-  const [externalUrl, setExternalUrl] = useState('');
   const [exerciseName, setExerciseName] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -38,8 +36,6 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
 
   useEffect(() => {
     if (open) {
-      setSourceMode('url');
-      setExternalUrl('');
       setExerciseName('');
       setNotes('');
       setSessionId('');
@@ -79,60 +75,51 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     e.preventDefault();
 
     const base: Record<string, unknown> = {
-      source: sourceMode,
       exercise_name: exerciseName || null,
       notes: notes || null,
       lifting_session_id: sessionId || null,
       personal_record_id: prId || null,
     };
 
-    if (sourceMode === 'url') {
-      if (!externalUrl) {
-        alert('Please enter a video URL');
-        return;
-      }
-      await createMutation.mutateAsync({ ...base, external_url: externalUrl });
-    } else {
-      if (!file) {
-        alert('Please select a file to upload');
-        return;
-      }
+    if (!file) {
+      alert('Please select a file to upload');
+      return;
+    }
 
-      try {
-        const uploadRes = await getVideoUploadUrl(authFetch, {
-          file_name: file.name,
-          content_type: file.type,
-          size_bytes: file.size,
-        });
+    try {
+      const uploadRes = await getVideoUploadUrl(authFetch, {
+        file_name: file.name,
+        content_type: file.type,
+        size_bytes: file.size,
+      });
 
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.upload.onprogress = (ev) => {
-            if (ev.lengthComputable) {
-              setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-            }
-          };
-          xhr.onload = () => {
-            xhr.status >= 200 && xhr.status < 300
-              ? resolve()
-              : reject(new Error(`Upload failed: ${xhr.status}`));
-          };
-          xhr.onerror = () => reject(new Error('Upload failed'));
-          xhr.open('PUT', uploadRes.upload_url, true);
-          xhr.setRequestHeader('Content-Type', file.type);
-          xhr.send(file);
-        });
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve()
+            : reject(new Error(`Upload failed: ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.open('PUT', uploadRes.upload_url, true);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.send(file);
+      });
 
-        await createMutation.mutateAsync({
-          ...base,
-          r2_key: uploadRes.key,
-          file_name: file.name,
-          content_type: file.type,
-          size_bytes: file.size,
-        });
-      } catch (err: any) {
-        alert(`Upload failed: ${err.message || err}`);
-      }
+      await createMutation.mutateAsync({
+        ...base,
+        r2_key: uploadRes.key,
+        file_name: file.name,
+        content_type: file.type,
+        size_bytes: file.size,
+      });
+    } catch (err: any) {
+      alert(`Upload failed: ${err.message || err}`);
     }
   };
 
@@ -141,68 +128,29 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       <ModalHeader title="Add Strength Video" onClose={onClose} icon="📹" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="sourceMode"
-              checked={sourceMode === 'url'}
-              onChange={() => setSourceMode('url')}
-              className="text-accent"
-            />
-            <span className="text-sm">External URL (YouTube/Vimeo)</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="sourceMode"
-              checked={sourceMode === 'upload'}
-              onChange={() => setSourceMode('upload')}
-              className="text-accent"
-            />
-            <span className="text-sm">Upload video</span>
-          </label>
+        <div>
+          <label className="block text-sm text-muted mb-1">Video file</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_TYPES.join(',')}
+            onChange={handleFileChange}
+            className="w-full text-sm text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-surface-light file:text-white hover:file:bg-surface-light/70"
+          />
+          {file && (
+            <p className="text-xs text-muted mt-1">
+              {file.name} · {(file.size / (1024 * 1024)).toFixed(1)} MB · {TYPE_LABELS[file.type] || file.type}
+            </p>
+          )}
+          {uploadProgress > 0 && (
+            <div className="w-full bg-surface-light rounded-full h-2 mt-2 overflow-hidden">
+              <div
+                className="h-2 bg-accent rounded-full transition-all"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          )}
         </div>
-
-        {sourceMode === 'url' && (
-          <div>
-            <label className="block text-sm text-muted mb-1">Video URL</label>
-            <input
-              type="url"
-              value={externalUrl}
-              onChange={(e) => setExternalUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-              required
-            />
-          </div>
-        )}
-
-        {sourceMode === 'upload' && (
-          <div>
-            <label className="block text-sm text-muted mb-1">Video file</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_TYPES.join(',')}
-              onChange={handleFileChange}
-              className="w-full text-sm text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-surface-light file:text-white hover:file:bg-surface-light/70"
-            />
-            {file && (
-              <p className="text-xs text-muted mt-1">
-                {file.name} · {(file.size / (1024 * 1024)).toFixed(1)} MB · {TYPE_LABELS[file.type] || file.type}
-              </p>
-            )}
-            {uploadProgress > 0 && (
-              <div className="w-full bg-surface-light rounded-full h-2 mt-2 overflow-hidden">
-                <div
-                  className="h-2 bg-accent rounded-full transition-all"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         <div>
           <label className="block text-sm text-muted mb-1">Exercise</label>

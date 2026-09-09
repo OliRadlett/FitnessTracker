@@ -212,7 +212,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 
 ## Planned / Incomplete
 
-- **Strength-video R2 uploads** — **fully implemented** (presigned PUT/GET/delete, CORS bootstrap via `python -m app.scripts.r2_bootstrap`, boto3 dep); user must create a Cloudflare R2 bucket + token and populate the `R2_*` env vars. Walkthrough: [`docs/R2_SETUP.md`](docs/R2_SETUP.md). Until then uploads return 501 and URL-only mode keeps working.
+- **Strength-video R2 uploads** — **fully implemented, R2-only** (presigned PUT/GET/delete, CORS bootstrap via `python -m app.scripts.r2_bootstrap`, boto3 dep; URL/embed mode removed 2026-09-09, migration 048). User must create a Cloudflare R2 bucket + token and populate the `R2_*` env vars. Walkthrough: [`docs/R2_SETUP.md`](docs/R2_SETUP.md). Until then upload endpoints return 501.
 - **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)

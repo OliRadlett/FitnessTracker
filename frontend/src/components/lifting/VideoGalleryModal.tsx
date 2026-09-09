@@ -33,8 +33,6 @@ export function VideoGalleryModal({
                 <span className="font-medium text-white">
                   {video.exercise_name ?? 'Uncategorized'}
                 </span>
-                <span>•</span>
-                <span>{video.source === 'upload' ? 'Uploaded' : 'External'}</span>
                 {video.duration_seconds && (
                   <>
                     <span>•</span>

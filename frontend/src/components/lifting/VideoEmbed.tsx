@@ -4,33 +4,6 @@ import React, { useState, useEffect } from 'react';
 import type { LiftVideo } from '@/lib/api';
 import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
 
-const EMBED_PATTERNS: { match: RegExp; build: (id: string) => string }[] = [
-  {
-    match: /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    build: (id: string) => `https://www.youtube.com/embed/${id}?rel=0`,
-  },
-  {
-    match: /(?:vimeo\.com\/|player\.vimeo\.com\/video\/)([0-9]+)/,
-    build: (id: string) => `https://player.vimeo.com/video/${id}?title=0&byline=0&badge=0`,
-  },
-];
-
-export function getVideoEmbedUrl(url: string): string | null {
-  for (const { match, build } of EMBED_PATTERNS) {
-    const m = url.match(match);
-    if (m) return build(m[1]);
-  }
-  return null;
-}
-
-export function isYouTubeUrl(url: string): boolean {
-  return /youtube\.com|youtu\.be/.test(url);
-}
-
-export function isVimeoUrl(url: string): boolean {
-  return /vimeo\.com/.test(url);
-}
-
 interface VideoEmbedProps {
   video: LiftVideo;
   autoPlay?: boolean;
@@ -58,61 +31,36 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
   };
 
   useEffect(() => {
-    if (video.source === 'upload' && video.r2_key && !streamUrl && !streamError && !loadingStream) {
+    if (video.r2_key && !streamUrl && !streamError && !loadingStream) {
       fetchStreamUrl();
     }
   }, [video, authFetch]);
 
-  const embedUrl =
-    video.source === 'url' && video.external_url ? getVideoEmbedUrl(video.external_url) : null;
-
   return (
     <div className="aspect-video bg-surface-light rounded-lg overflow-hidden relative">
-      {video.source === 'url' && embedUrl ? (
-        <iframe
-          src={embedUrl}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
-          className="w-full h-full border-0"
-          title={video.exercise_name ?? 'Lift video'}
-          allowFullScreen
-        />
-      ) : video.source === 'url' && video.external_url ? (
+      {streamError ? (
         <div className="flex flex-col items-center justify-center h-full gap-3 p-4 text-center">
-          <p className="text-sm text-muted">Unsupported video host.</p>
-          <a
-            href={video.external_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent hover:text-accent-hover text-sm underline break-all"
+          <p className="text-sm text-warning">⚠ {streamError}</p>
+          <button
+            onClick={fetchStreamUrl}
+            className="text-xs px-3 py-1 bg-surface text-muted hover:text-white rounded"
           >
-            {video.external_url}
-          </a>
+            Retry
+          </button>
         </div>
-      ) : video.source === 'upload' ? (
-        streamError ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 p-4 text-center">
-            <p className="text-sm text-warning">⚠ {streamError}</p>
-            <button
-              onClick={fetchStreamUrl}
-              className="text-xs px-3 py-1 bg-surface text-muted hover:text-white rounded"
-            >
-              Retry
-            </button>
-          </div>
-        ) : loadingStream || !streamUrl ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-muted text-sm">Loading video…</div>
-          </div>
-        ) : (
-          <video
-            src={streamUrl}
-            controls
-            className="w-full h-full object-contain"
-            preload="metadata"
-            autoPlay={autoPlay}
-          />
-        )
-      ) : null}
+      ) : loadingStream || !streamUrl ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-muted text-sm">Loading video…</div>
+        </div>
+      ) : (
+        <video
+          src={streamUrl}
+          controls
+          className="w-full h-full object-contain"
+          preload="metadata"
+          autoPlay={autoPlay}
+        />
+      )}
     </div>
   );
 }

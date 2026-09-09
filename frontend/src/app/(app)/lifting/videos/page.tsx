@@ -13,20 +13,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
 
-type SourceFilter = 'all' | 'upload' | 'url';
-
-const SOURCE_TABS: { key: SourceFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'url', label: 'External' },
-  { key: 'upload', label: 'Uploaded' },
-];
-
 export default function VideosPage() {
   usePageTitle('Videos');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [exerciseFilter, setExerciseFilter] = useState('');
   const [afterFilter, setAfterFilter] = useState('');
   const [beforeFilter, setBeforeFilter] = useState('');
@@ -35,13 +26,12 @@ export default function VideosPage() {
 
   const queryParams = new URLSearchParams();
   queryParams.set('limit', '100');
-  if (sourceFilter !== 'all') queryParams.set('source', sourceFilter);
   if (exerciseFilter) queryParams.set('exercise_name', exerciseFilter);
   if (afterFilter) queryParams.set('after', afterFilter);
   if (beforeFilter) queryParams.set('before', beforeFilter);
 
   const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
-    queryKey: ['lift-videos', sourceFilter, exerciseFilter, afterFilter, beforeFilter],
+    queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     staleTime: 30_000,
   });
@@ -67,7 +57,7 @@ export default function VideosPage() {
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const hasFilters = sourceFilter !== 'all' || exerciseFilter || afterFilter || beforeFilter;
+  const hasFilters = exerciseFilter || afterFilter || beforeFilter;
 
   return (
     <div className="space-y-6">
@@ -84,23 +74,6 @@ export default function VideosPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Source tabs */}
-        <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50">
-          {SOURCE_TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setSourceFilter(key)}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sourceFilter === key
-                  ? 'bg-accent/20 text-accent font-medium'
-                  : 'text-muted hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {/* Exercise filter */}
         <input
           type="text"
@@ -130,7 +103,6 @@ export default function VideosPage() {
         {hasFilters && (
           <button
             onClick={() => {
-              setSourceFilter('all');
               setExerciseFilter('');
               setAfterFilter('');
               setBeforeFilter('');
@@ -156,7 +128,7 @@ export default function VideosPage() {
           description={
             hasFilters
               ? 'Try adjusting your filters or add a video.'
-              : 'Add a lift video — paste a YouTube/Vimeo link or upload a recording.'
+              : 'Add a lift video — upload a recording of your set.'
           }
           action={
             !hasFilters
@@ -185,9 +157,7 @@ export default function VideosPage() {
                   <p className="text-sm font-medium text-white truncate max-w-[200px]">
                     {video.exercise_name || 'Uncategorized'}
                   </p>
-                  <Badge variant={video.source === 'upload' ? 'lifting' : 'muted'}>
-                    {video.source === 'upload' ? 'Uploaded' : 'URL'}
-                  </Badge>
+                  <Badge variant="lifting">Uploaded</Badge>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-muted">

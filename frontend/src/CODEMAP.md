@@ -104,10 +104,10 @@
 | `LiveWorkout` | Active-session UI for `/lifting/live` — header (elapsed timer from `started_at` timestamp, volume/sets, count-up since-last-set pill, sync status pill that shows `⟳ N to sync` while sets/deletes are queued locally instead of a false ✓), exercise autocomplete + recent chips, weight/reps steppers (`Stepper`, tap-target ≥44px, configurable step size cycled ±1/2.5/5kg persisted in localStorage; draft-buffer input allows natural typing incl. trailing decimal points, select-all on focus, commit-on-blur), optional RPE dots + warm-up toggle, last-session reference line (`reference.ts` map), set log with double-tap undo, bottom LOG SET button (debounced), inline PR toasts via `detectPr()` (Brzycki e1RM vs stored PRs). Prefill uses `reference.lastSet` (true last logged set, not highest-volume) |
 | `ManualPRForm` | Manual PR entry form |
 | `WarmupTemplateManager` | Warmup template CRUD |
-| `VideoEmbed` | **§1.1** — YouTube/Vimeo embed iframe or R2 `<video>` player; auto-resolves embed URLs from watch/short URLs, retries failed R2 stream loads |
+| `VideoEmbed` | **§1.1** — R2 `<video>` player; resolves a presigned GET via `getVideoStreamUrl`, retries failed loads |
 | `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count |
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
-| `LiftVideoForm` | **§1.1** — Add-strength-video modal: URL mode (YouTube/Vimeo link) or upload mode (R2 presigned PUT with progress bar); exercise autocomplete, optional session/PR linkage |
+| `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage |
 
 ### `health/` — Health-specific
 | Component | Purpose |

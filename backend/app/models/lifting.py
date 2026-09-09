@@ -3,7 +3,6 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
-    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -218,18 +217,13 @@ class WarmupTemplateStep(Base):
 
 
 class LiftVideo(Base):
-    """A strength-form recording for a session/PR.
+    """A strength-form recording for a session/PR, uploaded to R2.
 
-    Two storage modes selected by ``source``:
-    - ``"url"``    : externally hosted (YouTube/Vimeo) embed — ``external_url``.
-    - ``"upload"`` : R2 presigned upload — ``r2_key`` (endpoints 501 without R2
-      creds configured, so the URL-only flow keeps working).
+    Upload-via-R2 only: ``r2_key`` references the object written by the
+    browser presigned PUT. Endpoints 501 without R2 creds configured.
     """
 
     __tablename__ = "lift_videos"
-    __table_args__ = (
-        CheckConstraint("source IN ('upload', 'url')", name="ck_lift_videos_source"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -240,8 +234,6 @@ class LiftVideo(Base):
         nullable=False,
         index=True,
     )
-    source: Mapped[str] = mapped_column(String(20), nullable=False)
-    external_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)

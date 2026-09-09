@@ -1,12 +1,9 @@
 """Strength video API (§1.1).
 
-Endpoints mounted under `/api/v1/lifting/videos/`. Two modes:
-
-- **URL-only**: externally hosted YouTube/Vimeo embeds.
-- **Upload-via-R2**: presigned PUT from the browser into Cloudflare R2, then a
-  `LiftVideo` row referencing the object key. Requires the `R2_*` env vars +
-  a bucket CORS rule (see `docs/R2_SETUP.md`); otherwise upload endpoints
-  degrade to 501 and the URL-only flow keeps working.
+Endpoints mounted under `/api/v1/lifting/videos/`. Upload-via-R2 only:
+presigned PUT from the browser into Cloudflare R2, then a `LiftVideo` row
+referencing the object key. Requires the `R2_*` env vars + a bucket CORS rule
+(see `docs/R2_SETUP.md`); otherwise upload endpoints degrade to 501.
 """
 
 import logging
@@ -57,8 +54,6 @@ async def list_videos(
 ):
     """List the current user's strength videos."""
     stmt = select(LiftVideo).where(LiftVideo.user_id == current_user.id)
-    if params.source:
-        stmt = stmt.where(LiftVideo.source == params.source)
     if params.exercise_name:
         stmt = stmt.where(LiftVideo.exercise_name == params.exercise_name)
     if params.lifting_session_id:
@@ -86,24 +81,17 @@ async def create_video(
 ):
     """Create a strength video (§1.1).
 
-    URL-only mode: provide `external_url` + `source="url"`.
-    Upload mode: provide `r2_key` + metadata (after a successful R2 PUT via
-    `/upload-url`); requires S3 to be configured.
+    Upload mode only: provide `r2_key` + metadata (after a successful R2 PUT
+    via `/upload-url`); requires R2 to be configured.
     """
-    if payload.source not in ("upload", "url"):
-        raise HTTPException(400, "source must be 'upload' or 'url'")
-    if payload.source == "url" and not payload.external_url:
-        raise HTTPException(400, "external_url is required for url-mode videos")
-    if payload.source == "upload" and not payload.r2_key:
-        raise HTTPException(400, "r2_key is required for upload-mode videos")
-    if payload.source == "upload" and not _s3_configured():
-        raise HTTPException(
-            501,
-            "R2 storage is not configured — use url mode (external_url) instead",
-        )
-    if payload.source == "upload" and (
-        payload.content_type not in ALLOWED_CONTENT_TYPES
-        or not (0 < payload.size_bytes <= MAX_UPLOAD_BYTES)
+    if not payload.r2_key:
+        raise HTTPException(400, "r2_key is required")
+    if not payload.file_name or not payload.content_type or not payload.size_bytes:
+        raise HTTPException(400, "file_name, content_type and size_bytes are required")
+    if not _s3_configured():
+        raise HTTPException(501, "R2 storage is not configured on this instance")
+    if payload.content_type not in ALLOWED_CONTENT_TYPES or not (
+        0 < payload.size_bytes <= MAX_UPLOAD_BYTES
     ):
         raise HTTPException(
             400,
@@ -112,8 +100,6 @@ async def create_video(
 
     video = LiftVideo(
         user_id=current_user.id,
-        source=payload.source,
-        external_url=payload.external_url,
         r2_key=payload.r2_key,
         file_name=payload.file_name,
         content_type=payload.content_type,
@@ -191,11 +177,7 @@ async def get_stream_url(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Resolve a URL/PUT key for playback.
-
-    - URL-only videos return their external embed URL (`mode: "embed"`).
-    - Uploaded videos return a presigned GET (R2) when configured, else 501.
-    """
+    """Resolve a presigned GET for playback (R2 must be configured)."""
     video = (
         await db.execute(
             select(LiftVideo).where(
@@ -206,20 +188,16 @@ async def get_stream_url(
     if video is None:
         raise HTTPException(404, "Video not found")
 
-    if video.external_url:
-        return VideoStreamUrl(url=video.external_url, mode="embed")
-
-    if video.r2_key:
-        if not _s3_configured():
-            raise HTTPException(501, "R2 storage is not configured on this instance")
-        try:
-            from app.integrations.r2 import create_presigned_get  # lazy
-        except ImportError as exc:  # boto3 optional until R2 configured
-            raise HTTPException(501, "R2 storage client is not installed") from exc
-        url = await create_presigned_get(video.r2_key)
-        return VideoStreamUrl(url=url, mode="direct")
-
-    raise HTTPException(404, "No playable source for this video")
+    if not video.r2_key:
+        raise HTTPException(404, "No playable source for this video")
+    if not _s3_configured():
+        raise HTTPException(501, "R2 storage is not configured on this instance")
+    try:
+        from app.integrations.r2 import create_presigned_get  # lazy
+    except ImportError as exc:  # boto3 optional until R2 configured
+        raise HTTPException(501, "R2 storage client is not installed") from exc
+    url = await create_presigned_get(video.r2_key)
+    return VideoStreamUrl(url=url)
 
 
 @router.delete(
@@ -232,9 +210,9 @@ async def delete_video(
 ):
     """Delete a strength video (owner only).
 
-    Upload-mode videos also delete their R2 object (best-effort — if the
-    object delete fails, the DB row is still removed and the error logged, so
-    a stale row can never orphan the UI; a later sweep can reclaim the file).
+    Also deletes the R2 object (best-effort — if the object delete fails, the
+    DB row is still removed and the error logged, so a stale row can never
+    orphan the UI; a later sweep can reclaim the file).
     """
     video = (
         await db.execute(
@@ -246,7 +224,7 @@ async def delete_video(
     if video is None:
         raise HTTPException(404, "Video not found")
 
-    if video.source == "upload" and video.r2_key and _s3_configured():
+    if video.r2_key and _s3_configured():
         try:
             from app.integrations.r2 import delete_object
 
