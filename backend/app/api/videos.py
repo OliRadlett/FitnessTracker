@@ -53,6 +53,14 @@ async def list_videos(
         stmt = stmt.where(LiftVideo.source == params.source)
     if params.exercise_name:
         stmt = stmt.where(LiftVideo.exercise_name == params.exercise_name)
+    if params.lifting_session_id:
+        stmt = stmt.where(LiftVideo.lifting_session_id == params.lifting_session_id)
+    if params.personal_record_id:
+        stmt = stmt.where(LiftVideo.personal_record_id == params.personal_record_id)
+    if params.after:
+        stmt = stmt.where(LiftVideo.created_at >= params.after)
+    if params.before:
+        stmt = stmt.where(LiftVideo.created_at <= params.before)
     stmt = (
         stmt.order_by(LiftVideo.created_at.desc())
         .limit(params.limit)

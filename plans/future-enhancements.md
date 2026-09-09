@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). Unstarted §1.1, §1.4, §3.16 remaining sub-items (deferred on DEM tiles), and §3.17 (website changelog — lowest priority).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). **§1.1 Strength video system — done** (backend 2026-09-08, frontend 2026-09-09): `LiftVideo` model (`lift_videos` table, migration 047), `/api/v1/lifting/videos` API (URL-only embeds + R2 presigned upload scaffold, 501 without S3 creds), R2 config in `Settings`. Frontend: `VideoEmbed` component (YouTube/Vimeo iframe + R2 `<video>`), `VideoGalleryModal` (per-session/PR gallery), `LiftVideoForm` (add URL-only or upload with R2 presigned PUT), `/lifting/videos` Video Bank page with source/exercise/date filters, per-session + per-PR video chips on lifting page, sidebar nav item. URL-only mode end-to-end; upload mode degrades gracefully. §1.4 and §3.16 remaining sub-items (deferred on DEM tiles) not done; §3.17 (website changelog — lowest priority).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -34,11 +34,11 @@ Audit (grep-verified against actual exports/component files) found most §0.2 st
 
 ## Part 1 — Already-planned, still open (highest fidelity)
 
-### 1.1 Strength video system — Phase 9 spec (L)
-Fully specced in `plans/roadmap-2026-08.md`, zero code exists (no `LiftVideo`, no R2/S3/presigned anywhere).
-- [ ] Cloudflare R2 presigned PUT (≤250MB, mp4/quicktime/webm), presigned GET stream URLs, `LiftVideo` model (migration 030 design), graceful 501 without S3 creds.
-- [ ] `POST /lifting/videos/upload-url`, `POST /lifting/videos`, `GET /lifting/videos/{id}/stream-url`; URL-only mode (YouTube/Vimeo embed + link cards).
-- [ ] `VideoEmbed` component, per-session + per-PR chips, `/videos` Video Bank page with exercise/date/source filters.
+### 1.1 Strength video system — Phase 9 spec (L) ✅ Done (2026-09-09)
+Backend (2026-09-08): `LiftVideo` model at `backend/app/models/lifting.py` (table `lift_videos`, migration 047), R2 presigned helpers at `backend/app/integrations/r2.py`, API at `backend/app/api/videos.py` mounted under `/api/v1/lifting/videos` (registered in `app/main.py`). Frontend (2026-09-09): `VideoEmbed` (YouTube/Vimeo iframe + R2 `<video>`), `VideoGalleryModal`, `LiftVideoForm` (URL + upload modes), `/lifting/videos` Video Bank page, per-session + per-PR chips on lifting page.
+- [x] Cloudflare R2 presigned PUT (≤250MB, mp4/quicktime/webm), presigned GET stream URLs, `LiftVideo` model (migration 047), graceful 501 without S3 creds.
+- [x] `POST /lifting/videos/upload-url`, `POST /lifting/videos`, `GET /lifting/videos/{id}/stream-url`; URL-only mode (YouTube/Vimeo embed + link cards).
+- [x] `VideoEmbed` component, per-session + per-PR chips, `/lifting/videos` Video Bank page with exercise/date/source filters. — `VideoEmbed` resolves YouTube/Vimeo watch URLs to embed iframes, streams R2 uploads via presigned GET. `VideoChip` + `VideoGalleryModal` on session/PR cards. `LiftVideoForm` modal with URL + upload modes (R2 presigned PUT with XHR progress bar). Video Bank: source tabs, exercise/date range filters, preview modal, per-video delete.
 - **Skips cleanly**: no S3 config → upload returns 501; URL mode still works.
 
 ### 1.2 Activities page Phase B — `?include_context=true` (M) ✅ (2026-09-08)
@@ -182,11 +182,11 @@ Add a 3D terrain-aware viewport for rides and routes — a "relive your ride" fl
 
 **Dependencies/links**: activity streams fetch endpoint (`api/activities.py`), route polylines (`RouteMap`/`ElevationProfile`), stream-overlay compare (§8A), ride segments (§3.13). Add a skill note if it becomes a repeatable pattern (like `add-chart`).
 
-### 3.17 Website changelog — "What's new" log of major changes (P3, **lowest priority**)
+### 3.17 Website changelog — "What's new" log of major changes (P3) ✅ Done (2026-09-09)
 A changelist area on the website showing major changes/releases, so a returning user can see what's new without reading the repo docs.
-- [ ] `/changelog` page (or accordion on an existing low-traffic page e.g. `/wiki` or Settings) listing releases/versions with a title + short bullets — **major** changes only (per-feature, not commits).
-- [ ] Static data source — a versioned frontend data file (e.g. `lib/changelog.ts` exporting entries `{ version, date, title, bullets[] }`), rendered by a shared `Changelog` component. No backend model/API needed (single-user app; doc-driving code keeps it DRY).
-- [ ] Nav/footer link; entries added as features ship (keep a small convention note in AGENTS.md or the plan so it doesn't rot).
+- [x] `/changelog` section on the Wiki page — `Changelog` component renders an accordion of release entries from `lib/changelog.ts` (static data, no backend). Three entries: 2026-09-09 (videos + route polish), 2026-09-08 (analytics + segments + 3D), 2026-09-07 (platform + integrations). Accessible via Wiki sidebar → "What's New".
+- [x] Static data source — `lib/changelog.ts` exports `ChangelogEntry[]` (`{ version, date, title, bullets[] }`), no backend model/API needed.
+- [x] Nav link — Wiki already in sidebar; changelog is section 11 of the Wiki.
 - **Deliberately static**: P3 because any dynamic (per-user/Admin) version would need a backend + auth surface for ~zero benefit at this scale.
 
 ---
@@ -208,6 +208,8 @@ Fields exist with **no chart**: resting HR, respiratory rate, standalone recover
 ### 4.4 Notification type expansion (S–M)
 Natural additions mirror existing features (no new infra): FTP auto-estimate / significant FTP change, connection `needs_reauth`, event countdown + taper-start, bad-weather ride-day alert, weekly summary / streak milestone, deload-started. Each needs the type added to all three lists (`services/notifications.py:13-18`, `models/notification.py:13`, `NotificationBell.tsx`).
 - [x] Added `connection_reauth` (fired from `_mark_reauth` in `services/connection_health.py`) and `ftp_stale` (from `check_stale_ftp`). Both threaded through the 4 sync points (NOTIFICATION_TYPES, DEFAULT_PREFERENCES, schemas, frontend types/Bell/Settings). Event countdown/taper/weather/streak/deload types deferred.
+- [x] Added `event_countdown` (events 1–7 days out, deduped per day) and `taper_start` (first day of event taper window). Both via daily Celery task `send_event_countdown_notifications` (6:45 AM UTC). Threaded through all 4 sync points.
+- [x] Added `ride_weather` (bad-weather alert when rain/storms/high wind forecast for event within 1 day). Uses `CyclingProfile.home_lat/lng` + `CachedWeather` forecast. Severity `warning`. Same Celery task.
 
 ---
 

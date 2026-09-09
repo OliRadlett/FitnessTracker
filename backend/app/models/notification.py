@@ -19,6 +19,9 @@ NOTIFICATION_TYPES = (
     "ftp_stale",
     "event_result",
     "race_day",
+    "event_countdown",
+    "taper_start",
+    "ride_weather",
 )
 
 

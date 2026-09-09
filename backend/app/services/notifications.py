@@ -22,6 +22,9 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "ftp_stale": True,
     "event_result": True,
     "race_day": True,
+    "event_countdown": True,
+    "taper_start": True,
+    "ride_weather": True,
 }
 
 
@@ -57,18 +60,23 @@ async def notify(
     link: str = "",
     dedup_key: str | None = None,
     metadata: dict | None = None,
+    user: User | None = None,
 ) -> Notification | None:
     """Create an in-app notification if the type is enabled and not a duplicate.
 
     Returns the created ``Notification``, or ``None`` when gated by the user's
     preferences or deduped. Does **not** commit — the caller owns the
     transaction (``get_db`` or the Celery task's session).
+
+    Pass ``user`` when the caller already has the ``User`` object loaded to
+    skip the extra ``SELECT`` per notification.
     """
     if type not in DEFAULT_PREFERENCES:
         return None
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    if user is None:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
     if user is None:
         return None
     if not get_notification_preferences(user).get(type, True):

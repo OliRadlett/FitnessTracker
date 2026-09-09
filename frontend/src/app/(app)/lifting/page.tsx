@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch, deleteLiftingSession } from '@/lib/api';
@@ -18,6 +18,7 @@ import type {
   ReadinessResponse,
   LiftingAnalysis,
   DeficiencyResponse,
+  LiftVideo,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
@@ -29,6 +30,8 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
+import { VideoChip } from '@/components/lifting/VideoEmbed';
+import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
@@ -190,6 +193,52 @@ export default function LiftingPage() {
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs'),
     staleTime: 300_000,  // 5 min — PRs change rarely
   });
+
+  const { data: allVideos } = useQuery<LiftVideo[]>({
+    queryKey: ['lift-videos'],
+    queryFn: () => authFetch<LiftVideo[]>('/api/v1/lifting/videos?limit=200'),
+    staleTime: 60_000,
+  });
+
+  const videoBySession = useMemo(
+    () => new Map<string, LiftVideo[]>(),
+    [],
+  );
+  const videoByPR = useMemo(
+    () => new Map<string, LiftVideo[]>(),
+    [],
+  );
+  useEffect(() => {
+    if (!allVideos) return;
+    const bySession = new Map<string, LiftVideo[]>();
+    const byPR = new Map<string, LiftVideo[]>();
+    for (const v of allVideos) {
+      if (v.lifting_session_id) {
+        const arr = bySession.get(v.lifting_session_id) ?? [];
+        arr.push(v);
+        bySession.set(v.lifting_session_id, arr);
+      }
+      if (v.personal_record_id) {
+        const arr = byPR.get(v.personal_record_id) ?? [];
+        arr.push(v);
+        byPR.set(v.personal_record_id, arr);
+      }
+    }
+    videoBySession.clear();
+    for (const [k, v] of bySession) videoBySession.set(k, v);
+    videoByPR.clear();
+    for (const [k, v] of byPR) videoByPR.set(k, v);
+  }, [allVideos, videoBySession, videoByPR]);
+
+  const [videoGalleryOpen, setVideoGalleryOpen] = useState(false);
+  const [videoGalleryVideos, setVideoGalleryVideos] = useState<LiftVideo[]>([]);
+  const [videoGalleryTitle, setVideoGalleryTitle] = useState('');
+
+  function openVideoGallery(videos: LiftVideo[], title: string) {
+    setVideoGalleryVideos(videos);
+    setVideoGalleryTitle(title);
+    setVideoGalleryOpen(true);
+  }
 
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
     queryKey: ['deficiency'],
@@ -548,12 +597,27 @@ export default function LiftingPage() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-white">{session.focus || 'General Session'}</p>
-                      {session.linked_activity && (
-                        <span className="text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded font-medium">Strava</span>
-                      )}
-                    </div>
+                 <div className="flex items-center gap-2">
+                       <p className="text-sm font-medium text-white">{session.focus || 'General Session'}</p>
+                       {session.linked_activity && (
+                         <span className="text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded font-medium">Strava</span>
+                       )}
+                       {(() => {
+                         const sv = videoBySession.get(session.id);
+                         if (!sv || sv.length === 0) return null;
+                         return (
+                           <button
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               openVideoGallery(sv, `${session.focus || 'Session'} videos`);
+                             }}
+                             title={`${sv.length} video${sv.length !== 1 ? 's' : ''}`}
+                           >
+                             <VideoChip count={sv.length} />
+                           </button>
+                         );
+                       })()}
+                     </div>
                     <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString()}</p>
                     {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds) && (
                       <p className="text-xs text-muted">
@@ -812,7 +876,23 @@ export default function LiftingPage() {
                   {new Date(pr.achieved_date).toLocaleDateString()}
                 </p>
                  {pr.notes && <p className="text-xs text-accent mt-1 text-center">{pr.notes}</p>}
-                {pr.activity_id && (
+                 {(() => {
+                   const pv = videoByPR.get(pr.id);
+                   if (!pv || pv.length === 0) return null;
+                   return (
+                     <button
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         openVideoGallery(pv, `${pr.exercise_name} PR videos`);
+                       }}
+                       title={`${pv.length} video${pv.length !== 1 ? 's' : ''}`}
+                       className="mt-2 mx-auto flex items-center justify-center gap-1"
+                     >
+                       <VideoChip count={pv.length} />
+                     </button>
+                   );
+                 })()}
+                 {pr.activity_id && (
                   <Link
                     href={`/activities?activity=${pr.activity_id}`}
                     onClick={(e) => e.stopPropagation()}
@@ -910,6 +990,14 @@ export default function LiftingPage() {
       {linkModalSessionId && (
         <LinkActivityModal sessionId={linkModalSessionId} onClose={() => setLinkModalSessionId(null)} />
       )}
+
+      {/* Strength Video Gallery Modal (§1.1) */}
+      <VideoGalleryModal
+        title={videoGalleryTitle}
+        videos={videoGalleryVideos}
+        open={videoGalleryOpen}
+        onClose={() => setVideoGalleryOpen(false)}
+      />
     </div>
   );
 }

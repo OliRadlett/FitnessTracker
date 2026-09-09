@@ -6,7 +6,7 @@ import json
 import uuid
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,16 +42,27 @@ async def export_json(
 
 @router.get("/lifting/csv")
 async def export_lifting_csv(
+    start_date: date | None = Query(
+        None, description="Filter sessions from this date (inclusive)"
+    ),
+    end_date: date | None = Query(
+        None, description="Filter sessions up to this date (inclusive)"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export all lifting sessions with sets as CSV."""
-    result = await db.execute(
+    """Export lifting sessions with sets as CSV, optionally filtered by date range."""
+    stmt = (
         select(LiftingSession)
         .options(selectinload(LiftingSession.sets))
         .where(LiftingSession.user_id == current_user.id)
         .order_by(LiftingSession.session_date.desc())
     )
+    if start_date:
+        stmt = stmt.where(LiftingSession.session_date >= start_date)
+    if end_date:
+        stmt = stmt.where(LiftingSession.session_date <= end_date)
+    result = await db.execute(stmt)
     sessions = list(result.scalars().all())
 
     output = io.StringIO()
@@ -102,15 +113,26 @@ async def export_lifting_csv(
 
 @router.get("/activities/csv")
 async def export_activities_csv(
+    start_date: date | None = Query(
+        None, description="Filter activities from this date (inclusive)"
+    ),
+    end_date: date | None = Query(
+        None, description="Filter activities up to this date (inclusive)"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export all activities as CSV."""
-    result = await db.execute(
+    """Export activities as CSV, optionally filtered by date range."""
+    stmt = (
         select(Activity)
         .where(Activity.user_id == current_user.id)
         .order_by(Activity.start_date.desc())
     )
+    if start_date:
+        stmt = stmt.where(Activity.start_date >= start_date)
+    if end_date:
+        stmt = stmt.where(Activity.start_date <= end_date)
+    result = await db.execute(stmt)
     activities = list(result.scalars().all())
 
     output = io.StringIO()
@@ -199,15 +221,26 @@ async def export_activity_gpx(
 
 @router.get("/prs/csv")
 async def export_prs_csv(
+    start_date: date | None = Query(
+        None, description="Filter PRs from this date (inclusive)"
+    ),
+    end_date: date | None = Query(
+        None, description="Filter PRs up to this date (inclusive)"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export all personal records as CSV."""
-    result = await db.execute(
+    """Export personal records as CSV, optionally filtered by date range."""
+    stmt = (
         select(PersonalRecord)
         .where(PersonalRecord.user_id == current_user.id)
         .order_by(PersonalRecord.exercise_name, PersonalRecord.achieved_date.desc())
     )
+    if start_date:
+        stmt = stmt.where(PersonalRecord.achieved_date >= start_date)
+    if end_date:
+        stmt = stmt.where(PersonalRecord.achieved_date <= end_date)
+    result = await db.execute(stmt)
     prs = list(result.scalars().all())
 
     output = io.StringIO()

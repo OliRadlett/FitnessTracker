@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuthFetch } from '@/lib/api';
+import { createCollectionFromFilters } from '@/lib/api/routes';
 import { useRoutesStore } from '@/lib/stores/routesStore';
-import { Filter, SortAsc, SortDesc } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
+import { Filter, SortAsc, SortDesc, Bookmark } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: '', label: 'Newest' },
@@ -30,7 +34,12 @@ const SURFACE_OPTIONS = [
 
 export function RouteFilterBar() {
   const { filters, setFilters, resetFilters, selectedTagIds, showFilters, setShowFilters } = useRoutesStore();
+  const { token } = useAuthFetch();
+  const queryClient = useQueryClient();
   const [localQ, setLocalQ] = useState(filters.q || '');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [collectionName, setCollectionName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Debounced search
   useEffect(() => {
@@ -71,6 +80,37 @@ export function RouteFilterBar() {
   };
 
   const toggleAdvanced = () => setShowFilters(!showFilters);
+
+  const handleSaveCollection = async () => {
+    if (!collectionName.trim()) return;
+    setIsSaving(true);
+    try {
+      // Serialize current filters into rules JSONB
+      const rules: Record<string, unknown> = {};
+      if (filters.q) rules.q = filters.q;
+      if (filters.surface_type) rules.surface_type = filters.surface_type;
+      if (filters.min_distance) rules.min_distance_km = filters.min_distance / 1000;
+      if (filters.max_distance) rules.max_distance_km = filters.max_distance / 1000;
+      if (filters.min_elevation) rules.min_elevation = filters.min_elevation;
+      if (filters.max_elevation) rules.max_elevation = filters.max_elevation;
+      if (filters.min_quality_score) rules.min_quality_score = filters.min_quality_score;
+      if (filters.is_loop !== undefined) rules.is_loop = filters.is_loop;
+      if (filters.is_favorite) rules.is_favorite = true;
+      if (filters.sport_type) rules.sport_type = filters.sport_type;
+
+      await createCollectionFromFilters(
+        { name: collectionName.trim(), is_smart: true, rules },
+        token,
+      );
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+      setShowSaveModal(false);
+      setCollectionName('');
+    } catch (err) {
+      console.error('Failed to create collection:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -145,12 +185,21 @@ export function RouteFilterBar() {
         </button>
 
         {activeFilterCount > 0 && (
-          <button
-            onClick={handleClearAll}
-            className="px-3 py-2 text-sm text-accent hover:text-accent/80 transition-colors"
-          >
-            Clear All
-          </button>
+          <>
+            <button
+              onClick={handleClearAll}
+              className="px-3 py-2 text-sm text-accent hover:text-accent/80 transition-colors"
+            >
+              Clear All
+            </button>
+            <button
+              onClick={() => setShowSaveModal(true)}
+              className="px-3 py-2 text-sm text-muted hover:text-white border border-surface-light hover:bg-surface-light/50 rounded-lg transition-colors inline-flex items-center gap-1.5"
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              Save as Collection
+            </button>
+          </>
         )}
       </div>
 
@@ -268,6 +317,39 @@ export function RouteFilterBar() {
             />
           </div>
         </div>
+      )}
+      {/* Save as Collection modal */}
+      {showSaveModal && (
+        <Modal open onClose={() => setShowSaveModal(false)} size="sm" aria-label="Save filter as collection">
+          <h3 className="text-lg font-semibold text-white mb-3">Save as Smart Collection</h3>
+          <p className="text-sm text-muted mb-4">
+            This will save your current filters as a smart collection. Routes matching these filters will appear automatically.
+          </p>
+          <input
+            type="text"
+            placeholder="Collection name"
+            value={collectionName}
+            onChange={(e) => setCollectionName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveCollection()}
+            autoFocus
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowSaveModal(false)}
+              className="px-3 py-2 text-sm text-muted hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveCollection}
+              disabled={!collectionName.trim() || isSaving}
+              className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
