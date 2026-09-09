@@ -45,11 +45,11 @@ async def test_subscribe_and_list(client) -> None:
     assert r.status_code == 200
     assert r.json()["removed"] is True
 
-    # Confirm gone
+    # Confirm gone — the deleted endpoint must no longer be listed.
     r = await client.get("/api/v1/push/subscriptions")
-    assert (
-        any(s["endpoint"] != payload["endpoint"] for s in r.json()["subscriptions"])
-        and r.json()["count"] >= 0
+    assert r.status_code == 200
+    assert not any(
+        s["endpoint"] == payload["endpoint"] for s in r.json()["subscriptions"]
     )
 
 

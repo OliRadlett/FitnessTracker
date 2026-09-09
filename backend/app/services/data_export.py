@@ -168,10 +168,8 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
         "activities": [
             {
                 **_serialize_row(a),
-                "children": {
-                    "streams": [_serialize_row(s) for s in a.streams],
-                    "sources": [_serialize_row(s) for s in a.sources],
-                },
+                "streams": [_serialize_row(s) for s in a.streams],
+                "sources": [_serialize_row(s) for s in a.sources],
             }
             for a in activities
         ],
