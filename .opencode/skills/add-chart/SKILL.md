@@ -100,5 +100,7 @@ reference_areas = [
 ## Pitfalls
 
 1. **Backend returns ChartData** — frontend just renders it, no data transformation on client
-2. **Query keys** — if chart is filterable, include filters in React Query key
-3. **Performance** — for large datasets, aggregate on backend before returning
+2. **Query keys** — if chart is filterable, include filters in React Query key (`['chart-name', {weeks: N}]`)
+3. **Performance** — for large datasets, aggregate on backend before returning. Stream-heavy charts are Redis-cached for 5 min
+4. **Recharts Brush** — always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. See AGENTS.md pitfall #17
+5. **Secondary Y axis** — series may target `y_axis: "right"` in the backend; the generic `Chart` component handles this automatically

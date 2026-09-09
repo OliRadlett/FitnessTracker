@@ -32,7 +32,7 @@ Read only the sections relevant to your task:
 10. **No bulk scripted rewrites**: Never apply a single scripted find/replace across many source files. One subtle bug in such a script (e.g. a nested-array flattening that silently turned a token swap into a global `t`→`e` replace) corrupts every file at once, invisibly. Use the Edit tool per-file (`replaceAll` is fine). If a bulk change is genuinely unavoidable, do it in small batches (≤5 files) with a `git diff --stat` + spot-read between batches.
 11. **Check file ownership before touching files**: Before editing a file, run `git status`. A file with uncommitted changes is owned by another session — do not rewrite it in place without coordinating. This extends rule #1 from the index to file *contents*.
 12. **Rollback safety net**: Only run high-blast-radius operations (bulk edits, scripted rewrites, content migrations) on files with a clean working tree, so `git checkout -- <file>` is a working rollback. A file with uncommitted changes has no git rollback path — treat it with extra care or don't touch it.
-13. **No shell-based in-place edits to source files**: Never use PowerShell/Shell (`Set-Content`, `[IO.File]::WriteAllText`, `-replace`, `sed`) to mutate source files in place. The Edit tool preserves encoding and line-endings and makes each change visible. Scripted text mutation is only for temp/generated artifacts.
+13. **No shell-based in-place edits to source files**: Never use shell commands (`sed`, `perl -i`, `python -c "..."` writing files, etc.) to mutate source files in place. The Edit tool preserves encoding and line-endings and makes each change visible. Scripted text mutation is only for temp/generated artifacts.
 14. **Verify before destructive writes**: After any multi-file change, review `git diff --stat` and spot-read at least 2 changed files *before* running typecheck/lint. Never let the first verification come after all writes are complete.
 
 ## Subagent Delegation Rules
@@ -86,7 +86,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (36 tables, UUID PKs)
+## Database (38 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -107,7 +107,9 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `Route` | `Segment` (§3.13 climb) | has many; `Segment` | `SegmentEffort` has many |
 | `RouteCollection` | `RouteCollectionItem` | has many (collections are manual + smart rules JSONB) |
 | `Route` | `RouteQuality` | has one (computed nightly; also has `quality_score` denormalized on Route) |
-| `User` | `StravaWebhookEvent` | has many (async queue for webhook processing)
+| `User` | `StravaWebhookEvent` | has many (async queue for webhook processing) |
+| `User` | `PushSubscription` | has many (§3.8 Web Push device subscriptions) |
+| `LiftingSession` | `LiftVideo` | has many (§Phase 9 — strength video analysis, optional) |
 
 ## Celery Tasks
 
@@ -172,12 +174,12 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 
 1. **Celery tasks must use `asyncio.run()`** with a fresh DB session — workers are synchronous
 2. **NextAuth `jwt` callback token sync timing**: The `jwt` callback in `frontend/src/lib/auth.ts` calls `POST /api/v1/auth/sync-user` to mint backend JWTs. It uses a backoff (`SYNC_RETRY_BACKOFF_S = 3600s`) so a failing backend isn't hammered on every session check. If sync fails, `token.backendToken` stays stale/expired, causing every API call to 401 until the next retry window (up to 1 hour). The `signIn` callback only checks the email allowlist — it does NOT call sync-user.
-3. **`docker compose exec` doesn't work**: Use `python fittrack.py exec backend <command>`
+3. **`docker compose exec` doesn't work**: Use `python fittrack.py exec backend <command>`. Note: `docker compose ps`, `docker compose logs`, and `docker compose port` DO work for status/log inspection. Only `exec` is intercepted by the fittrack.py wrapper (see `@production` agent for `docker compose exec -T db psql` which works for the `db` service specifically)
 4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→040(head)
+8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→047(head)
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
@@ -185,7 +187,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
-16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:223`.
+16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:71`. Called from `RouteDetailPanel.tsx:172` — not dead code.
 17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
 18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
 19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
@@ -211,15 +213,16 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 
 ## Planned / Incomplete
 
-- **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
+- **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7). See [plan](plans/phase-7.md)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
-- **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. **Phase B done (§1.2, 2026-09-08)** — `?include_context=true` serves the §1.3 cached `ride_context` inline (zero extra queries; load position stays on-demand).
-- **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
-- **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). Phases 2-4: calendar planner integration, social popularity, full E2E tests.
-- **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
-- **3D visualisations (§3.16)**: Ride-replay MVP done (three.js `Replay3D` + `lib/replay`). 3D route view (needs DEM terrain tiles) and side-by-side 3D comparison deferred — see the plan
-- **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.
+- **Activities page**: Phases A/B & §1.3 done (2026-09-08). §1.4 deferred. See [plan](plans/future-enhancements.md)
+- **Routes redesign**: Phase 8A done (tags, collections, quality, effort, weather, merged view, heatmap). Phases 2-4 deferred. See [plan](plans/routes-redesign.md)
+- **3D visualisations (§3.16)**: Ride-replay MVP done. 3D route view + comparison deferred (needs DEM tiles). See [plan](plans/future-enhancements.md)
+- **Frontend tests**: Infrastructure exists (`vitest.config.ts`, `src/__tests__/`). Expand coverage.
+- **E2E tests**: 13 Playwright specs exist, not run in CI.
+- See [audit-changelog](plans/archive/audit-changelog-2026-08-18.md) for debugging reference.
+- See [future-enhancements](plans/future-enhancements.md) for the comprehensive roadmap.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
 ## Git & Deployment Strategy
@@ -252,7 +255,7 @@ python fittrack.py migrate         # Apply migrations
 
 Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.
 
-**Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers that delegate to `python fittrack.py`. DEPLOY.md uses these shell scripts for production commands; both are functionally equivalent.
+**Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers that delegate to `python fittrack.py`. DEPLOY.md uses these shell scripts for production commands; both are functionally equivalent. In this WSL environment, `python fittrack.py` is the primary interface.
 
 ## OpenCode TUI Tips
 

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-FitTrack is a mature, well-architected fitness tracker (~70k LOC across backend + frontend) with 186 backend API endpoints, 95 frontend components, 39 migrations, and 4 external integrations. The codebase has undergone significant hardening — most of the 85 documented bugs (BUG-001 through BUG-085) are fixed, including critical security, sync, and data-integrity issues.
+FitTrack is a mature, well-architected fitness tracker (~70k LOC across backend + frontend) with 187 backend API endpoints, 95 frontend components, 47 migrations (014 is stale dup; chain 013→…→047), and 4 external integrations. The codebase has undergone significant hardening — most of the 88 documented bugs (BUG-001 through BUG-088) are fixed, including critical security, sync, and data-integrity issues.
 
 **However**, key gaps remain in **linting configuration**, **test coverage** (especially frontend), **code quality enforcement**, and **dead-code accumulation**. The ruff configuration is permissive (only 63 import-sorting warnings on the default rule set; 1,449 issues across 27 rule categories when checked with a broader ruleset). The frontend has **zero ESLint configuration** and **no `tsc --noEmit` in CI**, allowing 75 unused variables/types to accumulate silently. A newly discovered bug — **broken GPX download** (auth token not sent) — is not yet documented in BUGS.md.
 
@@ -25,11 +25,11 @@ FitTrack is a mature, well-architected fitness tracker (~70k LOC across backend 
 | API endpoints | 187 | — |
 | Components | — | 95 |
 | Pages | — | 13 (App Router) |
-| Database models | 20 | — |
+| Database models | 38 (incl. 2 secondary association tables) | — |
 | Services | 46 | — |
 | Schemas | 18 | — |
-| Migrations | 39 | — |
-| Tests | 36 files (14 unit + 22 integration) | 4 unit + 13 e2e |
+| Migrations | 47 (014 is stale dup; chain 013→…→047) | — |
+| Tests | 36 files (14 unit + 22 integration; unit tests in `tests/` root, integration in `tests/integration/`) | 4 unit + 13 e2e |
 
 ### File size hotspots (>500 lines)
 
@@ -302,7 +302,7 @@ BUGS.md (generated 2026-08-24) tracks 85 bugs. Summary:
 
 | Bug | File | Description |
 |------|------|-------|
-| **BUG-086** | `RouteDetailPanel.tsx:170-180`, `lib/api/routes.ts:221` | **GPX download is broken** — `RouteDetailPanel.tsx` creates a bare `<a href="/api/v1/routes/{id}/gpx">` link without the JWT Bearer token. The backend endpoint (`routes.py:1017`) requires `Depends(get_current_user)`, so the browser's request returns 401. The correct implementation (`downloadRouteGpx` in `routes.ts:221`) fetches with the token but is **never called anywhere** — dead code. `handleDownloadGpx` in `routes/page.tsx:145` is also dead code (never called). Three implementations exist; none work correctly. |
+| **BUG-089** | `RouteDetailPanel.tsx:172`, `lib/api/routes.ts:71` | **GPX download (resolved)** — Previously `RouteDetailPanel` created a bare `<a href>` without JWT. Fixed: now calls `downloadRouteGpx(route.id, route.name, token)` with the auth token, using a relative URL (`/api/v1/routes/{id}/gpx`). The `downloadRouteGpx` function is NOT dead code — it's called from `RouteDetailPanel.tsx:172`. |
 
 ---
 
@@ -315,7 +315,7 @@ BUGS.md (generated 2026-08-24) tracks 85 bugs. Summary:
 | `SuggestedCycleCard` | `components/cycling/SuggestedCycleCard.tsx` | **Orphaned** — removed from cycling page in Phase 5B; no component renders it. CODEMAP already documents as orphaned. Plan says "delete or wire up." |
 | `getSuggestedCycle()` | `lib/api/cycling.ts:112` | **Dead code** — no caller |
 | `SkeletonCard` / `SkeletonChart` | `components/ui/Skeleton.tsx` | **Never used** — `Skeleton` is used but these two sub-components have zero references |
-| `downloadRouteGpx()` | `lib/api/routes.ts:221` | **Dead code** — see BUG-086 above |
+| `downloadRouteGpx()` | `lib/api/routes.ts:71` | Resolved (BUG-089) — called from `RouteDetailPanel.tsx:172` with auth token |
 | `handleDownloadGpx()` | `app/(app)/routes/page.tsx:145` | **Dead code** — never called |
 | `authFetch` (in routes/page.tsx) | `app/(app)/routes/page.tsx:26` | **Unused** — tsc flags it |
 
@@ -451,7 +451,7 @@ The `npm install` output reports 7 vulnerabilities (3 moderate, 2 high, 2 critic
 
 | Status | Priority | Item | Category | Effort | Risk |
 |--------|----------|------|----------|--------|------|
-| DONE | P0 | Fix GPX download (BUG-086) | Bug | Small | Low |
+| DONE | P0 | Fix GPX download (BUG-089) | Bug | Small | Low |
 | DONE | P0 | Enable `noUnusedLocals`/`noUnusedParameters` in tsconfig + fix 75 violations | Code Quality | Small | Low |
 | DONE | P0 | Add `tsc --noEmit` to CI (no ESLint — see note below) | Code Quality | Small | Low |
 | DONE | P0 | Remove `komoot_detail_test.py` and `komoot_poc.py` from `app/` | Code Quality | Trivial | Low |
@@ -571,10 +571,10 @@ FitnessTracker/
 │   │   ├── config.py    # Pydantic settings (thresholds, secrets)
 │   │   └── main.py      # FastAPI app, middleware, exception handlers
 │   ├── tests/
-│   │   ├── unit/        # 14 files (ruff, cycling, charts, etc.)
-│   │   └── integration/ # 22 files (API endpoints, sync, etc.)
+│   │   ├── conftest.py    # 14 unit test files directly in tests/ root (ruff, cycling, charts, etc.)
+│   │   └── integration/   # 22 files (API endpoints, sync, etc.)
 │   ├── alembic/
-│   │   └── versions/    # 38 migrations (001–038, 014 is stale dup)
+│   │   └── versions/    # 47 migrations (001–047, 014 is stale dup)
 │   ├── Dockerfile       # Copies entire app/ — excludes nothing
 │   └── pyproject.toml   # 27 deps, ruff config (default E,F rules only)
 ├── frontend/

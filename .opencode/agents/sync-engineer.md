@@ -45,24 +45,45 @@ You are an integration specialist for FitTrack, handling OAuth flows, provider s
 
 ## Celery Tasks
 
-All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy. Workers are synchronous.
+All tasks use `asyncio.run()` to bridge Celery (sync) with async SQLAlchemy. Workers are synchronous. The complete list is in `AGENTS.md` (18 tasks). Key tasks:
 
 | Task | Schedule | Notes |
 |------|----------|-------|
-| `sync_all_strava_activities` | 30 min | Also syncs Wahoo, backfills route links |
-| `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight |
-| `sync_all_routes` | 2 hours | All providers with dedup |
+| `sync_all_strava_activities` | 30 min | Also syncs Wahoo, backfills route links. Per-user Redis lock |
+| `sync_all_whoop_data` | 30 min | Cycles, recovery, sleep, workouts, weight. Watermarked incremental |
+| `sync_all_routes` | 2 hours | All providers with dedup. Komoot syncs once (global creds) |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
+| `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots active goals; fires milestone notifications |
+| `send_plan_reminders` | Daily 7AM UTC | Per-user plan session reminders (deduped per date) |
+| `send_event_day_notifications` | Daily 6:30AM UTC | Race day notifications (deduped per event) |
+| `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location |
+| `cleanup_old_data` | Weekly Sun 3AM | Streams retained indefinitely — no-op |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
+| `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs |
+| `backfill_activity_context` | Weekly Sun 3:30AM | Heals missing §1.3 ride analytics in `Activity.context` |
+| `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
+| `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis. Skips if `GEMINI_API_KEY` not set |
+| `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams |
+| `process_strava_webhook_events` | 5 min | Drains `strava_webhook_events` queue oldest-first |
+| `reconcile_strava_activities` | Weekly Sun 4:30AM UTC | Heals drift against Strava list in bounded window |
+
+Use `task_session()` for a fresh engine per invocation. Per-user failures isolated via `await db.rollback()`. Successful users committed immediately so watermarks survive mid-task crashes.
 
 ## Critical Pitfalls
 
-1. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`
-2. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
-3. **Celery tasks must use `asyncio.run()`** with a fresh DB session
-4. **OAuth callbacks need `user_id`**: Callback runs server-side without session — look up user explicitly
-5. **EncryptedString**: OAuth tokens encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext
-6. **Komoot uses Basic Auth**, not OAuth — email + password in `.env`
+The full list of 29 Critical Pitfalls is in `AGENTS.md`. Key ones for integration/sync:
+
+1. **OAuth `redirect_uri` must match exactly** — backend uses `settings.public_url`; NextAuth v4 builds `<NEXTAUTH_URL>/callback/<provider>` (AGENTS.md pitfall #5)
+2. **Wahoo API returns dict-wrapped responses** — always check `isinstance(response, dict)` and unwrap (AGENTS.md pitfall #6)
+3. **Celery tasks must use `asyncio.run()`** with `task_session()` — fresh engine per invocation (AGENTS.md pitfall #1)
+4. **OAuth callbacks need `user_id`** — callback runs server-side without session; look up user via JWT state parameter (AGENTS.md pitfall / Development Lessons #5)
+5. **EncryptedString** — `decrypt_token()` falls back to raw value for non-Fernet ciphertext (AGENTS.md pitfall #9)
+6. **Komoot uses Basic Auth**, not OAuth — email + password in `.env` (not OAuth client credentials)
+7. **Token refresh commits immediately** — `refresh_connection()` uses `SELECT … FOR UPDATE` + immediate commit of rotated tokens; don't "optimise" that away (AGENTS.md pitfall #21)
+8. **Webhook POSTs are queued** — `POST /webhooks/strava` only HMAC-verifies + persists to `strava_webhook_events`; processing in Celery `process_strava_webhook_events` (AGENTS.md pitfall #22)
+9. **Strava/Whoop dates use local bedtime** — Whoop `timezone_offset` from `cycle.start`, not `cycle.end` UTC (AGENTS.md pitfall #27)
+10. **SSE backfill sessions own their commits** — generators must `await db.commit()` explicitly (AGENTS.md pitfall #20)
+11. **Concurrency guards on sync** — task-level Redis locks (`_run_task_guarded`) on all 4 sync tasks + Celery `expires` on beat entries; per-user `sync:{user}:{provider}` locks shared by beat loops and the manual sync endpoint. See AGENTS.md "Celery Tasks" section for details
 
 ## Orientation
 

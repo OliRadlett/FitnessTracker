@@ -14,4 +14,13 @@ Then run ruff format on the backend:
 ruff format backend/
 ```
 
+## Frontend
+
+```
+npx tsc --noEmit       # typecheck (use workdir parameter, not cd)
+npm run lint           # next lint (if ESLint is configured)
+```
+
 Report any remaining issues. If all clean, confirm the backend code passes linting.
+
+References: `AGENTS.md` linting conventions, `frontend/src/CODEMAP.md`.

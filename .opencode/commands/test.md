@@ -14,8 +14,10 @@ If no tests directory exists, report that and skip.
 
 ## Frontend Tests
 
+Run from the frontend directory (use the `workdir` parameter in OpenCode bash, not `cd`):
+
 ```
-cd frontend && npm run test -- --run
+npm run test -- --run
 ```
 
 If the `test` script doesn't exist in package.json, report that and skip.

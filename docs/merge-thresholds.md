@@ -6,13 +6,15 @@
 
 | Threshold | Value | Location | Purpose |
 |-----------|-------|----------|---------|
-| `activity_merge_threshold` | 0.60 | [`config.py`](../backend/app/config.py) | Min score to merge activities from different providers |
+| `activity_merge_threshold` | 0.55 | [`config.py`](../backend/app/config.py) | Min score to merge activities from different providers (lowered from 0.60) |
 | `activity_route_link_threshold` | 0.70 | [`config.py`](../backend/app/config.py) | Min score to link an activity to a saved route |
-| `route_match_threshold` | 0.60 | [`config.py`](../backend/app/config.py) | Min score for route deduplication |
+| `route_match_threshold` | 0.55 | [`config.py`](../backend/app/config.py) | Min score for route deduplication (lowered from 0.60) |
+
+**Note**: The activity merge scoring weights were also retuned since these thresholds were last documented — date proximity is now 40% (was 50%), duration 20% (was 15%), distance 20% (was 15%), sport 20% (was 20% unchanged). See [`merge_service.py`](../backend/app/services/merge_service.py) for current implementation.
 
 ## Activity Merge Scoring
 
-**Formula**: `score = date×0.50 + sport×0.20 + duration×0.15 + distance×0.15`
+**Formula**: `score = date×0.40 + sport×0.20 + duration×0.20 + distance×0.20`
 
 ### Component Scores
 
@@ -25,15 +27,15 @@
 
 ### Threshold Analysis
 
-**At threshold 0.60** (current):
-- Same sport, within 2h, duration within 20%, distance within 20%: `0.9×0.5 + 1.0×0.2 + 0.8×0.15 + 0.8×0.15 = 0.45+0.20+0.12+0.12 = 0.89` ✅
-- Same sport, within 2h, duration off by 50%, distance off by 50%: `0.9×0.5 + 1.0×0.2 + 0.5×0.15 + 0.5×0.15 = 0.45+0.20+0.075+0.075 = 0.80` ✅
-- Same sport, within 6h, duration off by 50%, distance off by 50%: `0.5×0.5 + 1.0×0.2 + 0.5×0.15 + 0.5×0.15 = 0.25+0.20+0.075+0.075 = 0.60` ✅ (borderline)
-- Same sport, same day (8h+), duration off by 50%, distance off by 50%: `0.3×0.5 + 1.0×0.2 + 0.5×0.15 + 0.5×0.15 = 0.15+0.20+0.075+0.075 = 0.50` ❌
-- Compatible sport, within 2h, duration off by 50%: `0.9×0.5 + 0.5×0.2 + 0.5×0.15 + 0.5×0.15 = 0.45+0.10+0.075+0.075 = 0.70` ✅
-- Different sport, within 2h: `0.9×0.5 + 0.0×0.2 + ... = 0.45` ❌ (correctly rejected)
+**At threshold 0.55** (current):
+- Same sport, within 2h, duration within 20%, distance within 20%: `0.9×0.4 + 1.0×0.2 + 0.8×0.2 + 0.8×0.2 = 0.36+0.20+0.16+0.16 = 0.88` ✅
+- Same sport, within 2h, duration off by 50%, distance off by 50%: `0.9×0.4 + 1.0×0.2 + 0.5×0.2 + 0.5×0.2 = 0.36+0.20+0.10+0.10 = 0.76` ✅
+- Same sport, within 6h, duration off by 50%, distance off by 50%: `0.5×0.4 + 1.0×0.2 + 0.5×0.2 + 0.5×0.2 = 0.20+0.20+0.10+0.10 = 0.60` ✅ (above 0.55)
+- Same sport, same day (8h+), duration off by 50%, distance off by 50%: `0.3×0.4 + 1.0×0.2 + 0.5×0.2 + 0.5×0.2 = 0.12+0.20+0.10+0.10 = 0.52` ✅ (borderline — merges, as a separate same-day session would need a different sport or larger time gap)
+- Compatible sport, within 2h, duration off by 50%: `0.9×0.4 + 0.5×0.2 + 0.5×0.2 + 0.5×0.2 = 0.36+0.10+0.10+0.10 = 0.66` ✅
+- Different sport, within 2h: `0.9×0.4 + 0.0×0.2 + ... = 0.36` ❌ (correctly rejected)
 
-**Previous threshold 0.65** missed the "within 6h, 50% off" case (0.60 score).
+**Previous threshold 0.65** missed the "within 6h, 50% off" case (0.60 score). Current 0.55 catches it.
 
 ### Edge Cases
 
@@ -45,15 +47,15 @@
 
 **Formula**: `score = proximity×0.40 + distance×0.30 + name×0.15 + shape×0.15`
 
-At threshold 0.60, routes need either:
+At threshold 0.55, routes need either:
 - Very similar start/end points (proximity ≥0.8) + similar distance (≥0.8): `0.8×0.4 + 0.8×0.3 + 0×0.15 + 0×0.15 = 0.56` (borderline)
 - Exact start/end + somewhat similar distance: `1.0×0.4 + 0.5×0.3 + 0×0.15 + 0×0.15 = 0.55` (borderline)
 - Good proximity + good distance + similar name: `0.7×0.4 + 0.8×0.3 + 0.8×0.15 + 0.5×0.15 = 0.28+0.24+0.12+0.075 = 0.715` ✅
 
 ## Recommendations
 
-1. **Activity merge threshold 0.60**: Optimal. Catches cross-provider duplicates with slight timing differences while rejecting same-day separate sessions.
-2. **Route match threshold 0.60**: Reasonable. The proximity-heavy weighting (40%) means routes need similar start/end points, which is correct.
+1. **Activity merge threshold 0.55**: Optimal. Catches cross-provider duplicates with slight timing differences while rejecting same-day separate sessions from different sports.
+2. **Route match threshold 0.55**: Reasonable. The proximity + distance weighting (25% each) means routes need similar start/end points and distance, which is correct.
 3. **Activity-route link threshold 0.70**: Appropriate. This is a higher-confidence link, so a higher threshold makes sense.
 
 ## Configuration
@@ -61,9 +63,9 @@ At threshold 0.60, routes need either:
 All thresholds are configurable via environment variables:
 
 ```env
-ACTIVITY_MERGE_THRESHOLD=0.60
+ACTIVITY_MERGE_THRESHOLD=0.55
 ACTIVITY_ROUTE_LINK_THRESHOLD=0.70
-ROUTE_MATCH_THRESHOLD=0.60
+ROUTE_MATCH_THRESHOLD=0.55
 ```
 
 ## Near-Miss Logging

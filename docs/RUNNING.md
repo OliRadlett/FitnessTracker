@@ -4,13 +4,28 @@
 
 ## Host Environment
 
-- **OS**: Windows 11 (`win32`)
-- **Shell**: PowerShell 5.1 on the host; OpenCode is configured with `"shell": "pwsh"` in [`opencode.json`](../opencode.json)
-- **No bash**: Do NOT use bash syntax. Specifically:
-  - `&&` does not work → use `cmd1; if ($?) { cmd2 }`
-  - No `grep`, `sed`, `awk`, `cat`, `ls -la` → use `Select-String`, `Get-Content`, `Get-ChildItem` or the OpenCode Grep/Read/Glob tools
-  - Quote paths with spaces using double quotes
-  - Env vars: `$env:VAR = "value"`, not `VAR=value cmd`
+- **OS**: Windows 11 with WSL2 (Ubuntu 26.04 LTS)
+- **Shell**: bash (running inside WSL2); OpenCode is configured with `"shell": "bash"` in [`opencode.json`](../opencode.json). Note: the `pwsh` command is a symlink to `bash` on this machine, so it is functionally identical.
+- **Bash syntax**: `&&`, `||`, `grep`, `sed`, `awk`, `cat`, `ls` all work. Quote paths with spaces using double quotes. Env vars: `export VAR="value"` or `VAR="value" command`.
+
+### Installed Host Tools
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Docker | 29.7.2 | Container runtime (daemon via Docker Desktop on Windows host) |
+| Docker Compose | v5.4.0 | Service orchestration |
+| Python | 3.14.4 | `fittrack.py`, host-side scripts (`python` → `python3`) |
+| pip | 26.2.1 | Python package installer (via get-pip.py, `--break-system-packages`) |
+| ruff | 0.16.5 | Backend linting & formatting |
+| pytest | 9.1.1 | Backend testing (host fallback; also runs in container) |
+| Node.js | v24.20.0 | Frontend dev |
+| npm | 11.19.0 | Package management |
+| uv | 0.12.9 | Available but **not used by the project** — backend uses `pip install` via Dockerfile |
+| Git | 2.53.0 | Version control |
+| gh | 2.100.0 | GitHub CLI |
+| curl | 8.18.0 | Downloads |
+
+> **Note**: `uv` is installed on the host for convenience but the project itself does **not** use UV. Backend dependencies are in `pyproject.toml` and installed via `pip install -e ".[dev]"` in the Dockerfile.
 
 ## Service Management — `fittrack.py`
 
@@ -73,7 +88,7 @@ Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
 - `cheap` / `expensive` / `smoke` — speed tiers for filtering.
 
 ⚠️ Dev compose mounts only `backend/app` + `backend/alembic` — `tests/` is baked into the image, so container runs use stale tests after edits (see AGENTS.md pitfall #19). Run from the host instead:
-`$env:TEST_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"; python -m pytest backend/tests/ -q`
+`TEST_DATABASE_URL="postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test" python -m pytest backend/tests/ -q`
 
 pytest config: `asyncio_mode = "auto"` — async test functions need no decorator.
 
@@ -90,7 +105,7 @@ npm run test:coverage     # coverage report
 npm run test:e2e          # Playwright E2E
 ```
 
-Note: `cd frontend && npm run test` doesn't work in PowerShell as chained — use the `workdir` parameter instead.
+Note: `cd frontend && npm run test` works in bash, but in the OpenCode bash tool each command starts from the project root — use the `workdir` parameter instead.
 
 ## Lint, Format & Typecheck
 
@@ -109,7 +124,7 @@ OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.jso
 
 ## Database Migrations
 
-⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→024.
+⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→047.
 
 ```bash
 # Generate
@@ -132,7 +147,7 @@ python fittrack.py exec backend alembic upgrade head
 
 ## OpenCode Permissions
 
-Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.
+Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `pytest *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.
 
 > **Note**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers around `python fittrack.py` — use either interchangeably. DEPLOY.md references the shell scripts; AGENTS.md and this file use `python fittrack.py` directly.
 

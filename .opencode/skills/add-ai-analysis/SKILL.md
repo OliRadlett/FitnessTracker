@@ -108,7 +108,7 @@ class LlmAnalysis(Base):
 
 ## Pitfalls
 
-1. **GEMINI_API_KEY required** — analysis returns 400 if key not set
+1. **GEMINI_API_KEY optional** — analysis skips gracefully if key not set (weekly task skips silently; on-demand returns 400). See AGENTS.md pitfall #13
 2. **Rate limiting** — Gemini API has quotas; add retry with backoff
 3. **Large contexts** — summarize data before sending to Gemini (token limits)
 4. **Error handling** — catch Gemini errors gracefully, return user-friendly message
