@@ -182,11 +182,11 @@ Add a 3D terrain-aware viewport for rides and routes — a "relive your ride" fl
 
 **Dependencies/links**: activity streams fetch endpoint (`api/activities.py`), route polylines (`RouteMap`/`ElevationProfile`), stream-overlay compare (§8A), ride segments (§3.13). Add a skill note if it becomes a repeatable pattern (like `add-chart`).
 
-### 3.17 Website changelog — "What's new" log of major changes (P3, **lowest priority**)
+### 3.17 Website changelog — "What's new" log of major changes (P3) ✅ Done (2026-09-09)
 A changelist area on the website showing major changes/releases, so a returning user can see what's new without reading the repo docs.
-- [ ] `/changelog` page (or accordion on an existing low-traffic page e.g. `/wiki` or Settings) listing releases/versions with a title + short bullets — **major** changes only (per-feature, not commits).
-- [ ] Static data source — a versioned frontend data file (e.g. `lib/changelog.ts` exporting entries `{ version, date, title, bullets[] }`), rendered by a shared `Changelog` component. No backend model/API needed (single-user app; doc-driving code keeps it DRY).
-- [ ] Nav/footer link; entries added as features ship (keep a small convention note in AGENTS.md or the plan so it doesn't rot).
+- [x] `/changelog` section on the Wiki page — `Changelog` component renders an accordion of release entries from `lib/changelog.ts` (static data, no backend). Three entries: 2026-09-09 (videos + route polish), 2026-09-08 (analytics + segments + 3D), 2026-09-07 (platform + integrations). Accessible via Wiki sidebar → "What's New".
+- [x] Static data source — `lib/changelog.ts` exports `ChangelogEntry[]` (`{ version, date, title, bullets[] }`), no backend model/API needed.
+- [x] Nav link — Wiki already in sidebar; changelog is section 11 of the Wiki.
 - **Deliberately static**: P3 because any dynamic (per-user/Admin) version would need a backend + auth surface for ~zero benefit at this scale.
 
 ---

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { Changelog } from '@/components/ui/Changelog';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 /** Inline link used throughout the wiki to jump to the feature page being described. */
@@ -27,6 +28,7 @@ const sections = [
   { id: 'weather-integration', label: 'Weather Integration', icon: '🌦️' },
   { id: 'training-plans', label: 'Training Plans & Conformity', icon: '📋' },
   { id: 'goals-projections', label: 'Goals & Projections', icon: '🎯' },
+  { id: 'changelog', label: "What's New", icon: '🆕' },
 ];
 
 // ── Glossary entries (alphabetical) ─────────────────────────────────────────
@@ -936,6 +938,19 @@ export default function WikiPage() {
                   fitness. Shown in the Weekly View's TSB projection strip.
                 </p>
               </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 11. What's New ──────────────────────────────────── */}
+        <section id="changelog">
+          <Card>
+            <CardTitle>🆕 What's New</CardTitle>
+            <div className="text-sm text-muted leading-relaxed">
+              <p className="mb-4">
+                Recent features and improvements shipped to FitTrack.
+              </p>
+              <Changelog />
             </div>
           </Card>
         </section>
