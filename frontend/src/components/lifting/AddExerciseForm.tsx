@@ -142,7 +142,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
             🔥 Apply Warmup
           </button>
           {showTemplatePicker && (
-            <div className="absolute z-10 mt-1 w-72 bg-surface border border-surface-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <div className="absolute z-10 mt-1 w-72 max-w-[calc(100vw-3rem)] bg-surface border border-surface-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
               {matchingTemplates.map((template) => (
                 <button
                   key={template.id}
@@ -190,7 +190,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.weight_kg || ''}
                 onChange={(e) => updateSet(index, { weight_kg: parseFloat(e.target.value) || 0 })}
                 placeholder="0"
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-2">
@@ -200,7 +200,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.reps || ''}
                 onChange={(e) => updateSet(index, { reps: parseInt(e.target.value) || 0 })}
                 placeholder="0"
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-2">
@@ -212,25 +212,25 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.rpe ?? ''}
                 onChange={(e) => updateSet(index, { rpe: e.target.value ? parseFloat(e.target.value) : undefined })}
                 placeholder="—"
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-3 flex items-center gap-2">
-              <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
+              <label className="flex items-center gap-1 min-h-[44px] text-xs text-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={set.is_warmup}
                   onChange={(e) => updateSet(index, { is_warmup: e.target.checked })}
-                  className="rounded border-surface-light"
+                  className="w-5 h-5 rounded border-surface-light"
                 />
                 W
               </label>
-              <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
+              <label className="flex items-center gap-1 min-h-[44px] text-xs text-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={set.is_amrap}
                   onChange={(e) => updateSet(index, { is_amrap: e.target.checked })}
-                  className="rounded border-surface-light"
+                  className="w-5 h-5 rounded border-surface-light"
                 />
                 AMRAP
               </label>
@@ -240,7 +240,8 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 <button
                   type="button"
                   onClick={() => removeSetRow(index)}
-                  className="text-muted hover:text-warning text-sm"
+                  aria-label={`Remove set ${index + 1}`}
+                  className="text-muted hover:text-warning text-sm min-h-[44px] min-w-[44px] flex items-center justify-center"
                   title="Remove set"
                 >
                   ×
@@ -251,11 +252,11 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
         ))}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={addSetRow}
-          className="px-3 py-1.5 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light"
+          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light"
         >
           + Add Set
         </button>
@@ -263,20 +264,20 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
           type="button"
           onClick={copyLastSet}
           disabled={sets.length === 0}
-          className="px-3 py-1.5 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
         >
           📋 Copy Last Set
         </button>
         <button
           type="submit"
-          className="px-4 py-1.5 bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-1.5 min-h-[44px] bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors"
         >
           Save Exercise
         </button>
         <button
           type="button"
           onClick={onDone}
-          className="px-3 py-1.5 text-muted hover:text-white text-sm transition-colors"
+          className="px-3 py-1.5 min-h-[44px] text-muted hover:text-white text-sm transition-colors"
         >
           Cancel
         </button>

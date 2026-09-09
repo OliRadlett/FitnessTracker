@@ -214,7 +214,7 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh]"
+      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh] px-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
       }}
@@ -233,7 +233,7 @@ export function CommandPalette() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Type to search…"
-            className="flex-1 bg-transparent text-white text-sm placeholder:text-muted focus:outline-none"
+            className="flex-1 bg-transparent text-white text-base placeholder:text-muted focus:outline-none min-h-[44px]"
             aria-activedescendant={selected in hits ? `hit-${selected}` : undefined}
           />
           <kbd className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[10px] text-muted">
@@ -241,7 +241,7 @@ export function CommandPalette() {
           </kbd>
         </div>
 
-        <div ref={listRef} className="max-h-[50vh] overflow-y-auto py-2">
+        <div ref={listRef} role="listbox" aria-label="Search results" className="max-h-[50vh] overflow-y-auto py-2">
           {emptyPrompt && (
             <p className="px-4 py-6 text-center text-sm text-muted">{emptyPrompt}</p>
           )}
@@ -266,7 +266,7 @@ export function CommandPalette() {
                           role="option"
                           aria-selected={active}
                           onClick={() => navigate(hit)}
-                          className={`w-full flex items-center gap-3 px-4 py-2 text-left text-sm transition-colors ${
+                          className={`w-full flex items-center gap-3 px-4 py-2 min-h-[44px] text-left text-sm transition-colors ${
                             active ? 'bg-accent/15' : 'bg-transparent'
                           }`}
                         >

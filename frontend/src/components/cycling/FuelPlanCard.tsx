@@ -76,7 +76,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs text-muted mb-1">Water (ml)</label>
           <input
@@ -85,7 +85,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={waterMl}
             onChange={(e) => setWaterMl(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -96,7 +96,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={carbsG}
             onChange={(e) => setCarbsG(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -107,7 +107,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={electrolyteTablets}
             onChange={(e) => setElectrolyteTablets(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
           {electrolyteTablets !== '' && (
             <p className="text-xs text-muted mt-1">{calculatedElectrolytesMg}mg electrolytes</p>

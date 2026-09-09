@@ -30,8 +30,9 @@ export function OfflineBanner() {
     >
       <span aria-hidden>📡</span>
       <span>
-        You're offline — screens show the last synced data ({staleness}). Changes will
-        sync automatically when you reconnect.
+        You're offline — the dashboard shows its last snapshot ({staleness}),
+        other screens may be empty. Live Lift sets stay saved on this device and
+        upload when you reconnect.
       </span>
     </div>
   );

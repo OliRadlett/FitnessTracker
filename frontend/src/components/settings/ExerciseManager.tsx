@@ -97,7 +97,7 @@ export function ExerciseManager() {
         {/* Add form */}
         {showAdd && (
           <div className="p-3 bg-surface-light/30 rounded-lg border border-surface-light/50 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 placeholder="Exercise name"

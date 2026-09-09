@@ -169,7 +169,7 @@ export default function RoutesPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-surface-light/30">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-white">Saved Routes</h1>
@@ -187,7 +187,7 @@ export default function RoutesPage() {
                 </span>
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* View mode toggle */}
               <div
                 className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden"
