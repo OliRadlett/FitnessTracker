@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadRouteGpx, useAuthFetch } from '@/lib/api';
@@ -21,6 +22,14 @@ import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } fr
 import { formatDistance } from '@/lib/utils';
 import { X, Edit2, Download, Trash2, Star } from 'lucide-react';
 
+const Route3D = dynamic(
+  () => import('@/components/routes/Route3D').then((m) => m.Route3D),
+  {
+    ssr: false,
+    loading: () => <div className="h-[320px] animate-pulse rounded bg-surface/40" />,
+  }
+);
+
 interface RouteDetailPanelProps {
   route: RouteData | null;
   onClose: () => void;
@@ -31,7 +40,8 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
   const queryClient = useQueryClient();
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
-   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
+  const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
+  const [profileMode, setProfileMode] = useState<'2d' | '3d'>('2d');
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
@@ -279,16 +289,42 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
             {/* Map & Profile Tab */}
             {detailTab === 'map' && (
               <div className="px-4 pb-4 space-y-4">
-                <RouteMap
-                  encodedPolyline={route.encoded_polyline}
-                  isLoop={route.is_loop}
-                  className="h-[300px]"
-                />
-                {route.elevation_profile?.elevations && (
-                  <ElevationProfile
-                    encodedPolyline={route.encoded_polyline}
-                    elevations={route.elevation_profile.elevations}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-muted">Profile</span>
+                  <div className="flex items-center rounded border border-surface-light">
+                    {(['2d', '3d'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setProfileMode(m)}
+                        className={`rounded px-2.5 py-0.5 text-xs capitalize transition-colors ${
+                          profileMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                        }`}
+                      >
+                        {m === '2d' ? '2D' : '3D Terrain'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {profileMode === '3d' ? (
+                  <Route3D
+                    polyline={route.encoded_polyline}
+                    elevations={route.elevation_profile?.elevations ?? null}
+                    name={route.name}
                   />
+                ) : (
+                  <>
+                    <RouteMap
+                      encodedPolyline={route.encoded_polyline}
+                      isLoop={route.is_loop}
+                      className="h-[300px]"
+                    />
+                    {route.elevation_profile?.elevations && (
+                      <ElevationProfile
+                        encodedPolyline={route.encoded_polyline}
+                        elevations={route.elevation_profile.elevations}
+                      />
+                    )}
+                  </>
                 )}
                 {route.surface_profile ? (
                   <SurfaceBreakdown surfaceProfile={route.surface_profile} />

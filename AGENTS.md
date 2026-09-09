@@ -220,7 +220,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
 - **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). Phases 2-4: calendar planner integration, social popularity, full E2E tests.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
-- **3D visualisations (§3.16)**: Ride-replay MVP done (three.js `Replay3D` + `lib/replay`). 3D route view (needs DEM terrain tiles) and side-by-side 3D comparison deferred — see the plan
+- **3D visualisations (§3.16)**: Done (2026-09-09). Ride-replay fly-through (three.js `Replay3D` + `lib/replay`) **and** the 3D route view (three.js `Route3D` + `lib/route3d` draping the route over an Open-Meteo Copernicus DEM heightmap from `lib/terrain` — free, keyless; toggle in RouteDetailPanel Map & Profile). Side-by-side **synced** 3D comparison in the compare modals still deferred — see the plan
 - **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
