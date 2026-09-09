@@ -110,50 +110,56 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         logger.warning("Failed to estimate VO2max: %s", e)
         stats["vo2max"] = None
 
-    # 5. Weekly summaries (last 4 weeks)
+    # 5. Weekly summaries (last 4 weeks) — single grouped query
     try:
-        weekly_summaries = []
-        for week_offset in range(4):
-            week_start = (
-                today - timedelta(days=today.weekday()) - timedelta(weeks=week_offset)
-            )
-            week_end = week_start + timedelta(days=6)
-            # Clamp to today
-            week_end = min(week_end, today)
+        from sqlalchemy import text as sa_text
 
-            result = await db.execute(
-                select(
-                    func.count(Activity.id).label("ride_count"),
-                    func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
-                    func.coalesce(func.sum(Activity.distance_meters), 0.0).label(
-                        "total_distance_m"
-                    ),
-                    func.coalesce(func.sum(Activity.duration_seconds), 0).label(
-                        "total_duration_s"
-                    ),
-                    func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label(
-                        "total_elevation_m"
-                    ),
-                ).where(
-                    Activity.user_id == user_id,
-                    Activity.sport_type == "cycling",
-                    Activity.start_date >= week_start,
-                    Activity.start_date <= week_end,
-                )
+        current_monday = today - timedelta(days=today.weekday())
+        oldest_week_start = current_monday - timedelta(weeks=3)
+        week_trunc = func.date_trunc(sa_text("'week'"), Activity.start_date)
+
+        result = await db.execute(
+            select(
+                week_trunc.label("week_start"),
+                func.count(Activity.id).label("ride_count"),
+                func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
+                func.coalesce(func.sum(Activity.distance_meters), 0.0).label(
+                    "total_distance_m"
+                ),
+                func.coalesce(func.sum(Activity.duration_seconds), 0).label(
+                    "total_duration_s"
+                ),
+                func.coalesce(func.sum(Activity.elevation_gain_meters), 0.0).label(
+                    "total_elevation_m"
+                ),
             )
-            row = result.one()
-            weekly_summaries.append(
-                {
-                    "week_start": str(week_start),
-                    "week_end": str(week_end),
-                    "ride_count": row.ride_count,
-                    "total_tss": round(float(row.total_tss), 1),
-                    "total_distance_km": round(float(row.total_distance_m) / 1000, 1),
-                    "total_duration_hours": round(int(row.total_duration_s) / 3600, 1),
-                    "total_elevation_m": round(float(row.total_elevation_m), 1),
-                }
+            .where(
+                Activity.user_id == user_id,
+                Activity.sport_type == "cycling",
+                Activity.start_date >= oldest_week_start,
             )
-        stats["weekly_summaries"] = list(reversed(weekly_summaries))  # oldest first
+            .group_by(week_trunc)
+            .order_by(week_trunc)
+        )
+        weekly_summaries = [
+            {
+                "week_start": str(
+                    row.week_start.date() if row.week_start else oldest_week_start
+                ),
+                "week_end": str(
+                    (row.week_start.date() + timedelta(days=6))
+                    if row.week_start
+                    else today
+                ),
+                "ride_count": row.ride_count,
+                "total_tss": round(float(row.total_tss), 1),
+                "total_distance_km": round(float(row.total_distance_m) / 1000, 1),
+                "total_duration_hours": round(int(row.total_duration_s) / 3600, 1),
+                "total_elevation_m": round(float(row.total_elevation_m), 1),
+            }
+            for row in result.all()
+        ]
+        stats["weekly_summaries"] = weekly_summaries  # oldest first
     except Exception as e:
         logger.warning("Failed to compute weekly summaries: %s", e)
         stats["weekly_summaries"] = []
@@ -791,7 +797,9 @@ async def run_activity_ai_analysis(
         return None
 
     analysis_text = await analyze_activity_with_gemini(context)
-    return await _store_analysis(db, user_id, "activity", context, analysis_text, activity_id=activity_id)
+    return await _store_analysis(
+        db, user_id, "activity", context, analysis_text, activity_id=activity_id
+    )
 
 
 # ── Per-Lifting-Session AI Analysis ──────────────────────────────────────────
@@ -1082,7 +1090,14 @@ async def run_lifting_session_ai_analysis(
         return None
 
     analysis_text = await analyze_lifting_session_with_gemini(context)
-    return await _store_analysis(db, user_id, "lifting_session", context, analysis_text, lifting_session_id=session_id)
+    return await _store_analysis(
+        db,
+        user_id,
+        "lifting_session",
+        context,
+        analysis_text,
+        lifting_session_id=session_id,
+    )
 
 
 # ── Health AI Analysis ──────────────────────────────────────────────────────
@@ -1102,20 +1117,29 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     four_weeks_ago = today - timedelta(days=28)
     stats: dict = {}
 
-    # 1. HRV trends (last 4 weeks)
+    # 1–4. Daily metric trends (HRV, resting HR, recovery, respiratory rate) —
+    #      single query over the window, split per metric in Python.
     try:
         result = await db.execute(
             select(DailyMetric)
             .where(
                 DailyMetric.user_id == user_id,
                 DailyMetric.metric_date >= four_weeks_ago,
-                DailyMetric.hrv_ms.isnot(None),
+                DailyMetric.hrv_ms.isnot(None)
+                | DailyMetric.resting_hr.isnot(None)
+                | DailyMetric.recovery_score.isnot(None)
+                | DailyMetric.respiratory_rate.isnot(None),
             )
             .order_by(DailyMetric.metric_date)
         )
-        metrics = result.scalars().all()
-        hrv_data = [{"date": str(m.metric_date), "hrv_ms": m.hrv_ms} for m in metrics]
-        hrv_values = [m.hrv_ms for m in metrics]
+        all_metrics = list(result.scalars().all())
+
+        hrv_data = [
+            {"date": str(m.metric_date), "hrv_ms": m.hrv_ms}
+            for m in all_metrics
+            if m.hrv_ms is not None
+        ]
+        hrv_values = [m.hrv_ms for m in hrv_data]
         stats["hrv_trends"] = {
             "entries": hrv_data,
             "avg_hrv_ms": round(sum(hrv_values) / len(hrv_values), 1)
@@ -1125,26 +1149,13 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             "min_hrv_ms": min(hrv_values) if hrv_values else None,
             "max_hrv_ms": max(hrv_values) if hrv_values else None,
         }
-    except Exception as e:
-        logger.warning("Failed to get HRV trends: %s", e)
-        stats["hrv_trends"] = {}
 
-    # 2. Resting HR trends (last 4 weeks)
-    try:
-        result = await db.execute(
-            select(DailyMetric)
-            .where(
-                DailyMetric.user_id == user_id,
-                DailyMetric.metric_date >= four_weeks_ago,
-                DailyMetric.resting_hr.isnot(None),
-            )
-            .order_by(DailyMetric.metric_date)
-        )
-        metrics = result.scalars().all()
         rhr_data = [
-            {"date": str(m.metric_date), "resting_hr": m.resting_hr} for m in metrics
+            {"date": str(m.metric_date), "resting_hr": m.resting_hr}
+            for m in all_metrics
+            if m.resting_hr is not None
         ]
-        rhr_values = [m.resting_hr for m in metrics]
+        rhr_values = [m.resting_hr for m in rhr_data]
         stats["resting_hr_trends"] = {
             "entries": rhr_data,
             "avg_resting_hr": round(sum(rhr_values) / len(rhr_values), 1)
@@ -1152,27 +1163,13 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             else None,
             "latest_resting_hr": rhr_values[-1] if rhr_values else None,
         }
-    except Exception as e:
-        logger.warning("Failed to get resting HR trends: %s", e)
-        stats["resting_hr_trends"] = {}
 
-    # 3. Recovery scores (last 4 weeks)
-    try:
-        result = await db.execute(
-            select(DailyMetric)
-            .where(
-                DailyMetric.user_id == user_id,
-                DailyMetric.metric_date >= four_weeks_ago,
-                DailyMetric.recovery_score.isnot(None),
-            )
-            .order_by(DailyMetric.metric_date)
-        )
-        metrics = result.scalars().all()
         recovery_data = [
             {"date": str(m.metric_date), "recovery_score": m.recovery_score}
-            for m in metrics
+            for m in all_metrics
+            if m.recovery_score is not None
         ]
-        recovery_values = [m.recovery_score for m in metrics]
+        recovery_values = [m.recovery_score for m in recovery_data]
         stats["recovery_scores"] = {
             "entries": recovery_data,
             "avg_recovery": round(sum(recovery_values) / len(recovery_values), 1)
@@ -1180,27 +1177,13 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             else None,
             "latest_recovery": recovery_values[-1] if recovery_values else None,
         }
-    except Exception as e:
-        logger.warning("Failed to get recovery scores: %s", e)
-        stats["recovery_scores"] = {}
 
-    # 4. Respiratory rate trends (last 4 weeks)
-    try:
-        result = await db.execute(
-            select(DailyMetric)
-            .where(
-                DailyMetric.user_id == user_id,
-                DailyMetric.metric_date >= four_weeks_ago,
-                DailyMetric.respiratory_rate.isnot(None),
-            )
-            .order_by(DailyMetric.metric_date)
-        )
-        metrics = result.scalars().all()
         rr_data = [
             {"date": str(m.metric_date), "respiratory_rate": m.respiratory_rate}
-            for m in metrics
+            for m in all_metrics
+            if m.respiratory_rate is not None
         ]
-        rr_values = [m.respiratory_rate for m in metrics]
+        rr_values = [m.respiratory_rate for m in rr_data]
         stats["respiratory_rate_trends"] = {
             "entries": rr_data,
             "avg_respiratory_rate": round(sum(rr_values) / len(rr_values), 2)
@@ -1209,7 +1192,10 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             "latest_respiratory_rate": rr_values[-1] if rr_values else None,
         }
     except Exception as e:
-        logger.warning("Failed to get respiratory rate trends: %s", e)
+        logger.warning("Failed to compute daily metric trends: %s", e)
+        stats["hrv_trends"] = {}
+        stats["resting_hr_trends"] = {}
+        stats["recovery_scores"] = {}
         stats["respiratory_rate_trends"] = {}
 
     # 5. Sleep trends (last 4 weeks)
@@ -1626,4 +1612,6 @@ async def run_event_ai_analysis(
         return None
 
     analysis_text = await analyze_event_with_gemini(stats)
-    return await _store_analysis(db, user_id, "event", stats, analysis_text, event_id=event_id)
+    return await _store_analysis(
+        db, user_id, "event", stats, analysis_text, event_id=event_id
+    )
