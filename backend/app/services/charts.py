@@ -1275,16 +1275,16 @@ class ChartService:
         cutoff = date.today() - timedelta(days=days)
 
         result = await self.db.execute(
-            select(WeightLog)
+            select(WeightLog.date, WeightLog.weight_kilogram)
             .where(
                 WeightLog.user_id == user_id,
                 WeightLog.date >= cutoff,
             )
             .order_by(WeightLog.date)
         )
-        logs = list(result.scalars().all())
+        rows = result.all()
 
-        if not logs:
+        if not rows:
             return ChartData(
                 chart_type="line",
                 title="Body Weight Trend",
@@ -1294,8 +1294,8 @@ class ChartService:
                 y_label="Weight (kg)",
             )
 
-        weights = [log.weight_kilogram for log in logs]
-        labels = [log.date.isoformat() for log in logs]
+        weights = [r.weight_kilogram for r in rows]
+        labels = [r.date.isoformat() for r in rows]
 
         # 7-day rolling average
         rolling: list[float] = []
