@@ -24,6 +24,7 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "race_day": True,
     "event_countdown": True,
     "taper_start": True,
+    "ride_weather": True,
 }
 
 

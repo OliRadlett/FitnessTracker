@@ -13,6 +13,7 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
   race_day: '🏁',
   event_countdown: '⏳',
   taper_start: '🧘',
+  ride_weather: '🌧️',
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
@@ -33,4 +34,5 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   race_day: 'Race day',
   event_countdown: 'Event countdown',
   taper_start: 'Taper',
+  ride_weather: 'Ride weather',
 };

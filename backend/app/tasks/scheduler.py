@@ -1861,12 +1861,13 @@ def send_event_day_notifications() -> dict:
 
 @celery_app.task(name="app.tasks.scheduler.send_event_countdown_notifications")
 def send_event_countdown_notifications() -> dict:
-    """Notify users about upcoming events (1–7 days out) and taper starts.
+    """Notify users about upcoming events (1–7 days out), taper starts, and bad weather.
 
     Fires ``event_countdown`` notifications for events in the next 1–7 days
-    (dedup keyed on ``event_countdown:{event_id}:{days}``), and ``taper_start``
-    when today is the first day of an event's taper window (dedup keyed on
-    ``taper_start:{event_id}``). Runs daily at 6:45 UTC.
+    (dedup keyed on ``event_countdown:{event_id}:{days}``), ``taper_start``
+    when today is the first day of an event's taper window, and ``ride_weather``
+    when rain, storms, or high wind (≥50 km/h) are forecast for an event within
+    the next 1 day. Runs daily at 6:45 UTC.
     """
     import asyncio
     from datetime import date, timedelta
@@ -1874,8 +1875,36 @@ def send_event_countdown_notifications() -> dict:
     from sqlalchemy import select
 
     from app.database import task_session
+    from app.models.cycling import CyclingProfile
     from app.models.event import Event
+    from app.models.weather import CachedWeather
     from app.services.notifications import notify
+
+    # WMO weather codes that indicate rain, storms, or poor conditions
+    _BAD_WEATHER_CODES = {
+        51,
+        53,
+        55,
+        56,
+        57,  # drizzle
+        61,
+        63,
+        65,
+        66,
+        67,  # rain
+        71,
+        73,
+        75,
+        77,  # snow
+        80,
+        81,
+        82,  # rain showers
+        85,
+        86,  # snow showers
+        95,
+        96,
+        99,  # thunderstorm
+    }
 
     async def _run():
         today = date.today()
@@ -1931,6 +1960,74 @@ def send_event_countdown_notifications() -> dict:
                         )
                         if taper_created is not None:
                             notified += 1
+
+                    # Bad-weather alert: events within 1 day
+                    if days_until <= 1:
+                        profile = (
+                            await db.execute(
+                                select(CyclingProfile).where(
+                                    CyclingProfile.user_id == event.user_id
+                                )
+                            )
+                        ).scalar_one_or_none()
+                        if (
+                            profile
+                            and profile.home_lat is not None
+                            and profile.home_lng is not None
+                        ):
+                            lat_r = round(profile.home_lat, 1)
+                            lng_r = round(profile.home_lng, 1)
+                            cached = (
+                                await db.execute(
+                                    select(CachedWeather).where(
+                                        CachedWeather.user_id == event.user_id,
+                                        CachedWeather.weather_type == "forecast",
+                                        CachedWeather.latitude == lat_r,
+                                        CachedWeather.longitude == lng_r,
+                                    )
+                                )
+                            ).scalar_one_or_none()
+                            if cached and cached.weather_data:
+                                daily = cached.weather_data.get("daily", [])
+                                target_str = event.event_date.isoformat()
+                                for day in daily:
+                                    if day.get("date") == target_str:
+                                        code = day.get("weather_code")
+                                        precip_prob = (
+                                            day.get("precipitation_probability_max")
+                                            or 0
+                                        )
+                                        wind_max = day.get("wind_speed_10m_max") or 0
+                                        is_bad = (
+                                            (
+                                                code is not None
+                                                and code in _BAD_WEATHER_CODES
+                                            )
+                                            or precip_prob >= 60
+                                            or wind_max >= 50
+                                        )
+                                        if is_bad:
+                                            conditions = day.get(
+                                                "conditions", "poor conditions"
+                                            )
+                                            weather_created = await notify(
+                                                db,
+                                                event.user_id,
+                                                type="ride_weather",
+                                                title=f"🌧️ Weather alert — {event.name} tomorrow",
+                                                body=(
+                                                    f"Weather forecast for {event.event_date.strftime('%A')}: "
+                                                    f"{conditions}. "
+                                                    f"{'Rain likely.' if precip_prob >= 60 else ''}"
+                                                    f"{'Wind gusts up to ' + str(int(wind_max)) + ' km/h.' if wind_max >= 50 else ''}"
+                                                ),
+                                                severity="warning",
+                                                link="/training",
+                                                dedup_key=f"ride_weather:{event.id}:{target_str}",
+                                            )
+                                            if weather_created is not None:
+                                                notified += 1
+                                        break
 
                     await db.commit()
                 except Exception as e:

@@ -10,7 +10,8 @@ export type NotificationType =
   | 'event_result'
   | 'race_day'
   | 'event_countdown'
-  | 'taper_start';
+  | 'taper_start'
+  | 'ride_weather';
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 export interface AppNotification {
@@ -36,6 +37,7 @@ export interface NotificationPreferences {
   race_day: boolean;
   event_countdown: boolean;
   taper_start: boolean;
+  ride_weather: boolean;
 }
 
 export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;
