@@ -128,6 +128,18 @@ describe('buildReplay', () => {
     expect(long.totalDistance).toBeLessThan(28000);
   });
 
+  it('exposes the projection frame for external mesh alignment', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5, 5, 5, 5, 5] },
+      altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
+    });
+    expect(result.lat0).toBeCloseTo(51.505, 3);
+    expect(result.lng0).toBeCloseTo(-0.1, 5);
+    expect(result.altMin).toBe(10);
+    expect(result.zScale).toBeGreaterThan(1);
+  });
+
   it('clips to at most maxSamples even when the ride is short', () => {
     const result = buildReplay({
       polyline: encodePoints([[51.5, -0.1], [51.5005, -0.1]]),

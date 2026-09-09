@@ -26,7 +26,7 @@ export interface RouteGrid {
   lngs: number[];
 }
 
-export const MAX_GRID_POINTS = 100;
+export const MAX_GRID_POINTS = 200;
 export const MAX_PATH_SAMPLES = 1200;
 /** gradient at which the slope colour ramp saturates (%) */
 export const GRADE_SCALE = 12;
@@ -93,6 +93,7 @@ export interface BuildRoute3DResult {
   altMax: number;
   altSpan: number;
   maxSlopePct: number;
+  minSlopePct: number;
 }
 
 /** hex colour (0xRRGGBB) → [r,g,b] in 0..1 */
@@ -127,9 +128,22 @@ export function elevationColor(t: number): [number, number, number] {
   return rampColor(ELEVATION_RAMP, t);
 }
 
-/** line colour for a grade-normalised value */
+/** line colour for a grade-normalised value (0 = flat … 1 = GRADE_SCALE % climb) */
 export function gradeColor(t: number): [number, number, number] {
   return rampColor(GRADE_RAMP, t);
+}
+
+/** downhill end of the diverging slope ramp (sky blue → flat green) */
+export const DESCENT_COLOR = '#38bdf8';
+
+/** line colour for a signed gradient in %: blue (descent) → green (flat) → red (climb) */
+export function slopeColor(slopePct: number): [number, number, number] {
+  const t = Math.max(-1, Math.min(1, slopePct / GRADE_SCALE));
+  if (t >= 0) return gradeColor(t);
+  const a = hexToRgb(DESCENT_COLOR);
+  const b = hexToRgb(GRADE_RAMP[0][1]);
+  const f = 1 + t; // t=-1 → full blue, t=0 → flat green
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
 
 /** the colour of route point `p` under the given mode */
@@ -138,7 +152,7 @@ export function pointColor(p: RoutePathPoint, mode: ColorMode, altMin: number, a
     const t = altSpan > 0 ? ((p.elevation ?? altMin) - altMin) / altSpan : 0;
     return elevationColor(t);
   }
-  return gradeColor(Math.max(0, Math.min(1, p.slopePct / GRADE_SCALE)));
+  return slopeColor(p.slopePct);
 }
 
 /**
@@ -182,7 +196,7 @@ export function computeGrid(
   const lngSpan = maxLng - minLng + padLng * 2;
 
   // Pick a cell size so a square-ish grid fits maxPoints, then enforce the cap.
-  const cellM = Math.max(120, Math.max(spanLatM, spanLngM) / Math.sqrt(maxPoints));
+  const cellM = Math.max(80, Math.max(spanLatM, spanLngM) / Math.sqrt(maxPoints));
   let cols = Math.max(2, Math.round((lngSpan * mPerDegLng) / cellM));
   let rows = Math.max(2, Math.round((latSpan * M_PER_DEG_LAT) / cellM));
   while (cols * rows > maxPoints && cols > 2 && rows > 2) {
@@ -297,6 +311,7 @@ export function buildRoute3D(opts: BuildRoute3DOptions): BuildRoute3DResult {
     altMax: 0,
     altSpan: 0,
     maxSlopePct: 0,
+    minSlopePct: 0,
   };
   if (!coords.length) return empty;
 
@@ -369,6 +384,7 @@ export function buildRoute3D(opts: BuildRoute3DOptions): BuildRoute3DResult {
     p.z = p.elevation == null ? 0 : (p.elevation - altMin) * zScale;
   }
   let maxSlopePct = 0;
+  let minSlopePct = 0;
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1];
     const cur = points[i];
@@ -377,11 +393,44 @@ export function buildRoute3D(opts: BuildRoute3DOptions): BuildRoute3DResult {
     const slope = ((cur.elevation - prev.elevation) / dMeters) * 100;
     cur.slopePct = slope;
     if (Math.abs(slope) > maxSlopePct) maxSlopePct = Math.abs(slope);
+    if (slope < minSlopePct) minSlopePct = slope;
   }
 
   const terrainVerts = terrain ? buildTerrainMesh(terrain.grid, terrain.heights, { lat0, lng0, altMin, zScale }) : null;
 
-  return { path: points, terrainVerts, lat0, lng0, zScale, altMin, altMax, altSpan, maxSlopePct };
+  return { path: points, terrainVerts, lat0, lng0, zScale, altMin, altMax, altSpan, maxSlopePct, minSlopePct };
+}
+
+export interface SteepestKm {
+  startKm: number;
+  endKm: number;
+  avgGradePct: number;
+  gainM: number;
+}
+
+/** max average gradient over any ~1 km sliding window (null when <1 km or no elevation) */
+export function steepestKm(path: RoutePathPoint[]): SteepestKm | null {
+  let best: SteepestKm | null = null;
+  let lo = 0;
+  for (let hi = 0; hi < path.length; hi++) {
+    const eHi = path[hi].elevation;
+    if (eHi == null) continue;
+    while (lo <= hi) {
+      const eLo = path[lo].elevation;
+      if (eLo == null) {
+        lo++;
+        continue;
+      }
+      const spanKm = path[hi].distKm - path[lo].distKm;
+      if (spanKm < 1) break;
+      const grade = ((eHi - eLo) / (spanKm * 1000)) * 100;
+      if (!best || grade > best.avgGradePct) {
+        best = { startKm: path[lo].distKm, endKm: path[hi].distKm, avgGradePct: grade, gainM: eHi - eLo };
+      }
+      lo++;
+    }
+  }
+  return best && best.avgGradePct > 0 ? best : null;
 }
 
 function linspace(a: number, b: number, n: number): number[] {

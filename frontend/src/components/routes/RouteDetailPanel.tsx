@@ -1,10 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { downloadRouteGpx, useAuthFetch } from '@/lib/api';
-import type { RouteData, MergedRouteView } from '@/lib/api/types';
+import { downloadRouteGpx, getSegments, useAuthFetch } from '@/lib/api';
+import type { RouteData, MergedRouteView, Segment } from '@/lib/api/types';
 import { getMergedRouteView } from '@/lib/api/routes';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { TabGroup } from '@/components/ui/TabGroup';
@@ -48,6 +48,19 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
   const [renameValue, setRenameValue] = useState('');
   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
   const [profileMode, setProfileMode] = useState<'2d' | '3d'>('2d');
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+
+  // §3.13 segments for the 3D climb overlays — same key as SegmentsCard, shared cache.
+  const { data: segments } = useQuery<Segment[]>({
+    queryKey: ['route-segments', route?.id],
+    queryFn: () => getSegments(authFetch, route!.id),
+    enabled: !!token && !!route && (detailTab === 'map' || detailTab === 'segments'),
+    staleTime: 300_000,
+  });
+
+  useEffect(() => {
+    setHoverKm(null);
+  }, [route?.id]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
@@ -312,11 +325,23 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   </div>
                 </div>
                 {profileMode === '3d' ? (
-                  <Route3D
-                    polyline={route.encoded_polyline}
-                    elevations={route.elevation_profile?.elevations ?? null}
-                    name={route.name}
-                  />
+                  <>
+                    <Route3D
+                      polyline={route.encoded_polyline}
+                      elevations={route.elevation_profile?.elevations ?? null}
+                      name={route.name}
+                      segments={segments ?? null}
+                      highlightDistKm={hoverKm}
+                    />
+                    {route.elevation_profile?.elevations && (
+                      <ElevationProfile
+                        encodedPolyline={route.encoded_polyline}
+                        elevations={route.elevation_profile.elevations}
+                        height={110}
+                        onHover={setHoverKm}
+                      />
+                    )}
+                  </>
                 ) : (
                   <>
                     <RouteMap
