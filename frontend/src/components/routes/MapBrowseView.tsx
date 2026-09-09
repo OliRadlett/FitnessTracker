@@ -31,9 +31,11 @@ export function MapBrowseView({
       }
 
       const map = L.map(mapRef.current!, {
-        zoomControl: true,
-        scrollWheelZoom: true,
+        zoomControl: false,
+        scrollWheelZoom: false,
+        tapTolerance: 30,
       });
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

@@ -68,7 +68,7 @@ export function ActivityCard({
         <div className="flex items-start gap-4">
           {(showBulkCheckbox || (showCompareCheckbox && !showBulkCheckbox)) && (
             <label
-              className="flex items-center mt-0.5"
+              className="flex items-center justify-center min-h-[44px] min-w-[44px] -my-2"
               onClick={(e) => e.stopPropagation()}
               title={showBulkCheckbox ? "Select for bulk action" : "Select for comparison"}
             >
@@ -96,7 +96,8 @@ export function ActivityCard({
               {activity.route_id && (
                 <Link
                   href={`/routes?route=${activity.route_id}`}
-                  className="ml-2 text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-0.5"
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-2 min-h-[44px] text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-0.5"
                   title={`View route: ${activity.route_name || 'Route'}`}
                 >
                   View route

@@ -123,7 +123,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
             placeholder={isImperial ? 'e.g. 166.5' : 'e.g. 75.5'}
-            className="w-32 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-32 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -136,13 +136,13 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
             value={dateInput}
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setDateInput(e.target.value)}
-            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <button
           type="submit"
           disabled={addMutation.isPending}
-          className="px-4 py-2 text-sm bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50 font-medium"
+          className="px-4 py-2 min-h-[44px] text-sm bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50 font-medium"
         >
           {addMutation.isPending ? 'Saving…' : 'Log weigh-in'}
         </button>
@@ -193,7 +193,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                       step="0.1"
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
-                      className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-24 bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
                       autoFocus
                     />
                     <button
@@ -203,13 +203,13 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                           editMutation.mutate({ id: entry.id, kg: displayWeightToKg(value) });
                         }
                       }}
-                      className="text-xs text-positive hover:text-positive/80 font-medium"
+                      className="min-h-[44px] flex items-center text-xs text-positive hover:text-positive/80 font-medium"
                     >
                       Save
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="text-xs text-muted hover:text-white"
+                      className="min-h-[44px] flex items-center text-xs text-muted hover:text-white"
                     >
                       Cancel
                     </button>
@@ -237,7 +237,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                               setEditingValue(kgToDisplayWeight(entry.weight_kg).toFixed(1));
                             }}
                             aria-label={`Edit weight for ${entry.date}`}
-                            className="text-xs text-accent hover:text-accent/80"
+                            className="min-h-[44px] flex items-center text-xs text-accent hover:text-accent/80"
                           >
                             Edit
                           </button>
@@ -245,7 +245,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                             onClick={() => deleteMutation.mutate(entry.id)}
                             disabled={deleteMutation.isPending}
                             aria-label={`Delete weight for ${entry.date}`}
-                            className="text-xs text-warning hover:text-warning/80 disabled:opacity-50"
+                            className="min-h-[44px] flex items-center text-xs text-warning hover:text-warning/80 disabled:opacity-50"
                           >
                             Delete
                           </button>

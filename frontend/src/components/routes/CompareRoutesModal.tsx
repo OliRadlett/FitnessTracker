@@ -88,7 +88,7 @@ export function CompareRoutesModal({
         <h2 className="text-lg font-semibold text-white">Compare Routes</h2>
         <button
           onClick={onClose}
-          className="text-muted hover:text-white transition-colors text-xl leading-none"
+          className="text-muted hover:text-white transition-colors text-xl leading-none min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Close comparison"
         >
           {'\u2715'}
@@ -96,8 +96,8 @@ export function CompareRoutesModal({
       </div>
 
         <div className="p-4 space-y-6">
-          {/* Side-by-side header */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Side-by-side header (stacked on phones) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[routeA, routeB].map((r) => {
               const diff = computeDifficulty(r.elevation_gain_meters, r.distance_meters);
               return (
@@ -199,7 +199,7 @@ export function CompareRoutesModal({
           )}
 
           {/* Stats delta table */}
-          <div>
+          <div className="overflow-x-auto -mx-1 px-1">
             <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">Stats Comparison</h4>
             <table className="w-full text-sm">
               <thead>

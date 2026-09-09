@@ -11,6 +11,22 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISS_KEY = 'fittrack-install-dismissed';
+// Re-prompt a month after dismissal — a forever-dismiss means users who
+// dismissed early never learn the app is installable.
+const DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isDismissedFresh(): boolean {
+  try {
+    const raw = globalThis.localStorage?.getItem(DISMISS_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    // Back-compat: the old flag stored '1' (no timestamp) — treat as fresh.
+    if (!Number.isFinite(ts)) return true;
+    return Date.now() - ts < DISMISS_TTL_MS;
+  } catch {
+    return false;
+  }
+}
 
 function isStandalone(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
@@ -25,7 +41,7 @@ export function PwaRegister() {
     if (process.env.NODE_ENV !== 'production') return;
     if (!('serviceWorker' in navigator)) return;
 
-    setInstallDismissed(Boolean(localStorage.getItem(DISMISS_KEY)));
+    setInstallDismissed(isDismissedFresh());
 
     navigator.serviceWorker.register('/fittrack/sw.js').catch(() => {
       // SW registration failed — non-critical, app works without it
@@ -34,7 +50,7 @@ export function PwaRegister() {
     // ── Install prompt flow (§3.7) ────────────────────────────────────────
     const onBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      if (!isStandalone() && !localStorage.getItem(DISMISS_KEY)) {
+      if (!isStandalone() && !isDismissedFresh()) {
         setInstallPrompt(e as BeforeInstallPromptEvent);
       }
     };
@@ -101,7 +117,11 @@ export function PwaRegister() {
   const handleInstallDismiss = () => {
     setInstallPrompt(null);
     setInstallDismissed(true);
-    localStorage.setItem(DISMISS_KEY, '1');
+    try {
+      localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    } catch {
+      // Private-mode storage — dismiss for this session only
+    }
   };
 
   if (!updateAvailable && !installPrompt) return null;
@@ -109,19 +129,19 @@ export function PwaRegister() {
   return (
     <>
       {updateAvailable && (
-        <div className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-between gap-3 bg-accent text-background px-4 py-2.5 text-sm font-medium shadow-lg">
+        <div className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-between gap-3 bg-accent text-background px-4 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-sm font-medium shadow-lg">
           <span>A new version of FitTrack is available.</span>
           <div className="flex items-center gap-1">
             <button
               onClick={() => window.location.reload()}
-              className="px-3 py-1 rounded bg-background/90 text-accent text-xs font-semibold"
+              className="px-3 py-1 min-h-[44px] rounded bg-background/90 text-accent text-xs font-semibold"
             >
               Reload
             </button>
             <button
               onClick={() => setUpdateAvailable(false)}
               aria-label="Dismiss"
-              className="p-0.5 rounded hover:bg-background/20"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-background/20"
             >
               <span aria-hidden>✕</span>
             </button>
@@ -129,7 +149,7 @@ export function PwaRegister() {
         </div>
       )}
       {installPrompt && !installDismissed && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 rounded-xl bg-surface-light border border-accent/30 px-4 py-3 shadow-xl">
+        <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl bg-surface-light border border-accent/30 px-4 py-3 shadow-xl">
           <span className="text-xl" aria-hidden>🏋️</span>
           <div>
             <p className="text-sm font-medium text-white">Install FitTrack</p>
@@ -137,14 +157,14 @@ export function PwaRegister() {
           </div>
           <button
             onClick={handleInstall}
-            className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/80 transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 min-h-[44px] rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/80 transition-colors whitespace-nowrap"
           >
             Install
           </button>
           <button
             onClick={handleInstallDismiss}
             aria-label="Dismiss install prompt"
-            className="p-1 rounded hover:bg-background/20 text-muted"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-background/20 text-muted"
           >
             <span aria-hidden>✕</span>
           </button>

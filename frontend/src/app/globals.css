@@ -72,6 +72,11 @@
   background-color: #1e293b !important;
   color: #e2e8f0 !important;
   border-color: #334155 !important;
+  /* 44px touch targets (mobile UX review) */
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  font-size: 20px !important;
 }
 .leaflet-control-zoom a:hover {
   background-color: #334155 !important;

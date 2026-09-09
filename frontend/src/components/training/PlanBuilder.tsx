@@ -580,11 +580,8 @@ function PlanEditor({
     updateDayFields(dateStr, { completed: !(day?.completed ?? false) });
   };
 
-  /** Drag-and-drop: swapping dates between two slots (move if target empty). */
-  const handleDropOn = (targetDate: string) => {
-    const sourceDate = draggingDate;
-    setDraggingDate(null);
-    setDropTargetDate(null);
+  /** Swap two day slots (move if one side is empty). Shared by drag-and-drop and the touch-friendly Swap control. */
+  const swapDates = (sourceDate: string, targetDate: string) => {
     if (!sourceDate || sourceDate === targetDate) return;
 
     const source = daysByDate.get(sourceDate);
@@ -604,6 +601,15 @@ function PlanEditor({
     // Keep the open editor attached to the moved day
     if (expandedDate === sourceDate) setExpandedDate(targetDate);
     else if (target && expandedDate === targetDate) setExpandedDate(sourceDate);
+  };
+
+  /** Drag-and-drop: swapping dates between two slots (move if target empty). */
+  const handleDropOn = (targetDate: string) => {
+    const sourceDate = draggingDate;
+    setDraggingDate(null);
+    setDropTargetDate(null);
+    if (!sourceDate) return;
+    swapDates(sourceDate, targetDate);
   };
 
   const commitName = () => {
@@ -796,13 +802,19 @@ function PlanEditor({
                         toggleCompleted(dateStr);
                       }}
                       title={day?.completed ? 'Marked complete' : 'Mark complete'}
-                      className={`w-5 h-5 rounded-full border text-[10px] leading-none flex items-center justify-center transition-colors ${
-                        day?.completed
-                          ? 'bg-positive/80 border-positive text-white'
-                          : 'border-current/40 opacity-50 hover:opacity-100'
-                      }`}
+                      aria-label={day?.completed ? 'Marked complete' : 'Mark complete'}
+                      className="min-h-[44px] min-w-[44px] -my-2 -mr-2 flex items-center justify-center"
                     >
-                      ✓
+                      <span
+                        aria-hidden="true"
+                        className={`w-5 h-5 rounded-full border text-[10px] leading-none flex items-center justify-center transition-colors ${
+                          day?.completed
+                            ? 'bg-positive/80 border-positive text-white'
+                            : 'border-current/40 opacity-50'
+                        }`}
+                      >
+                        ✓
+                      </span>
                     </button>
                   </div>
 
@@ -845,13 +857,17 @@ function PlanEditor({
                 onPatch={(patch) => updateDayFields(expandedDate, patch)}
                 onClose={() => setExpandedDate(null)}
                 onRefreshPlan={() => onRefreshPlan(plan.id)}
+                onSwap={(targetDate) => swapDates(expandedDate, targetDate)}
               />
             );
           })()}
 
           <div className="flex flex-wrap gap-3 pt-1">
-            <span className="text-[10px] text-muted">
+            <span className="text-[10px] text-muted hidden [@media(pointer:fine)]:inline">
               Tip: drag a day onto another slot to swap dates.
+            </span>
+            <span className="text-[10px] text-muted [@media(pointer:fine)]:hidden">
+              Tip: open a day and use ⇄ Swap date to move it.
             </span>
           </div>
         </>
@@ -859,7 +875,7 @@ function PlanEditor({
 
       {/* Sticky unsaved-changes footer */}
       {dirtyDates.size > 0 && (
-        <div className="sticky bottom-0 z-10 -mx-1 px-1">
+        <div className="sticky bottom-[env(safe-area-inset-bottom)] z-10 -mx-1 px-1">
           <div className="bg-surface border border-surface-light rounded-xl shadow-lg p-3 flex items-center justify-between gap-3">
             <span className="text-sm text-warning font-medium">
               ● Unsaved changes ({dirtyDates.size} day{dirtyDates.size > 1 ? 's' : ''})
@@ -897,9 +913,11 @@ interface DayEditorProps {
   onPatch: (patch: Partial<TrainingPlanDay>) => void;
   onClose: () => void;
   onRefreshPlan: () => void;
+  /** Swap this day with another date (touch-friendly alternative to drag-and-drop). */
+  onSwap: (targetDate: string) => void;
 }
 
-function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshPlan }: DayEditorProps) {
+function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshPlan, onSwap }: DayEditorProps) {
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
@@ -925,6 +943,8 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [duplicateDate, setDuplicateDate] = useState('');
+  const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [swapDate, setSwapDate] = useState('');
   const [copyError, setCopyError] = useState<string | null>(null);
   const [previewTargets, setPreviewTargets] = useState<WorkoutPreviewTargets | null>(null);
 
@@ -1100,6 +1120,48 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           <button
             onClick={() => setShowDuplicatePicker(false)}
             className="text-muted hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Touch-friendly swap: same result as dragging the day card onto another slot */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setShowSwapPicker((v) => !v)}
+          title="Swap this day with another date (no drag needed)"
+          className="min-h-[44px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors text-[10px]"
+        >
+          ⇄ Swap date
+        </button>
+      </div>
+      {showSwapPicker && (
+        <div className="flex items-center gap-2 p-2 bg-background rounded-lg border border-surface-light">
+          <input
+            type="date"
+            value={swapDate}
+            onChange={(e) => setSwapDate(e.target.value)}
+            aria-label="Date to swap with"
+            className={`${inputCls} flex-1 min-h-[44px]`}
+          />
+          <button
+            onClick={() => {
+              if (swapDate && swapDate !== dateStr) {
+                onSwap(swapDate);
+                setShowSwapPicker(false);
+                setSwapDate('');
+              }
+            }}
+            disabled={!swapDate || swapDate === dateStr}
+            className="px-3 py-1.5 min-h-[44px] bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+          >
+            Swap
+          </button>
+          <button
+            onClick={() => setShowSwapPicker(false)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white text-xs"
+            aria-label="Cancel swap"
           >
             ✕
           </button>

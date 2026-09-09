@@ -14,7 +14,11 @@ export function useOnlineStatus(): boolean {
 
   useEffect(() => {
     const goOnline = () => {
-      localStorage.setItem(LAST_ONLINE_KEY, String(Date.now()));
+      try {
+        localStorage.setItem(LAST_ONLINE_KEY, String(Date.now()));
+      } catch {
+        // Private-mode storage — stamp is best-effort
+      }
       setOnline(true);
     };
     const goOffline = () => setOnline(false);
@@ -31,8 +35,12 @@ export function useOnlineStatus(): boolean {
 
 /** Epoch ms of the last time the browser saw a connection (best-effort). */
 export function getLastOnline(): number {
-  const raw = localStorage.getItem(LAST_ONLINE_KEY);
-  const ts = raw ? Number(raw) : NaN;
-  if (Number.isFinite(ts) && ts > 0) return ts;
+  try {
+    const raw = localStorage.getItem(LAST_ONLINE_KEY);
+    const ts = raw ? Number(raw) : NaN;
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  } catch {
+    // Private-mode storage — fall through to now
+  }
   return Date.now();
 }

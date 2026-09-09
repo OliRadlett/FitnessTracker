@@ -116,7 +116,7 @@ export function EventResultPanel({ event }: { event: Event }) {
           ) : (
             <button
               onClick={() => setShowForm((s) => !s)}
-              className="text-xs text-accent hover:text-accent/80 font-medium"
+              className="min-h-[44px] flex items-center text-xs text-accent hover:text-accent/80 font-medium"
             >
               🏁 Log result
             </button>
@@ -124,7 +124,7 @@ export function EventResultPanel({ event }: { event: Event }) {
 
           {showForm && (
             <div className="mt-2 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] text-muted mb-0.5">
                     Finish time (or seconds)
@@ -134,7 +134,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                     value={form.finishing_time ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, finishing_time: e.target.value || null }))}
                     placeholder="3:24:10"
-                    className="w-full bg-surface-light border border-surface-light text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
@@ -150,7 +150,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                       }))
                     }
                     placeholder="e.g. 12"
-                    className="w-full bg-surface-light border border-surface-light text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
@@ -166,7 +166,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                       }))
                     }
                     placeholder="e.g. 3"
-                    className="w-full bg-surface-light border border-surface-light text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div className="flex items-end gap-2 pb-0.5">
@@ -189,7 +189,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value || null }))}
                   placeholder="How did it go?"
                   maxLength={500}
-                  className="w-full bg-surface-light border border-surface-light text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
               {actionError && (
@@ -199,7 +199,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                 <button
                   onClick={() => saveMutation.mutate(form)}
                   disabled={saveMutation.isPending}
-                  className="px-3 py-1.5 text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50 font-medium"
+                  className="px-3 py-1.5 min-h-[44px] text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50 font-medium"
                 >
                   {saveMutation.isPending ? 'Saving…' : 'Save result'}
                 </button>

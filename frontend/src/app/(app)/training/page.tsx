@@ -353,11 +353,11 @@ export default function TrainingPage() {
                   onChange={e => setEventForm(f => ({ ...f, event_date: e.target.value }))}
                   className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <select
                     value={eventForm.event_type}
                     onChange={e => setEventForm(f => ({ ...f, event_type: e.target.value }))}
-                    className="px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
                   >
                     <option value="race">🏁 Race</option>
                     <option value="ride">🚴 Ride</option>
@@ -369,20 +369,20 @@ export default function TrainingPage() {
                     placeholder="Taper days"
                     value={eventForm.taper_days}
                     onChange={e => setEventForm(f => ({ ...f, taper_days: parseInt(e.target.value) || 14 }))}
-                    className="px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
                   />
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => eventForm.name && eventForm.event_date && createEventMutation.mutate(eventForm)}
                     disabled={!eventForm.name || !eventForm.event_date}
-                    className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
+                    className="px-3 py-1.5 min-h-[44px] bg-accent text-white rounded text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setShowEventForm(false)}
-                    className="px-3 py-1.5 text-muted text-xs hover:text-white"
+                    className="px-3 py-1.5 min-h-[44px] text-muted text-xs hover:text-white"
                   >
                     Cancel
                   </button>

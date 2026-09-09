@@ -83,7 +83,7 @@ export function NotificationBell() {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close notifications' : `Open notifications${unreadCount ? ` (${unreadCount} unread)` : ''}`}
         aria-expanded={open}
-        className="relative p-2 rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
+        className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -107,7 +107,7 @@ export function NotificationBell() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => router.push('/notifications')}
-                className="text-xs text-muted hover:text-accent transition-colors"
+                className="min-h-[44px] flex items-center text-xs text-muted hover:text-accent transition-colors"
               >
                 View all
               </button>
@@ -115,7 +115,7 @@ export function NotificationBell() {
                 <button
                   onClick={() => markAll.mutate()}
                   disabled={markAll.isPending}
-                  className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+                  className="min-h-[44px] flex items-center text-xs text-accent hover:text-accent/80 disabled:opacity-50"
                 >
                   Mark all read
                 </button>

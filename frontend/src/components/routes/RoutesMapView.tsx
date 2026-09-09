@@ -47,9 +47,11 @@ export function RoutesMapView({
       }
 
       const map = L.map(mapRef.current!, {
-        zoomControl: true,
-        scrollWheelZoom: true,
+        zoomControl: false,
+        scrollWheelZoom: false,
+        tapTolerance: 30,
       });
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -144,8 +146,9 @@ export function RoutesMapView({
           icon: L.divIcon({
             html: markerEl.outerHTML,
             className: 'route-marker-icon',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+            // 28px hit area around the 16px visual
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
           }),
         }).addTo(map);
 

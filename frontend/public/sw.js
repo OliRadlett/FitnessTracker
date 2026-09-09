@@ -1,6 +1,8 @@
 // FitTrack Service Worker — runtime caching (no build-time precache)
-const CACHE_NAME = 'fittrack-v4';
+const CACHE_NAME = 'fittrack-v5';
 const OFFLINE_URL = '/fittrack';
+const TILE_CACHE_MAX = 200; // OSM tiles are ~10-30KB opaque responses
+const DEM_CACHE_MAX = 50; // Open-Meteo elevation JSON is tiny
 
 // ── §3.8 Web Push ─────────────────────────────────────────────────────────
 // Payload sent by the backend: {type, title, body, link, notification_id}.
@@ -73,7 +75,9 @@ self.addEventListener('fetch', (event) => {
   // Skip NextAuth routes — never cache auth flows
   if (url.pathname.includes('/api/auth')) return;
 
-  // Navigation: network-first, fallback to cached shell
+  // Navigation: network-first, fallback to this page's cached shell, then
+  // the app shell. Serving the shell at the requested URL preserves query
+  // params, so deep links (?route=, ?activity=, ?session=) still resolve.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -82,7 +86,12 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() => caches.match(OFFLINE_URL) || fetch(request))
+        .catch(() =>
+          caches
+            .match(request)
+            .then((hit) => hit || caches.match(OFFLINE_URL))
+            .then((hit) => hit || fetch(request))
+        )
     );
     return;
   }
@@ -96,6 +105,36 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         });
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // Map tiles + elevation DEM: stale-while-revalidate with a size cap so
+  // maps and 3D terrain degrade gracefully offline instead of blank.
+  // (Opaque cross-origin responses can't be size-checked — count entries.)
+  const isTile = /\.tile\.openstreetmap\.org$/.test(url.hostname);
+  const isDem = url.hostname === 'api.open-meteo.com' && url.pathname.startsWith('/v1/elevation');
+  if (isTile || isDem) {
+    const cap = isTile ? TILE_CACHE_MAX : DEM_CACHE_MAX;
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const fetchPromise = fetch(request)
+          .then((response) => {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, clone);
+              cache.keys().then((keys) => {
+                if (keys.length > cap + 50) {
+                  // Trim oldest first (keys are insertion-ordered)
+                  cache.delete(keys[0]);
+                }
+              });
+            });
+            return response;
+          })
+          .catch(() => cached || new Response(null, { status: 503 }));
         return cached || fetchPromise;
       })
     );
