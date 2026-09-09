@@ -89,12 +89,12 @@ python fittrack.py exec backend python -c "from app.tasks import app; print(app.
 # Check OAuth connections
 python fittrack.py exec backend python -c "
 import asyncio
-from app.database import AsyncSessionLocal
+from app.database import task_session
 from app.models.user import OAuthConnection
 from sqlalchemy import select
 
 async def check():
-    async with AsyncSessionLocal() as db:
+    async with task_session() as db:
         result = await db.execute(select(OAuthConnection))
         for conn in result.scalars():
             print(f'{conn.provider}: expires={conn.expires_at}')
@@ -104,6 +104,13 @@ asyncio.run(check())
 ```
 
 ## Known Issues
+
+The full list of 29 Critical Pitfalls is in `AGENTS.md`. Key ones for debugging:
+
+1. **Celery tasks must use `asyncio.run()`** with `task_session()` — cross-loop asyncpg pool conflicts (AGENTS.md pitfall #1). Verify with `from app.database import task_session`
+2. **401 Unauthorized** — JWT expired, missing Bearer token, `get_current_user` failing. Check NextAuth `jwt` callback backoff (AGENTS.md pitfall #2)
+3. **422 Unprocessable** — Pydantic validation error, check request body schema
+4. **`docker compose exec` doesn't work** — use `python fittrack.py exec backend` (AGENTS.md pitfall #3)
 
 Check `docs/BUGS.md` for known bugs before debugging.
 

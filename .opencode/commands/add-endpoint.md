@@ -60,7 +60,14 @@ class YourResponse(BaseModel):
 
 ## Step 4: Register router
 
-Add the router to `backend/app/api/__init__.py` or the main app.
+Add the router to `backend/app/main.py`:
+
+```python
+from app.api.yourResource import router as your_resource_router
+app.include_router(your_resource_router, prefix="/api/v1/your-resource", tags=["your-resource"])
+```
+
+See `backend/app/api/CODEMAP.md` for the full list of registered routes.
 
 ## Step 5: Run linting
 

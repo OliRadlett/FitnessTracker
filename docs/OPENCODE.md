@@ -59,7 +59,16 @@ Main configuration file with references, permissions, and tool settings.
     "deploy": { "path": "docs/DEPLOY.md" },
     "plans": { "path": "plans" }
   },
-  "shell": "pwsh",
+  "model": "openrouter/poolside/laguna-s-2.1:free",
+  "agent": {
+    "plan": {
+      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+    },
+    "general": {
+      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+    }
+  },
+  "shell": "bash",
   "snapshot": true,
   "compaction": { "auto": true, "prune": true, "reserved": 10000 },
   "formatter": {
@@ -88,11 +97,14 @@ Main configuration file with references, permissions, and tool settings.
 ```
 
 **Key Settings:**
-- `shell: "pwsh"` — Uses PowerShell on Windows
+- `shell: "bash"` — Uses bash running inside WSL2 (Ubuntu). Note: `pwsh` is a symlink to `bash` on this machine, not real PowerShell.
+- `model` — Primary agent model (used in default Build mode)
+- `agent.plan.model` / `agent.general.model` — **Per-mode model overrides** for Plan mode and the `general` agent type. These override the primary `model` when those modes/agents are active.
 - `snapshot: true` — Enables undo/redo for file changes
 - `compaction` — Auto-compacts long sessions, prunes old tool outputs
-- `formatter` — Ruff for Python formatting
-- `permission.bash` — Auto-allows common dev commands (python fittrack.py, docker compose, npm, npx, pip, alembic, ruff, uvicorn, git), prompts for others
+- `formatter` — Ruff for Python formatting (auto-formats `.py` files on save)
+- `watcher` — File watcher ignores node_modules, dist, .git, backups
+- `permission.bash` — Auto-allows common dev commands (`python fittrack.py`, `docker compose`, `npm`, `npx`, `pip`, `pytest`, `alembic`, `ruff`, `uvicorn`, `git`), prompts for others. Note: `docker compose *` is allowed but only `ps`/`logs`/`port` actually work — `docker compose exec` does NOT (use `fittrack.py exec` instead). See AGENTS.md pitfall #3.
 - `permission.websearch`/`webfetch` — Globally allowed for all modes (used by `@ask` for external research)
 
 ### `tui.json` (TUI Config)
@@ -335,9 +347,11 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 **Location**: `.opencode/plugins/permission-promoter.js`
 **How it works**:
 1. Listens for `permission.replied` events
-2. When you click "Always", extracts the base command pattern
+2. When you click "Always", extracts the base command pattern (first word + ` *`)
 3. Adds `"pattern": "allow"` to `opencode.json` before the catch-all
 4. Pattern persists across sessions
+
+**Security note**: The plugin extracts only the base command (e.g. `docker build`), not arguments. This means approving `docker build .` adds `"docker build *"` — which also allows `docker build -t malicious .` or any other args. Similarly, approving `rm -rf /` would add `"rm *"` allowing ANY `rm` command. **Review the pattern before confirming "Always"** — or manually edit `opencode.json` to use more specific patterns (e.g. `"docker build -f Dockerfile.backend *": "allow"`).
 
 **Example flow**:
 1. You run `docker build .`

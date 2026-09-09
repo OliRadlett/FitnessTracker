@@ -51,6 +51,10 @@ Add barrel export in `frontend/src/lib/api/index.ts`.
 
 ## Step 4: Verify
 
-Confirm the page builds: check for TypeScript errors in the created file.
+Confirm the page builds with TypeScript checking (use the `workdir` parameter set to `frontend/` rather than `cd`):
 
-Reference: `frontend/src/CODEMAP.md` for patterns.
+```
+npx tsc --noEmit
+```
+
+Reference: `frontend/src/CODEMAP.md` for page patterns and component conventions.

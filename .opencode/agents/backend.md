@@ -59,12 +59,17 @@ Read the relevant CODEMAP file first:
 
 ## Critical Pitfalls
 
-1. Celery tasks must use `asyncio.run()` with a fresh DB session — workers are synchronous
-2. Wahoo API returns dict-wrapped responses: always check `isinstance(response, dict)` and unwrap
-3. `docker compose exec` doesn't work: use `docker compose run --rm <service>`
-4. Alembic numbering: sequential. `014_add_composite_indexes.py` is stale — real chain is 013→014(surface)→015(indexes)
-5. EncryptedString: `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
-6. fitparse/reportlab: rebuild backend container after adding dependencies
+The full list of 29 Critical Pitfalls is in `AGENTS.md`. Key ones for backend:
+
+1. **Celery tasks must use `asyncio.run()`** with a fresh DB session (`task_session()`) — workers are synchronous, never import `async_session_factory` directly in tasks (AGENTS.md pitfall #1)
+2. **Wahoo API returns dict-wrapped responses** — always check `isinstance(response, dict)` and unwrap (AGENTS.md pitfall #6)
+3. **`docker compose exec` doesn't work** — use `python fittrack.py exec backend <command>`. `docker compose ps/logs/port` DO work; only `exec` is intercepted (AGENTS.md pitfall #3)
+4. **Alembic numbering** — `014_add_composite_indexes.py` is stale; real chain is 013→014→015→…→047 (AGENTS.md pitfall #8)
+5. **EncryptedString** — `decrypt_token()` falls back to raw value for non-Fernet ciphertext (AGENS.md pitfall #9)
+6. **fitparse/reportlab dependencies** — rebuild backend container after adding (AGENTS.md pitfall #10)
+7. **SSE backfill sessions own their commits** — must `await db.commit()` explicitly; `flush()` alone rolls back when endpoint closes (AGENTS.md pitfall #20)
+8. **Token refresh commits immediately** — `refresh_connection()` uses `SELECT … FOR UPDATE` + immediate commit; don't "optimise" that away (AGENTS.md pitfall #21)
+9. **Webhook POSTs are queued** — `POST /webhooks/strava` only HMAC-verifies + persists; processing happens in Celery `process_strava_webhook_events` (AGENTS.md pitfall #22)
 
 ## Linting
 
