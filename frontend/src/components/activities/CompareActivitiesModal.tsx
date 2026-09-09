@@ -187,8 +187,8 @@ export function CompareActivitiesModal({
     <Modal open onClose={onClose} size="xl" aria-label="Compare Activities">
       <ModalHeader title="Compare Activities" onClose={onClose} />
 
-        {/* Activity names */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* Activity names (stacked on phones) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div className="bg-surface-light/30 rounded-lg p-3">
             <p className="text-xs text-muted mb-1">Activity A</p>
             <p className="text-sm font-medium text-blue-400 truncate">{activityA.name}</p>

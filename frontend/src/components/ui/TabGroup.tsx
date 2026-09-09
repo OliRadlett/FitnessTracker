@@ -17,7 +17,7 @@ interface TabGroupProps {
 export function TabGroup({ tabs, active, onChange, className = '' }: TabGroupProps) {
   return (
     <div
-      className={`flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit ${className}`}
+      className={`flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto ${className}`}
       role="tablist"
     >
       {tabs.map((tab) => (
@@ -26,7 +26,7 @@ export function TabGroup({ tabs, active, onChange, className = '' }: TabGroupPro
           role="tab"
           aria-selected={active === tab.key}
           onClick={() => onChange(tab.key)}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${
+          className={`px-4 py-2 min-h-[44px] shrink-0 text-sm font-medium rounded-lg transition-colors capitalize ${
             active === tab.key
               ? 'bg-accent text-white'
               : 'text-muted hover:text-white hover:bg-surface-light/50'

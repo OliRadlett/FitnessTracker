@@ -33,9 +33,15 @@ const Route3D = dynamic(
 interface RouteDetailPanelProps {
   route: RouteData | null;
   onClose: () => void;
+  /**
+   * When embedded in the mobile bottom sheet (which provides the single
+   * scroller), disable the panel's own scroll containers so touch scrolling
+   * isn't trapped in nested scrollers. Defaults to true (desktop slide-over).
+   */
+  scrollable?: boolean;
 }
 
-export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
+export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDetailPanelProps) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -83,7 +89,7 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
           <h2 className="text-lg font-semibold text-white">Route Details</h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-white transition-colors"
+            className="text-muted hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -99,21 +105,21 @@ export function RouteDetailPanel({ route, onClose }: RouteDetailPanelProps) {
   const diff = computeDifficulty(route.elevation_gain_meters, route.distance_meters);
 
   return (
-    <div className="w-full max-w-sm lg:max-w-md bg-surface border-l border-surface-light flex flex-col overflow-y-auto">
+    <div className={`w-full max-w-sm lg:max-w-md bg-surface border-l border-surface-light flex flex-col ${scrollable ? 'overflow-y-auto' : 'overflow-visible'}`}>
       <div className="sticky top-0 z-10 bg-surface border-b border-surface-light p-4 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-white truncate pr-2">
           Route Details
         </h2>
         <button
           onClick={onClose}
-          className="text-muted hover:text-white transition-colors"
+          className="text-muted hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Close details"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 ${scrollable ? 'overflow-y-auto' : 'overflow-visible'}`}>
         <div className="p-4 space-y-4">
           {/* Header with name + actions */}
           <div className="flex items-center justify-between gap-3">

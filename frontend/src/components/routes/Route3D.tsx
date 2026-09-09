@@ -185,6 +185,9 @@ export function Route3D({
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
+    // Let vertical page scrolls pass through on touch (OrbitControls sets
+    // touch-action:none); horizontal drags still orbit, pinch still zooms.
+    renderer.domElement.style.touchAction = 'pan-y';
 
     let raf = 0;
     const tick = () => {
@@ -288,7 +291,7 @@ export function Route3D({
       <div className="relative h-[320px] w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent">
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
-          drag to orbit · scroll to zoom · right-drag to pan
+          drag sideways to orbit · pinch to zoom
         </div>
         {terrainState === 'loading' && (
           <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
@@ -304,7 +307,7 @@ export function Route3D({
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${
+              className={`rounded px-2 py-0.5 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors ${
                 mode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
               }`}
             >

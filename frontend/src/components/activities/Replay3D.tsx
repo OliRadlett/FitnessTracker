@@ -212,6 +212,9 @@ export function Replay3D({
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
+    // Let vertical page scrolls pass through on touch (OrbitControls sets
+    // touch-action:none); horizontal drags still orbit, pinch still zooms.
+    renderer.domElement.style.touchAction = 'pan-y';
 
     let raf = 0;
     let last = performance.now();
@@ -306,7 +309,7 @@ export function Replay3D({
       <div className="relative h-[300px] w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent">
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
-          drag to orbit · scroll to zoom
+          drag sideways to orbit · pinch to zoom
         </div>
       </div>
 
@@ -315,7 +318,7 @@ export function Replay3D({
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           onClick={toggle}
-          className="rounded bg-accent px-3 py-1 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+          className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
         >
           {playing ? 'Pause' : 'Play'}
         </button>
@@ -324,7 +327,7 @@ export function Replay3D({
             <button
               key={r}
               onClick={() => setRate(r)}
-              className={`rounded px-2 py-1 text-xs transition-colors ${
+              className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
                 rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
               }`}
             >
@@ -345,7 +348,7 @@ export function Replay3D({
         value={displayElapsed}
         onChange={(e) => seek(Number(e.target.value))}
         aria-label="Replay scrubbing"
-        className="mt-2 w-full accent-accent"
+        className="mt-2 h-11 w-full accent-accent"
       />
     </div>
   );

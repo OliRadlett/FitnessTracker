@@ -41,11 +41,14 @@ export function RouteMap({
         mapInstanceRef.current = null;
       }
 
-      // Create map
+      // Create map: wheel-zoom off (fights page scroll), zoom control moved
+      // to bottom-right (away from the hamburger), generous tap tolerance
       const map = L.map(mapRef.current!, {
-        zoomControl: true,
-        scrollWheelZoom: true,
+        zoomControl: false,
+        scrollWheelZoom: false,
+        tapTolerance: 30,
       });
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
 
       // Add OpenStreetMap tiles
@@ -64,22 +67,22 @@ export function RouteMap({
         opacity: 0.8,
       }).addTo(map);
 
-      // Add start marker
+      // Add start marker — 12px visual dot inside a 28px touch target
       const startIcon = L.divIcon({
-        html: '<div style="background:#22c55e;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>',
+        html: '<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;"><div style="background:#22c55e;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div></div>',
         className: '',
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       });
       L.marker(latLngs[0], { icon: startIcon }).addTo(map);
 
       // Add end marker (or loop indicator)
       if (!isLoop && latLngs.length > 1) {
         const endIcon = L.divIcon({
-          html: '<div style="background:#ef4444;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>',
+          html: '<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;"><div style="background:#ef4444;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div></div>',
           className: '',
-          iconSize: [12, 12],
-          iconAnchor: [6, 6],
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
         });
         L.marker(latLngs[latLngs.length - 1], { icon: endIcon }).addTo(map);
       }

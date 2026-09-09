@@ -299,6 +299,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             )}
             {live.syncStatus === 'offline' ? (
               <span
+                role="status"
                 className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
                 title="You're offline — sets are saved on this device and will upload automatically when you're back online"
               >
@@ -307,26 +308,27 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             ) : live.syncStatus === 'error' ? (
               <button
                 onClick={live.retrySync}
-                className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
+                className="px-3 py-1 min-h-[44px] rounded-full text-xs bg-warning/15 text-warning"
               >
                 Sync failing — retry ↻
               </button>
             ) : pendingCount > 0 ? (
               <span
+                role="status"
                 className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
                 title="Sets shown are queued locally and will reach the server on the next network opportunity"
               >
                 ⟳ {pendingCount} to sync
               </span>
             ) : (
-              <span className="px-3 py-1 rounded-full text-xs bg-positive/10 text-positive">
+              <span role="status" className="px-3 py-1 rounded-full text-xs bg-positive/10 text-positive">
                 ✓ Synced
               </span>
             )}
             <button
               type="button"
               onClick={onRequestFinish}
-              className="px-4 py-1.5 rounded-full text-sm font-semibold bg-accent/20 text-accent border border-accent/30 active:bg-accent/30"
+              className="px-4 py-1.5 min-h-[44px] rounded-full text-sm font-semibold bg-accent/20 text-accent border border-accent/30 active:bg-accent/30"
             >
               Finish
             </button>
@@ -366,7 +368,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
                     key={name}
                     type="button"
                     onClick={() => selectExercise(name)}
-                    className={`shrink-0 px-3 py-2 rounded-full text-sm whitespace-nowrap transition-colors ${
+                    className={`shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap transition-colors ${
                       exercise === name
                         ? 'bg-accent text-background font-semibold'
                         : 'bg-surface-light text-muted hover:text-white'
@@ -417,7 +419,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             <button
               type="button"
               onClick={() => setShowRpe((v) => !v)}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`px-3 py-2 min-h-[44px] rounded-lg text-sm transition-colors ${
                 showRpe ? 'bg-accent/20 text-accent' : 'bg-surface-light text-muted'
               }`}
             >
@@ -426,7 +428,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             <button
               type="button"
               onClick={() => setIsWarmup((v) => !v)}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`px-3 py-2 min-h-[44px] rounded-lg text-sm transition-colors ${
                 isWarmup ? 'bg-warning/20 text-warning' : 'bg-surface-light text-muted'
               }`}
             >
@@ -435,7 +437,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             <button
               type="button"
               onClick={cycleStepSize}
-              className="px-3 py-2 rounded-lg text-sm bg-surface-light text-muted"
+              className="px-3 py-2 min-h-[44px] rounded-lg text-sm bg-surface-light text-muted"
               title="Weight stepper increment"
             >
               ±{stepSize}kg
@@ -443,7 +445,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
           </div>
 
           {showRpe && (
-            <div className="flex justify-between gap-1" role="group" aria-label="RPE">
+            <div className="grid grid-cols-5 gap-1" role="group" aria-label="RPE">
               {[6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((val) => (
                 <button
                   key={val}

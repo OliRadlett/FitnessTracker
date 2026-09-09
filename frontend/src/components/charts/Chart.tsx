@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ChartData } from '@/lib/api';
 import {
   ResponsiveContainer,
@@ -26,6 +26,20 @@ const DEFAULT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** True on phone-width viewports (<sm). Used to shrink chart chrome. */
+function useNarrowScreen() {
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const update = () => setIsNarrow(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return isNarrow;
+}
 
 /** Extract a unit suffix from a y-axis label, e.g. "Power (W)" -> " W". */
 function extractUnit(yLabel?: string): string {
@@ -153,14 +167,20 @@ function HeatmapCalendar({ data }: { data: ChartData }) {
   });
 
   const leadingBlanks = cells.length > 0 ? cells[0].weekday : 0;
+  const activeDays = cells.filter((c) => (c.value ?? 0) > 0).length;
+  const total = values.reduce<number>((sum, v) => sum + (Number(v) || 0), 0);
 
   return (
     <div className="overflow-x-auto">
-      <div className="flex gap-[3px]">
-        <div className="flex flex-col gap-[3px] mr-1 text-[9px] text-muted justify-around">
+      <div
+        className="flex gap-[3px]"
+        role="img"
+        aria-label={`Activity heatmap: ${activeDays} active days, ${Math.round(total)} total`}
+      >
+        <div className="flex flex-col gap-[3px] mr-1 text-[9px] text-muted justify-around" aria-hidden="true">
           <span>M</span><span></span><span>W</span><span></span><span>F</span>
         </div>
-        <div className="grid grid-rows-7 grid-flow-col gap-[3px]">
+        <div className="grid grid-rows-7 grid-flow-col gap-[3px]" aria-hidden="true">
           {Array.from({ length: leadingBlanks }).map((_, i) => (
             <div key={`blank-${i}`} className="w-3 h-3 rounded-sm" />
           ))}
@@ -194,6 +214,9 @@ function InsightsList({ insights }: { insights?: string[] }) {
 }
 
 export function Chart({ data, height = 400, className = '' }: ChartProps) {
+  const isNarrow = useNarrowScreen();
+  // Cap tall charts on phones so one chart doesn't fill the whole screen
+  const effectiveHeight = isNarrow ? Math.min(height, 280) : height;
   const chartData = formatSeriesForChart(data);
   const unit = extractUnit(data.y_label);
   const pointCount = (data.labels ?? []).length;
@@ -246,7 +269,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     return (
       <Brush
         dataKey="x"
-        height={30}
+        height={isNarrow ? 24 : 30}
         stroke="#334155"
         fill="#1e293b"
         ariaLabel="Zoom range"
@@ -271,7 +294,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
   switch (data.chart_type) {
     case 'line':
       chartContent = (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={effectiveHeight}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis {...xAxisProps} />
@@ -302,7 +325,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
     case 'bar':
       chartContent = (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={effectiveHeight}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis {...xAxisProps} />
@@ -340,7 +363,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         return formatDateTick(iso, scatterLabels.length);
       };
       chartContent = (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={effectiveHeight}>
           <ScatterChart>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="x" name={data.x_label || 'x'} type="number"
@@ -369,7 +392,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
     case 'area':
       chartContent = (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={effectiveHeight}>
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis {...xAxisProps} />
@@ -400,7 +423,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
     case 'pie':
       chartContent = (
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height={effectiveHeight}>
           <PieChart>
             {renderTooltip()}
             {renderLegend()}
@@ -408,10 +431,11 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               data={chartData}
               cx="50%"
               cy="50%"
-              outerRadius={Math.min(height * 0.35, 150)}
+              outerRadius={Math.min(effectiveHeight * 0.35, 150)}
               dataKey="value"
               nameKey="name"
-              label={({ name, percent }) => Number.isFinite(percent) ? `${name} ${(percent * 100).toFixed(0)}%` : name}
+              // Slice labels clip on narrow screens — the legend carries the names there
+              label={isNarrow ? false : ({ name, percent }) => Number.isFinite(percent) ? `${name} ${(percent * 100).toFixed(0)}%` : name}
             >
               {chartData.map((_, index) => (
                 <Cell

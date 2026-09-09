@@ -131,7 +131,7 @@ export function RouteFilterBar() {
         <select
           value={filters.sort_by || ''}
           onChange={handleSortChange}
-          className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          className="bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -142,7 +142,7 @@ export function RouteFilterBar() {
         {filters.sort_by && (
           <button
             onClick={handleSortOrderToggle}
-            className="p-2 bg-surface-light border border-surface-light rounded-lg text-muted hover:text-white hover:bg-surface-light/80 transition-colors"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-surface-light border border-surface-light rounded-lg text-muted hover:text-white hover:bg-surface-light/80 transition-colors"
             aria-label={filters.sort_order === 'asc' ? 'Ascending' : 'Descending'}
           >
             {filters.sort_order === 'asc' ? (
@@ -156,7 +156,7 @@ export function RouteFilterBar() {
         {/* Favorite filter */}
         <button
           onClick={() => setFilters({ ...filters, is_favorite: filters.is_favorite ? undefined : true })}
-          className={`p-2 rounded-lg border transition-colors ${
+          className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border transition-colors ${
             filters.is_favorite
               ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
               : 'bg-surface-light border-surface-light text-muted hover:text-white'

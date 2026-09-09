@@ -55,56 +55,66 @@ export function ProfileEditor({
       </CardHeader>
       <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
         <div>
-          <label className="block text-xs text-muted mb-1">FTP (watts)</label>
+          <label htmlFor="profile-ftp" className="block text-xs text-muted mb-1">FTP (watts)</label>
           <input
+            id="profile-ftp"
             type="number"
+            inputMode="numeric"
             value={ftp}
             onChange={(e) => setFtp(e.target.value)}
             placeholder="e.g. 250"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Weight ({isImperial ? 'lb' : 'kg'})</label>
+          <label htmlFor="profile-weight" className="block text-xs text-muted mb-1">Weight ({isImperial ? 'lb' : 'kg'})</label>
           <input
+            id="profile-weight"
             type="number"
+            inputMode="decimal"
             step="0.1"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             placeholder={isImperial ? 'e.g. 166' : 'e.g. 75'}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">LTHR (bpm)</label>
+          <label htmlFor="profile-lthr" className="block text-xs text-muted mb-1">LTHR (bpm)</label>
           <input
+            id="profile-lthr"
             type="number"
+            inputMode="numeric"
             value={lthr}
             onChange={(e) => setLthr(e.target.value)}
             placeholder="e.g. 175"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Home Latitude</label>
+          <label htmlFor="profile-lat" className="block text-xs text-muted mb-1">Home Latitude</label>
           <input
+            id="profile-lat"
             type="number"
+            inputMode="decimal"
             step="any"
             value={homeLat}
             onChange={(e) => setHomeLat(e.target.value)}
             placeholder="e.g. 51.5072"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Home Longitude</label>
+          <label htmlFor="profile-lng" className="block text-xs text-muted mb-1">Home Longitude</label>
           <input
+            id="profile-lng"
             type="number"
+            inputMode="decimal"
             step="any"
             value={homeLng}
             onChange={(e) => setHomeLng(e.target.value)}
             placeholder="e.g. -0.1276"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <button
@@ -118,7 +128,7 @@ export function ProfileEditor({
             onSave(payload);
           }}
           disabled={isSaving}
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/80 transition-colors disabled:opacity-50"
+          className="w-full sm:w-auto px-4 py-2 min-h-[44px] bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/80 transition-colors disabled:opacity-50"
         >
           {isSaving ? 'Saving...' : 'Save'}
         </button>
@@ -141,7 +151,10 @@ export function ProfileEditor({
           <button
             onClick={handleAutoEstimateToggle}
             disabled={isSaving}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            role="switch"
+            aria-checked={!!profile?.auto_estimate_ftp}
+            aria-label="Weekly auto FTP estimation"
+            className={`relative inline-flex h-6 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors ${
               profile?.auto_estimate_ftp ? 'bg-accent' : 'bg-surface-light'
             } ${isSaving ? 'opacity-50' : ''}`}
           >

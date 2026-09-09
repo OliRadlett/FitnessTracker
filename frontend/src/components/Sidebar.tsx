@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
@@ -31,6 +31,7 @@ interface SidebarContextValue {
   toggle: () => void;
   isCollapsed: boolean;
   toggleCollapse: () => void;
+  menuButtonRef: React.RefObject<HTMLButtonElement>;
 }
 
 const SidebarContext = createContext<SidebarContextValue>({
@@ -40,6 +41,7 @@ const SidebarContext = createContext<SidebarContextValue>({
   toggle: () => {},
   isCollapsed: false,
   toggleCollapse: () => {},
+  menuButtonRef: { current: null },
 });
 
 export function useSidebar() {
@@ -53,6 +55,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   // Initialize collapsed state from localStorage (client-only)
   useEffect(() => {
@@ -108,7 +111,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [isOpen]);
 
   return (
-    <SidebarContext.Provider value={{ isOpen, open, close, toggle, isCollapsed, toggleCollapse }}>
+    <SidebarContext.Provider value={{ isOpen, open, close, toggle, isCollapsed, toggleCollapse, menuButtonRef }}>
       {children}
     </SidebarContext.Provider>
   );
@@ -117,15 +120,16 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 // ── Hamburger Button ─────────────────────────────────────────────────────────
 
 export function MobileMenuButton() {
-  const { toggle, isOpen } = useSidebar();
+  const { toggle, isOpen, menuButtonRef } = useSidebar();
 
   return (
     <button
+      ref={menuButtonRef}
       onClick={toggle}
       aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
       aria-expanded={isOpen}
       aria-controls="sidebar-navigation"
-      className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
+      className="md:hidden fixed top-4 left-4 z-50 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
     >
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         {isOpen ? (
@@ -143,7 +147,47 @@ export function MobileMenuButton() {
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { isOpen, close, isCollapsed, toggleCollapse } = useSidebar();
+  const { isOpen, close, isCollapsed, toggleCollapse, menuButtonRef } = useSidebar();
+  const asideRef = useRef<HTMLElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const wasOpen = useRef(false);
+
+  // Move focus into the drawer on open (mobile dialog behaviour) and return
+  // focus to the hamburger on close so keyboard users don't lose their place.
+  useEffect(() => {
+    if (isOpen && !wasOpen.current) {
+      wasOpen.current = true;
+      asideRef.current
+        ?.querySelector<HTMLElement>('a[href], button:not([disabled])')
+        ?.focus();
+    } else if (!isOpen && wasOpen.current) {
+      wasOpen.current = false;
+      menuButtonRef.current?.focus();
+    }
+  }, [isOpen, menuButtonRef]);
+
+  // Keep Tab inside the open drawer.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleTab(e: KeyboardEvent) {
+      if (e.key !== 'Tab' || !asideRef.current) return;
+      const items = Array.from(
+        asideRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')
+      ).filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', handleTab);
+    return () => document.removeEventListener('keydown', handleTab);
+  }, [isOpen]);
 
   return (
     <>
@@ -156,11 +200,23 @@ export function Sidebar() {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — a modal dialog on mobile, static nav on desktop */}
       <aside
+        ref={asideRef}
         id="sidebar-navigation"
-        role="navigation"
+        role={isOpen ? 'dialog' : 'navigation'}
         aria-label="Main navigation"
+        aria-modal={isOpen ? true : undefined}
+        onTouchStart={(e) => {
+          touchStartX.current = e.touches[0].clientX;
+        }}
+        onTouchEnd={(e) => {
+          if (touchStartX.current == null) return;
+          const dx = touchStartX.current - e.changedTouches[0].clientX;
+          touchStartX.current = null;
+          // Swipe left to dismiss the drawer
+          if (dx > 60) close();
+        }}
         className={`
           fixed inset-y-0 left-0 z-40 bg-surface border-r border-surface-light/50 flex flex-col min-h-screen
           transform transition-[width,transform] duration-200 ease-in-out
