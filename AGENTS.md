@@ -86,7 +86,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (36 tables, UUID PKs)
+## Database (37 tables, UUID PKs)
 
 **Relationships (compact)**:
 
@@ -199,6 +199,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 27. **Whoop dates must use local bedtime, not UTC wake-up**: Whoop API returns cycle/sleep timestamps in UTC with a `timezone_offset` field. The correct date is `cycle.start + timezone_offset` (local bedtime), NOT `cycle.end` in UTC (which shifts +1 day) or `cycle.start` in UTC (wrong for cycles crossing UTC midnight). See `_local_date_from_utc()` in `app/services/whoop.py`.
 28. **FastAPI route ordering — dynamic `/{route_id}` before static routes causes 422**: A `GET /{route_id}` route registered before `GET /tags` shadows it — FastAPI matches `/tags` to `/{route_id}` with `route_id="tags"`, which fails UUID conversion → 422. Always register all static single-segment routes (`/tags`, `/collections`, `/quality`, `/duplicates`) before any `/{param}` dynamic route in the same router.
 29. **Trailing-slash redirect + SW**: List endpoints at `@router.get("/")` with prefix `/api/v1/<resource>` create paths with trailing slashes (e.g. `/api/v1/routes/`). A request to `/api/v1/routes` (no slash) gets a 308 redirect. The SW's `fetch(request)` can fail following redirects in some browsers (NetworkError). Either use the trailing slash in the frontend client or add `.catch()` to the SW pass-through.
+30. **New models must be registered in `app/models/__init__.py`**: A model class that isn't imported into `app/models/__init__.py` is invisible to `Base.metadata.create_all()`, so its table is never created in the test fixture / fresh DB → `UndefinedTableError` at runtime. This silently passes when a full migration runs but breaks `create_all`-based tests. This bit both `Exercise` (exercise.py) and `LiftVideo` (lifting.py, §1.1). Always add the model to the `__init__` import **and** to `__all__`.
 
 ## Development Lessons
 

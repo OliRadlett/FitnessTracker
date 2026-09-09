@@ -1,6 +1,6 @@
 # FitTrack — Future Enhancements, Improvements & Features
 
-> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). Unstarted §1.1, §1.4, §3.16 remaining sub-items (deferred on DEM tiles), and §3.17 (website changelog — lowest priority).
+> **Date**: 2026-09-08 · **Status**: In progress — Phases A/B/C + Phase D (§3.6–3.10) + §3.12, §3.14, §3.15 shipped to `prod` (2026-09-08 release); **Phase E (video + analytics)** in progress — §3.12 Health-alert tuning + new signals done, §3.14 Race-day prep PDF done, §3.15 stale-data refresh done, §3.11 Adaptive training suggestions done, **§3.13 Ride segment analysis done**, **§3.16 3D replay MVP done** (activity fly-through; 3D route view + side-by-side comparison remain), **§1.2 Activities list enrichment done**, **§1.3 Post-sync background activity analysis done** (ride analytics cached in `Activity.context` at sync time). **Phase D remaining §3.7-live-offline done** (explicit Live Lift offline mode). **§0.2 doc reconcile done** (2026-09-08; merged duplicate `routes/` CODEMAP blocks + orphan `activities/` header). **§1.1 Strength video system — MVP shipped** (2026-09-09 release): `LiftVideo` model (`lift_videos` table, migration 047), `/api/v1/lifting/videos` API (URL-only embeds + R2 presigned upload scaffold, 501 without S3 creds), R2 config in `Settings`. URL-only mode end-to-end; upload mode degrades gracefully. §1.4 and §3.16 remaining sub-items (deferred on DEM tiles) not done; §3.17 (website changelog — lowest priority).
 > **Scope**: Everything below **except** new OAuth integrations (Garmin/TrainingPeaks/Zwift/Apple Health) and full nutrition tracking — both deliberately excluded per request.
 >
 > **Source**: Fresh audit of the codebase (backend services/APIs, frontend pages/components, docs, CI) on 2026-09-06, cross-referenced with existing plans (`roadmap-2026-08.md`, `routes-redesign.md`, `phase-7.md`, `health-monitor-tuning.md`, `misc-features-and-fixes.md`, `cohesiveness-2026-08-26.md`), `docs/BUGS.md`, and `plans/issues.md`.
@@ -35,10 +35,10 @@ Audit (grep-verified against actual exports/component files) found most §0.2 st
 ## Part 1 — Already-planned, still open (highest fidelity)
 
 ### 1.1 Strength video system — Phase 9 spec (L)
-Fully specced in `plans/roadmap-2026-08.md`, zero code exists (no `LiftVideo`, no R2/S3/presigned anywhere).
-- [ ] Cloudflare R2 presigned PUT (≤250MB, mp4/quicktime/webm), presigned GET stream URLs, `LiftVideo` model (migration 030 design), graceful 501 without S3 creds.
-- [ ] `POST /lifting/videos/upload-url`, `POST /lifting/videos`, `GET /lifting/videos/{id}/stream-url`; URL-only mode (YouTube/Vimeo embed + link cards).
-- [ ] `VideoEmbed` component, per-session + per-PR chips, `/videos` Video Bank page with exercise/date/source filters.
+Shipped MVP (2026-09-09 release). `LiftVideo` model lives at `backend/app/models/lifting.py` (table `lift_videos`, migration 047 — not 030); R2 presigned helpers in `backend/app/integrations/r2.py`; API at `backend/app/api/videos.py` mounted under `/api/v1/lifting/videos` (registered in `app/main.py`). Fully specced in `plans/roadmap-2026-08.md`.
+- [x] Cloudflare R2 presigned PUT (≤250MB, mp4/quicktime/webm), presigned GET stream URLs, `LiftVideo` model (migration 047), graceful 501 without S3 creds.
+- [x] `POST /lifting/videos/upload-url`, `POST /lifting/videos`, `GET /lifting/videos/{id}/stream-url`; URL-only mode (YouTube/Vimeo embed + link cards).
+- [ ] `VideoEmbed` component, per-session + per-PR chips, `/videos` Video Bank page with exercise/date/source filters. (frontend — not yet built)
 - **Skips cleanly**: no S3 config → upload returns 501; URL mode still works.
 
 ### 1.2 Activities page Phase B — `?include_context=true` (M) ✅ (2026-09-08)
