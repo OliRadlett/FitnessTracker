@@ -10,9 +10,7 @@ WEIGHT_MAX_KG = 300
 
 
 class WeightEntryCreate(BaseModel):
-    date: date | None = Field(
-        None, description="Log date — defaults to today when omitted"
-    )
+    date: date | None = None
     weight_kg: float = Field(..., ge=WEIGHT_MIN_KG, le=WEIGHT_MAX_KG)
 
 
