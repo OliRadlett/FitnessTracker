@@ -211,7 +211,7 @@ class WarmupTemplateStep(Base):
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Relationships
-    template: Mapped["WarmupTemplate"] = relationship(back_popains="steps")
+    template: Mapped["WarmupTemplate"] = relationship(back_populates="steps")
 
 
 # ── Strength videos (§1.1) ─────────────────────────────────────────────────────
