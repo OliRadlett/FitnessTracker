@@ -42,7 +42,7 @@ export default function VideosPage() {
 
   const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos', sourceFilter, exerciseFilter, afterFilter, beforeFilter],
-    queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos?${queryParams}`),
+    queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     staleTime: 30_000,
   });
 

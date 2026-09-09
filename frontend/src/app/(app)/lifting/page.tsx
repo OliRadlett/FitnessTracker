@@ -196,7 +196,7 @@ export default function LiftingPage() {
 
   const { data: allVideos } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos'],
-    queryFn: () => authFetch<LiftVideo[]>('/api/v1/lifting/videos?limit=200'),
+    queryFn: () => authFetch<LiftVideo[]>('/api/v1/lifting/videos/?limit=200'),
     staleTime: 60_000,
   });
 
