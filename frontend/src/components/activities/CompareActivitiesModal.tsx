@@ -42,23 +42,31 @@ export function CompareActivitiesModal({
 
   const isLoading = loadingA || loadingB;
 
-  function getStreamValues(streams: ActivityStream[] | undefined, type: string): number[] {
+  function getStreamValues(streams: ActivityStream[] | undefined, ...types: string[]): number[] {
     if (!streams) return [];
-    const s = streams.find((s) => s.stream_type === type);
-    if (!s) return [];
-    const data = s.data as Record<string, unknown>;
-    return (data?.data as number[]) ?? [];
+    for (const type of types) {
+      const s = streams.find((s) => s.stream_type === type);
+      if (!s) continue;
+      const data = s.data as Record<string, unknown>;
+      const values = (data?.data as number[]) ?? [];
+      if (values.length) return values;
+    }
+    return [];
   }
 
+  // Strava sync writes "watts", FIT imports write "power" — try both spellings.
   function streamInput(
     streams: ActivityStream[] | undefined,
-    type: string
+    ...types: string[]
   ): { values: number[]; resolution: number } | undefined {
-    const s = streams?.find((x) => x.stream_type === type);
-    if (!s) return undefined;
-    const data = s.data as Record<string, unknown>;
-    const values = (data?.data as number[]) ?? [];
-    return values.length ? { values, resolution: s.resolution ?? 1 } : undefined;
+    for (const type of types) {
+      const s = streams?.find((x) => x.stream_type === type);
+      if (!s) continue;
+      const data = s.data as Record<string, unknown>;
+      const values = (data?.data as number[]) ?? [];
+      if (values.length) return { values, resolution: s.resolution ?? 1 };
+    }
+    return undefined;
   }
 
   // §3.16 side-by-side replay: build a ReplayBuildResult (pure) for each ride.
@@ -72,7 +80,7 @@ export function CompareActivitiesModal({
       polyline: activity.encoded_polyline,
       velocity,
       altitude: streamInput(streams, 'altitude'),
-      power: streamInput(streams, 'watts'),
+      power: streamInput(streams, 'watts', 'power'),
       hr: streamInput(streams, 'heartrate'),
       maxSamples: 800,
     });
@@ -86,8 +94,8 @@ export function CompareActivitiesModal({
   // Auto-switch to the 3D tab once both builds are ready (and hide it if not).
   const show3d = canCompare3d;
 
-  const powerA = getStreamValues(streamsA, 'power');
-  const powerB = getStreamValues(streamsB, 'power');
+  const powerA = getStreamValues(streamsA, 'watts', 'power');
+  const powerB = getStreamValues(streamsB, 'watts', 'power');
   const hrA = getStreamValues(streamsA, 'heartrate');
   const hrB = getStreamValues(streamsB, 'heartrate');
 
@@ -230,13 +238,13 @@ export function CompareActivitiesModal({
                     <p className="text-xs text-muted mb-1">
                       {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityA.name} build={replayA!} />
+                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} />
                   </div>
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityB.name} build={replayB!} />
+                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">

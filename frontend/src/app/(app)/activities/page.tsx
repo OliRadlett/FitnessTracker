@@ -161,12 +161,15 @@ function ActivityExpanded({
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
     if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
     const streams = activityDetail.streams!;
-    const findStream = (type: string) => {
-      const s = streams.find((st) => st.stream_type === type);
-      if (!s) return undefined;
-      const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
-      if (!data || data.length === 0) return undefined;
-      return { values: data, resolution: s.resolution ?? 1 };
+    const findStream = (...types: string[]) => {
+      for (const type of types) {
+        const s = streams.find((st) => st.stream_type === type);
+        if (!s) continue;
+        const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
+        if (!data || data.length === 0) continue;
+        return { values: data, resolution: s.resolution ?? 1 };
+      }
+      return undefined;
     };
     const velocity = findStream('velocity');
     if (!velocity) return null;
@@ -174,7 +177,8 @@ function ActivityExpanded({
       polyline: activity.encoded_polyline,
       velocity,
       altitude: findStream('altitude'),
-      power: findStream('watts'),
+      // Strava sync writes "watts", FIT imports write "power".
+      power: findStream('watts', 'power'),
       hr: findStream('heartrate'),
       maxSamples: 800,
     });
@@ -229,7 +233,7 @@ function ActivityExpanded({
       {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 && (
         <div className="mb-4">
-          <Replay3D name={activity.name} build={replayBuild} />
+          <Replay3D name={activity.name} build={replayBuild} polyline={activity.encoded_polyline ?? undefined} />
         </div>
       )}
 

@@ -124,6 +124,12 @@ export interface ReplayBuildResult {
   totalTime: number;
   totalDistance: number;
   maxSpeed: number;
+  /** projection centroid (see projectPolyline) — aligns external meshes (DEM) */
+  lat0: number;
+  lng0: number;
+  /** altitude base + exaggeration used for z (for DEM mesh alignment) */
+  altMin: number;
+  zScale: number;
 }
 
 /**
@@ -134,7 +140,7 @@ export function buildReplay(
   opts: ReplayBuildOptions
 ): ReplayBuildResult {
   const coords = decodePolyline(opts.polyline);
-  const { xs, ys } = projectPolyline(coords);
+  const { xs, ys, lat0, lng0 } = projectPolyline(coords);
   const polyDist = cumulativePolyline(coords, xs, ys);
 
   const velocity = opts.velocity?.values ?? [];
@@ -218,6 +224,10 @@ export function buildReplay(
     totalTime,
     totalDistance,
     maxSpeed,
+    lat0,
+    lng0,
+    altMin,
+    zScale,
   };
 }
 
