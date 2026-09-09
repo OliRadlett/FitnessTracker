@@ -16,6 +16,7 @@ import { RoutesMapView } from '@/components/routes/RoutesMapView';
 import { RoutesListView } from '@/components/routes/VirtualRouteList';
 import { RoutesGridView } from '@/components/routes/RoutesGridView';
 import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
+import { MobileRouteDetailSheet } from '@/components/routes/MobileRouteDetailSheet';
 import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -349,7 +350,7 @@ export default function RoutesPage() {
             )}
           </div>
 
-          {/* Route detail panel (slide-over on mobile/desktop) */}
+          {/* Route detail panel — desktop slide-over */}
           <div className="flex-shrink-0 hidden lg:block">
             <RouteDetailPanel
               route={selectedRoute ?? null}
@@ -358,6 +359,12 @@ export default function RoutesPage() {
           </div>
         </div>
       </div>
+
+      {/* Route detail panel — mobile bottom sheet */}
+      <MobileRouteDetailSheet
+        route={selectedRoute ?? null}
+        onClose={() => handleSelectRoute(null)}
+      />
 
       {/* GPX Upload Modal */}
       {showImportModal && (
