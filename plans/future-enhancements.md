@@ -209,6 +209,7 @@ Fields exist with **no chart**: resting HR, respiratory rate, standalone recover
 Natural additions mirror existing features (no new infra): FTP auto-estimate / significant FTP change, connection `needs_reauth`, event countdown + taper-start, bad-weather ride-day alert, weekly summary / streak milestone, deload-started. Each needs the type added to all three lists (`services/notifications.py:13-18`, `models/notification.py:13`, `NotificationBell.tsx`).
 - [x] Added `connection_reauth` (fired from `_mark_reauth` in `services/connection_health.py`) and `ftp_stale` (from `check_stale_ftp`). Both threaded through the 4 sync points (NOTIFICATION_TYPES, DEFAULT_PREFERENCES, schemas, frontend types/Bell/Settings). Event countdown/taper/weather/streak/deload types deferred.
 - [x] Added `event_countdown` (events 1–7 days out, deduped per day) and `taper_start` (first day of event taper window). Both via daily Celery task `send_event_countdown_notifications` (6:45 AM UTC). Threaded through all 4 sync points.
+- [x] Added `ride_weather` (bad-weather alert when rain/storms/high wind forecast for event within 1 day). Uses `CyclingProfile.home_lat/lng` + `CachedWeather` forecast. Severity `warning`. Same Celery task.
 
 ---
 
