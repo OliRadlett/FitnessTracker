@@ -45,6 +45,13 @@ page light. Full phase plan (A–E) + vision roadmap below.
 - Shared playhead: `Replay3D` accepts `onElapsed` (10 fps); the expanded activity view shows a live `3D ▸ m:ss` chip in the stream header (reset per activity).
 - Deferred with rationale: power zone bands need cycling-profile FTP in the expanded view (new query — follow-up); full bidirectional 2D-chart linking needs `ReferenceLine` support in the shared `Chart`/`ChartData` plus Phase E's lifted clock — both land naturally with synced-compare work.
 
+## Follow-ups ✅ Done (2026-09-10)
+
+- **Power zone bands**: `TelemetryStrip` shades Coggan zone backgrounds behind the power row when `ftpWatts` is provided (pure `powerZoneBounds()` in `lib/replay.ts`, unit-tested); `Replay3D` passes it through; the expanded activity view reuses the shared `['cycling-profile']` cache (no new endpoint, one query gated to cycling).
+- **3D→chart playhead marker**: `ChartData.reference_line` + `ReferenceLine` render in the shared `Chart` (line charts only, additive — no existing chart affected); the expanded view attaches a `3D`-labelled marker at the selected stream's sample index, quantized to 2 fps so the chart doesn't re-render at the 10 fps replay tick (chip stays 10 fps). Reverse direction (chart hover → 3D) deliberately omitted — it would fight the replay clock.
+- **OrbitControls** now imports from `three/addons` (same class, supported export path) in both viewers.
+- **Replay readability + camera usability (from prod screenshot review)**: ground grid rotated flat into the path frame and scaled to the ride (was a fixed 2-unit helper — invisible); camera far plane scales with ride size (long rides used to clip); default view is aerial 3/4 instead of edge-on; rider cone/dots/labels slimmed down, km labels staggered with units and deduped on out-and-backs; zoom bounded (`size*0.05…6`), slower rotate, zoom-to-cursor, double-click/double-tap to focus the orbit pivot, Reset / Top / Rider view presets.
+
 ## Phase E — Synced compare (M) ✅ Done, scoped (2026-09-10)
 
 - **Shipped: linked playback.** `Replay3D` accepts an optional `link: ReplayLink | null` (master `t` in absolute seconds + `span`, `onScrub/onToggle/onRate`, `rate/playing`). Linked children render `min(t, ownTotal)` — rides start together in real time, shorter ones freeze at their finish; scrub/play/rate delegate to the parent; per-instance transport collapses to a "Linked" badge. `CompareActivitiesModal` owns the master clock (rAF, auto-pause at span end, restart-from-0 on replay) with a Linked/Independent toggle (default linked), master transport + span scrubber. Prop-only design — no refs, safe through `next/dynamic`. Deliberately %-free: absolute seconds keep both rides truthful.

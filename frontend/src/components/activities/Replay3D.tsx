@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
-import { replayMetricColor, replayMetricMax, replayMetricValue, timeFmt } from '@/lib/replay';
+import { powerZoneBounds, replayMetricColor, replayMetricMax, replayMetricValue, timeFmt } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
 
 const TRAIL_COLOR = new THREE.Color('#22d3ee');
 const RIDER_COLOR = new THREE.Color('#ffffff');
+
+/** Coggan zone tints (Z1→Z7) for the power-row background */
+const ZONE_COLORS = ['#64748b', '#3b82f6', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7'];
 
 const INTENSITY_GRADIENT = 'linear-gradient(to right, #3b82f6, #ef4444)';
 const GRADE_GRADIENT = `linear-gradient(to right, ${DESCENT_COLOR}, ${GRADE_RAMP.map(([, hex]) => hex).join(', ')})`;
@@ -63,11 +66,14 @@ export function TelemetryStrip({
   points,
   playhead,
   elevationBase,
+  ftpWatts,
 }: {
   points: ReplayPoint[];
   playhead: number;
   /** converts exaggerated z back to metres for the altitude row */
   elevationBase?: { altMin: number; zScale: number } | null;
+  /** shades Coggan zone bands behind the power row when provided */
+  ftpWatts?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -153,11 +159,34 @@ export function TelemetryStrip({
           const max = nums.length ? Math.max(...nums) : 1;
           const top = r * ROW_H + 4;
           const bot = (r + 1) * ROW_H - 6;
+          const scaleMax = Math.max(min + 1e-9, max);
+          const yOf = (v: number) =>
+            bot - ((Math.max(min, Math.min(scaleMax, v)) - min) / (scaleMax - min)) * (bot - top);
+          const showZones = row.key === 'power' && ftpWatts != null && ftpWatts > 0;
+          const bounds = showZones ? powerZoneBounds(ftpWatts) : [];
           return (
             <g key={row.key}>
               {r > 0 && (
                 <line x1={0} y1={r * ROW_H} x2={W} y2={r * ROW_H} stroke="rgba(148,163,184,0.15)" strokeWidth={0.4} />
               )}
+              {showZones &&
+                bounds.map((bHi, zi) => {
+                  const bLo = zi === 0 ? 0 : bounds[zi - 1];
+                  const yHi = yOf(Math.min(bHi, scaleMax));
+                  const yLo = yOf(bLo);
+                  if (yLo - yHi <= 0.2) return null;
+                  return (
+                    <rect
+                      key={zi}
+                      x={0}
+                      y={yHi}
+                      width={W}
+                      height={yLo - yHi}
+                      fill={ZONE_COLORS[zi]}
+                      opacity={0.13}
+                    />
+                  );
+                })}
               <path d={trace(values, min, Math.max(min + 1e-9, max), top, bot)} fill="none" stroke={row.color} strokeWidth={0.8} strokeLinejoin="round" />
             </g>
           );
@@ -176,6 +205,11 @@ export function TelemetryStrip({
             </span>
           );
         })}
+        {visible.some(({ row }) => row.key === 'power') && ftpWatts != null && ftpWatts > 0 && (
+          <span className="text-[10px] uppercase tracking-wide text-muted">
+            Zones @ {Math.round(ftpWatts)}W
+          </span>
+        )}
         {series.length > 2 && (
           <button
             onClick={() => setExpanded((e) => !e)}
@@ -212,6 +246,7 @@ export function Replay3D({
   polyline,
   onElapsed,
   link,
+  ftpWatts,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -221,6 +256,8 @@ export function Replay3D({
   onElapsed?: (seconds: number) => void;
   /** linked clock for side-by-side compare — transport delegates to the parent */
   link?: ReplayLink | null;
+  /** rider FTP for Coggan zone bands behind the power row */
+  ftpWatts?: number | null;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -243,6 +280,7 @@ export function Replay3D({
     rider: THREE.Mesh;
     trail: THREE.Line;
     pathColor: THREE.BufferAttribute | null;
+    home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
   } | null>(null);
 
@@ -276,11 +314,6 @@ export function Replay3D({
     camModeRef.current = camMode;
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
-    // Retarget orbit pivots to the rider when returning to free-orbit.
-    const s = sceneRef.current;
-    if (s && camMode === 'orbit') {
-      s.controls.target.copy(s.rider.position);
-    }
   }, [camMode]);
 
   // Build the three.js scene once for this ride.
@@ -308,12 +341,6 @@ export function Replay3D({
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
-    const camera = new THREE.PerspectiveCamera(
-      55,
-      mount.clientWidth / mount.clientHeight,
-      0.1,
-      50000
-    );
 
     const minX = Math.min(...points.map((p) => p.x));
     const maxX = Math.max(...points.map((p) => p.x));
@@ -324,19 +351,60 @@ export function Replay3D({
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 100);
-    // Shift grid to sit under the lowest point so the path floats above ground.
-    grid.position.set(cx, cy, Math.max(minZ - size * 0.08, 0));
+
+    const camera = new THREE.PerspectiveCamera(
+      55,
+      mount.clientWidth / mount.clientHeight,
+      0.1,
+      size * 10
+    );
+
+    // Ground grid, scaled to the ride: GridHelper lives in XZ, so rotate it
+    // flat into the path frame (XY) and slide it under the lowest point.
+    grid.rotation.x = Math.PI / 2;
+    grid.scale.setScalar(size / 2);
+    grid.position.set(cx, cy, Math.max(minZ - size * 0.05, 0));
     dirLight.position.set(cx + size * 0.6, cy - size * 0.5, minZ + size);
     scene.add(dirLight);
 
-    const dist = size * 2.2;
-    camera.position.set(cx + size * 0.5, cy - size * 0.7, minZ + dist);
-    camera.lookAt(cx, cy, minZ + size * 0.3);
+    // Aerial 3/4 default view — flat courses read as a course, not an edge.
+    const baseZ = Math.max(minZ - size * 0.05, 0);
+    camera.position.set(cx + size * 0.45, cy - size * 0.85, baseZ + size * 1.6);
+    camera.lookAt(cx, cy, minZ + (maxZ - minZ) * 0.5);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.target.set(cx, cy, minZ + size * 0.3);
+    controls.target.set(cx, cy, minZ + (maxZ - minZ) * 0.5);
+    // Keep zoom inside the scene: close enough for detail, never lost in the void.
+    controls.minDistance = size * 0.05;
+    controls.maxDistance = size * 6;
+    controls.rotateSpeed = 0.55;
+    // Zoom toward the pointer so exploring a long route doesn't lose it.
+    controls.zoomToCursor = true;
+
+    // Home pose for the Reset-view button.
+    const homePos = camera.position.clone();
+    const homeTarget = controls.target.clone();
+
+    // Double-click (or double-tap) focuses the orbit pivot on the route.
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const onDblClick = (e: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(scene.children, true);
+      const hit = hits.find((h) => !(h.object instanceof THREE.Sprite));
+      if (hit) {
+        controls.target.copy(hit.point);
+        controls.update();
+      }
+    };
+    renderer.domElement.addEventListener('dblclick', onDblClick);
 
     // ── Path line, vertex-coloured by the active metric ────────────────────
     const positions = new Float32Array(points.length * 3);
@@ -353,7 +421,8 @@ export function Replay3D({
     pathGeo.setAttribute('color', pathColorAttr);
     paintReplayPathColors(pathColorAttr, points, colorByRef.current);
     const pathMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 });
-    scene.add(new THREE.Line(pathGeo, pathMat));
+    const pathLine = new THREE.Line(pathGeo, pathMat);
+    scene.add(pathLine);
 
     // ── Ridden trail (grows via setDrawRange) ────────────────────────────
     const trailPositions = new Float32Array(points.length * 3);
@@ -366,7 +435,7 @@ export function Replay3D({
     scene.add(trail);
 
     // ── Rider marker: cone oriented along the heading ────────────────────
-    const riderGeo = new THREE.ConeGeometry(size * 0.018, size * 0.05, 12);
+    const riderGeo = new THREE.ConeGeometry(Math.max(size * 0.012, 2), Math.max(size * 0.032, 5), 12);
     const rider = new THREE.Mesh(riderGeo, new THREE.MeshBasicMaterial({ color: RIDER_COLOR }));
     scene.add(rider);
     const riderDir = new THREE.Vector3(1, 0, 0);
@@ -374,45 +443,58 @@ export function Replay3D({
     const UP_Z = new THREE.Vector3(0, 0, 1);
 
     // ── Km markers: dot + distance label at regular intervals ──────────────
+    // Out-and-back courses revisit the same ground — skip markers that land
+    // on top of an earlier one and stagger label heights so pairs separate.
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
     const markerDisposables: { dispose: () => void }[] = [];
     {
       const totalKm = build.totalDistance / 1000;
       const intervalKm = totalKm > 150 ? 25 : totalKm > 60 ? 10 : 5;
-      const dotGeo = new THREE.SphereGeometry(Math.max(size * 0.006, 1.5), 10, 10);
+      const dotGeo = new THREE.SphereGeometry(Math.max(size * 0.004, 1.5), 10, 10);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
       markerDisposables.push(dotGeo, dotMat);
+      const placed: THREE.Vector3[] = [];
+      let stagger = 0;
       for (let k = intervalKm; k < totalKm; k += intervalKm) {
         const target = k * 1000;
         const idx = points.findIndex((pt) => pt.distance >= target);
         if (idx < 0) continue;
         const mp = points[idx];
+        const pos = new THREE.Vector3(mp.x, mp.y, mp.z);
+        if (placed.some((q) => q.distanceTo(pos) < size * 0.015)) continue;
+        placed.push(pos);
         const dot = new THREE.Mesh(dotGeo, dotMat);
-        dot.position.set(mp.x, mp.y, mp.z);
+        dot.position.copy(pos);
         markerGroup.add(dot);
         const canvas = document.createElement('canvas');
-        canvas.width = 128;
+        canvas.width = 256;
         canvas.height = 64;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.font = 'bold 36px system-ui, sans-serif';
+          ctx.font = 'bold 30px system-ui, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillStyle = 'rgba(15,23,42,0.65)';
-          const label = `${k}`;
-          const w = ctx.measureText(label).width + 28;
-          ctx.beginPath();
-          ctx.roundRect((128 - w) / 2, 6, w, 52, 12);
-          ctx.fill();
+          ctx.fillStyle = 'rgba(15,23,42,0.7)';
+          const label = `${k} km`;
+          const w = Math.min(248, ctx.measureText(label).width + 30);
+          const x0 = (256 - w) / 2;
+          if (typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(x0, 8, w, 48, 10);
+            ctx.fill();
+          } else {
+            ctx.fillRect(x0, 8, w, 48);
+          }
           ctx.fillStyle = '#e2e8f0';
-          ctx.fillText(label, 64, 33);
+          ctx.fillText(label, 128, 33);
         }
         const tex = new THREE.CanvasTexture(canvas);
         const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
         const sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(size * 0.09, size * 0.045, 1);
-        sprite.position.set(mp.x, mp.y, mp.z + size * 0.03);
+        sprite.scale.set(size * 0.055, size * 0.014, 1);
+        stagger = stagger === 0 ? 1 : 0;
+        sprite.position.set(pos.x, pos.y, pos.z + size * (0.025 + stagger * 0.025));
         markerGroup.add(sprite);
         markerDisposables.push(tex, spriteMat);
       }
@@ -513,13 +595,14 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathColor: pathColorAttr, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathColor: pathColorAttr, home: { pos: homePos, target: homeTarget }, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
     const cleanup = () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      renderer.domElement.removeEventListener('dblclick', onDblClick);
       controls.dispose();
       pathGeo.dispose();
       pathMat.dispose();
@@ -667,6 +750,51 @@ export function Replay3D({
     }
   };
 
+  const bounds = useMemo(() => {
+    if (points.length < 2) return null;
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const zs = points.map((p) => p.z);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    };
+  }, [points]);
+
+  // View presets always drop back to free-orbit first (follow cams own the camera).
+  const resetView = () => {
+    const s = sceneRef.current;
+    if (!s?.home) return;
+    setCamMode('orbit');
+    s.camera.up.set(0, 1, 0);
+    s.camera.position.copy(s.home.pos);
+    s.controls.target.copy(s.home.target);
+    s.controls.update();
+  };
+  const topView = () => {
+    const s = sceneRef.current;
+    if (!s || !bounds) return;
+    setCamMode('orbit');
+    const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 100);
+    const bx = (bounds.minX + bounds.maxX) / 2;
+    const by = (bounds.minY + bounds.maxY) / 2;
+    s.camera.up.set(0, 1, 0);
+    s.camera.position.set(bx, by, bounds.maxZ + span * 2);
+    s.controls.target.set(bx, by, bounds.minZ);
+    s.controls.update();
+  };
+  const trackRider = () => {
+    const s = sceneRef.current;
+    if (!s) return;
+    setCamMode('orbit');
+    s.controls.target.copy(s.rider.position);
+    s.controls.update();
+  };
+
   const seek = (t: number) => {
     const L = linkRef.current;
     const span = L?.span ?? totalTime;
@@ -758,12 +886,30 @@ export function Replay3D({
                   : 'Terrain'}
           </button>
         )}
+        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="View presets">
+          {(
+            [
+              ['Reset', resetView, 'Restore the overview'],
+              ['Top', topView, 'Plan view from above'],
+              ['Rider', trackRider, 'Pivot around the rider'],
+            ] as const
+          ).map(([label, fn, title]) => (
+            <button
+              key={label}
+              onClick={fn}
+              title={title}
+              className="rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="relative h-[300px] w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent">
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
-          drag sideways to orbit · pinch to zoom
+          drag to orbit · pinch to zoom · double-click to focus
         </div>
         {hud && (
           <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground">
@@ -828,6 +974,7 @@ export function Replay3D({
         points={points}
         playhead={displayElapsed}
         elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
+        ftpWatts={ftpWatts}
       />
       {terrainState === 'on' && (
         <p className="mt-1 text-[10px] text-muted">Terrain © Open-Meteo — Copernicus DEM (GLO-90)</p>
