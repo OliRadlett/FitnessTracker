@@ -47,6 +47,10 @@ page light. Full phase plan (A–E) + vision roadmap below.
 
 ## Follow-ups ✅ Done (2026-09-10)
 
+### Incident: "Invariant failed" on ride expand (prod, same day)
+
+The 3D→chart `reference_line` shipped without `yAxisId`, but every YAxis in the shared `Chart` uses explicit ids (`left`/`right`) while Recharts defaults graphical children to id `0` → `Invariant failed: Could not find yAxis by id "0"`. Crashed the expanded activity view for any cycling ride with streams. Fixed with `yAxisId="left"` + a regression test that fails without it (verified by reverting). Lesson: the Chart test suite's documented invariant class applies to every new Recharts graphical child — render it in `Chart.test.tsx` first.
+
 - **Power zone bands**: `TelemetryStrip` shades Coggan zone backgrounds behind the power row when `ftpWatts` is provided (pure `powerZoneBounds()` in `lib/replay.ts`, unit-tested); `Replay3D` passes it through; the expanded activity view reuses the shared `['cycling-profile']` cache (no new endpoint, one query gated to cycling).
 - **3D→chart playhead marker**: `ChartData.reference_line` + `ReferenceLine` render in the shared `Chart` (line charts only, additive — no existing chart affected); the expanded view attaches a `3D`-labelled marker at the selected stream's sample index, quantized to 2 fps so the chart doesn't re-render at the 10 fps replay tick (chip stays 10 fps). Reverse direction (chart hover → 3D) deliberately omitted — it would fight the replay clock.
 - **OrbitControls** now imports from `three/addons` (same class, supported export path) in both viewers.
