@@ -11,6 +11,7 @@ import type {
   CalendarDayData,
   ChartData,
   ActivityFilters,
+  CyclingProfile,
   RideAnalysis,
   LoadContext,
   RideMetrics,
@@ -137,25 +138,25 @@ function ActivityExpanded({
     enabled: isCycling,
   });
 
-  const streamChart: ChartData | null = activityDetail?.streams?.length
-    ? (() => {
-        const stream = activityDetail.streams!.find((s) => s.stream_type === (selectedStream || streamTypes[0]));
-        if (!stream) return null;
-        const streamData = stream.data as Record<string, unknown>;
-        const values = (streamData?.data as number[]) ?? [];
-        return {
-          chart_type: 'line' as const,
-          title: `${stream.stream_type} over time`,
-          labels: values.map((_, i) => String(i)),
-          x_label: 'Sample',
-          y_label: stream.stream_type,
-          series: [{
-            name: stream.stream_type,
-            data: values,
-          }],
-        };
-      })()
-    : null;
+  const streamChart: ChartData | null = useMemo(() => {
+    if (!activityDetail?.streams?.length) return null;
+    const streams = activityDetail.streams!;
+    const stream = streams.find((s) => s.stream_type === (selectedStream || streams[0].stream_type));
+    if (!stream) return null;
+    const streamData = stream.data as Record<string, unknown>;
+    const values = (streamData?.data as number[]) ?? [];
+    return {
+      chart_type: 'line' as const,
+      title: `${stream.stream_type} over time`,
+      labels: values.map((_, i) => String(i)),
+      x_label: 'Sample',
+      y_label: stream.stream_type,
+      series: [{
+        name: stream.stream_type,
+        data: values,
+      }],
+    };
+  }, [activityDetail, selectedStream]);
 
   // ── 3D replay data (cycling rides with a route + streams) — §3.16 ──────
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
@@ -187,9 +188,46 @@ function ActivityExpanded({
 
   // Shared 3D playhead (Phase D: live readout; Phase E: full chart link).
   const [replayElapsed, setReplayElapsed] = useState<number | null>(null);
+  // 3D→chart marker, quantized to 2 fps so the chart doesn't re-render
+  // at the 10 fps replay tick (only changes during playback).
+  const [chartMarker, setChartMarker] = useState<string | null>(null);
+  const markerRef = useRef<string | null>(null);
   useEffect(() => {
     setReplayElapsed(null);
+    setChartMarker(null);
+    markerRef.current = null;
   }, [activity.id]);
+
+  // Cycling FTP for power zone bands (shared ['cycling-profile'] cache).
+  const { data: profile } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    enabled: isCycling,
+  });
+
+  const selectedResolution = Math.max(
+    1,
+    activityDetail?.streams?.find((s) => s.stream_type === (selectedStream || streamTypes[0]))?.resolution ?? 1
+  );
+  const handleElapsed = useCallback(
+    (t: number) => {
+      setReplayElapsed(t);
+      const q = String(Math.round(Math.floor(t * 2) / 2 / selectedResolution));
+      if (q !== markerRef.current) {
+        markerRef.current = q;
+        setChartMarker(q);
+      }
+    },
+    [selectedResolution]
+  );
+
+  const streamChartWithMarker: ChartData | null = useMemo(
+    () =>
+      streamChart && chartMarker && replayBuild
+        ? { ...streamChart, reference_line: { x: chartMarker, label: '3D' } }
+        : streamChart,
+    [streamChart, chartMarker, replayBuild]
+  );
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -244,7 +282,8 @@ function ActivityExpanded({
             name={activity.name}
             build={replayBuild}
             polyline={activity.encoded_polyline ?? undefined}
-            onElapsed={setReplayElapsed}
+            onElapsed={handleElapsed}
+            ftpWatts={profile?.ftp_watts ?? null}
           />
         </div>
       )}
@@ -272,7 +311,7 @@ function ActivityExpanded({
               </span>
             )}
           </div>
-          {streamChart && <Chart data={streamChart} height={250} />}
+          {streamChartWithMarker && <Chart data={streamChartWithMarker} height={250} />}
         </>
       ) : (
         <p className="text-muted text-sm">No stream data available</p>

@@ -36,6 +36,12 @@ export interface ReferenceArea {
   y_axis?: 'left' | 'right';
 }
 
+export interface ReferenceLine {
+  x: string | number;
+  label?: string;
+  color?: string;
+}
+
 export interface ChartData {
   chart_type: 'line' | 'bar' | 'scatter' | 'area' | 'pie' | 'heatmap';
   title: string;
@@ -45,6 +51,8 @@ export interface ChartData {
   y_label?: string;
   insights?: string[];
   reference_areas?: ReferenceArea[];
+  /** vertical playhead marker (3D replay position on stream charts) — line charts only */
+  reference_line?: ReferenceLine;
 }
 
 export interface ChartParams {

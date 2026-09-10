@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReplay,
   cumulativeFromVelocity,
+  powerZoneBounds,
   projectPolyline,
   replayMetricColor,
   replayMetricMax,
@@ -194,8 +195,7 @@ describe('replay metric colours', () => {
     expect(replayMetricValue(result.points[1], 'power')).toBe(100);
   });
 
-  it('renders missing samples as slate gaps, never false zeros', () => {
-    const [r, g, b] = replayMetricColor(null, 200);
+  it('renders missing samples as slate gaps, never false zeros', () => {    const [r, g, b] = replayMetricColor(null, 200);
     expect([r, g, b][1]).toBeGreaterThan(0.4);
     const [r0] = replayMetricColor(0, 200);
     expect(r0).toBeCloseTo(0.231, 3);
@@ -204,7 +204,19 @@ describe('replay metric colours', () => {
   });
 });
 
-describe('timeFmt', () => {  it('formats m:ss', () => {
+describe('powerZoneBounds', () => {
+  it('scales Coggan fractions by FTP', () => {
+    const b = powerZoneBounds(200);
+    expect(b).toHaveLength(7);
+    expect(b[0]).toBeCloseTo(110, 5);
+    expect(b[3]).toBeCloseTo(210, 5);
+    expect(b[6]).toBe(Infinity);
+    for (let i = 1; i < 6; i++) expect(b[i]).toBeGreaterThan(b[i - 1]);
+  });
+});
+
+describe('timeFmt', () => {
+  it('formats m:ss', () => {
     expect(timeFmt(0)).toBe('0:00');
     expect(timeFmt(65)).toBe('1:05');
   });

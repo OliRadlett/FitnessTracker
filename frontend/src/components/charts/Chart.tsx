@@ -11,6 +11,7 @@ import {
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceArea as RechartsReferenceArea,
+  ReferenceLine as RechartsReferenceLine,
   Brush,
 } from 'recharts';
 
@@ -303,6 +304,18 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
+            {data.reference_line && (
+              <RechartsReferenceLine
+                x={data.reference_line.x}
+                stroke={data.reference_line.color ?? '#22d3ee'}
+                strokeDasharray="4 2"
+                label={
+                  data.reference_line.label
+                    ? { value: data.reference_line.label, position: 'insideTopRight', fill: '#22d3ee', fontSize: 10 }
+                    : undefined
+                }
+              />
+            )}
             {renderBrush()}
             {renderTooltip()}
             {renderLegend()}

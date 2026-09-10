@@ -249,6 +249,11 @@ export function buildReplay(
   };
 }
 
+/** Coggan classic power-zone UPPER bounds in watts (last entry Infinity) */
+export function powerZoneBounds(ftpWatts: number): number[] {
+  return [0.55, 0.75, 0.9, 1.05, 1.2, 1.5].map((f) => f * ftpWatts).concat(Infinity);
+}
+
 /** path colour modes for the replay line (Phase D) */
 export type ReplayColorMode = 'speed' | 'power' | 'hr' | 'grade';
 

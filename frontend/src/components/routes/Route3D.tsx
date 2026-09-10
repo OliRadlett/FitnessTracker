@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { decodePolyline } from '@/lib/polyline';
 import type { BuildRoute3DResult, ColorMode, RoutePathPoint, TerrainInput } from '@/lib/route3d';
 import { DESCENT_COLOR, ELEVATION_RAMP, GRADE_RAMP, GRADE_SCALE, buildRoute3D, computeGrid, pointColor, steepestKm } from '@/lib/route3d';
