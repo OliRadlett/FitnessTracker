@@ -306,6 +306,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
             {renderReferenceAreas(data.reference_areas, 'left')}
             {data.reference_line && (
               <RechartsReferenceLine
+                yAxisId="left"
                 x={data.reference_line.x}
                 stroke={data.reference_line.color ?? '#22d3ee'}
                 strokeDasharray="4 2"
