@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityStream, ChartData } from '@/lib/api';
-import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
+import { buildReplay, timeFmt, tourRate, TOUR_PRESETS, type ReplayBuildResult } from '@/lib/replay';
 import { Chart } from '@/components/charts/Chart';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration, formatDistance } from '@/lib/utils';
@@ -101,6 +101,26 @@ export function CompareActivitiesModal({
   const linkSpan = Math.max(replayA?.totalTime ?? 0, replayB?.totalTime ?? 0);
   const [linked, setLinked] = useState(true);
   const [master, setMaster] = useState({ playing: false, rate: 4, t: 0 });
+
+  // Adopt the tour default once both builds arrive (never yank mid-playback).
+  useEffect(() => {
+    if (linkSpan > 0) {
+      setMaster((m) => (!m.playing && m.t === 0 ? { ...m, rate: tourRate(linkSpan, 60) } : m));
+    }
+  }, [linkSpan]);
+
+  // Whole-ride presets for the longer ride, deduped for short rides.
+  const tourMasterOptions = useMemo(() => {
+    const seen = new Set<number>();
+    const opts: { label: string; rate: number }[] = [];
+    for (const p of TOUR_PRESETS) {
+      const r = tourRate(linkSpan, p.secs);
+      if (seen.has(r)) continue;
+      seen.add(r);
+      opts.push({ label: p.label, rate: r });
+    }
+    return opts;
+  }, [linkSpan]);
 
   useEffect(() => {
     if (!linked || !master.playing) return;
@@ -296,16 +316,17 @@ export function CompareActivitiesModal({
                       >
                         {master.playing ? 'Pause' : 'Play'}
                       </button>
-                      <div className="flex items-center gap-1">
-                        {[1, 4, 8].map((r) => (
+                      <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
+                        {tourMasterOptions.map((o) => (
                           <button
-                            key={r}
-                            onClick={() => masterRate(r)}
+                            key={o.label}
+                            onClick={() => masterRate(o.rate)}
+                            title={`Both rides in ~${o.label} (${o.rate}×)`}
                             className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
-                              master.rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                              master.rate === o.rate ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
                             }`}
                           >
-                            {r}×
+                            {o.label}
                           </button>
                         ))}
                       </div>

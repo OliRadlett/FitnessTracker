@@ -254,6 +254,19 @@ export function powerZoneBounds(ftpWatts: number): number[] {
   return [0.55, 0.75, 0.9, 1.05, 1.2, 1.5].map((f) => f * ftpWatts).concat(Infinity);
 }
 
+/** tour-speed presets: whole-ride playback in ~2 min / ~1 min / ~30 s */
+export const TOUR_PRESETS = [
+  { label: '2m', secs: 120 },
+  { label: '1m', secs: 60 },
+  { label: '30s', secs: 30 },
+] as const;
+
+/** playback rate finishing totalSeconds in ~targetSecs (min 1×) */
+export function tourRate(totalSeconds: number, targetSecs: number): number {
+  if (!(totalSeconds > 0) || !(targetSecs > 0)) return 1;
+  return Math.max(1, Math.round(totalSeconds / targetSecs));
+}
+
 /** path colour modes for the replay line (Phase D) */
 export type ReplayColorMode = 'speed' | 'power' | 'hr' | 'grade';
 
@@ -284,6 +297,24 @@ export function replayMetricMax(points: ReplayPoint[], mode: ReplayColorMode): n
     if (v != null && v > m) m = v;
   }
   return m > 0 ? m : 1;
+}
+
+/**
+ * Robust colour scale: 95th percentile so one GPS spike doesn't flatten
+ * contrast across the whole ride. True maxima still render full-red
+ * (the colour ramp clamps). Falls back to the max for tiny/all-zero data.
+ */
+export function replayMetricScale(points: ReplayPoint[], mode: ReplayColorMode): number {
+  if (mode === 'grade') return 12;
+  const vs = points
+    .map((p) => replayMetricValue(p, mode))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  if (!vs.length) return 1;
+  const sorted = [...vs].sort((a, b) => a - b);
+  const max = sorted[sorted.length - 1];
+  if (max <= 0) return 1;
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+  return p95 > 0 ? Math.min(max, p95 * 1.1) : max;
 }
 
 /** blue→red intensity colour for a metric value (grade is coloured by the caller via slopeColor) */

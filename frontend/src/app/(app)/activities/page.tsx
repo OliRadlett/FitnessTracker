@@ -229,6 +229,13 @@ function ActivityExpanded({
     [streamChart, chartMarker, replayBuild]
   );
 
+  // Same element identity across renders → React bails out instead of
+  // re-rendering the heavy Recharts tree on every playhead tick.
+  const streamChartEl = useMemo(
+    () => (streamChartWithMarker ? <Chart data={streamChartWithMarker} height={250} /> : null),
+    [streamChartWithMarker]
+  );
+
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -311,7 +318,7 @@ function ActivityExpanded({
               </span>
             )}
           </div>
-          {streamChartWithMarker && <Chart data={streamChartWithMarker} height={250} />}
+          {streamChartEl}
         </>
       ) : (
         <p className="text-muted text-sm">No stream data available</p>
