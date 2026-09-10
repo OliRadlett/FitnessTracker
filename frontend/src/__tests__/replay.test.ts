@@ -6,8 +6,10 @@ import {
   projectPolyline,
   replayMetricColor,
   replayMetricMax,
+  replayMetricScale,
   replayMetricValue,
   timeFmt,
+  tourRate,
 } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 
@@ -195,7 +197,26 @@ describe('replay metric colours', () => {
     expect(replayMetricValue(result.points[1], 'power')).toBe(100);
   });
 
-  it('renders missing samples as slate gaps, never false zeros', () => {    const [r, g, b] = replayMetricColor(null, 200);
+  it('scales colour by p95 so one spike does not flatten contrast', () => {
+    // Twenty samples at 10 m/s plus one GPS spike at 100.
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [...Array<number>(20).fill(10), 100] },
+    });
+    expect(replayMetricMax(result.points, 'speed')).toBe(100);
+    expect(replayMetricScale(result.points, 'speed')).toBeCloseTo(11, 5);
+  });
+
+  it('falls back to max for tiny or all-zero data', () => {
+    const tiny = buildReplay({ polyline, velocity: { values: [0, 5, 10] } });
+    expect(replayMetricScale(tiny.points, 'speed')).toBe(10);
+    const flat = buildReplay({ polyline, velocity: { values: [0, 0, 0] } });
+    expect(replayMetricScale(flat.points, 'speed')).toBe(1);
+    expect(replayMetricScale(tiny.points, 'grade')).toBe(12);
+  });
+
+  it('renders missing samples as slate gaps, never false zeros', () => {
+    const [r, g, b] = replayMetricColor(null, 200);
     expect([r, g, b][1]).toBeGreaterThan(0.4);
     const [r0] = replayMetricColor(0, 200);
     expect(r0).toBeCloseTo(0.231, 3);
@@ -212,6 +233,22 @@ describe('powerZoneBounds', () => {
     expect(b[3]).toBeCloseTo(210, 5);
     expect(b[6]).toBe(Infinity);
     for (let i = 1; i < 6; i++) expect(b[i]).toBeGreaterThan(b[i - 1]);
+  });
+});
+
+describe('tourRate', () => {
+  it('finishes an hour ride in about a minute at 60x', () => {
+    expect(tourRate(3600, 60)).toBe(60);
+    expect(tourRate(4044, 60)).toBe(67);
+    expect(tourRate(3600, 120)).toBe(30);
+    expect(tourRate(3600, 30)).toBe(120);
+  });
+
+  it('floors at 1x for short or invalid durations', () => {
+    expect(tourRate(20, 60)).toBe(1);
+    expect(tourRate(0, 60)).toBe(1);
+    expect(tourRate(-5, 60)).toBe(1);
+    expect(tourRate(3600, 0)).toBe(1);
   });
 });
 

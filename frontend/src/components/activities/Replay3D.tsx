@@ -3,13 +3,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
-import { powerZoneBounds, replayMetricColor, replayMetricMax, replayMetricValue, timeFmt } from '@/lib/replay';
+import { TOUR_PRESETS, powerZoneBounds, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
 
-const TRAIL_COLOR = new THREE.Color('#22d3ee');
 const RIDER_COLOR = new THREE.Color('#ffffff');
+
+/** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
+function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
+  const arr = new Array<number>(points.length * 3);
+  if (mode === 'grade') {
+    points.forEach((p, i) => {
+      const [r, g, b] = slopeColor(p.grade ?? 0);
+      arr[i * 3] = r;
+      arr[i * 3 + 1] = g;
+      arr[i * 3 + 2] = b;
+    });
+  } else {
+    const max = replayMetricScale(points, mode);
+    points.forEach((p, i) => {
+      const [r, g, b] = replayMetricColor(replayMetricValue(p, mode), max);
+      arr[i * 3] = r;
+      arr[i * 3 + 1] = g;
+      arr[i * 3 + 2] = b;
+    });
+  }
+  return arr;
+}
 
 /** Coggan zone tints (Z1→Z7) for the power-row background */
 const ZONE_COLORS = ['#64748b', '#3b82f6', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7'];
@@ -26,32 +50,6 @@ function nearestIndex(points: ReplayPoint[], elapsed: number): number {
     else hi = mid - 1;
   }
   return lo;
-}
-
-/** vertex colours for the path line under a colour mode (grade uses the diverging ramp) */
-function paintReplayPathColors(
-  attr: THREE.BufferAttribute,
-  points: ReplayPoint[],
-  mode: ReplayColorMode
-) {
-  const arr = attr.array as Float32Array;
-  if (mode === 'grade') {
-    points.forEach((p, i) => {
-      const [r, g, b] = slopeColor(p.grade ?? 0);
-      arr[i * 3] = r;
-      arr[i * 3 + 1] = g;
-      arr[i * 3 + 2] = b;
-    });
-  } else {
-    const max = replayMetricMax(points, mode);
-    points.forEach((p, i) => {
-      const [r, g, b] = replayMetricColor(replayMetricValue(p, mode), max);
-      arr[i * 3] = r;
-      arr[i * 3 + 1] = g;
-      arr[i * 3 + 2] = b;
-    });
-  }
-  attr.needsUpdate = true;
 }
 
 interface StripRow {
@@ -259,17 +257,17 @@ export function Replay3D({
   /** rider FTP for Coggan zone bands behind the power row */
   ftpWatts?: number | null;
 }) {
+  const points = build.points;
+  const totalTime = build.totalTime;
+
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [rate, setRate] = useState(4);
+  const [rate, setRate] = useState(() => tourRate(totalTime, 60));
   const [displayElapsed, setDisplayElapsed] = useState(0);
   const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'cockpit'>('orbit');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
-
-  const points = build.points;
-  const totalTime = build.totalTime;
 
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -278,8 +276,8 @@ export function Replay3D({
     scene: THREE.Scene;
     grid: THREE.GridHelper;
     rider: THREE.Mesh;
-    trail: THREE.Line;
-    pathColor: THREE.BufferAttribute | null;
+    trail: Line2;
+    pathGeo: LineGeometry | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
   } | null>(null);
@@ -301,6 +299,23 @@ export function Replay3D({
   useEffect(() => {
     rateRef.current = rate;
   }, [rate]);
+  // Tour default follows the ride length (not a stale fixed 4×).
+  useEffect(() => {
+    setRate(tourRate(totalTime, 60));
+  }, [totalTime]);
+
+  // Whole-ride presets for this ride's length, deduped for short rides.
+  const tourOptions = useMemo(() => {
+    const seen = new Set<number>();
+    const opts: { label: string; rate: number; secs: number }[] = [];
+    for (const p of TOUR_PRESETS) {
+      const r = tourRate(totalTime, p.secs);
+      if (seen.has(r)) continue;
+      seen.add(r);
+      opts.push({ label: p.label, rate: r, secs: p.secs });
+    }
+    return opts;
+  }, [totalTime]);
   useEffect(() => {
     colorByRef.current = colorBy;
   }, [colorBy]);
@@ -406,36 +421,33 @@ export function Replay3D({
     };
     renderer.domElement.addEventListener('dblclick', onDblClick);
 
-    // ── Path line, vertex-coloured by the active metric ────────────────────
-    const positions = new Float32Array(points.length * 3);
-    const colors = new Float32Array(points.length * 3);
-    points.forEach((p, i) => {
-      positions[i * 3] = p.x;
-      positions[i * 3 + 1] = p.y;
-      positions[i * 3 + 2] = p.z;
+    // ── Path line (Line2: constant pixel width, vertex-coloured) ──────────
+    const pathPositions: number[] = [];
+    points.forEach((p) => {
+      pathPositions.push(p.x, p.y, p.z);
     });
-    const pathGeo = new THREE.BufferGeometry();
-    pathGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const pathColorAttr = new THREE.BufferAttribute(colors, 3);
-    pathColorAttr.setUsage(THREE.DynamicDrawUsage);
-    pathGeo.setAttribute('color', pathColorAttr);
-    paintReplayPathColors(pathColorAttr, points, colorByRef.current);
-    const pathMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 });
-    const pathLine = new THREE.Line(pathGeo, pathMat);
+    const setLineResolution = (m: LineMaterial) => m.resolution.set(mount.clientWidth, mount.clientHeight);
+    const pathGeo = new LineGeometry();
+    pathGeo.setPositions(pathPositions);
+    pathGeo.setColors(replayPathColorArray(points, colorByRef.current));
+    const pathMat = new LineMaterial({ linewidth: 3, vertexColors: true, transparent: true, opacity: 0.9 });
+    setLineResolution(pathMat);
+    const pathLine = new Line2(pathGeo, pathMat);
     scene.add(pathLine);
 
-    // ── Ridden trail (grows via setDrawRange) ────────────────────────────
-    const trailPositions = new Float32Array(points.length * 3);
-    trailPositions.set(positions);
-    const trailGeo = new THREE.BufferGeometry();
-    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-    trailGeo.setDrawRange(0, 0);
-    const trailMat = new THREE.LineBasicMaterial({ color: TRAIL_COLOR, transparent: true, opacity: 0.5 });
-    const trail = new THREE.Line(trailGeo, trailMat);
+    // ── Ridden trail: wider translucent halo, grown via instanceCount ──────
+    const trailGeo = new LineGeometry();
+    trailGeo.setPositions(pathPositions);
+    trailGeo.setColors(new Array<number>(points.length * 3).fill(0.13));
+    trailGeo.instanceCount = 0;
+    const trailMat = new LineMaterial({ linewidth: 6, color: 0x22d3ee, transparent: true, opacity: 0.3 });
+    setLineResolution(trailMat);
+    const trail = new Line2(trailGeo, trailMat);
     scene.add(trail);
 
-    // ── Rider marker: cone oriented along the heading ────────────────────
-    const riderGeo = new THREE.ConeGeometry(Math.max(size * 0.012, 2), Math.max(size * 0.032, 5), 12);
+    // ── Rider marker: slim dart oriented along the heading ───────────────
+    // (reads as direction from any angle, unlike a stubby cone)
+    const riderGeo = new THREE.ConeGeometry(Math.max(size * 0.008, 1.5), Math.max(size * 0.04, 7), 12);
     const rider = new THREE.Mesh(riderGeo, new THREE.MeshBasicMaterial({ color: RIDER_COLOR }));
     scene.add(rider);
     const riderDir = new THREE.Vector3(1, 0, 0);
@@ -536,7 +548,8 @@ export function Replay3D({
       tmpDir.set(q.x - p.x, q.y - p.y, q.z - p.z);
       if (tmpDir.lengthSq() > 1e-9) riderDir.copy(tmpDir.normalize());
       rider.quaternion.setFromUnitVectors(UP_Y, riderDir);
-      trailGeo.setDrawRange(0, i + 1);
+      // Segments drawn = point index (points 0..i need i segments).
+      trailGeo.instanceCount = Math.max(0, Math.min(i, points.length - 1));
 
       const mode = camModeRef.current;
       if (mode === 'orbit') {
@@ -590,12 +603,15 @@ export function Replay3D({
         renderer.setSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        // Line2 widths are resolution-dependent — keep both materials in sync.
+        pathMat.resolution.set(w, h);
+        trailMat.resolution.set(w, h);
       }
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathColor: pathColorAttr, home: { pos: homePos, target: homeTarget }, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
@@ -632,8 +648,8 @@ export function Replay3D({
   // Recolour the path line without rebuilding the scene.
   useEffect(() => {
     const s = sceneRef.current;
-    if (!s?.pathColor || points.length < 2) return;
-    paintReplayPathColors(s.pathColor, points, colorBy);
+    if (!s?.pathGeo || points.length < 2) return;
+    s.pathGeo.setColors(replayPathColorArray(points, colorBy));
   }, [colorBy, points]);
 
   const colorStats = useMemo(() => {
@@ -642,8 +658,8 @@ export function Replay3D({
       hasPower: has((p) => p.power),
       hasHr: has((p) => p.hr),
       hasGrade: has((p) => p.grade),
-      maxPower: replayMetricMax(points, 'power'),
-      maxHr: replayMetricMax(points, 'hr'),
+      maxPower: replayMetricScale(points, 'power'),
+      maxHr: replayMetricScale(points, 'hr'),
     };
   }, [points]);
 
@@ -655,10 +671,17 @@ export function Replay3D({
   }, [colorBy, colorStats]);
 
   // Push display-elapsed to React ~10fps for the scrubber/readout too.
+  // onElapsed (parent renders!) only fires when the half-second quantum
+  // changes — silent when paused, ≤2fps during playback.
+  const lastSentRef = useRef<number>(-1);
   useEffect(() => {
     const id = window.setInterval(() => {
       setDisplayElapsed(elapsedRef.current);
-      onElapsedRef.current?.(elapsedRef.current);
+      const q = Math.floor(elapsedRef.current * 2) / 2;
+      if (q !== lastSentRef.current) {
+        lastSentRef.current = q;
+        onElapsedRef.current?.(elapsedRef.current);
+      }
     }, 100);
     return () => window.clearInterval(id);
   }, []);
@@ -996,16 +1019,17 @@ export function Replay3D({
             >
               {playing ? 'Pause' : 'Play'}
             </button>
-            <div className="flex items-center gap-1">
-              {[1, 4, 8].map((r) => (
+            <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
+              {tourOptions.map((o) => (
                 <button
-                  key={r}
-                  onClick={() => pickRate(r)}
+                  key={o.label}
+                  onClick={() => pickRate(o.rate)}
+                  title={`Whole ride in ~${o.label} (${o.rate}×)`}
                   className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
-                    rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                    rate === o.rate ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
                   }`}
                 >
-                  {r}×
+                  {o.label}
                 </button>
               ))}
             </div>

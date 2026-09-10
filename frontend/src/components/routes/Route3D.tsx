@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { decodePolyline } from '@/lib/polyline';
 import type { BuildRoute3DResult, ColorMode, RoutePathPoint, TerrainInput } from '@/lib/route3d';
 import { DESCENT_COLOR, ELEVATION_RAMP, GRADE_RAMP, GRADE_SCALE, buildRoute3D, computeGrid, pointColor, steepestKm } from '@/lib/route3d';
@@ -13,6 +16,23 @@ const END_COLOR = new THREE.Color('#ef4444');
 const CLIMB_COLOR = 0xfb923c;
 const SUMMIT_COLOR = new THREE.Color('#facc15');
 const HIGHLIGHT_COLOR = new THREE.Color('#22d3ee');
+
+/** flat RGB array for the drape LineGeometry under a colour mode */
+function routeLineColors(
+  path: RoutePathPoint[],
+  mode: ColorMode,
+  altMin: number,
+  altSpan: number
+): number[] {
+  const col = new Array<number>(path.length * 3);
+  path.forEach((p, i) => {
+    const [r, g, b] = pointColor(p, mode, altMin, altSpan);
+    col[i * 3] = r;
+    col[i * 3 + 1] = g;
+    col[i * 3 + 2] = b;
+  });
+  return col;
+}
 
 /** nearest path point to a route distance (km) — robust across resamplings */
 function nearestPointByDistKm(path: RoutePathPoint[], km: number): RoutePathPoint {
@@ -112,7 +132,7 @@ export function Route3D({
     renderer: THREE.WebGLRenderer;
     controls: OrbitControls;
     camera: THREE.PerspectiveCamera;
-    lineColor: THREE.BufferAttribute | null;
+    lineGeo: LineGeometry | null;
     highlight: THREE.Mesh | null;
     dispose: () => void;
   } | null>(null);
@@ -182,21 +202,17 @@ export function Route3D({
       }
     }
 
-    // ── Route line, vertex-coloured by mode ───────────────────────────────
-    const pathGeo = new THREE.BufferGeometry();
-    const pathPos = new Float32Array(points.length * 3);
-    const pathCol = new Float32Array(points.length * 3);
-    points.forEach((p, i) => {
-      pathPos[i * 3] = p.x;
-      pathPos[i * 3 + 1] = p.y;
-      pathPos[i * 3 + 2] = p.z;
+    // ── Route line, vertex-coloured by mode (Line2: constant width) ──────
+    const pathGeo = new LineGeometry();
+    const pathPos: number[] = [];
+    points.forEach((p) => {
+      pathPos.push(p.x, p.y, p.z);
     });
-    const colorAttr = new THREE.BufferAttribute(pathCol, 3);
-    colorAttr.setUsage(THREE.DynamicDrawUsage);
-    pathGeo.setAttribute('position', new THREE.BufferAttribute(pathPos, 3));
-    pathGeo.setAttribute('color', colorAttr);
-    const pathMat = new THREE.LineBasicMaterial({ vertexColors: true });
-    scene.add(new THREE.Line(pathGeo, pathMat));
+    pathGeo.setPositions(pathPos);
+    pathGeo.setColors(routeLineColors(points, mode, build.altMin, build.altSpan));
+    const pathMat = new LineMaterial({ linewidth: 3, vertexColors: true });
+    pathMat.resolution.set(mount.clientWidth, mount.clientHeight);
+    scene.add(new Line2(pathGeo, pathMat));
     geos.push(pathGeo);
     mats.push(pathMat);
 
@@ -379,6 +395,8 @@ export function Route3D({
         renderer.setSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        // Line2 widths are resolution-dependent.
+        pathMat.resolution.set(w, h);
       }
     };
     const ro = new ResizeObserver(onResize);
@@ -388,7 +406,7 @@ export function Route3D({
       renderer,
       controls,
       camera,
-      lineColor: colorAttr,
+      lineGeo: pathGeo,
       highlight,
       dispose: () => {
         cameraPoseRef.current = { pos: camera.position.clone(), target: controls.target.clone() };
@@ -410,16 +428,8 @@ export function Route3D({
   // Colour the path line whenever the mode or data changes.
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene?.lineColor || build.path.length < 2) return;
-    const col = new Float32Array(build.path.length * 3);
-    build.path.forEach((p, i) => {
-      const [r, g, b] = pointColor(p, mode, build.altMin, build.altSpan);
-      col[i * 3] = r;
-      col[i * 3 + 1] = g;
-      col[i * 3 + 2] = b;
-    });
-    scene.lineColor.array = col;
-    scene.lineColor.needsUpdate = true;
+    if (!scene?.lineGeo || build.path.length < 2) return;
+    scene.lineGeo.setColors(routeLineColors(build.path, mode, build.altMin, build.altSpan));
   }, [build, mode]);
 
   // Position the 2D-profile hover marker without rebuilding the scene.
