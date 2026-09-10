@@ -35,7 +35,7 @@ import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
-import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
+import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
@@ -171,7 +171,7 @@ function ActivityExpanded({
       }
       return undefined;
     };
-    const velocity = findStream('velocity');
+    const velocity = findStream('velocity', 'velocity_smooth');
     if (!velocity) return null;
     return buildReplay({
       polyline: activity.encoded_polyline,
@@ -180,9 +180,16 @@ function ActivityExpanded({
       // Strava sync writes "watts", FIT imports write "power".
       power: findStream('watts', 'power'),
       hr: findStream('heartrate'),
+      cadence: findStream('cadence'),
       maxSamples: 800,
     });
   }, [activity, activityDetail, isCycling]);
+
+  // Shared 3D playhead (Phase D: live readout; Phase E: full chart link).
+  const [replayElapsed, setReplayElapsed] = useState<number | null>(null);
+  useEffect(() => {
+    setReplayElapsed(null);
+  }, [activity.id]);
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -233,7 +240,12 @@ function ActivityExpanded({
       {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 && (
         <div className="mb-4">
-          <Replay3D name={activity.name} build={replayBuild} polyline={activity.encoded_polyline ?? undefined} />
+          <Replay3D
+            name={activity.name}
+            build={replayBuild}
+            polyline={activity.encoded_polyline ?? undefined}
+            onElapsed={setReplayElapsed}
+          />
         </div>
       )}
 
@@ -254,6 +266,11 @@ function ActivityExpanded({
                 {st}
               </button>
             ))}
+            {replayElapsed != null && replayBuild && (
+              <span className="ml-auto self-center font-mono text-xs tabular-nums text-muted">
+                3D ▸ {timeFmt(replayElapsed)}
+              </span>
+            )}
           </div>
           {streamChart && <Chart data={streamChart} height={250} />}
         </>

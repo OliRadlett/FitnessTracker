@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
@@ -74,7 +74,7 @@ export function CompareActivitiesModal({
     activity: Activity,
     streams: ActivityStream[] | undefined
   ): ReplayBuildResult | null {
-    const velocity = streamInput(streams, 'velocity');
+    const velocity = streamInput(streams, 'velocity', 'velocity_smooth');
     if (!velocity || !activity.encoded_polyline) return null;
     const res = buildReplay({
       polyline: activity.encoded_polyline,
@@ -82,6 +82,7 @@ export function CompareActivitiesModal({
       altitude: streamInput(streams, 'altitude'),
       power: streamInput(streams, 'watts', 'power'),
       hr: streamInput(streams, 'heartrate'),
+      cadence: streamInput(streams, 'cadence'),
       maxSamples: 800,
     });
     return res;
@@ -93,6 +94,49 @@ export function CompareActivitiesModal({
   const [view, setView] = useState<'charts' | '3d'>('charts');
   // Auto-switch to the 3D tab once both builds are ready (and hide it if not).
   const show3d = canCompare3d;
+
+  // ── Linked 3D playback (Phase E): one master clock in absolute seconds ──
+  // Each ride renders min(t, ownTotal): both start together in real time,
+  // shorter rides freeze at their finish while the longer one continues.
+  const linkSpan = Math.max(replayA?.totalTime ?? 0, replayB?.totalTime ?? 0);
+  const [linked, setLinked] = useState(true);
+  const [master, setMaster] = useState({ playing: false, rate: 4, t: 0 });
+
+  useEffect(() => {
+    if (!linked || !master.playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(0.5, (now - last) / 1000);
+      last = now;
+      setMaster((m) => {
+        const nt = Math.min(linkSpan, m.t + dt * m.rate);
+        if (nt === m.t) return m.playing ? { ...m, playing: false } : m;
+        return { ...m, t: nt };
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [linked, master.playing, master.rate, linkSpan]);
+
+  const masterScrub = (t: number) =>
+    setMaster((m) => ({ ...m, t: Math.max(0, Math.min(linkSpan, t)) }));
+  const masterToggle = () =>
+    setMaster((m) =>
+      m.t >= linkSpan - 0.01 ? { ...m, t: 0, playing: true } : { ...m, playing: !m.playing }
+    );
+  const masterRate = (rate: number) => setMaster((m) => ({ ...m, rate }));
+
+  const linkFor = {
+    t: master.t,
+    span: linkSpan,
+    rate: master.rate,
+    playing: master.playing,
+    onScrub: masterScrub,
+    onToggle: masterToggle,
+    onRate: masterRate,
+  };
 
   const powerA = getStreamValues(streamsA, 'watts', 'power');
   const powerB = getStreamValues(streamsB, 'watts', 'power');
@@ -233,23 +277,72 @@ export function CompareActivitiesModal({
           <div className="space-y-6">
             {view === '3d' ? (
               <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 rounded border border-surface-light bg-surface/40 p-2">
+                  <button
+                    onClick={() => setLinked((l) => !l)}
+                    aria-pressed={linked}
+                    title={linked ? 'Unlink: control each replay separately' : 'Link: one shared clock for both replays'}
+                    className={`rounded px-3 py-1 min-h-[44px] text-xs transition-colors ${
+                      linked ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                    }`}
+                  >
+                    {linked ? 'Linked' : 'Independent'}
+                  </button>
+                  {linked && (
+                    <>
+                      <button
+                        onClick={masterToggle}
+                        className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+                      >
+                        {master.playing ? 'Pause' : 'Play'}
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {[1, 4, 8].map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => masterRate(r)}
+                            className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
+                              master.rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                            }`}
+                          >
+                            {r}×
+                          </button>
+                        ))}
+                      </div>
+                      <span className="font-mono text-xs tabular-nums text-muted">
+                        {timeFmt(master.t)} / {timeFmt(linkSpan)}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={linkSpan}
+                        step={0.1}
+                        value={master.t}
+                        onChange={(e) => masterScrub(Number(e.target.value))}
+                        aria-label="Linked replay scrubbing"
+                        className="h-11 min-w-[120px] flex-1 accent-accent"
+                      />
+                    </>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} />
+                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
                   </div>
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} />
+                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">
-                  Two independent fly-throughs (§3.16). Synced-playback across
-                  both is a documented follow-up.
+                  {linked
+                    ? 'Linked playback: both rides share one clock in real time — the shorter ride finishes first.'
+                    : 'Two independent fly-throughs — toggle Linked for one shared clock.'}
                 </p>
               </div>
             ) : (

@@ -3,6 +3,9 @@ import {
   buildReplay,
   cumulativeFromVelocity,
   projectPolyline,
+  replayMetricColor,
+  replayMetricMax,
+  replayMetricValue,
   timeFmt,
 } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
@@ -150,8 +153,58 @@ describe('buildReplay', () => {
   });
 });
 
-describe('timeFmt', () => {
-  it('formats m:ss', () => {
+describe('replay metric colours', () => {
+  const polyline = encodePoints([
+    [51.5, -0.1],
+    [51.51008, -0.1],
+  ]);
+
+  it('carries cadence and grade on each point', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5, 5, 5] },
+      altitude: { values: [0, 10, 20, 30, 40] },
+      cadence: { values: [0, 80, 85, 90, 88] },
+    });
+    expect(result.points[2].cadence).toBe(85);
+    // 10 m over 5 m → steep test hill, but finite and positive.
+    expect(result.points[2].grade).toBeCloseTo(200, 0);
+    expect(result.points[0].grade).toBeNull();
+  });
+
+  it('leaves grade null without altitude', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5] },
+    });
+    expect(result.points.every((p) => p.grade === null)).toBe(true);
+    expect(result.points.every((p) => p.cadence === null)).toBe(true);
+  });
+
+  it('normalises intensity metrics by max, grade by the fixed ramp', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 10] },
+      power: { values: [0, 100, 200] },
+    });
+    expect(replayMetricMax(result.points, 'speed')).toBe(10);
+    expect(replayMetricMax(result.points, 'power')).toBe(200);
+    expect(replayMetricMax(result.points, 'hr')).toBe(1);
+    expect(replayMetricMax(result.points, 'grade')).toBe(12);
+    expect(replayMetricValue(result.points[1], 'power')).toBe(100);
+  });
+
+  it('renders missing samples as slate gaps, never false zeros', () => {
+    const [r, g, b] = replayMetricColor(null, 200);
+    expect([r, g, b][1]).toBeGreaterThan(0.4);
+    const [r0] = replayMetricColor(0, 200);
+    expect(r0).toBeCloseTo(0.231, 3);
+    const [r1] = replayMetricColor(200, 200);
+    expect(r1).toBeCloseTo(0.937, 3);
+  });
+});
+
+describe('timeFmt', () => {  it('formats m:ss', () => {
     expect(timeFmt(0)).toBe('0:00');
     expect(timeFmt(65)).toBe('1:05');
   });
