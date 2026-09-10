@@ -1,6 +1,6 @@
 # 3D Ride View Enhancements — Plan & Roadmap
 
-> Status: Phases A–C done (2026-09-10). Source: deep-dive audit of
+> Status: Phases A–E (synced compare) done (2026-09-10). Source: deep-dive audit of
 > `Route3D.tsx`, `Replay3D.tsx`, `lib/route3d.ts`, `lib/replay.ts`,
 > `lib/terrain.ts`, `CompareActivitiesModal.tsx`, `CompareRoutesModal.tsx`.
 > Parent spec: `plans/future-enhancements.md` §3.16.
@@ -15,7 +15,7 @@ page light. Full phase plan (A–E) + vision roadmap below.
 
 | # | Item | Files | Notes |
 |---|------|-------|-------|
-| A1 | Power stream spelling fallback (`watts` Strava vs `power` FIT) | `CompareActivitiesModal.tsx`, `activities/page.tsx` | Backend confirmed both spellings in DB (`strava_client.py:126` writes `watts`, `fit_parser.py:169` writes `power`). Callers try `watts` → `power`. Charts had the reverse bug (`power` only → empty for Strava rides). |
+| A1 | Power stream spelling fallback (`watts` Strava vs `power` FIT) | `CompareActivitiesModal.tsx`, `activities/page.tsx` | Backend confirmed both spellings in DB (`strava_client.py:126` writes `watts`, `fit_parser.py:169` writes `power`). Callers try `watts` → `power`. Charts had the reverse bug (`power` only → empty for Strava rides). **Post-release find (2026-09-10): same class of bug for velocity — Strava sync stores `velocity_smooth`, FIT imports store `velocity`; the replay gate demanded exactly `velocity`, so NO Strava ride ever showed 3D. Fixed with the same fallback in both replay callers.** |
 | A2 | Diverging grade ramp (descents no longer flat green) | `lib/route3d.ts`, `Route3D.tsx` legend | `pointColor` maps `slopePct` ∈ [−GRADE_SCALE, +GRADE_SCALE] → blue (downhill) → green (flat) → red (climb). Legend low label becomes `−12%`. |
 | A3 | Docstring + dead-code cleanup | `Replay3D.tsx` | "camera fly-through" → "ride replay" (camera never moves until Phase B); remove unused `camController` field. |
 | A4 | Speed legend + live HUD chip | `Replay3D.tsx` | Gradient legend (slow→fast km/h) + chip showing speed/power/HR at playhead (data already in `ReplayPoint`). |
@@ -37,18 +37,22 @@ page light. Full phase plan (A–E) + vision roadmap below.
 - Terrain quality: `MAX_GRID_POINTS` 100 → 200 (still 1 request, ~3.7 kB URL), `cellM` floor 120 m → 80 m for short routes.
 - 2D/3D hover sync: `ElevationProfile` wires its previously-declared `onHover` (now km-based) + `height` prop; 3D mode shows a compact profile under the canvas and drives a cyan hover marker in `Route3D` (`highlightDistKm`, no scene rebuild).
 
-## Phase D — Telemetry analytical (S–M)
+## Phase D — Telemetry analytical (S–M) ✅ Done (2026-09-10)
 
-- Path colour by metric: `speed (today) | power | HR | gradient` + legend (mirrors `pointColor` pattern).
-- Full `TelemetryStrip`: cadence + altitude + speed rows (collapsible), power zone-band background (needs FTP), current-value readout. Requires adding `cadence` to `ReplayBuildOptions` + callers (spec promised, implementation dropped).
-- Playhead-linked 2D stream charts (shared `elapsed` state in `ActivityExpanded`).
+- Path colour by metric: `speed | power | HR | grade` segmented control with per-mode legend (intensity blue→red normalized by max; grade uses the diverging ±12 % ramp). Missing samples render as slate gaps, never false zeros; modes without data are disabled with an auto-fallback to speed. Recolour is a buffer update — no scene rebuild.
+- `ReplayPoint` carries `cadence` (new `ReplayBuildOptions.cadence`, plumbed from `cadence` streams in both replay callers) and `grade` (stride-averaged altitude ÷ distance, null-safe). Frame fields from Phase B unchanged.
+- Full `TelemetryStrip`: HR/power always (when present) + expandable speed/cadence/altitude rows (altitude auto-scaled, true metres via `elevationBase`; rows with no data hidden), live per-row values at the playhead in the footer. HUD chip gains cadence + signed grade.
+- Shared playhead: `Replay3D` accepts `onElapsed` (10 fps); the expanded activity view shows a live `3D ▸ m:ss` chip in the stream header (reset per activity).
+- Deferred with rationale: power zone bands need cycling-profile FTP in the expanded view (new query — follow-up); full bidirectional 2D-chart linking needs `ReferenceLine` support in the shared `Chart`/`ChartData` plus Phase E's lifted clock — both land naturally with synced-compare work.
 
-## Phase E — Synced compare + tech debt (M)
+## Phase E — Synced compare (M) ✅ Done, scoped (2026-09-10)
 
-- Controlled playback API on `Replay3D` (`forwardRef`/`useImperativeHandle` or lifted `onTick`): master play/pause + rate, linked scrubber (0–100% normalised, durations differ), keep "independent" toggle.
-- Extract shared `useThreeScene` hook (renderer/controls/resize/dispose duplicated ~80 lines in both viewers).
-- Evaluate `Line2` for >1px hero paths; migrate `OrbitControls` → `three/addons` with three bump.
-- Backend (if pursued): per-point surface/quality arrays → new `Route3D` colour modes; ghost-racing single-scene overlay.
+- **Shipped: linked playback.** `Replay3D` accepts an optional `link: ReplayLink | null` (master `t` in absolute seconds + `span`, `onScrub/onToggle/onRate`, `rate/playing`). Linked children render `min(t, ownTotal)` — rides start together in real time, shorter ones freeze at their finish; scrub/play/rate delegate to the parent; per-instance transport collapses to a "Linked" badge. `CompareActivitiesModal` owns the master clock (rAF, auto-pause at span end, restart-from-0 on replay) with a Linked/Independent toggle (default linked), master transport + span scrubber. Prop-only design — no refs, safe through `next/dynamic`. Deliberately %-free: absolute seconds keep both rides truthful.
+- **Deferred with rationale:**
+  - `useThreeScene` extraction — the two scaffolds differ enough (lights, markers, loop bodies) that a shared hook risks over-abstraction; revisit if a third viewer appears.
+  - `Line2` wide lines — needs resolution handling + dynamic-colour port with no headless way to verify rendering; do with a manual visual check.
+  - `OrbitControls` `three/addons` import — trivial, bundle with the next three bump.
+  - Backend per-point surface/quality arrays — needs migration + backfill; tracked as future work.
 
 ## Vision (beyond A–E)
 

@@ -3,19 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { ReplayBuildResult, ReplayPoint } from '@/lib/replay';
-import { timeFmt } from '@/lib/replay';
+import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
+import { replayMetricColor, replayMetricMax, replayMetricValue, timeFmt } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
+import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
 
-const SLOW_COLOR = new THREE.Color('#3b82f6');
-const FAST_COLOR = new THREE.Color('#ef4444');
 const TRAIL_COLOR = new THREE.Color('#22d3ee');
 const RIDER_COLOR = new THREE.Color('#ffffff');
 
-function speedColor(t: number): THREE.Color {
-  const clamped = Math.max(0, Math.min(1, t));
-  return SLOW_COLOR.clone().lerp(FAST_COLOR, clamped);
-}
+const INTENSITY_GRADIENT = 'linear-gradient(to right, #3b82f6, #ef4444)';
+const GRADE_GRADIENT = `linear-gradient(to right, ${DESCENT_COLOR}, ${GRADE_RAMP.map(([, hex]) => hex).join(', ')})`;
 
 function nearestIndex(points: ReplayPoint[], elapsed: number): number {
   let lo = 0;
@@ -28,60 +25,182 @@ function nearestIndex(points: ReplayPoint[], elapsed: number): number {
   return lo;
 }
 
-/** Telephone-style SVG strip: power + HR traces with a playhead (no Recharts, stays lean). */
+/** vertex colours for the path line under a colour mode (grade uses the diverging ramp) */
+function paintReplayPathColors(
+  attr: THREE.BufferAttribute,
+  points: ReplayPoint[],
+  mode: ReplayColorMode
+) {
+  const arr = attr.array as Float32Array;
+  if (mode === 'grade') {
+    points.forEach((p, i) => {
+      const [r, g, b] = slopeColor(p.grade ?? 0);
+      arr[i * 3] = r;
+      arr[i * 3 + 1] = g;
+      arr[i * 3 + 2] = b;
+    });
+  } else {
+    const max = replayMetricMax(points, mode);
+    points.forEach((p, i) => {
+      const [r, g, b] = replayMetricColor(replayMetricValue(p, mode), max);
+      arr[i * 3] = r;
+      arr[i * 3 + 1] = g;
+      arr[i * 3 + 2] = b;
+    });
+  }
+  attr.needsUpdate = true;
+}
+
+interface StripRow {
+  key: 'hr' | 'power' | 'speed' | 'cadence' | 'altitude';
+  label: string;
+  color: string;
+  unit: string;
+}
+
+/** Lean SVG strip: metric traces with a playhead (no Recharts, stays lean). */
 export function TelemetryStrip({
   points,
   playhead,
-  height = 72,
+  elevationBase,
 }: {
   points: ReplayPoint[];
   playhead: number;
-  height?: number;
+  /** converts exaggerated z back to metres for the altitude row */
+  elevationBase?: { altMin: number; zScale: number } | null;
 }) {
-  const power = useMemo(() => points.map((p) => p.power), [points]);
-  const hr = useMemo(() => points.map((p) => p.hr), [points]);
-  const maxPower = useMemo(() => Math.max(1, ...power.filter((v): v is number => v != null)), [power]);
-  const maxHr = useMemo(() => Math.max(1, ...hr.filter((v): v is number => v != null)), [hr]);
+  const [expanded, setExpanded] = useState(false);
 
+  const series = useMemo(() => {
+    const kmh = points.map((p) => p.speed * 3.6);
+    const alt = points.map((p) =>
+      elevationBase && elevationBase.zScale
+        ? elevationBase.altMin + p.z / elevationBase.zScale
+        : null
+    );
+    const has = (vs: (number | null)[]) => vs.some((v) => v != null && Number.isFinite(v));
+    const all: { row: StripRow; values: (number | null)[]; autoMin: boolean }[] = [
+      { row: { key: 'hr', label: 'HR', color: '#f59e0b', unit: 'bpm' }, values: points.map((p) => p.hr), autoMin: false },
+      { row: { key: 'power', label: 'Power', color: '#3b82f6', unit: 'W' }, values: points.map((p) => p.power), autoMin: false },
+      { row: { key: 'speed', label: 'Speed', color: '#38bdf8', unit: 'km/h' }, values: kmh, autoMin: false },
+      { row: { key: 'cadence', label: 'Cad', color: '#a78bfa', unit: 'rpm' }, values: points.map((p) => p.cadence), autoMin: false },
+      // Flat z (no altitude stream) carries no information — hide the row.
+      ...(points.some((p) => p.z !== 0)
+        ? [{ row: { key: 'altitude', label: 'Alt', color: '#34d399', unit: 'm' } as StripRow, values: alt, autoMin: true }]
+        : []),
+    ];
+    return all.filter((s) => has(s.values));
+  }, [points, elevationBase]);
+
+  const visible = expanded ? series : series.slice(0, 2);
+
+  const ROW_H = 34;
   const W = 200;
-  const H = height;
+  const H = Math.max(1, visible.length) * ROW_H;
   const n = Math.max(2, points.length);
 
-  const polyline = (values: (number | null)[], m: number, rowTop: number, rowBot: number): string => {
+  const trace = (values: (number | null)[], min: number, max: number, rowTop: number, rowBot: number): string => {
     let d = '';
     values.forEach((v, i) => {
-      if (v == null) return;
+      if (v == null || !Number.isFinite(v)) return;
       const x = (i / (n - 1)) * W;
-      const y = rowBot - ((v / m) * (rowBot - rowTop));
+      const y = max > min ? rowBot - ((v - min) / (max - min)) * (rowBot - rowTop) : rowBot;
       d += `${d ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
     });
     return d;
   };
 
-  const playheadX = (Math.max(0, Math.min(playhead, (points.at(-1)?.elapsed ?? 0))) /
-    Math.max(1, points.at(-1)?.elapsed ?? 0)) * W;
+  const at = useMemo(() => {
+    if (!points.length) return null;
+    return points[Math.max(0, Math.min(points.length - 1, nearestIndex(points, playhead)))];
+  }, [points, playhead]);
+
+  const valueFor = (key: StripRow['key']): string | null => {
+    if (!at) return null;
+    switch (key) {
+      case 'hr':
+        return at.hr != null ? `${Math.round(at.hr)}` : null;
+      case 'power':
+        return at.power != null ? `${Math.round(at.power)}` : null;
+      case 'speed':
+        return `${(at.speed * 3.6).toFixed(1)}`;
+      case 'cadence':
+        return at.cadence != null ? `${Math.round(at.cadence)}` : null;
+      case 'altitude': {
+        if (!elevationBase?.zScale) return null;
+        return `${Math.round(elevationBase.altMin + at.z / elevationBase.zScale)}`;
+      }
+    }
+  };
+
+  const playheadX =
+    (Math.max(0, Math.min(playhead, points.at(-1)?.elapsed ?? 0)) /
+      Math.max(1, points.at(-1)?.elapsed ?? 0)) *
+    W;
 
   return (
     <div className="w-full overflow-hidden rounded border border-surface-light bg-surface/40">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        className="block h-[72px] w-full"
+        style={{ height: H }}
+        className="block w-full"
         aria-hidden
       >
-        <line x1={0} y1={H * 0.5} x2={W} y2={H * 0.5} stroke="rgba(148,163,184,0.15)" strokeWidth={0.4} />
-        <path d={polyline(hr, maxHr, H * 0.08, H * 0.42)} fill="none" stroke="#f59e0b" strokeWidth={0.8} strokeLinejoin="round" />
-        <path d={polyline(power, maxPower, H * 0.55, H * 0.9)} fill="none" stroke="#3b82f6" strokeWidth={0.8} strokeLinejoin="round" />
+        {visible.map(({ row, values, autoMin }, r) => {
+          const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
+          const min = autoMin && nums.length ? Math.min(...nums) : 0;
+          const max = nums.length ? Math.max(...nums) : 1;
+          const top = r * ROW_H + 4;
+          const bot = (r + 1) * ROW_H - 6;
+          return (
+            <g key={row.key}>
+              {r > 0 && (
+                <line x1={0} y1={r * ROW_H} x2={W} y2={r * ROW_H} stroke="rgba(148,163,184,0.15)" strokeWidth={0.4} />
+              )}
+              <path d={trace(values, min, Math.max(min + 1e-9, max), top, bot)} fill="none" stroke={row.color} strokeWidth={0.8} strokeLinejoin="round" />
+            </g>
+          );
+        })}
         {playhead > 0 && (
           <line x1={playheadX} y1={0} x2={playheadX} y2={H} stroke="rgba(255,255,255,0.8)" strokeWidth={0.6} />
         )}
       </svg>
-      <div className="flex justify-between px-2 py-1 text-[10px] uppercase tracking-wide text-muted">
-        <span className="text-amber-400">HR</span>
-        <span className="text-blue-400">Power</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1">
+        {visible.map(({ row }) => {
+          const v = valueFor(row.key);
+          return (
+            <span key={row.key} className="text-[10px] uppercase tracking-wide text-muted">
+              <span style={{ color: row.color }}>{row.label}</span>
+              {v != null && <span className="ml-1 font-mono normal-case text-foreground">{v} {row.unit}</span>}
+            </span>
+          );
+        })}
+        {series.length > 2 && (
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            className="ml-auto min-h-[44px] px-2 text-[10px] uppercase tracking-wide text-muted transition-colors hover:text-foreground"
+          >
+            {expanded ? 'Less' : `+${series.length - 2} more`}
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+/** Linked-playback clock owned by a parent (side-by-side compare, Phase E).
+ *  `t` is absolute master seconds; each ride renders min(t, ownTotal) so rides
+ *  start together in real time and shorter ones finish first. */
+export interface ReplayLink {
+  t: number;
+  span: number;
+  onScrub: (t: number) => void;
+  onToggle: () => void;
+  onRate: (rate: number) => void;
+  rate: number;
+  playing: boolean;
 }
 
 /** 3D ride replay — animated rider marker along the recording path (§3.16).
@@ -91,11 +210,17 @@ export function Replay3D({
   name,
   build,
   polyline,
+  onElapsed,
+  link,
 }: {
   name: string;
   build: ReplayBuildResult;
   /** encoded polyline — required only for the opt-in terrain bed */
   polyline?: string;
+  /** 10 fps playhead callback for syncing sibling views (Phase D: readout; Phase E: full link) */
+  onElapsed?: (seconds: number) => void;
+  /** linked clock for side-by-side compare — transport delegates to the parent */
+  link?: ReplayLink | null;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -103,6 +228,7 @@ export function Replay3D({
   const [rate, setRate] = useState(4);
   const [displayElapsed, setDisplayElapsed] = useState(0);
   const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'cockpit'>('orbit');
+  const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
 
   const points = build.points;
@@ -116,6 +242,7 @@ export function Replay3D({
     grid: THREE.GridHelper;
     rider: THREE.Mesh;
     trail: THREE.Line;
+    pathColor: THREE.BufferAttribute | null;
     terrain: THREE.Mesh | null;
   } | null>(null);
 
@@ -125,6 +252,9 @@ export function Replay3D({
   const rateRef = useRef(rate);
   const elapsedRef = useRef(0);
   const camModeRef = useRef(camMode);
+  const colorByRef = useRef<ReplayColorMode>(colorBy);
+  const onElapsedRef = useRef(onElapsed);
+  const linkRef = useRef(link);
   const followPosRef = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
@@ -133,6 +263,15 @@ export function Replay3D({
   useEffect(() => {
     rateRef.current = rate;
   }, [rate]);
+  useEffect(() => {
+    colorByRef.current = colorBy;
+  }, [colorBy]);
+  useEffect(() => {
+    onElapsedRef.current = onElapsed;
+  }, [onElapsed]);
+  useEffect(() => {
+    linkRef.current = link ?? null;
+  }, [link]);
   useEffect(() => {
     camModeRef.current = camMode;
     // Re-seed follow smoothing from wherever the orbit camera is now.
@@ -199,23 +338,20 @@ export function Replay3D({
     controls.dampingFactor = 0.08;
     controls.target.set(cx, cy, minZ + size * 0.3);
 
-    // ── Path line, vertex-colored by speed ───────────────────────────────
+    // ── Path line, vertex-coloured by the active metric ────────────────────
     const positions = new Float32Array(points.length * 3);
     const colors = new Float32Array(points.length * 3);
-    let maxSpeed = 1;
-    for (const p of points) maxSpeed = Math.max(maxSpeed, p.speed);
     points.forEach((p, i) => {
       positions[i * 3] = p.x;
       positions[i * 3 + 1] = p.y;
       positions[i * 3 + 2] = p.z;
-      const c = speedColor(p.speed / maxSpeed);
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
     });
     const pathGeo = new THREE.BufferGeometry();
     pathGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    pathGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const pathColorAttr = new THREE.BufferAttribute(colors, 3);
+    pathColorAttr.setUsage(THREE.DynamicDrawUsage);
+    pathGeo.setAttribute('color', pathColorAttr);
+    paintReplayPathColors(pathColorAttr, points, colorByRef.current);
     const pathMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 });
     scene.add(new THREE.Line(pathGeo, pathMat));
 
@@ -297,7 +433,11 @@ export function Replay3D({
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      if (playingRef.current) {
+      const L = linkRef.current;
+      if (L) {
+        // Linked clock: the parent owns time; shorter rides freeze at their end.
+        elapsedRef.current = Math.max(0, Math.min(L.t, totalTime));
+      } else if (playingRef.current) {
         elapsedRef.current += dt * rateRef.current;
         if (elapsedRef.current >= totalTime) {
           elapsedRef.current = totalTime;
@@ -373,7 +513,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathColor: pathColorAttr, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
@@ -406,10 +546,36 @@ export function Replay3D({
     return cleanup;
   }, [points, totalTime, build.totalDistance]);
 
+  // Recolour the path line without rebuilding the scene.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s?.pathColor || points.length < 2) return;
+    paintReplayPathColors(s.pathColor, points, colorBy);
+  }, [colorBy, points]);
+
+  const colorStats = useMemo(() => {
+    const has = (f: (p: ReplayPoint) => number | null) => points.some((p) => f(p) != null);
+    return {
+      hasPower: has((p) => p.power),
+      hasHr: has((p) => p.hr),
+      hasGrade: has((p) => p.grade),
+      maxPower: replayMetricMax(points, 'power'),
+      maxHr: replayMetricMax(points, 'hr'),
+    };
+  }, [points]);
+
+  // Fall back to speed when the selected metric has no data for this ride.
+  useEffect(() => {
+    if (colorBy === 'power' && !colorStats.hasPower) setColorBy('speed');
+    else if (colorBy === 'hr' && !colorStats.hasHr) setColorBy('speed');
+    else if (colorBy === 'grade' && !colorStats.hasGrade) setColorBy('speed');
+  }, [colorBy, colorStats]);
+
   // Push display-elapsed to React ~10fps for the scrubber/readout too.
   useEffect(() => {
     const id = window.setInterval(() => {
       setDisplayElapsed(elapsedRef.current);
+      onElapsedRef.current?.(elapsedRef.current);
     }, 100);
     return () => window.clearInterval(id);
   }, []);
@@ -502,13 +668,27 @@ export function Replay3D({
   };
 
   const seek = (t: number) => {
-    elapsedRef.current = Math.max(0, Math.min(totalTime, t));
+    const L = linkRef.current;
+    const span = L?.span ?? totalTime;
+    const c = Math.max(0, Math.min(span, t));
+    elapsedRef.current = Math.min(c, totalTime);
     setDisplayElapsed(elapsedRef.current);
+    L?.onScrub(c);
   };
 
   const toggle = () => {
+    const L = linkRef.current;
+    if (L) {
+      L.onToggle();
+      return;
+    }
     if (!playing && elapsedRef.current >= totalTime - 0.01) elapsedRef.current = 0;
     setPlaying((p) => !p);
+  };
+
+  const pickRate = (r: number) => {
+    linkRef.current?.onRate(r);
+    setRate(r);
   };
 
   const km = (build.totalDistance / 1000).toFixed(1);
@@ -523,6 +703,8 @@ export function Replay3D({
       kmh: p.speed * 3.6,
       power: p.power,
       hr: p.hr,
+      cadence: p.cadence,
+      grade: p.grade,
     };
   }, [points, displayElapsed]);
 
@@ -588,47 +770,100 @@ export function Replay3D({
             {hud.kmh.toFixed(1)} km/h
             {hud.power != null && <span className="text-blue-400"> · {Math.round(hud.power)} W</span>}
             {hud.hr != null && <span className="text-amber-400"> · {Math.round(hud.hr)} bpm</span>}
+            {hud.cadence != null && <span className="text-violet-400"> · {Math.round(hud.cadence)} rpm</span>}
+            {hud.grade != null && (
+              <span className="text-emerald-400"> · {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}%</span>
+            )}
           </div>
         )}
       </div>
 
-      {/* Path colour scale: vertex-coloured by speed (blue → red). */}
-      <div className="mt-2 flex flex-1 flex-col gap-0.5" aria-hidden>
-        <div
-          className="h-1.5 w-full rounded-full"
-          style={{ background: 'linear-gradient(to right, #3b82f6, #ef4444)' }}
-        />
-        <div className="flex justify-between text-[10px] tabular-nums text-muted">
-          <span>0 km/h</span>
-          <span>{maxKmh.toFixed(0)} km/h</span>
+      {/* Path colour mode + scale */}
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Path colour metric">
+          {(['speed', 'power', 'hr', 'grade'] as const).map((m) => {
+            const available =
+              m === 'speed' ||
+              (m === 'power' && colorStats.hasPower) ||
+              (m === 'hr' && colorStats.hasHr) ||
+              (m === 'grade' && colorStats.hasGrade);
+            return (
+              <button
+                key={m}
+                onClick={() => setColorBy(m)}
+                disabled={!available}
+                title={available ? `Colour the path by ${m}` : `No ${m} data on this ride`}
+                className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors disabled:opacity-30 ${
+                  colorBy === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                }`}
+              >
+                {m === 'hr' ? 'HR' : m}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-1 flex-col gap-0.5" aria-hidden>
+          <div
+            className="h-1.5 w-full rounded-full"
+            style={{ background: colorBy === 'grade' ? GRADE_GRADIENT : INTENSITY_GRADIENT }}
+          />
+          <div className="flex justify-between text-[10px] tabular-nums text-muted">
+            <span>
+              {colorBy === 'speed' && '0 km/h'}
+              {colorBy === 'power' && '0 W'}
+              {colorBy === 'hr' && '0 bpm'}
+              {colorBy === 'grade' && '-12%'}
+            </span>
+            <span>
+              {colorBy === 'speed' && `${maxKmh.toFixed(0)} km/h`}
+              {colorBy === 'power' && `${Math.round(colorStats.maxPower)} W`}
+              {colorBy === 'hr' && `${Math.round(colorStats.maxHr)} bpm`}
+              {colorBy === 'grade' && '+12%'}
+            </span>
+          </div>
         </div>
       </div>
 
-      <TelemetryStrip points={points} playhead={displayElapsed} />
+      <TelemetryStrip
+        points={points}
+        playhead={displayElapsed}
+        elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
+      />
       {terrainState === 'on' && (
         <p className="mt-1 text-[10px] text-muted">Terrain © Open-Meteo — Copernicus DEM (GLO-90)</p>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          onClick={toggle}
-          className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
-        >
-          {playing ? 'Pause' : 'Play'}
-        </button>
-        <div className="flex items-center gap-1">
-          {[1, 4, 8].map((r) => (
+        {link ? (
+          <span
+            title="Playback follows the compare master clock above"
+            className="inline-flex min-h-[44px] items-center rounded bg-accent/20 px-3 py-1 text-sm font-medium text-accent"
+          >
+            Linked
+          </span>
+        ) : (
+          <>
             <button
-              key={r}
-              onClick={() => setRate(r)}
-              className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
-                rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
-              }`}
+              onClick={toggle}
+              className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
             >
-              {r}×
+              {playing ? 'Pause' : 'Play'}
             </button>
-          ))}
-        </div>
+            <div className="flex items-center gap-1">
+              {[1, 4, 8].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => pickRate(r)}
+                  className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
+                    rate === r ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                  }`}
+                >
+                  {r}×
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <span className="ml-1 font-mono text-xs tabular-nums text-muted">
           {timeFmt(displayElapsed)} / {timeFmt(totalTime)}
         </span>
