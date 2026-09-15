@@ -34,7 +34,7 @@ def run(label, cmd, cwd=HERE):
 ok = run("Render FIXED (non-drive + drive)",
          [BLENDER, "--background", "--python",
           os.path.join(HERE, "correct_pipeline.py"), "--",
-          glb_path, "FINAL_FIXED", TENSOR_DIR])
+          os.path.abspath(glb_path), "FINAL_FIXED", os.path.abspath(TENSOR_DIR)])
 if not ok:
     sys.exit(1)
 
@@ -43,7 +43,7 @@ if os.path.exists(noflip_glb):
     run("Render BASELINE (comparison)",
         [BLENDER, "--background", "--python",
          os.path.join(HERE, "correct_pipeline.py"), "--",
-         noflip_glb, "FINAL_BASE", TENSOR_DIR])
+         os.path.abspath(noflip_glb), "FINAL_BASE", os.path.abspath(TENSOR_DIR)])
 
 print(f"\n{'='*60}")
 print(f"  Build complete!")
