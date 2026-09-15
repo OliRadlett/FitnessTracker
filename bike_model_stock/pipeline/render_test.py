@@ -49,7 +49,6 @@ tex_files = {
     "normal": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Normal.png"),
     "roughness": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Roughness.png"),
     "metallic": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Metallic.png"),
-    "ao": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Ambient_occlusion.png"),
 }
 
 nodes_map = {}
@@ -81,7 +80,7 @@ me.materials.append(mat)
 # Lighting
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
-scene.cycles.samples = 64
+scene.cycles.samples = 128
 scene.render.resolution_x = 1400
 scene.render.resolution_y = 900
 

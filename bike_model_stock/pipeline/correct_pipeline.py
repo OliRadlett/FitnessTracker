@@ -52,8 +52,8 @@ tex_files = {
     "normal": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Normal.png"),
     "roughness": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Roughness.png"),
     "metallic": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Metallic.png"),
-    "ao": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Ambient_occlusion.png"),
 }
+# AO is applied separately — multiply with a gentle factor to avoid blackouts
 
 nodes_map = {}
 for name, path in tex_files.items():
@@ -79,15 +79,6 @@ if "roughness" in nodes_map:
 if "metallic" in nodes_map:
     links.new(nodes_map["metallic"].outputs["Color"], principled.inputs["Metallic"])
 
-# AO multiplies base color
-if "ao" in nodes_map and "basecolor" in nodes_map:
-    mix = nodes.new("ShaderNodeMixRGB")
-    mix.blend_type = "MULTIPLY"
-    mix.location = (0, -300)
-    links.new(nodes_map["basecolor"].outputs["Color"], mix.inputs[1])
-    links.new(nodes_map["ao"].outputs["Color"], mix.inputs[2])
-    links.new(mix.outputs["Color"], principled.inputs["Base Color"])
-
 links.new(principled.outputs["BSDF"], output.inputs["Surface"])
 me.materials.clear()
 me.materials.append(mat)
@@ -95,8 +86,8 @@ me.materials.append(mat)
 # Lighting + Cycles
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
-scene.cycles.samples = 32
-scene.cycles.device = "GPU" if len(bpy.types.CyclesRenderSettings(scene.cycles).devices) > 0 else "CPU"
+scene.cycles.samples = 64
+scene.cycles.device = "CPU"  # CPU avoids GPU setup issues in background mode
 scene.render.resolution_x = 1400
 scene.render.resolution_y = 900
 scene.render.film_transparent = False
