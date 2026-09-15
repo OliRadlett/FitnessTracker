@@ -22,7 +22,7 @@ TEX_OBJ = BASE_DIR / "bike_combined_textured.obj"
 TEX_DIR = BASE_DIR.parent / "bike_model"
 
 TEXTURES = {
-    "basecolor": TEX_DIR / "Cube_Agree_C62_Race_BaseColor.png",
+    "basecolor": TEX_DIR / "Cube_Agree_C62_Race_BaseColor_2026.png",
     "normal": TEX_DIR / "Cube_Agree_C62_Race_Normal.png",
     "roughness": TEX_DIR / "Cube_Agree_C62_Race_Roughness.png",
     "metallic": TEX_DIR / "Cube_Agree_C62_Race_Metallic.png",

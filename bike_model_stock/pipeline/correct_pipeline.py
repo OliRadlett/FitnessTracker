@@ -1,6 +1,6 @@
 """
-Correct render pipeline: loads GLB + external PBR textures, builds full material, renders.
-No .scale() calls (corrupts pixel data). Cycles renderer (EEVEE fails in background mode).
+Render with Cycles: 256 samples, proper PBR material, good lighting.
+Outputs to previews/ with specified tags.
 """
 import bpy, os, sys
 from mathutils import Vector
@@ -14,7 +14,7 @@ if "--" in argv:
 else:
     raise SystemExit("Usage: blender --background --python correct_pipeline.py -- <glb> <tag> <tex_dir>")
 
-OUT = r"C:\Users\oradl\FitnessTracker\bike_model_stock\pipeline\previews"
+OUT = r"C:\Users\oradl\FitnessTracker\bike_model_stock/pipeline/previews"
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -30,21 +30,29 @@ else:
     bike = meshes[0]
 me = bike.data
 
-# Build full PBR material — NO .scale() on any image (corrupts data)
+# Clear all objects except bike
+for obj in list(bpy.data.objects):
+    if obj != bike:
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+# Build full PBR material
 mat = bpy.data.materials.new(f"M_{TAG}")
 mat.use_nodes = True
 nodes = mat.node_tree.nodes
 links = mat.node_tree.links
 for n in list(nodes): nodes.remove(n)
 
-# Nodes
 output = nodes.new("ShaderNodeOutputMaterial")
-output.location = (300, 0)
+output.location = (500, 0)
 principled = nodes.new("ShaderNodeBsdfPrincipled")
-principled.location = (150, 0)
+principled.location = (300, 0)
+# Set metallic to 0.9 default for reflective surfaces
+principled.inputs["Metallic"].default_value = 0.5
+principled.inputs["Roughness"].default_value = 0.5
+
 uv_map = nodes.new("ShaderNodeUVMap")
 uv_map.uv_map = me.uv_layers.active.name
-uv_map.location = (-300, 0)
+uv_map.location = (-400, 0)
 
 # Load all PBR textures
 tex_files = {
@@ -52,30 +60,50 @@ tex_files = {
     "normal": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Normal.png"),
     "roughness": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Roughness.png"),
     "metallic": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Metallic.png"),
+    "ao": os.path.join(TEX_DIR, "Cube_Agree_C62_Race_Ambient_occlusion.png"),
 }
-# AO is applied separately — multiply with a gentle factor to avoid blackouts
 
 nodes_map = {}
+y_pos = 0
 for name, path in tex_files.items():
     if os.path.exists(path):
-        img = bpy.data.images.load(path)  # NO .scale() — corrupts pixels
+        img = bpy.data.images.load(path)
         node = nodes.new("ShaderNodeTexImage")
         node.image = img
-        node.image.colorspace_settings.name = "Non-Color" if name in ("normal", "roughness", "metallic", "ao") else "sRGB"
-        node.location = (-150, -200 * len(nodes_map))
+        if name in ("normal", "roughness", "metallic", "ao"):
+            node.image.colorspace_settings.name = "Non-Color"
+        else:
+            node.image.colorspace_settings.name = "sRGB"
+        node.location = (-200, y_pos)
         nodes_map[name] = node
         links.new(uv_map.outputs["UV"], node.inputs["Vector"])
+        y_pos -= 250
 
-# Connect textures to principled
-if "basecolor" in nodes_map:
+# Base color with AO
+if "basecolor" in nodes_map and "ao" in nodes_map:
+    mix = nodes.new("ShaderNodeMixRGB")
+    mix.blend_type = "MULTIPLY"
+    mix.inputs[0].default_value = 0.85
+    mix.location = (100, -250)
+    links.new(nodes_map["basecolor"].outputs["Color"], mix.inputs[1])
+    links.new(nodes_map["ao"].outputs["Color"], mix.inputs[2])
+    links.new(mix.outputs["Color"], principled.inputs["Base Color"])
+elif "basecolor" in nodes_map:
     links.new(nodes_map["basecolor"].outputs["Color"], principled.inputs["Base Color"])
+
+# Normal map
 if "normal" in nodes_map:
     normal_map = nodes.new("ShaderNodeNormalMap")
-    normal_map.location = (0, -150)
+    normal_map.inputs["Strength"].default_value = 2.0
+    normal_map.location = (200, -200)
     links.new(nodes_map["normal"].outputs["Color"], normal_map.inputs["Color"])
     links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
+
+# Roughness
 if "roughness" in nodes_map:
     links.new(nodes_map["roughness"].outputs["Color"], principled.inputs["Roughness"])
+
+# Metallic
 if "metallic" in nodes_map:
     links.new(nodes_map["metallic"].outputs["Color"], principled.inputs["Metallic"])
 
@@ -83,33 +111,55 @@ links.new(principled.outputs["BSDF"], output.inputs["Surface"])
 me.materials.clear()
 me.materials.append(mat)
 
-# Lighting + Cycles
+# Cycles settings
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
-scene.cycles.samples = 64
-scene.cycles.device = "CPU"  # CPU avoids GPU setup issues in background mode
+scene.cycles.samples = 512
+scene.cycles.device = "GPU"
+scene.cycles.max_bounces = 16
+scene.cycles.diffuse_bounces = 8
+scene.cycles.glossy_bounces = 16
+scene.cycles.transmission_bounces = 16
+scene.cycles.volume_bounces = 0
+scene.cycles.min_samples = 128
+scene.cycles.adaptive_threshold = 0.01
 scene.render.resolution_x = 1400
 scene.render.resolution_y = 900
-scene.render.film_transparent = False
 
+# Dark environment for contrast
 scene.world = bpy.data.worlds.new("World")
 scene.world.use_nodes = True
 bg = scene.world.node_tree.nodes.get("Background")
-bg.inputs[0].default_value = (0.16, 0.17, 0.19, 1.0)
-bg.inputs[1].default_value = 1.0
+bg.inputs[0].default_value = (0.03, 0.03, 0.04, 1.0)
 
+# Multi-light setup
 sun_data = bpy.data.lights.new("Sun", type="SUN")
-sun_data.energy = 5.0
+sun_data.energy = 15.0
 sun_obj = bpy.data.objects.new("Sun", sun_data)
-sun_obj.rotation_euler = (0.5, 0.2, 0.7)
+sun_obj.rotation_euler = (0.4, 0.2, 0.6)
 scene.collection.objects.link(sun_obj)
 
 fill_data = bpy.data.lights.new("Fill", type="AREA")
-fill_data.energy = 300.0
+fill_data.energy = 2000.0
+fill_data.size = 8.0
 fill_obj = bpy.data.objects.new("Fill", fill_data)
-fill_obj.location = (-2.5, 1.5, 1.2)
+fill_obj.location = (-3.0, 2.0, 1.5)
 fill_obj.rotation_euler = (0.9, 0.0, 0.6)
 scene.collection.objects.link(fill_obj)
+
+rim_data = bpy.data.lights.new("Rim", type="AREA")
+rim_data.energy = 3000.0
+rim_data.size = 5.0
+rim_obj = bpy.data.objects.new("Rim", rim_data)
+rim_obj.location = (0.0, -3.0, 0.5)
+scene.collection.objects.link(rim_obj)
+
+key_data = bpy.data.lights.new("Key", type="AREA")
+key_data.energy = 5000.0
+key_data.size = 6.0
+key_obj = bpy.data.objects.new("Key", key_data)
+key_obj.location = (2.0, -1.0, 2.0)
+scene.collection.objects.link(key_obj)
 
 cam_data = bpy.data.cameras.new("Cam")
 cam_obj = bpy.data.objects.new("Cam", cam_data)
