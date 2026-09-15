@@ -85,7 +85,7 @@
       "ruff *": "allow",
       "uvicorn *": "allow",
       "git *": "allow",
-      "*": "ask"
+      "*": "allow"
     }
   }
 }
