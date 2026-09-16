@@ -435,10 +435,11 @@ def process_video_on_modal(
             }
 
     # Run the Modal function synchronously (blocks until complete)
-    return _process.remote(
-        r2_presigned_get,
-        r2_presigned_put,
-        r2_upload_key,
-        gemini_api_key,
-        analysis_depth,
-    )
+    with app.run():
+        return _process.remote(
+            r2_presigned_get,
+            r2_presigned_put,
+            r2_upload_key,
+            gemini_api_key,
+            analysis_depth,
+        )
