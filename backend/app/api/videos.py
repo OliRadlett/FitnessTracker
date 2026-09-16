@@ -273,6 +273,22 @@ async def get_process_status(
         confidence=video.confidence,
         analysis_text=video.analysis_text,
         processed_at=video.processed_at,
+        form_score=video.form_score,
+        competition_valid=video.competition_valid,
+        form_deviations=video.form_deviations,
+        form_coaching_cues=video.form_coaching_cues,
+        mean_concentric_velocity=video.mean_concentric_velocity,
+        peak_velocity=video.peak_velocity,
+        velocity_loss_pct=video.velocity_loss_pct,
+        vbt_zone=video.vbt_zone,
+        avg_rest_seconds=video.avg_rest_seconds,
+        rest_cv=video.rest_cv,
+        rep_consistency_score=video.rep_consistency_score,
+        setup_score=video.setup_score,
+        setup_duration_seconds=video.setup_duration_seconds,
+        estimated_rpe=video.estimated_rpe,
+        rpe_confidence=video.rpe_confidence,
+        rpe_evidence_json=video.rpe_evidence_json,
     )
 
 

@@ -381,11 +381,17 @@ class VideoProcessStatus(BaseModel):
     # Video analysis fields (§3.18)
     form_score: float | None = None
     competition_valid: bool | None = None
+    form_deviations: str | None = None
+    form_coaching_cues: str | None = None
     mean_concentric_velocity: float | None = None
+    peak_velocity: float | None = None
     velocity_loss_pct: float | None = None
     vbt_zone: str | None = None
     avg_rest_seconds: float | None = None
+    rest_cv: float | None = None
     rep_consistency_score: float | None = None
     setup_score: float | None = None
+    setup_duration_seconds: float | None = None
     estimated_rpe: float | None = None
     rpe_confidence: float | None = None
+    rpe_evidence_json: str | None = None

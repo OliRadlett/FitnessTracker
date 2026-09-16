@@ -3,6 +3,7 @@
 import React from 'react';
 import type { LiftVideo } from '@/lib/api';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
+import { VideoAnalysisPanel } from '@/components/lifting/VideoAnalysisPanel';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 interface VideoGalleryModalProps {
@@ -46,6 +47,7 @@ export function VideoGalleryModal({
                   </>
                 )}
               </div>
+              <VideoAnalysisPanel video={video} />
             </div>
           ))}
         </div>
