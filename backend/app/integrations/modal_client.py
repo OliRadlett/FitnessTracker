@@ -435,8 +435,7 @@ def process_video_on_modal(
             }
 
     # Run the Modal function synchronously (blocks until complete)
-    return modal.run(
-        _process.remote,
+    return _process.remote(
         r2_presigned_get,
         r2_presigned_put,
         r2_upload_key,
