@@ -33,6 +33,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const [prId, setPrId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadComplete, setUploadComplete] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -42,6 +43,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       setPrId('');
       setFile(null);
       setUploadProgress(0);
+      setUploadComplete(false);
     }
   }, [open]);
 
@@ -64,7 +66,11 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       createLiftVideo(authFetch, data as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lift-videos'] });
-      onClose();
+      setUploadComplete(true);
+      // Auto-close after showing the processing message
+      setTimeout(() => {
+        onClose();
+      }, 2000);
     },
     onError: (err: Error) => {
       alert(`Failed: ${err.message}`);
@@ -127,6 +133,16 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     <Modal open={open} onClose={onClose} size="lg" aria-label="Add strength video">
       <ModalHeader title="Add Strength Video" onClose={onClose} icon="📹" />
 
+      {uploadComplete ? (
+        <div className="flex flex-col items-center justify-center py-8 gap-3">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-white font-medium">Video uploaded!</p>
+          <p className="text-xs text-muted text-center">
+            Processing will happen in the background —<br />
+            you&apos;ll get a notification when it&apos;s done.
+          </p>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm text-muted mb-1">Video file</label>
@@ -221,6 +237,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           </button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

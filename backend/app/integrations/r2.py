@@ -98,6 +98,23 @@ async def create_presigned_get(key: str) -> str:
     return url
 
 
+async def download_object_bytes(key: str) -> bytes:
+    """Download an object from R2 and return its bytes."""
+    client = _s3_client()
+    settings = get_settings()
+    response = client.get_object(Bucket=settings.r2_bucket, Key=key)
+    return response["Body"].read()
+
+
+async def upload_object_bytes(key: str, data: bytes, content_type: str) -> None:
+    """Upload bytes to R2."""
+    client = _s3_client()
+    settings = get_settings()
+    client.put_object(
+        Bucket=settings.r2_bucket, Key=key, Body=data, ContentType=content_type
+    )
+
+
 async def delete_object(key: str) -> None:
     """Delete an object from R2. Raises on failure (caller handles best-effort)."""
     client = _s3_client()

@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # Google Gemini (for LLM analysis)
     gemini_api_key: str = ""
 
+    # Modal (serverless compute for video processing) — optional.
+    # When unset, video processing endpoints degrade gracefully.
+    modal_token_id: str = ""
+    modal_token_secret: str = ""
+
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:
     #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
-import { deleteLiftVideo } from '@/lib/api/lifting';
+import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
@@ -52,6 +52,11 @@ export default function VideosPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (videoId: string) => deleteLiftVideo(authFetch, videoId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
+  });
+
+  const processMutation = useMutation({
+    mutationFn: (videoId: string) => processLiftVideo(authFetch, videoId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
   });
 
@@ -155,10 +160,49 @@ export default function VideosPage() {
               <div className="p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-white truncate max-w-[200px]">
-                    {video.exercise_name || 'Uncategorized'}
+                    {video.exercise_name || video.exercise_auto || 'Uncategorized'}
                   </p>
-                  <Badge variant="lifting">Uploaded</Badge>
+                  <div className="flex items-center gap-1">
+                    {video.analysis_status === 'completed' && (
+                      <Badge variant="lifting">Processed</Badge>
+                    )}
+                    {video.analysis_status === 'processing' && (
+                      <Badge variant="cycling">Processing…</Badge>
+                    )}
+                    {video.analysis_status === 'failed' && (
+                      <Badge variant="warning">Failed</Badge>
+                    )}
+                    {(!video.analysis_status || video.analysis_status === 'pending') && (
+                      <Badge variant="lifting">Uploaded</Badge>
+                    )}
+                  </div>
                 </div>
+
+                {/* Auto-detected info */}
+                {video.analysis_status === 'completed' && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    {video.exercise_auto && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.exercise_auto}
+                      </span>
+                    )}
+                    {video.reps_count != null && video.reps_count > 0 && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.reps_count} reps
+                      </span>
+                    )}
+                    {video.weight_kg != null && video.weight_kg > 0 && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.weight_kg} kg
+                      </span>
+                    )}
+                    {video.confidence != null && video.confidence > 0 && (
+                      <span className="text-muted/60">
+                        {Math.round(video.confidence * 100)}% conf
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-xs text-muted">
                   <span>{new Date(video.created_at).toLocaleDateString()}</span>
@@ -191,6 +235,19 @@ export default function VideosPage() {
                     </a>
                   )}
                   <div className="flex-1" />
+                  {video.r2_key &&
+                    (!video.analysis_status ||
+                      video.analysis_status === 'pending' ||
+                      video.analysis_status === 'failed') && (
+                      <button
+                        onClick={() => processMutation.mutate(video.id)}
+                        disabled={processMutation.isPending}
+                        className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
+                        title="Process video (trim + classify)"
+                      >
+                        {processMutation.isPending ? 'Queuing…' : '⚡ Process'}
+                      </button>
+                    )}
                   {confirmDeleteId === video.id ? (
                     <>
                       <button

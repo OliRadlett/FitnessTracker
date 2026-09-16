@@ -18,6 +18,17 @@ export interface LiftVideo {
   notes?: string | null;
   created_at: string;
   updated_at: string;
+  // Video processing fields
+  trimmed_r2_key?: string | null;
+  analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  analysis_text?: string | null;
+  exercise_auto?: string | null;
+  reps_count?: number | null;
+  weight_kg?: number | null;
+  confidence?: number | null;
+  trim_start_sec?: number | null;
+  trim_end_sec?: number | null;
+  processed_at?: string | null;
 }
 
 export interface VideoUploadRequest {
@@ -44,6 +55,17 @@ export interface LiftVideoListParams {
   before?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface VideoProcessStatus {
+  video_id: string;
+  analysis_status?: string | null;
+  exercise_auto?: string | null;
+  reps_count?: number | null;
+  weight_kg?: number | null;
+  confidence?: number | null;
+  analysis_text?: string | null;
+  processed_at?: string | null;
 }
 
 export interface LiftingSession {

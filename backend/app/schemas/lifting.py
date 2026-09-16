@@ -317,4 +317,29 @@ class LiftVideoRead(LiftVideoBase):
     created_at: datetime
     updated_at: datetime
 
+    # Video processing fields
+    trimmed_r2_key: str | None = None
+    analysis_status: str | None = None
+    analysis_text: str | None = None
+    exercise_auto: str | None = None
+    reps_count: int | None = None
+    weight_kg: float | None = None
+    confidence: float | None = None
+    trim_start_sec: float | None = None
+    trim_end_sec: float | None = None
+    processed_at: datetime | None = None
+
     model_config = {"from_attributes": True}
+
+
+class VideoProcessStatus(BaseModel):
+    """Response for video processing status check."""
+
+    video_id: uuid.UUID
+    analysis_status: str | None = None
+    exercise_auto: str | None = None
+    reps_count: int | None = None
+    weight_kg: float | None = None
+    confidence: float | None = None
+    analysis_text: str | None = None
+    processed_at: datetime | None = None

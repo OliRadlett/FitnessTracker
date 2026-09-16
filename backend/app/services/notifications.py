@@ -25,6 +25,7 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "event_countdown": True,
     "taper_start": True,
     "ride_weather": True,
+    "video_processed": True,
 }
 
 

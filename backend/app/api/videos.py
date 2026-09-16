@@ -21,6 +21,7 @@ from app.schemas.lifting import (
     LiftVideoCreate,
     LiftVideoListParams,
     LiftVideoRead,
+    VideoProcessStatus,
     VideoStreamUrl,
     VideoUploadRequest,
     VideoUploadResponse,
@@ -198,6 +199,80 @@ async def get_stream_url(
         raise HTTPException(501, "R2 storage client is not installed") from exc
     url = await create_presigned_get(video.r2_key)
     return VideoStreamUrl(url=url)
+
+
+@router.post("/{video_id}/process", status_code=status.HTTP_202_ACCEPTED)
+async def process_video(
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger video processing (trim + classify) via Modal.
+
+    Enqueues a Celery task that downloads the video from R2, runs ffmpeg
+    scene detection, trims to the active segment, classifies via Gemini
+    Vision, and uploads the trimmed variant. Returns 202 Accepted.
+    """
+    video = (
+        await db.execute(
+            select(LiftVideo).where(
+                LiftVideo.id == video_id, LiftVideo.user_id == current_user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if video is None:
+        raise HTTPException(404, "Video not found")
+
+    if not video.r2_key:
+        raise HTTPException(400, "Video has no R2 source to process")
+
+    if video.analysis_status == "processing":
+        raise HTTPException(409, "Video is already being processed")
+
+    settings = get_settings()
+    if not settings.modal_token_id or not settings.modal_token_secret:
+        raise HTTPException(
+            501, "Video processing is not configured (Modal credentials missing)"
+        )
+
+    if not _s3_configured():
+        raise HTTPException(501, "R2 storage is not configured on this instance")
+
+    # Enqueue Celery task
+    from app.tasks.scheduler import process_lift_video
+
+    process_lift_video.delay(str(video_id))
+
+    return {"status": "queued", "video_id": str(video_id)}
+
+
+@router.get("/{video_id}/process-status", response_model=VideoProcessStatus)
+async def get_process_status(
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Check the processing status of a video."""
+    video = (
+        await db.execute(
+            select(LiftVideo).where(
+                LiftVideo.id == video_id, LiftVideo.user_id == current_user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if video is None:
+        raise HTTPException(404, "Video not found")
+
+    return VideoProcessStatus(
+        video_id=video.id,
+        analysis_status=video.analysis_status,
+        exercise_auto=video.exercise_auto,
+        reps_count=video.reps_count,
+        weight_kg=video.weight_kg,
+        confidence=video.confidence,
+        analysis_text=video.analysis_text,
+        processed_at=video.processed_at,
+    )
 
 
 @router.delete(

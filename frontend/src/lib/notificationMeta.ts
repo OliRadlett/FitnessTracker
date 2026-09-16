@@ -14,6 +14,7 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
   event_countdown: '⏳',
   taper_start: '🧘',
   ride_weather: '🌧️',
+  video_processed: '📹',
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
@@ -35,4 +36,5 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   event_countdown: 'Event countdown',
   taper_start: 'Taper',
   ride_weather: 'Ride weather',
+  video_processed: 'Videos',
 };

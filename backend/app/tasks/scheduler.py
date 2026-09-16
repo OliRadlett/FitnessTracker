@@ -2159,3 +2159,156 @@ def record_goal_checkins() -> dict:
             }
 
     return asyncio.run(_run())
+
+
+# ── Video Processing (§1.1) ────────────────────────────────────────────────
+
+
+@celery_app.task(name="app.tasks.scheduler.process_lift_video")
+def process_lift_video(video_id: str) -> dict:
+    """Process an uploaded lift video: trim dead time and classify via Gemini Vision.
+
+    Dispatches to Modal for the heavy lifting (ffmpeg + Gemini Vision API).
+    Updates the LiftVideo row with results.
+    """
+
+    async def _run():
+        import uuid
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select
+
+        from app.config import get_settings
+        from app.database import task_session
+        from app.models.lifting import LiftVideo
+
+        settings = get_settings()
+        vid = uuid.UUID(video_id)
+
+        async with task_session() as db:
+            video = (
+                await db.execute(select(LiftVideo).where(LiftVideo.id == vid))
+            ).scalar_one_or_none()
+
+            if video is None:
+                logger.error("process_lift_video: video %s not found", video_id)
+                return {"status": "not_found"}
+
+            if video.analysis_status == "completed":
+                logger.info("process_lift_video: video %s already processed", video_id)
+                return {"status": "already_processed"}
+
+            # Mark as processing
+            video.analysis_status = "processing"
+            await db.commit()
+
+            try:
+                from app.integrations.modal_client import process_video_on_modal
+                from app.integrations.r2 import (
+                    create_presigned_get,
+                    create_presigned_put,
+                )
+
+                # Generate presigned URLs for Modal to use
+                presigned_get = await create_presigned_get(video.r2_key)
+
+                # Generate a key and presigned PUT for the trimmed video
+                trimmed_key = (
+                    video.r2_key.replace("/", "/trimmed/", 1)
+                    if "/trimmed/" not in video.r2_key
+                    else video.r2_key
+                )
+                if not trimmed_key.endswith("-trimmed.mp4"):
+                    base = trimmed_key.rsplit(".", 1)[0]
+                    trimmed_key = f"{base}-trimmed.mp4"
+
+                presigned_put = await create_presigned_put(
+                    video.user_id,
+                    f"trimmed-{video.file_name}",
+                    video.content_type or "video/mp4",
+                    video.size_bytes or 0,
+                )
+
+                # Call Modal for processing
+                result = process_video_on_modal(
+                    video_id=video_id,
+                    r2_key=video.r2_key,
+                    r2_presigned_get=presigned_get,
+                    r2_presigned_put=presigned_put["upload_url"],
+                    r2_upload_key=presigned_put["key"],
+                    gemini_api_key=settings.gemini_api_key,
+                )
+
+                # Update video with results
+                video.trimmed_r2_key = result.get("trimmed_r2_key")
+                video.trim_start_sec = result.get("trim_start_sec")
+                video.trim_end_sec = result.get("trim_end_sec")
+                video.analysis_text = result.get("analysis_text")
+
+                # Only update exercise if user didn't set one
+                if result.get("exercise") and not video.exercise_name:
+                    video.exercise_auto = result["exercise"]
+
+                if result.get("reps"):
+                    video.reps_count = result["reps"]
+                if result.get("weight_kg"):
+                    video.weight_kg = result["weight_kg"]
+                if result.get("confidence"):
+                    video.confidence = result["confidence"]
+                if result.get("duration_seconds"):
+                    video.duration_seconds = round(result["duration_seconds"])
+
+                video.analysis_status = "completed"
+                video.processed_at = datetime.now(UTC)
+                await db.commit()
+
+                # Send notification
+                from app.services.notifications import notify
+
+                await notify(
+                    db,
+                    video.user_id,
+                    type="video_processed",
+                    title="Video processed",
+                    body=(
+                        "Your video has been processed"
+                        + (
+                            f" — detected: {video.exercise_auto or video.exercise_name}"
+                            if video.exercise_auto or video.exercise_name
+                            else ""
+                        )
+                    ),
+                    severity="success",
+                    link="/lifting/videos",
+                    dedup_key=f"video_processed:{video_id}",
+                )
+                await db.commit()
+
+                logger.info("process_lift_video: completed for %s", video_id)
+                return {"status": "completed", "video_id": video_id}
+
+            except Exception as e:
+                logger.error(
+                    "process_lift_video failed for %s: %s", video_id, e, exc_info=True
+                )
+                video.analysis_status = "failed"
+                video.analysis_text = str(e)
+                await db.commit()
+
+                from app.services.notifications import notify
+
+                await notify(
+                    db,
+                    video.user_id,
+                    type="video_processed",
+                    title="Video processing failed",
+                    body=f"Failed to process your video: {e!s:.100}",
+                    severity="error",
+                    link="/lifting/videos",
+                    dedup_key=f"video_failed:{video_id}",
+                )
+                await db.commit()
+
+                return {"status": "failed", "error": str(e)}
+
+    return asyncio.run(_run())

@@ -1,0 +1,362 @@
+"""Modal integration for serverless video processing.
+
+Provides ``process_video_on_modal()`` which dispatches a lift video to a
+Modal function for scene detection, trimming, and Gemini Vision classification.
+The Modal function runs in a container with ffmpeg installed.
+
+Requires ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` env vars.
+"""
+
+import json
+import logging
+from pathlib import Path
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# The Modal app + function are defined inline and deployed on first invocation.
+# Container image: debian_slim + ffmpeg + httpx (for R2 downloads/uploads).
+_MODAL_IMAGE = None
+
+
+def _get_modal_image():
+    """Lazy-load the Modal image to avoid import at module level."""
+    global _MODAL_IMAGE
+    if _MODAL_IMAGE is None:
+        import modal
+
+        _MODAL_IMAGE = (
+            modal.Image.debian_slim(python_version="3.12")
+            .apt_install("ffmpeg")
+            .pip_install("httpx")
+        )
+    return _MODAL_IMAGE
+
+
+def _modal_configured() -> bool:
+    """True only when Modal credentials are set."""
+    settings = get_settings()
+    return bool(settings.modal_token_id and settings.modal_token_secret)
+
+
+def process_video_on_modal(
+    video_id: str,
+    r2_key: str,
+    r2_presigned_get: str,
+    r2_presigned_put: str,
+    r2_upload_key: str,
+    gemini_api_key: str,
+) -> dict:
+    """Dispatch video processing to Modal and return the result.
+
+    Parameters
+    ----------
+    video_id:
+        UUID of the LiftVideo row (for logging).
+    r2_key:
+        The original R2 object key.
+    r2_presigned_get:
+        Presigned GET URL to download the original video.
+    r2_presigned_put:
+        Presigned PUT URL to upload the trimmed video.
+    r2_upload_key:
+        The R2 key for the trimmed video (destination).
+    gemini_api_key:
+        Gemini API key for Vision classification.
+
+    Returns
+    -------
+    dict with keys: trimmed_r2_key, duration_seconds, trim_start_sec,
+    trim_end_sec, exercise, reps, weight_kg, confidence, analysis_text.
+    """
+    import modal
+
+    settings = get_settings()
+
+    if not _modal_configured():
+        raise RuntimeError(
+            "Modal is not configured — set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET"
+        )
+
+    image = _get_modal_image()
+
+    app = modal.App("fittrack-video-processor", image=image)
+
+    @app.function(
+        timeout=300,  # 5 min max per video
+        memory=1024,  # 1 GB RAM for ffmpeg
+    )
+    def _process(
+        presigned_get: str,
+        presigned_put: str,
+        upload_key: str,
+        gemini_key: str,
+    ) -> dict:
+        import subprocess
+        import tempfile
+
+        import httpx
+
+        # ── Step 1: Download video from R2 ────────────────────────────────
+        logger.info("Downloading video from R2...")
+        resp = httpx.get(presigned_get, follow_redirects=True, timeout=120)
+        resp.raise_for_status()
+        video_bytes = resp.content
+        logger.info("Downloaded %d bytes", len(video_bytes))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.mp4"
+            trimmed_path = Path(tmpdir) / "trimmed.mp4"
+            input_path.write_bytes(video_bytes)
+
+            # ── Step 2: Get video duration ────────────────────────────────
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    str(input_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            duration = 0.0
+            try:
+                probe_data = json.loads(probe.stdout)
+                duration = float(probe_data.get("format", {}).get("duration", 0))
+            except (json.JSONDecodeError, ValueError, KeyError):
+                pass
+            logger.info("Video duration: %.1fs", duration)
+
+            # ── Step 3: Scene detection ───────────────────────────────────
+            # Use ffmpeg scene filter to detect significant frame changes.
+            # threshold 0.3 = moderate sensitivity (catches set start/end)
+            scene_output = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i",
+                    str(input_path),
+                    "-vf",
+                    "select='gt(scene,0.3)',showinfo",
+                    "-vsync",
+                    "vfr",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            # Parse scene change timestamps from ffmpeg stderr
+            scene_times: list[float] = []
+            for line in scene_output.stderr.splitlines():
+                if "pts_time:" in line:
+                    try:
+                        pts_part = line.split("pts_time:")[1].split()[0]
+                        scene_times.append(float(pts_part))
+                    except (IndexError, ValueError):
+                        continue
+
+            logger.info("Detected %d scene changes: %s", len(scene_times), scene_times)
+
+            # ── Step 4: Determine trim points ─────────────────────────────
+            # Strategy: find the longest gap between scene changes (likely
+            # the active lifting segment), then trim to that segment with
+            # 0.5s padding on each side.
+            if len(scene_times) >= 2 and duration > 0:
+                # Add start (0) and end (duration) as boundaries
+                boundaries = [0.0] + scene_times + [duration]
+                # Find the longest segment
+                best_start = 0.0
+                best_end = duration
+                max_gap = 0.0
+                for i in range(len(boundaries) - 1):
+                    gap = boundaries[i + 1] - boundaries[i]
+                    if gap > max_gap:
+                        max_gap = gap
+                        best_start = boundaries[i]
+                        best_end = boundaries[i + 1]
+
+                # Add 0.5s padding, clamped to video bounds
+                trim_start = max(0.0, best_start - 0.5)
+                trim_end = min(duration, best_end + 0.5)
+            else:
+                # No clear scenes detected — keep the middle 80%
+                trim_start = duration * 0.1
+                trim_end = duration * 0.9
+
+            logger.info("Trim points: %.2f -> %.2f", trim_start, trim_end)
+
+            # ── Step 5: Trim video ────────────────────────────────────────
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    str(trim_start),
+                    "-to",
+                    str(trim_end),
+                    "-i",
+                    str(input_path),
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-c:a",
+                    "aac",
+                    str(trimmed_path),
+                ],
+                capture_output=True,
+                timeout=300,
+            )
+
+            if not trimmed_path.exists():
+                raise RuntimeError("ffmpeg trim failed — no output file")
+
+            trimmed_bytes = trimmed_path.read_bytes()
+            logger.info("Trimmed video: %d bytes", len(trimmed_bytes))
+
+            # ── Step 6: Extract key frames for classification ─────────────
+            frame_paths: list[Path] = []
+            segment_duration = trim_end - trim_start
+            # Extract 3 frames: start, middle, end of the lift
+            for idx, frac in enumerate([0.1, 0.5, 0.9]):
+                frame_time = trim_start + (segment_duration * frac)
+                frame_path = Path(tmpdir) / f"frame_{idx}.jpg"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-ss",
+                        str(frame_time),
+                        "-i",
+                        str(input_path),
+                        "-frames:v",
+                        "1",
+                        "-q:v",
+                        "2",
+                        str(frame_path),
+                    ],
+                    capture_output=True,
+                    timeout=30,
+                )
+                if frame_path.exists():
+                    frame_paths.append(frame_path)
+
+            logger.info("Extracted %d key frames", len(frame_paths))
+
+            # ── Step 7: Classify via Gemini Vision ────────────────────────
+            exercise = ""
+            reps = 0
+            weight = 0.0
+            confidence = 0.0
+            analysis_text = ""
+
+            if gemini_key and frame_paths:
+                try:
+                    import base64
+
+                    from google import genai
+                    from google.genai import types
+
+                    client = genai.Client(api_key=gemini_key)
+
+                    # Build multimodal prompt with frames
+                    contents: list = []
+                    contents.append(
+                        "This is a weightlifting video. I've extracted 3 key frames "
+                        "(start, middle, end of the lift). Please analyze them and classify:\n"
+                        "1. Exercise name (squat, bench press, deadlift, overhead press, "
+                        "barbell row, Romanian deadlift, front squat, or other)\n"
+                        "2. Number of reps performed\n"
+                        "3. Weight on the bar in kg (if visible on the plates)\n"
+                        "4. Confidence level (0.0 to 1.0)\n"
+                        "5. Brief notes about form or technique\n\n"
+                        "Return ONLY valid JSON (no markdown) in this exact format:\n"
+                        '{"exercise": "...", "reps": N, "weight_kg": N.N, '
+                        '"confidence": N.N, "notes": "..."}'
+                    )
+
+                    for fp in frame_paths:
+                        img_bytes = fp.read_bytes()
+                        contents.append(
+                            types.Part.from_bytes(
+                                data=img_bytes,
+                                mime_type="image/jpeg",
+                            )
+                        )
+
+                    response = client.models.generate_content(
+                        model="gemini-3.6-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            temperature=0.3,
+                            max_output_tokens=512,
+                        ),
+                    )
+
+                    raw_text = response.text or ""
+                    analysis_text = raw_text.strip()
+
+                    # Parse JSON from response (handle markdown code blocks)
+                    json_str = raw_text.strip()
+                    if json_str.startswith("```"):
+                        json_str = json_str.split("\n", 1)[1]
+                        json_str = json_str.removesuffix("```")
+                        json_str = json_str.strip()
+
+                    result = json.loads(json_str)
+                    exercise = result.get("exercise", "")
+                    reps = int(result.get("reps", 0))
+                    weight = float(result.get("weight_kg", 0))
+                    confidence = float(result.get("confidence", 0))
+                    if "notes" in result:
+                        analysis_text = result["notes"]
+
+                    logger.info(
+                        "Classification: exercise=%s reps=%d weight=%.1f conf=%.2f",
+                        exercise,
+                        reps,
+                        weight,
+                        confidence,
+                    )
+                except Exception as e:
+                    logger.warning("Gemini classification failed: %s", e)
+                    analysis_text = f"Classification failed: {e}"
+
+            # ── Step 8: Upload trimmed video to R2 ────────────────────────
+            httpx.put(
+                presigned_put,
+                content=trimmed_bytes,
+                headers={"Content-Type": "video/mp4"},
+                timeout=120,
+            ).raise_for_status()
+            logger.info("Uploaded trimmed video to R2: %s", upload_key)
+
+            return {
+                "trimmed_r2_key": upload_key,
+                "duration_seconds": round(duration, 1),
+                "trim_start_sec": round(trim_start, 2),
+                "trim_end_sec": round(trim_end, 2),
+                "exercise": exercise,
+                "reps": reps,
+                "weight_kg": weight,
+                "confidence": confidence,
+                "analysis_text": analysis_text,
+            }
+
+    # Run the Modal function synchronously (blocks until complete)
+    return modal.run(
+        _process.remote,
+        r2_presigned_get,
+        r2_presigned_put,
+        r2_upload_key,
+        gemini_api_key,
+    )

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -253,6 +254,23 @@ class LiftVideo(Base):
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
+    trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    analysis_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, server_default="pending"
+    )
+    analysis_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exercise_auto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reps_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trim_start_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trim_end_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True
     )

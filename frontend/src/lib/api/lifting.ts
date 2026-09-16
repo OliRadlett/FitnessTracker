@@ -10,6 +10,7 @@ import type {
   VideoUploadRequest,
   VideoUploadResponse,
   VideoStreamUrl,
+  VideoProcessStatus,
   LiftVideoListParams,
 } from './types';
 
@@ -124,4 +125,25 @@ export async function deleteLiftVideo(authFetch: AuthFetch, videoId: string): Pr
   return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`, {
     method: 'DELETE',
   });
+}
+
+// ─── Video Processing (§1.1) ───────────────────────────────────────────────
+
+export async function processLiftVideo(
+  authFetch: AuthFetch,
+  videoId: string,
+): Promise<{ status: string; video_id: string }> {
+  return authFetch<{ status: string; video_id: string }>(
+    `/api/v1/lifting/videos/${videoId}/process`,
+    { method: 'POST' },
+  );
+}
+
+export async function getVideoProcessStatus(
+  authFetch: AuthFetch,
+  videoId: string,
+): Promise<VideoProcessStatus> {
+  return authFetch<VideoProcessStatus>(
+    `/api/v1/lifting/videos/${videoId}/process-status`,
+  );
 }
