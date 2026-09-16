@@ -114,16 +114,16 @@ scene.render.resolution_y = 900
 scene.world = bpy.data.worlds.new("World")
 scene.world.use_nodes = True
 bg = scene.world.node_tree.nodes.get("Background")
-bg.inputs[0].default_value = (0.03, 0.03, 0.04, 1.0)
+bg.inputs[0].default_value = (0.005, 0.005, 0.006, 1.0)
 
 sun_data = bpy.data.lights.new("Sun", type="SUN")
-sun_data.energy = 15.0
+sun_data.energy = 6.0
 sun_obj = bpy.data.objects.new("Sun", sun_data)
 sun_obj.rotation_euler = (0.4, 0.2, 0.6)
 scene.collection.objects.link(sun_obj)
 
 fill_data = bpy.data.lights.new("Fill", type="AREA")
-fill_data.energy = 2000.0
+fill_data.energy = 800.0
 fill_data.size = 8.0
 fill_obj = bpy.data.objects.new("Fill", fill_data)
 fill_obj.location = (-3.0, 2.0, 1.5)
@@ -131,18 +131,26 @@ fill_obj.rotation_euler = (0.9, 0.0, 0.6)
 scene.collection.objects.link(fill_obj)
 
 rim_data = bpy.data.lights.new("Rim", type="AREA")
-rim_data.energy = 3000.0
+rim_data.energy = 600.0
 rim_data.size = 5.0
 rim_obj = bpy.data.objects.new("Rim", rim_data)
 rim_obj.location = (0.0, -3.0, 0.5)
 scene.collection.objects.link(rim_obj)
 
 key_data = bpy.data.lights.new("Key", type="AREA")
-key_data.energy = 5000.0
+key_data.energy = 1000.0
 key_data.size = 6.0
 key_obj = bpy.data.objects.new("Key", key_data)
 key_obj.location = (2.0, -1.0, 2.0)
 scene.collection.objects.link(key_obj)
+
+# Extra fill for non-drive side
+nd_fill_data = bpy.data.lights.new("NDFill", type="AREA")
+nd_fill_data.energy = 600.0
+nd_fill_data.size = 5.0
+nd_fill_obj = bpy.data.objects.new("NDFill", nd_fill_data)
+nd_fill_obj.location = (-2.0, -1.0, 1.5)
+scene.collection.objects.link(nd_fill_obj)
 
 cam_data = bpy.data.cameras.new("Cam")
 cam_obj = bpy.data.objects.new("Cam", cam_data)
