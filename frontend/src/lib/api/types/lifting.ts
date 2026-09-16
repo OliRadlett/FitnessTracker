@@ -97,14 +97,20 @@ export interface VideoProcessStatus {
   // Video analysis fields (§3.18)
   form_score?: number | null;
   competition_valid?: boolean | null;
+  form_deviations?: string | null;
+  form_coaching_cues?: string | null;
   mean_concentric_velocity?: number | null;
+  peak_velocity?: number | null;
   velocity_loss_pct?: number | null;
   vbt_zone?: string | null;
   avg_rest_seconds?: number | null;
+  rest_cv?: number | null;
   rep_consistency_score?: number | null;
   setup_score?: number | null;
+  setup_duration_seconds?: number | null;
   estimated_rpe?: number | null;
   rpe_confidence?: number | null;
+  rpe_evidence_json?: string | null;
 }
 
 export interface LiftingSession {

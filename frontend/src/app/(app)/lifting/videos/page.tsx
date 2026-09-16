@@ -224,6 +224,26 @@ export default function VideosPage() {
                   <p className="text-xs text-muted truncate">{video.notes}</p>
                 )}
 
+                {video.analysis_status === 'completed' && (video.form_score != null || video.estimated_rpe != null) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {video.form_score != null && (
+                      <Badge variant={video.form_score >= 90 ? 'positive' : video.form_score >= 75 ? 'lifting' : video.form_score >= 60 ? 'warning' : 'warning'}>
+                        Form {Math.round(video.form_score)}
+                      </Badge>
+                    )}
+                    {video.mean_concentric_velocity != null && (
+                      <Badge variant="cycling">
+                        {video.mean_concentric_velocity.toFixed(2)} m/s
+                      </Badge>
+                    )}
+                    {video.estimated_rpe != null && (
+                      <Badge variant="muted">
+                        RPE {video.estimated_rpe.toFixed(1)}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex items-center gap-2 pt-1">
                   {video.lifting_session_id && (
