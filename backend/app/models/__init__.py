@@ -5,6 +5,7 @@ from app.models.event import Event
 from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.health_alert import HealthAlert
+from app.models.lift_video_analysis import LiftVideoAnalysis
 from app.models.lifting import (
     LiftingSession,
     LiftingSet,
@@ -25,6 +26,7 @@ from app.models.route_organize import (
     RouteTag,
     RouteTagging,
 )
+from app.models.rpe_calibration import RpeCalibration
 from app.models.segment import Segment, SegmentEffort
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
@@ -46,6 +48,7 @@ __all__ = [
     "Goal",
     "HealthAlert",
     "LiftVideo",
+    "LiftVideoAnalysis",
     "LiftingSession",
     "LiftingSet",
     "LlmAnalysis",
@@ -54,6 +57,7 @@ __all__ = [
     "PersonalRecord",
     "PushSubscription",
     "RideFuelPlan",
+    "RpeCalibration",
     "Route",
     "RouteCollection",
     "RouteCollectionItem",

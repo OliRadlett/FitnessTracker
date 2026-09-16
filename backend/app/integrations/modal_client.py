@@ -20,17 +20,30 @@ logger = logging.getLogger(__name__)
 _MODAL_IMAGE = None
 
 
-def _get_modal_image():
-    """Lazy-load the Modal image to avoid import at module level."""
+def _get_modal_image(project_root: str | None = None):
+    """Lazy-load the Modal image to avoid import at module level.
+
+    Parameters
+    ----------
+    project_root:
+        Path to the backend/ directory (for mounting video_analysis.py).
+    """
     global _MODAL_IMAGE
     if _MODAL_IMAGE is None:
         import modal
 
-        _MODAL_IMAGE = (
+        image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install("ffmpeg")
-            .pip_install("httpx")
+            .pip_install("httpx", "google-genai")
         )
+
+        # Mount the analysis module into the container
+        if project_root:
+            analysis_path = str(Path(project_root) / "app" / "integrations" / "video_analysis.py")
+            image = image.add_local_file(analysis_path, "/root/app/integrations/video_analysis.py")
+
+        _MODAL_IMAGE = image
     return _MODAL_IMAGE
 
 
@@ -47,6 +60,7 @@ def process_video_on_modal(
     r2_presigned_put: str,
     r2_upload_key: str,
     gemini_api_key: str,
+    analysis_depth: str = "full",
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -64,6 +78,10 @@ def process_video_on_modal(
         The R2 key for the trimmed video (destination).
     gemini_api_key:
         Gemini API key for Vision classification.
+    analysis_depth:
+        ``"basic"`` for trim + classify only (current behaviour),
+        ``"full"`` for deep analysis (form, velocity, rest, consistency,
+        setup, RPE estimation).
 
     Returns
     -------
@@ -79,19 +97,23 @@ def process_video_on_modal(
             "Modal is not configured — set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET"
         )
 
-    image = _get_modal_image()
+    # Locate the project root (backend/ directory)
+    project_root = str(Path(__file__).resolve().parent.parent.parent)
+
+    image = _get_modal_image(project_root=project_root)
 
     app = modal.App("fittrack-video-processor", image=image)
 
     @app.function(
-        timeout=300,  # 5 min max per video
-        memory=1024,  # 1 GB RAM for ffmpeg
+        timeout=600,  # 10 min max per video (multi-pass Gemini calls)
+        memory=2048,  # 2 GB RAM for dense frame extraction + ffmpeg
     )
     def _process(
         presigned_get: str,
         presigned_put: str,
         upload_key: str,
         gemini_key: str,
+        depth: str,
     ) -> dict:
         import subprocess
         import tempfile
@@ -331,7 +353,31 @@ def process_video_on_modal(
                     logger.warning("Gemini classification failed: %s", e)
                     analysis_text = f"Classification failed: {e}"
 
-            # ── Step 8: Upload trimmed video to R2 ────────────────────────
+            # ── Step 8: Full analysis (form, velocity, RPE, etc.) ─────────────
+            full_result: dict = {}
+            if depth == "full" and gemini_key and frame_paths:
+                try:
+                    import sys
+                    # Ensure app.integrations is importable inside the container
+                    sys.path.insert(0, "/root")
+                    from app.integrations.video_analysis import run_full_analysis
+
+                    full_result = run_full_analysis(
+                        client=client,
+                        input_path=input_path,
+                        tmpdir=tmpdir,
+                        trim_start=trim_start,
+                        trim_end=trim_end,
+                        exercise_name=exercise,
+                        rep_count=reps,
+                        weight_kg=weight,
+                    )
+                    logger.info("Full analysis complete: %s", list(full_result.keys()))
+                except Exception as e:
+                    logger.warning("Full analysis failed: %s", e)
+                    full_result = {"analysis_error": str(e)}
+
+            # ── Step 9: Upload trimmed video to R2 ────────────────────────
             httpx.put(
                 presigned_put,
                 content=trimmed_bytes,
@@ -339,6 +385,12 @@ def process_video_on_modal(
                 timeout=120,
             ).raise_for_status()
             logger.info("Uploaded trimmed video to R2: %s", upload_key)
+
+            form_data = full_result.get("form", {})
+            vel_data = full_result.get("velocity", {})
+            consist_data = full_result.get("consistency", {})
+            setup_data = full_result.get("setup", {})
+            rpe_data = full_result.get("rpe", {})
 
             return {
                 "trimmed_r2_key": upload_key,
@@ -350,6 +402,35 @@ def process_video_on_modal(
                 "weight_kg": weight,
                 "confidence": confidence,
                 "analysis_text": analysis_text,
+                "analysis_depth": depth,
+                # Form (§3.18)
+                "form_score": form_data.get("overall_form_score"),
+                "competition_valid": full_result.get("competition_valid"),
+                "form_analysis_json": form_data,
+                "form_deviations": form_data.get("deviations", []),
+                "form_coaching_cues": form_data.get("coaching_cues", []),
+                # Velocity (§3.18)
+                "mean_concentric_velocity": vel_data.get("mean_concentric_velocity"),
+                "peak_velocity": vel_data.get("peak_velocity"),
+                "velocity_loss_pct": vel_data.get("velocity_loss_pct"),
+                "velocity_profile_json": vel_data.get("velocities"),
+                "vbt_zone": vel_data.get("vbt_zone"),
+                # Rest timing
+                "rest_periods_json": None,  # estimated server-side per-rep
+                "avg_rest_seconds": None,
+                "rest_cv": None,
+                # Consistency (§3.18)
+                "rep_consistency_score": consist_data.get("consistency_score"),
+                "tempo_consistency_cv": None,
+                "rep_timing_json": consist_data,
+                # Setup (§3.18)
+                "setup_score": setup_data.get("setup_score"),
+                "setup_analysis_json": setup_data,
+                "setup_duration_seconds": setup_data.get("setup_duration_seconds"),
+                # RPE (§3.18)
+                "estimated_rpe": rpe_data.get("estimated_rpe"),
+                "rpe_confidence": rpe_data.get("confidence"),
+                "rpe_evidence_json": rpe_data.get("evidence"),
             }
 
     # Run the Modal function synchronously (blocks until complete)
@@ -359,4 +440,5 @@ def process_video_on_modal(
         r2_presigned_put,
         r2_upload_key,
         gemini_api_key,
+        analysis_depth,
     )

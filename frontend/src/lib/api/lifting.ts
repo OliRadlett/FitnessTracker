@@ -132,9 +132,10 @@ export async function deleteLiftVideo(authFetch: AuthFetch, videoId: string): Pr
 export async function processLiftVideo(
   authFetch: AuthFetch,
   videoId: string,
-): Promise<{ status: string; video_id: string }> {
-  return authFetch<{ status: string; video_id: string }>(
-    `/api/v1/lifting/videos/${videoId}/process`,
+  depth: 'basic' | 'full' = 'full',
+): Promise<{ status: string; video_id: string; analysis_depth: string }> {
+  return authFetch<{ status: string; video_id: string; analysis_depth: string }>(
+    `/api/v1/lifting/videos/${videoId}/process?depth=${depth}`,
     { method: 'POST' },
   );
 }

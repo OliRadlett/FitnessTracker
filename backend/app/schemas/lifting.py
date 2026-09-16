@@ -329,6 +329,40 @@ class LiftVideoRead(LiftVideoBase):
     trim_end_sec: float | None = None
     processed_at: datetime | None = None
 
+    # Video analysis — IPF form scoring (§3.18)
+    form_score: float | None = None
+    competition_valid: bool | None = None
+    form_analysis_json: str | None = None
+    form_deviations: str | None = None
+    form_coaching_cues: str | None = None
+
+    # Velocity tracking (§3.18)
+    mean_concentric_velocity: float | None = None
+    peak_velocity: float | None = None
+    velocity_loss_pct: float | None = None
+    velocity_profile_json: str | None = None
+    vbt_zone: str | None = None
+
+    # Rest timing (§3.18)
+    rest_periods_json: str | None = None
+    avg_rest_seconds: float | None = None
+    rest_cv: float | None = None
+
+    # Consistency (§3.18)
+    rep_consistency_score: float | None = None
+    tempo_consistency_cv: float | None = None
+    rep_timing_json: str | None = None
+
+    # Setup analysis (§3.18)
+    setup_score: float | None = None
+    setup_analysis_json: str | None = None
+    setup_duration_seconds: float | None = None
+
+    # Estimated RPE (§3.18)
+    estimated_rpe: float | None = None
+    rpe_confidence: float | None = None
+    rpe_evidence_json: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -343,3 +377,15 @@ class VideoProcessStatus(BaseModel):
     confidence: float | None = None
     analysis_text: str | None = None
     processed_at: datetime | None = None
+
+    # Video analysis fields (§3.18)
+    form_score: float | None = None
+    competition_valid: bool | None = None
+    mean_concentric_velocity: float | None = None
+    velocity_loss_pct: float | None = None
+    vbt_zone: str | None = None
+    avg_rest_seconds: float | None = None
+    rep_consistency_score: float | None = None
+    setup_score: float | None = None
+    estimated_rpe: float | None = None
+    rpe_confidence: float | None = None

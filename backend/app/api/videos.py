@@ -9,7 +9,7 @@ referencing the object key. Requires the `R2_*` env vars + a bucket CORS rule
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -204,6 +204,7 @@ async def get_stream_url(
 @router.post("/{video_id}/process", status_code=status.HTTP_202_ACCEPTED)
 async def process_video(
     video_id: uuid.UUID,
+    depth: str = Query("full", pattern="^(basic|full)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -241,9 +242,9 @@ async def process_video(
     # Enqueue Celery task
     from app.tasks.scheduler import process_lift_video
 
-    process_lift_video.delay(str(video_id))
+    process_lift_video.delay(str(video_id), analysis_depth=depth)
 
-    return {"status": "queued", "video_id": str(video_id)}
+    return {"status": "queued", "video_id": str(video_id), "analysis_depth": depth}
 
 
 @router.get("/{video_id}/process-status", response_model=VideoProcessStatus)
