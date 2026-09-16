@@ -2165,7 +2165,7 @@ def record_goal_checkins() -> dict:
 
 
 @celery_app.task(name="app.tasks.scheduler.process_lift_video")
-def process_lift_video(video_id: str) -> dict:
+def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
     """Process an uploaded lift video: trim dead time and classify via Gemini Vision.
 
     Dispatches to Modal for the heavy lifting (ffmpeg + Gemini Vision API).
