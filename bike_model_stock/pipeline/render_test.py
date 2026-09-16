@@ -103,11 +103,13 @@ scene = bpy.context.scene
 scene.render.engine = "CYCLES"
 scene.cycles.samples = 512
 scene.cycles.device = "GPU"
-scene.cycles.device = "CPU"
 scene.cycles.max_bounces = 16
 scene.cycles.diffuse_bounces = 8
 scene.cycles.glossy_bounces = 16
 scene.cycles.transmission_bounces = 16
+scene.cycles.volume_bounces = 0
+scene.cycles.min_samples = 128
+scene.cycles.adaptive_threshold = 0.01
 scene.render.resolution_x = 1400
 scene.render.resolution_y = 900
 
