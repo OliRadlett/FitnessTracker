@@ -105,6 +105,7 @@ def process_video_on_modal(
     app = modal.App("fittrack-video-processor", image=image)
 
     @app.function(
+        serialized=True,
         timeout=600,  # 10 min max per video (multi-pass Gemini calls)
         memory=2048,  # 2 GB RAM for dense frame extraction + ffmpeg
     )
