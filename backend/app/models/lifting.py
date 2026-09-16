@@ -258,7 +258,7 @@ class LiftVideo(Base):
     # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
     trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analysis_status: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, server_default="pending"
+        String(20), nullable=True
     )
     analysis_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     exercise_auto: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -270,6 +270,40 @@ class LiftVideo(Base):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # ── Video analysis — IPF form scoring (§3.18) ──────────────────────────
+    form_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    competition_valid: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    form_analysis_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    form_deviations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    form_coaching_cues: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Velocity tracking (§3.18) ──────────────────────────────────────────
+    mean_concentric_velocity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    peak_velocity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    velocity_loss_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    velocity_profile_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vbt_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # ── Rest timing (§3.18) ────────────────────────────────────────────────
+    rest_periods_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avg_rest_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rest_cv: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ── Consistency (§3.18) ────────────────────────────────────────────────
+    rep_consistency_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tempo_consistency_cv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rep_timing_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Setup analysis (§3.18) ─────────────────────────────────────────────
+    setup_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    setup_analysis_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    setup_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ── Estimated RPE (§3.18) ──────────────────────────────────────────────
+    estimated_rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rpe_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rpe_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True

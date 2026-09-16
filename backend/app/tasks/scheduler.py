@@ -2171,6 +2171,7 @@ def process_lift_video(video_id: str) -> dict:
     Dispatches to Modal for the heavy lifting (ffmpeg + Gemini Vision API).
     Updates the LiftVideo row with results.
     """
+    import asyncio
 
     async def _run():
         import uuid
@@ -2237,6 +2238,7 @@ def process_lift_video(video_id: str) -> dict:
                     r2_presigned_put=presigned_put["upload_url"],
                     r2_upload_key=presigned_put["key"],
                     gemini_api_key=settings.gemini_api_key,
+                    analysis_depth=analysis_depth,
                 )
 
                 # Update video with results
@@ -2257,6 +2259,62 @@ def process_lift_video(video_id: str) -> dict:
                     video.confidence = result["confidence"]
                 if result.get("duration_seconds"):
                     video.duration_seconds = round(result["duration_seconds"])
+
+                # ── Form analysis (§3.18) ──────────────────────────────────
+                if result.get("form_score") is not None:
+                    video.form_score = result["form_score"]
+                if result.get("competition_valid") is not None:
+                    video.competition_valid = result["competition_valid"]
+                if result.get("form_analysis_json"):
+                    video.form_analysis_json = result["form_analysis_json"]
+                if result.get("form_deviations"):
+                    video.form_deviations = result["form_deviations"]
+                if result.get("form_coaching_cues"):
+                    video.form_coaching_cues = result["form_coaching_cues"]
+
+                # ── Velocity / VBT (§3.18) ─────────────────────────────────
+                if result.get("mean_concentric_velocity") is not None:
+                    video.mean_concentric_velocity = result["mean_concentric_velocity"]
+                if result.get("peak_velocity") is not None:
+                    video.peak_velocity = result["peak_velocity"]
+                if result.get("velocity_loss_pct") is not None:
+                    video.velocity_loss_pct = result["velocity_loss_pct"]
+                if result.get("velocity_profile_json") is not None:
+                    video.velocity_profile_json = result["velocity_profile_json"]
+                if result.get("vbt_zone"):
+                    video.vbt_zone = result["vbt_zone"]
+
+                # ── Rest timing ────────────────────────────────────────────
+                if result.get("rest_periods_json") is not None:
+                    video.rest_periods_json = result["rest_periods_json"]
+                if result.get("avg_rest_seconds") is not None:
+                    video.avg_rest_seconds = result["avg_rest_seconds"]
+                if result.get("rest_cv") is not None:
+                    video.rest_cv = result["rest_cv"]
+
+                # ── Rep consistency (§3.18) ────────────────────────────────
+                if result.get("rep_consistency_score") is not None:
+                    video.rep_consistency_score = result["rep_consistency_score"]
+                if result.get("tempo_consistency_cv") is not None:
+                    video.tempo_consistency_cv = result["tempo_consistency_cv"]
+                if result.get("rep_timing_json"):
+                    video.rep_timing_json = result["rep_timing_json"]
+
+                # ── Setup analysis (§3.18) ─────────────────────────────────
+                if result.get("setup_score") is not None:
+                    video.setup_score = result["setup_score"]
+                if result.get("setup_analysis_json"):
+                    video.setup_analysis_json = result["setup_analysis_json"]
+                if result.get("setup_duration_seconds") is not None:
+                    video.setup_duration_seconds = result["setup_duration_seconds"]
+
+                # ── RPE estimation (§3.18) ─────────────────────────────────
+                if result.get("estimated_rpe") is not None:
+                    video.estimated_rpe = result["estimated_rpe"]
+                if result.get("rpe_confidence") is not None:
+                    video.rpe_confidence = result["rpe_confidence"]
+                if result.get("rpe_evidence_json"):
+                    video.rpe_evidence_json = result["rpe_evidence_json"]
 
                 video.analysis_status = "completed"
                 video.processed_at = datetime.now(UTC)
