@@ -9,9 +9,36 @@ from __future__ import annotations
 import json
 import logging
 import math
+import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# ── Gemini retry helper ──────────────────────────────────────────────────────
+
+_RETRYABLE_codes = {429, 500, 502, 503, 504}
+
+
+def _gemini_retry(func, *args, max_retries: int = 3, **kwargs):
+    """Call func with exponential backoff on transient Gemini errors."""
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            msg = str(exc)
+            retryable = any(
+                code in msg for code in ("429", "500", "502", "503", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED")
+            )
+            if retryable and attempt < max_retries - 1:
+                wait = 2 ** attempt * 2  # 2s, 4s, 8s
+                logger.warning("Gemini call failed (attempt %d/%d): %s — retrying in %ds",
+                               attempt + 1, max_retries, msg[:120], wait)
+                time.sleep(wait)
+                last_exc = exc
+            else:
+                raise
+    raise last_exc  # unreachable but satisfies type checker
 
 # ── IPF Competition Form Prompts ─────────────────────────────────────────────
 
@@ -429,15 +456,17 @@ def _call_gemini_form(client, prompt: str, frame_paths: list[Path]) -> dict:
             types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
         )
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=contents,
-        config=types.GenerateContentConfig(
-            temperature=0.2,  # low temperature for consistent scoring
-            max_output_tokens=1024,
-        ),
-    )
+    def _do_call():
+        return client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                temperature=0.2,  # low temperature for consistent scoring
+                max_output_tokens=1024,
+            ),
+        )
 
+    response = _gemini_retry(_do_call)
     return _parse_gemini_json(response.text or "{}")
 
 
@@ -564,12 +593,15 @@ def run_full_analysis(
     All functions are pure and run inside the Modal container.
     """
     result: dict = {}
+    logger.info("run_full_analysis: exercise=%s reps=%d weight=%.1f trim=%.1f-%.1f",
+                exercise_name, rep_count, weight_kg, trim_start, trim_end)
 
     # ── 1. Form analysis ─────────────────────────────────────────────────
     form_prompt_template = _get_form_prompt(exercise_name)
     # Use the dense frames for form analysis (up to 20 frames max for token limits)
     dense_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=1.0, prefix="form")
     form_frame_paths = [fp for fp, _ in dense_frames[:20]]
+    logger.info("Form analysis: %d frames extracted", len(form_frame_paths))
 
     if form_frame_paths:
         try:
@@ -593,6 +625,7 @@ def run_full_analysis(
     # ── 2. Velocity tracking ─────────────────────────────────────────────
     # Extract frames at 2fps for velocity estimation
     velocity_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=2.0, prefix="vel")
+    logger.info("Velocity analysis: %d frames extracted, rep_count=%d", len(velocity_frames), rep_count)
     if len(velocity_frames) >= 2 and rep_count > 0:
         try:
             velocities = []
@@ -644,6 +677,7 @@ def run_full_analysis(
 
     # ── 3. Consistency analysis ──────────────────────────────────────────
     rep_frames = extract_rep_frames(input_path, tmpdir, trim_start, trim_end, rep_count)
+    logger.info("Consistency analysis: %d rep frames extracted", len(rep_frames))
     if len(rep_frames) >= 2:
         try:
             consistency_prompt = CONSISTENCY_PROMPT.format(
@@ -693,9 +727,14 @@ def run_full_analysis(
     form_score = result.get("form", {}).get("overall_form_score", 70)
     form_severity = result.get("form", {}).get("severity", "unknown")
     consistency_score = result.get("consistency", {}).get("consistency_score", 70)
+    logger.info("RPE inputs: vel_loss=%.1f%% form_score=%s severity=%s mean_vel=%.3f consistency=%s",
+                vel_loss, form_score, form_severity, mean_vel, consistency_score)
 
-    # Heuristic RPE estimation based on velocity loss + form breakdown
-    # Base RPE from velocity loss
+    # Heuristic RPE estimation: velocity loss is primary, absolute velocity
+    # is fallback when loss is unavailable (e.g. Gemini couldn't estimate
+    # bar position reliably).  Form breakdown and consistency add small bumps.
+    has_vel_data = vel_loss > 0 or mean_vel != 0.5  # 0.5 is the default
+
     if vel_loss > 30:
         base_rpe = 10.0
     elif vel_loss > 20:
@@ -712,8 +751,24 @@ def run_full_analysis(
         base_rpe = 7.0
     elif vel_loss > 1:
         base_rpe = 6.0
+    elif has_vel_data:
+        # Velocity loss is 0 but we have real velocity data — use absolute
+        # velocity as the RPE signal (slow = hard, fast = easy).
+        if mean_vel < 0.30:
+            base_rpe = 9.5
+        elif mean_vel < 0.40:
+            base_rpe = 8.5
+        elif mean_vel < 0.50:
+            base_rpe = 7.5
+        elif mean_vel < 0.60:
+            base_rpe = 6.5
+        elif mean_vel < 0.75:
+            base_rpe = 5.5
+        else:
+            base_rpe = 5.0
     else:
-        base_rpe = 5.0
+        # No velocity data at all — fall back to form severity only
+        base_rpe = 6.0  # conservative default when we have no speed signal
 
     # Adjust for form breakdown
     if form_severity == "major":
@@ -726,13 +781,15 @@ def run_full_analysis(
         base_rpe = min(10.0, base_rpe + 0.5)
 
     # Confidence based on data quality
-    confidence = 0.5
+    confidence = 0.4  # base confidence (low when we have no velocity data)
     if vel_loss > 0:
-        confidence += 0.2
-    if form_score > 0:
+        confidence += 0.25  # best signal
+    elif has_vel_data:
+        confidence += 0.15  # absolute velocity is weaker
+    if form_score > 0 and form_severity != "unknown":
         confidence += 0.15
     if consistency_score > 0:
-        confidence += 0.15
+        confidence += 0.1
     confidence = min(1.0, confidence)
 
     result["rpe"] = {
@@ -741,15 +798,16 @@ def run_full_analysis(
         "confidence": round(confidence, 2),
         "evidence": [
             f"velocity_loss={vel_loss:.1f}%",
+            f"mean_velocity={mean_vel:.3f} m/s",
             f"form_score={form_score}",
             f"form_severity={form_severity}",
             f"consistency={consistency_score}",
-            f"mean_velocity={mean_vel:.3f} m/s",
+            f"has_vel_data={has_vel_data}",
         ],
         "reasoning": (
-            f"Based on {vel_loss:.1f}% velocity loss and {form_severity} form "
-            f"breakdown (score {form_score}/100). Mean concentric velocity "
-            f"{mean_vel:.3f} m/s."
+            f"Based on {vel_loss:.1f}% velocity loss"
+            + (f" (mean velocity {mean_vel:.3f} m/s)" if has_vel_data else " (no velocity data)")
+            + f", {form_severity} form breakdown (score {form_score}/100)"
         ),
     }
 
@@ -761,4 +819,5 @@ def run_full_analysis(
         deviations = form_data.get("deviations", [])
         result["competition_notes"] = "; ".join(deviations[:3]) if deviations else "Form deviations detected"
 
+    logger.info("run_full_analysis complete: keys=%s rpe=%.1f", list(result.keys()), result.get("rpe", {}).get("estimated_rpe", 0))
     return result
