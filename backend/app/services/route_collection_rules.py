@@ -137,7 +137,7 @@ async def evaluate_all_smart_collections(
     result = await db.execute(
         select(RouteCollection).where(
             RouteCollection.user_id == user_id,
-            RouteCollection.is_smart == True,  # noqa: E712
+            RouteCollection.is_smart == True,
         )
     )
     collections = list(result.scalars().all())
