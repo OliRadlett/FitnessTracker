@@ -411,7 +411,28 @@ def process_video_on_modal(
             setup_data = full_result.get("setup", {})
             rpe_data = full_result.get("rpe", {})
 
-            return {
+            def _to_py(obj):
+                """Recursively convert numpy scalars/arrays to plain Python.
+
+                The worker container has no numpy, so any np.float64/np.bool_
+                in the return dict breaks deserialization of the whole result
+                (every video failed with 'numpy module is not available').
+                """
+                import numpy as np
+
+                if isinstance(obj, np.bool_):
+                    return bool(obj)
+                if isinstance(obj, np.generic):
+                    return obj.item()
+                if isinstance(obj, np.ndarray):
+                    return [_to_py(v) for v in obj.tolist()]
+                if isinstance(obj, dict):
+                    return {k: _to_py(v) for k, v in obj.items()}
+                if isinstance(obj, (list, tuple)):
+                    return [_to_py(v) for v in obj]
+                return obj
+
+            return _to_py({
                 "trimmed_r2_key": upload_key,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
@@ -450,7 +471,7 @@ def process_video_on_modal(
                 "estimated_rpe": rpe_data.get("estimated_rpe"),
                 "rpe_confidence": rpe_data.get("confidence"),
                 "rpe_evidence_json": rpe_data.get("evidence"),
-            }
+            })
 
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
