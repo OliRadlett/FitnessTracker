@@ -22,6 +22,16 @@ export interface Segment {
   times_ridden: number;
   has_pr: boolean;
   effort_count: number;
+  // Intelligence fields (fitted by Modal weekly task)
+  cluster_id: number | null;
+  climb_type: string | null;
+  sustainedness: number | null;
+  difficulty_score: number | null;
+  predicted_vam: number | null;
+  predicted_time_seconds: number | null;
+  predicted_power_watts: number | null;
+  prediction_confidence: number | null;
+  intelligence_analyzed_at: string | null;
 }
 
 export interface SegmentEffort {

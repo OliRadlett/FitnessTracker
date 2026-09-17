@@ -421,3 +421,23 @@ async def backfill_ftp_estimates(
 
     await db.flush()
     return created_entries
+
+
+# ── Personalized Model Overlay (Morton 2004) ────────────────────────────────
+
+
+def personalized_power_curve(cp: float, w_prime: float) -> dict[int, float]:
+    """Evaluate the fitted Morton 2004 model P(t) = W'/t + CP.
+
+    Mirrors ``_morton_power_duration`` in
+    ``app/integrations/power_models.py`` (the fitter) so the API overlay
+    matches the weekly-fitted curve. Returns ``{duration_seconds: watts}``
+    over the standard ``POWER_DURATION_BUCKETS``; callers stringify keys
+    for JSON. ``w_prime`` is in joules, ``cp`` in watts.
+    """
+    curve = {}
+    for duration_sec, _ in POWER_DURATION_BUCKETS:
+        if duration_sec <= 0:
+            continue
+        curve[duration_sec] = round(w_prime / duration_sec + cp, 1)
+    return curve
