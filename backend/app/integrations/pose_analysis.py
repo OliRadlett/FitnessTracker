@@ -56,18 +56,21 @@ def extract_pose_landmarks(
         urllib.request.urlretrieve(model_url, str(model_path))
         logger.info("Downloaded pose landmarker model: %d bytes", model_path.stat().st_size)
 
-    # Create PoseLandmarker with video running mode
+    # Create PoseLandmarker with video running mode.
+    # CPU delegate: proven 100% detection on powerlifting videos (heavy model,
+    # 10fps, conf 0.3). The GPU delegate silently returned zero landmarks on
+    # Modal T4 containers — see investigation 2026-09-17.
     base_options = BaseOptions(
         model_asset_path=str(model_path),
-        delegate=BaseOptions.Delegate.GPU,
+        delegate=BaseOptions.Delegate.CPU,
     )
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=vision.RunningMode.VIDEO,
         num_poses=1,
-        min_pose_detection_confidence=0.5,
-        min_pose_presence_confidence=0.5,
-        min_tracking_confidence=0.5,
+        min_pose_detection_confidence=0.3,
+        min_pose_presence_confidence=0.3,
+        min_tracking_confidence=0.3,
         output_segmentation_masks=False,
     )
     pose_landmarker = vision.PoseLandmarker.create_from_options(options)
@@ -184,16 +187,21 @@ def classify_exercise(landmarks_per_frame: list) -> dict:
     confidence = 0.0
     variation = ""
 
-    if hip_range > 40 and knee_range > 50 and elbow_range < 20:
+    # NOTE: elbow_range is deliberately NOT a veto for lower-body lifts.
+    # Real squat/deadlift videos show large arm movement (unracking, bar
+    # stabilization, arm swing) — e.g. hip_range=143, knee_range=118 with
+    # elbow_range=179 on a confirmed back-squat video (2026-09-17).
+    # Classification keys on hip/knee dominance instead.
+    if hip_range > 40 and knee_range > 50:
         exercise = "Squat"
-        confidence = min(0.95, 0.7 + hip_range / 200)
+        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
         variation = "Front Squat" if mean_sh_diff > 0.05 else "Back Squat"
     elif elbow_range > 50 and hip_range < 15 and knee_range < 15:
         exercise = "Bench Press"
         confidence = min(0.95, 0.7 + elbow_range / 200)
-    elif hip_range > 35 and knee_range > 30 and elbow_range < 25:
+    elif hip_range > 35 and knee_range > 30:
         exercise = "Deadlift"
-        confidence = min(0.95, 0.7 + hip_range / 200)
+        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
         knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
         variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
     elif elbow_range > 40 and hip_range < 10:
