@@ -175,7 +175,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                       setRenameValue(route.name);
                       setIsRenaming(true);
                     }}
-                    className="text-xs text-muted hover:text-accent transition-colors"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs text-muted hover:text-accent transition-colors"
                     aria-label="Rename route"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -188,7 +188,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
             <div className="flex gap-2">
               <button
                 onClick={() => favoriteMutation.mutate({ id: route.id, is_favorite: !route.is_favorite })}
-                className={`p-1.5 rounded transition-colors ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded transition-colors ${
                   route.is_favorite
                     ? 'text-yellow-400 hover:text-yellow-300 bg-surface-light/50'
                     : 'text-muted hover:text-white bg-surface-light/50'
@@ -200,7 +200,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
               <button
                 onClick={() => downloadRouteGpx(route.id, route.name, token)}
                 aria-label="Download GPX"
-                className="p-1.5 text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -211,7 +211,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   }
                 }}
                 aria-label="Delete route"
-                className="p-1.5 text-warning hover:text-warning/80 hover:bg-warning/10 bg-surface-light/50 rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-warning hover:text-warning/80 hover:bg-warning/10 bg-surface-light/50 rounded transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

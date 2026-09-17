@@ -430,9 +430,9 @@ export default function SettingsPage() {
             return (
               <div
                 key={integration.id}
-                className="flex items-center justify-between p-4 rounded-lg bg-background border border-surface-light/30"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-lg bg-background border border-surface-light/30"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                   <div className={`w-12 h-12 rounded-lg ${integration.color} flex items-center justify-center`}>
                     <img src={integration.icon} alt={integration.name} className="w-7 h-7" width="28" height="28" />
                   </div>
@@ -464,13 +464,13 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   {(integration as { basicAuth?: boolean }).basicAuth ? (
                     // Basic Auth integrations (e.g. Komoot) — configured via .env, synced via routes endpoint
                     <button
                       onClick={() => handleSyncKomoot()}
                       disabled={syncing === 'komoot-route-sync'}
-                      className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+                      className="min-h-[44px] px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
                     >
                       {syncing === 'komoot-route-sync' ? 'Syncing...' : 'Sync Routes'}
                     </button>
@@ -479,7 +479,7 @@ export default function SettingsPage() {
                       {connection!.status === 'needs_reauth' ? (
                         <button
                           onClick={() => handleConnect(integration.id)}
-                          className="px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 border border-warning/30 hover:bg-warning/10 rounded-lg transition-colors"
+                          className="min-h-[44px] px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 border border-warning/30 hover:bg-warning/10 rounded-lg transition-colors"
                         >
                           Reconnect
                         </button>
@@ -487,14 +487,14 @@ export default function SettingsPage() {
                         <button
                           onClick={() => handleSync(connection!.id)}
                           disabled={syncing === connection!.id}
-                          className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
+                          className="min-h-[44px] px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
                         >
                           {syncing === connection!.id ? 'Syncing...' : 'Sync'}
                         </button>
                       )}
                       <button
                         onClick={() => handleDisconnect(connection!.id)}
-                        className="px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 hover:bg-warning/10 rounded-lg transition-colors"
+                        className="min-h-[44px] px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 hover:bg-warning/10 rounded-lg transition-colors"
                       >
                         Disconnect
                       </button>
@@ -503,7 +503,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => handleConnect(integration.id)}
                       disabled={!integration.available}
-                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                         integration.available
                           ? 'bg-accent hover:bg-accent/80 text-white'
                           : 'bg-surface-light/30 text-muted cursor-not-allowed'

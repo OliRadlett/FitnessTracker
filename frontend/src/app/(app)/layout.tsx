@@ -4,7 +4,7 @@ import React from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { Sidebar, SidebarProvider, MobileMenuButton } from '@/components/Sidebar';
+import { Sidebar, SidebarProvider, MobileMenuButton, MobileBottomNav } from '@/components/Sidebar';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -90,8 +90,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <CommandPalette />
             <OnboardingWizard />
             <Sidebar />
-            <main role="main" className="flex-1 overflow-auto">
-              <div className="p-4 pt-16 md:p-8">
+            <main role="main" className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+              <div className="p-4 pt-20 pb-24 md:p-8 md:pt-8 md:pb-8 w-full max-w-screen-2xl mx-auto min-w-0">
                 <SyncHealthBanner />
                 <OfflineBanner />
                 <ErrorBoundary>
@@ -99,6 +99,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 </ErrorBoundary>
               </div>
             </main>
+            <MobileBottomNav />
           </div>
         </OfflineSnapshot>
       </UnitsProvider>

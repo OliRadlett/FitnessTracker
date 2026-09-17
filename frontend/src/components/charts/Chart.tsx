@@ -262,7 +262,16 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
   const renderLegend = () =>
     data.series.length > 1 ? (
-      <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
+      <Legend
+        iconSize={10}
+        wrapperStyle={{
+          color: '#94a3b8',
+          fontSize: isNarrow ? '11px' : '12px',
+          lineHeight: '16px',
+          maxWidth: '100%',
+          overflow: 'hidden',
+        }}
+      />
     ) : null;
 
   const renderBrush = () => {
@@ -270,7 +279,8 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     return (
       <Brush
         dataKey="x"
-        height={isNarrow ? 24 : 30}
+        height={isNarrow ? 32 : 30}
+        travellerWidth={isNarrow ? 20 : 10}
         stroke="#334155"
         fill="#1e293b"
         ariaLabel="Zoom range"

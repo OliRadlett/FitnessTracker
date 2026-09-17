@@ -161,14 +161,14 @@ export function PowerCurveSection({
       {/* Power Curve Comparison */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between w-full">
+          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
             <CardTitle>⚡ Power Curve Comparison</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {[14, 30, 60, 90].map((d) => (
                 <button
                   key={d}
                   onClick={() => setComparisonDays(d)}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                  className={`min-h-[44px] px-3 py-1 text-xs rounded border transition-colors ${
                     comparisonDays === d
                       ? 'bg-accent/20 text-accent border-accent/30'
                       : 'text-muted border-surface-light hover:border-accent/30'

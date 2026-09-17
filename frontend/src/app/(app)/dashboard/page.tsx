@@ -246,14 +246,14 @@ export default function DashboardPage() {
       )}
 
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white">{getGreeting()} 👋</h1>
-          <p className="text-muted mt-1">
+      <div className="flex flex-wrap items-end justify-between gap-4 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">{getGreeting()} 👋</h1>
+          <p className="text-muted mt-1 text-sm sm:text-base">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-        <div className="flex items-end gap-4">
+        <div className="flex flex-wrap items-end gap-4 min-w-0">
           <DashboardRefresh />
           <WeatherWidget />
           {hasReadiness && (
@@ -270,12 +270,12 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Tab Navigation ───────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit">
+      <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">
         {(['today', 'weekly', 'monthly'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize whitespace-nowrap ${
               activeTab === tab
                 ? 'bg-accent text-white'
                 : 'text-muted hover:text-white hover:bg-surface-light/50'

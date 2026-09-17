@@ -142,6 +142,66 @@ export function MobileMenuButton() {
   );
 }
 
+// ── Mobile Bottom Navigation ───────────────────────────────────────────────
+// Thumb-friendly primary destinations for phones (OnePlus 11 ~412px).
+// The full 14-item list stays in the hamburger drawer; this bar covers the
+// 4 most-used pages + a More button that opens the drawer.
+
+const bottomNavItems = [
+  { href: '/dashboard', label: 'Home', icon: '📊' },
+  { href: '/activities', label: 'Activity', icon: '🏃' },
+  { href: '/training', label: 'Training', icon: '📋' },
+  { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
+  { href: '/routes', label: 'Routes', icon: '🗺️' },
+];
+
+export function MobileBottomNav() {
+  const pathname = usePathname();
+  const { open } = useSidebar();
+
+  return (
+    <nav
+      aria-label="Primary"
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-surface-light/50"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="grid grid-cols-6 gap-0.5 px-1 pt-1">
+        {bottomNavItems.map((item) => {
+          const isActive =
+            pathname === item.href || pathname.startsWith(item.href + '/');
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium transition-colors ${
+                isActive
+                  ? 'text-accent bg-accent/15'
+                  : 'text-muted hover:text-white active:bg-surface-light/50'
+              }`}
+            >
+              <span className="text-xl leading-none" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="leading-tight truncate max-w-full px-0.5">
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+        <button
+          onClick={open}
+          aria-label="Open full navigation menu"
+          className="flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium text-muted hover:text-white active:bg-surface-light/50 transition-colors"
+        >
+          <span className="text-xl leading-none" aria-hidden="true">☰</span>
+          <span className="leading-tight">More</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 // ── Sidebar Component ────────────────────────────────────────────────────────
 
 export function Sidebar() {
@@ -222,7 +282,7 @@ export function Sidebar() {
           transform transition-[width,transform] duration-200 ease-in-out
           md:static md:translate-x-0
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${isCollapsed ? 'md:w-16' : 'md:w-64 w-64'}
+          ${isCollapsed ? 'md:w-16' : 'md:w-64'} w-[85vw] max-w-[320px] md:max-w-none
         `}
       >
         <div className={`border-b border-surface-light/50 ${isCollapsed ? 'md:px-2 md:py-4 md:flex md:justify-center p-6' : 'p-6'}`}>
