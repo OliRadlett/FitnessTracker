@@ -33,17 +33,12 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
-        # v4: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
+        # v5: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
         # mediapipe 0.10.30+ uses tasks API (solutions was removed)
+        # MEDIAPIPE_DISABLE_GPU=1 forces CPU-only mode (avoids EGL/GLES deps)
         image = (
             modal.Image.debian_slim(python_version="3.12")
-            .apt_install(
-                "ffmpeg",
-                "libgl1-mesa-glx",
-                "libglib2.0-0",
-                "libegl1-mesa",
-                "libegl1",
-            )
+            .apt_install("ffmpeg")
             .pip_install(
                 "httpx",
                 "opencv-python-headless",
@@ -51,6 +46,7 @@ def _get_modal_image(project_root: str | None = None):
                 "mediapipe>=0.10.30",
                 "protobuf>=3.20,<6",
             )
+            .env({"MEDIAPIPE_DISABLE_GPU": "1"})
         )
 
         # Mount the analysis modules into the container
