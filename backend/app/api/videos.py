@@ -205,6 +205,7 @@ async def get_stream_url(
 async def process_video(
     video_id: uuid.UUID,
     depth: str = Query("full", pattern="^(basic|full)$"),
+    force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -227,14 +228,21 @@ async def process_video(
     if not video.r2_key:
         raise HTTPException(400, "Video has no R2 source to process")
 
-    if video.analysis_status == "processing":
+    if video.analysis_status == "processing" and not force:
         raise HTTPException(409, "Video is already being processed")
+
+    if force and video.analysis_status == "processing":
+        video.analysis_status = None
+        await db.commit()
 
     settings = get_settings()
     if not settings.modal_token_id or not settings.modal_token_secret:
         raise HTTPException(
             501, "Video processing is not configured (Modal credentials missing)"
         )
+
+    if not settings.gemini_api_key:
+        raise HTTPException(501, "Gemini API key is not configured — analysis will be skipped")
 
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")

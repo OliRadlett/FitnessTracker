@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC
@@ -149,6 +150,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.compute_route_quality_scores",
         "schedule": crontab(hour=3, minute=0, day_of_week=0),
     },
+    # Classify route terrain weekly (Saturday 2:30 AM UTC, before quality scoring)
+    "classify-route-terrain": {
+        "task": "app.tasks.scheduler.classify_route_terrain",
+        "schedule": crontab(hour=2, minute=30, day_of_week=6),
+    },
     # Recompute ride segments + efforts weekly (Sunday 3:15 AM UTC, post quality)
     "recompute-ride-segments": {
         "task": "app.tasks.scheduler.recompute_ride_segments",
@@ -163,6 +169,12 @@ celery_app.conf.beat_schedule = {
     "auto-estimate-ftp-weekly": {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
         "schedule": crontab(hour=4, minute=0, day_of_week=0),
+    },
+    # Check cycling power PRs weekly (Sunday 4:30 AM UTC — after stream backfill)
+    "check-cycling-prs-weekly": {
+        "task": "app.tasks.scheduler.check_cycling_prs_weekly",
+        "schedule": crontab(hour=4, minute=30, day_of_week=0),
+        "options": {"expires": 3600},
     },
     # FTP drift scan for non-auto users (Sunday 4:15 AM UTC, post auto-estimate)
     "check-stale-ftp": {
@@ -938,6 +950,105 @@ def compute_route_quality_scores() -> dict:
     return asyncio.run(_run_task_guarded("compute_route_quality_scores", _run))
 
 
+@celery_app.task(name="app.tasks.scheduler.classify_route_terrain")
+def classify_route_terrain() -> dict:
+    """Classify terrain for all routes with elevation profiles.
+
+    Runs weekly (Saturday 2:30 AM UTC, before quality scoring).
+    Uses Modal for batch analysis when configured, falls back to
+    local classification otherwise.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.route import Route
+
+    async def _run():
+        async with task_session() as db:
+            # Get all routes with elevation profiles but no terrain classification
+            result = await db.execute(
+                select(Route).where(
+                    Route.elevation_profile.isnot(None),
+                    Route.terrain_classification.is_(None),
+                )
+            )
+            routes_to_classify = list(result.scalars().all())
+
+            if not routes_to_classify:
+                return {"classified": 0, "note": "All routes already classified"}
+
+            # Try Modal for batch classification
+            classified = 0
+            try:
+                from app.integrations.route_intelligence import (
+                    analyze_routes_on_modal,
+                    classify_route_terrain,
+                )
+
+                # Prepare route data for Modal
+                routes_data = []
+                for route in routes_to_classify:
+                    points = []
+                    if route.encoded_polyline:
+                        from app.services.polyline_utils import decode_polyline
+
+                        points = decode_polyline(route.encoded_polyline)
+                    routes_data.append(
+                        {
+                            "id": str(route.id),
+                            "polyline": [(p[0], p[1]) for p in points],
+                            "distance_meters": route.distance_meters,
+                            "elevation_gain_meters": route.elevation_gain_meters or 0,
+                            "elevation_profile": route.elevation_profile,
+                        }
+                    )
+
+                # Call Modal for batch terrain classification
+                modal_result = analyze_routes_on_modal(
+                    routes_data=routes_data,
+                    compute_similarity=False,
+                    compute_terrain=True,
+                    compute_effort_predictions=False,
+                )
+
+                terrain_classifications = modal_result.get("terrain_classifications", {})
+
+                for route in routes_to_classify:
+                    terrain = terrain_classifications.get(str(route.id))
+                    if terrain:
+                        route.terrain_classification = terrain
+                        classified += 1
+
+                await db.commit()
+
+            except Exception as e:
+                logger.warning(
+                    f"Modal terrain classification failed, falling back to local: {e}"
+                )
+                # Fallback: local classification
+                from app.integrations.route_intelligence import classify_route_terrain
+
+                for route in routes_to_classify:
+                    try:
+                        terrain = classify_route_terrain(route.elevation_profile)
+                        route.terrain_classification = terrain
+                        classified += 1
+                    except Exception as e2:
+                        logger.warning(
+                            f"Local terrain classification failed for route {route.id}: {e2}"
+                        )
+                await db.commit()
+
+            return {
+                "classified": classified,
+                "total": len(routes_to_classify),
+            }
+
+    return asyncio.run(_run_task_guarded("classify_route_terrain", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.recompute_ride_segments")
 def recompute_ride_segments() -> dict:
     """Recompute ride segments (§3.13) for all users with cycling routes.
@@ -1234,6 +1345,64 @@ def check_stale_ftp() -> dict:
             }
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.check_cycling_prs_weekly")
+def check_cycling_prs_weekly() -> dict:
+    """Check and record cycling power PRs for all users.
+
+    Runs weekly (Sunday 4:30 AM UTC, after stream backfill). Scans all
+    cycling activities for each user and updates stored PRs from the
+    all-time bests. Catches PRs that were missed during sync (e.g.
+    activities whose streams were backfilled later).
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.cycling import CyclingPowerRecord
+    from app.services.cycling import check_cycling_prs_all_activities
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(
+                select(CyclingPowerRecord.user_id).distinct()
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            # Also check users who have cycling activities but no PRs yet
+            from app.models.activity import Activity
+
+            existing_result = await db.execute(
+                select(Activity.user_id)
+                .where(Activity.sport_type == "cycling")
+                .distinct()
+            )
+            all_cycling_users = {r for (r,) in existing_result.all()}
+            user_ids = list(set(user_ids) | all_cycling_users)
+
+            total_updated = 0
+            done = 0
+            for user_id in user_ids:
+                try:
+                    updated = await check_cycling_prs_all_activities(db, user_id)
+                    total_updated += len(updated)
+                    await db.commit()
+                    done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Cycling PR check failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "users_checked": done,
+                "prs_updated": total_updated,
+            }
+
+    return asyncio.run(_run_task_guarded("check_cycling_prs_weekly", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.sync_all_whoop_data")
@@ -2213,20 +2382,10 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 # Generate presigned URLs for Modal to use
                 presigned_get = await create_presigned_get(video.r2_key)
 
-                # Generate a key and presigned PUT for the trimmed video
-                trimmed_key = (
-                    video.r2_key.replace("/", "/trimmed/", 1)
-                    if "/trimmed/" not in video.r2_key
-                    else video.r2_key
-                )
-                if not trimmed_key.endswith("-trimmed.mp4"):
-                    base = trimmed_key.rsplit(".", 1)[0]
-                    trimmed_key = f"{base}-trimmed.mp4"
-
                 presigned_put = await create_presigned_put(
                     video.user_id,
                     f"trimmed-{video.file_name}",
-                    video.content_type or "video/mp4",
+                    "video/mp4",
                     video.size_bytes or 0,
                 )
 
@@ -2266,11 +2425,11 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 if result.get("competition_valid") is not None:
                     video.competition_valid = result["competition_valid"]
                 if result.get("form_analysis_json"):
-                    video.form_analysis_json = result["form_analysis_json"]
+                    video.form_analysis_json = json.dumps(result["form_analysis_json"])
                 if result.get("form_deviations"):
-                    video.form_deviations = result["form_deviations"]
+                    video.form_deviations = json.dumps(result["form_deviations"])
                 if result.get("form_coaching_cues"):
-                    video.form_coaching_cues = result["form_coaching_cues"]
+                    video.form_coaching_cues = json.dumps(result["form_coaching_cues"])
 
                 # ── Velocity / VBT (§3.18) ─────────────────────────────────
                 if result.get("mean_concentric_velocity") is not None:
@@ -2280,13 +2439,13 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 if result.get("velocity_loss_pct") is not None:
                     video.velocity_loss_pct = result["velocity_loss_pct"]
                 if result.get("velocity_profile_json") is not None:
-                    video.velocity_profile_json = result["velocity_profile_json"]
+                    video.velocity_profile_json = json.dumps(result["velocity_profile_json"])
                 if result.get("vbt_zone"):
                     video.vbt_zone = result["vbt_zone"]
 
                 # ── Rest timing ────────────────────────────────────────────
                 if result.get("rest_periods_json") is not None:
-                    video.rest_periods_json = result["rest_periods_json"]
+                    video.rest_periods_json = json.dumps(result["rest_periods_json"])
                 if result.get("avg_rest_seconds") is not None:
                     video.avg_rest_seconds = result["avg_rest_seconds"]
                 if result.get("rest_cv") is not None:
@@ -2298,13 +2457,13 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 if result.get("tempo_consistency_cv") is not None:
                     video.tempo_consistency_cv = result["tempo_consistency_cv"]
                 if result.get("rep_timing_json"):
-                    video.rep_timing_json = result["rep_timing_json"]
+                    video.rep_timing_json = json.dumps(result["rep_timing_json"])
 
                 # ── Setup analysis (§3.18) ─────────────────────────────────
                 if result.get("setup_score") is not None:
                     video.setup_score = result["setup_score"]
                 if result.get("setup_analysis_json"):
-                    video.setup_analysis_json = result["setup_analysis_json"]
+                    video.setup_analysis_json = json.dumps(result["setup_analysis_json"])
                 if result.get("setup_duration_seconds") is not None:
                     video.setup_duration_seconds = result["setup_duration_seconds"]
 
@@ -2314,7 +2473,7 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 if result.get("rpe_confidence") is not None:
                     video.rpe_confidence = result["rpe_confidence"]
                 if result.get("rpe_evidence_json"):
-                    video.rpe_evidence_json = result["rpe_evidence_json"]
+                    video.rpe_evidence_json = json.dumps(result["rpe_evidence_json"])
 
                 video.analysis_status = "completed"
                 video.processed_at = datetime.now(UTC)

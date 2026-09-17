@@ -133,9 +133,12 @@ export async function processLiftVideo(
   authFetch: AuthFetch,
   videoId: string,
   depth: 'basic' | 'full' = 'full',
+  force = false,
 ): Promise<{ status: string; video_id: string; analysis_depth: string }> {
+  const params = new URLSearchParams({ depth });
+  if (force) params.set('force', 'true');
   return authFetch<{ status: string; video_id: string; analysis_depth: string }>(
-    `/api/v1/lifting/videos/${videoId}/process?depth=${depth}`,
+    `/api/v1/lifting/videos/${videoId}/process?${params}`,
     { method: 'POST' },
   );
 }

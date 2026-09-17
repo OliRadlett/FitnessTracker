@@ -116,17 +116,21 @@ def process_video_on_modal(
         gemini_key: str,
         depth: str,
     ) -> dict:
+        import logging
         import subprocess
         import tempfile
 
         import httpx
 
+        logging.basicConfig(level=logging.INFO)
+        _logger = logging.getLogger("modal._process")
+
         # ── Step 1: Download video from R2 ────────────────────────────────
-        logger.info("Downloading video from R2...")
+        _logger.info("Downloading video from R2...")
         resp = httpx.get(presigned_get, follow_redirects=True, timeout=120)
         resp.raise_for_status()
         video_bytes = resp.content
-        logger.info("Downloaded %d bytes", len(video_bytes))
+        _logger.info("Downloaded %d bytes", len(video_bytes))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / "input.mp4"
@@ -154,7 +158,7 @@ def process_video_on_modal(
                 duration = float(probe_data.get("format", {}).get("duration", 0))
             except (json.JSONDecodeError, ValueError, KeyError):
                 pass
-            logger.info("Video duration: %.1fs", duration)
+            _logger.info("Video duration: %.1fs", duration)
 
             # ── Step 3: Scene detection ───────────────────────────────────
             # Use ffmpeg scene filter to detect significant frame changes.
@@ -187,7 +191,7 @@ def process_video_on_modal(
                     except (IndexError, ValueError):
                         continue
 
-            logger.info("Detected %d scene changes: %s", len(scene_times), scene_times)
+            _logger.info("Detected %d scene changes: %s", len(scene_times), scene_times)
 
             # ── Step 4: Determine trim points ─────────────────────────────
             # Strategy: find the longest gap between scene changes (likely
@@ -215,7 +219,7 @@ def process_video_on_modal(
                 trim_start = duration * 0.1
                 trim_end = duration * 0.9
 
-            logger.info("Trim points: %.2f -> %.2f", trim_start, trim_end)
+            _logger.info("Trim points: %.2f -> %.2f", trim_start, trim_end)
 
             # ── Step 5: Trim video ────────────────────────────────────────
             subprocess.run(
@@ -244,7 +248,7 @@ def process_video_on_modal(
                 raise RuntimeError("ffmpeg trim failed — no output file")
 
             trimmed_bytes = trimmed_path.read_bytes()
-            logger.info("Trimmed video: %d bytes", len(trimmed_bytes))
+            _logger.info("Trimmed video: %d bytes", len(trimmed_bytes))
 
             # ── Step 6: Extract key frames for classification ─────────────
             frame_paths: list[Path] = []
@@ -273,7 +277,7 @@ def process_video_on_modal(
                 if frame_path.exists():
                     frame_paths.append(frame_path)
 
-            logger.info("Extracted %d key frames", len(frame_paths))
+            _logger.info("Extracted %d key frames", len(frame_paths))
 
             # ── Step 7: Classify via Gemini Vision ────────────────────────
             exercise = ""
@@ -281,6 +285,7 @@ def process_video_on_modal(
             weight = 0.0
             confidence = 0.0
             analysis_text = ""
+            client = None
 
             if gemini_key and frame_paths:
                 try:
@@ -343,7 +348,7 @@ def process_video_on_modal(
                     if "notes" in result:
                         analysis_text = result["notes"]
 
-                    logger.info(
+                    _logger.info(
                         "Classification: exercise=%s reps=%d weight=%.1f conf=%.2f",
                         exercise,
                         reps,
@@ -351,7 +356,7 @@ def process_video_on_modal(
                         confidence,
                     )
                 except Exception as e:
-                    logger.warning("Gemini classification failed: %s", e)
+                    _logger.warning("Gemini classification failed: %s", e)
                     analysis_text = f"Classification failed: {e}"
 
             # ── Step 8: Full analysis (form, velocity, RPE, etc.) ─────────────
@@ -373,9 +378,9 @@ def process_video_on_modal(
                         rep_count=reps,
                         weight_kg=weight,
                     )
-                    logger.info("Full analysis complete: %s", list(full_result.keys()))
+                    _logger.info("Full analysis complete: %s", list(full_result.keys()))
                 except Exception as e:
-                    logger.warning("Full analysis failed: %s", e)
+                    _logger.warning("Full analysis failed: %s", e)
                     full_result = {"analysis_error": str(e)}
 
             # ── Step 9: Upload trimmed video to R2 ────────────────────────
@@ -385,7 +390,7 @@ def process_video_on_modal(
                 headers={"Content-Type": "video/mp4"},
                 timeout=120,
             ).raise_for_status()
-            logger.info("Uploaded trimmed video to R2: %s", upload_key)
+            _logger.info("Uploaded trimmed video to R2: %s", upload_key)
 
             form_data = full_result.get("form", {})
             vel_data = full_result.get("velocity", {})
