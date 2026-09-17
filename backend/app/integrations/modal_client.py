@@ -35,7 +35,7 @@ def _get_modal_image(project_root: str | None = None):
         image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install("ffmpeg")
-            .pip_install("httpx", "google-genai")
+            .pip_install("httpx", "google-genai", "opencv-python-headless", "numpy")
         )
 
         # Mount the analysis module into the container
@@ -441,10 +441,10 @@ def process_video_on_modal(
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
                 "rest_cv": None,
-                # Consistency (§3.18)
+                # Consistency (§3.18) — from optical flow rep timing
                 "rep_consistency_score": consist_data.get("consistency_score"),
-                "tempo_consistency_cv": None,
-                "rep_timing_json": consist_data,
+                "tempo_consistency_cv": consist_data.get("tempo_consistency_cv"),
+                "rep_timing_json": full_result.get("rep_timing") or consist_data,
                 # Setup (§3.18)
                 "setup_score": setup_data.get("setup_score"),
                 "setup_analysis_json": setup_data,
