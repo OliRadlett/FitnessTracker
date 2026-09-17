@@ -33,9 +33,9 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
-        # v5: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
+        # v6: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
         # mediapipe 0.10.30+ uses tasks API (solutions was removed)
-        # MEDIAPIPE_DISABLE_GPU=1 forces CPU-only mode (avoids EGL/GLES deps)
+        # GPU T4 requested on the function — Modal handles CUDA drivers automatically
         image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install("ffmpeg")
@@ -46,7 +46,6 @@ def _get_modal_image(project_root: str | None = None):
                 "mediapipe>=0.10.30",
                 "protobuf>=3.20,<6",
             )
-            .env({"MEDIAPIPE_DISABLE_GPU": "1"})
         )
 
         # Mount the analysis modules into the container
@@ -121,8 +120,9 @@ def process_video_on_modal(
 
     @app.function(
         serialized=True,
-        timeout=300,  # 5 min max per video (local processing, no network calls)
-        memory=2048,  # 2 GB RAM for MediaPipe + ffmpeg + optical flow
+        timeout=300,
+        memory=2048,
+        gpu="T4",  # MediaPipe Pose runs significantly faster on GPU
     )
     def _process(
         presigned_get: str,

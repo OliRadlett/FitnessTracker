@@ -35,9 +35,6 @@ def extract_pose_landmarks(
     Returns (landmarks_per_frame, timestamps).
     Each landmarks_per_frame[i] is a list of 33 NormalizedLandmark objects.
     """
-    import os
-    os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
-
     import cv2
     import mediapipe as mp
     from mediapipe.tasks.python import BaseOptions, vision
