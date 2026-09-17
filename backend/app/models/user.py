@@ -98,6 +98,9 @@ class User(Base):
     notifications: Mapped[list["Notification"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
+    cross_domain_insights: Mapped[list["CrossDomainInsight"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):

@@ -910,3 +910,107 @@ async def get_power_model_results(
         adaptive_constants=constants_result,
         fitted_at=profile.power_model_fitted_at,
     )
+
+
+# ── Weather-Performance Analysis ───────────────────────────────────────────
+
+
+@router.get("/weather-analysis", response_model=None)
+async def get_weather_analysis(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get personalized weather-performance analysis results.
+
+    Returns weather coefficients, insights, and correlation data stored
+    in the user's cycling profile. Analysis is performed weekly by the
+    `analyze_weather_performance_weekly` Celery task via Modal.
+    Returns 404 if no analysis has been performed yet.
+    """
+    from app.models.cycling import CyclingProfile
+    from app.schemas.cycling import (
+        WeatherAnalysisResponse,
+        WeatherCoefficients,
+        WeatherDecouplingVsTemp,
+        WeatherHrVsTemp,
+        WeatherPowerVsTemp,
+        WeatherPowerVsWind,
+    )
+
+    result = await db.execute(
+        select(CyclingProfile).where(CyclingProfile.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if not profile or not profile.weather_analyzed_at:
+        raise HTTPException(
+            status_code=404,
+            detail="Weather analysis not yet performed. Analysis runs weekly on Sundays.",
+        )
+
+    # Build response from stored profile fields
+    power_vs_temp = None
+    decoupling_vs_temp = None
+    hr_vs_temp = None
+    power_vs_wind = None
+    coefficients = None
+
+    wc = profile.weather_coefficients
+    if wc:
+        if wc.get("power_vs_temp"):
+            pt = wc["power_vs_temp"]
+            power_vs_temp = WeatherPowerVsTemp(
+                slope_per_celsius=pt.get("slope_per_celsius"),
+                intercept=pt.get("intercept"),
+                r_squared=pt.get("r_squared"),
+                optimal_range_c=tuple(pt["optimal_range_c"])
+                if pt.get("optimal_range_c")
+                else None,
+                data_points=pt.get("data_points", 0),
+            )
+        if wc.get("power_vs_wind"):
+            pw = wc["power_vs_wind"]
+            power_vs_wind = WeatherPowerVsWind(
+                headwind_penalty_pct=pw.get("headwind_penalty_pct"),
+                tailwind_boost_pct=pw.get("tailwind_boost_pct"),
+                crosswind_penalty_pct=pw.get("crosswind_penalty_pct"),
+                power_vs_speed_slope=pw.get("power_vs_speed_slope"),
+                power_vs_speed_r_squared=pw.get("power_vs_speed_r_squared"),
+                data_points=pw.get("data_points"),
+            )
+        if wc.get("decoupling_vs_temp"):
+            dt = wc["decoupling_vs_temp"]
+            decoupling_vs_temp = WeatherDecouplingVsTemp(
+                slope_per_celsius=dt.get("slope_per_celsius"),
+                r_squared=dt.get("r_squared"),
+                threshold_c=dt.get("threshold_c"),
+                penalty_above_pct=dt.get("penalty_above_pct"),
+                data_points=dt.get("data_points", 0),
+            )
+        if wc.get("hr_vs_temp"):
+            ht = wc["hr_vs_temp"]
+            hr_vs_temp = WeatherHrVsTemp(
+                slope_bpm_per_celsius=ht.get("slope_bpm_per_celsius"),
+                intercept=ht.get("intercept"),
+                r_squared=ht.get("r_squared"),
+                data_points=ht.get("data_points", 0),
+            )
+        if wc.get("weather_coefficients"):
+            c = wc["weather_coefficients"]
+            coefficients = WeatherCoefficients(
+                features=c.get("features", []),
+                coefficients=c.get("coefficients", {}),
+                intercept=c.get("intercept", 0),
+                r_squared=c.get("r_squared", 0),
+                data_points=c.get("data_points", 0),
+            )
+
+    return WeatherAnalysisResponse(
+        power_vs_temp=power_vs_temp,
+        power_vs_wind=power_vs_wind,
+        decoupling_vs_temp=decoupling_vs_temp,
+        hr_vs_temp=hr_vs_temp,
+        weather_coefficients=coefficients,
+        personalized_insights=profile.weather_insights or [],
+        analyzed_at=profile.weather_analyzed_at,
+    )

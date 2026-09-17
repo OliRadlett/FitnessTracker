@@ -49,6 +49,16 @@ class CyclingProfileRead(BaseModel):
     power_model_fitted_at: datetime | None = Field(
         None, description="When the power model was last fitted"
     )
+    # Weather-performance analysis fields (fitted by Modal weekly task)
+    weather_coefficients: dict | None = Field(
+        None, description="Personalized weather-performance coefficients"
+    )
+    weather_insights: list[str] | None = Field(
+        None, description="Personalized weather insights"
+    )
+    weather_analyzed_at: datetime | None = Field(
+        None, description="When weather analysis was last performed"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -477,3 +487,68 @@ class SuggestedCycleResponse(BaseModel):
     latest_hrv: float | None = None
     days: list[SuggestedDay]
     summary: str  # Overall recommendation text
+
+
+# ── Weather-Performance Analysis ────────────────────────────────────────────
+
+
+class WeatherPowerVsTemp(BaseModel):
+    """Power vs temperature relationship."""
+
+    slope_per_celsius: float | None = None
+    intercept: float | None = None
+    r_squared: float | None = None
+    optimal_range_c: tuple[float, float] | None = None
+    data_points: int = 0
+
+
+class WeatherPowerVsWind(BaseModel):
+    """Power vs wind relationship."""
+
+    headwind_penalty_pct: float | None = None
+    tailwind_boost_pct: float | None = None
+    crosswind_penalty_pct: float | None = None
+    power_vs_speed_slope: float | None = None
+    power_vs_speed_r_squared: float | None = None
+    data_points: dict[str, int] | None = None
+
+
+class WeatherDecouplingVsTemp(BaseModel):
+    """Decoupling vs temperature relationship."""
+
+    slope_per_celsius: float | None = None
+    r_squared: float | None = None
+    threshold_c: float | None = None
+    penalty_above_pct: float | None = None
+    data_points: int = 0
+
+
+class WeatherHrVsTemp(BaseModel):
+    """Heart rate vs temperature relationship."""
+
+    slope_bpm_per_celsius: float | None = None
+    intercept: float | None = None
+    r_squared: float | None = None
+    data_points: int = 0
+
+
+class WeatherCoefficients(BaseModel):
+    """Multi-variate weather coefficients for power prediction."""
+
+    features: list[str]
+    coefficients: dict[str, float]
+    intercept: float
+    r_squared: float
+    data_points: int
+
+
+class WeatherAnalysisResponse(BaseModel):
+    """Complete weather-performance analysis results."""
+
+    power_vs_temp: WeatherPowerVsTemp | None = None
+    power_vs_wind: WeatherPowerVsWind | None = None
+    decoupling_vs_temp: WeatherDecouplingVsTemp | None = None
+    hr_vs_temp: WeatherHrVsTemp | None = None
+    weather_coefficients: WeatherCoefficients | None = None
+    personalized_insights: list[str] = []
+    analyzed_at: datetime | None = None

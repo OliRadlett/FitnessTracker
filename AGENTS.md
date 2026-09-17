@@ -117,8 +117,10 @@ Modal serverless containers handle compute-heavy features that would be too expe
 |------------|------|---------|
 | Video processing | `app/integrations/modal_client.py` | ffmpeg + Gemini Vision for lifting video analysis |
 | Route intelligence | `app/integrations/route_intelligence.py` | Fréchet distance matching, terrain classification, effort prediction, route similarity graphs |
-| Power models (planned) | `app/integrations/power_models.py` | Critical power curve fitting, personalized VO2max |
-| Weather analysis (planned) | `app/integrations/weather_analysis.py` | Weather-performance correlation, personalized coefficients |
+| Power models | `app/integrations/power_models.py` | Critical power curve fitting (Morton 2004), personalized VO2max from power-HR regression, adaptive CTL/ATL time constant fitting |
+| Weather analysis | `app/integrations/weather_analysis.py` | Weather-performance correlation, personalized weather coefficients, decoupling vs temperature analysis |
+| Segment intelligence | `app/integrations/segment_intelligence.py` | Gaussian-smoothed climb detection, DBSCAN segment clustering, personal difficulty prediction |
+| Cross-domain analysis | `app/integrations/cross_domain.py` | Sleep-performance prediction, cross-sport fatigue correlation, post-race retrospective |
 
 **Config**: `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` in `.env`. When unset, Modal endpoints return 501.
 
@@ -136,6 +138,10 @@ Modal serverless containers handle compute-heavy features that would be too expe
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
+| `fit_personalized_power_models` | Weekly Sun 5:30AM | Fits CP/W' (Morton 2004), personalized VO2max from power-HR regression, adaptive CTL/ATL time constants via Modal |
+| `analyze_weather_performance_weekly` | Weekly Sun 6AM | Analyzes weather-performance correlations via Modal: power vs temp, wind penalties, decoupling thresholds, personalized insights |
+| `analyze_segments_intelligence_weekly` | Weekly Sun 6:15AM | Clusters segments by gradient signature via DBSCAN, classifies climb types, predicts personal VAM/power/difficulty |
+| `analyze_cross_domain_weekly` | Weekly Sun 7AM | Cross-domain correlation: sleep-performance, lifting-cycling fatigue, race retrospective |
 | `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs for all cycling routes |
 | `classify_route_terrain` | Weekly Sat 2:30AM | Classifies terrain (flat/rolling/hilly/mountainous) for routes with elevation profiles. Uses Modal when configured, falls back to local |
 | `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
@@ -233,6 +239,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. **Phase B done (§1.2, 2026-09-08)** — `?include_context=true` serves the §1.3 cached `ride_context` inline (zero extra queries; load position stays on-demand).
 - **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
 - **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). **Phase 8B: Route intelligence done** — terrain classification (flat/rolling/hilly/mountainous), Fréchet distance matching, segment-level effort prediction, smart collection rules for terrain type. [Modal expansion plan](plans/modal-expansion.md). Phases 3-4: calendar planner integration, social popularity, full E2E tests.
+- **Modal Intelligence Platform — COMPLETE**: All 5 phases implemented. Route intelligence (Fréchet, terrain, effort prediction), power models (CP/Morton 2004, personalized VO2max, adaptive CTL/ATL), weather-performance correlation, segment intelligence (DBSCAN clustering, climb classification, difficulty prediction), cross-domain analysis (sleep-performance, cross-sport fatigue, race retrospective). Weekly Celery tasks via Modal + stored results in DB.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
 - **3D visualisations (§3.16)**: Done (2026-09-09). Ride-replay fly-through (three.js `Replay3D` + `lib/replay`) **and** the 3D route view (three.js `Route3D` + `lib/route3d` draping the route over an Open-Meteo Copernicus DEM heightmap from `lib/terrain` — free, keyless; toggle in RouteDetailPanel Map & Profile). Side-by-side **synced** 3D comparison in the compare modals still deferred — see the plan
 - **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.

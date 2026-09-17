@@ -13,7 +13,7 @@ from sqlalchemy import (
     String,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -50,6 +50,12 @@ class CyclingProfile(Base):
     ctl_tau: Mapped[int | None] = mapped_column(Integer, nullable=True)
     atl_tau: Mapped[int | None] = mapped_column(Integer, nullable=True)
     power_model_fitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Weather-performance analysis fields (fitted by Modal weekly task)
+    weather_coefficients: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    weather_insights: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    weather_analyzed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

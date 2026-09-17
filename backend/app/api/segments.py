@@ -41,6 +41,15 @@ def _segment_read(seg) -> SegmentRead:
         times_ridden=seg.times_ridden,
         has_pr=seg.has_pr,
         effort_count=len(seg.efforts or []),
+        cluster_id=seg.cluster_id,
+        climb_type=seg.climb_type,
+        sustainedness=seg.sustainedness,
+        difficulty_score=seg.difficulty_score,
+        predicted_vam=seg.predicted_vam,
+        predicted_time_seconds=seg.predicted_time_seconds,
+        predicted_power_watts=seg.predicted_power_watts,
+        prediction_confidence=seg.prediction_confidence,
+        intelligence_analyzed_at=seg.intelligence_analyzed_at,
     )
 
 
