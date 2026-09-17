@@ -33,10 +33,11 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
-        # v7: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
-        # mediapipe 0.10.30+ uses tasks API (solutions was removed)
-        # GPU T4 requested on the function — Modal handles CUDA drivers automatically
-        # EGL/GLES libs required by mediapipe's GPU delegate even on GPU containers
+        # v8: CPU-only pose analysis (MediaPipe tasks API, CPU delegate).
+        # The GPU delegate silently returned zero landmarks on T4 containers
+        # (investigated 2026-09-17: 100% detection on CPU vs 0% on GPU).
+        # mediapipe 0.10.30+ uses tasks API (solutions was removed).
+        # EGL/GLES libs kept (harmless) to avoid forcing a Modal image rebuild.
         image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install(
@@ -126,9 +127,11 @@ def process_video_on_modal(
 
     @app.function(
         serialized=True,
-        timeout=300,
-        memory=2048,
-        gpu="T4",  # MediaPipe Pose runs significantly faster on GPU
+        timeout=600,
+        memory=4096,
+        # CPU-only: MediaPipe Pose uses the CPU delegate (proven 100%
+        # detection; the GPU delegate returned zero landmarks on T4).
+        # Heavy model processes ~4 fps on CPU — 600s covers 30s clips at 10fps.
     )
     def _process(
         presigned_get: str,
