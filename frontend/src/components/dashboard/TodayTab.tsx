@@ -388,7 +388,7 @@ export function TodayTab({
                       </p>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 ml-3 flex items-center gap-4">
+                  <div className="text-right shrink-0 ml-3 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 max-w-[55%] sm:max-w-none">
                     {a.tss != null && (
                       <p className="text-xs text-blue-400">{a.tss.toFixed(0)} TSS</p>
                     )}

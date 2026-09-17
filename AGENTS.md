@@ -178,7 +178,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
 - **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`, `routes/`, `goals/`, `dashboard/`, `health/`, `calendar/`, `activities/`, `settings/`, `sync/`
 - **Responsive sidebar**: Mobile hamburger menu via SidebarProvider context
-- **Responsive mobile**: Grids use `grid-cols-1 sm:grid-cols-N` pattern; `pt-16` clearance for fixed hamburger; calendar has mobile agenda view (`md:hidden`)
+- **Responsive mobile**: Grids use `grid-cols-1 sm:grid-cols-N` pattern; `pt-20`/`pb-24` clearance for fixed hamburger + bottom tab bar (`MobileBottomNav` in `Sidebar.tsx`); calendar has mobile agenda view (`md:hidden`); header/tab/filter buttons use `min-h-[44px]`; Routes sidebar is desktop-only with a mobile `Organize` drawer
 - **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Use instead of hand-rolling modals
 - **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only
 - **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages

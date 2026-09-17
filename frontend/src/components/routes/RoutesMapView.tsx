@@ -210,8 +210,7 @@ export function RoutesMapView({
   return (
     <div
       ref={mapRef}
-      className="rounded-lg overflow-hidden"
-      style={{ height: '500px', minHeight: '400px' }}
+      className="rounded-lg overflow-hidden h-[340px] sm:h-[500px] sm:min-h-[400px]"
     />
   );
 }

@@ -432,23 +432,23 @@ export default function LiftingPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Lifting</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Lifting</h1>
           <p className="text-muted">Track your strength training sessions</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => backfillMutation.mutate()}
             disabled={backfillMutation.isPending}
-            className="px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
             title="Auto-link Strava strength activities to lifting sessions"
           >
             {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
           </button>
           <button
             onClick={() => setShowNewSession(!showNewSession)}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
+            className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
           >
             {showNewSession ? 'Cancel' : '+ New Session'}
           </button>

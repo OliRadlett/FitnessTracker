@@ -226,10 +226,10 @@ export function CompareRoutesModal({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted border-b border-surface-light/50">
-                  <th className="text-left py-2">Metric</th>
-                  <th className="text-right py-2">{routeA.name}</th>
-                  <th className="text-right py-2">{routeB.name}</th>
-                  <th className="text-right py-2">{'\u0394'}</th>
+                  <th className="text-left py-2 pr-2">Metric</th>
+                  <th className="text-right py-2 pl-2 max-w-[110px] truncate" title={routeA.name}>{routeA.name}</th>
+                  <th className="text-right py-2 pl-2 max-w-[110px] truncate" title={routeB.name}>{routeB.name}</th>
+                  <th className="text-right py-2 pl-2">{'\u0394'}</th>
                 </tr>
               </thead>
               <tbody>

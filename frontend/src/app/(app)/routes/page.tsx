@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
@@ -21,7 +21,7 @@ import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
 import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy, X } from 'lucide-react';
+import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy, X, Folder } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RoutesPage() {
@@ -51,6 +51,7 @@ export default function RoutesPage() {
 
   const compareMode = compareRouteA !== null || compareRouteB !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showOrganize, setShowOrganize] = useState(false);
 
   // Deep-link: select the route referenced by ?route=<id> on load
   useEffect(() => {
@@ -178,12 +179,47 @@ export default function RoutesPage() {
   ).length;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Sidebar */}
-      <RoutesSidebar
-        onTagClick={() => refetch()}
-        onCollectionClick={() => refetch()}
-      />
+    <div className="flex h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)] h-[calc(100dvh-10rem)] overflow-hidden min-w-0">
+      {/* Sidebar — desktop only; on mobile use the Organize drawer */}
+      <div className="hidden lg:block flex-shrink-0 h-full">
+        <RoutesSidebar
+          onTagClick={() => refetch()}
+          onCollectionClick={() => refetch()}
+        />
+      </div>
+
+      {/* Mobile Organize drawer */}
+      {showOrganize && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setShowOrganize(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-label="Organize routes"
+            className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[320px] bg-background border-r border-surface-light/50 lg:hidden flex flex-col"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-surface-light/50">
+              <h2 className="text-base font-semibold text-white">Organize</h2>
+              <button
+                onClick={() => setShowOrganize(false)}
+                aria-label="Close organize panel"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted hover:text-white hover:bg-surface-light/50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <RoutesSidebar
+                onTagClick={() => { refetch(); setShowOrganize(false); }}
+                onCollectionClick={() => { refetch(); setShowOrganize(false); }}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -201,13 +237,22 @@ export default function RoutesPage() {
               </div>
               <p className="text-muted mt-1">
                 Browse, organize, and plan rides from your synced routes.
-                <span className="mx-2">•</span>
-                <span className="text-xs text-muted">
+                <span className="mx-2 hidden sm:inline">•</span>
+                <span className="text-xs text-muted hidden sm:inline">
                   Press 1/2/3 for Map/List/Grid · F to search · Esc to deselect
                 </span>
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Mobile Organize button */}
+              <button
+                onClick={() => setShowOrganize(true)}
+                aria-label="Open organize panel"
+                className="lg:hidden min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Folder className="w-4 h-4" />
+                Organize
+              </button>
               {/* View mode toggle */}
               <div
                 className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden"
@@ -220,7 +265,7 @@ export default function RoutesPage() {
                     onClick={() => setViewMode(key as typeof viewMode)}
                     role="tab"
                     aria-selected={viewMode === key}
-                    className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
+                    className={`min-h-[44px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
                       viewMode === key
                         ? 'bg-accent text-white'
                         : 'text-muted hover:text-white'
@@ -235,7 +280,7 @@ export default function RoutesPage() {
               <button
                 onClick={() => setShowImportModal(true)}
                 aria-label="Upload GPX file"
-                className="px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
               >
                 <Upload className="w-4 h-4" />
                 Upload GPX
@@ -243,7 +288,7 @@ export default function RoutesPage() {
 
               <Link
                 href="/routes/duplicates"
-                className="px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
               >
                 <Copy className="w-4 h-4" />
                 Duplicates
@@ -253,7 +298,7 @@ export default function RoutesPage() {
                  onClick={() => syncMutation.mutate()}
                  disabled={syncMutation.isPending}
                  aria-label="Sync routes from providers"
-                 className="px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                 className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
                >
                  <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
                  {syncMutation.isPending ? 'Syncing...' : 'Sync'}
@@ -263,7 +308,7 @@ export default function RoutesPage() {
                   <button
                     onClick={() => setShowHeatmap(!showHeatmap)}
                     aria-label="Toggle heatmap"
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                    className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
                       showHeatmap
                         ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                         : 'bg-surface-light hover:bg-surface-light/80 text-white'
@@ -278,7 +323,7 @@ export default function RoutesPage() {
                   <button
                     onClick={() => clearCompareRoutes()}
                     aria-label="Exit compare mode"
-                    className="px-3 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent rounded-lg transition-colors flex items-center gap-1"
+                    className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent rounded-lg transition-colors flex items-center gap-1"
                   >
                     <X className="w-4 h-4" />
                     Exit Compare

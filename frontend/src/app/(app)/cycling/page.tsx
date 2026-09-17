@@ -590,8 +590,8 @@ export default function CyclingPage() {
       {/* Recalculate TSS Banner */}
       {profile?.ftp_watts && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm font-medium text-white">
                 {(metrics?.recent_tss ?? 0) === 0 ? 'No TSS data found' : 'Recalculate TSS'}
               </p>
@@ -606,7 +606,7 @@ export default function CyclingPage() {
               <button
                 onClick={() => recalculateTssMutation.mutate()}
                 disabled={recalculateTssMutation.isPending}
-                className="px-4 py-2 text-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/30 transition-colors disabled:opacity-50 font-medium"
+                className="min-h-[44px] px-4 py-2 text-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
               >
                 {recalculateTssMutation.isPending ? 'Calculating...' : '⚡ (Re)calculate TSS'}
               </button>
@@ -620,8 +620,8 @@ export default function CyclingPage() {
 
       {/* Fetch Streams Banner */}
       <Card className="border-blue-500/30 bg-blue-500/5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-sm font-medium text-white">
               {powerCurve?.data?.some(p => p.best_power_watts != null)
                 ? 'Fetch stream data for all cycling activities'
@@ -636,7 +636,7 @@ export default function CyclingPage() {
             <button
               onClick={() => backfillStreamsMutation.mutate()}
               disabled={backfillStreamsMutation.isPending}
-              className="px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium"
+              className="min-h-[44px] px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
             >
               {backfillStreamsMutation.isPending ? 'Fetching...' : '📡 Fetch Streams from Strava'}
             </button>

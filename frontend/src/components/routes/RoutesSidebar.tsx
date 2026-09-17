@@ -54,7 +54,7 @@ export function RoutesSidebar({
   }));
 
   return (
-    <div className="w-64 bg-surface border-r border-surface-light flex flex-col overflow-y-auto">
+    <div className="w-full lg:w-64 bg-surface lg:border-r border-surface-light flex flex-col overflow-y-auto h-full">
       <div className="p-4 border-b border-surface-light">
         <h2 className="text-sm font-semibold text-muted uppercase tracking-wider mb-2">
           Organize

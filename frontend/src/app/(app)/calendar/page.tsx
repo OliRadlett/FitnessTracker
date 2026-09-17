@@ -191,10 +191,10 @@ export default function CalendarPage() {
       {/* Calendar Card */}
       <Card>
         {/* Month navigation */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-3">
+        <div className="flex items-center justify-between px-4 sm:px-6 pt-5 pb-3 gap-2">
           <button
             onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
-            className="p-2.5 rounded-lg bg-surface-light hover:bg-accent/20 text-white transition-colors border border-surface-light"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface-light hover:bg-accent/20 text-white transition-colors border border-surface-light"
             aria-label="Previous month"
           >
             <svg
@@ -219,13 +219,13 @@ export default function CalendarPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentMonth(new Date())}
-              className="px-3 py-1.5 text-sm text-muted hover:text-white bg-surface-light hover:bg-accent/20 rounded-lg border border-surface-light transition-colors"
+              className="min-h-[44px] px-4 py-1.5 text-sm text-muted hover:text-white bg-surface-light hover:bg-accent/20 rounded-lg border border-surface-light transition-colors"
             >
               Today
             </button>
             <button
               onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-              className="p-2.5 rounded-lg bg-surface-light hover:bg-accent/20 text-white transition-colors border border-surface-light"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface-light hover:bg-accent/20 text-white transition-colors border border-surface-light"
               aria-label="Next month"
             >
               <svg
