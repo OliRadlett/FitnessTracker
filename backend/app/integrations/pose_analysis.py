@@ -150,13 +150,19 @@ def _mid(landmarks, left_idx: int, right_idx: int) -> np.ndarray:
 
 
 def _torso_angle(landmarks) -> float:
-    """Torso angle from vertical (0 = upright)."""
+    """Torso lean from upright, in degrees (0 = upright).
+
+    Image y grows downward, so the raw hip-minus-shoulder angle is 180 when
+    upright — subtract from 180 to get the lean deviation. (An earlier
+    version returned the raw angle, making every standing frame read ~180
+    and tripping all lean thresholds. Found 2026-09-17.)
+    """
     shoulder = _mid(landmarks, 11, 12)
     hip = _mid(landmarks, 23, 24)
     vertical = np.array([0, -1])
     torso_vec = hip - shoulder
     cosine = np.dot(torso_vec, vertical) / (np.linalg.norm(torso_vec) + 1e-8)
-    return float(np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0))))
+    return float(180.0 - np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0))))
 
 
 # ── Exercise Classification ──────────────────────────────────────────────────
@@ -249,9 +255,10 @@ def detect_reps_from_pose(
 
     signal = np.array(signal)
 
-    # Smooth
-    if len(signal) > 5:
-        kernel = np.ones(5) / 5
+    # Smooth (~1.1s window at 10fps): kills per-frame landmark jitter while
+    # preserving real rep periods (powerlifting reps take 1.5s+).
+    if len(signal) > 11:
+        kernel = np.ones(11) / 11
         signal = np.convolve(signal, kernel, mode="same")
 
     # Find local minima (bottom of rep) — these are the inflection points
@@ -261,14 +268,17 @@ def detect_reps_from_pose(
         if diff[i - 1] < 0 and diff[i] >= 0:
             minima_idx.append(i)
 
-    # Pair consecutive minima into reps
+    # Pair CONSECUTIVE minima into reps: one bottom-to-bottom cycle each.
+    # (An earlier revision spanned minima[i-1]→minima[i+1], covering two
+    # cycles per "rep" with heavy overlap — doubling the rep count and
+    # evaluating lockout/posture at bottom frames. Found 2026-09-17.)
     reps = []
-    for i, mi in enumerate(minima_idx):
-        start = minima_idx[i - 1] if i > 0 else 0
-        end = minima_idx[i + 1] if i + 1 < len(minima_idx) else len(landmarks_per_frame) - 1
+    for i in range(len(minima_idx) - 1):
+        start = minima_idx[i]
+        end = minima_idx[i + 1]
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
-        if duration < 0.3 or duration > 10.0:
+        if duration < 0.8 or duration > 10.0:
             continue
 
         reps.append({
@@ -312,24 +322,31 @@ def _check_heels_flat(landmarks) -> bool:
 
 def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
-    end_lm = all_landmarks[min(ei, len(all_landmarks) - 1)]
+    n = len(all_landmarks)
 
-    # Find bottom frame (max knee flexion)
-    bottom_knee = 999
-    bottom_lm = end_lm
-    for i in range(si, min(ei, len(all_landmarks))):
+    # Reps span bottom-to-bottom. Find the BOTTOM (max knee flexion) for
+    # depth/valgus, and the TOP (standing) for lockout/posture. Evaluating
+    # lockout at a bottom frame always fails (found 2026-09-17).
+    bottom_knee = 999.0
+    bottom_lm = all_landmarks[min(si, n - 1)]
+    top_knee = -1.0
+    top_lm = bottom_lm
+    for i in range(si, min(ei, n)):
         angle = calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         if angle < bottom_knee:
             bottom_knee = angle
             bottom_lm = all_landmarks[i]
+        if angle > top_knee:
+            top_knee = angle
+            top_lm = all_landmarks[i]
 
     depth = _check_squat_depth(bottom_lm)
-    knee_angle_end = calculate_angle(_mid(end_lm, 23, 24), _mid(end_lm, 25, 26), _mid(end_lm, 27, 28))
-    hip_angle_end = calculate_angle(_mid(end_lm, 11, 12), _mid(end_lm, 23, 24), _mid(end_lm, 25, 26))
-    lockout = knee_angle_end > 170 and hip_angle_end > 170
+    knee_angle_top = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
+    hip_angle_top = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
+    lockout = knee_angle_top > 170 and hip_angle_top > 170
     valgus = _check_knee_valgus(bottom_lm)
-    heels = _check_heels_flat(end_lm)
-    back_dev = abs(_torso_angle(end_lm))
+    heels = _check_heels_flat(top_lm)
+    back_dev = abs(_torso_angle(top_lm))
 
     return {
         "depth_achieved": depth,
@@ -376,11 +393,18 @@ def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
         min_hip = min(hip_ys)
         butt_lift = (start_hip - min_hip) > 0.02
 
-    # Lockout
-    end_lm = all_landmarks[min(ei, len(all_landmarks) - 1)]
-    lockout_angle = calculate_angle(_mid(end_lm, 11, 12), _mid(end_lm, 13, 14), _mid(end_lm, 15, 16))
+    # Lockout + symmetry are evaluated at the TOP (arms extended), not at
+    # the rep end (a bottom, where the elbows are always bent).
+    top_elbow = -1.0
+    top_lm = all_landmarks[min(si, len(all_landmarks) - 1)]
+    for i in range(si, min(ei, len(all_landmarks))):
+        ea = calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 13, 14), _mid(all_landmarks[i], 15, 16))
+        if ea > top_elbow:
+            top_elbow = ea
+            top_lm = all_landmarks[i]
+    lockout_angle = top_elbow
     lockout = lockout_angle > 160
-    symmetrical = abs(end_lm[15].y - end_lm[16].y) < 0.03
+    symmetrical = abs(top_lm[15].y - top_lm[16].y) < 0.03
 
     return {
         "chest_contact": chest_contact,
@@ -415,24 +439,37 @@ def _detect_hitching(wrist_y_per_frame: list) -> bool:
 
 def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
-    end_lm = all_landmarks[min(ei, len(all_landmarks) - 1)]
-    lockout = _deadlift_lockout(end_lm)
+    n = len(all_landmarks)
+
+    # Reps span bottom-to-bottom. Lockout, grip and shoulder position are
+    # evaluated at the TOP (standing); back rounding is the torso change
+    # from bottom to top.
+    bottom_knee = 999.0
+    bottom_lm = all_landmarks[min(si, n - 1)]
+    top_knee = -1.0
+    top_lm = bottom_lm
+    for i in range(si, min(ei, n)):
+        ka = calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
+        if ka < bottom_knee:
+            bottom_knee = ka
+            bottom_lm = all_landmarks[i]
+        if ka > top_knee:
+            top_knee = ka
+            top_lm = all_landmarks[i]
+
+    lockout = _deadlift_lockout(top_lm)
 
     wrist_ys = [np.mean([all_landmarks[i][15].y, all_landmarks[i][16].y]) for i in range(si, min(ei, len(all_landmarks)))]
     hitching = _detect_hitching(wrist_ys)
 
-    # Back position
-    bottom_idx = si + (ei - si) // 3
-    if bottom_idx < len(all_landmarks):
-        torso_start = _torso_angle(all_landmarks[bottom_idx])
-        torso_end = _torso_angle(end_lm)
-        change = abs(torso_end - torso_start)
-        back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
-    else:
-        back_pos = "unknown"
+    # Back position: torso change from bottom to top
+    torso_bottom = _torso_angle(bottom_lm)
+    torso_top = _torso_angle(top_lm)
+    change = abs(torso_top - torso_bottom)
+    back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
 
-    grip_sym = abs(end_lm[15].y - end_lm[16].y) < 0.03
-    shoulders_back = end_lm[11].y < end_lm[23].y
+    grip_sym = abs(top_lm[15].y - top_lm[16].y) < 0.03
+    shoulders_back = top_lm[11].y < top_lm[23].y
 
     return {
         "lockout_complete": lockout,
