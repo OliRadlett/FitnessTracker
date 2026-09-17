@@ -793,10 +793,13 @@ def _detect_reps_from_motion(
     fps: float,
     min_rep_duration: float = 0.3,
     max_rep_duration: float = 8.0,
+    min_amplitude_m: float = 0.10,
 ) -> list:
     """Detect individual reps from vertical position signal.
 
-    Uses peak/valley detection on the smoothed position curve.
+    Uses peak/valley detection on the smoothed position curve. Pairs whose
+    amplitude is below min_amplitude_m are jitter/setup wobble, not reps
+    (without this, micro-wiggles dilute the mean velocity to ~0.02 m/s).
     """
     import numpy as np
 
@@ -806,8 +809,10 @@ def _detect_reps_from_motion(
     signal = np.array(vertical_position)
     ts = np.array(timestamps)
 
-    # Find local minima (bottom of each rep) and maxima (top of each rep)
-    # by looking at sign changes of the first derivative
+    # Find local minima (top of each rep, bar highest = smallest y) and
+    # maxima (bottom of each rep) by looking at sign changes of the first
+    # derivative. Image y grows downward, so the CONCENTRIC (lifting) phase
+    # runs maximum -> minimum (bottom -> top).
     diff = np.diff(signal)
     minima_idx = []
     maxima_idx = []
@@ -818,35 +823,38 @@ def _detect_reps_from_motion(
         elif diff[i - 1] > 0 and diff[i] <= 0:
             maxima_idx.append(i)
 
-    # Pair minima and maxima into reps
+    # Pair maxima and minima into reps: each maximum (bottom) with the
+    # next minimum (top) is one concentric phase.
     reps = []
-    used_maxima = set()
+    used_minima = set()
 
-    for mi in minima_idx:
-        # Find the next maximum after this minimum
-        best_max = None
-        for mx in maxima_idx:
-            if mx > mi and mx not in used_maxima:
-                duration = ts[mx] - ts[mi]
+    for mx in maxima_idx:
+        # Find the next minimum after this maximum
+        best_min = None
+        for mi in minima_idx:
+            if mi > mx and mi not in used_minima:
+                duration = ts[mi] - ts[mx]
                 if min_rep_duration <= duration <= max_rep_duration:
-                    best_max = mx
+                    best_min = mi
                     break
 
-        if best_max is None:
+        if best_min is None:
             continue
 
-        used_maxima.add(best_max)
-        concentric_time = ts[best_max] - ts[mi]
-        amplitude_px = abs(signal[best_max] - signal[mi])
+        used_minima.add(best_min)
+        concentric_time = ts[best_min] - ts[mx]
+        amplitude_px = abs(signal[best_min] - signal[mx])
 
         # Convert to velocity
         amplitude_m = amplitude_px / pixels_per_meter if pixels_per_meter > 0 else 0
+        if amplitude_m < min_amplitude_m:
+            continue
         concentric_velocity = amplitude_m / concentric_time if concentric_time > 0 else 0
 
         reps.append({
             "rep_number": len(reps) + 1,
-            "start_time": round(float(ts[mi]), 2),
-            "end_time": round(float(ts[best_max]), 2),
+            "start_time": round(float(ts[mx]), 2),
+            "end_time": round(float(ts[best_min]), 2),
             "concentric_time": round(concentric_time, 2),
             "amplitude_px": round(float(amplitude_px), 1),
             "amplitude_m": round(amplitude_m, 3),

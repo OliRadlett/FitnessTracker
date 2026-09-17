@@ -794,3 +794,112 @@ def run_pose_analysis(
                 exercise, len(reps), form["overall_form_score"], form["severity"])
 
     return result
+
+
+# ── Pose-Based Bar Velocity ────────────────────────────────────────────────
+
+
+def bar_velocity_from_pose(
+    landmarks_per_frame: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    exercise: str,
+    frame_height_px: float,
+    rom_m: float,
+) -> dict:
+    """Bar velocity from pose landmarks — no optical flow needed.
+
+    Sparse Lucas-Kanade cannot lock a fast bar on phone footage (motion
+    blur + thin bar + busy static backgrounds: 95 tracked features measured
+    0.0px median motion across a 1s window in which the bar moved 50-80px).
+    The bar is rigidly coupled to the body — wrists for bench/deadlift (bar
+    in hands), hips for squat (full ROM, central, rarely occluded) — and
+    absolute per-frame positions neither drift nor lose lock.
+
+    Velocity is measured per POSE rep (bottom -> top within each rep slice),
+    so rep counts and velocities stay consistent with form scoring — unlike
+    independent motion-signal pairing, which invents its own rep counts.
+
+    Returns the same dict shape as track_barbell_optical_flow so callers
+    (Modal step 8b, RPE, scheduler) work unchanged.
+    """
+    from app.integrations.video_analysis import (
+        _get_vbt_zone,
+        _smooth_signal,
+        _velocity_loss_pct,
+    )
+
+    if (len(landmarks_per_frame) < 5 or not pose_reps
+            or frame_height_px <= 0 or rom_m <= 0):
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    if exercise in ("Bench Press", "Deadlift",
+                    "Conventional Deadlift", "Sumo Deadlift"):
+        li, ri = (15, 16)  # wrists: bar in hands
+    else:
+        li, ri = (23, 24)  # hips: full ROM, central, rarely occluded
+
+    n = len(landmarks_per_frame)
+    y_px = np.array([
+        ((lm[li].y + lm[ri].y) / 2) * frame_height_px
+        for lm in landmarks_per_frame
+    ])
+    ts = np.array(timestamps[:n])
+    pos = _smooth_signal(y_px, window=5)
+
+    excursion = float(np.max(pos) - np.min(pos))
+    if excursion < 10:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+    ppm = excursion / rom_m
+
+    velocities: list[float] = []
+    rep_data: list[dict] = []
+    for rep in pose_reps:
+        si = max(0, rep["start_idx"])
+        ei = min(n - 1, rep["end_idx"])
+        if ei - si < 3:
+            continue
+        seg = pos[si:ei + 1]
+        bi = int(np.argmax(seg))  # bottom = largest y (image coords)
+        top_seg = seg[bi:]
+        ti = bi + int(np.argmin(top_seg))  # first top after the bottom
+        if ti <= bi:
+            continue
+        amp_px = float(seg[bi] - seg[ti])
+        dt = float(ts[si + ti] - ts[si + bi])
+        if dt <= 0:
+            continue
+        amp_m = amp_px / ppm if ppm > 0 else 0.0
+        if amp_m < 0.10:  # partial/shallow slice, not a measurable rep
+            continue
+        v = amp_m / dt
+        velocities.append(round(v, 3))
+        rep_data.append({
+            "rep_number": rep["rep_number"],
+            "start_time": round(float(ts[si + bi]), 2),
+            "end_time": round(float(ts[si + ti]), 2),
+            "concentric_time": round(dt, 2),
+            "amplitude_px": round(amp_px, 1),
+            "amplitude_m": round(amp_m, 3),
+            "concentric_velocity_ms": round(v, 3),
+        })
+
+    result = {
+        "tracking_quality": "pose",
+        "frame_count": n,
+        "pixels_per_meter": round(ppm, 1),
+        "rep_timings": rep_data,
+        "velocities": velocities,
+    }
+    if velocities:
+        mean_v = sum(velocities) / len(velocities)
+        result["mean_concentric_velocity"] = round(mean_v, 3)
+        result["peak_velocity"] = round(max(velocities), 3)
+        if len(velocities) >= 2:
+            result["velocity_loss_pct"] = _velocity_loss_pct(
+                velocities[0], velocities[-1])
+            result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
+    else:
+        result["mean_concentric_velocity"] = 0.0
+        result["peak_velocity"] = 0.0
+    return result

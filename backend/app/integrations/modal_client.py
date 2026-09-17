@@ -307,6 +307,8 @@ def process_video_on_modal(
             weight = 0.0
             confidence = 0.0
             analysis_text = ""
+            landmarks: list = []
+            pose_timestamps: list = []
 
             try:
                 import sys
@@ -316,7 +318,7 @@ def process_video_on_modal(
                     extract_pose_landmarks,
                 )
 
-                landmarks, _ = extract_pose_landmarks(
+                landmarks, pose_timestamps = extract_pose_landmarks(
                     input_path, tmpdir, trim_start, trim_end, fps=10.0,
                 )
                 if landmarks:
@@ -362,31 +364,63 @@ def process_video_on_modal(
                 except Exception as e:
                     _logger.warning("Pose analysis failed: %s", e)
 
-                # 8b: Optical flow velocity (already local)
+                # 8b: Bar velocity — pose landmarks first, optical flow fallback.
+                # Pose wins: sparse LK cannot lock fast bars on phone footage
+                # (see bar_velocity_from_pose docstring). Landmarks are already
+                # in memory from step 7, so this costs nothing extra.
+                vel_result: dict = {"tracking_quality": "failed"}
                 try:
-                    from app.integrations.video_analysis import (
-                        track_barbell_optical_flow,
-                    )
+                    import cv2
 
-                    vel_result = track_barbell_optical_flow(
-                        input_path=input_path,
-                        tmpdir=tmpdir,
-                        trim_start=trim_start,
-                        trim_end=trim_end,
-                        exercise_name=exercise,
+                    from app.integrations.pose_analysis import (
+                        bar_velocity_from_pose,
+                        detect_reps_from_pose,
                     )
-                    if vel_result.get("tracking_quality") != "failed":
-                        full_result["velocity"] = {
-                            "mean_concentric_velocity": vel_result["mean_concentric_velocity"],
-                            "peak_velocity": vel_result["peak_velocity"],
-                            "velocities": vel_result.get("velocities", []),
-                            "velocity_loss_pct": vel_result.get("velocity_loss_pct"),
-                            "vbt_zone": vel_result.get("vbt_zone"),
-                        }
-                        full_result["rep_timing"] = vel_result.get("rep_timings", [])
-                        _logger.info("Velocity (optical flow): mean=%.3f m/s", vel_result["mean_concentric_velocity"])
+                    from app.integrations.video_analysis import _get_rom
+
+                    _cap = cv2.VideoCapture(str(input_path))
+                    _fh = float(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    _cap.release()
+                    if landmarks and pose_timestamps and _fh > 0:
+                        _pose_reps = detect_reps_from_pose(
+                            landmarks, pose_timestamps, exercise)
+                        vel_result = bar_velocity_from_pose(
+                            landmarks, pose_timestamps, _pose_reps,
+                            exercise, _fh, _get_rom(exercise))
+                        _logger.info(
+                            "Velocity (pose): mean=%.3f m/s, %d reps",
+                            vel_result.get("mean_concentric_velocity", 0.0),
+                            len(vel_result.get("rep_timings", [])))
                 except Exception as e:
-                    _logger.warning("Optical flow failed: %s", e)
+                    _logger.warning("Pose velocity failed: %s", e)
+
+                if vel_result.get("tracking_quality") == "failed":
+                    _logger.info("Pose velocity unavailable, trying optical flow")
+                    try:
+                        from app.integrations.video_analysis import (
+                            track_barbell_optical_flow,
+                        )
+
+                        vel_result = track_barbell_optical_flow(
+                            input_path=input_path,
+                            tmpdir=tmpdir,
+                            trim_start=trim_start,
+                            trim_end=trim_end,
+                            exercise_name=exercise,
+                        )
+                    except Exception as e:
+                        _logger.warning("Optical flow failed: %s", e)
+                        vel_result = {"tracking_quality": "failed"}
+
+                if vel_result.get("tracking_quality") != "failed":
+                    full_result["velocity"] = {
+                        "mean_concentric_velocity": vel_result.get("mean_concentric_velocity"),
+                        "peak_velocity": vel_result.get("peak_velocity"),
+                        "velocities": vel_result.get("velocities", []),
+                        "velocity_loss_pct": vel_result.get("velocity_loss_pct"),
+                        "vbt_zone": vel_result.get("vbt_zone"),
+                    }
+                    full_result["rep_timing"] = vel_result.get("rep_timings", [])
 
             # 8c: RPE estimation (heuristic, no API calls)
             try:
