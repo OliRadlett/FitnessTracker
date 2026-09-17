@@ -33,12 +33,18 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
-        # v2: Local pose analysis (MediaPipe) — zero Gemini API calls
-        # This version marker forces Modal to rebuild the image cache
+        # v3: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
+        # mediapipe 0.10.30+ uses tasks API (solutions was removed)
         image = (
             modal.Image.debian_slim(python_version="3.12")
-            .apt_install("ffmpeg")
-            .pip_install("httpx", "opencv-python-headless", "numpy", "mediapipe>=0.10.20")
+            .apt_install("ffmpeg", "libgl1-mesa-glx", "libglib2.0-0")
+            .pip_install(
+                "httpx",
+                "opencv-python-headless",
+                "numpy",
+                "mediapipe>=0.10.30",
+                "protobuf>=3.20,<6",
+            )
         )
 
         # Mount the analysis modules into the container

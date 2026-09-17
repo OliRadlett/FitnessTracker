@@ -29,16 +29,47 @@ def extract_pose_landmarks(
 ) -> tuple[list, list[float]]:
     """Extract MediaPipe Pose landmarks from a video segment.
 
+    Uses the mediapipe.tasks API (PoseLandmarker) — the solutions API
+    was removed in mediapipe >= 0.10.30.
+
     Returns (landmarks_per_frame, timestamps).
     Each landmarks_per_frame[i] is a list of 33 NormalizedLandmark objects.
     """
     import cv2
     import mediapipe as mp
+    from mediapipe.tasks.python import vision, BaseOptions
 
     segment_duration = trim_end - trim_start
     if segment_duration <= 0:
         return [], []
 
+    # Download the pose landmarker model if not cached
+    model_path = Path(tmpdir) / "pose_landmarker.task"
+    if not model_path.exists():
+        import urllib.request
+        model_url = (
+            "https://storage.googleapis.com/mediapipe-models/"
+            "pose_landmarker/pose_landmarker_heavy/float16/latest/"
+            "pose_landmarker_heavy.task"
+        )
+        logger.info("Downloading pose landmarker model...")
+        urllib.request.urlretrieve(model_url, str(model_path))
+        logger.info("Downloaded pose landmarker model: %d bytes", model_path.stat().st_size)
+
+    # Create PoseLandmarker with video running mode
+    base_options = BaseOptions(model_asset_path=str(model_path))
+    options = vision.PoseLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.VIDEO,
+        num_poses=1,
+        min_pose_detection_confidence=0.5,
+        min_pose_presence_confidence=0.5,
+        min_tracking_confidence=0.5,
+        output_segmentation_masks=False,
+    )
+    pose_landmarker = vision.PoseLandmarker.create_from_options(options)
+
+    # Extract frames
     output_pattern = str(Path(tmpdir) / "pose_%04d.jpg")
     subprocess.run(
         [
@@ -49,15 +80,6 @@ def extract_pose_landmarks(
             "-q:v", "2", output_pattern,
         ],
         capture_output=True, timeout=120,
-    )
-
-    mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(
-        static_image_mode=False,
-        model_complexity=1,
-        enable_segmentation=False,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
     )
 
     landmarks_list = []
@@ -75,16 +97,21 @@ def extract_pose_landmarks(
             continue
 
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = pose.process(img_rgb)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+        timestamp_ms = int((idx * frame_interval) * 1000)
 
-        if results.pose_landmarks:
-            landmarks_list.append(results.pose_landmarks.landmark)
+        result = pose_landmarker.detect_for_video(mp_image, timestamp_ms)
+
+        if result.pose_landmarks:
+            # pose_landmarks is a list of NormalizedLandmarkList
+            # Each element is a list of 33 landmarks for one detected pose
+            landmarks_list.append(result.pose_landmarks[0])
             t = trim_start + (idx * frame_interval) + (frame_interval / 2)
             timestamps.append(round(min(t, trim_end), 3))
 
         idx += 1
 
-    pose.close()
+    pose_landmarker.close()
     logger.info("Pose landmarks: %d/%d frames", len(landmarks_list), idx)
     return landmarks_list, timestamps
 
