@@ -8,6 +8,8 @@ import type {
   FtpHistoryEntry,
   FtpHistoryCreate,
   PowerCurveResponse,
+  PowerModelResultsResponse,
+  WeatherAnalysisResponse,
   LifetimePBsResponse,
   PrCheckRequest,
   PrCheckResponse,
@@ -93,4 +95,16 @@ export async function getLifetimePBs(authFetch: AuthFetch): Promise<LifetimePBsR
 
 export async function getCyclingMetricsSummary(authFetch: AuthFetch): Promise<CyclingMetricsSummary> {
   return authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary');
+}
+
+// ─── Personalized Power Model ──────────────────────────────────────────────
+
+export async function getPowerModel(authFetch: AuthFetch): Promise<PowerModelResultsResponse> {
+  return authFetch<PowerModelResultsResponse>('/api/v1/cycling/power-model');
+}
+
+// ─── Weather-Performance Analysis ──────────────────────────────────────────
+
+export async function getWeatherAnalysis(authFetch: AuthFetch): Promise<WeatherAnalysisResponse> {
+  return authFetch<WeatherAnalysisResponse>('/api/v1/cycling/weather-analysis');
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type {
@@ -13,6 +13,8 @@ import type {
   PowerZonesResponse,
   HrZonesResponse,
   PowerVsHrResponse,
+  PowerModelResultsResponse,
+  WeatherAnalysisResponse,
   ChartData,
   FtpEstimate,
   LifetimePBsResponse,
@@ -28,6 +30,8 @@ import { MetricCard } from '@/components/cycling/MetricCard';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
+import { PowerModelSection } from '@/components/cycling/PowerModelSection';
+import { WeatherAnalysisSection } from '@/components/cycling/WeatherAnalysisSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
@@ -114,6 +118,21 @@ export default function CyclingPage() {
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  const { data: powerModel, isLoading: powerModelLoading } = useQuery<PowerModelResultsResponse>({
+    queryKey: ['power-model'],
+    queryFn: () => authFetch<PowerModelResultsResponse>('/api/v1/cycling/power-model'),
+    staleTime: 600_000,
+    enabled: !!token,
+  });
+
+  const { data: weatherAnalysis, isLoading: weatherLoading } = useQuery<WeatherAnalysisResponse>({
+    queryKey: ['weather-analysis'],
+    queryFn: () => authFetch<WeatherAnalysisResponse>('/api/v1/cycling/weather-analysis'),
+    staleTime: 600_000,
+    enabled: !!token,
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
@@ -139,7 +158,31 @@ export default function CyclingPage() {
     queryKey: ['chart-stream-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
+
+  // Merge the Morton 2004 fitted curve (keyed by duration seconds) into the
+  // stream power-curve chart as a second series overlay.
+  const fittedCurveData = useMemo<ChartData | undefined>(() => {
+    if (!chartPowerCurve || !powerCurve?.fitted_curve) return undefined;
+    const labelToSeconds = new Map(
+      (powerCurve.data ?? []).map((p) => [p.duration_label, p.duration_seconds])
+    );
+    const fittedValues = (chartPowerCurve.labels ?? []).map((label) => {
+      const secs = labelToSeconds.get(label);
+      if (secs == null) return null;
+      const v = powerCurve.fitted_curve?.[String(secs)];
+      return typeof v === 'number' ? v : null;
+    });
+    if (fittedValues.every((v) => v == null)) return undefined;
+    return {
+      ...chartPowerCurve,
+      series: [
+        ...chartPowerCurve.series,
+        { name: 'Fitted (CP model)', data: fittedValues, color: '#22d3ee' },
+      ],
+    };
+  }, [chartPowerCurve, powerCurve]);
 
   const [comparisonDays, setComparisonDays] = useState(30);
   const comparisonBaselineDays = comparisonDays * 3;
@@ -609,6 +652,7 @@ export default function CyclingPage() {
         <PowerCurveSection
           powerCurve={powerCurve}
           chartPowerCurve={chartPowerCurve}
+          fittedCurveData={fittedCurveData}
           curveLoading={curveLoading}
           powerZones={powerZones}
           chartPowerZones={chartPowerZones}
@@ -624,6 +668,10 @@ export default function CyclingPage() {
           chartWeightTrend={chartWeightTrend}
         />
       </div>
+
+      {/* Personalized Power Model + Weather-Performance Analysis */}
+      <PowerModelSection powerModel={powerModel} isLoading={powerModelLoading} />
+      <WeatherAnalysisSection weatherAnalysis={weatherAnalysis} isLoading={weatherLoading} />
 
       {/* Weight Management */}
       <div className="max-w-2xl">

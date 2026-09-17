@@ -96,6 +96,8 @@
 | `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
 | `WeightPanel` | **Body-weight management (Phase C §3.1)** — quick-add form (date + kg → `POST /metrics/weight`), 7-day rolling avg summary, editable/deletable history (Whoop entries read-only), invalidates `['weight-history']` + weight/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop) |
+| `PowerModelSection` | **Modal power models** — CP/W′/R² + personalized VO2max + adaptive CTL/ATL taus (`['power-model']` query, GET `/cycling/power-model`); empty state notes weekly Sunday fitting |
+| `WeatherAnalysisSection` | **Modal weather-performance** — power-vs-temp, wind penalties, decoupling threshold, HR drift, insight bullets (`['weather-analysis']` query, GET `/cycling/weather-analysis`); rendered on `/cycling` after the power model |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -138,7 +140,7 @@
 | `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
 | `RouteHistorySection` | Ride history table with personal best summary |
-| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
+| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4) **+ Modal intelligence badges (climb-type chip, difficulty score)**; expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
 | `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
 | `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
 | `DifficultyBadge` | Route difficulty badge (Easy/Moderate/Hard/Extreme from elevation/distance ratio) — extracted from `routeUtils` |
@@ -174,6 +176,7 @@
 | `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
 | `DashboardRefresh` | **§3.15 stale-data UX** — "Last updated" timestamp (freshest `dataUpdatedAt` across the 16 dashboard queries, via `queryCache.subscribe`) + manual refresh button (`refetchQueries` by query-key prefix) + spinning "Syncing…" state (`useIsFetching` predicate). Hero header next to `WeatherWidget`; all dashboard queries also set `refetchOnWindowFocus: true` |
+| `CrossDomainInsightsCard` | **Modal cross-domain** — sleep-performance / cross-sport / race-retrospective insight groups (`['cross-domain-insights']` query, GET `/cross-domain`); returns null when empty. Rendered on dashboard WeeklyTab |
 
 ### `goals/` — Goal management
 | Component | Purpose |
@@ -203,6 +206,7 @@
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
+| `IntelligenceStatusCard` | **Modal intelligence status** — per-feature fitted/not-fitted state from `CyclingProfile` (`power_model_fitted_at`, `weather_analyzed_at`) + static entries for cross-domain/segments. Rendered on `/settings` before Export Data |
 
 #### `onboarding/` — First-run wizard (§3.10)
 | Component | Purpose |

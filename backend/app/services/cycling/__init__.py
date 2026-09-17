@@ -14,6 +14,7 @@ from app.services.cycling.power_curve import (
     compute_power_curve_from_streams,
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
+    personalized_power_curve,
 )
 from app.services.cycling.power_profile import (
     POWER_PROFILE_WKG,

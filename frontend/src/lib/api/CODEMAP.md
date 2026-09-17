@@ -25,7 +25,7 @@ requests with an optional JWT Bearer token and `credentials: 'include'`.
 | `useAuthFetch()` | `hook` | Returns `{ authFetch, authFetchWithHeaders }` — injects JWT from NextAuth session. |
 
 ### `index.ts` — Barrel file
-Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `weather`, `conformity`, `projections`, `exercises`, `notifications`.
+Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `preferences`, `account`, `healthPrefs`, `crossDomain`.
 
 ### Per-module API surface
 
@@ -40,6 +40,8 @@ Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`
 | **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection` | `GoalProjectionResponse` |
 | **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
 | **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
+| **`cycling.ts`** | `/api/v1/cycling/` | `getCyclingPRs`, `createCyclingPR`, `checkCyclingPRs`, `getCyclingProfile`, `updateCyclingProfile`, `getFtpHistory`, `addFtpHistory`, `getPowerCurve`, `getLifetimePBs`, `getCyclingMetricsSummary`, **`getPowerModel`** (Modal CP/W′/VO2max/adaptive taus), **`getWeatherAnalysis`** (Modal weather-performance) | `CyclingProfile`, `PowerCurveResponse`, `PowerModelResultsResponse`, `WeatherAnalysisResponse`, `CyclingMetricsSummary` |
+| **`crossDomain.ts`** | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) | `CrossDomainInsightsResponse`, `CrossDomainInsightType` |
 
 > Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
 > analysis, workout planner, deficiency) call their endpoints **inline** via

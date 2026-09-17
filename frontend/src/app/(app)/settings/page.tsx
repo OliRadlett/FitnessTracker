@@ -2,14 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthFetch, Connection } from '@/lib/api';
+import type { CyclingProfile } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { HealthAlertSettings } from '@/components/settings/HealthAlertSettings';
+import { IntelligenceStatusCard } from '@/components/settings/IntelligenceStatusCard';
 import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
@@ -97,7 +99,7 @@ const integrations = [
 export default function SettingsPage() {
   usePageTitle('Settings');
   const { data: session } = useSession();
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const units = useUnits();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -292,6 +294,13 @@ export default function SettingsPage() {
   function getConnection(provider: string): Connection | undefined {
     return connections.find(c => c.provider === provider);
   }
+
+  const { data: cyclingProfile, isLoading: cyclingProfileLoading } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
 
   return (
     <div className="space-y-6">
@@ -528,7 +537,11 @@ export default function SettingsPage() {
         )}
       </Card>
 
+      {/* Modal Intelligence Status */}
+      <IntelligenceStatusCard profile={cyclingProfile} isLoading={cyclingProfileLoading} />
+
       {/* Export Data */}
+
       <Card>
         <CardHeader>
           <CardTitle>Export Data</CardTitle>
