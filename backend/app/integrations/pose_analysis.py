@@ -296,11 +296,18 @@ def detect_reps_from_pose(
 # ── Squat Analysis ───────────────────────────────────────────────────────────
 
 
-def _check_squat_depth(landmarks) -> bool:
-    """IPF depth: hip crease below top of knee."""
-    hip_y = np.mean([landmarks[23].y, landmarks[24].y])
-    knee_y = np.mean([landmarks[25].y, landmarks[26].y])
-    return hip_y > knee_y
+def _check_squat_depth(bottom_landmarks, bottom_knee_angle: float) -> bool:
+    """IPF depth: hip crease below top of knee.
+
+    The image-Y comparison only holds for a side view; phone videos are
+    often shot front/side-on where the hip never drops below the knee in
+    2D. Fall back to knee flexion: a true deep squat bends the knee well
+    under 95° (benchmarked bottoms read 40-65°), while partial squats stay
+    above it.
+    """
+    hip_y = np.mean([bottom_landmarks[23].y, bottom_landmarks[24].y])
+    knee_y = np.mean([bottom_landmarks[25].y, bottom_landmarks[26].y])
+    return bool(hip_y > knee_y or bottom_knee_angle < 95)
 
 
 def _check_knee_valgus(landmarks) -> str:
@@ -340,10 +347,12 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
             top_knee = angle
             top_lm = all_landmarks[i]
 
-    depth = _check_squat_depth(bottom_lm)
+    depth = _check_squat_depth(bottom_lm, bottom_knee)
     knee_angle_top = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
     hip_angle_top = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
-    lockout = knee_angle_top > 170 and hip_angle_top > 170
+    # 160° (not 170°) admits ±10° of pose jitter on true lockouts; soft
+    # lockouts still fail.
+    lockout = knee_angle_top > 160 and hip_angle_top > 160
     valgus = _check_knee_valgus(bottom_lm)
     heels = _check_heels_flat(top_lm)
     back_dev = abs(_torso_angle(top_lm))
@@ -423,7 +432,8 @@ def _deadlift_lockout(landmarks) -> bool:
     knee_angle = calculate_angle(_mid(landmarks, 23, 24), _mid(landmarks, 25, 26), _mid(landmarks, 27, 28))
     shoulder_y = np.mean([landmarks[11].y, landmarks[12].y])
     hip_y = np.mean([landmarks[23].y, landmarks[24].y])
-    return hip_angle > 170 and knee_angle > 170 and shoulder_y < hip_y
+    # 160° admits pose jitter on true lockouts (see squat lockout note).
+    return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
 
 
 def _detect_hitching(wrist_y_per_frame: list) -> bool:

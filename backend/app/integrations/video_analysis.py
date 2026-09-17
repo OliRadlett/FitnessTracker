@@ -659,7 +659,12 @@ def _estimate_pixels_per_meter(
     if p0 is None:
         return 0.0
 
-    max_disp = 0.0
+    # Accumulate signed motion into a position series and use its RANGE
+    # (one rep's excursion), not the summed path. Summing |motion| over the
+    # whole set inflates the scale by ~2x per rep (found 2026-09-17: ppm
+    # read 1331 instead of ~240 on a 3-rep synthetic).
+    pos = 0.0
+    lo = hi = 0.0
     prev_gray = frames_gray[0]
     for gray in frames_gray[1:]:
         p1, st, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, p0, None, **lk_params)
@@ -669,15 +674,33 @@ def _estimate_pixels_per_meter(
         good_old = p0[st == 1]
         if len(good_new) < 10:
             break
-        # Vertical displacement of all tracked points
-        dy = np.abs(good_new[:, 1] - good_old[:, 1])
-        median_disp = float(np.median(dy))
-        max_disp += median_disp
+        pos += _median_mover_dy(good_new, good_old)
+        lo = min(lo, pos)
+        hi = max(hi, pos)
         prev_gray = gray
 
+    excursion = hi - lo
     rom = _get_rom(exercise_name)
-    if max_disp > 10 and rom > 0:
-        return max_disp / rom
+    if excursion > 10 and rom > 0:
+        return excursion / rom
+    return 0.0
+
+
+def _median_mover_dy(good_new, good_old) -> float:
+    """Median vertical motion of features actually moving (signed).
+
+    Most features belong to the static background, so a plain median tracks
+    the background (~0), not the bar. Restrict to features above the noise
+    floor, preserving sign so concentric/eccentric phases emerge.
+    """
+    import numpy as np
+
+    dy = good_new[:, 1] - good_old[:, 1]
+    abs_dy = np.abs(dy)
+    noise_floor = max(0.5, float(np.median(abs_dy)))
+    moving = abs_dy > noise_floor
+    if np.any(moving):
+        return float(np.median(dy[moving]))
     return 0.0
 
 
@@ -736,15 +759,13 @@ def track_barbell_optical_flow(
             continue
 
         tracked_count += 1
-        # Median vertical displacement (robust to outliers).
-        # NOTE: this assumes a static (tripod) camera, which holds for lift
-        # videos. An earlier revision subtracted the global median motion as
-        # "camera motion" — but both medians were computed over the same
-        # features, so bar_motion was identically zero on every frame and no
-        # velocity was ever measured (found 2026-09-17).
-        dy = good_new[:, 1] - good_old[:, 1]
-        median_dy = float(np.median(dy))
-        bar_motion = median_dy
+        # Median motion of features actually moving (the bar/lifter), not
+        # the static-background majority. See _median_mover_dy.
+        # (Assumes a static tripod camera, which holds for lift videos.
+        # An earlier revision subtracted the global median as "camera
+        # motion" — computed over the same features, so bar_motion was
+        # identically zero on every frame. Found 2026-09-17.)
+        bar_motion = _median_mover_dy(good_new, good_old)
 
         if vertical_positions:
             vertical_positions.append(vertical_positions[-1] + bar_motion)
