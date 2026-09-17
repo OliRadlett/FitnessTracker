@@ -544,6 +544,73 @@ def _compute_similarity_matrix(
     return {"pairs": pairs}
 
 
+# ── Modal remote worker (module scope — Modal rejects closures) ───────────────
+
+
+def _analyze_routes_modal(
+    routes_json: str,
+    segments_json: str,
+    ftp: float | None,
+    weight: float | None,
+    do_similarity: bool,
+    do_terrain: bool,
+    do_effort: bool,
+) -> dict:
+    """Modal remote worker for route analysis.
+
+    Must stay at module global scope: Modal raises ``InvalidError`` for
+    functions defined inside other functions. All inputs arrive as explicit
+    arguments (JSON strings + scalars); pure-compute helpers are module globals.
+    """
+    import json as _json
+
+    routes = _json.loads(routes_json)
+    segments = _json.loads(segments_json) if segments_json else []
+
+    result: dict = {}
+
+    # Terrain classification
+    if do_terrain:
+        terrain_results: dict = {}
+        for route in routes:
+            rid = route["id"]
+            terrain_results[rid] = _classify_terrain(route.get("elevation_profile"))
+        result["terrain_classifications"] = terrain_results
+
+    # Similarity matrix
+    if do_similarity and len(routes) >= 2:
+        result["similarity_matrix"] = _compute_similarity_matrix(routes)
+    else:
+        result["similarity_matrix"] = {"pairs": {}}
+
+    # Effort predictions
+    if do_effort:
+        predictions: dict = {}
+        for route in routes:
+            rid = route["id"]
+            # Find segments for this route
+            route_segments = [s for s in segments if s.get("route_id") == rid]
+            # Also include segments from similar routes as neighbors
+            all_neighbor_segments = [
+                s for s in segments if s.get("route_id") != rid and s.get("efforts")
+            ]
+
+            terrain = result.get("terrain_classifications", {}).get(rid, {})
+            predictions[rid] = _predict_route_effort(
+                route.get("distance_meters", 0),
+                route.get("elevation_gain_meters", 0),
+                terrain,
+                route_segments + all_neighbor_segments,
+                ftp,
+                weight,
+            )
+        result["effort_predictions"] = predictions
+    else:
+        result["effort_predictions"] = {}
+
+    return result
+
+
 # ── Public API (called from Celery tasks) ────────────────────────────────────
 
 
@@ -598,68 +665,15 @@ def analyze_routes_on_modal(
 
     app = modal.App("fittrack-route-intelligence", image=image)
 
-    @app.function(timeout=300, memory=2048)
-    def _analyze(
-        routes_json: str,
-        segments_json: str,
-        ftp: float | None,
-        weight: float | None,
-        do_similarity: bool,
-        do_terrain: bool,
-        do_effort: bool,
-    ) -> dict:
-        routes = _json.loads(routes_json)
-        segments = _json.loads(segments_json) if segments_json else []
-
-        result: dict = {}
-
-        # Terrain classification
-        if do_terrain:
-            terrain_results: dict = {}
-            for route in routes:
-                rid = route["id"]
-                terrain_results[rid] = _classify_terrain(route.get("elevation_profile"))
-            result["terrain_classifications"] = terrain_results
-
-        # Similarity matrix
-        if do_similarity and len(routes) >= 2:
-            result["similarity_matrix"] = _compute_similarity_matrix(routes)
-        else:
-            result["similarity_matrix"] = {"pairs": {}}
-
-        # Effort predictions
-        if do_effort:
-            predictions: dict = {}
-            for route in routes:
-                rid = route["id"]
-                # Find segments for this route
-                route_segments = [s for s in segments if s.get("route_id") == rid]
-                # Also include segments from similar routes as neighbors
-                all_neighbor_segments = [
-                    s for s in segments if s.get("route_id") != rid and s.get("efforts")
-                ]
-
-                terrain = result.get("terrain_classifications", {}).get(rid, {})
-                predictions[rid] = _predict_route_effort(
-                    route.get("distance_meters", 0),
-                    route.get("elevation_gain_meters", 0),
-                    terrain,
-                    route_segments + all_neighbor_segments,
-                    ftp,
-                    weight,
-                )
-            result["effort_predictions"] = predictions
-        else:
-            result["effort_predictions"] = {}
-
-        return result
+    # Decorate the module-global worker (Modal rejects closures defined here).
+    remote_analyze = app.function(timeout=300, memory=2048)(_analyze_routes_modal)
 
     # Serialize data for Modal (no complex objects, just JSON-serializable dicts)
     routes_json = _json.dumps(routes_data, default=str)
     segments_json = _json.dumps(segments_data or [], default=str) if segments_data else ""
 
     with app.run():
-        return _analyze.remote(
+        return remote_analyze.remote(
             routes_json,
             segments_json,
             user_ftp,

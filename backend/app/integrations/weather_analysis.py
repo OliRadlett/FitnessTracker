@@ -472,6 +472,23 @@ def analyze_weather_performance(
     }
 
 
+# ── Modal remote worker (module scope — Modal rejects closures) ───────────────
+
+
+def _analyze_weather_modal(rides_json: str, headings_json: str | None) -> dict:
+    """Modal remote worker for weather-performance analysis.
+
+    Must stay at module global scope: Modal raises ``InvalidError`` for
+    functions defined inside other functions. All inputs arrive as explicit
+    arguments (JSON strings); ``analyze_weather_performance`` is a module global.
+    """
+    import json as _json
+
+    rides_data = _json.loads(rides_json)
+    headings_data = _json.loads(headings_json) if headings_json else None
+    return analyze_weather_performance(rides_data, headings_data)
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -506,14 +523,11 @@ def analyze_weather_on_modal(
 
     app = modal.App("fittrack-weather-analysis", image=image)
 
-    @app.function(timeout=300, memory=1024)
-    def _analyze(rides_json: str, headings_json: str | None) -> dict:
-        rides_data = _json.loads(rides_json)
-        headings_data = _json.loads(headings_json) if headings_json else None
-        return analyze_weather_performance(rides_data, headings_data)
+    # Decorate the module-global worker (Modal rejects closures defined here).
+    remote_analyze = app.function(timeout=300, memory=1024)(_analyze_weather_modal)
 
     rides_json = _json.dumps(rides)
     headings_json = _json.dumps(route_headings) if route_headings else None
 
     with app.run():
-        return _analyze.remote(rides_json, headings_json)
+        return remote_analyze.remote(rides_json, headings_json)

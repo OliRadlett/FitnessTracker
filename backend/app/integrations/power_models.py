@@ -480,6 +480,58 @@ def fit_adaptive_time_constants(
     }
 
 
+# ── Modal remote worker (module scope — Modal rejects closures) ───────────────
+
+
+def _fit_power_models_modal(
+    pc_json: str,
+    ss_json: str,
+    tss_json: str,
+    hrv_json: str,
+    weight: float | None,
+) -> dict:
+    """Modal remote worker for power model fitting.
+
+    Must stay at module global scope: Modal raises ``InvalidError`` for
+    functions defined inside other functions. All inputs arrive as explicit
+    arguments (JSON strings); pure-compute helpers are module globals.
+    """
+    import json as _json
+
+    pc_data = _json.loads(pc_json)
+    ss_data = _json.loads(ss_json) if ss_json else None
+    tss_data = _json.loads(tss_json) if tss_json else None
+    hrv = _json.loads(hrv_json) if hrv_json else None
+
+    result: dict = {}
+
+    # Critical power fitting
+    durations = pc_data.get("durations", [])
+    powers = pc_data.get("best_watts", [])
+    if durations and powers:
+        result["critical_power"] = fit_critical_power(durations, powers)
+    else:
+        result["critical_power"] = {"cp": None, "w_prime": None, "method": "no_data"}
+
+    # Personalized VO2max
+    if ss_data and len(ss_data) >= 3:
+        result["personalized_vo2max"] = fit_personalized_vo2max(ss_data, weight)
+    else:
+        result["personalized_vo2max"] = {"vo2max": None, "method": "insufficient_data"}
+
+    # Adaptive time constants
+    if tss_data and hrv_data and len(tss_data) >= 30 and len(hrv_data) >= 30:
+        result["adaptive_constants"] = fit_adaptive_time_constants(tss_data, hrv_data)
+    else:
+        result["adaptive_constants"] = {
+            "ctl_tau": 42,
+            "atl_tau": 7,
+            "method": "insufficient_data",
+        }
+
+    return result
+
+
 # ── Public API (called from Celery tasks) ────────────────────────────────────
 
 
@@ -525,46 +577,8 @@ def fit_power_models_on_modal(
 
     app = modal.App("fittrack-power-models", image=image)
 
-    @app.function(timeout=300, memory=1024)
-    def _fit(
-        pc_json: str,
-        ss_json: str,
-        tss_json: str,
-        hrv_json: str,
-        weight: float | None,
-    ) -> dict:
-        pc_data = _json.loads(pc_json)
-        ss_data = _json.loads(ss_json) if ss_json else None
-        tss_data = _json.loads(tss_json) if tss_json else None
-        hrv = _json.loads(hrv_json) if hrv_json else None
-
-        result: dict = {}
-
-        # Critical power fitting
-        durations = pc_data.get("durations", [])
-        powers = pc_data.get("best_watts", [])
-        if durations and powers:
-            result["critical_power"] = fit_critical_power(durations, powers)
-        else:
-            result["critical_power"] = {"cp": None, "w_prime": None, "method": "no_data"}
-
-        # Personalized VO2max
-        if ss_data and len(ss_data) >= 3:
-            result["personalized_vo2max"] = fit_personalized_vo2max(ss_data, weight)
-        else:
-            result["personalized_vo2max"] = {"vo2max": None, "method": "insufficient_data"}
-
-        # Adaptive time constants
-        if tss_data and hrv_data and len(tss_data) >= 30 and len(hrv_data) >= 30:
-            result["adaptive_constants"] = fit_adaptive_time_constants(tss_data, hrv_data)
-        else:
-            result["adaptive_constants"] = {
-                "ctl_tau": 42,
-                "atl_tau": 7,
-                "method": "insufficient_data",
-            }
-
-        return result
+    # Decorate the module-global worker (Modal rejects closures defined here).
+    remote_fit = app.function(timeout=300, memory=1024)(_fit_power_models_modal)
 
     # Serialize inputs
     pc_json = _json.dumps(power_curve_data)
@@ -573,4 +587,4 @@ def fit_power_models_on_modal(
     hrv_json = _json.dumps(hrv_data or [])
 
     with app.run():
-        return _fit.remote(pc_json, ss_json, tss_json, hrv_json, weight_kg)
+        return remote_fit.remote(pc_json, ss_json, tss_json, hrv_json, weight_kg)

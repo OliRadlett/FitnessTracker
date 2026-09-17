@@ -610,6 +610,53 @@ def analyze_race_retrospective(
     }
 
 
+# ── Modal remote worker (module scope — Modal rejects closures) ───────────────
+
+
+def _analyze_cross_domain_modal(
+    sleep_json: str,
+    perf_json: str,
+    lift_json: str,
+    cycle_json: str,
+    recovery_json: str,
+    race_json: str | None,
+    pre_race_json: str | None,
+    race_train_json: str | None,
+    race_weather_json: str | None,
+) -> dict:
+    """Modal remote worker for cross-domain analysis.
+
+    Must stay at module global scope: Modal raises ``InvalidError`` for
+    functions defined inside other functions. All inputs arrive as explicit
+    arguments (JSON strings); pure-compute helpers are module globals.
+    """
+    import json as _json
+
+    sleep_d = _json.loads(sleep_json)
+    perf_d = _json.loads(perf_json)
+    lift_d = _json.loads(lift_json)
+    cycle_d = _json.loads(cycle_json)
+    recovery_d = _json.loads(recovery_json)
+    race_d = _json.loads(race_json) if race_json else None
+    pre_race_d = _json.loads(pre_race_json) if pre_race_json else None
+    race_train_d = _json.loads(race_train_json) if race_train_json else None
+    race_weather_d = _json.loads(race_weather_json) if race_weather_json else None
+
+    result = {
+        "sleep_performance": analyze_sleep_performance(sleep_d, perf_d),
+        "cross_sport": analyze_cross_sport_fatigue(lift_d, cycle_d, recovery_d),
+    }
+
+    if race_d and pre_race_d:
+        result["race_retrospective"] = analyze_race_retrospective(
+            race_d, pre_race_d, race_train_d or [], race_weather_d
+        )
+    else:
+        result["race_retrospective"] = None
+
+    return result
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -665,44 +712,11 @@ def analyze_cross_domain_on_modal(
 
     app = modal.App("fittrack-cross-domain", image=image)
 
-    @app.function(timeout=300, memory=1024)
-    def _analyze(
-        sleep_json: str,
-        perf_json: str,
-        lift_json: str,
-        cycle_json: str,
-        recovery_json: str,
-        race_json: str | None,
-        pre_race_json: str | None,
-        race_train_json: str | None,
-        race_weather_json: str | None,
-    ) -> dict:
-        sleep_d = _json.loads(sleep_json)
-        perf_d = _json.loads(perf_json)
-        lift_d = _json.loads(lift_json)
-        cycle_d = _json.loads(cycle_json)
-        recovery_d = _json.loads(recovery_json)
-        race_d = _json.loads(race_json) if race_json else None
-        pre_race_d = _json.loads(pre_race_json) if pre_race_json else None
-        race_train_d = _json.loads(race_train_json) if race_train_json else None
-        race_weather_d = _json.loads(race_weather_json) if race_weather_json else None
-
-        result = {
-            "sleep_performance": analyze_sleep_performance(sleep_d, perf_d),
-            "cross_sport": analyze_cross_sport_fatigue(lift_d, cycle_d, recovery_d),
-        }
-
-        if race_d and pre_race_d:
-            result["race_retrospective"] = analyze_race_retrospective(
-                race_d, pre_race_d, race_train_d or [], race_weather_d
-            )
-        else:
-            result["race_retrospective"] = None
-
-        return result
+    # Decorate the module-global worker (Modal rejects closures defined here).
+    remote_analyze = app.function(timeout=300, memory=1024)(_analyze_cross_domain_modal)
 
     with app.run():
-        return _analyze.remote(
+        return remote_analyze.remote(
             _json.dumps(sleep_data),
             _json.dumps(performance_data),
             _json.dumps(lifting_data),
