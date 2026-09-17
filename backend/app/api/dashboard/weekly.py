@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.activity import Activity
+from app.models.cycling import CyclingPowerRecord
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.sleep import SleepLog
@@ -108,7 +109,7 @@ async def weekly_report(
     avg_sleep_secs = _safe_agg(result.scalar(), default=None)
     avg_sleep_hours = round(avg_sleep_secs / 3600, 1) if avg_sleep_secs else None
 
-    # New PRs
+    # New PRs (lifting + cycling)
     result = await db.execute(
         select(func.count(PersonalRecord.id)).where(
             PersonalRecord.user_id == uid,
@@ -116,6 +117,14 @@ async def weekly_report(
         )
     )
     new_prs = int(result.scalar() or 0)
+
+    result = await db.execute(
+        select(func.count(CyclingPowerRecord.id)).where(
+            CyclingPowerRecord.user_id == uid,
+            CyclingPowerRecord.achieved_date.between(monday, sunday),
+        )
+    )
+    new_prs += int(result.scalar() or 0)
 
     return WeeklyReport(
         week_start=monday,
@@ -321,7 +330,7 @@ async def monthly_summary(
             "time": _safe_agg(row.time),
         }
 
-    # PRs per month
+    # PRs per month (lifting + cycling)
     result = await db.execute(
         select(
             func.to_char(PersonalRecord.achieved_date, "YYYY-MM").label("month"),
@@ -336,6 +345,21 @@ async def monthly_summary(
     prs_by_month: dict[str, int] = {}
     for row in result.all():
         prs_by_month[row.month] = int(row.prs)
+
+    # Add cycling power PRs to monthly counts
+    result = await db.execute(
+        select(
+            func.to_char(CyclingPowerRecord.achieved_date, "YYYY-MM").label("month"),
+            func.count(CyclingPowerRecord.id).label("prs"),
+        )
+        .where(
+            CyclingPowerRecord.user_id == uid,
+            CyclingPowerRecord.achieved_date >= start_date,
+        )
+        .group_by("month")
+    )
+    for row in result.all():
+        prs_by_month[row.month] = prs_by_month.get(row.month, 0) + int(row.prs)
 
     # Average recovery per month
     result = await db.execute(

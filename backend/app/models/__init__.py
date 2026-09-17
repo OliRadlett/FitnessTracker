@@ -1,5 +1,5 @@
 from app.models.activity import Activity, ActivitySource, ActivityStream
-from app.models.cycling import CyclingProfile, FtpHistory
+from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
 from app.models.exercise import Exercise
@@ -40,6 +40,7 @@ __all__ = [
     "ActivitySource",
     "ActivityStream",
     "CachedWeather",
+    "CyclingPowerRecord",
     "CyclingProfile",
     "DailyMetric",
     "Event",

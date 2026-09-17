@@ -27,6 +27,28 @@ class CyclingProfileRead(BaseModel):
     home_lng: float | None = Field(
         None, ge=-180, le=180, description="Home longitude for weather lookups"
     )
+    # Personalized power model fields (fitted by Modal weekly task)
+    critical_power: float | None = Field(
+        None, description="Critical Power from Morton 2004 model (watts)"
+    )
+    w_prime: float | None = Field(
+        None, description="W' (anaerobic work capacity) in joules"
+    )
+    power_model_r_squared: float | None = Field(
+        None, description="R² fit quality of the CP model"
+    )
+    personalized_vo2max: float | None = Field(
+        None, description="VO2max from power-HR regression (ml/kg/min)"
+    )
+    ctl_tau: int | None = Field(
+        None, description="Personalized CTL time constant (days)"
+    )
+    atl_tau: int | None = Field(
+        None, description="Personalized ATL time constant (days)"
+    )
+    power_model_fitted_at: datetime | None = Field(
+        None, description="When the power model was last fitted"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -118,6 +140,13 @@ class PowerCurveResponse(BaseModel):
 
     data: list[PowerDurationPoint]
     ftp_watts: float | None = None
+    # Personalized model overlay
+    cp: float | None = Field(None, description="Critical Power (Morton 2004)")
+    w_prime: float | None = Field(None, description="W' in joules")
+    model_r_squared: float | None = Field(None, description="CP model fit quality")
+    fitted_curve: dict[str, float] | None = Field(
+        None, description="Model-predicted power at standard durations"
+    )
 
 
 class PowerZoneDistribution(BaseModel):
@@ -219,6 +248,62 @@ class PowerVsHrResponse(BaseModel):
     data: list[PowerVsHrPoint]
 
 
+# ── Cycling Power Records (PRs) ──────────────────────────────────────────────
+
+
+class CyclingPowerRecordRead(BaseModel):
+    """A single cycling power PR (best power at a duration bucket)."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    duration_label: str
+    duration_seconds: int
+    power_watts: float
+    weight_kg: float | None = None
+    w_per_kg: float | None = None
+    improvement_pct: float | None = None
+    achieved_date: date
+    activity_id: uuid.UUID | None = None
+    activity_name: str | None = None
+    notes: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CyclingPowerRecordReadWithActivity(CyclingPowerRecordRead):
+    """CyclingPowerRecordRead that eagerly includes activity metadata."""
+
+    activity_start_date: datetime | None = None
+    activity_distance_meters: float | None = None
+    activity_duration_seconds: int | None = None
+
+
+class CyclingPowerRecordCreate(BaseModel):
+    """Request to manually create a cycling power PR."""
+
+    duration_label: str
+    duration_seconds: int
+    power_watts: float = Field(..., gt=0)
+    achieved_date: date
+    notes: str | None = None
+
+
+class PrCheckRequest(BaseModel):
+    """Request to trigger PR detection."""
+
+    activity_id: uuid.UUID | None = None
+
+
+class PrCheckResponse(BaseModel):
+    """Response from a PR check operation."""
+
+    checked: int
+    new_prs: int
+    updated_prs: int
+    prs: list[CyclingPowerRecordRead]
+
+
 # ── Enhanced FTP Estimate ───────────────────────────────────────────────────
 
 
@@ -244,6 +329,53 @@ class FtpEstimateResponse(BaseModel):
     days_analyzed: int
     accepted: bool = False
     previous_ftp: float | None = None
+
+
+# ── Personalized Power Model ──────────────────────────────────────────────
+
+
+class PowerModelCriticalPower(BaseModel):
+    """Critical power model results."""
+
+    cp: float | None = Field(None, description="Critical Power (watts)")
+    w_prime: float | None = Field(None, description="W' (joules)")
+    model_r_squared: float | None = Field(None, description="R² fit quality")
+    fitted_curve: dict[str, float] | None = Field(
+        None, description="Model-predicted power at standard durations"
+    )
+    method: str | None = None
+    data_points_used: int = 0
+
+
+class PowerModelPersonalizedVo2max(BaseModel):
+    """Personalized VO2max from power-HR regression."""
+
+    vo2max: float | None = None
+    method: str | None = None
+    r_squared: float | None = None
+    regression_slope: float | None = None
+    regression_intercept: float | None = None
+    data_points_used: int = 0
+
+
+class PowerModelAdaptiveConstants(BaseModel):
+    """Personalized CTL/ATL time constants."""
+
+    ctl_tau: int = 42
+    atl_tau: int = 7
+    improvement_pct: float | None = None
+    correlation: float | None = None
+    method: str | None = None
+    data_points_used: int = 0
+
+
+class PowerModelResultsResponse(BaseModel):
+    """Complete personalized power model results."""
+
+    critical_power: PowerModelCriticalPower | None = None
+    personalized_vo2max: PowerModelPersonalizedVo2max | None = None
+    adaptive_constants: PowerModelAdaptiveConstants | None = None
+    fitted_at: datetime | None = None
 
 
 # ── VO2max Estimation ─────────────────────────────────────────────────────

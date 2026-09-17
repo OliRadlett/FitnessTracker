@@ -7,6 +7,7 @@ import type {
   CyclingProfile,
   CyclingProfileUpdate,
   CyclingMetricsSummary,
+  CyclingPowerRecord,
   TrainingLoadResponse,
   PowerCurveResponse,
   PowerZonesResponse,
@@ -21,6 +22,7 @@ import type {
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
 } from '@/lib/api';
+import { type PREvent } from '@/components/ui/PRCelebration';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
@@ -34,7 +36,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
@@ -234,6 +236,43 @@ export default function CyclingPage() {
     queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
     staleTime: 300_000,
+  });
+
+  // ── Cycling Power PRs ───────────────────────────────────────────────────
+  const { data: cyclingPRs, isLoading: cyclingPRsLoading, refetch: refetchPRs } = useQuery<CyclingPowerRecord[]>({
+    queryKey: ['cycling-prs'],
+    queryFn: () => authFetch<CyclingPowerRecord[]>('/api/v1/cycling/prs'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
+
+  const checkPRsMutation = useMutation({
+    mutationFn: () => authFetch<{ checked: number; new_prs: number; updated_prs: number; prs: CyclingPowerRecord[] }>(
+      '/api/v1/cycling/prs/check',
+      { method: 'POST', body: JSON.stringify({}) }
+    ),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['cycling-prs'] });
+      if (data.prs && data.prs.length > 0) {
+        // Celebrate the first new PR (improvement_pct > 0 or null = new)
+        const newPR = data.prs.find(p => p.improvement_pct === null || (p.improvement_pct ?? 0) > 0);
+        if (newPR) {
+          setCelebrationPR({
+            type: 'cycling',
+            duration_label: newPR.duration_label,
+            new_power: newPR.power_watts,
+            previous_power: null,
+            improvement_pct: newPR.improvement_pct ?? null,
+            w_per_kg: newPR.w_per_kg,
+          });
+        }
+      }
+    },
+    onError: (error: Error) => {
+      console.error('PR check failed:', error.message);
+    },
   });
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -610,6 +649,13 @@ export default function CyclingPage() {
           backfillFtpResult={backfillFtpResult}
           onBackfillFtp={() => backfillFtpHistoryMutation.mutate()}
           isBackfillingFtp={backfillFtpHistoryMutation.isPending}
+          cyclingPRs={cyclingPRs}
+          cyclingPRsLoading={cyclingPRsLoading}
+          celebrationPR={celebrationPR}
+          onDismissCelebration={() => setCelebrationPR(null)}
+          onCheckPRs={() => checkPRsMutation.mutate()}
+          isCheckingPRs={checkPRsMutation.isPending}
+          onInvalidatePRs={() => { void refetchPRs(); }}
         />
       </div>
     </div>

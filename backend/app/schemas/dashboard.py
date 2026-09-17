@@ -130,6 +130,11 @@ class PRHighlight(BaseModel):
     estimated_1rm: float | None = None
     achieved_date: date
     improvement_pct: float | None = None
+    # Cycling PR fields (populated when pr_type == "cycling")
+    pr_type: str | None = None  # "lifting" | "cycling"
+    power_watts: float | None = None
+    w_per_kg: float | None = None
+    duration_label: str | None = None
 
 
 class BestActivity(BaseModel):

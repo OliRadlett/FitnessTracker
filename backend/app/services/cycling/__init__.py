@@ -19,6 +19,13 @@ from app.services.cycling.power_profile import (
     POWER_PROFILE_WKG,
     percentile_wkg_at,
 )
+from app.services.cycling.prs import (
+    check_and_record_cycling_prs,
+    check_cycling_prs_all_activities,
+    compute_activity_power_curve,
+    create_manual_cycling_pr,
+    get_cycling_prs,
+)
 from app.services.cycling.training_load import (
     ATL_DAYS,
     CTL_DAYS,

@@ -18,7 +18,7 @@ from sqlalchemy.inspection import inspect as sa_inspect
 from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity, ActivitySource, ActivityStream
-from app.models.cycling import CyclingProfile, FtpHistory
+from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
 from app.models.exercise import Exercise
@@ -125,6 +125,10 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
         "personal_records": [
             _serialize_row(r)
             for r in await _query_user_rows(db, PersonalRecord, user_id)
+        ],
+        "cycling_power_records": [
+            _serialize_row(r)
+            for r in await _query_user_rows(db, CyclingPowerRecord, user_id)
         ],
         "events": [
             _serialize_row(r) for r in await _query_user_rows(db, Event, user_id)

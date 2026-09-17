@@ -30,7 +30,7 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
-import { VideoChip } from '@/components/lifting/VideoEmbed';
+import { VideoChip } from '@/components/lifting/VideoChip';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -38,7 +38,7 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
-import { DeficiencyCard } from '@/components/dashboard/DeficiencyCard';
+import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,21 +267,23 @@ export default function LiftingPage() {
         const prev1rm = previousPRsRef.current.get(exercise);
         if (prev1rm !== undefined && new1rm > prev1rm) {
           const improvementPct = ((new1rm - prev1rm) / prev1rm) * 100;
-          setCelebrationPR({
-            exercise_name: exercise,
-            new_1rm: new1rm,
-            previous_1rm: prev1rm,
-            improvement_pct: improvementPct,
-          });
+           setCelebrationPR({
+             type: 'lifting',
+             exercise_name: exercise,
+             new_1rm: new1rm,
+             previous_1rm: prev1rm,
+             improvement_pct: improvementPct,
+           });
           break; // celebrate one at a time
         } else if (prev1rm === undefined) {
           // Brand new exercise PR
-          setCelebrationPR({
-            exercise_name: exercise,
-            new_1rm: new1rm,
-            previous_1rm: null,
-            improvement_pct: null,
-          });
+           setCelebrationPR({
+             type: 'lifting',
+             exercise_name: exercise,
+             new_1rm: new1rm,
+             previous_1rm: null,
+             improvement_pct: null,
+           });
           break;
         }
       }

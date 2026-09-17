@@ -103,6 +103,7 @@ async def _create_activity_from_strava(
         average_heartrate=_safe_float(sa.get("average_heartrate")),
         max_heartrate=_safe_float(sa.get("max_heartrate")),
         average_power=_safe_float(sa.get("average_watts")),
+        max_power=_safe_float(sa.get("max_watts")),
         normalized_power=_safe_float(sa.get("weighted_average_watts")),
         average_speed=_safe_float(sa.get("average_speed")),
         average_cadence=_safe_float(sa.get("average_cadence")),
@@ -248,6 +249,7 @@ async def sync_activities(
                     "average_heartrate": _safe_float(sa.get("average_heartrate")),
                     "max_heartrate": _safe_float(sa.get("max_heartrate")),
                     "average_power": _safe_float(sa.get("average_watts")),
+                    "max_power": _safe_float(sa.get("max_watts")),
                     "normalized_power": _safe_float(sa.get("weighted_average_watts")),
                     "average_speed": _safe_float(sa.get("average_speed")),
                     "average_cadence": _safe_float(sa.get("average_cadence")),
@@ -346,6 +348,16 @@ async def sync_activities(
     )
     if context_stored:
         await db.flush()
+
+    # Detect cycling power PRs from newly synced activities — §PR
+    from app.services.cycling import check_and_record_cycling_prs
+
+    for activity in synced:
+        if activity.sport_type == "cycling" and activity.provider_activity_id:
+            try:
+                await check_and_record_cycling_prs(db, user_id, activity)
+            except Exception:
+                pass  # PRs are best-effort — don't fail the full sync
 
     # Auto-link newly synced strength activities to lifting sessions
     for activity in synced:

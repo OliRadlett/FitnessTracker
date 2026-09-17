@@ -53,12 +53,26 @@ async def get_power_curve(
     """Get the best power curve from actual power stream data.
 
     For each duration bucket (5s to 120min), finds the best average power
-    using a rolling average over power streams.
+    using a rolling average over power streams. Includes personalized
+    model overlay (CP/W') if available.
     """
     best_power = await compute_power_curve_from_streams(db, current_user.id, days)
 
     profile = await get_or_create_cycling_profile(db, current_user.id)
     ftp = profile.ftp_watts
+
+    # Include personalized model overlay if fitted
+    cp = profile.critical_power
+    w_prime = profile.w_prime
+    model_r_squared = profile.power_model_r_squared
+    fitted_curve = None
+
+    if cp and w_prime:
+        from app.services.cycling.power_curve import personalized_power_curve
+
+        fitted_curve_raw = personalized_power_curve(cp, w_prime)
+        # Convert int keys to string keys for JSON compatibility
+        fitted_curve = {str(k): v for k, v in fitted_curve_raw.items()}
 
     data = []
     for duration_sec, label in POWER_DURATION_BUCKETS:
@@ -70,7 +84,14 @@ async def get_power_curve(
             )
         )
 
-    return PowerCurveResponse(data=data, ftp_watts=ftp)
+    return PowerCurveResponse(
+        data=data,
+        ftp_watts=ftp,
+        cp=cp,
+        w_prime=w_prime,
+        model_r_squared=model_r_squared,
+        fitted_curve=fitted_curve,
+    )
 
 
 # ── Power Zones ──────────────────────────────────────────────────────────────
@@ -424,16 +445,31 @@ async def get_lifetime_power_pbs(
 ):
     """Get lifetime best power records at each duration bucket.
 
-    Uses all-time power stream data (no date filter).
+    Uses all-time power stream data (no date filter). Enriches each entry
+    with ``date_achieved``, ``activity_id`` and ``improvement_pct`` from
+    the stored ``CyclingPowerRecord`` rows when they exist.
     """
+    from app.models.cycling import CyclingPowerRecord
+
     best_power = await compute_power_curve_from_streams(
         db, current_user.id, days=3650
     )  # ~10 years
     profile = await get_or_create_cycling_profile(db, current_user.id)
 
+    # Fetch stored PRs for this user to enrich the lifetime PBs with dates
+    pr_result = await db.execute(
+        select(CyclingPowerRecord).where(
+            CyclingPowerRecord.user_id == current_user.id,
+        )
+    )
+    stored_prs: dict[str, CyclingPowerRecord] = {
+        pr.duration_label: pr for pr in pr_result.scalars().all()
+    }
+
     pbs = []
     for duration_sec, label in POWER_DURATION_BUCKETS:
         power = best_power.get(duration_sec)
+        pr = stored_prs.get(label)
         pbs.append(
             {
                 "duration_label": label,
@@ -442,6 +478,26 @@ async def get_lifetime_power_pbs(
                 "pct_ftp": round(power / profile.ftp_watts * 100, 1)
                 if power and profile.ftp_watts
                 else None,
+                "date_achieved": pr.achieved_date.isoformat() if pr else None,
+                "activity_id": str(pr.activity_id) if pr and pr.activity_id else None,
+                "improvement_pct": pr.improvement_pct if pr else None,
+            }
+        )
+
+    # Add max (1-second peak) from stored PRs if available
+    max_pr = stored_prs.get("max")
+    if max_pr:
+        pbs.append(
+            {
+                "duration_label": "max",
+                "duration_seconds": 1,
+                "best_power_watts": max_pr.power_watts,
+                "pct_ftp": round(max_pr.power_watts / profile.ftp_watts * 100, 1)
+                if max_pr.power_watts and profile.ftp_watts
+                else None,
+                "date_achieved": max_pr.achieved_date.isoformat(),
+                "activity_id": str(max_pr.activity_id) if max_pr.activity_id else None,
+                "improvement_pct": max_pr.improvement_pct,
             }
         )
 
@@ -780,4 +836,77 @@ async def get_suggested_cycle(
         latest_hrv=round(latest_hrv, 1) if latest_hrv is not None else None,
         days=days,
         summary=summary,
+    )
+
+
+# ── Personalized Power Model Results ───────────────────────────────────────
+
+
+@router.get("/power-model", response_model=None)
+async def get_power_model_results(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get personalized power model results (CP, VO2max, adaptive constants).
+
+    Returns the fitted model parameters stored in the user's cycling profile.
+    Models are fitted weekly by the `fit_personalized_power_models` Celery task.
+    Returns 404 if no model has been fitted yet.
+    """
+    from app.models.cycling import CyclingProfile
+    from app.schemas.cycling import (
+        PowerModelAdaptiveConstants,
+        PowerModelCriticalPower,
+        PowerModelPersonalizedVo2max,
+        PowerModelResultsResponse,
+    )
+
+    result = await db.execute(
+        select(CyclingProfile).where(CyclingProfile.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if not profile or not profile.power_model_fitted_at:
+        raise HTTPException(
+            status_code=404,
+            detail="Power model not yet fitted. Models are fitted weekly on Sundays.",
+        )
+
+    # Build response from stored profile fields
+    cp_result = None
+    if profile.critical_power is not None:
+        from app.services.cycling.power_curve import personalized_power_curve
+
+        fitted_curve_raw = personalized_power_curve(
+            profile.critical_power, profile.w_prime or 0
+        )
+        fitted_curve = {str(k): v for k, v in fitted_curve_raw.items()}
+        cp_result = PowerModelCriticalPower(
+            cp=profile.critical_power,
+            w_prime=profile.w_prime,
+            model_r_squared=profile.power_model_r_squared,
+            fitted_curve=fitted_curve,
+            method="morton_2004",
+        )
+
+    vo2max_result = None
+    if profile.personalized_vo2max is not None:
+        vo2max_result = PowerModelPersonalizedVo2max(
+            vo2max=profile.personalized_vo2max,
+            method="power_hr_regression",
+        )
+
+    constants_result = None
+    if profile.ctl_tau is not None or profile.atl_tau is not None:
+        constants_result = PowerModelAdaptiveConstants(
+            ctl_tau=profile.ctl_tau or 42,
+            atl_tau=profile.atl_tau or 7,
+            method="hrv_recovery_fit",
+        )
+
+    return PowerModelResultsResponse(
+        critical_power=cp_result,
+        personalized_vo2max=vo2max_result,
+        adaptive_constants=constants_result,
+        fitted_at=profile.power_model_fitted_at,
     )

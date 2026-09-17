@@ -241,6 +241,156 @@ class TestFtpHistory:
         assert len(resp.json()) >= 1
 
 
+# ── Cycling Power PRs ───────────────────────────────────────────────────────
+
+
+class TestCyclingPRs:
+    """GET/POST /api/v1/cycling/prs and POST /prs/check."""
+
+    async def test_list_prs_empty(self, client, test_cycling_profile):
+        """GET /prs returns empty list when no PRs exist."""
+        resp = await client.get("/api/v1/cycling/prs")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_create_manual_pr(
+        self, client, test_cycling_profile
+    ):
+        """POST /prs creates a PR manually."""
+        from datetime import date
+
+        resp = await client.post(
+            "/api/v1/cycling/prs",
+            json={
+                "duration_label": "5min",
+                "duration_seconds": 300,
+                "power_watts": 300.0,
+                "achieved_date": str(date.today()),
+                "notes": "Ramp test",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["duration_label"] == "5min"
+        assert data["power_watts"] == 300.0
+        assert data["w_per_kg"] is not None
+        # Weight is 75.0 from the profile fixture
+        assert abs(data["w_per_kg"] - 4.0) < 0.01  # 300 / 75 = 4.0
+
+    async def test_create_pr_updates_existing(
+        self, client, test_cycling_profile
+    ):
+        """POST /prs with higher power updates the existing PR."""
+        from datetime import date
+
+        # Create initial PR
+        await client.post(
+            "/api/v1/cycling/prs",
+            json={
+                "duration_label": "5min",
+                "duration_seconds": 300,
+                "power_watts": 300.0,
+                "achieved_date": str(date.today()),
+                "notes": "First",
+            },
+        )
+
+        # Beat it with higher power
+        resp = await client.post(
+            "/api/v1/cycling/prs",
+            json={
+                "duration_label": "5min",
+                "duration_seconds": 300,
+                "power_watts": 320.0,
+                "achieved_date": str(date.today()),
+                "notes": "Improved",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["power_watts"] == 320.0
+        assert data["improvement_pct"] is not None
+        assert data["improvement_pct"] > 0
+
+    async def test_create_pr_lower_power_no_change(
+        self, client, test_cycling_profile
+    ):
+        """POST /prs with lower power returns the existing (higher) PR."""
+        from datetime import date
+
+        # Create PR at 320W
+        await client.post(
+            "/api/v1/cycling/prs",
+            json={
+                "duration_label": "5min",
+                "duration_seconds": 300,
+                "power_watts": 320.0,
+                "achieved_date": str(date.today()),
+            },
+        )
+
+        # Try to set a lower value
+        resp = await client.post(
+            "/api/v1/cycling/prs",
+            json={
+                "duration_label": "5min",
+                "duration_seconds": 300,
+                "power_watts": 300.0,
+                "achieved_date": str(date.today()),
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["power_watts"] == 320.0  # unchanged
+
+    async def test_check_prs_single_activity(
+        self, client, test_cycling_profile, test_activity
+    ):
+        """POST /prs/check with activity_id detects PRs from that activity."""
+        resp = await client.post(
+            "/api/v1/cycling/prs/check",
+            json={"activity_id": str(test_activity.id)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["checked"] == 1
+        assert data["updated_prs"] > 0
+
+        # Verify PRs were created
+        resp = await client.get("/api/v1/cycling/prs")
+        assert resp.status_code == 200
+        prs = resp.json()
+        assert len(prs) > 0
+        labels = [p["duration_label"] for p in prs]
+        # Activity has 360 data points at 10s resolution (1 hour total)
+        # So buckets up to 5min (300 data points) are computable
+        assert "max" in labels
+        assert "5min" in labels
+        assert "1min" in labels
+        assert "5s" in labels
+
+    async def test_check_prs_all_activities(
+        self, client, test_cycling_profile, test_activity
+    ):
+        """POST /prs/check without activity_id does a full rescan."""
+        resp = await client.post(
+            "/api/v1/cycling/prs/check",
+            json={},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["updated_prs"] > 0
+
+    async def test_check_prs_nonexistent_activity(
+        self, client, test_cycling_profile
+    ):
+        """POST /prs/check with a non-existent activity_id returns 404."""
+        resp = await client.post(
+            "/api/v1/cycling/prs/check",
+            json={"activity_id": "00000000-0000-0000-0000-000000000000"},
+        )
+        assert resp.status_code == 404
+
 # ── Power Zones ───────────────────────────────────────────────────────────
 
 

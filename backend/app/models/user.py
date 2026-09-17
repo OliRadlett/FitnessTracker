@@ -59,6 +59,9 @@ class User(Base):
     personal_records: Mapped[list["PersonalRecord"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
+    cycling_power_records: Mapped[list["CyclingPowerRecord"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
     health_alerts: Mapped[list["HealthAlert"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]

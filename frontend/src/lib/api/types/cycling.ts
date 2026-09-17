@@ -59,6 +59,43 @@ export interface PowerDurationPoint {
   duration_seconds: number;
   best_power_watts?: number;
   date_achieved?: string;
+  activity_id?: string | null;
+  improvement_pct?: number | null;
+}
+
+export interface CyclingPowerRecord {
+  id: string;
+  user_id: string;
+  duration_label: string;
+  duration_seconds: number;
+  power_watts: number;
+  weight_kg?: number | null;
+  w_per_kg?: number | null;
+  improvement_pct?: number | null;
+  achieved_date: string;
+  activity_id?: string | null;
+  activity_name?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CyclingPowerRecordCreate {
+  duration_label: string;
+  duration_seconds: number;
+  power_watts: number;
+  achieved_date: string;
+  notes?: string | null;
+}
+
+export interface PrCheckRequest {
+  activity_id?: string | null;
+}
+
+export interface PrCheckResponse {
+  checked: number;
+  new_prs: number;
+  updated_prs: number;
+  prs: CyclingPowerRecord[];
 }
 
 export interface PowerCurveResponse {
@@ -177,6 +214,9 @@ export interface LifetimePB {
   duration_seconds: number;
   best_power_watts: number | null;
   pct_ftp: number | null;
+  date_achieved?: string | null;
+  activity_id?: string | null;
+  improvement_pct?: number | null;
 }
 
 export interface LifetimePBsResponse {

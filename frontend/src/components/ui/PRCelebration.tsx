@@ -2,12 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 
-export interface PREvent {
-  exercise_name: string;
-  new_1rm: number;
-  previous_1rm: number | null;
-  improvement_pct: number | null;
-}
+export type PREvent =
+  | { type: 'lifting'; exercise_name: string; new_1rm: number; previous_1rm: number | null; improvement_pct: number | null }
+  | { type: 'cycling'; duration_label: string; new_power: number; previous_power: number | null; improvement_pct: number | null; w_per_kg?: number | null };
 
 interface PRCelebrationProps {
   pr: PREvent | null;
@@ -17,6 +14,7 @@ interface PRCelebrationProps {
 /**
  * Animated toast notification shown when a new PR is detected.
  * Auto-dismisses after 8 seconds with scale + fade-in CSS animations.
+ * Supports both lifting PRs (1RM) and cycling power PRs (watts/Wkg).
  */
 export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
   const [visible, setVisible] = useState(false);
@@ -62,37 +60,85 @@ export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
             <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-1">
               🎉 New Personal Record!
             </p>
-            <p className="text-lg font-bold text-white truncate">{pr.exercise_name}</p>
 
-            <div className="mt-2 flex items-center gap-3">
-              <div className="text-center">
-                <p className="text-2xl font-extrabold text-yellow-300">
-                  {pr.new_1rm.toFixed(1)}
-                </p>
-                <p className="text-[10px] text-yellow-400/70 uppercase">Est. 1RM (kg)</p>
-              </div>
+            {pr.type === 'lifting' ? (
+              <>
+                <p className="text-lg font-bold text-white truncate">{pr.exercise_name}</p>
 
-              {pr.previous_1rm !== null && (
-                <>
-                  <div className="text-muted text-lg">→</div>
+                <div className="mt-2 flex items-center gap-3">
                   <div className="text-center">
-                    <p className="text-sm text-muted line-through">
-                      {pr.previous_1rm.toFixed(1)}
+                    <p className="text-2xl font-extrabold text-yellow-300">
+                      {pr.new_1rm.toFixed(1)}
                     </p>
-                    <p className="text-[10px] text-muted">Previous</p>
+                    <p className="text-[10px] text-yellow-400/70 uppercase">Est. 1RM (kg)</p>
                   </div>
-                </>
-              )}
 
-              {pr.improvement_pct !== null && pr.improvement_pct > 0 && (
-                <div className="text-center ml-auto">
-                  <p className="text-lg font-bold text-positive">
-                    +{pr.improvement_pct.toFixed(1)}%
-                  </p>
-                  <p className="text-[10px] text-positive/70">Improvement</p>
+                  {pr.previous_1rm !== null && (
+                    <>
+                      <div className="text-muted text-lg">→</div>
+                      <div className="text-center">
+                        <p className="text-sm text-muted line-through">
+                          {pr.previous_1rm.toFixed(1)}
+                        </p>
+                        <p className="text-[10px] text-muted">Previous</p>
+                      </div>
+                    </>
+                  )}
+
+                  {pr.improvement_pct !== null && pr.improvement_pct > 0 && (
+                    <div className="text-center ml-auto">
+                      <p className="text-lg font-bold text-positive">
+                        +{pr.improvement_pct.toFixed(1)}%
+                      </p>
+                      <p className="text-[10px] text-positive/70">Improvement</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-bold text-white truncate">{pr.duration_label} Power</p>
+
+                <div className="mt-2 flex items-center gap-3">
+                  <div className="text-center">
+                    <p className="text-2xl font-extrabold text-yellow-300">
+                      {pr.new_power.toFixed(0)} W
+                    </p>
+                    <p className="text-[10px] text-yellow-400/70 uppercase">Best Power</p>
+                  </div>
+
+                  {pr.w_per_kg !== null && pr.w_per_kg !== undefined && (
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-positive">
+                        {pr.w_per_kg.toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-positive/70 uppercase">W/kg</p>
+                    </div>
+                  )}
+
+                  {pr.previous_power !== null && (
+                    <>
+                      <div className="text-muted text-lg">→</div>
+                      <div className="text-center">
+                        <p className="text-sm text-muted line-through">
+                          {pr.previous_power.toFixed(0)} W
+                        </p>
+                        <p className="text-[10px] text-muted">Previous</p>
+                      </div>
+                    </>
+                  )}
+
+                  {pr.improvement_pct !== null && pr.improvement_pct > 0 && (
+                    <div className="text-center ml-auto">
+                      <p className="text-lg font-bold text-positive">
+                        +{pr.improvement_pct.toFixed(1)}%
+                      </p>
+                      <p className="text-[10px] text-positive/70">Improvement</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           <button

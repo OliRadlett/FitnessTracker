@@ -165,6 +165,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.backfill_activity_context",
         "schedule": crontab(hour=3, minute=30, day_of_week=0),
     },
+    # Fit personalized power models weekly (Sunday 5:30 AM UTC, post streams/FTP)
+    "fit-personalized-power-models": {
+        "task": "app.tasks.scheduler.fit_personalized_power_models",
+        "schedule": crontab(hour=5, minute=30, day_of_week=0),
+        "options": {"expires": 7200},
+    },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
@@ -1151,6 +1157,169 @@ def backfill_activity_context() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.fit_personalized_power_models")
+def fit_personalized_power_models() -> dict:
+    """Fit personalized power models for all cycling users via Modal.
+
+    Runs weekly (Sunday 5:30 AM UTC). For each user with cycling activities:
+    1. Computes the best power curve from streams → fits CP/W' (Morton 2004)
+    2. Collects steady-state rides → fits personalized VO2max from power-HR regression
+    3. Collects daily TSS + HRV → fits adaptive CTL/ATL time constants
+
+    Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity, ActivityStream
+    from app.models.cycling import CyclingPowerRecord, CyclingProfile
+    from app.models.user import User
+    from app.services.cycling.power_curve import (
+        POWER_DURATION_BUCKETS,
+        compute_power_curve_from_streams,
+    )
+
+    async def _run():
+        import json
+
+        from app.integrations.power_models import (
+            _modal_configured,
+            fit_personalized_vo2max,
+            fit_power_models_on_modal,
+        )
+
+        if not _modal_configured():
+            return {"skipped": True, "reason": "Modal not configured"}
+
+        async with task_session() as db:
+            # Get all users with a cycling profile
+            result = await db.execute(
+                select(CyclingProfile.user_id).distinct()
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            fitted_count = 0
+            errors: list[str] = []
+
+            for uid in user_ids:
+                try:
+                    # 1. Build power curve data from CyclingPowerRecord
+                    result = await db.execute(
+                        select(CyclingPowerRecord).where(
+                            CyclingPowerRecord.user_id == uid
+                        )
+                    )
+                    records = list(result.scalars().all())
+
+                    durations = []
+                    best_watts = []
+                    for rec in records:
+                        if rec.duration_seconds and rec.power_watts:
+                            durations.append(rec.duration_seconds)
+                            best_watts.append(rec.power_watts)
+
+                    # Fall back to stream-based curve if no records
+                    if not durations:
+                        best_power = await compute_power_curve_from_streams(
+                            db, uid, days=90
+                        )
+                        durations = list(best_power.keys())
+                        best_watts = list(best_power.values())
+
+                    if not durations:
+                        continue
+
+                    power_curve_data = {
+                        "durations": durations,
+                        "best_watts": best_watts,
+                    }
+
+                    # 2. Collect steady-state rides for VO2max fitting
+                    # (activities >20min with relatively stable power)
+                    result = await db.execute(
+                        select(Activity).where(
+                            Activity.user_id == uid,
+                            Activity.sport_type == "cycling",
+                            Activity.moving_time >= 1200,  # >20min
+                            Activity.average_power.isnot(None),
+                            Activity.average_heartrate.isnot(None),
+                        ).order_by(Activity.start_date.desc()).limit(100)
+                    )
+                    activities = list(result.scalars().all())
+
+                    steady_state_rides = []
+                    for act in activities:
+                        if (
+                            act.average_power
+                            and act.average_power > 0
+                            and act.average_heartrate
+                            and act.average_heartrate > 0
+                        ):
+                            steady_state_rides.append(
+                                {
+                                    "avg_watts": float(act.average_power),
+                                    "avg_hr": float(act.average_heartrate),
+                                    "duration_seconds": int(act.moving_time),
+                                }
+                            )
+
+                    # 3. Get weight
+                    profile_result = await db.execute(
+                        select(CyclingProfile).where(
+                            CyclingProfile.user_id == uid
+                        )
+                    )
+                    profile = profile_result.scalar_one_or_none()
+                    weight = profile.weight_kg if profile else None
+
+                    # 4. Call Modal
+                    results = fit_power_models_on_modal(
+                        power_curve_data=power_curve_data,
+                        steady_state_rides=steady_state_rides,
+                        weight_kg=weight,
+                    )
+
+                    # 5. Store results in CyclingProfile
+                    if profile and results.get("critical_power"):
+                        cp_result = results["critical_power"]
+                        if cp_result.get("cp"):
+                            profile.critical_power = cp_result["cp"]
+                            profile.w_prime = cp_result.get("w_prime")
+                            profile.power_model_r_squared = cp_result.get(
+                                "model_r_squared"
+                            )
+                        vo2_result = results.get("personalized_vo2max", {})
+                        if vo2_result.get("vo2max"):
+                            profile.personalized_vo2max = vo2_result["vo2max"]
+                        constants = results.get("adaptive_constants", {})
+                        if constants.get("ctl_tau"):
+                            profile.ctl_tau = constants["ctl_tau"]
+                        if constants.get("atl_tau"):
+                            profile.atl_tau = constants["atl_tau"]
+                        profile.power_model_fitted_at = func.now()
+
+                        fitted_count += 1
+                        await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fit power model for user {uid}: {e}",
+                        exc_info=True,
+                    )
+                    errors.append(str(uid))
+                    await db.rollback()
+
+            return {
+                "users_checked": len(user_ids),
+                "models_fitted": fitted_count,
+                "errors": errors,
+            }
+
+    return asyncio.run(_run_task_guarded("fit_personalized_power_models", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.auto_estimate_ftp_weekly")
