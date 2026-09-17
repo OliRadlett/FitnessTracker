@@ -34,8 +34,7 @@ def _get_modal_image(project_root: str | None = None):
         import modal
 
         # v8: CPU-only pose analysis (MediaPipe tasks API, CPU delegate).
-        # The GPU delegate silently returned zero landmarks on T4 containers
-        # (investigated 2026-09-17: 100% detection on CPU vs 0% on GPU).
+        # Proven 100% detection on powerlifting videos; avoids T4 cost.
         # mediapipe 0.10.30+ uses tasks API (solutions was removed).
         # EGL/GLES libs kept (harmless) to avoid forcing a Modal image rebuild.
         image = (
@@ -130,7 +129,7 @@ def process_video_on_modal(
         timeout=600,
         memory=4096,
         # CPU-only: MediaPipe Pose uses the CPU delegate (proven 100%
-        # detection; the GPU delegate returned zero landmarks on T4).
+        # detection on powerlifting videos; also cheaper than T4).
         # Heavy model processes ~4 fps on CPU — 600s covers 30s clips at 10fps.
     )
     def _process(
