@@ -33,12 +33,18 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
-        # v6: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
+        # v7: Local pose analysis (MediaPipe tasks API) — zero Gemini API calls
         # mediapipe 0.10.30+ uses tasks API (solutions was removed)
         # GPU T4 requested on the function — Modal handles CUDA drivers automatically
+        # EGL/GLES libs required by mediapipe's GPU delegate even on GPU containers
         image = (
             modal.Image.debian_slim(python_version="3.12")
-            .apt_install("ffmpeg")
+            .apt_install(
+                "ffmpeg",
+                "libegl1-mesa",
+                "libgles2-mesa",
+                "libglib2.0-0",
+            )
             .pip_install(
                 "httpx",
                 "opencv-python-headless",

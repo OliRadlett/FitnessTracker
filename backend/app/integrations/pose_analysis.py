@@ -57,7 +57,10 @@ def extract_pose_landmarks(
         logger.info("Downloaded pose landmarker model: %d bytes", model_path.stat().st_size)
 
     # Create PoseLandmarker with video running mode
-    base_options = BaseOptions(model_asset_path=str(model_path))
+    base_options = BaseOptions(
+        model_asset_path=str(model_path),
+        delegate=BaseOptions.Delegate.GPU,
+    )
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=vision.RunningMode.VIDEO,
