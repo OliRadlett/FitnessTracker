@@ -130,6 +130,23 @@ python fittrack.py exec backend alembic upgrade head
 2. After sync/service/Celery changes: check logs — `python fittrack.py logs backend --tail 30`.
 3. Before finishing any code change: run relevant tests + `ruff check` (backend) or `tsc --noEmit` (frontend).
 
+## Video Pipeline Local Runs
+
+The lift-video pipeline (Modal) can run end-to-end on a dev machine in
+~1 min — no Modal credits, no R2, no prod deploy. Needs Python 3.12
+(host Python 3.14 can't import mediapipe) with mediapipe + opencv + numpy:
+
+```powershell
+py -3.12 -m venv C:\Users\oradl\.venvs\fittrack-video
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe -m pip install numpy opencv-python-headless mediapipe
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe scripts/run_video_local.py <video.mp4> [--trim-start S --trim-end E] [--exercise Squat] [--skip-flow] [--dump-trajectories]
+```
+
+Mirrors `modal_client._process` steps 1–8 using the repo's own
+`pose_analysis`/`video_analysis` modules; writes `<video>.analysis.json`.
+Always iterate here first — only ship to prod (PR → CI → merge → Deploy)
+once the local run is green on a real video.
+
 ## OpenCode Permissions
 
 Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.
