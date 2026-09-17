@@ -575,6 +575,313 @@ def extract_rep_frames(
     return frames
 
 
+# ── OpenCV Optical Flow Velocity Estimation ──────────────────────────────────
+
+
+def _smooth_signal(signal, window: int = 5):
+    """Simple moving average smoothing (no scipy dependency)."""
+    import numpy as np
+
+    if len(signal) < window:
+        return signal
+    kernel = np.ones(window) / window
+    return np.convolve(signal, kernel, mode="same")
+
+
+def _extract_frames_gray(
+    input_path: Path, tmpdir: str, trim_start: float, trim_end: float, fps: float = 10.0
+):
+    """Extract grayscale frames from video segment using ffmpeg.
+
+    Returns list of (numpy_array, timestamp) tuples.
+    """
+    import subprocess
+
+    import cv2
+    import numpy as np
+
+    segment_duration = trim_end - trim_start
+    if segment_duration <= 0:
+        return [], []
+
+    output_pattern = str(Path(tmpdir) / "flow_%04d.jpg")
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-ss", str(trim_start),
+            "-to", str(trim_end),
+            "-i", str(input_path),
+            "-vf", f"fps={fps}",
+            "-q:v", "2",
+            output_pattern,
+        ],
+        capture_output=True, timeout=60,
+    )
+
+    frames = []
+    timestamps = []
+    for i in range(1, 9999):
+        fp = Path(tmpdir) / f"flow_{i:04d}.jpg"
+        if not fp.exists():
+            break
+        img = cv2.imread(str(fp), cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            frames.append(img)
+            timestamps.append(trim_start + (i - 1) / fps)
+
+    return frames, timestamps
+
+
+def _estimate_pixels_per_meter(
+    frames_gray: list,
+    exercise_name: str,
+) -> float:
+    """Estimate pixel-to-meter scale from video frames.
+
+    Strategy:
+    1. Track total vertical displacement across the set
+    2. Divide by ROM to get pixels_per_meter
+    """
+    import cv2
+    import numpy as np
+
+    if len(frames_gray) < 2:
+        return 0.0
+
+    # Use Lucas-Kanade to track features and measure total displacement
+    feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=7, blockSize=7)
+    lk_params = dict(
+        winSize=(21, 21), maxLevel=3,
+        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
+    )
+
+    p0 = cv2.goodFeaturesToTrack(frames_gray[0], mask=None, **feature_params)
+    if p0 is None:
+        return 0.0
+
+    max_disp = 0.0
+    prev_gray = frames_gray[0]
+    for gray in frames_gray[1:]:
+        p1, st, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, p0, None, **lk_params)
+        if p1 is None:
+            break
+        good_new = p1[st == 1]
+        good_old = p0[st == 1]
+        if len(good_new) < 10:
+            break
+        # Vertical displacement of all tracked points
+        dy = np.abs(good_new[:, 1] - good_old[:, 1])
+        median_disp = float(np.median(dy))
+        max_disp += median_disp
+        prev_gray = gray
+
+    rom = _get_rom(exercise_name)
+    if max_disp > 10 and rom > 0:
+        return max_disp / rom
+    return 0.0
+
+
+def track_barbell_optical_flow(
+    input_path: Path,
+    tmpdir: str,
+    trim_start: float,
+    trim_end: float,
+    exercise_name: str,
+    fps: float = 10.0,
+) -> dict:
+    """Track barbell vertical position using Lucas-Kanade optical flow.
+
+    Returns dict with velocity metrics and per-rep timing data.
+    """
+    import cv2
+    import numpy as np
+
+    frames_gray, timestamps = _extract_frames_gray(
+        input_path, tmpdir, trim_start, trim_end, fps
+    )
+    if len(frames_gray) < 3:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=7, blockSize=7)
+    lk_params = dict(
+        winSize=(21, 21), maxLevel=3,
+        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
+    )
+
+    # Detect features on first frame
+    p0 = cv2.goodFeaturesToTrack(frames_gray[0], mask=None, **feature_params)
+    if p0 is None:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    # Track features through all frames
+    vertical_positions = []
+    prev_gray = frames_gray[0]
+    tracked_count = 0
+
+    for i, gray in enumerate(frames_gray[1:], 1):
+        p1, st, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, p0, None, **lk_params)
+        if p1 is None:
+            vertical_positions.append(vertical_positions[-1] if vertical_positions else 0.0)
+            prev_gray = gray
+            continue
+
+        good_new = p1[st == 1]
+        good_old = p0[st == 1]
+
+        if len(good_new) < 10:
+            # Re-detect features
+            p0 = cv2.goodFeaturesToTrack(gray, mask=None, **feature_params)
+            vertical_positions.append(vertical_positions[-1] if vertical_positions else 0.0)
+            prev_gray = gray
+            continue
+
+        tracked_count += 1
+        # Median vertical displacement (robust to outliers)
+        dy = good_new[:, 1] - good_old[:, 1]
+        median_dy = float(np.median(dy))
+
+        # Subtract global camera motion (median of all feature displacements)
+        all_dx = good_new[:, 0] - good_old[:, 0]
+        global_motion_y = float(np.median(good_new[:, 1] - good_old[:, 1]))
+        bar_motion = median_dy - global_motion_y
+
+        if vertical_positions:
+            vertical_positions.append(vertical_positions[-1] + bar_motion)
+        else:
+            vertical_positions.append(bar_motion)
+
+        # Redetect features periodically
+        if len(good_new) < 50 or i % 15 == 0:
+            p0 = cv2.goodFeaturesToTrack(gray, mask=None, **feature_params)
+        else:
+            p0 = good_new.reshape(-1, 1, 2)
+
+        prev_gray = gray
+
+    if not vertical_positions or tracked_count < 3:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    ts = np.array(timestamps[: len(vertical_positions)])
+    pos = np.array(vertical_positions)
+
+    # Smooth the position signal
+    pos_smooth = _smooth_signal(pos, window=5)
+
+    # Estimate pixels per meter
+    ppm = _estimate_pixels_per_meter(frames_gray, exercise_name)
+    if ppm <= 0:
+        # Fallback: assume total displacement = ROM
+        total_disp = float(np.max(pos_smooth) - np.min(pos_smooth))
+        rom = _get_rom(exercise_name)
+        if total_disp > 10 and rom > 0:
+            ppm = total_disp / rom
+        else:
+            ppm = 100.0  # arbitrary fallback
+
+    # Detect reps from the motion signal
+    rep_data = _detect_reps_from_motion(pos_smooth, ts, ppm, fps)
+
+    # Extract concentric velocities
+    velocities = [r["concentric_velocity_ms"] for r in rep_data if r.get("concentric_velocity_ms", 0) > 0]
+
+    result = {
+        "tracking_quality": "good" if tracked_count > len(frames_gray) * 0.5 else "degraded",
+        "frame_count": len(frames_gray),
+        "pixels_per_meter": round(ppm, 1),
+        "rep_timings": rep_data,
+        "velocities": [round(v, 3) for v in velocities],
+    }
+
+    if velocities:
+        result["mean_concentric_velocity"] = round(sum(velocities) / len(velocities), 3)
+        result["peak_velocity"] = round(max(velocities), 3)
+        if len(velocities) >= 2:
+            result["velocity_loss_pct"] = round(
+                _velocity_loss_pct(velocities[0], velocities[-1]), 1
+            )
+            result["vbt_zone"] = _get_vbt_zone(exercise_name, result["mean_concentric_velocity"])
+    else:
+        result["mean_concentric_velocity"] = 0.0
+        result["peak_velocity"] = 0.0
+
+    logger.info(
+        "Optical flow: %d frames, %d reps, quality=%s, mean_vel=%.3f m/s",
+        len(frames_gray), len(rep_data), result["tracking_quality"],
+        result["mean_concentric_velocity"],
+    )
+    return result
+
+
+def _detect_reps_from_motion(
+    vertical_position,
+    timestamps,
+    pixels_per_meter: float,
+    fps: float,
+    min_rep_duration: float = 0.3,
+    max_rep_duration: float = 8.0,
+) -> list:
+    """Detect individual reps from vertical position signal.
+
+    Uses peak/valley detection on the smoothed position curve.
+    """
+    import numpy as np
+
+    if len(vertical_position) < 5:
+        return []
+
+    signal = np.array(vertical_position)
+    ts = np.array(timestamps)
+
+    # Find local minima (bottom of each rep) and maxima (top of each rep)
+    # by looking at sign changes of the first derivative
+    diff = np.diff(signal)
+    minima_idx = []
+    maxima_idx = []
+
+    for i in range(1, len(diff)):
+        if diff[i - 1] < 0 and diff[i] >= 0:
+            minima_idx.append(i)
+        elif diff[i - 1] > 0 and diff[i] <= 0:
+            maxima_idx.append(i)
+
+    # Pair minima and maxima into reps
+    reps = []
+    used_maxima = set()
+
+    for mi in minima_idx:
+        # Find the next maximum after this minimum
+        best_max = None
+        for mx in maxima_idx:
+            if mx > mi and mx not in used_maxima:
+                duration = ts[mx] - ts[mi]
+                if min_rep_duration <= duration <= max_rep_duration:
+                    best_max = mx
+                    break
+
+        if best_max is None:
+            continue
+
+        used_maxima.add(best_max)
+        concentric_time = ts[best_max] - ts[mi]
+        amplitude_px = abs(signal[best_max] - signal[mi])
+
+        # Convert to velocity
+        amplitude_m = amplitude_px / pixels_per_meter if pixels_per_meter > 0 else 0
+        concentric_velocity = amplitude_m / concentric_time if concentric_time > 0 else 0
+
+        reps.append({
+            "rep_number": len(reps) + 1,
+            "start_time": round(float(ts[mi]), 2),
+            "end_time": round(float(ts[best_max]), 2),
+            "concentric_time": round(concentric_time, 2),
+            "amplitude_px": round(float(amplitude_px), 1),
+            "amplitude_m": round(amplitude_m, 3),
+            "concentric_velocity_ms": round(concentric_velocity, 3),
+        })
+
+    return reps
+
+
 # ── Full Analysis Pipeline ───────────────────────────────────────────────────
 
 
@@ -622,75 +929,102 @@ def run_full_analysis(
                               "deviations": [str(e)], "severity": "unknown",
                               "coaching_cues": []}
 
-    # ── 2. Velocity tracking ─────────────────────────────────────────────
-    # Extract frames at 2fps for velocity estimation
-    velocity_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=2.0, prefix="vel")
-    logger.info("Velocity analysis: %d frames extracted, rep_count=%d", len(velocity_frames), rep_count)
-    if len(velocity_frames) >= 2 and rep_count > 0:
+    # ── 2. Velocity tracking (OpenCV optical flow, Gemini fallback) ──────
+    try:
+        vel_result = track_barbell_optical_flow(
+            input_path=input_path,
+            tmpdir=tmpdir,
+            trim_start=trim_start,
+            trim_end=trim_end,
+            exercise_name=exercise_name,
+        )
+        if vel_result.get("tracking_quality") != "failed":
+            result["velocity"] = {
+                "mean_concentric_velocity": vel_result["mean_concentric_velocity"],
+                "peak_velocity": vel_result["peak_velocity"],
+                "velocities": vel_result.get("velocities", []),
+                "velocity_loss_pct": vel_result.get("velocity_loss_pct"),
+                "vbt_zone": vel_result.get("vbt_zone"),
+            }
+            result["rep_timing"] = vel_result.get("rep_timings", [])
+            logger.info("Velocity (optical flow): mean=%.3f m/s, %d reps, quality=%s",
+                        vel_result["mean_concentric_velocity"],
+                        len(vel_result.get("rep_timings", [])),
+                        vel_result["tracking_quality"])
+        else:
+            logger.warning("Optical flow tracking failed, trying Gemini fallback")
+            raise RuntimeError("optical flow failed")
+    except Exception as e:
+        logger.warning("Optical flow velocity failed (%s), trying Gemini fallback", e)
+        # Gemini fallback: single call with all frames
         try:
-            velocities = []
-            # Analyse pairs of consecutive frames
-            for i in range(0, min(len(velocity_frames) - 1, rep_count * 3), 2):
-                fp_a, t_a = velocity_frames[i]
-                fp_b, t_b = velocity_frames[i + 1]
-                gap = t_b - t_a
-                if gap <= 0 or gap > 2.0:
-                    continue
-
-                velocity_prompt = VELOCITY_PROMPT.format(
-                    exercise_name=exercise_name,
-                    t1=t_a,
-                    t2=t_b,
-                    gap=gap,
+            velocity_frames = extract_dense_frames(
+                input_path, tmpdir, trim_start, trim_end, fps=2.0, prefix="vel"
+            )
+            if len(velocity_frames) >= 2 and rep_count > 0:
+                all_frame_paths = [fp for fp, _ in velocity_frames[:20]]
+                fallback_prompt = (
+                    f"Analyze these {len(all_frame_paths)} frames from a {exercise_name} set "
+                    f"of {rep_count} reps. For EACH consecutive pair of frames, estimate:\n"
+                    "1. Bar vertical position as % of ROM (0%=bottom, 100%=top)\n"
+                    "2. Phase: concentric (going up) or eccentric (going down)\n\n"
+                    "Return ONLY valid JSON:\n"
+                    '{"pairs": [{"frame_a_pct": N, "frame_b_pct": N, "phase": "..."}]}'
                 )
-                vel_result = _call_gemini_form(client, velocity_prompt, [fp_a, fp_b])
-                pos_a = vel_result.get("position_a_pct", 50)
-                pos_b = vel_result.get("position_b_pct", 50)
-                phase = vel_result.get("phase", "concentric")
+                fallback_result = _call_gemini_form(client, fallback_prompt, all_frame_paths)
+                pairs = fallback_result.get("pairs", [])
+                velocities = []
+                for pair in pairs:
+                    if pair.get("phase") == "concentric":
+                        pos_a = pair.get("frame_a_pct", 50)
+                        pos_b = pair.get("frame_b_pct", 50)
+                        displacement_m = abs(pos_b - pos_a) / 100.0 * _get_rom(exercise_name)
+                        velocity_ms = displacement_m / 0.5  # ~0.5s gap at 2fps
+                        velocities.append(round(velocity_ms, 3))
+                if velocities:
+                    result["velocity"] = {
+                        "mean_concentric_velocity": round(sum(velocities) / len(velocities), 3),
+                        "peak_velocity": round(max(velocities), 3),
+                        "velocities": velocities,
+                    }
+                    if len(velocities) >= 2:
+                        result["velocity"]["velocity_loss_pct"] = round(
+                            _velocity_loss_pct(velocities[0], velocities[-1]), 1
+                        )
+                        result["velocity"]["vbt_zone"] = _get_vbt_zone(
+                            exercise_name, result["velocity"]["mean_concentric_velocity"]
+                        )
+                    logger.info("Velocity (Gemini fallback): mean=%.3f m/s",
+                                result["velocity"]["mean_concentric_velocity"])
+        except Exception as e2:
+            logger.warning("Gemini velocity fallback also failed: %s", e2)
 
-                if phase == "concentric" and gap > 0:
-                    rom = _get_rom(exercise_name)
-                    displacement_m = abs(pos_b - pos_a) / 100.0 * rom
-                    velocity_ms = displacement_m / gap
-                    velocities.append(round(velocity_ms, 3))
+    # ── 3. Consistency analysis (from rep timing data) ───────────────────
+    rep_timings = result.get("rep_timing", [])
+    if len(rep_timings) >= 2:
+        durations = [r["end_time"] - r["start_time"] for r in rep_timings]
+        mean_dur = sum(durations) / len(durations)
+        std_dur = (sum((d - mean_dur) ** 2 for d in durations) / len(durations)) ** 0.5
+        cv = (std_dur / mean_dur * 100) if mean_dur > 0 else 0
 
-            if velocities:
-                result["velocity"] = {
-                    "mean_concentric_velocity": round(
-                        sum(velocities) / len(velocities), 3
-                    ),
-                    "peak_velocity": round(max(velocities), 3),
-                    "velocities": velocities,
-                }
-                # Calculate velocity loss
-                if len(velocities) >= 2:
-                    loss = _velocity_loss_pct(velocities[0], velocities[-1])
-                    result["velocity"]["velocity_loss_pct"] = loss
-                    result["velocity"]["vbt_zone"] = _get_vbt_zone(
-                        exercise_name, result["velocity"]["mean_concentric_velocity"]
-                    )
-                logger.info("Velocity: mean=%.3f m/s, peak=%.3f m/s",
-                            result["velocity"]["mean_concentric_velocity"],
-                            result["velocity"]["peak_velocity"])
-        except Exception as e:
-            logger.warning("Velocity analysis failed: %s", e)
+        # Amplitude consistency (how similar is each rep's range of motion)
+        amplitudes = [r.get("amplitude_m", 0) for r in rep_timings if r.get("amplitude_m", 0) > 0]
+        if amplitudes:
+            mean_amp = sum(amplitudes) / len(amplitudes)
+            std_amp = (sum((a - mean_amp) ** 2 for a in amplitudes) / len(amplitudes)) ** 0.5
+            amp_cv = (std_amp / mean_amp * 100) if mean_amp > 0 else 0
+        else:
+            amp_cv = 0
 
-    # ── 3. Consistency analysis ──────────────────────────────────────────
-    rep_frames = extract_rep_frames(input_path, tmpdir, trim_start, trim_end, rep_count)
-    logger.info("Consistency analysis: %d rep frames extracted", len(rep_frames))
-    if len(rep_frames) >= 2:
-        try:
-            consistency_prompt = CONSISTENCY_PROMPT.format(
-                exercise_name=exercise_name,
-                rep_count=len(rep_frames),
-            )
-            consistency_result = _call_gemini_form(
-                client, consistency_prompt, [fp for fp, _ in rep_frames]
-            )
-            result["consistency"] = consistency_result
-            logger.info("Consistency: score=%s", consistency_result.get("consistency_score"))
-        except Exception as e:
-            logger.warning("Consistency analysis failed: %s", e)
+        consistency_score = max(0, 100 - cv - amp_cv * 0.5)
+        result["consistency"] = {
+            "consistency_score": round(consistency_score, 1),
+            "rep_count": len(rep_timings),
+            "tempo_consistency_cv": round(cv, 1),
+            "amplitude_consistency_cv": round(amp_cv, 1),
+        }
+        logger.info("Consistency: score=%.1f, cv=%.1f%%, %d reps",
+                    consistency_score, cv, len(rep_timings))
 
     # ── 4. Setup analysis ────────────────────────────────────────────────
     # Extract first 5 frames from the trimmed segment (setup phase)
