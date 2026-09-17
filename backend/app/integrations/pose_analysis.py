@@ -272,6 +272,11 @@ def detect_reps_from_pose(
     # (An earlier revision spanned minima[i-1]→minima[i+1], covering two
     # cycles per "rep" with heavy overlap — doubling the rep count and
     # evaluating lockout/posture at bottom frames. Found 2026-09-17.)
+    #
+    # Each slice must also have enough JOINT RANGE to be a real rep:
+    # standing-weight-shifts and setup steps create genuine minima but only
+    # wiggle a few degrees (live: "reps" with 3° range). Powerlifters move.
+    min_amp = 20.0 if exercise in ("Bench Press",) else 25.0
     reps = []
     for i in range(len(minima_idx) - 1):
         start = minima_idx[i]
@@ -279,6 +284,8 @@ def detect_reps_from_pose(
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
         if duration < 0.8 or duration > 10.0:
+            continue
+        if float(np.max(signal[start:end + 1]) - np.min(signal[start:end + 1])) < min_amp:
             continue
 
         reps.append({
@@ -334,32 +341,52 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     # Reps span bottom-to-bottom. Find the BOTTOM (max knee flexion) for
     # depth/valgus, and the TOP (standing) for lockout/posture. Evaluating
     # lockout at a bottom frame always fails (found 2026-09-17).
-    bottom_knee = 999.0
-    bottom_lm = all_landmarks[min(si, n - 1)]
-    top_knee = -1.0
-    top_lm = bottom_lm
-    for i in range(si, min(ei, n)):
-        angle = calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
-        if angle < bottom_knee:
-            bottom_knee = angle
-            bottom_lm = all_landmarks[i]
-        if angle > top_knee:
-            top_knee = angle
-            top_lm = all_landmarks[i]
+    #
+    # Extrema are selected on a SMOOTHED angle series: single-frame landmark
+    # glitches (a misplaced shoulder reads as 30° of lean) otherwise become
+    # the "top"/"bottom" and poison every metric.
+    idxs = list(range(si, min(ei, n)))
+    raw = np.array([
+        calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
+        for i in idxs
+    ])
+    if len(raw) > 5:
+        kern = np.ones(5) / 5
+        smooth = np.convolve(raw, kern, mode="same")
+    else:
+        smooth = raw
+    bottom_lm = all_landmarks[idxs[int(np.argmin(smooth))]]
+    bottom_knee = float(np.min(smooth))
+    ti = idxs[int(np.argmax(smooth))]
+    top_lm = all_landmarks[ti]
+
+    def _win_med(fn):
+        lo = max(si, ti - 1)
+        hi = min(min(ei, n) - 1, ti + 1)
+        return float(np.median([fn(all_landmarks[i]) for i in range(lo, hi + 1)]))
+
+    # Angle metrics use the median over the top frame ±1: a single glitchy
+    # shoulder landmark otherwise reads as 30° of lean / failed lockout.
+    knee_angle_top = _win_med(
+        lambda lm: calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28)))
+    hip_angle_top = _win_med(
+        lambda lm: calculate_angle(_mid(lm, 11, 12), _mid(lm, 23, 24), _mid(lm, 25, 26)))
 
     depth = _check_squat_depth(bottom_lm, bottom_knee)
-    knee_angle_top = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
-    hip_angle_top = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
     # 160° (not 170°) admits ±10° of pose jitter on true lockouts; soft
-    # lockouts still fail.
+    # lockouts still fail. Distinguish knees-locked/hips-soft (counts, cued)
+    # from a genuinely bent finish (no-count): live lifters often lock knees
+    # but never fully stand erect between reps.
     lockout = knee_angle_top > 160 and hip_angle_top > 160
+    soft_lockout = not lockout and knee_angle_top > 160
     valgus = _check_knee_valgus(bottom_lm)
     heels = _check_heels_flat(top_lm)
-    back_dev = abs(_torso_angle(top_lm))
+    back_dev = _win_med(_torso_angle)
 
     return {
         "depth_achieved": depth,
         "lockout_complete": lockout,
+        "lockout_soft": soft_lockout,
         "knee_valgus": valgus,
         "heels_flat": heels,
         "back_angle_deviation": round(back_dev, 1),
@@ -403,15 +430,17 @@ def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
         butt_lift = (start_hip - min_hip) > 0.02
 
     # Lockout + symmetry are evaluated at the TOP (arms extended), not at
-    # the rep end (a bottom, where the elbows are always bent).
-    top_elbow = -1.0
-    top_lm = all_landmarks[min(si, len(all_landmarks) - 1)]
-    for i in range(si, min(ei, len(all_landmarks))):
-        ea = calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 13, 14), _mid(all_landmarks[i], 15, 16))
-        if ea > top_elbow:
-            top_elbow = ea
-            top_lm = all_landmarks[i]
-    lockout_angle = top_elbow
+    # the rep end (a bottom, where the elbows are always bent). The top is
+    # selected on a smoothed series so one glitchy frame can't become it.
+    bidx = list(range(si, min(ei, len(all_landmarks))))
+    braw = np.array([
+        calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 13, 14), _mid(all_landmarks[i], 15, 16))
+        for i in bidx
+    ])
+    if len(braw) > 5:
+        braw = np.convolve(braw, np.ones(5) / 5, mode="same")
+    top_lm = all_landmarks[bidx[int(np.argmax(braw))]]
+    lockout_angle = float(np.max(braw))
     lockout = lockout_angle > 160
     symmetrical = abs(top_lm[15].y - top_lm[16].y) < 0.03
 
@@ -453,19 +482,16 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
 
     # Reps span bottom-to-bottom. Lockout, grip and shoulder position are
     # evaluated at the TOP (standing); back rounding is the torso change
-    # from bottom to top.
-    bottom_knee = 999.0
-    bottom_lm = all_landmarks[min(si, n - 1)]
-    top_knee = -1.0
-    top_lm = bottom_lm
-    for i in range(si, min(ei, n)):
-        ka = calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
-        if ka < bottom_knee:
-            bottom_knee = ka
-            bottom_lm = all_landmarks[i]
-        if ka > top_knee:
-            top_knee = ka
-            top_lm = all_landmarks[i]
+    # from bottom to top. Extrema come from a smoothed series (see squat).
+    didx = list(range(si, min(ei, n)))
+    drawn = np.array([
+        calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
+        for i in didx
+    ])
+    if len(drawn) > 5:
+        drawn = np.convolve(drawn, np.ones(5) / 5, mode="same")
+    bottom_lm = all_landmarks[didx[int(np.argmin(drawn))]]
+    top_lm = all_landmarks[didx[int(np.argmax(drawn))]]
 
     lockout = _deadlift_lockout(top_lm)
 
@@ -495,6 +521,7 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
 COACHING_CUES = {
     "depth_not_achieved": "Focus on descending until your hip crease passes below your knee",
     "incomplete_lockout": "Drive your hips through at the top — squeeze your glutes",
+    "soft_lockout": "Stand fully tall between reps — finish each rep before descending",
     "knee_valgus": "Push your knees out over your toes throughout the lift",
     "heels_lifted": "Keep your weight distributed across the whole foot",
     "excessive_forward_lean": "Keep your chest up and brace harder before descending",
@@ -521,10 +548,15 @@ def score_squat_form(per_rep: list[dict]) -> dict:
             deviations.append(f"Rep {rn}: Depth not achieved")
             cues.append(COACHING_CUES["depth_not_achieved"])
         if not r["lockout_complete"]:
-            score -= 25
-            comp_fail = True
-            deviations.append(f"Rep {rn}: Incomplete lockout")
-            cues.append(COACHING_CUES["incomplete_lockout"])
+            if r.get("lockout_soft"):
+                score -= 10
+                deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
+                cues.append(COACHING_CUES["soft_lockout"])
+            else:
+                score -= 25
+                comp_fail = True
+                deviations.append(f"Rep {rn}: Incomplete lockout")
+                cues.append(COACHING_CUES["incomplete_lockout"])
         if r["knee_valgus"] == "significant":
             score -= 15
             deviations.append(f"Rep {rn}: Significant knee cave")
