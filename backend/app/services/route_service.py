@@ -485,6 +485,7 @@ async def get_user_routes(
     min_distance: float | None = None,
     max_distance: float | None = None,
     q: str | None = None,
+    terrain_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Route]:
@@ -505,6 +506,10 @@ async def get_user_routes(
         query = query.where(Route.distance_meters <= max_distance)
     if q:
         query = query.where(Route.name.ilike(f"%{q}%"))
+    if terrain_type:
+        query = query.where(
+            Route.terrain_classification["terrain_type"].astext == terrain_type
+        )
 
     query = query.order_by(Route.created_at.desc()).limit(limit).offset(offset)
 

@@ -12,7 +12,7 @@ The overall_score is a weighted average clamped to 0–100.
 
 import logging
 import math
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 # ── Weighting ──────────────────────────────────────────────────────────────────
 
 WEIGHTS = {
-    "completeness": 0.30,
-    "popularity": 0.20,
-    "surface_quality": 0.25,
+    "completeness": 0.25,
+    "popularity": 0.15,
+    "surface_quality": 0.20,
     "effort_match": 0.25,
+    "terrain_quality": 0.15,
 }
 
 # Surface types ranked from best (paved) to worst (technical)
@@ -199,6 +200,43 @@ def compute_effort_match_score(route: Route, cycling_profile: CyclingProfile) ->
     return max(0.0, min(100.0, score))
 
 
+def compute_terrain_quality_score(route: Route) -> float | None:
+    """Score 0–100 based on terrain classification quality.
+
+    Routes with known terrain data score higher. Mountainous/climbing
+    routes with detailed climb data score highest. Flat routes score
+    moderately. Unknown terrain gets no score.
+    """
+    terrain = route.terrain_classification
+    if not terrain:
+        return None
+
+    terrain_type = terrain.get("terrain_type", "unknown")
+    if terrain_type == "unknown":
+        return None
+
+    # Base score by terrain type — more complex terrain = more interesting data
+    base_scores = {
+        "flat": 55.0,
+        "rolling": 70.0,
+        "hilly": 80.0,
+        "mountainous": 90.0,
+        "mixed": 75.0,
+    }
+    base = base_scores.get(terrain_type, 50.0)
+
+    # Bonus for having climb data
+    climb_count = terrain.get("climb_count", 0)
+    if climb_count > 0:
+        base = min(100.0, base + climb_count * 3)
+
+    # Bonus for detailed elevation profile (gradient statistics available)
+    if terrain.get("avg_gradient_pct", 0) > 0:
+        base = min(100.0, base + 5)
+
+    return base
+
+
 def compute_overall_score(scores: dict[str, float | None]) -> float | None:
     """Compute weighted overall score from component scores."""
     total_weight = 0.0
@@ -246,6 +284,7 @@ async def compute_and_store_quality(
     completeness = compute_completeness_score(route)
     popularity = compute_popularity_score(ride_count, last_ridden)
     surface_q = compute_surface_quality_score(route)
+    terrain_q = compute_terrain_quality_score(route)
 
     effort_match = None
     if profile is not None:
@@ -256,6 +295,7 @@ async def compute_and_store_quality(
         "popularity": popularity,
         "surface_quality": surface_q,
         "effort_match": effort_match,
+        "terrain_quality": terrain_q,
     }
     overall = compute_overall_score(scores)
 
@@ -270,6 +310,7 @@ async def compute_and_store_quality(
         existing.popularity_score = popularity
         existing.surface_quality_score = surface_q
         existing.effort_match_score = effort_match
+        existing.terrain_quality_score = terrain_q
         existing.overall_score = overall
         existing.computed_at = datetime.now(UTC)
     else:
@@ -280,6 +321,7 @@ async def compute_and_store_quality(
             popularity_score=popularity,
             surface_quality_score=surface_q,
             effort_match_score=effort_match,
+            terrain_quality_score=terrain_q,
             overall_score=overall,
         )
         db.add(quality)

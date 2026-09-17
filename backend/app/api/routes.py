@@ -99,6 +99,10 @@ async def list_routes(
         None,
         description="Filter by surface type key in surface_profile JSONB",
     ),
+    terrain_type: str | None = Query(
+        None,
+        description="Filter by terrain type: flat, rolling, hilly, mountainous, mixed",
+    ),
     sort_by: str | None = Query(
         None,
         description="name, distance, elevation, ride_count, last_ridden, created_at, quality_score",
@@ -136,6 +140,10 @@ async def list_routes(
         base_filters.append(Route.name.ilike(f"%{q}%"))
     if surface_type:
         base_filters.append(Route.surface_profile.has_key(surface_type))
+    if terrain_type:
+        base_filters.append(
+            Route.terrain_classification["terrain_type"].astext == terrain_type
+        )
 
     # Subquery: ride count and last ridden date per route
     ride_stats_subq = (
@@ -1286,6 +1294,36 @@ async def get_route(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     return RouteRead.model_validate(route)
+
+
+@router.post("/{route_id}/classify-terrain")
+async def classify_route_terrain(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Classify terrain for a single route (on-demand).
+
+    Uses local classification for speed. For batch classification of all
+    routes, see the scheduled Celery task.
+    """
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    if not route.elevation_profile:
+        raise HTTPException(
+            status_code=400,
+            detail="Route has no elevation profile data",
+        )
+
+    from app.integrations.route_intelligence import classify_route_terrain
+
+    terrain = classify_route_terrain(route.elevation_profile)
+    route.terrain_classification = terrain
+    await db.flush()
+
+    return {"route_id": str(route_id), "terrain": terrain}
 
 
 @router.get("/{route_id}/history", response_model=RouteHistoryResponse)
