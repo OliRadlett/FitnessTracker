@@ -404,8 +404,13 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in idxs
     ])
+    # Bottom: no visibility gate (min_vis=0). Deep flexion occludes knees
+    # behind arms/plates, so visibility is systematically LOW at true
+    # bottoms — gating rejects them and falls back shallow (verified:
+    # a 95-point squat regressed to 55). Median filtering already kills
+    # single-frame spikes. Tops (standing, unoccluded) keep the gate.
     bi = _best_extremum(all_landmarks, idxs, kvals, (23, 24, 25, 26),
-                        want_max=False)
+                        want_max=False, min_vis=0.0)
     bottom_lm = all_landmarks[bi]
     bottom_knee = float(kvals[idxs.index(bi)])
     ti = _best_extremum(all_landmarks, idxs, kvals, (11, 12), want_max=True)
@@ -547,8 +552,10 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in didx
     ])
+    # No visibility gate on the bottom (occlusion is expected at depth).
     bottom_lm = all_landmarks[_best_extremum(
-        all_landmarks, didx, dvals, (23, 24, 25, 26), want_max=False)]
+        all_landmarks, didx, dvals, (23, 24, 25, 26), want_max=False,
+        min_vis=0.0)]
     top_lm = all_landmarks[_best_extremum(
         all_landmarks, didx, dvals, (11, 12, 23, 24), want_max=True)]
 
