@@ -35,13 +35,20 @@ def _get_modal_image(project_root: str | None = None):
         image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install("ffmpeg")
-            .pip_install("httpx", "google-genai", "opencv-python-headless", "numpy")
+            .pip_install("httpx", "opencv-python-headless", "numpy", "mediapipe>=0.10.20")
         )
 
-        # Mount the analysis module into the container
+        # Mount the analysis modules into the container
         if project_root:
-            analysis_path = str(Path(project_root) / "app" / "integrations" / "video_analysis.py")
-            image = image.add_local_file(analysis_path, "/root/app/integrations/video_analysis.py")
+            analysis_dir = str(Path(project_root) / "app" / "integrations")
+            image = image.add_local_file(
+                f"{analysis_dir}/video_analysis.py",
+                "/root/app/integrations/video_analysis.py",
+            )
+            image = image.add_local_file(
+                f"{analysis_dir}/pose_analysis.py",
+                "/root/app/integrations/pose_analysis.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -106,8 +113,8 @@ def process_video_on_modal(
 
     @app.function(
         serialized=True,
-        timeout=600,  # 10 min max per video (multi-pass Gemini calls)
-        memory=2048,  # 2 GB RAM for dense frame extraction + ffmpeg
+        timeout=300,  # 5 min max per video (local processing, no network calls)
+        memory=2048,  # 2 GB RAM for MediaPipe + ffmpeg + optical flow
     )
     def _process(
         presigned_get: str,
@@ -279,113 +286,49 @@ def process_video_on_modal(
 
             _logger.info("Extracted %d key frames", len(frame_paths))
 
-            # ── Step 7: Classify via Gemini Vision ────────────────────────
-            exercise = ""
-            reps = 0
+            # ── Step 7: Classify via pose landmarks (local) ──────────────
+            exercise = exercise_name or ""
+            reps = rep_count or 0
             weight = 0.0
             confidence = 0.0
             analysis_text = ""
-            client = None
 
-            if gemini_key and frame_paths:
-                try:
-                    import base64
-                    import time as _time
+            try:
+                import sys
+                sys.path.insert(0, "/root")
+                from app.integrations.pose_analysis import (
+                    classify_exercise,
+                    extract_pose_landmarks,
+                )
 
-                    from google import genai
-                    from google.genai import types
+                landmarks, _ = extract_pose_landmarks(
+                    input_path, tmpdir, trim_start, trim_end, fps=10.0,
+                )
+                if landmarks:
+                    classification = classify_exercise(landmarks)
+                    if classification["confidence"] >= 0.6:
+                        exercise = classification["exercise"]
+                        confidence = classification["confidence"]
+                        analysis_text = f"Pose classification: {exercise} ({classification['variation']}) conf={confidence}"
+                    else:
+                        analysis_text = f"Pose classification low confidence ({classification['confidence']}), keeping user exercise: {exercise}"
+                else:
+                    analysis_text = "No pose landmarks detected, keeping user exercise"
+                _logger.info("Classification: exercise=%s reps=%d conf=%.2f", exercise, reps, confidence)
+            except Exception as e:
+                _logger.warning("Pose classification failed: %s", e)
+                analysis_text = f"Pose classification failed: {e}"
 
-                    client = genai.Client(api_key=gemini_key)
-
-                    # Build multimodal prompt with frames
-                    contents: list = []
-                    contents.append(
-                        "This is a weightlifting video. I've extracted 3 key frames "
-                        "(start, middle, end of the lift). Please analyze them and classify:\n"
-                        "1. Exercise name (squat, bench press, deadlift, overhead press, "
-                        "barbell row, Romanian deadlift, front squat, or other)\n"
-                        "2. Number of reps performed\n"
-                        "3. Weight on the bar in kg (if visible on the plates)\n"
-                        "4. Confidence level (0.0 to 1.0)\n"
-                        "5. Brief notes about form or technique\n\n"
-                        "Return ONLY valid JSON (no markdown) in this exact format:\n"
-                        '{"exercise": "...", "reps": N, "weight_kg": N.N, '
-                        '"confidence": N.N, "notes": "..."}'
-                    )
-
-                    for fp in frame_paths:
-                        img_bytes = fp.read_bytes()
-                        contents.append(
-                            types.Part.from_bytes(
-                                data=img_bytes,
-                                mime_type="image/jpeg",
-                            )
-                        )
-
-                    # Retry with exponential backoff for transient errors
-                    response = None
-                    for attempt in range(3):
-                        try:
-                            response = client.models.generate_content(
-                                model="gemini-3.6-flash",
-                                contents=contents,
-                                config=types.GenerateContentConfig(
-                                    temperature=0.3,
-                                    max_output_tokens=512,
-                                ),
-                            )
-                            break  # success
-                        except Exception as retry_exc:
-                            msg = str(retry_exc)
-                            retryable = any(s in msg for s in ("429", "500", "502", "503", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
-                            if retryable and attempt < 2:
-                                wait = 2 ** attempt * 2  # 2s, 4s
-                                _logger.warning("Classification Gemini call failed (attempt %d/3): %s — retrying in %ds",
-                                                attempt + 1, msg[:120], wait)
-                                _time.sleep(wait)
-                            else:
-                                raise
-
-                    raw_text = response.text or ""
-                    analysis_text = raw_text.strip()
-
-                    # Parse JSON from response (handle markdown code blocks)
-                    json_str = raw_text.strip()
-                    if json_str.startswith("```"):
-                        json_str = json_str.split("\n", 1)[1]
-                        json_str = json_str.removesuffix("```")
-                        json_str = json_str.strip()
-
-                    result = json.loads(json_str)
-                    exercise = result.get("exercise", "")
-                    reps = int(result.get("reps", 0))
-                    weight = float(result.get("weight_kg", 0))
-                    confidence = float(result.get("confidence", 0))
-                    if "notes" in result:
-                        analysis_text = result["notes"]
-
-                    _logger.info(
-                        "Classification: exercise=%s reps=%d weight=%.1f conf=%.2f",
-                        exercise,
-                        reps,
-                        weight,
-                        confidence,
-                    )
-                except Exception as e:
-                    _logger.warning("Gemini classification failed: %s", e)
-                    analysis_text = f"Classification failed: {e}"
-
-            # ── Step 8: Full analysis (form, velocity, RPE, etc.) ─────────────
+            # ── Step 8: Full analysis (pose-based + optical flow) ────────
             full_result: dict = {}
-            if depth == "full" and gemini_key and frame_paths:
+            if depth == "full":
+                # 8a: Pose-based form + setup analysis
                 try:
                     import sys
-                    # Ensure app.integrations is importable inside the container
                     sys.path.insert(0, "/root")
-                    from app.integrations.video_analysis import run_full_analysis
+                    from app.integrations.pose_analysis import run_pose_analysis
 
-                    full_result = run_full_analysis(
-                        client=client,
+                    pose_result = run_pose_analysis(
                         input_path=input_path,
                         tmpdir=tmpdir,
                         trim_start=trim_start,
@@ -394,10 +337,43 @@ def process_video_on_modal(
                         rep_count=reps,
                         weight_kg=weight,
                     )
-                    _logger.info("Full analysis complete: %s", list(full_result.keys()))
+                    full_result.update(pose_result)
+                    _logger.info("Pose analysis complete: form_score=%s",
+                                pose_result.get("form", {}).get("overall_form_score"))
                 except Exception as e:
-                    _logger.warning("Full analysis failed: %s", e)
-                    full_result = {"analysis_error": str(e)}
+                    _logger.warning("Pose analysis failed: %s", e)
+
+                # 8b: Optical flow velocity (already local)
+                try:
+                    from app.integrations.video_analysis import track_barbell_optical_flow
+
+                    vel_result = track_barbell_optical_flow(
+                        input_path=input_path,
+                        tmpdir=tmpdir,
+                        trim_start=trim_start,
+                        trim_end=trim_end,
+                        exercise_name=exercise,
+                    )
+                    if vel_result.get("tracking_quality") != "failed":
+                        full_result["velocity"] = {
+                            "mean_concentric_velocity": vel_result["mean_concentric_velocity"],
+                            "peak_velocity": vel_result["peak_velocity"],
+                            "velocities": vel_result.get("velocities", []),
+                            "velocity_loss_pct": vel_result.get("velocity_loss_pct"),
+                            "vbt_zone": vel_result.get("vbt_zone"),
+                        }
+                        full_result["rep_timing"] = vel_result.get("rep_timings", [])
+                        _logger.info("Velocity (optical flow): mean=%.3f m/s", vel_result["mean_concentric_velocity"])
+                except Exception as e:
+                    _logger.warning("Optical flow failed: %s", e)
+
+            # 8c: RPE estimation (heuristic, no API calls)
+            try:
+                from app.integrations.video_analysis import estimate_rpe_heuristic
+                rpe = estimate_rpe_heuristic(full_result, exercise, reps)
+                full_result["rpe"] = rpe
+            except Exception as e:
+                _logger.warning("RPE estimation failed: %s", e)
 
             # ── Step 9: Upload trimmed video to R2 ────────────────────────
             httpx.put(
@@ -427,7 +403,7 @@ def process_video_on_modal(
                 "analysis_depth": depth,
                 # Form (§3.18)
                 "form_score": form_data.get("overall_form_score"),
-                "competition_valid": full_result.get("competition_valid"),
+                "competition_valid": form_data.get("competition_valid"),
                 "form_analysis_json": form_data,
                 "form_deviations": form_data.get("deviations", []),
                 "form_coaching_cues": form_data.get("coaching_cues", []),

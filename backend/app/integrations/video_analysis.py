@@ -1155,3 +1155,91 @@ def run_full_analysis(
 
     logger.info("run_full_analysis complete: keys=%s rpe=%.1f", list(result.keys()), result.get("rpe", {}).get("estimated_rpe", 0))
     return result
+
+
+# ── Standalone RPE Heuristic ─────────────────────────────────────────────────
+
+
+def estimate_rpe_heuristic(analysis_result: dict, exercise_name: str, rep_count: int) -> dict:
+    """Estimate RPE from analysis results. Called from modal_client.py after
+    pose analysis + optical flow are complete."""
+    vel_data = analysis_result.get("velocity", {})
+    form_data = analysis_result.get("form", {})
+
+    mean_vel = vel_data.get("mean_concentric_velocity", 0.5)
+    vel_loss = vel_data.get("velocity_loss_pct", 0)
+    form_score = form_data.get("overall_form_score", 70)
+    form_severity = form_data.get("severity", "unknown")
+    consistency_score = analysis_result.get("consistency", {}).get("consistency_score", 70)
+
+    has_vel_data = vel_loss > 0 or mean_vel != 0.5
+
+    if vel_loss > 30:
+        base_rpe = 10.0
+    elif vel_loss > 20:
+        base_rpe = 9.5
+    elif vel_loss > 15:
+        base_rpe = 9.0
+    elif vel_loss > 10:
+        base_rpe = 8.5
+    elif vel_loss > 8:
+        base_rpe = 8.0
+    elif vel_loss > 5:
+        base_rpe = 7.5
+    elif vel_loss > 3:
+        base_rpe = 7.0
+    elif vel_loss > 1:
+        base_rpe = 6.0
+    elif has_vel_data:
+        if mean_vel < 0.30:
+            base_rpe = 9.5
+        elif mean_vel < 0.40:
+            base_rpe = 8.5
+        elif mean_vel < 0.50:
+            base_rpe = 7.5
+        elif mean_vel < 0.60:
+            base_rpe = 6.5
+        elif mean_vel < 0.75:
+            base_rpe = 5.5
+        else:
+            base_rpe = 5.0
+    else:
+        base_rpe = 6.0
+
+    if form_severity == "major":
+        base_rpe = min(10.0, base_rpe + 1.0)
+    elif form_severity == "moderate":
+        base_rpe = min(10.0, base_rpe + 0.5)
+
+    if rep_count >= 5:
+        base_rpe = min(10.0, base_rpe + 0.5)
+
+    confidence = 0.4
+    if vel_loss > 0:
+        confidence += 0.25
+    elif has_vel_data:
+        confidence += 0.15
+    if form_score > 0 and form_severity != "unknown":
+        confidence += 0.15
+    if consistency_score > 0:
+        confidence += 0.1
+    confidence = min(1.0, confidence)
+
+    return {
+        "estimated_rpe": round(base_rpe, 1),
+        "rir_estimate": round(max(0, (10 - base_rpe)) / 2, 1),
+        "confidence": round(confidence, 2),
+        "evidence": [
+            f"velocity_loss={vel_loss:.1f}%",
+            f"mean_velocity={mean_vel:.3f} m/s",
+            f"form_score={form_score}",
+            f"form_severity={form_severity}",
+            f"consistency={consistency_score}",
+            f"has_vel_data={has_vel_data}",
+        ],
+        "reasoning": (
+            f"Based on {vel_loss:.1f}% velocity loss"
+            + (f" (mean velocity {mean_vel:.3f} m/s)" if has_vel_data else " (no velocity data)")
+            + f", {form_severity} form breakdown (score {form_score}/100)"
+        ),
+    }
