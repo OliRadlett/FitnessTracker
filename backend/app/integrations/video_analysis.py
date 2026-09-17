@@ -649,11 +649,11 @@ def _estimate_pixels_per_meter(
         return 0.0
 
     # Use Lucas-Kanade to track features and measure total displacement
-    feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=7, blockSize=7)
-    lk_params = dict(
-        winSize=(21, 21), maxLevel=3,
-        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
-    )
+    feature_params = {"maxCorners": 200, "qualityLevel": 0.3, "minDistance": 7, "blockSize": 7}
+    lk_params = {
+        "winSize": (21, 21), "maxLevel": 3,
+        "criteria": (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
+    }
 
     p0 = cv2.goodFeaturesToTrack(frames_gray[0], mask=None, **feature_params)
     if p0 is None:
@@ -702,11 +702,11 @@ def track_barbell_optical_flow(
     if len(frames_gray) < 3:
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
 
-    feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=7, blockSize=7)
-    lk_params = dict(
-        winSize=(21, 21), maxLevel=3,
-        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
-    )
+    feature_params = {"maxCorners": 200, "qualityLevel": 0.3, "minDistance": 7, "blockSize": 7}
+    lk_params = {
+        "winSize": (21, 21), "maxLevel": 3,
+        "criteria": (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
+    }
 
     # Detect features on first frame
     p0 = cv2.goodFeaturesToTrack(frames_gray[0], mask=None, **feature_params)

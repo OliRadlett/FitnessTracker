@@ -344,7 +344,9 @@ def process_video_on_modal(
 
                 # 8b: Optical flow velocity (already local)
                 try:
-                    from app.integrations.video_analysis import track_barbell_optical_flow
+                    from app.integrations.video_analysis import (
+                        track_barbell_optical_flow,
+                    )
 
                     vel_result = track_barbell_optical_flow(
                         input_path=input_path,
