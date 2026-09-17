@@ -58,8 +58,9 @@ def extract_pose_landmarks(
 
     # Create PoseLandmarker with video running mode.
     # CPU delegate: proven 100% detection on powerlifting videos (heavy model,
-    # 10fps, conf 0.3). The GPU delegate silently returned zero landmarks on
-    # Modal T4 containers — see investigation 2026-09-17.
+    # 10fps, conf 0.3; benchmarked 2026-09-17). CPU-only also avoids T4 cost
+    # and cold-start time. (An earlier zero-detection episode was traced to
+    # the ffmpeg frame-numbering bug below, not the delegate.)
     base_options = BaseOptions(
         model_asset_path=str(model_path),
         delegate=BaseOptions.Delegate.CPU,
@@ -75,7 +76,12 @@ def extract_pose_landmarks(
     )
     pose_landmarker = vision.PoseLandmarker.create_from_options(options)
 
-    # Extract frames
+    # Extract frames.
+    # NOTE: -start_number 0 is load-bearing. ffmpeg's image2 muxer numbers
+    # from 1 by default (pose_0001.jpg...), but the loop below reads from
+    # pose_0000.jpg and breaks on the first missing file — without this flag
+    # zero frames are ever processed (every video reported "No pose
+    # landmarks detected"; found 2026-09-17).
     output_pattern = str(Path(tmpdir) / "pose_%04d.jpg")
     subprocess.run(
         [
@@ -83,7 +89,9 @@ def extract_pose_landmarks(
             "-ss", str(trim_start), "-to", str(trim_end),
             "-i", str(input_path),
             "-vf", f"fps={fps}",
-            "-q:v", "2", output_pattern,
+            "-q:v", "2",
+            "-start_number", "0",
+            output_pattern,
         ],
         capture_output=True, timeout=120,
     )
