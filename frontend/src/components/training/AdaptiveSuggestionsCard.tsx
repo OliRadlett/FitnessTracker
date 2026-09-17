@@ -8,7 +8,7 @@ import type {
 
 const STANCE_STYLES: Record<string, string> = {
   recover: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
-  rest: 'border-red-500/40 bg-red-500/10 text-red-300',
+  rest: 'border-warning/40 bg-warning/10 text-warning',
   ease: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
   maintain: 'border-surface-light bg-surface-light/30 text-muted',
   build: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',

@@ -318,7 +318,7 @@ export function WorkoutPlanner() {
   if (zonesIsError && zonesErrorObj) {
     return (
       <Card>
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           Failed to load workout zones: {zonesErrorObj.message}
         </div>
       </Card>
@@ -350,7 +350,7 @@ export function WorkoutPlanner() {
         {readiness && (
           <div className={`mb-4 p-3 rounded-lg border ${
             readiness.is_fatigued
-              ? 'bg-red-500/10 border-red-500/30'
+              ? 'bg-warning/10 border-warning/30'
               : readiness.current_tsb > 10
                 ? 'bg-green-500/10 border-green-500/30'
                 : 'bg-blue-500/10 border-blue-500/30'
@@ -363,7 +363,7 @@ export function WorkoutPlanner() {
                 </p>
               </div>
               <span className={`text-xs font-medium px-2 py-1 rounded ${
-                readiness.is_fatigued ? 'bg-red-500/20 text-warning' : 'bg-green-500/20 text-positive'
+                readiness.is_fatigued ? 'bg-warning/20 text-warning' : 'bg-green-500/20 text-positive'
               }`}>
                 Max: {ZONE_LABELS[readiness.recommended_max_zone]?.split(' — ')[1] || readiness.recommended_max_zone}
               </span>

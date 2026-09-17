@@ -27,7 +27,7 @@ function FormScoreRing({ score }: { score: number }) {
   const circumference = normalizedRadius * 2 * Math.PI;
   const offset = circumference - (score / 100) * circumference;
 
-  let color = 'text-red-400';
+  let color = 'text-warning';
   let strokeColor = '#f87171';
   if (score >= 90) {
     color = 'text-positive';
@@ -73,7 +73,7 @@ function VelocityColor({ pct }: { pct: number }) {
   if (pct < 10) return <span className="text-positive">{pct.toFixed(1)}%</span>;
   if (pct < 20) return <span className="text-yellow-400">{pct.toFixed(1)}%</span>;
   if (pct < 30) return <span className="text-orange-400">{pct.toFixed(1)}%</span>;
-  return <span className="text-red-400">{pct.toFixed(1)}%</span>;
+  return <span className="text-warning">{pct.toFixed(1)}%</span>;
 }
 
 function RpeConfidence({ confidence }: { confidence: number | null | undefined }) {

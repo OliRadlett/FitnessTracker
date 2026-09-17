@@ -22,7 +22,7 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
       {unique.map((s) => (
         <span
           key={s.id}
-          className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-gray-500'}`}
+          className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
           title={`${s.provider}: ${s.provider_name || s.provider_activity_id}`}
         >
           <ProviderIcon provider={s.provider} /> {s.provider}
@@ -143,10 +143,10 @@ export function ActivityCard({
             <span className="text-muted">{Math.round(activity.average_cadence)} rpm</span>
           ) : null}
           {!isStrength && activity.max_heartrate ? (
-            <span className="text-red-400">{Math.round(activity.max_heartrate)} bpm</span>
+            <span className="text-warning">{Math.round(activity.max_heartrate)} bpm</span>
           ) : null}
           {!isStrength && activity.average_heartrate ? (
-            <span className="text-red-400/70">{Math.round(activity.average_heartrate)} bpm avg</span>
+            <span className="text-warning/70">{Math.round(activity.average_heartrate)} bpm avg</span>
           ) : null}
           {activity.tss != null && activity.tss > 0 ? (
             <span className="text-blue-400">{activity.tss} TSS</span>

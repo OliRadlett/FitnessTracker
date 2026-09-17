@@ -308,7 +308,7 @@ export default function RoutesPage() {
         {/* Error banner */}
         {syncMutation.isError && (
           <div className="flex-shrink-0 px-4 py-2.5 border-b border-surface-light/30">
-            <div className="flex items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+            <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
               <span>{syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}</span>
             </div>
           </div>

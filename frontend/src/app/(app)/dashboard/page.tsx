@@ -233,11 +233,11 @@ export default function DashboardPage() {
     <div className="space-y-8" aria-live="polite">
       {/* ── Error Banner ────────────────────────────────────────────────────── */}
       {downloadError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           <span>{downloadError}</span>
           <button
             onClick={() => setDownloadError(null)}
-            className="shrink-0 text-red-400 hover:text-red-300"
+            className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
             ✕

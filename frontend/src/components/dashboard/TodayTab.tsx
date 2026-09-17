@@ -39,7 +39,7 @@ const SPORT_EMOJI: Record<string, string> = {
 };
 
 const DAY_TYPE_COLORS: Record<string, string> = {
-  rest: 'text-gray-400',
+  rest: 'text-muted',
   easy: 'text-positive',
   moderate: 'text-blue-400',
   hard: 'text-orange-400',
@@ -487,7 +487,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
             <span className="text-xs font-medium text-positive">✓ Completed</span>
           )}
           {isRest && (
-            <span className="text-xs font-medium text-gray-400">Recovery day</span>
+            <span className="text-xs font-medium text-muted">Recovery day</span>
           )}
         </div>
 

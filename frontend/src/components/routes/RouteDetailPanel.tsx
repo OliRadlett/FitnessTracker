@@ -211,7 +211,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   }
                 }}
                 aria-label="Delete route"
-                className="p-1.5 text-warning hover:text-red-300 hover:bg-red-500/10 bg-surface-light/50 rounded transition-colors"
+                className="p-1.5 text-warning hover:text-warning/80 hover:bg-warning/10 bg-surface-light/50 rounded transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -249,7 +249,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                 <span
                   key={s.id}
                   className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${
-                    PROVIDER_COLORS[s.provider] || 'bg-gray-500'
+                    PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >
                   <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}

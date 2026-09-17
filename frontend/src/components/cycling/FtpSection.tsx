@@ -217,7 +217,7 @@ export function FtpSection({
                     <td className="py-2 text-right font-mono">
                       {pr.improvement_pct != null ? (
                         pr.improvement_pct > 0 ? (
-                          <span className="text-green-400">+{pr.improvement_pct.toFixed(1)}%</span>
+                          <span className="text-positive">+{pr.improvement_pct.toFixed(1)}%</span>
                         ) : (
                           <span className="text-muted">{pr.improvement_pct.toFixed(1)}%</span>
                         )

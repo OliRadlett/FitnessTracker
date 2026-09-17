@@ -470,7 +470,7 @@ export default function SettingsPage() {
                       {connection!.status === 'needs_reauth' ? (
                         <button
                           onClick={() => handleConnect(integration.id)}
-                          className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 rounded-lg transition-colors"
+                          className="px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 border border-warning/30 hover:bg-warning/10 rounded-lg transition-colors"
                         >
                           Reconnect
                         </button>
@@ -485,7 +485,7 @@ export default function SettingsPage() {
                       )}
                       <button
                         onClick={() => handleDisconnect(connection!.id)}
-                        className="px-4 py-2 text-sm font-medium text-warning hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm font-medium text-warning hover:text-warning/80 hover:bg-warning/10 rounded-lg transition-colors"
                       >
                         Disconnect
                       </button>

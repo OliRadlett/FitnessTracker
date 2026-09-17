@@ -477,7 +477,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-warning border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
+                className="px-3 py-1.5 text-sm bg-warning/20 hover:bg-warning/30 text-warning border border-warning/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
               >
                 {deleteMutation.isPending ? 'Deleting…' : 'Confirm Delete'}
               </button>
@@ -512,7 +512,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 const BADGE_STYLES: Record<string, string> = {
   'On Track': 'bg-green-500/20 text-positive border-green-500/30',
   'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Unlikely': 'bg-red-500/20 text-warning border-red-500/30',
+  'Unlikely': 'bg-warning/20 text-warning border-warning/30',
   'Not enough data': 'bg-muted/20 text-muted border-muted/30',
 };
 

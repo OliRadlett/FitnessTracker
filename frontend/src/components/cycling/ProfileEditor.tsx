@@ -199,7 +199,7 @@ export function ProfileEditor({
                         ? 'bg-green-500/20 text-positive'
                         : ftpEstimate.confidence >= 0.5
                           ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-red-500/20 text-warning'
+                           : 'bg-warning/20 text-warning'
                     }`}>
                       {Math.round(ftpEstimate.confidence * 100)}% confidence
                     </span>

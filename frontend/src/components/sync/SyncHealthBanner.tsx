@@ -44,7 +44,7 @@ export function SyncHealthBanner() {
 
   if (backendTokenExpired) {
     return (
-      <div className="mb-4 p-3 rounded-lg border text-sm flex items-start justify-between gap-3 bg-red-500/10 border-red-500/30 text-red-300">
+      <div className="mb-4 p-3 rounded-lg border text-sm flex items-start justify-between gap-3 bg-warning/10 border-warning/30 text-warning">
         <div role="status">
           <p>
             <strong>Session expired:</strong> your sign-in token has lapsed, so new
@@ -55,7 +55,7 @@ export function SyncHealthBanner() {
           <button
             onClick={() => setDismissed(true)}
             aria-label="Dismiss"
-            className="text-red-400 hover:text-red-200 font-medium px-1"
+            className="text-warning hover:text-warning/80 font-medium px-1"
           >
             ✕
           </button>
@@ -80,13 +80,13 @@ export function SyncHealthBanner() {
   const providerName = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
 
   return (
-    <div className="mb-4 p-3 rounded-lg border text-sm flex items-start justify-between gap-3 bg-red-500/10 border-red-500/30 text-red-300">
+    <div className="mb-4 p-3 rounded-lg border text-sm flex items-start justify-between gap-3 bg-warning/10 border-warning/30 text-warning">
       <div role="status">
         {needsReauth.length > 0 ? (
           <p>
             <strong>Action needed:</strong> {needsReauth.map((c) => providerName(c.provider)).join(', ')}{' '}
             need re-authorisation — sync is paused until you reconnect.{' '}
-            <Link href="/settings" className="underline hover:text-red-200 font-medium">
+            <Link href="/settings" className="underline hover:text-warning/80 font-medium">
               Fix in Settings
             </Link>
           </p>
@@ -101,7 +101,7 @@ export function SyncHealthBanner() {
       <button
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
-        className="text-red-400 hover:text-red-200 font-medium px-1"
+        className="text-warning hover:text-warning/80 font-medium px-1"
       >
         ✕
       </button>

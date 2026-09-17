@@ -30,11 +30,11 @@ export function HealthAlertsSection({ analysisResults, isAnalyzing, onAnalyze }:
         <div className="space-y-3">
           {analysisResults.map((item, i) => {
             const severity = item.result?.severity || 'none';
-            const borderClass = severity === 'critical' ? 'border-red-500/30 bg-red-500/10'
+            const borderClass = severity === 'critical' ? 'border-warning/30 bg-warning/10'
               : severity === 'warning' ? 'border-yellow-500/30 bg-yellow-500/10'
               : severity === 'info' ? 'border-blue-500/30 bg-blue-500/10'
               : 'border-green-500/20 bg-green-500/5';
-            const badgeClass = severity === 'critical' ? 'bg-red-500/20 text-warning'
+            const badgeClass = severity === 'critical' ? 'bg-warning/20 text-warning'
               : severity === 'warning' ? 'bg-yellow-500/20 text-yellow-400'
               : severity === 'info' ? 'bg-blue-500/20 text-blue-400'
               : 'bg-green-500/20 text-positive';

@@ -48,12 +48,12 @@ function BenchmarkBadge({ benchmark }: { benchmark?: MetricBenchmark | null }) {
   if (!benchmark) return null;
 
   const colorMap: Record<string, string> = {
-    'untrained': 'bg-gray-500/20 text-gray-400',
+    'untrained': 'bg-surface-light/20 text-muted',
     'recreational': 'bg-blue-500/20 text-blue-400',
     'trained': 'bg-green-500/20 text-positive',
     'competitive': 'bg-yellow-500/20 text-yellow-400',
     'elite': 'bg-purple-500/20 text-purple-400',
-    'detraining': 'bg-red-500/20 text-warning',
+    'detraining': 'bg-warning/20 text-warning',
     'maintaining': 'bg-blue-500/20 text-blue-400',
     'building': 'bg-green-500/20 text-positive',
     'high': 'bg-yellow-500/20 text-yellow-400',
@@ -108,7 +108,7 @@ export function MetricCard({
       </div>
       {displayText && <p className="text-xs text-muted mt-1">{displayText}</p>}
       {tooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-xs text-slate-200 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface text-xs text-muted rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
           {tooltip}
         </div>
       )}

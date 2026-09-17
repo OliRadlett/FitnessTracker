@@ -40,7 +40,7 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
             {[1, 2, 3].map((i) => (<div key={i} className="h-16 bg-surface-light rounded-lg"></div>))}
           </div>
         ) : isError ? (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+          <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
             Failed to load: {error?.message}
           </div>
         ) : linkableActivities && linkableActivities.length > 0 ? (

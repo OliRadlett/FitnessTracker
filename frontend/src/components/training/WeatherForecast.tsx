@@ -32,7 +32,7 @@ function DayChip({ day }: { day: ForecastDay }) {
   return (
     <div
       className={`relative flex-1 min-w-[110px] p-3 rounded-lg border text-center ${
-        poor ? 'bg-red-500/5 border-red-500/30' : 'bg-surface-light/30 border-surface-light/50'
+        poor ? 'bg-warning/5 border-warning/30' : 'bg-surface-light/30 border-surface-light/50'
       }`}
     >
       {poor && (

@@ -18,9 +18,9 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
-  error: 'bg-red-500/15 text-red-400',
+  error: 'bg-warning/15 text-warning',
   warning: 'bg-amber-500/15 text-amber-400',
-  success: 'bg-emerald-500/15 text-emerald-400',
+  success: 'bg-positive/15 text-positive',
   info: 'bg-blue-500/15 text-blue-400',
 };
 

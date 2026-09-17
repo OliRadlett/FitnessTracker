@@ -14,9 +14,9 @@ const CATEGORIES = [
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  big3: 'bg-red-500/20 text-red-300 border-red-500/30',
+  big3: 'bg-warning/20 text-warning border-warning/30',
   compound: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  accessory: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
+  accessory: 'bg-surface-light/20 text-muted border-muted/30',
 };
 
 export function ExerciseManager() {
@@ -165,7 +165,7 @@ export function ExerciseManager() {
                   onClick={() => {
                     if (confirm(`Delete "${ex.name}"?`)) deleteMut.mutate(ex.id);
                   }}
-                  className="text-xs text-warning opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-300"
+                  className="text-xs text-warning opacity-0 group-hover:opacity-100 transition-opacity hover:text-warning/80"
                 >
                   Delete
                 </button>

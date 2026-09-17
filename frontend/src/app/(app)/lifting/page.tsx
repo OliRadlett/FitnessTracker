@@ -171,7 +171,7 @@ export default function LiftingPage() {
   });
 
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
-    queryKey: ['chart-strength-balance'],
+    queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
     staleTime: 300_000,
   });
@@ -419,11 +419,11 @@ export default function LiftingPage() {
 
       {/* Error banner */}
       {actionError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
-            className="shrink-0 text-red-400 hover:text-red-300"
+            className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
             ✕
@@ -523,7 +523,7 @@ export default function LiftingPage() {
         </div>
       )}
       {backfillMutation.isError && (
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-warning" role="alert">
+        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning" role="alert">
           Error: {backfillMutation.error instanceof Error ? backfillMutation.error.message : 'Auto-link failed'}
         </div>
       )}

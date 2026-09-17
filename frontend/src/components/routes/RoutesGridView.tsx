@@ -95,7 +95,7 @@ export function RoutesGridView({
                   <span
                     key={s.provider}
                     className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full text-white ${
-                      PROVIDER_COLORS[s.provider] || 'bg-gray-500'
+                      PROVIDER_COLORS[s.provider] || 'bg-muted'
                     }`}
                     title={s.provider}
                   >

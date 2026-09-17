@@ -195,7 +195,7 @@ export function FuelPlanCard({ activity }: FuelPlanCardProps) {
                   if (confirm('Delete this fuel plan?')) deleteMutation.mutate();
                 }}
                 disabled={deleteMutation.isPending}
-                className="text-xs text-warning hover:text-red-300 disabled:opacity-50"
+                className="text-xs text-warning hover:text-warning/80 disabled:opacity-50"
               >
                 Delete
               </button>

@@ -68,7 +68,7 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
               video.analysis_status === 'processing'
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                 : video.analysis_status === 'failed'
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      ? 'bg-warning/20 text-warning border border-warning/30'
                   : 'bg-surface/80 text-muted border border-surface-light'
             }`}
           >
