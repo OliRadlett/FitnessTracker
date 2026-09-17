@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 
 from celery import Celery
 from celery.schedules import crontab
@@ -1262,7 +1262,7 @@ def fit_personalized_power_models() -> dict:
                         select(Activity).where(
                             Activity.user_id == uid,
                             Activity.sport_type == "cycling",
-                            Activity.moving_time >= 1200,  # >20min
+                            Activity.duration_seconds >= 1200,  # >20min
                             Activity.average_power.isnot(None),
                             Activity.average_heartrate.isnot(None),
                         ).order_by(Activity.start_date.desc()).limit(100)
@@ -1281,7 +1281,7 @@ def fit_personalized_power_models() -> dict:
                                 {
                                     "avg_watts": float(act.average_power),
                                     "avg_hr": float(act.average_heartrate),
-                                    "duration_seconds": int(act.moving_time),
+                                    "duration_seconds": int(act.duration_seconds or 0),
                                 }
                             )
 
@@ -1318,7 +1318,7 @@ def fit_personalized_power_models() -> dict:
                             profile.ctl_tau = constants["ctl_tau"]
                         if constants.get("atl_tau"):
                             profile.atl_tau = constants["atl_tau"]
-                        profile.power_model_fitted_at = func.now()
+                        profile.power_model_fitted_at = datetime.now(UTC)
 
                         fitted_count += 1
                         await db.commit()
@@ -1387,7 +1387,7 @@ def analyze_weather_performance_weekly() -> dict:
                             Activity.sport_type == "cycling",
                             Activity.weather_temperature.isnot(None),
                             Activity.average_power.isnot(None),
-                            Activity.moving_time >= 600,  # >10min
+                            Activity.duration_seconds >= 600,  # >10min
                         ).order_by(Activity.start_date.desc()).limit(200)
                     )
                     activities = list(result.scalars().all())
@@ -1414,8 +1414,8 @@ def analyze_weather_performance_weekly() -> dict:
                             "avg_hr": float(act.average_heartrate)
                             if act.average_heartrate
                             else None,
-                            "moving_time": int(act.moving_time)
-                            if act.moving_time
+                            "moving_time": int(act.duration_seconds)
+                            if act.duration_seconds
                             else None,
                             "weather": {
                                 "temperature": float(act.weather_temperature)
@@ -1453,7 +1453,7 @@ def analyze_weather_performance_weekly() -> dict:
                         profile.weather_insights = results.get(
                             "personalized_insights"
                         )
-                        profile.weather_analyzed_at = func.now()
+                        profile.weather_analyzed_at = datetime.now(UTC)
                         analyzed_count += 1
                         await db.commit()
 
@@ -1545,12 +1545,24 @@ def analyze_segments_intelligence_weekly() -> dict:
                     }
                     if profile:
                         # Use training load if available
-                        from app.services.cycling import compute_training_load
+                        from datetime import date, timedelta
 
-                        load = await compute_training_load(db, uid)
-                        if load:
-                            user_fitness["ctl"] = load.get("ctl", 50)
-                            user_fitness["atl"] = load.get("atl", 30)
+                        from app.services.cycling import (
+                            compute_training_load,
+                            get_daily_tss,
+                        )
+
+                        today = date.today()
+                        daily_tss = await get_daily_tss(
+                            db, uid, today - timedelta(days=90), today
+                        )
+                        series = compute_training_load(
+                            daily_tss, today, lookback_days=90
+                        )
+                        if series:
+                            latest = series[-1]
+                            user_fitness["ctl"] = latest.get("ctl", 50)
+                            user_fitness["atl"] = latest.get("atl", 30)
 
                     # Build data for Modal
                     segments_data = []
@@ -1604,7 +1616,7 @@ def analyze_segments_intelligence_weekly() -> dict:
                         seg.predicted_time_seconds = prediction.get("predicted_time_seconds")
                         seg.predicted_power_watts = prediction.get("predicted_power_watts")
                         seg.prediction_confidence = prediction.get("confidence")
-                        seg.intelligence_analyzed_at = func.now()
+                        seg.intelligence_analyzed_at = datetime.now(UTC)
 
                     analyzed_count += 1
                     await db.commit()
@@ -1637,7 +1649,7 @@ def analyze_cross_domain_weekly() -> dict:
     Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
     """
     import asyncio
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
     from sqlalchemy import select
 
@@ -1672,7 +1684,7 @@ def analyze_cross_domain_weekly() -> dict:
             for uid in user_ids:
                 try:
                     # Collect sleep data (last 90 days)
-                    cutoff = func.now() - timedelta(days=90)
+                    cutoff = datetime.now(UTC) - timedelta(days=90)
                     result = await db.execute(
                         select(SleepLog).where(
                             SleepLog.user_id == uid,
@@ -1735,7 +1747,7 @@ def analyze_cross_domain_weekly() -> dict:
                             Activity.user_id == uid,
                             Activity.sport_type == "cycling",
                             Activity.average_power.isnot(None),
-                            Activity.moving_time >= 600,
+                            Activity.duration_seconds >= 600,
                             Activity.created_at >= cutoff,
                         ).order_by(Activity.start_date.desc())
                     )
