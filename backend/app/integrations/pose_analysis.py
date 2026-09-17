@@ -141,6 +141,55 @@ def calculate_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     return float(np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0))))
 
 
+def _vis(lm, *idxs: int) -> float:
+    """Minimum visibility over landmark indices (default 1.0 if absent).
+
+    MediaPipe provides per-landmark visibility; synthetic/test landmarks
+    may not — default keeps those usable.
+    """
+    return min(float(getattr(lm[i], "visibility", 1.0)) for i in idxs)
+
+
+def _median_filter(values, window: int = 7) -> np.ndarray:
+    """Rolling median (edge-padded). Kills single-frame landmark spikes
+    (e.g. a knee reading 26° for one frame when the bar occludes it) that
+    mean-smoothing merely attenuates — a live video showed such spikes
+    inventing false rep boundaries and false hitching.
+    """
+    x = np.asarray(values, dtype=float)
+    if len(x) <= window:
+        return x.copy()
+    pad = window // 2
+    padded = np.pad(x, pad, mode="edge")
+    return np.array([np.median(padded[i:i + window]) for i in range(len(x))])
+
+
+def _best_extremum(
+    all_landmarks: list,
+    idxs: list[int],
+    values,
+    vis_idxs: tuple[int, ...],
+    want_max: bool = True,
+    min_vis: float = 0.5,
+) -> int:
+    """Index into idxs with max (or min) precomputed value among
+    well-tracked frames.
+
+    Values should come from a median-filtered series so isolated spikes
+    can't win; visibility excludes multi-frame mistracks. Falls back to
+    the plain extremum when nothing passes the visibility gate.
+    """
+    values = np.asarray(values, dtype=float)
+    order = np.argsort(values)
+    if want_max:
+        order = order[::-1]
+    for rank in order:
+        i = idxs[int(rank)]
+        if _vis(all_landmarks[i], *vis_idxs) >= min_vis:
+            return i
+    return idxs[int(np.argmax(values)) if want_max else int(np.argmin(values))]
+
+
 def _mid(landmarks, left_idx: int, right_idx: int) -> np.ndarray:
     """Midpoint of left/right landmark."""
     return np.array([
@@ -189,6 +238,12 @@ def classify_exercise(landmarks_per_frame: list) -> dict:
     knee_range = max(knee_angles) - min(knee_angles)
     elbow_range = max(elbow_angles) - min(elbow_angles)
 
+    # Torso lean profile (0 = upright). A deadlift folds the torso
+    # near-horizontal at the bottom (lean 70°+); squat bottoms stay under
+    # ~50°. Robust max via 95th percentile (single glitch frames skew max).
+    leans = sorted(_torso_angle(lm) for lm in landmarks_per_frame)
+    bottom_lean = leans[min(len(leans) - 1, int(len(leans) * 0.95))]
+
     # Mean shoulder-hip vertical difference (bar position indicator)
     sh_diffs = []
     for lm in landmarks_per_frame:
@@ -206,7 +261,17 @@ def classify_exercise(landmarks_per_frame: list) -> dict:
     # stabilization, arm swing) — e.g. hip_range=143, knee_range=118 with
     # elbow_range=179 on a confirmed back-squat video (2026-09-17).
     # Classification keys on hip/knee dominance instead.
-    if hip_range > 40 and knee_range > 50:
+    #
+    # Hinge check FIRST: deadlifts satisfy the squat ROM thresholds too
+    # (both move hips + knees through large ranges), so the squat branch
+    # would shadow them. Verified 2026-09-17: two "Squat 0.95" videos were
+    # visually conventional/strongman deadlifts (torso horizontal).
+    if hip_range > 35 and knee_range > 30 and bottom_lean > 60:
+        exercise = "Deadlift"
+        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
+        knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
+        variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
+    elif hip_range > 40 and knee_range > 50:
         exercise = "Squat"
         confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
         variation = "Front Squat" if mean_sh_diff > 0.05 else "Back Squat"
@@ -242,24 +307,13 @@ def detect_reps_from_pose(
         return []
 
     # Build a "depth signal" — knee angle for squat/deadlift, elbow angle for bench
-    signal = []
-    for lm in landmarks_per_frame:
+    signal = _median_filter([
+        calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
         if exercise in ("Squat", "Front Squat", "Back Squat", "Deadlift",
-                        "Conventional Deadlift", "Sumo Deadlift"):
-            angle = calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
-        elif exercise in ("Bench Press",):
-            angle = calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
-        else:
-            angle = calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
-        signal.append(angle)
-
-    signal = np.array(signal)
-
-    # Smooth (~1.1s window at 10fps): kills per-frame landmark jitter while
-    # preserving real rep periods (powerlifting reps take 1.5s+).
-    if len(signal) > 11:
-        kernel = np.ones(11) / 11
-        signal = np.convolve(signal, kernel, mode="same")
+                        "Conventional Deadlift", "Sumo Deadlift") else
+        calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
+        for lm in landmarks_per_frame
+    ], window=7)
 
     # Find local minima (bottom of rep) — these are the inflection points
     diff = np.diff(signal)
@@ -342,22 +396,19 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     # depth/valgus, and the TOP (standing) for lockout/posture. Evaluating
     # lockout at a bottom frame always fails (found 2026-09-17).
     #
-    # Extrema are selected on a SMOOTHED angle series: single-frame landmark
-    # glitches (a misplaced shoulder reads as 30° of lean) otherwise become
-    # the "top"/"bottom" and poison every metric.
+    # Extrema come from a median-filtered series (kills single-frame spikes
+    # like a 26° knee when the bar occludes it) among well-tracked frames
+    # (kills multi-frame mistracks like a lost shoulder reading 150° lean).
     idxs = list(range(si, min(ei, n)))
-    raw = np.array([
+    kvals = _median_filter([
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in idxs
     ])
-    if len(raw) > 5:
-        kern = np.ones(5) / 5
-        smooth = np.convolve(raw, kern, mode="same")
-    else:
-        smooth = raw
-    bottom_lm = all_landmarks[idxs[int(np.argmin(smooth))]]
-    bottom_knee = float(np.min(smooth))
-    ti = idxs[int(np.argmax(smooth))]
+    bi = _best_extremum(all_landmarks, idxs, kvals, (23, 24, 25, 26),
+                        want_max=False)
+    bottom_lm = all_landmarks[bi]
+    bottom_knee = float(kvals[idxs.index(bi)])
+    ti = _best_extremum(all_landmarks, idxs, kvals, (11, 12), want_max=True)
     top_lm = all_landmarks[ti]
 
     def _win_med(fn):
@@ -381,7 +432,7 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     soft_lockout = not lockout and knee_angle_top > 160
     valgus = _check_knee_valgus(bottom_lm)
     heels = _check_heels_flat(top_lm)
-    back_dev = _win_med(_torso_angle)
+    back_dev = min(90.0, _win_med(_torso_angle))
 
     return {
         "depth_achieved": depth,
@@ -430,17 +481,17 @@ def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
         butt_lift = (start_hip - min_hip) > 0.02
 
     # Lockout + symmetry are evaluated at the TOP (arms extended), not at
-    # the rep end (a bottom, where the elbows are always bent). The top is
-    # selected on a smoothed series so one glitchy frame can't become it.
+    # the rep end (a bottom, where the elbows are always bent). Median
+    # filtering + visibility gating keep glitch frames out (see squat).
     bidx = list(range(si, min(ei, len(all_landmarks))))
-    braw = np.array([
+    bvals = _median_filter([
         calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 13, 14), _mid(all_landmarks[i], 15, 16))
         for i in bidx
     ])
-    if len(braw) > 5:
-        braw = np.convolve(braw, np.ones(5) / 5, mode="same")
-    top_lm = all_landmarks[bidx[int(np.argmax(braw))]]
-    lockout_angle = float(np.max(braw))
+    top_lm = all_landmarks[_best_extremum(
+        all_landmarks, bidx, bvals, (11, 12, 13, 14, 15, 16),
+        want_max=True)]
+    lockout_angle = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 13, 14), _mid(top_lm, 15, 16))
     lockout = lockout_angle > 160
     symmetrical = abs(top_lm[15].y - top_lm[16].y) < 0.03
 
@@ -465,15 +516,22 @@ def _deadlift_lockout(landmarks) -> bool:
     return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
 
 
-def _detect_hitching(wrist_y_per_frame: list) -> bool:
-    if len(wrist_y_per_frame) < 5:
+def _detect_hitching(knee_angles: list[float]) -> bool:
+    """Hitching = thighs re-bending under load mid-pull.
+
+    A clean pull extends the knees monotonically; hitching (resting the bar
+    on the thighs and dipping under) shows as knee re-flexion in the second
+    half. Detected from knee angles directly — wrist trajectories are
+    unreliable here (hands+straps+bar merge into one blob and stick to
+    static plates, which reads as a permanent "stall").
+    """
+    if len(knee_angles) < 5:
         return False
-    velocities = np.diff(wrist_y_per_frame)
-    near_zero = np.abs(velocities) < 0.01
-    n = len(near_zero)
-    mid_start, mid_end = int(n * 0.3), int(n * 0.7)
-    mid_near_zero = near_zero[mid_start:mid_end]
-    return np.sum(mid_near_zero) > len(mid_near_zero) * 0.3
+    n = len(knee_angles)
+    mid = n * 3 // 4
+    peak = max(knee_angles[:mid]) if mid > 0 else knee_angles[0]
+    trough = min(knee_angles[mid:])
+    return (peak - trough) > 15
 
 
 def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
@@ -482,21 +540,32 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
 
     # Reps span bottom-to-bottom. Lockout, grip and shoulder position are
     # evaluated at the TOP (standing); back rounding is the torso change
-    # from bottom to top. Extrema come from a smoothed series (see squat).
+    # from bottom to top. Median filtering + visibility gating keep glitch
+    # frames out (see squat).
     didx = list(range(si, min(ei, n)))
-    drawn = np.array([
+    dvals = _median_filter([
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in didx
     ])
-    if len(drawn) > 5:
-        drawn = np.convolve(drawn, np.ones(5) / 5, mode="same")
-    bottom_lm = all_landmarks[didx[int(np.argmin(drawn))]]
-    top_lm = all_landmarks[didx[int(np.argmax(drawn))]]
+    bottom_lm = all_landmarks[_best_extremum(
+        all_landmarks, didx, dvals, (23, 24, 25, 26), want_max=False)]
+    top_lm = all_landmarks[_best_extremum(
+        all_landmarks, didx, dvals, (11, 12, 23, 24), want_max=True)]
 
     lockout = _deadlift_lockout(top_lm)
+    top_hip_angle = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
+    top_knee_angle = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
+    # Soft tier mirrors squat: knees locked but finish soft (common on
+    # touch-and-go sets that never stand tall between reps). Counts with
+    # a cue instead of failing the rep.
+    soft_lockout = (not lockout and top_knee_angle > 160
+                    and top_hip_angle > 150)
 
-    wrist_ys = [np.mean([all_landmarks[i][15].y, all_landmarks[i][16].y]) for i in range(si, min(ei, len(all_landmarks)))]
-    hitching = _detect_hitching(wrist_ys)
+    knee_series = list(_median_filter([
+        calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
+        for i in range(si, min(ei, n))
+    ]))
+    hitching = _detect_hitching(knee_series)
 
     # Back position: torso change from bottom to top
     torso_bottom = _torso_angle(bottom_lm)
@@ -509,6 +578,9 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
 
     return {
         "lockout_complete": lockout,
+        "lockout_soft": soft_lockout,
+        "top_hip_angle": round(top_hip_angle, 1),
+        "top_knee_angle": round(top_knee_angle, 1),
         "hitching_detected": hitching,
         "back_position": back_pos,
         "grip_symmetrical": grip_sym,
@@ -616,10 +688,15 @@ def score_deadlift_form(per_rep: list[dict]) -> dict:
     for r in per_rep:
         rn = r["rep_number"]
         if not r["lockout_complete"]:
-            score -= 25
-            comp_fail = True
-            deviations.append(f"Rep {rn}: Incomplete lockout")
-            cues.append(COACHING_CUES["incomplete_lockout"])
+            if r.get("lockout_soft"):
+                score -= 10
+                deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
+                cues.append(COACHING_CUES["soft_lockout"])
+            else:
+                score -= 25
+                comp_fail = True
+                deviations.append(f"Rep {rn}: Incomplete lockout")
+                cues.append(COACHING_CUES["incomplete_lockout"])
         if r["hitching_detected"]:
             score -= 25
             comp_fail = True
@@ -708,10 +785,12 @@ def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float
         score -= 5
         deviations.append(f"Prolonged setup ({setup_duration:.1f}s)")
 
-    # Back alignment
-    if setup_frames:
+    # Back alignment (skipped for deadlift: gripping the bar off the floor
+    # MEANS a bent-over setup — flagging it is always wrong).
+    if setup_frames and exercise not in ("Deadlift", "Conventional Deadlift",
+                                         "Sumo Deadlift"):
         torso_angles = [_torso_angle(lm) for lm in setup_frames]
-        mean_torso = np.mean(torso_angles)
+        mean_torso = min(90.0, float(np.mean(torso_angles)))
         if abs(mean_torso) > 20:
             score -= 10
             deviations.append(f"Excessive torso lean during setup ({mean_torso:.0f})")
@@ -833,11 +912,12 @@ def bar_velocity_from_pose(
             or frame_height_px <= 0 or rom_m <= 0):
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
 
-    if exercise in ("Bench Press", "Deadlift",
-                    "Conventional Deadlift", "Sumo Deadlift"):
-        li, ri = (15, 16)  # wrists: bar in hands
+    if exercise in ("Bench Press",):
+        li, ri = (15, 16)  # wrists: bar in hands, clearly visible pressing
     else:
-        li, ri = (23, 24)  # hips: full ROM, central, rarely occluded
+        li, ri = (23, 24)  # hips: full ROM, central, rarely occluded.
+        # (Deadlift wrists are unusable: hands+straps+bar merge into one
+        # blob that sticks to the static plates.)
 
     n = len(landmarks_per_frame)
     y_px = np.array([
