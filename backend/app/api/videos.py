@@ -241,9 +241,6 @@ async def process_video(
             501, "Video processing is not configured (Modal credentials missing)"
         )
 
-    if not settings.gemini_api_key:
-        raise HTTPException(501, "Gemini API key is not configured — analysis will be skipped")
-
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
 
