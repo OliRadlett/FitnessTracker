@@ -1405,8 +1405,8 @@ def analyze_weather_performance_weekly() -> dict:
                             "avg_watts": float(act.average_power)
                             if act.average_power
                             else None,
-                            "normalized_power": float(act.weighted_average_power)
-                            if act.weighted_average_power
+                            "normalized_power": float(act.normalized_power)
+                            if act.normalized_power
                             else None,
                             "decoupling_pct": float(act.decoupling_pct)
                             if hasattr(act, "decoupling_pct") and act.decoupling_pct
@@ -1763,7 +1763,7 @@ def analyze_cross_domain_weekly() -> dict:
                         perf = {
                             "date": date_str,
                             "avg_watts": float(act.average_power) if act.average_power else None,
-                            "normalized_power": float(act.weighted_average_power) if act.weighted_average_power else None,
+                            "normalized_power": float(act.normalized_power) if act.normalized_power else None,
                             "tss": float(act.tss) if act.tss else None,
                             "decoupling_pct": float(act.decoupling_pct) if hasattr(act, "decoupling_pct") and act.decoupling_pct else None,
                         }

@@ -416,6 +416,30 @@ def analyze_segments(
     }
 
 
+# ── Modal remote worker (module scope — Modal rejects closures) ───────────────
+
+
+def _analyze_segments_modal(
+    segments_json: str,
+    efforts_json: str,
+    fitness_json: str,
+    seg_eps: float,
+    seg_min_size: int,
+) -> dict:
+    """Modal remote worker for segment analysis.
+
+    Must stay at module global scope: Modal raises ``InvalidError`` for
+    functions defined inside other functions. All inputs arrive as explicit
+    arguments (JSON strings); ``analyze_segments`` is a module global.
+    """
+    import json as _json
+
+    segs = _json.loads(segments_json)
+    effs = _json.loads(efforts_json)
+    fitness = _json.loads(fitness_json)
+    return analyze_segments(segs, effs, fitness, eps=seg_eps, min_cluster_size=seg_min_size)
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -458,22 +482,12 @@ def analyze_segments_on_modal(
 
     app = modal.App("fittrack-segment-intelligence", image=image)
 
-    @app.function(timeout=300, memory=1024)
-    def _analyze(
-        segments_json: str,
-        efforts_json: str,
-        fitness_json: str,
-        seg_eps: float,
-        seg_min_size: int,
-    ) -> dict:
-        segs = _json.loads(segments_json)
-        effs = _json.loads(efforts_json)
-        fitness = _json.loads(fitness_json)
-        return analyze_segments(segs, effs, fitness, eps=seg_eps, min_cluster_size=seg_min_size)
+    # Decorate the module-global worker (Modal rejects closures defined here).
+    remote_analyze = app.function(timeout=300, memory=1024)(_analyze_segments_modal)
 
     segments_json = _json.dumps(segments)
     efforts_json = _json.dumps(efforts)
     fitness_json = _json.dumps(user_fitness)
 
     with app.run():
-        return _analyze.remote(segments_json, efforts_json, fitness_json, eps, min_cluster_size)
+        return remote_analyze.remote(segments_json, efforts_json, fitness_json, eps, min_cluster_size)
