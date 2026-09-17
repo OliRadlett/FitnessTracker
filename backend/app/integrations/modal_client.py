@@ -290,6 +290,7 @@ def process_video_on_modal(
             if gemini_key and frame_paths:
                 try:
                     import base64
+                    import time as _time
 
                     from google import genai
                     from google.genai import types
@@ -321,14 +322,29 @@ def process_video_on_modal(
                             )
                         )
 
-                    response = client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            temperature=0.3,
-                            max_output_tokens=512,
-                        ),
-                    )
+                    # Retry with exponential backoff for transient errors
+                    response = None
+                    for attempt in range(3):
+                        try:
+                            response = client.models.generate_content(
+                                model="gemini-3.6-flash",
+                                contents=contents,
+                                config=types.GenerateContentConfig(
+                                    temperature=0.3,
+                                    max_output_tokens=512,
+                                ),
+                            )
+                            break  # success
+                        except Exception as retry_exc:
+                            msg = str(retry_exc)
+                            retryable = any(s in msg for s in ("429", "500", "502", "503", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
+                            if retryable and attempt < 2:
+                                wait = 2 ** attempt * 2  # 2s, 4s
+                                _logger.warning("Classification Gemini call failed (attempt %d/3): %s — retrying in %ds",
+                                                attempt + 1, msg[:120], wait)
+                                _time.sleep(wait)
+                            else:
+                                raise
 
                     raw_text = response.text or ""
                     analysis_text = raw_text.strip()
