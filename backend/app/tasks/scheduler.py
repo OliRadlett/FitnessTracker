@@ -2565,7 +2565,6 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     r2_presigned_get=presigned_get,
                     r2_presigned_put=presigned_put["upload_url"],
                     r2_upload_key=presigned_put["key"],
-                    gemini_api_key=settings.gemini_api_key,
                     analysis_depth=analysis_depth,
                 )
 

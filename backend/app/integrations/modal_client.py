@@ -1,8 +1,9 @@
 """Modal integration for serverless video processing.
 
 Provides ``process_video_on_modal()`` which dispatches a lift video to a
-Modal function for scene detection, trimming, and Gemini Vision classification.
-The Modal function runs in a container with ffmpeg installed.
+Modal function for scene detection, trimming, and local pose-based analysis
+(MediaPipe + OpenCV). The Modal function runs in a container with ffmpeg
+and ML libraries installed.
 
 Requires ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` env vars.
 """
@@ -16,7 +17,7 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 # The Modal app + function are defined inline and deployed on first invocation.
-# Container image: debian_slim + ffmpeg + httpx (for R2 downloads/uploads).
+# Container image: debian_slim + ffmpeg + httpx + mediapipe + opencv (no Gemini API).
 _MODAL_IMAGE = None
 
 
@@ -32,6 +33,8 @@ def _get_modal_image(project_root: str | None = None):
     if _MODAL_IMAGE is None:
         import modal
 
+        # v2: Local pose analysis (MediaPipe) — zero Gemini API calls
+        # This version marker forces Modal to rebuild the image cache
         image = (
             modal.Image.debian_slim(python_version="3.12")
             .apt_install("ffmpeg")
@@ -66,7 +69,6 @@ def process_video_on_modal(
     r2_presigned_get: str,
     r2_presigned_put: str,
     r2_upload_key: str,
-    gemini_api_key: str,
     analysis_depth: str = "full",
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
@@ -83,8 +85,6 @@ def process_video_on_modal(
         Presigned PUT URL to upload the trimmed video.
     r2_upload_key:
         The R2 key for the trimmed video (destination).
-    gemini_api_key:
-        Gemini API key for Vision classification.
     analysis_depth:
         ``"basic"`` for trim + classify only (current behaviour),
         ``"full"`` for deep analysis (form, velocity, rest, consistency,
@@ -120,7 +120,6 @@ def process_video_on_modal(
         presigned_get: str,
         presigned_put: str,
         upload_key: str,
-        gemini_key: str,
         depth: str,
     ) -> dict:
         import logging
@@ -287,8 +286,8 @@ def process_video_on_modal(
             _logger.info("Extracted %d key frames", len(frame_paths))
 
             # ── Step 7: Classify via pose landmarks (local) ──────────────
-            exercise = exercise_name or ""
-            reps = rep_count or 0
+            exercise = ""  # Will be determined by pose classification
+            reps = 0  # Will be determined by pose analysis
             weight = 0.0
             confidence = 0.0
             analysis_text = ""
@@ -437,6 +436,5 @@ def process_video_on_modal(
             r2_presigned_get,
             r2_presigned_put,
             r2_upload_key,
-            gemini_api_key,
             analysis_depth,
         )
