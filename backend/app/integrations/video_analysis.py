@@ -450,8 +450,9 @@ def extract_dense_frames(
     trim_start: float,
     trim_end: float,
     fps: float = 1.0,
+    prefix: str = "dense",
 ) -> list[tuple[Path, float]]:
-    """Extract frames at the given FPS from the trimmed segment.
+    """Extract frames at the given FPS using a single ffmpeg invocation.
 
     Returns list of (frame_path, timestamp_seconds) tuples.
     """
@@ -461,34 +462,37 @@ def extract_dense_frames(
     if segment_duration <= 0:
         return []
 
-    frame_interval = 1.0 / fps
-    frames: list[tuple[Path, float]] = []
-    idx = 0
-    t = trim_start + (frame_interval / 2)  # centre of first interval
+    output_pattern = str(Path(tmpdir) / f"{prefix}_%04d.jpg")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(trim_start),
+            "-to",
+            str(trim_end),
+            "-i",
+            str(input_path),
+            "-vf",
+            f"fps={fps}",
+            "-q:v",
+            "2",
+            output_pattern,
+        ],
+        capture_output=True,
+        timeout=120,
+    )
 
-    while t < trim_end:
-        frame_path = Path(tmpdir) / f"dense_{idx:04d}.jpg"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-ss",
-                str(t),
-                "-i",
-                str(input_path),
-                "-frames:v",
-                "1",
-                "-q:v",
-                "2",
-                str(frame_path),
-            ],
-            capture_output=True,
-            timeout=30,
-        )
-        if frame_path.exists():
-            frames.append((frame_path, round(t, 3)))
-        idx += 1
+    frames: list[tuple[Path, float]] = []
+    frame_interval = 1.0 / fps
+    idx = 0
+    while True:
+        frame_path = Path(tmpdir) / f"{prefix}_{idx:04d}.jpg"
+        if not frame_path.exists():
+            break
         t = trim_start + (idx * frame_interval) + (frame_interval / 2)
+        frames.append((frame_path, round(min(t, trim_end), 3)))
+        idx += 1
 
     logger.info("Extracted %d dense frames at %.1f fps", len(frames), fps)
     return frames
@@ -564,7 +568,7 @@ def run_full_analysis(
     # ── 1. Form analysis ─────────────────────────────────────────────────
     form_prompt_template = _get_form_prompt(exercise_name)
     # Use the dense frames for form analysis (up to 20 frames max for token limits)
-    dense_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=1.0)
+    dense_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=1.0, prefix="form")
     form_frame_paths = [fp for fp, _ in dense_frames[:20]]
 
     if form_frame_paths:
@@ -588,7 +592,7 @@ def run_full_analysis(
 
     # ── 2. Velocity tracking ─────────────────────────────────────────────
     # Extract frames at 2fps for velocity estimation
-    velocity_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=2.0)
+    velocity_frames = extract_dense_frames(input_path, tmpdir, trim_start, trim_end, fps=2.0, prefix="vel")
     if len(velocity_frames) >= 2 and rep_count > 0:
         try:
             velocities = []

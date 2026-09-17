@@ -56,7 +56,8 @@ export default function VideosPage() {
   });
 
   const processMutation = useMutation({
-    mutationFn: (videoId: string) => processLiftVideo(authFetch, videoId),
+    mutationFn: ({ videoId, force }: { videoId: string; force?: boolean }) =>
+      processLiftVideo(authFetch, videoId, 'full', force),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
   });
 
@@ -258,14 +259,24 @@ export default function VideosPage() {
                   {video.r2_key &&
                     (!video.analysis_status ||
                       video.analysis_status === 'pending' ||
-                      video.analysis_status === 'failed') && (
+                      video.analysis_status === 'failed' ||
+                      video.analysis_status === 'processing') && (
                       <button
-                        onClick={() => processMutation.mutate(video.id)}
+                        onClick={() =>
+                          processMutation.mutate({
+                            videoId: video.id,
+                            force: video.analysis_status === 'processing',
+                          })
+                        }
                         disabled={processMutation.isPending}
                         className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
                         title="Process video (trim + classify)"
                       >
-                        {processMutation.isPending ? 'Queuing…' : '⚡ Process'}
+                        {processMutation.isPending
+                          ? 'Queuing…'
+                          : video.analysis_status === 'processing'
+                            ? '🔄 Retry'
+                            : '⚡ Process'}
                       </button>
                     )}
                   {confirmDeleteId === video.id ? (
