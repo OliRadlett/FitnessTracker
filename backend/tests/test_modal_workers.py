@@ -11,11 +11,13 @@ import inspect
 
 import pytest
 
-import app.integrations.cross_domain as cross_domain
-import app.integrations.power_models as power_models
-import app.integrations.route_intelligence as route_intelligence
-import app.integrations.segment_intelligence as segment_intelligence
-import app.integrations.weather_analysis as weather_analysis
+from app.integrations import (
+    cross_domain,
+    power_models,
+    route_intelligence,
+    segment_intelligence,
+    weather_analysis,
+)
 
 WORKERS = [
     (power_models, "_fit_power_models_modal"),
