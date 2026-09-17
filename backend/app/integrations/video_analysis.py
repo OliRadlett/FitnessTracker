@@ -431,9 +431,12 @@ def _get_rom(exercise_name: str) -> float:
 
 def _velocity_loss_pct(first_velocity: float, last_velocity: float) -> float:
     """Calculate velocity loss percentage from first to last rep."""
-    if first_velocity <= 0:
+    # Guard tiny denominators (tracking noise near zero explodes to ±1000%+)
+    # and clamp to the physically meaningful range.
+    if first_velocity < 0.05:
         return 0.0
-    return round(((first_velocity - last_velocity) / first_velocity) * 100, 1)
+    loss = ((first_velocity - last_velocity) / first_velocity) * 100
+    return round(max(-100.0, min(100.0, loss)), 1)
 
 
 def _parse_gemini_json(raw_text: str) -> dict:
@@ -632,60 +635,6 @@ def _extract_frames_gray(
     return frames, timestamps
 
 
-def _estimate_pixels_per_meter(
-    frames_gray: list,
-    exercise_name: str,
-) -> float:
-    """Estimate pixel-to-meter scale from video frames.
-
-    Strategy:
-    1. Track total vertical displacement across the set
-    2. Divide by ROM to get pixels_per_meter
-    """
-    import cv2
-    import numpy as np
-
-    if len(frames_gray) < 2:
-        return 0.0
-
-    # Use Lucas-Kanade to track features and measure total displacement
-    feature_params = {"maxCorners": 200, "qualityLevel": 0.3, "minDistance": 7, "blockSize": 7}
-    lk_params = {
-        "winSize": (21, 21), "maxLevel": 3,
-        "criteria": (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.01),
-    }
-
-    p0 = cv2.goodFeaturesToTrack(frames_gray[0], mask=None, **feature_params)
-    if p0 is None:
-        return 0.0
-
-    # Accumulate signed motion into a position series and use its RANGE
-    # (one rep's excursion), not the summed path. Summing |motion| over the
-    # whole set inflates the scale by ~2x per rep (found 2026-09-17: ppm
-    # read 1331 instead of ~240 on a 3-rep synthetic).
-    pos = 0.0
-    lo = hi = 0.0
-    prev_gray = frames_gray[0]
-    for gray in frames_gray[1:]:
-        p1, st, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, p0, None, **lk_params)
-        if p1 is None:
-            break
-        good_new = p1[st == 1]
-        good_old = p0[st == 1]
-        if len(good_new) < 10:
-            break
-        pos += _median_mover_dy(good_new, good_old)
-        lo = min(lo, pos)
-        hi = max(hi, pos)
-        prev_gray = gray
-
-    excursion = hi - lo
-    rom = _get_rom(exercise_name)
-    if excursion > 10 and rom > 0:
-        return excursion / rom
-    return 0.0
-
-
 def _median_mover_dy(good_new, good_old) -> float:
     """Median vertical motion of features actually moving (signed).
 
@@ -710,9 +659,13 @@ def track_barbell_optical_flow(
     trim_start: float,
     trim_end: float,
     exercise_name: str,
-    fps: float = 10.0,
+    fps: float = 30.0,
 ) -> dict:
     """Track barbell vertical position using Lucas-Kanade optical flow.
+
+    Frames are sampled at 30fps (not the 10fps used for pose): LK needs
+    SMALL inter-frame displacements, and at 10fps fast eccentrics blur
+    across frames and lock is lost (found 2026-09-17).
 
     Returns dict with velocity metrics and per-rep timing data.
     """
@@ -789,16 +742,15 @@ def track_barbell_optical_flow(
     # Smooth the position signal
     pos_smooth = _smooth_signal(pos, window=5)
 
-    # Estimate pixels per meter
-    ppm = _estimate_pixels_per_meter(frames_gray, exercise_name)
-    if ppm <= 0:
-        # Fallback: assume total displacement = ROM
-        total_disp = float(np.max(pos_smooth) - np.min(pos_smooth))
-        rom = _get_rom(exercise_name)
-        if total_disp > 10 and rom > 0:
-            ppm = total_disp / rom
-        else:
-            ppm = 100.0  # arbitrary fallback
+    # Scale: the smoothed position oscillates around a fixed center, so its
+    # full range is one rep's excursion. A separate estimator pass is not
+    # needed (and a whole-path accumulation overcounts by ~2x per rep).
+    total_disp = float(np.max(pos_smooth) - np.min(pos_smooth))
+    rom = _get_rom(exercise_name)
+    if total_disp > 10 and rom > 0:
+        ppm = total_disp / rom
+    else:
+        ppm = 100.0  # arbitrary fallback
 
     # Detect reps from the motion signal
     rep_data = _detect_reps_from_motion(pos_smooth, ts, ppm, fps)
