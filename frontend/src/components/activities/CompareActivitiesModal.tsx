@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityStream, ChartData } from '@/lib/api';
-import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
+import { buildReplay, timeFmt, tourRate, TOUR_PRESETS, type ReplayBuildResult } from '@/lib/replay';
 import { Chart } from '@/components/charts/Chart';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration, formatDistance } from '@/lib/utils';
@@ -42,23 +42,31 @@ export function CompareActivitiesModal({
 
   const isLoading = loadingA || loadingB;
 
-  function getStreamValues(streams: ActivityStream[] | undefined, type: string): number[] {
+  function getStreamValues(streams: ActivityStream[] | undefined, ...types: string[]): number[] {
     if (!streams) return [];
-    const s = streams.find((s) => s.stream_type === type);
-    if (!s) return [];
-    const data = s.data as Record<string, unknown>;
-    return (data?.data as number[]) ?? [];
+    for (const type of types) {
+      const s = streams.find((s) => s.stream_type === type);
+      if (!s) continue;
+      const data = s.data as Record<string, unknown>;
+      const values = (data?.data as number[]) ?? [];
+      if (values.length) return values;
+    }
+    return [];
   }
 
+  // Strava sync writes "watts", FIT imports write "power" — try both spellings.
   function streamInput(
     streams: ActivityStream[] | undefined,
-    type: string
+    ...types: string[]
   ): { values: number[]; resolution: number } | undefined {
-    const s = streams?.find((x) => x.stream_type === type);
-    if (!s) return undefined;
-    const data = s.data as Record<string, unknown>;
-    const values = (data?.data as number[]) ?? [];
-    return values.length ? { values, resolution: s.resolution ?? 1 } : undefined;
+    for (const type of types) {
+      const s = streams?.find((x) => x.stream_type === type);
+      if (!s) continue;
+      const data = s.data as Record<string, unknown>;
+      const values = (data?.data as number[]) ?? [];
+      if (values.length) return { values, resolution: s.resolution ?? 1 };
+    }
+    return undefined;
   }
 
   // §3.16 side-by-side replay: build a ReplayBuildResult (pure) for each ride.
@@ -66,14 +74,15 @@ export function CompareActivitiesModal({
     activity: Activity,
     streams: ActivityStream[] | undefined
   ): ReplayBuildResult | null {
-    const velocity = streamInput(streams, 'velocity');
+    const velocity = streamInput(streams, 'velocity', 'velocity_smooth');
     if (!velocity || !activity.encoded_polyline) return null;
     const res = buildReplay({
       polyline: activity.encoded_polyline,
       velocity,
       altitude: streamInput(streams, 'altitude'),
-      power: streamInput(streams, 'watts'),
+      power: streamInput(streams, 'watts', 'power'),
       hr: streamInput(streams, 'heartrate'),
+      cadence: streamInput(streams, 'cadence'),
       maxSamples: 800,
     });
     return res;
@@ -86,8 +95,71 @@ export function CompareActivitiesModal({
   // Auto-switch to the 3D tab once both builds are ready (and hide it if not).
   const show3d = canCompare3d;
 
-  const powerA = getStreamValues(streamsA, 'power');
-  const powerB = getStreamValues(streamsB, 'power');
+  // ── Linked 3D playback (Phase E): one master clock in absolute seconds ──
+  // Each ride renders min(t, ownTotal): both start together in real time,
+  // shorter rides freeze at their finish while the longer one continues.
+  const linkSpan = Math.max(replayA?.totalTime ?? 0, replayB?.totalTime ?? 0);
+  const [linked, setLinked] = useState(true);
+  const [master, setMaster] = useState({ playing: false, rate: 4, t: 0 });
+
+  // Adopt the tour default once both builds arrive (never yank mid-playback).
+  useEffect(() => {
+    if (linkSpan > 0) {
+      setMaster((m) => (!m.playing && m.t === 0 ? { ...m, rate: tourRate(linkSpan, 60) } : m));
+    }
+  }, [linkSpan]);
+
+  // Whole-ride presets for the longer ride, deduped for short rides.
+  const tourMasterOptions = useMemo(() => {
+    const seen = new Set<number>();
+    const opts: { label: string; rate: number }[] = [];
+    for (const p of TOUR_PRESETS) {
+      const r = tourRate(linkSpan, p.secs);
+      if (seen.has(r)) continue;
+      seen.add(r);
+      opts.push({ label: p.label, rate: r });
+    }
+    return opts;
+  }, [linkSpan]);
+
+  useEffect(() => {
+    if (!linked || !master.playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(0.5, (now - last) / 1000);
+      last = now;
+      setMaster((m) => {
+        const nt = Math.min(linkSpan, m.t + dt * m.rate);
+        if (nt === m.t) return m.playing ? { ...m, playing: false } : m;
+        return { ...m, t: nt };
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [linked, master.playing, master.rate, linkSpan]);
+
+  const masterScrub = (t: number) =>
+    setMaster((m) => ({ ...m, t: Math.max(0, Math.min(linkSpan, t)) }));
+  const masterToggle = () =>
+    setMaster((m) =>
+      m.t >= linkSpan - 0.01 ? { ...m, t: 0, playing: true } : { ...m, playing: !m.playing }
+    );
+  const masterRate = (rate: number) => setMaster((m) => ({ ...m, rate }));
+
+  const linkFor = {
+    t: master.t,
+    span: linkSpan,
+    rate: master.rate,
+    playing: master.playing,
+    onScrub: masterScrub,
+    onToggle: masterToggle,
+    onRate: masterRate,
+  };
+
+  const powerA = getStreamValues(streamsA, 'watts', 'power');
+  const powerB = getStreamValues(streamsB, 'watts', 'power');
   const hrA = getStreamValues(streamsA, 'heartrate');
   const hrB = getStreamValues(streamsB, 'heartrate');
 
@@ -225,23 +297,73 @@ export function CompareActivitiesModal({
           <div className="space-y-6">
             {view === '3d' ? (
               <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 rounded border border-surface-light bg-surface/40 p-2">
+                  <button
+                    onClick={() => setLinked((l) => !l)}
+                    aria-pressed={linked}
+                    title={linked ? 'Unlink: control each replay separately' : 'Link: one shared clock for both replays'}
+                    className={`rounded px-3 py-1 min-h-[44px] text-xs transition-colors ${
+                      linked ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                    }`}
+                  >
+                    {linked ? 'Linked' : 'Independent'}
+                  </button>
+                  {linked && (
+                    <>
+                      <button
+                        onClick={masterToggle}
+                        className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+                      >
+                        {master.playing ? 'Pause' : 'Play'}
+                      </button>
+                      <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
+                        {tourMasterOptions.map((o) => (
+                          <button
+                            key={o.label}
+                            onClick={() => masterRate(o.rate)}
+                            title={`Both rides in ~${o.label} (${o.rate}×)`}
+                            className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
+                              master.rate === o.rate ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="font-mono text-xs tabular-nums text-muted">
+                        {timeFmt(master.t)} / {timeFmt(linkSpan)}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={linkSpan}
+                        step={0.1}
+                        value={master.t}
+                        onChange={(e) => masterScrub(Number(e.target.value))}
+                        aria-label="Linked replay scrubbing"
+                        className="h-11 min-w-[120px] flex-1 accent-accent"
+                      />
+                    </>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityA.name} build={replayA!} />
+                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
                   </div>
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityB.name} build={replayB!} />
+                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">
-                  Two independent fly-throughs (§3.16). Synced-playback across
-                  both is a documented follow-up.
+                  {linked
+                    ? 'Linked playback: both rides share one clock in real time — the shorter ride finishes first.'
+                    : 'Two independent fly-throughs — toggle Linked for one shared clock.'}
                 </p>
               </div>
             ) : (

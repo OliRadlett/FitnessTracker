@@ -25,14 +25,14 @@ requests with an optional JWT Bearer token and `credentials: 'include'`.
 | `useAuthFetch()` | `hook` | Returns `{ authFetch, authFetchWithHeaders }` — injects JWT from NextAuth session. |
 
 ### `index.ts` — Barrel file
-Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `weather`, `conformity`, `projections`, `exercises`, `notifications`.
+Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `preferences`, `account`, `healthPrefs`, `crossDomain`.
 
 ### Per-module API surface
 
 | Module | Backend Prefix | Exported Functions | Key Types |
 |--------|---------------|-------------------|-----------|
 | **`routes.ts`** | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, `getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`, `downloadRouteGpx`, `getMergedRouteView`, `getHomeAreaHeatmap`, **`createCollectionFromFilters`** (POST smart collection from current filter state) | `RouteSummary`, `RouteData`, `RouteFilters`, `RouteSyncResult`, `DuplicatePair`, `MergedRouteView`, `HomeAreaHeatmapResponse`, `RouteCollection`, `RouteCollectionCreate` |
-| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`getLiftVideos`** (list+filter by source/exercise/session/PR/date), **`getLiftVideo`**, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (presigned GET or embed), **`deleteLiftVideo`** | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`**, **`LiftVideoListParams`** |
+| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`getLiftVideos`** (list+filter by exercise/session/PR/date), **`getLiftVideo`**, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (R2 presigned GET), **`deleteLiftVideo`** | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`**, **`LiftVideoListParams`** |
 | **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout` | `TrainingPlanSummary`, `TrainingWeekResponse`, `UpdateTrainingPlanDayPayload`, `TrainingPlanDay`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
 | **`goals.ts`** | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` | `Goal`, `GoalCheckIn`, `MetricInfo`, `CreateGoalPayload`, `UpdateGoalPayload`, `GoalCheckInPayload`, `ReactivateResponse` |
 | **`conformity.ts`** | `/api/v1/training-plans/` | `getPlanConformity`, `getDayConformity`, `linkPlanActivities` | `PlanConformityResponse`, `DayConformityResponse`, `LinkActivitiesResponse` |
@@ -40,6 +40,8 @@ Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`
 | **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection` | `GoalProjectionResponse` |
 | **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
 | **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
+| **`cycling.ts`** | `/api/v1/cycling/` | `getCyclingPRs`, `createCyclingPR`, `checkCyclingPRs`, `getCyclingProfile`, `updateCyclingProfile`, `getFtpHistory`, `addFtpHistory`, `getPowerCurve`, `getLifetimePBs`, `getCyclingMetricsSummary`, **`getPowerModel`** (Modal CP/W′/VO2max/adaptive taus), **`getWeatherAnalysis`** (Modal weather-performance) | `CyclingProfile`, `PowerCurveResponse`, `PowerModelResultsResponse`, `WeatherAnalysisResponse`, `CyclingMetricsSummary` |
+| **`crossDomain.ts`** | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) | `CrossDomainInsightsResponse`, `CrossDomainInsightType` |
 
 > Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
 > analysis, workout planner, deficiency) call their endpoints **inline** via

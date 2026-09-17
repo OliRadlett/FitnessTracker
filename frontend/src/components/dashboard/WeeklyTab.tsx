@@ -18,6 +18,7 @@ import type {
   YearlySummary,
   LlmAnalysis,
   DeficiencyResponse,
+  CrossDomainInsightsResponse,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart, ChartBody } from '@/components/charts/Chart';
@@ -28,11 +29,15 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { LlmAnalysisCard } from '@/components/cycling/LlmAnalysisCard';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
-import { MetricCard, WhoopWeeklyCard, RespiratoryRateCard, ActivityRow, SessionRow, ListSkeleton } from './helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { WhoopWeeklyCard } from '@/components/health/WhoopWeeklyCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { ActivityRow, SessionRow, ListSkeleton } from '@/components/dashboard/helpers';
 import { RestDayBanner } from './RestDayBanner';
-import { HealthAlertsSection } from './HealthAlertsSection';
+import { HealthAlertsSection } from '@/components/health/HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
-import { DeficiencyCard } from './DeficiencyCard';
+import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
+import { CrossDomainInsightsCard } from '@/components/dashboard/CrossDomainInsightsCard';
 
 interface WeeklyTabProps {
   summary: DashboardSummary | undefined;
@@ -121,6 +126,13 @@ export function WeeklyTab({
     queryKey: ['chart-consistency-heatmap', 182],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/consistency_heatmap?days=182'),
     staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  const { data: crossDomainInsights, isLoading: crossDomainLoading } = useQuery<CrossDomainInsightsResponse>({
+    queryKey: ['cross-domain-insights'],
+    queryFn: () => authFetch<CrossDomainInsightsResponse>('/api/v1/cross-domain'),
+    staleTime: 600_000,
     enabled: !!token,
   });
 
@@ -492,6 +504,12 @@ export function WeeklyTab({
 
       {/* ── Weakness / Deficiency Analysis ───────────────────────────────── */}
       <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
+
+      {/* ── Cross-Domain Insights ──────────────────────────────────────────── */}
+      <CrossDomainInsightsCard
+        crossDomainInsights={crossDomainInsights}
+        isLoading={crossDomainLoading}
+      />
 
       {/* ── Monthly Summary ──────────────────────────────────────────────── */}
       {monthlySummary && monthlySummary.length > 0 && (

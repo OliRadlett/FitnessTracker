@@ -276,16 +276,14 @@ class VideoUploadResponse(BaseModel):
 
 
 class VideoStreamUrl(BaseModel):
-    """Resolved playback URL for a video."""
+    """Presigned GET for playback of an R2-uploaded video."""
 
     url: str
-    mode: str  # "embed" (external_url) | "direct" (R2 presigned GET)
 
 
 class LiftVideoListParams(BaseModel):
     """Query params for listing a user's strength videos."""
 
-    source: str | None = None  # "upload" | "url"
     exercise_name: str | None = None
     lifting_session_id: uuid.UUID | None = None
     personal_record_id: uuid.UUID | None = None
@@ -298,8 +296,6 @@ class LiftVideoListParams(BaseModel):
 
 
 class LiftVideoBase(BaseModel):
-    source: str
-    external_url: str | None = None
     r2_key: str | None = None
     file_name: str | None = None
     content_type: str | None = None
@@ -321,4 +317,81 @@ class LiftVideoRead(LiftVideoBase):
     created_at: datetime
     updated_at: datetime
 
+    # Video processing fields
+    trimmed_r2_key: str | None = None
+    analysis_status: str | None = None
+    analysis_text: str | None = None
+    exercise_auto: str | None = None
+    reps_count: int | None = None
+    weight_kg: float | None = None
+    confidence: float | None = None
+    trim_start_sec: float | None = None
+    trim_end_sec: float | None = None
+    processed_at: datetime | None = None
+
+    # Video analysis — IPF form scoring (§3.18)
+    form_score: float | None = None
+    competition_valid: bool | None = None
+    form_analysis_json: str | None = None
+    form_deviations: str | None = None
+    form_coaching_cues: str | None = None
+
+    # Velocity tracking (§3.18)
+    mean_concentric_velocity: float | None = None
+    peak_velocity: float | None = None
+    velocity_loss_pct: float | None = None
+    velocity_profile_json: str | None = None
+    vbt_zone: str | None = None
+
+    # Rest timing (§3.18)
+    rest_periods_json: str | None = None
+    avg_rest_seconds: float | None = None
+    rest_cv: float | None = None
+
+    # Consistency (§3.18)
+    rep_consistency_score: float | None = None
+    tempo_consistency_cv: float | None = None
+    rep_timing_json: str | None = None
+
+    # Setup analysis (§3.18)
+    setup_score: float | None = None
+    setup_analysis_json: str | None = None
+    setup_duration_seconds: float | None = None
+
+    # Estimated RPE (§3.18)
+    estimated_rpe: float | None = None
+    rpe_confidence: float | None = None
+    rpe_evidence_json: str | None = None
+
     model_config = {"from_attributes": True}
+
+
+class VideoProcessStatus(BaseModel):
+    """Response for video processing status check."""
+
+    video_id: uuid.UUID
+    analysis_status: str | None = None
+    exercise_auto: str | None = None
+    reps_count: int | None = None
+    weight_kg: float | None = None
+    confidence: float | None = None
+    analysis_text: str | None = None
+    processed_at: datetime | None = None
+
+    # Video analysis fields (§3.18)
+    form_score: float | None = None
+    competition_valid: bool | None = None
+    form_deviations: str | None = None
+    form_coaching_cues: str | None = None
+    mean_concentric_velocity: float | None = None
+    peak_velocity: float | None = None
+    velocity_loss_pct: float | None = None
+    vbt_zone: str | None = None
+    avg_rest_seconds: float | None = None
+    rest_cv: float | None = None
+    rep_consistency_score: float | None = None
+    setup_score: float | None = None
+    setup_duration_seconds: float | None = None
+    estimated_rpe: float | None = None
+    rpe_confidence: float | None = None
+    rpe_evidence_json: str | None = None

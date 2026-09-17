@@ -10,6 +10,7 @@ import {
   getSportEmoji,
   isStrengthType,
 } from '@/lib/sportUtils';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 
 // ── Calendar Agenda View ─────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export function CalendarAgendaView({
     return (
       <div className="space-y-2">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-12 bg-surface-light/40 rounded-lg animate-pulse" />
+          <SkeletonRow key={i} className="h-12" />
         ))}
       </div>
     );

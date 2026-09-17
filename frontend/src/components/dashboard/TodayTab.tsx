@@ -24,7 +24,10 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { RestDayBanner } from './RestDayBanner';
-import { MetricCard, RespiratoryRateCard, formatDistance, formatDuration, ListSkeleton } from './helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { formatDistance, formatDuration } from '@/lib/utils';
+import { ListSkeleton } from '@/components/dashboard/helpers';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
@@ -36,7 +39,7 @@ const SPORT_EMOJI: Record<string, string> = {
 };
 
 const DAY_TYPE_COLORS: Record<string, string> = {
-  rest: 'text-gray-400',
+  rest: 'text-muted',
   easy: 'text-positive',
   moderate: 'text-blue-400',
   hard: 'text-orange-400',
@@ -385,7 +388,7 @@ export function TodayTab({
                       </p>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 ml-3 flex items-center gap-4">
+                  <div className="text-right shrink-0 ml-3 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 max-w-[55%] sm:max-w-none">
                     {a.tss != null && (
                       <p className="text-xs text-blue-400">{a.tss.toFixed(0)} TSS</p>
                     )}
@@ -484,7 +487,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
             <span className="text-xs font-medium text-positive">✓ Completed</span>
           )}
           {isRest && (
-            <span className="text-xs font-medium text-gray-400">Recovery day</span>
+            <span className="text-xs font-medium text-muted">Recovery day</span>
           )}
         </div>
 

@@ -14,16 +14,16 @@ describe('Changelog', () => {
   it('expands the first release by default', () => {
     render(<Changelog />);
     // First release bullets should be visible
-    expect(screen.getByText(/record or link YouTube/)).toBeInTheDocument();
+    expect(screen.getByText(/R2 video uploads end-to-end/)).toBeInTheDocument();
   });
 
   it('collapses expanded release when clicked again', () => {
     render(<Changelog />);
     // Click the first release header to collapse it
-    const firstHeader = screen.getByText(/Strength Videos/).closest('button')!;
+    const firstHeader = screen.getByText(/Video Uploads Go Live/).closest('button')!;
     fireEvent.click(firstHeader);
     // Bullet should no longer be visible
-    expect(screen.queryByText(/record or link YouTube/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/R2 video uploads end-to-end/)).not.toBeInTheDocument();
   });
 
   it('expands a collapsed release when clicked', () => {

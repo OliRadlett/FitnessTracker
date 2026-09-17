@@ -16,7 +16,7 @@ export function RoutesGridView({
   routes: RouteSummary[];
   onSelect: (route: RouteSummary) => void;
 }) {
-  const { selectedRouteId, toggleCompare } = useRoutesStore();
+  const { selectedRouteId, toggleCompare, compareRouteA, compareRouteB } = useRoutesStore();
 
   if (routes.length === 0) {
     return (
@@ -32,6 +32,7 @@ export function RoutesGridView({
       {routes.map((route) => {
         const diff = computeDifficulty(route.elevation_gain_meters, route.distance_meters);
         const isSelected = selectedRouteId === route.id;
+        const isCompareSelected = compareRouteA === route.id || compareRouteB === route.id;
 
         return (
           <Card
@@ -94,7 +95,7 @@ export function RoutesGridView({
                   <span
                     key={s.provider}
                     className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full text-white ${
-                      PROVIDER_COLORS[s.provider] || 'bg-gray-500'
+                      PROVIDER_COLORS[s.provider] || 'bg-muted'
                     }`}
                     title={s.provider}
                   >
@@ -114,7 +115,7 @@ export function RoutesGridView({
                 <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={false}
+                    checked={isCompareSelected}
                     readOnly
                     className="w-3 h-3 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
                     onClick={(e) => {

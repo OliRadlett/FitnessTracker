@@ -19,7 +19,7 @@ The rules are applied as a conjunction (AND) of all present filters.
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Float, Integer, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -102,6 +102,24 @@ async def evaluate_smart_collection(
     if rules.get("q"):
         query = query.where(Route.name.ilike(f"%{rules['q']}%"))
 
+    if rules.get("terrain_type"):
+        terrain_types = rules["terrain_type"]
+        query = query.where(
+            Route.terrain_classification["terrain_type"].astext.in_(terrain_types)
+        )
+
+    if "min_climb_count" in rules and rules["min_climb_count"] is not None:
+        query = query.where(
+            (Route.terrain_classification["climb_count"].astext.cast(Integer))
+            >= int(rules["min_climb_count"])
+        )
+
+    if "max_gradient_pct" in rules and rules["max_gradient_pct"] is not None:
+        query = query.where(
+            (Route.terrain_classification["avg_gradient_pct"].astext.cast(Float))
+            <= float(rules["max_gradient_pct"])
+        )
+
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -152,6 +170,9 @@ def validate_collection_rules(rules: dict[str, Any]) -> list[str]:
         "is_favorite",
         "min_quality_score",
         "q",
+        "terrain_type",
+        "min_climb_count",
+        "max_gradient_pct",
     }
 
     for key in rules:

@@ -85,13 +85,13 @@ export function goalAlignmentBadge(goal: Goal): AlignmentBadgeInfo | null {
   if (a >= 100) return { label: 'Ahead', className: 'bg-green-500/20 text-positive' };
   if (a >= 85) return { label: 'On track', className: 'bg-accent/20 text-accent' };
   if (a > 0) return { label: 'Behind', className: 'bg-warning/20 text-warning' };
-  return { label: 'Regressing', className: 'bg-red-500/20 text-warning' };
+  return { label: 'Regressing', className: 'bg-warning/20 text-warning' };
 }
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
   active: { label: 'Active', className: 'bg-accent/20 text-accent' },
   achieved: { label: '✅ Achieved', className: 'bg-green-500/20 text-positive' },
-  expired: { label: 'Expired', className: 'bg-red-500/20 text-warning' },
+  expired: { label: 'Expired', className: 'bg-warning/20 text-warning' },
   abandoned: { label: 'Abandoned', className: 'bg-muted/30 text-muted' },
 };
 
@@ -117,13 +117,13 @@ export function GoalCard({
   const cardColor = isAchieved
     ? 'border-green-500/30 bg-green-500/5'
     : isExpired
-    ? 'border-red-500/20 bg-red-500/5'
+    ? 'border-warning/20 bg-warning/5'
     : 'border-surface-light/50 bg-surface-light/10';
 
   const progressColor = isAchieved
     ? 'bg-green-500'
     : isExpired
-    ? 'bg-red-500/60'
+    ? 'bg-warning/60'
     : 'bg-accent';
 
   const hasCurrentValue = goal.current_value !== undefined && goal.current_value !== null;

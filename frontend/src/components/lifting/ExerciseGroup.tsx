@@ -152,13 +152,13 @@ export function ExerciseGroup({
                           <button
                             onClick={() => saveEdit(set.id)}
                             disabled={isUpdating}
-                            className="text-positive hover:text-positive text-xs font-medium px-2 py-0.5 rounded bg-positive/10 disabled:opacity-50"
+                            className="text-positive hover:text-positive text-xs font-medium px-3 min-h-[44px] rounded bg-positive/10 disabled:opacity-50"
                           >
                             Save
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="text-muted hover:text-white text-xs px-2 py-0.5"
+                            className="text-muted hover:text-white text-xs px-3 min-h-[44px]"
                           >
                             Cancel
                           </button>
@@ -182,30 +182,32 @@ export function ExerciseGroup({
                             <button
                               onClick={() => { onDeleteSet(set.id); setConfirmDeleteId(null); }}
                               disabled={isDeleting}
-                              className="text-xs text-white bg-warning/80 hover:bg-warning px-2 py-0.5 rounded disabled:opacity-50"
+                              className="text-xs text-white bg-warning/80 hover:bg-warning px-3 min-h-[44px] rounded disabled:opacity-50"
                             >
                               Delete
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(null)}
-                              className="text-xs text-muted hover:text-white px-2 py-0.5"
+                              className="text-xs text-muted hover:text-white px-3 min-h-[44px]"
                             >
                               Cancel
                             </button>
                           </div>
                         ) : (
-                          <div className="flex justify-center gap-2">
+                          <div className="flex justify-center gap-1">
                             <button
                               onClick={() => startEdit(set)}
-                              className="text-muted hover:text-accent text-xs transition-colors"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent text-base transition-colors"
                               title="Edit set"
+                              aria-label="Edit set"
                             >
                               ✏️
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(set.id)}
-                              className="text-muted hover:text-warning text-xs transition-colors"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning text-base transition-colors"
                               title="Delete set"
+                              aria-label="Delete set"
                             >
                               🗑️
                             </button>

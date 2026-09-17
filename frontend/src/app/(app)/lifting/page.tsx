@@ -30,7 +30,7 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
-import { VideoChip } from '@/components/lifting/VideoEmbed';
+import { VideoChip } from '@/components/lifting/VideoChip';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -38,7 +38,7 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
-import { DeficiencyCard } from '@/components/dashboard/DeficiencyCard';
+import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -171,7 +171,7 @@ export default function LiftingPage() {
   });
 
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
-    queryKey: ['chart-strength-balance'],
+    queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
     staleTime: 300_000,
   });
@@ -267,21 +267,23 @@ export default function LiftingPage() {
         const prev1rm = previousPRsRef.current.get(exercise);
         if (prev1rm !== undefined && new1rm > prev1rm) {
           const improvementPct = ((new1rm - prev1rm) / prev1rm) * 100;
-          setCelebrationPR({
-            exercise_name: exercise,
-            new_1rm: new1rm,
-            previous_1rm: prev1rm,
-            improvement_pct: improvementPct,
-          });
+           setCelebrationPR({
+             type: 'lifting',
+             exercise_name: exercise,
+             new_1rm: new1rm,
+             previous_1rm: prev1rm,
+             improvement_pct: improvementPct,
+           });
           break; // celebrate one at a time
         } else if (prev1rm === undefined) {
           // Brand new exercise PR
-          setCelebrationPR({
-            exercise_name: exercise,
-            new_1rm: new1rm,
-            previous_1rm: null,
-            improvement_pct: null,
-          });
+           setCelebrationPR({
+             type: 'lifting',
+             exercise_name: exercise,
+             new_1rm: new1rm,
+             previous_1rm: null,
+             improvement_pct: null,
+           });
           break;
         }
       }
@@ -417,11 +419,11 @@ export default function LiftingPage() {
 
       {/* Error banner */}
       {actionError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
-            className="shrink-0 text-red-400 hover:text-red-300"
+            className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
             ✕
@@ -430,23 +432,23 @@ export default function LiftingPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Lifting</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Lifting</h1>
           <p className="text-muted">Track your strength training sessions</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => backfillMutation.mutate()}
             disabled={backfillMutation.isPending}
-            className="px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
             title="Auto-link Strava strength activities to lifting sessions"
           >
             {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
           </button>
           <button
             onClick={() => setShowNewSession(!showNewSession)}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
+            className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
           >
             {showNewSession ? 'Cancel' : '+ New Session'}
           </button>
@@ -521,7 +523,7 @@ export default function LiftingPage() {
         </div>
       )}
       {backfillMutation.isError && (
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-warning" role="alert">
+        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning" role="alert">
           Error: {backfillMutation.error instanceof Error ? backfillMutation.error.message : 'Auto-link failed'}
         </div>
       )}

@@ -481,6 +481,110 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         logger.warning("Failed to get upcoming events: %s", e)
         stats["upcoming_events"] = []
 
+    # ── Deficiency / Weakness Analysis ──────────────────────────────────────────
+    try:
+        from app.services.deficiency import analyze_deficiencies
+
+        deff_response = await analyze_deficiencies(db, user_id, weeks=8)
+        stats["deficiency_analysis"] = {
+            "weaknesses": [
+                {
+                    "category": w.category,
+                    "type": w.type,
+                    "metric": w.metric,
+                    "value": w.value,
+                    "unit": w.unit,
+                    "severity": w.severity,
+                    "detail": w.detail,
+                    "recommendation": w.recommendation,
+                }
+                for w in deff_response.weaknesses
+            ],
+            "summary": {
+                "total_weaknesses": deff_response.summary.total_weaknesses,
+                "critical": deff_response.summary.critical,
+                "high": deff_response.summary.high,
+                "medium": deff_response.summary.medium,
+                "low": deff_response.summary.low,
+                "strengths": deff_response.summary.strengths,
+            },
+        }
+    except Exception as e:
+        logger.warning("Failed to get deficiency analysis: %s", e)
+        stats["deficiency_analysis"] = {}
+
+    # ── Active Goals ────────────────────────────────────────────────────────────
+    try:
+        from app.models.goal import Goal
+
+        goal_result = await db.execute(
+            select(Goal).where(
+                Goal.user_id == user_id,
+                Goal.status == "active",
+            )
+        )
+        goals = goal_result.scalars().all()
+        stats["goals"] = [
+            {
+                "metric": g.metric,
+                "filter": g.filter_json,
+                "target_value": g.target_value,
+                "current_value": g.current_value,
+                "target_date": str(g.target_date) if g.target_date else None,
+                "notes": g.notes,
+            }
+            for g in goals
+        ]
+    except Exception as e:
+        logger.warning("Failed to get active goals: %s", e)
+        stats["goals"] = []
+
+    # ── Active Training Plan + Upcoming Schedule ────────────────────────────────
+    training_plan: dict = {}
+    try:
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan_result = await db.execute(
+            select(TrainingPlan).where(
+                TrainingPlan.user_id == user_id,
+                TrainingPlan.status == "active",
+            )
+        )
+        plan = plan_result.scalar_one_or_none()
+        if plan:
+            training_plan["name"] = plan.name
+            training_plan["plan_type"] = plan.plan_type
+            training_plan["start_date"] = str(plan.start_date)
+            training_plan["end_date"] = str(plan.end_date)
+
+            # Upcoming scheduled sessions (next 14 days)
+            fourteen_days_future = today + timedelta(days=14)
+            day_result = await db.execute(
+                select(TrainingPlanDay).where(
+                    TrainingPlanDay.plan_id == plan.id,
+                    TrainingPlanDay.day_date >= today,
+                    TrainingPlanDay.day_date <= fourteen_days_future,
+                ).order_by(TrainingPlanDay.day_date)
+            )
+            training_plan["upcoming_sessions"] = [
+                {
+                    "date": str(d.day_date),
+                    "sport": d.sport,
+                    "planned_type": d.planned_type,
+                    "planned_focus": d.planned_focus,
+                    "planned_tss": d.planned_tss,
+                    "planned_rpe": d.planned_rpe,
+                    "planned_zone": d.planned_zone,
+                    "completed": d.completed,
+                }
+                for d in day_result.scalars().all()
+            ]
+    except Exception as e:
+        logger.warning("Failed to get training plan context: %s", e)
+        training_plan = {}
+
+    stats["training_plan"] = training_plan
+
     return _make_json_serializable(stats)
 
 
@@ -527,6 +631,12 @@ Provide your analysis in the following structure:
 - Weight trend interpretation (if data available)
 - Any health alerts and their significance
 
+### Training Plan & Deficiency Analysis
+- Is the rider following an active training plan? Reference plan name, type, and upcoming sessions for the next 2 weeks.
+- Is the current training load (CTL) aligned with the plan's scheduled TSS? Are there upcoming hard days or recovery days?
+- Based on the deficiency analysis, what are the top 2-3 weakness areas (e.g., strength standards, inter-exercise ratios, zone distribution, decoupling) and how should they be addressed in the next training block?
+- Are there any active goals the rider is working toward? Reference goal metrics, target values, and progress.
+
 ### Event Preparation
 - If upcoming events exist, provide taper and preparation advice
 - Current fitness relative to event demands
@@ -534,10 +644,10 @@ Provide your analysis in the following structure:
 
 ### Specific Recommendations
 - 3-5 actionable recommendations for the next training block
-- Focus areas based on all available data (cycling, lifting, health)
+- Focus areas based on all available data (cycling, lifting, health, weaknesses, goals)
 - Any warning signs to watch for
 
-Be specific, reference actual numbers from the data, and provide science-backed explanations. Keep the total response under 1000 words."""
+Be specific, reference actual numbers from the data, and provide science-backed explanations. Keep the total response under 1200 words."""
 
     return await _call_gemini(prompt, "cycling")
 
@@ -563,11 +673,16 @@ async def compile_activity_context(
     """Compile ride-specific stats + recent training context for a single activity.
 
     Returns None if the activity doesn't exist or doesn't belong to the user.
-    Returns a dict with:
-      - activity summary (name, date, duration, distance, power, HR, etc.)
-      - static analysis (power zones, pacing, decoupling, climbing, etc.)
-      - recent training context (CTL/ATL/TSB, last 7 days summary, recovery)
-    """
+       Returns a dict with:
+       - activity summary (name, date, duration, distance, power, HR, weather, etc.)
+       - static analysis (power zones, pacing, decoupling, climbing, etc.)
+       - recent training context (CTL/ATL/TSB, last 7 days summary, recovery)
+       - route context (route name, climb segments with effort data — "laps of a hill")
+       - planned training (training plan day the activity fulfilled, if any)
+       - personal records achieved on this activity
+       - fuel plan (ride nutrition strategy, if any)
+       - health overlay (pre-ride HRV, recovery, sleep)
+     """
     from app.services.session_analysis import analyze_ride
 
     # 1. Fetch the activity
@@ -603,6 +718,11 @@ async def compile_activity_context(
         "tss": activity.tss,
         "calories": activity.calories,
         "rpe": activity.rpe,
+        "weather_temperature": activity.weather_temperature,
+        "weather_conditions": activity.weather_conditions,
+        "weather_wind_speed_kmh": activity.weather_wind_speed_kmh,
+        "weather_wind_direction": activity.weather_wind_direction,
+        "weather_precipitation_mm": activity.weather_precipitation_mm,
     }
 
     # 3. Static analysis (power zones, pacing, decoupling, etc.)
@@ -717,11 +837,198 @@ async def compile_activity_context(
         logger.warning("Failed to get recovery data for activity context: %s", e)
         training_context["recent_recovery"] = []
 
+    # ── Route Context (laps of a hill: climb segments + segment efforts) ──────
+    route_context: dict = {}
+    try:
+        from app.models.route import Route
+        from app.models.segment import Segment, SegmentEffort
+
+        if activity.route_id:
+            route_result = await db.execute(
+                select(Route).where(Route.id == activity.route_id)
+            )
+            route = route_result.scalar_one_or_none()
+            if route:
+                route_context["name"] = route.name
+                route_context["distance_meters"] = round(route.distance_meters, 1)
+                route_context["elevation_gain_meters"] = (
+                    round(route.elevation_gain_meters, 1)
+                    if route.elevation_gain_meters
+                    else None
+                )
+                route_context["is_loop"] = route.is_loop
+
+                # Climb segments on this route
+                seg_result = await db.execute(
+                    select(Segment).where(Segment.route_id == route.id)
+                )
+                segments = seg_result.scalars().all()
+                route_context["climb_segments"] = []
+                for seg in segments:
+                    seg_dict: dict = {
+                        "name": seg.name,
+                        "distance_m": round(seg.distance_m, 1),
+                        "elevation_gain_m": round(seg.elevation_gain_m, 1),
+                        "avg_gradient_pct": round(seg.avg_gradient_pct, 1),
+                        "max_gradient_pct": round(seg.max_gradient_pct, 1)
+                        if seg.max_gradient_pct
+                        else None,
+                        "climb_category": seg.climb_category,
+                    }
+                    # Look up this ride's effort on the segment (laps of the hill)
+                    effort_result = await db.execute(
+                        select(SegmentEffort).where(
+                            SegmentEffort.segment_id == seg.id,
+                            SegmentEffort.activity_id == activity_id,
+                        )
+                    )
+                    effort = effort_result.scalar_one_or_none()
+                    if effort:
+                        seg_dict["effort"] = {
+                            "elapsed_seconds": round(effort.elapsed_seconds, 1),
+                            "avg_power_watts": effort.avg_power_watts,
+                            "avg_hr": effort.avg_hr,
+                            "avg_speed_mps": round(effort.avg_speed_mps, 2),
+                            "vam": effort.effort_vam,
+                            "is_pr": effort.is_pr,
+                        }
+                    route_context["climb_segments"].append(seg_dict)
+    except Exception as e:
+        logger.warning("Failed to get route context for activity: %s", e)
+
+    # ── Planned Training (training plan day this activity fulfilled) ──────────
+    planned_training: dict = {}
+    try:
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan_result = await db.execute(
+            select(TrainingPlanDay, TrainingPlan)
+            .join(TrainingPlan, TrainingPlanDay.plan_id == TrainingPlan.id)
+            .where(TrainingPlanDay.activity_id == activity_id)
+            .limit(1)
+        )
+        plan_row = plan_result.first()
+        if plan_row:
+            day, plan = plan_row
+            planned_training = {
+                "plan_name": plan.name,
+                "plan_type": plan.plan_type,
+                "planned_type": day.planned_type,
+                "planned_focus": day.planned_focus,
+                "planned_tss": day.planned_tss,
+                "planned_zone": day.planned_zone,
+                "planned_power_watts": day.planned_power_watts,
+                "workout_description": day.workout_description,
+                "completed": day.completed,
+            }
+    except Exception as e:
+        logger.warning("Failed to get training plan context for activity: %s", e)
+
+    # ── Personal Records achieved on this activity ────────────────────────────
+    personal_records: list = []
+    try:
+        pr_result = await db.execute(
+            select(PersonalRecord).where(
+                PersonalRecord.user_id == user_id,
+                PersonalRecord.activity_id == activity_id,
+            )
+        )
+        personal_records = [
+            {
+                "exercise_name": pr.exercise_name,
+                "record_type": pr.record_type,
+                "weight_kg": pr.weight_kg,
+                "reps": pr.reps,
+                "estimated_1rm": pr.estimated_1rm,
+                "achieved_date": str(pr.achieved_date),
+                "notes": pr.notes,
+            }
+            for pr in pr_result.scalars().all()
+        ]
+    except Exception as e:
+        logger.warning("Failed to get PRs for activity context: %s", e)
+
+    # ── Fuel Plan (ride nutrition) ──────────────────────────────────────────────
+    fuel_plan: dict = {}
+    try:
+        from app.models.nutrition import RideFuelPlan
+
+        fuel_result = await db.execute(
+            select(RideFuelPlan).where(
+                RideFuelPlan.user_id == user_id,
+                RideFuelPlan.activity_id == activity_id,
+            )
+            .limit(1)
+        )
+        fuel_row = fuel_result.scalar_one_or_none()
+        if fuel_row:
+            fuel_plan = {
+                "planned_duration_min": fuel_row.planned_duration_min,
+                "pre_ride_carbs_g": fuel_row.pre_ride_carbs_g,
+                "during_carbs_per_hour_g": fuel_row.during_carbs_per_hour_g,
+                "source": fuel_row.source,
+            }
+    except Exception as e:
+        logger.warning("Failed to get fuel plan for activity context: %s", e)
+
+    # ── Health Overlay (pre-ride metrics: previous day HRV/recovery/sleep) ──────
+    health_overlay: dict = {}
+    try:
+        prev_date = activity.start_date.date() - timedelta(days=1)
+        dm_result = await db.execute(
+            select(DailyMetric)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.metric_date == prev_date,
+            )
+            .order_by(DailyMetric.source)
+            .limit(1)
+        )
+        dm = dm_result.scalar_one_or_none()
+        if dm:
+            health_overlay = {
+                "date": str(prev_date),
+                "hrv_ms": dm.hrv_ms,
+                "recovery_score": dm.recovery_score,
+                "resting_hr": dm.resting_hr,
+                "sleep_duration_minutes": dm.sleep_duration_minutes,
+                "sleep_efficiency": dm.sleep_efficiency,
+                "strain": dm.strain,
+            }
+        else:
+            from app.models.sleep import SleepLog
+
+            sleep_result = await db.execute(
+                select(SleepLog)
+                .where(
+                    SleepLog.user_id == user_id,
+                    SleepLog.sleep_date == prev_date,
+                )
+                .order_by(SleepLog.source)
+                .limit(1)
+            )
+            sleep = sleep_result.scalar_one_or_none()
+            if sleep:
+                health_overlay = {
+                    "date": str(prev_date),
+                    "sleep_duration_minutes": sleep.total_sleep_seconds / 60
+                    if sleep.total_sleep_seconds
+                    else None,
+                    "sleep_efficiency": sleep.sleep_efficiency,
+                }
+    except Exception as e:
+        logger.warning("Failed to get health overlay for activity context: %s", e)
+
     return _make_json_serializable(
         {
             "activity_summary": activity_summary,
             "static_analysis": static_analysis,
             "training_context": training_context,
+            "route_context": route_context,
+            "planned_training": planned_training,
+            "personal_records": personal_records,
+            "fuel_plan": fuel_plan,
+            "health_overlay": health_overlay,
         }
     )
 
@@ -745,6 +1052,31 @@ async def analyze_activity_with_gemini(context: dict) -> str:
 {json.dumps(context["training_context"], indent=2, default=str)}
 ```
 
+## Route Context (Climb Segments — "Laps of a Hill")
+```json
+{json.dumps(context.get("route_context", {}), indent=2, default=str)}
+```
+
+## Planned Training (What the Plan Called For)
+```json
+{json.dumps(context.get("planned_training", {}), indent=2, default=str)}
+```
+
+## Personal Records Achieved
+```json
+{json.dumps(context.get("personal_records", []), indent=2, default=str)}
+```
+
+## Fuel Plan (Nutrition Strategy)
+```json
+{json.dumps(context.get("fuel_plan", {}), indent=2, default=str)}
+```
+
+## Health Overlay (Pre-Ride Readiness)
+```json
+{json.dumps(context.get("health_overlay", {}), indent=2, default=str)}
+```
+
 ## Instructions
 Provide a detailed analysis of THIS specific ride in the following structure:
 
@@ -763,17 +1095,36 @@ Provide a detailed analysis of THIS specific ride in the following structure:
 - How does efficiency factor compare to what we'd expect?
 - Any signs of fatigue or dehydration from the HR/power relationship?
 
-### Training Load Context
-- How does this ride fit into the rider's recent training?
-- Is the current TSB (form) suggesting they should be fresh or fatigued?
-- Does this ride contribute positively to their training progression?
+### Weather Impact
+- How did the weather conditions (temperature, wind, precipitation) affect performance?
+- Did headwinds or temperature impact power output or HR?
+- Reference the specific weather values from ride data.
+
+### Route & Climb Analysis (Laps of a Hill)
+- Summarise each named climb segment: what was the gradient, how did the rider perform (power, VAM, time)?
+- For each climb effort, did the rider improve on their previous best (PR efforts)?
+- Was pacing on climbs sustainable, or did the rider fade on steeper sections?
+- Reference specific climb names, gradients, and VAM values from the route context.
+
+### Training Plan Fit
+- Was this ride what the training plan called for? (Reference planned type/focus/TSS)
+- Did the rider match the planned zone or power target?
+- If there's a mismatch, was it intentional (adjustment) or a deviation?
+
+### Pre-Ride Readiness
+- How did the previous day's HRV, recovery score, and sleep affect today's performance?
+- Was the rider well-prepared for this effort based on the health overlay?
+
+### Nutrition & Fueling
+- Was the fuel plan appropriate for this ride's duration and intensity?
+- Are there recommendations for adjusting carb intake on similar future rides?
 
 ### Specific Recommendations
 - 2-3 actionable takeaways from this ride
 - What should the rider focus on in their next training session?
 - Any concerns about recovery or training balance?
 
-Be specific and reference actual numbers from the data. Keep the total response under 600 words."""
+Be specific and reference actual numbers from the data. Keep the total response under 700 words."""
 
     return await _call_gemini(prompt, "activity")
 
@@ -813,11 +1164,16 @@ async def compile_lifting_session_context(
     """Compile lifting session data + recent trends + recovery for AI analysis.
 
     Returns None if the session doesn't exist or doesn't belong to the user.
-    Returns a dict with:
-      - session summary (date, focus, exercises, sets, volume, RPE)
-      - static analysis (fatigue index, PR proximity, rep dropoff, etc.)
-      - recent lifting context (volume trends, recent sessions, recovery)
-    """
+       Returns a dict with:
+       - session summary (date, focus, exercises, sets, volume, RPE)
+       - static analysis (fatigue index, PR proximity, rep dropoff, etc.)
+       - recent lifting context (volume trends, recent sessions, recovery)
+       - video analysis (form scores, velocity, consistency, RPE estimates from lift videos)
+       - planned training (training plan day the session fulfilled, with planned focus vs actual focus)
+       - warmup template details (if associated with a plan day)
+       - whoop enrichment (strain, HR, kilojoules if the session was enriched)
+       - linked activity (Strava/Wahoo activity that enriched this session, if any)
+     """
     from collections import defaultdict
 
     from sqlalchemy.orm import selectinload
@@ -1008,17 +1364,176 @@ async def compile_lifting_session_context(
         logger.warning("Failed to get recovery data for lifting context: %s", e)
         lifting_context["recent_recovery"] = []
 
+    # ── Video Analysis (form, velocity, consistency, RPE from lift videos) ──────
+    video_analysis: list = []
+    try:
+        from app.models.lifting import LiftVideo
+
+        video_result = await db.execute(
+            select(LiftVideo).where(
+                LiftVideo.user_id == user_id,
+                LiftVideo.lifting_session_id == session_id,
+            )
+        )
+        videos = video_result.scalars().all()
+        for v in videos:
+            entry: dict = {
+                "exercise_name": v.exercise_name,
+                "exercise_auto": v.exercise_auto,
+                "reps_count": v.reps_count,
+                "weight_kg": v.weight_kg,
+                "confidence": v.confidence,
+                "analysis_status": v.analysis_status,
+                "analysis_text": v.analysis_text,
+                # Form analysis (IPF standards)
+                "form_score": v.form_score,
+                "competition_valid": v.competition_valid,
+                "form_deviations": v.form_deviations,
+                "form_coaching_cues": v.form_coaching_cues,
+                # Velocity tracking (VBT)
+                "mean_concentric_velocity": v.mean_concentric_velocity,
+                "peak_velocity": v.peak_velocity,
+                "velocity_loss_pct": v.velocity_loss_pct,
+                "vbt_zone": v.vbt_zone,
+                # Consistency
+                "rep_consistency_score": v.rep_consistency_score,
+                # Setup analysis
+                "setup_score": v.setup_score,
+                "setup_duration_seconds": v.setup_duration_seconds,
+                # Estimated RPE
+                "estimated_rpe": v.estimated_rpe,
+                "rpe_confidence": v.rpe_confidence,
+            }
+            video_analysis.append(entry)
+    except Exception as e:
+        logger.warning("Failed to get video analysis for lifting context: %s", e)
+
+    # ── Planned Training (training plan day this session fulfilled) ────────────
+    planned_training: dict = {}
+    try:
+        from sqlalchemy.orm import selectinload
+
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan_result = await db.execute(
+            select(TrainingPlanDay, TrainingPlan)
+            .join(TrainingPlan, TrainingPlanDay.plan_id == TrainingPlan.id)
+            .where(TrainingPlanDay.lifting_session_id == session_id)
+            .limit(1)
+        )
+        plan_row = plan_result.first()
+        if plan_row:
+            day, plan = plan_row
+            planned_training = {
+                "plan_name": plan.name,
+                "plan_type": plan.plan_type,
+                "planned_type": day.planned_type,
+                "planned_focus": day.planned_focus,
+                "planned_exercises": day.planned_exercises,
+                "planned_volume_kg": day.planned_volume_kg,
+                "planned_rpe": day.planned_rpe,
+                "actual_focus": session.focus,
+                "focus_matched": (
+                    day.planned_focus.lower() in session.focus.lower()
+                    if day.planned_focus and session.focus
+                    else True
+                ),
+                "workout_description": day.workout_description,
+                "completed": day.completed,
+            }
+    except Exception as e:
+        logger.warning("Failed to get training plan context for lifting session: %s", e)
+
+    # ── Warmup Template (if associated with the plan day) ──────────────────────
+    warmup_template: dict = {}
+    try:
+        if planned_training.get("plan_name"):
+            from app.models.lifting import WarmupTemplate, WarmupTemplateStep
+            from app.models.training_plan import TrainingPlanDay
+
+            ws_result = await db.execute(
+                select(TrainingPlanDay)
+                .where(TrainingPlanDay.lifting_session_id == session_id)
+                .options(selectinload(TrainingPlanDay.warmup_template))
+            )
+            day_row = ws_result.scalar_one_or_none()
+            if day_row and day_row.warmup_template:
+                tmpl = day_row.warmup_template
+                warmup_template = {
+                    "name": tmpl.name,
+                    "exercise_name": tmpl.exercise_name,
+                    "steps": [
+                        {
+                            "step_number": s.step_number,
+                            "weight_kg": s.weight_kg,
+                            "reps": s.reps,
+                            "notes": s.notes,
+                        }
+                        for s in sorted(tmpl.steps or [], key=lambda x: x.step_number)
+                    ],
+                }
+    except Exception as e:
+        logger.warning("Failed to get warmup template for lifting session: %s", e)
+
+    # ── Whoop Enrichment (cardiovascular context) ──────────────────────────────
+    whoop_data: dict = {}
+    try:
+        if session.whoop_strain is not None or session.whoop_avg_hr is not None:
+            whoop_data = {
+                "whoop_strain": session.whoop_strain,
+                "whoop_avg_hr": session.whoop_avg_hr,
+                "whoop_max_hr": session.whoop_max_hr,
+                "whoop_kilojoules": session.whoop_kilojoules,
+                "whoop_workout_id": session.whoop_workout_id,
+            }
+    except Exception as e:
+        logger.warning("Failed to get whoop data for lifting session: %s", e)
+
+    # ── Linked Activity (Strava/Wahoo activity that enriched this session) ─────
+    linked_activity: dict = {}
+    try:
+        from app.models.activity import Activity
+
+        if session.activity_id:
+            act_result = await db.execute(
+                select(Activity).where(Activity.id == session.activity_id)
+            )
+            act = act_result.scalar_one_or_none()
+            if act:
+                linked_activity = {
+                    "name": act.name,
+                    "source": act.source,
+                    "sport_type": act.sport_type,
+                    "start_date": act.start_date.isoformat() if act.start_date else None,
+                    "duration_seconds": act.duration_seconds,
+                    "distance_meters": round(act.distance_meters, 1)
+                    if act.distance_meters
+                    else None,
+                    "average_heartrate": act.average_heartrate,
+                    "max_heartrate": act.max_heartrate,
+                    "calories": act.calories,
+                    "tss": act.tss,
+                }
+    except Exception as e:
+        logger.warning("Failed to get linked activity for lifting session: %s", e)
+
     return _make_json_serializable(
         {
             "session_summary": session_summary,
             "static_analysis": static_analysis,
             "lifting_context": lifting_context,
+            "video_analysis": video_analysis,
+            "planned_training": planned_training,
+            "warmup_template": warmup_template,
+            "whoop_data": whoop_data,
+            "linked_activity": linked_activity,
         }
     )
 
 
 async def analyze_lifting_session_with_gemini(context: dict) -> str:
     """Call Google Gemini API to analyze a single lifting session with training context."""
+    focus = context.get("session_summary", {}).get("focus", "N/A")
     prompt = f"""You are an expert strength coach and sports scientist. Analyze the following lifting session data in the context of the athlete's recent training.
 
 ## Session Summary
@@ -1036,6 +1551,31 @@ async def analyze_lifting_session_with_gemini(context: dict) -> str:
 {json.dumps(context["lifting_context"], indent=2, default=str)}
 ```
 
+## Video Analysis (Form, Velocity, Setup, RPE — from lift videos)
+```json
+{json.dumps(context.get("video_analysis", []), indent=2, default=str)}
+```
+
+## Planned Training (Program vs Actual Focus)
+```json
+{json.dumps(context.get("planned_training", {}), indent=2, default=str)}
+```
+
+## Warmup Template
+```json
+{json.dumps(context.get("warmup_template", {}), indent=2, default=str)}
+```
+
+## Whoop Enrichment (Cardio Context)
+```json
+{json.dumps(context.get("whoop_data", {}), indent=2, default=str)}
+```
+
+## Linked Activity (Strava/Wahoo Enrichment)
+```json
+{json.dumps(context.get("linked_activity", {}), indent=2, default=str)}
+```
+
 ## Instructions
 Provide a detailed analysis of THIS specific lifting session in the following structure:
 
@@ -1044,10 +1584,22 @@ Provide a detailed analysis of THIS specific lifting session in the following st
 - Was the intensity (weight/load) appropriate for the training goals?
 - Were working set counts sufficient for hypertrophy/strength stimulus?
 
+### Focus Alignment (Planned vs Actual)
+- The session focus is \"{focus}\" — was this what the training plan called for?
+- Reference the planned focus from the training plan and assess alignment.
+- If there's a mismatch, was it appropriate (e.g., accessory focus after heavy squats) or a deviation?
+
 ### Fatigue Analysis
 - What does the rep dropoff across sets tell us about rest periods and fatigue management?
 - How does the RPE trend across sets indicate fatigue accumulation?
 - Is the fatigue index concerning or within normal range?
+
+### Video Form & Velocity Insights
+- Summarise the form analysis: overall form score, competition validity, key deviations.
+- If velocity data is available: what was the mean/peak concentric velocity and velocity loss?
+- Are the velocity readings in an appropriate VBT zone for the weight used?
+- Was the setup score good? Any coaching cues to prioritise?
+- Compare the AI-estimated RPE (from video) to the user-entered RPE if both are present.
 
 ### PR Proximity Insights
 - How close were the top sets to personal records?
@@ -1062,11 +1614,12 @@ Provide a detailed analysis of THIS specific lifting session in the following st
 
 ### Recovery & Recommendations
 - Based on the session RPE and recovery data, how recovered is the athlete?
+- If Whoop data is available, do the strain/HR figures corroborate the session intensity?
 - What should the focus be for the next session?
 - Any exercises that need more attention or deloading?
 - 2-3 specific actionable recommendations
 
-Be specific and reference actual numbers from the data. Keep the total response under 600 words."""
+Be specific and reference actual numbers from the data. Keep the total response under 800 words."""
 
     return await _call_gemini(prompt, "lifting session")
 
@@ -1107,7 +1660,8 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """Compile health-specific data for AI analysis.
 
     Returns a dict with HRV trends, resting HR, sleep, respiratory rate,
-    health alerts, recovery scores, and weight trend.
+    health alerts, recovery scores, weight trend, strain trends,
+    training load context (CTL/ATL/TSB), and recent activity intensity.
     """
     from app.models.health_alert import HealthAlert
     from app.models.sleep import SleepLog
@@ -1322,6 +1876,77 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         logger.warning("Failed to get strain trends: %s", e)
         stats["strain_trends"] = {}
 
+    # ── Training Load Context (correlate health metrics with training stress) ────
+    try:
+        from app.services.cycling import compute_training_load, get_daily_tss
+
+        today = date.today()
+        ninety_days_ago = today - timedelta(days=90)
+        daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
+        training_load = compute_training_load(daily_tss, today, lookback_days=90)
+        if training_load:
+            latest = training_load[-1]
+            stats["current_ctl"] = latest["ctl"]
+            stats["current_atl"] = latest["atl"]
+            stats["current_tsb"] = latest["tsb"]
+            # Last 14 days for trend context
+            stats["training_load_trend"] = [
+                {
+                    "date": entry["date"].isoformat()
+                    if isinstance(entry["date"], date)
+                    else str(entry["date"]),
+                    "ctl": entry["ctl"],
+                    "atl": entry["atl"],
+                    "tsb": entry["tsb"],
+                }
+                for entry in training_load[-14:]
+            ]
+        else:
+            stats["current_ctl"] = None
+            stats["current_atl"] = None
+            stats["current_tsb"] = None
+            stats["training_load_trend"] = []
+    except Exception as e:
+        logger.warning("Failed to compute training load for health context: %s", e)
+        stats["current_ctl"] = None
+        stats["current_atl"] = None
+        stats["current_tsb"] = None
+        stats["training_load_trend"] = []
+
+    # ── Recent Activity Intensity (last 7 days of TSS by sport) ─────────────────
+    try:
+        from app.models.activity import Activity
+
+        seven_days_ago = today - timedelta(days=7)
+        act_result = await db.execute(
+            select(
+                Activity.sport_type,
+                Activity.start_date,
+                Activity.tss,
+                Activity.duration_seconds,
+                Activity.average_power,
+            )
+            .where(
+                Activity.user_id == user_id,
+                Activity.start_date >= seven_days_ago,
+            )
+            .order_by(Activity.start_date.desc())
+            .limit(20)
+        )
+        stats["recent_activities"] = [
+            {
+                "sport_type": r.sport_type,
+                "start_date": r.start_date.isoformat() if r.start_date else None,
+                "tss": r.tss,
+                "duration_seconds": r.duration_seconds,
+                "average_power": r.average_power,
+            }
+            for r in act_result.all()
+        ]
+    except Exception as e:
+        logger.warning("Failed to get recent activities for health context: %s", e)
+        stats["recent_activities"] = []
+
     return _make_json_serializable(stats)
 
 
@@ -1356,6 +1981,12 @@ Provide a narrative health interpretation (not just threshold alerts) in the fol
 - Respiratory rate trends
 - Any elevation that might indicate stress or illness
 - Overall recovery score interpretation
+
+### Training Load Correlation
+- How do HRV and recovery scores correlate with recent training load (CTL/ATL/TSB)?
+- Is the current TSB (form) level too high or too low for the recovery metrics seen?
+- Are there signs that the current training load is too much (e.g., declining HRV, elevated RHR, rising respiratory rate)?
+- Reference the recent activities (TSS by sport) and correlate with health trends.
 
 ### Weight & Body Composition
 - Weight trend analysis (if data available)
@@ -1402,10 +2033,11 @@ async def compile_event_stats(
 ) -> dict | None:
     """Compile event-specific data for AI analysis.
 
-    Returns None if the event doesn't exist or doesn't belong to the user.
-    Returns a dict with event details, current fitness (CTL/ATL/TSB), FTP,
-    recent training, and days until event.
-    """
+       Returns None if the event doesn't exist or doesn't belong to the user.
+       Returns a dict with event details, current fitness (CTL/ATL/TSB), FTP,
+       recent training, recovery, route details, weather forecast, historical
+       performance, and linked training plan.
+       """
     from app.models.event import Event
 
     # 1. Fetch the event
@@ -1538,6 +2170,181 @@ async def compile_event_stats(
         logger.warning("Failed to get recovery data for event context: %s", e)
         stats["recent_recovery"] = []
 
+    # ── Training Plan & Route Details (if event has a linked training plan) ─────
+    training_plan_info: dict = {}
+    route_details: dict = {}
+    try:
+        from app.models.route import Route
+        from app.models.route_organize import RouteTag, RouteTagging
+        from app.models.segment import Segment
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan_result = await db.execute(
+            select(TrainingPlan)
+            .where(
+                TrainingPlan.user_id == user_id,
+                TrainingPlan.event_id == event_id,
+            )
+        )
+        plan = plan_result.scalar_one_or_none()
+        if plan:
+            training_plan_info = {
+                "name": plan.name,
+                "plan_type": plan.plan_type,
+                "start_date": str(plan.start_date),
+                "end_date": str(plan.end_date),
+            }
+            # Find the route associated with this plan
+            route_day_result = await db.execute(
+                select(TrainingPlanDay)
+                .where(
+                    TrainingPlanDay.plan_id == plan.id,
+                    TrainingPlanDay.planned_route_id.isnot(None),
+                )
+                .order_by(TrainingPlanDay.day_date.desc())
+                .limit(1)
+            )
+            day_row = route_day_result.scalar_one_or_none()
+            if day_row and day_row.planned_route_id:
+                route = await db.get(Route, day_row.planned_route_id)
+                if route:
+                    route_details = {
+                        "name": route.name,
+                        "distance_meters": round(route.distance_meters, 1),
+                        "elevation_gain_meters": round(route.elevation_gain_meters, 1)
+                        if route.elevation_gain_meters
+                        else None,
+                        "is_loop": route.is_loop,
+                        "country": route.country,
+                        "locality": route.locality,
+                        "quality_score": route.quality_score,
+                    }
+                    # Climb segments on the route (the "laps of a hill")
+                    seg_result = await db.execute(
+                        select(Segment).where(Segment.route_id == route.id)
+                    )
+                    segments = seg_result.scalars().all()
+                    if segments:
+                        route_details["climb_segments"] = [
+                            {
+                                "name": seg.name,
+                                "distance_m": round(seg.distance_m, 0),
+                                "elevation_gain_m": round(seg.elevation_gain_m, 0),
+                                "avg_gradient_pct": round(seg.avg_gradient_pct, 1),
+                                "max_gradient_pct": round(seg.max_gradient_pct, 1)
+                                if seg.max_gradient_pct
+                                else None,
+                                "climb_category": seg.climb_category,
+                                "times_ridden": seg.times_ridden,
+                                "has_pr": seg.has_pr,
+                            }
+                            for seg in segments
+                        ]
+                    # Route tags
+                    tag_result = await db.execute(
+                        select(RouteTag)
+                        .join(RouteTagging, RouteTagging.tag_id == RouteTag.id)
+                        .where(RouteTagging.route_id == route.id)
+                    )
+                    route_details["tags"] = [t.name for t in tag_result.scalars().all()]
+    except Exception as e:
+        logger.warning("Failed to get training plan/route context for event: %s", e)
+
+    stats["training_plan"] = training_plan_info
+    stats["route_details"] = route_details
+
+    # ── Weather Forecast (for event date) ──────────────────────────────────────
+    weather_forecast: dict = {}
+    profile: object | None = None
+    try:
+        from app.models.cycling import CyclingProfile
+        from app.models.weather import CachedWeather
+
+        profile_result = await db.execute(
+            select(CyclingProfile).where(CyclingProfile.user_id == user_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile and profile.home_lat is not None and profile.home_lng is not None:
+            forecast_day = event.event_date if days_until > 0 else today
+            # Look for cached forecast weather near the event date
+            forecast_result = await db.execute(
+                select(CachedWeather).where(
+                    CachedWeather.user_id == user_id,
+                    CachedWeather.weather_type == "forecast",
+                    CachedWeather.latitude == profile.home_lat,
+                    CachedWeather.longitude == profile.home_lng,
+                )
+                .order_by(CachedWeather.cached_at.desc())
+                .limit(1)
+            )
+            cached = forecast_result.scalar_one_or_none()
+            if cached and isinstance(cached.weather_data, dict):
+                # Extract forecast for the event date
+                daily = cached.weather_data.get("daily", {})
+                time_list = daily.get("time", [])
+                if time_list:
+                    target_str = forecast_day.isoformat()
+                    for idx, t in enumerate(time_list):
+                        if t == target_str:
+                            weather_forecast = {
+                                "date": target_str,
+                                "weather_code": daily.get("weathercode", [None])[idx]
+                                if idx < len(daily.get("weathercode", [])) else None,
+                                "temperature_max": daily.get("temperature_2m_max", [None])[idx]
+                                if idx < len(daily.get("temperature_2m_max", [])) else None,
+                                "temperature_min": daily.get("temperature_2m_min", [None])[idx]
+                                if idx < len(daily.get("temperature_2m_min", [])) else None,
+                                "wind_speed": daily.get("windspeed_10m_max", [None])[idx]
+                                if idx < len(daily.get("windspeed_10m_max", [])) else None,
+                                "precipitation": daily.get("precipitation_sum", [None])[idx]
+                                if idx < len(daily.get("precipitation_sum", [])) else None,
+                            }
+                            break
+    except Exception as e:
+        logger.warning("Failed to get weather forecast for event context: %s", e)
+
+    stats["weather_forecast"] = weather_forecast
+
+    # ── Historical Performance (past events + relevant PRs) ────────────────────
+    historical_performance: dict = {}
+    try:
+        # Past events of the same type
+        past_result = await db.execute(
+            select(Event)
+            .where(
+                Event.user_id == user_id,
+                Event.event_type == event.event_type,
+                Event.event_date < event.event_date,
+            )
+            .order_by(Event.event_date.desc())
+            .limit(5)
+        )
+        past_events = past_result.scalars().all()
+        historical_performance["past_events"] = [
+            {
+                "name": e.name,
+                "event_date": str(e.event_date),
+                "result": e.result if isinstance(e.result, dict) else None,
+            }
+            for e in past_events
+        ]
+
+        # Relevant PRs for this event type
+        if event.event_type in ("race", "ride"):
+            # Cycling PRs: FTP-related power PRs
+            if profile and hasattr(profile, "ftp_watts"):
+                historical_performance["ftp"] = profile.ftp_watts
+                historical_performance["weight_kg"] = profile.weight_kg
+        # Lifting event: relevant big-3 PRs
+        if event.event_type == "lift":
+            from app.services.llm_base import _big_lift_pbs
+
+            historical_performance["big_lift_pbs"] = await _big_lift_pbs(db, user_id)
+    except Exception as e:
+        logger.warning("Failed to get historical performance for event: %s", e)
+
+    stats["historical_performance"] = historical_performance
+
     return _make_json_serializable(stats)
 
 
@@ -1557,6 +2364,20 @@ Provide a detailed race/event preparation analysis in the following structure:
 - Event type and demands
 - Days until event and current training phase
 - Readiness evaluation based on current fitness
+
+### Course Profile & Climb Analysis
+- If route details are available, describe the course profile (distance, elevation, climbs)
+- For each climb segment, reference the name, gradient, and elevation gain
+- How should the rider approach each climb? (attack, tempo, conserve)
+- Are there any steep or technical sections to prepare for?
+
+### Weather Outlook
+- If weather forecast data is available, reference the predicted temperature, wind, and precipitation for race day
+- How should the rider adjust pacing, hydration, or clothing for these conditions?
+
+### Historical Context
+- If past events or PRs are available, compare current fitness to historical performance
+- Set realistic performance expectations based on past results
 
 ### Taper Plan
 - Recommended taper duration and intensity reduction
@@ -1588,7 +2409,7 @@ Provide a detailed race/event preparation analysis in the following structure:
 - Things to avoid in the final days
 - Contingency planning for race-day challenges
 
-Be specific, reference actual numbers from the data. Tailor advice to the days-until-event timeframe. Keep the total response under 800 words."""
+Be specific, reference actual numbers from the data. Tailor advice to the days-until-event timeframe. Keep the total response under 900 words."""
 
     return await _call_gemini(prompt, "event")
 

@@ -141,6 +141,14 @@ export function formatTime(
   });
 }
 
+/** Return a greeting based on the current hour: "Good morning", "Good afternoon", or "Good evening" (§3.7). */
+export function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 /** Format a data-fetch timestamp (epoch ms) as "14:35" for the "last updated"
  * label. Returns "—" for null/zero/invalid (§3.15). */
 export function formatUpdatedAt(

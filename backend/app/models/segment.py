@@ -19,7 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -67,6 +67,18 @@ class Segment(Base):
     best_avg_power_watts: Mapped[float | None] = mapped_column(Float, nullable=True)
     times_ridden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     has_pr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Intelligence fields (fitted by Modal weekly task)
+    cluster_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    climb_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    sustainedness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    difficulty_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    predicted_vam: Mapped[float | None] = mapped_column(Float, nullable=True)
+    predicted_time_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    predicted_power_watts: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prediction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    intelligence_analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

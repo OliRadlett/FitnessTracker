@@ -8,7 +8,7 @@ import type { Goal, GoalProjectionResponse } from '@/lib/api';
 const BADGE_STYLES: Record<string, string> = {
   'On Track': 'bg-green-500/20 text-positive',
   'At Risk': 'bg-yellow-500/20 text-yellow-400',
-  'Unlikely': 'bg-red-500/20 text-warning',
+  'Unlikely': 'bg-warning/20 text-warning',
   'Not enough data': 'bg-muted/20 text-muted',
 };
 
@@ -34,7 +34,7 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
 
   // Fetch projections for each eligible goal
   const projectionQueries = useQuery({
-    queryKey: ['goal-projections', eligibleGoals.map((g) => g.id).join(',')],
+    queryKey: ['goal-projection', eligibleGoals.map((g) => g.id).join(',')],
     queryFn: async () => {
       const results = await Promise.all(
         eligibleGoals.map((g) =>

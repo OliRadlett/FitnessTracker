@@ -2,15 +2,11 @@
 
 import type { LinkedActivity } from './activity';
 
-// ─── Strength Videos (§1.1) ──────────────────────────────────────────────────
-
-export type VideoSource = 'upload' | 'url';
+// ─── Strength Videos (§1.1, R2 uploads only) ──────────────────────────────────
 
 export interface LiftVideo {
   id: string;
   user_id: string;
-  source: VideoSource;
-  external_url?: string | null;
   r2_key?: string | null;
   file_name?: string | null;
   content_type?: string | null;
@@ -22,6 +18,45 @@ export interface LiftVideo {
   notes?: string | null;
   created_at: string;
   updated_at: string;
+  // Video processing fields
+  trimmed_r2_key?: string | null;
+  analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  analysis_text?: string | null;
+  exercise_auto?: string | null;
+  reps_count?: number | null;
+  weight_kg?: number | null;
+  confidence?: number | null;
+  trim_start_sec?: number | null;
+  trim_end_sec?: number | null;
+  processed_at?: string | null;
+  // Video analysis — IPF form scoring (§3.18)
+  form_score?: number | null;
+  competition_valid?: boolean | null;
+  form_analysis_json?: string | null;
+  form_deviations?: string | null;
+  form_coaching_cues?: string | null;
+  // Velocity tracking (§3.18)
+  mean_concentric_velocity?: number | null;
+  peak_velocity?: number | null;
+  velocity_loss_pct?: number | null;
+  velocity_profile_json?: string | null;
+  vbt_zone?: string | null;
+  // Rest timing (§3.18)
+  rest_periods_json?: string | null;
+  avg_rest_seconds?: number | null;
+  rest_cv?: number | null;
+  // Consistency (§3.18)
+  rep_consistency_score?: number | null;
+  tempo_consistency_cv?: number | null;
+  rep_timing_json?: string | null;
+  // Setup analysis (§3.18)
+  setup_score?: number | null;
+  setup_analysis_json?: string | null;
+  setup_duration_seconds?: number | null;
+  // Estimated RPE (§3.18)
+  estimated_rpe?: number | null;
+  rpe_confidence?: number | null;
+  rpe_evidence_json?: string | null;
 }
 
 export interface VideoUploadRequest {
@@ -38,11 +73,9 @@ export interface VideoUploadResponse {
 
 export interface VideoStreamUrl {
   url: string;
-  mode: 'embed' | 'direct';
 }
 
 export interface LiftVideoListParams {
-  source?: VideoSource;
   exercise_name?: string;
   lifting_session_id?: string;
   personal_record_id?: string;
@@ -50,6 +83,34 @@ export interface LiftVideoListParams {
   before?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface VideoProcessStatus {
+  video_id: string;
+  analysis_status?: string | null;
+  exercise_auto?: string | null;
+  reps_count?: number | null;
+  weight_kg?: number | null;
+  confidence?: number | null;
+  analysis_text?: string | null;
+  processed_at?: string | null;
+  // Video analysis fields (§3.18)
+  form_score?: number | null;
+  competition_valid?: boolean | null;
+  form_deviations?: string | null;
+  form_coaching_cues?: string | null;
+  mean_concentric_velocity?: number | null;
+  peak_velocity?: number | null;
+  velocity_loss_pct?: number | null;
+  vbt_zone?: string | null;
+  avg_rest_seconds?: number | null;
+  rest_cv?: number | null;
+  rep_consistency_score?: number | null;
+  setup_score?: number | null;
+  setup_duration_seconds?: number | null;
+  estimated_rpe?: number | null;
+  rpe_confidence?: number | null;
+  rpe_evidence_json?: string | null;
 }
 
 export interface LiftingSession {

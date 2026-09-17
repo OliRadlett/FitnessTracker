@@ -40,7 +40,7 @@ const SPORT_EMOJI: Record<string, string> = {
 };
 
 const DAY_TYPE_BADGES: Record<string, string> = {
-  rest: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  rest: 'bg-surface-light/20 text-muted border-muted/30',
   easy: 'bg-green-500/15 text-green-300 border-green-500/30',
   moderate: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   hard: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
@@ -514,12 +514,12 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         </p>
       )}
       {conformityQuery.isError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           Failed to load conformity: {(conformityQuery.error as Error)?.message}
         </div>
       )}
       {tsbProjectionQuery.isError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           Failed to load TSB projection: {(tsbProjectionQuery.error as Error)?.message}
         </div>
       )}
@@ -744,7 +744,7 @@ function DayCard({
             <span>{SPORT_EMOJI[day.sport] ?? '📌'}</span>
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                DAY_TYPE_BADGES[day.planned_type] ?? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                DAY_TYPE_BADGES[day.planned_type] ?? 'bg-surface-light/20 text-muted border-muted/30'
               }`}
             >
               {day.planned_type}
@@ -798,7 +798,7 @@ function DayCard({
                 <span
                   className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full border ${
                     day.bad_weather.level === 'danger'
-                      ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                      ? 'bg-warning/20 text-warning border-warning/40'
                       : 'bg-orange-500/15 text-orange-300 border-orange-500/40'
                   }`}
                   title={day.bad_weather.level}
@@ -964,7 +964,7 @@ function ExpandedPanel({
               <button
                 onClick={onUnassignRoute}
                 disabled={busy}
-                className="text-[10px] text-warning hover:text-red-300 disabled:opacity-50 shrink-0"
+                className="text-[10px] text-warning hover:text-warning/80 disabled:opacity-50 shrink-0"
               >
                 Remove
               </button>

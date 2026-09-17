@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
@@ -13,14 +13,15 @@ import { SkeletonRouteCard } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { RoutesMapView } from '@/components/routes/RoutesMapView';
-import { RoutesListView } from '@/components/routes/VirtualRouteList';
+import { RoutesListView } from '@/components/routes/RoutesListView';
 import { RoutesGridView } from '@/components/routes/RoutesGridView';
 import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
 import { MobileRouteDetailSheet } from '@/components/routes/MobileRouteDetailSheet';
 import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
+import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy } from 'lucide-react';
+import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy, X, Folder } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RoutesPage() {
@@ -43,9 +44,14 @@ export default function RoutesPage() {
     setShowImportModal,
     showHeatmap,
     setShowHeatmap,
+    compareRouteA,
+    compareRouteB,
+    clearCompareRoutes,
   } = useRoutesStore();
 
+  const compareMode = compareRouteA !== null || compareRouteB !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showOrganize, setShowOrganize] = useState(false);
 
   // Deep-link: select the route referenced by ?route=<id> on load
   useEffect(() => {
@@ -118,6 +124,21 @@ export default function RoutesPage() {
     staleTime: 300_000,
   });
 
+  // Fetch compare route data
+  const { data: compareRouteAData } = useQuery<RouteData>({
+    queryKey: ['route', compareRouteA],
+    queryFn: () => getRoute(compareRouteA!, token),
+    enabled: !!compareRouteA,
+    staleTime: 300_000,
+  });
+
+  const { data: compareRouteBData } = useQuery<RouteData>({
+    queryKey: ['route', compareRouteB],
+    queryFn: () => getRoute(compareRouteB!, token),
+    enabled: !!compareRouteB,
+    staleTime: 300_000,
+  });
+
   // Sync mutation
   const syncMutation = useMutation({
     mutationFn: () => syncRoutes(token),
@@ -158,12 +179,47 @@ export default function RoutesPage() {
   ).length;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Sidebar */}
-      <RoutesSidebar
-        onTagClick={() => refetch()}
-        onCollectionClick={() => refetch()}
-      />
+    <div className="flex h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)] h-[calc(100dvh-10rem)] overflow-hidden min-w-0">
+      {/* Sidebar — desktop only; on mobile use the Organize drawer */}
+      <div className="hidden lg:block flex-shrink-0 h-full">
+        <RoutesSidebar
+          onTagClick={() => refetch()}
+          onCollectionClick={() => refetch()}
+        />
+      </div>
+
+      {/* Mobile Organize drawer */}
+      {showOrganize && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setShowOrganize(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-label="Organize routes"
+            className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[320px] bg-background border-r border-surface-light/50 lg:hidden flex flex-col"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-surface-light/50">
+              <h2 className="text-base font-semibold text-white">Organize</h2>
+              <button
+                onClick={() => setShowOrganize(false)}
+                aria-label="Close organize panel"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted hover:text-white hover:bg-surface-light/50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <RoutesSidebar
+                onTagClick={() => { refetch(); setShowOrganize(false); }}
+                onCollectionClick={() => { refetch(); setShowOrganize(false); }}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -181,13 +237,22 @@ export default function RoutesPage() {
               </div>
               <p className="text-muted mt-1">
                 Browse, organize, and plan rides from your synced routes.
-                <span className="mx-2">•</span>
-                <span className="text-xs text-muted">
+                <span className="mx-2 hidden sm:inline">•</span>
+                <span className="text-xs text-muted hidden sm:inline">
                   Press 1/2/3 for Map/List/Grid · F to search · Esc to deselect
                 </span>
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Mobile Organize button */}
+              <button
+                onClick={() => setShowOrganize(true)}
+                aria-label="Open organize panel"
+                className="lg:hidden min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Folder className="w-4 h-4" />
+                Organize
+              </button>
               {/* View mode toggle */}
               <div
                 className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden"
@@ -200,7 +265,7 @@ export default function RoutesPage() {
                     onClick={() => setViewMode(key as typeof viewMode)}
                     role="tab"
                     aria-selected={viewMode === key}
-                    className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
+                    className={`min-h-[44px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
                       viewMode === key
                         ? 'bg-accent text-white'
                         : 'text-muted hover:text-white'
@@ -215,7 +280,7 @@ export default function RoutesPage() {
               <button
                 onClick={() => setShowImportModal(true)}
                 aria-label="Upload GPX file"
-                className="px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
               >
                 <Upload className="w-4 h-4" />
                 Upload GPX
@@ -223,7 +288,7 @@ export default function RoutesPage() {
 
               <Link
                 href="/routes/duplicates"
-                className="px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
               >
                 <Copy className="w-4 h-4" />
                 Duplicates
@@ -233,27 +298,38 @@ export default function RoutesPage() {
                  onClick={() => syncMutation.mutate()}
                  disabled={syncMutation.isPending}
                  aria-label="Sync routes from providers"
-                 className="px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                 className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
                >
                  <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
                  {syncMutation.isPending ? 'Syncing...' : 'Sync'}
                </button>
 
-               {viewMode === 'map' && (
-                 <button
-                   onClick={() => setShowHeatmap(!showHeatmap)}
-                   aria-label="Toggle heatmap"
-                   className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
-                     showHeatmap
-                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                       : 'bg-surface-light hover:bg-surface-light/80 text-white'
-                   }`}
-                 >
-                   <MapPin className="w-4 h-4" />
-                   {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
-                 </button>
-               )}
-             </div>
+                {viewMode === 'map' && (
+                  <button
+                    onClick={() => setShowHeatmap(!showHeatmap)}
+                    aria-label="Toggle heatmap"
+                    className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                      showHeatmap
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        : 'bg-surface-light hover:bg-surface-light/80 text-white'
+                    }`}
+                  >
+                    <MapPin className="w-4 h-4" />
+                    {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
+                  </button>
+                )}
+
+                {compareMode && (
+                  <button
+                    onClick={() => clearCompareRoutes()}
+                    aria-label="Exit compare mode"
+                    className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <X className="w-4 h-4" />
+                    Exit Compare
+                  </button>
+                )}
+              </div>
           </div>
         </div>
 
@@ -277,7 +353,7 @@ export default function RoutesPage() {
         {/* Error banner */}
         {syncMutation.isError && (
           <div className="flex-shrink-0 px-4 py-2.5 border-b border-surface-light/30">
-            <div className="flex items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+            <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
               <span>{syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}</span>
             </div>
           </div>
@@ -298,30 +374,31 @@ export default function RoutesPage() {
                  {viewMode === 'map' && (
                    <div className="p-4">
                      <Card>
-                       <RoutesMapView
-                         routes={routes}
-                         onSelectRoute={handleSelectRoute}
-                         showHeatmap={showHeatmap}
-                       />
+                        <RoutesMapView
+                          routes={routes}
+                          onSelectRoute={handleSelectRoute}
+                          showHeatmap={showHeatmap}
+                          compareMode={compareMode}
+                        />
                      </Card>
                    </div>
                 )}
 
                 {viewMode === 'list' && (
                   <div className="p-4">
-                    <RoutesListView
-                      routes={routes}
-                      onSelect={handleSelectRouteFromList}
-                    />
+                      <RoutesListView
+                        routes={routes}
+                        onSelect={handleSelectRouteFromList}
+                      />
                   </div>
                 )}
 
                 {viewMode === 'grid' && (
                   <div className="p-4">
-                    <RoutesGridView
-                      routes={routes}
-                      onSelect={handleSelectRouteFromList}
-                    />
+                      <RoutesGridView
+                        routes={routes}
+                        onSelect={handleSelectRouteFromList}
+                      />
                   </div>
                 )}
               </>
@@ -382,6 +459,15 @@ export default function RoutesPage() {
             />
           </div>
         </Modal>
+      )}
+
+      {/* Compare Routes Modal */}
+      {compareMode && (compareRouteAData || compareRouteBData) && (
+        <CompareRoutesModal
+          routeA={compareRouteAData!}
+          routeB={compareRouteBData!}
+          onClose={() => clearCompareRoutes()}
+        />
       )}
     </div>
   );

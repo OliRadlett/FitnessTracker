@@ -11,15 +11,16 @@ import type {
   CalendarDayData,
   ChartData,
   ActivityFilters,
+  CyclingProfile,
   RideAnalysis,
   LoadContext,
   RideMetrics,
 } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
-import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
+import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
-import { WeatherBadge } from '@/components/cycling/WeatherBadge';
+import { WeatherBadge } from '@/components/activities/WeatherBadge';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(
@@ -35,7 +36,7 @@ import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
-import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
+import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
@@ -137,48 +138,103 @@ function ActivityExpanded({
     enabled: isCycling,
   });
 
-  const streamChart: ChartData | null = activityDetail?.streams?.length
-    ? (() => {
-        const stream = activityDetail.streams!.find((s) => s.stream_type === (selectedStream || streamTypes[0]));
-        if (!stream) return null;
-        const streamData = stream.data as Record<string, unknown>;
-        const values = (streamData?.data as number[]) ?? [];
-        return {
-          chart_type: 'line' as const,
-          title: `${stream.stream_type} over time`,
-          labels: values.map((_, i) => String(i)),
-          x_label: 'Sample',
-          y_label: stream.stream_type,
-          series: [{
-            name: stream.stream_type,
-            data: values,
-          }],
-        };
-      })()
-    : null;
+  const streamChart: ChartData | null = useMemo(() => {
+    if (!activityDetail?.streams?.length) return null;
+    const streams = activityDetail.streams!;
+    const stream = streams.find((s) => s.stream_type === (selectedStream || streams[0].stream_type));
+    if (!stream) return null;
+    const streamData = stream.data as Record<string, unknown>;
+    const values = (streamData?.data as number[]) ?? [];
+    return {
+      chart_type: 'line' as const,
+      title: `${stream.stream_type} over time`,
+      labels: values.map((_, i) => String(i)),
+      x_label: 'Sample',
+      y_label: stream.stream_type,
+      series: [{
+        name: stream.stream_type,
+        data: values,
+      }],
+    };
+  }, [activityDetail, selectedStream]);
 
   // ── 3D replay data (cycling rides with a route + streams) — §3.16 ──────
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
     if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
     const streams = activityDetail.streams!;
-    const findStream = (type: string) => {
-      const s = streams.find((st) => st.stream_type === type);
-      if (!s) return undefined;
-      const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
-      if (!data || data.length === 0) return undefined;
-      return { values: data, resolution: s.resolution ?? 1 };
+    const findStream = (...types: string[]) => {
+      for (const type of types) {
+        const s = streams.find((st) => st.stream_type === type);
+        if (!s) continue;
+        const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
+        if (!data || data.length === 0) continue;
+        return { values: data, resolution: s.resolution ?? 1 };
+      }
+      return undefined;
     };
-    const velocity = findStream('velocity');
+    const velocity = findStream('velocity', 'velocity_smooth');
     if (!velocity) return null;
     return buildReplay({
       polyline: activity.encoded_polyline,
       velocity,
       altitude: findStream('altitude'),
-      power: findStream('watts'),
+      // Strava sync writes "watts", FIT imports write "power".
+      power: findStream('watts', 'power'),
       hr: findStream('heartrate'),
+      cadence: findStream('cadence'),
       maxSamples: 800,
     });
   }, [activity, activityDetail, isCycling]);
+
+  // Shared 3D playhead (Phase D: live readout; Phase E: full chart link).
+  const [replayElapsed, setReplayElapsed] = useState<number | null>(null);
+  // 3D→chart marker, quantized to 2 fps so the chart doesn't re-render
+  // at the 10 fps replay tick (only changes during playback).
+  const [chartMarker, setChartMarker] = useState<string | null>(null);
+  const markerRef = useRef<string | null>(null);
+  useEffect(() => {
+    setReplayElapsed(null);
+    setChartMarker(null);
+    markerRef.current = null;
+  }, [activity.id]);
+
+  // Cycling FTP for power zone bands (shared ['cycling-profile'] cache).
+  const { data: profile } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    enabled: isCycling,
+  });
+
+  const selectedResolution = Math.max(
+    1,
+    activityDetail?.streams?.find((s) => s.stream_type === (selectedStream || streamTypes[0]))?.resolution ?? 1
+  );
+  const handleElapsed = useCallback(
+    (t: number) => {
+      setReplayElapsed(t);
+      const q = String(Math.round(Math.floor(t * 2) / 2 / selectedResolution));
+      if (q !== markerRef.current) {
+        markerRef.current = q;
+        setChartMarker(q);
+      }
+    },
+    [selectedResolution]
+  );
+
+  const streamChartWithMarker: ChartData | null = useMemo(
+    () =>
+      streamChart && chartMarker && replayBuild
+        ? { ...streamChart, reference_line: { x: chartMarker, label: '3D' } }
+        : streamChart,
+    [streamChart, chartMarker, replayBuild]
+  );
+
+  // Same element identity across renders → React bails out instead of
+  // re-rendering the heavy Recharts tree on every playhead tick.
+  const streamChartEl = useMemo(
+    () => (streamChartWithMarker ? <Chart data={streamChartWithMarker} height={250} /> : null),
+    [streamChartWithMarker]
+  );
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -229,19 +285,25 @@ function ActivityExpanded({
       {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 && (
         <div className="mb-4">
-          <Replay3D name={activity.name} build={replayBuild} />
+          <Replay3D
+            name={activity.name}
+            build={replayBuild}
+            polyline={activity.encoded_polyline ?? undefined}
+            onElapsed={handleElapsed}
+            ftpWatts={profile?.ftp_watts ?? null}
+          />
         </div>
       )}
 
       {/* Stream Data */}
       {streamTypes.length > 0 ? (
         <>
-          <div className="flex gap-2 mb-4">
+          <div className="flex flex-wrap gap-2 mb-4">
             {streamTypes.map((st) => (
               <button
                 key={st}
                 onClick={() => setSelectedStream(st)}
-                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                className={`min-h-[44px] px-4 py-1 text-xs rounded-full border transition-colors ${
                   (selectedStream || streamTypes[0]) === st
                     ? 'bg-accent/20 text-accent border-accent/30'
                     : 'text-muted border-surface-light hover:border-accent/30'
@@ -250,8 +312,13 @@ function ActivityExpanded({
                 {st}
               </button>
             ))}
+            {replayElapsed != null && replayBuild && (
+              <span className="ml-auto self-center font-mono text-xs tabular-nums text-muted">
+                3D ▸ {timeFmt(replayElapsed)}
+              </span>
+            )}
           </div>
-          {streamChart && <Chart data={streamChart} height={250} />}
+          {streamChartEl}
         </>
       ) : (
         <p className="text-muted text-sm">No stream data available</p>
@@ -663,20 +730,20 @@ export default function ActivitiesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Activities</h1>
+    <div className="space-y-6 min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Activities</h1>
           <p className="text-muted">Browse and analyze your fitness activities</p>
         </div>
         {/* View Toggle */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden" role="tablist" aria-label="Activity view mode">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-x-auto max-w-full" role="tablist" aria-label="Activity view mode">
           <button
             onClick={() => setViewMode('list')}
             role="tab"
             aria-selected={viewMode === 'list'}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
           >
@@ -686,7 +753,7 @@ export default function ActivitiesPage() {
             onClick={() => setViewMode('week')}
             role="tab"
             aria-selected={viewMode === 'week'}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
           >
@@ -696,7 +763,7 @@ export default function ActivitiesPage() {
             onClick={() => setViewMode('timeline')}
             role="tab"
             aria-selected={viewMode === 'timeline'}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
           >
@@ -706,7 +773,7 @@ export default function ActivitiesPage() {
             onClick={() => setViewMode('patterns')}
             role="tab"
             aria-selected={viewMode === 'patterns'}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-white'
             }`}
           >
@@ -715,7 +782,7 @@ export default function ActivitiesPage() {
         </div>
           <button
             onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
-            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+            className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
               selectMode
                 ? 'bg-accent/20 text-accent border-accent/30'
                 : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
@@ -726,7 +793,7 @@ export default function ActivitiesPage() {
           <div className="relative">
             <button
               onClick={() => setShowImportMenu(!showImportMenu)}
-              className="px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-white border-surface-light hover:bg-surface-light/50 transition-colors"
+              className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-white border-surface-light hover:bg-surface-light/50 transition-colors"
             >
               Import
             </button>
@@ -775,7 +842,7 @@ export default function ActivitiesPage() {
           <select
             value={filters.sport_type || ''}
             onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
-            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="min-h-[44px] bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {SPORT_TYPES.map((type) => (
               <option key={type} value={type}>{type || 'All Sports'}</option>
@@ -784,7 +851,7 @@ export default function ActivitiesPage() {
           <select
             value={sortIndex}
             onChange={(e) => setSortIndex(parseInt(e.target.value, 10))}
-            className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="min-h-[44px] bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {SORT_OPTIONS.map((opt, i) => (
               <option key={i} value={i}>{opt.label}</option>
@@ -1007,17 +1074,17 @@ export default function ActivitiesPage() {
 
       {/* Compare floating bar */}
       {selectedForComparison.size === 2 && compareActivities && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
-          <span className="text-sm text-muted">2 rides selected</span>
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-4 sm:px-6 py-3 flex flex-wrap items-center justify-center gap-3 max-w-[calc(100vw-2rem)]">
+          <span className="text-sm text-muted whitespace-nowrap">2 rides selected</span>
           <button
             onClick={() => setCompareModalOpen(true)}
-            className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors whitespace-nowrap"
           >
             Compare 2 rides
           </button>
           <button
             onClick={() => setSelectedForComparison(new Set())}
-            className="text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
           >
             Clear
           </button>
@@ -1026,29 +1093,29 @@ export default function ActivitiesPage() {
 
       {/* Bulk actions floating bar */}
       {selectMode && bulkSelected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
-          <span className="text-sm font-medium text-white">{bulkSelected.size} selected</span>
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-4 sm:px-6 py-3 flex flex-wrap items-center justify-center gap-3 max-w-[calc(100vw-2rem)]">
+          <span className="text-sm font-medium text-white whitespace-nowrap">{bulkSelected.size} selected</span>
           <button
             onClick={selectAllBulk}
-            className="text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
           >
             Select All
           </button>
           <button
             onClick={() => setBulkSelected(new Set())}
-            className="text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
           >
             Deselect All
           </button>
           <button
             onClick={exportCsv}
-            className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors whitespace-nowrap"
           >
             Export CSV
           </button>
           <button
             onClick={clearBulk}
-            className="text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
           >
             Cancel
           </button>

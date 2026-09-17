@@ -174,6 +174,11 @@ class TestStatsCompilation:
         assert "upcoming_events" in stats
         assert "health_alerts" in stats
 
+        # Verify new context sections are present
+        assert "deficiency_analysis" in stats
+        assert "goals" in stats
+        assert "training_plan" in stats
+
         # Verify weekly summaries structure
         assert isinstance(stats["weekly_summaries"], list)
         if stats["weekly_summaries"]:
@@ -207,6 +212,15 @@ class TestPerActivityAiAnalysis:
         # Verify activity summary has real data from the DB
         assert stats["activity_summary"]["name"] == "Morning Ride"
         assert stats["activity_summary"]["average_power"] == 200.0
+        # Verify weather fields are present in activity summary
+        assert "weather_temperature" in stats["activity_summary"]
+        assert "weather_conditions" in stats["activity_summary"]
+        # Verify new context sections are present
+        assert "route_context" in stats
+        assert "planned_training" in stats
+        assert "personal_records" in stats
+        assert "fuel_plan" in stats
+        assert "health_overlay" in stats
 
 
 # ── Per-Lifting-Session AI Analysis ───────────────────────────────────────
@@ -232,6 +246,12 @@ class TestPerLiftingSessionAiAnalysis:
         # Verify session summary has real data
         assert stats["session_summary"]["focus"] == "squat"
         assert stats["session_summary"]["exercise_count"] >= 1
+        # Verify new context sections are present
+        assert "video_analysis" in stats
+        assert "planned_training" in stats
+        assert "warmup_template" in stats
+        assert "whoop_data" in stats
+        assert "linked_activity" in stats
 
 
 # ── Health AI Analysis ────────────────────────────────────────────────────
@@ -262,7 +282,28 @@ class TestHealthAiAnalysis:
         elif resp.status_code == 200:
             data = resp.json()
             assert data["analysis_type"] == "health"
-            assert "analysis_text" in data
+            stats = data["stats_json"]
+            # Verify new training load context sections are present
+            assert "current_ctl" in stats
+            assert "current_atl" in stats
+            assert "current_tsb" in stats
+            assert "training_load_trend" in stats
+            assert "recent_activities" in stats
+            assert "strain_trends" in stats
+
+    async def test_compile_health_stats_with_training_load(
+        self, client, test_cycling_profile, test_activity, db_session
+    ):
+        """Verify compile_health_stats includes training load context."""
+        from app.services.llm_analysis import compile_health_stats
+
+        stats = await compile_health_stats(db_session, test_cycling_profile.user_id)
+        assert stats is not None
+        assert "hrv_trends" in stats
+        assert "strain_trends" in stats
+        assert "current_ctl" in stats
+        assert "training_load_trend" in stats
+        assert "recent_activities" in stats
 
 
 # ── Event AI Analysis ─────────────────────────────────────────────────────
@@ -307,6 +348,11 @@ class TestEventAiAnalysis:
             assert data["event_id"] == str(event.id)
             assert "event" in data["stats_json"]
             assert data["stats_json"]["event"]["name"] == "Local Criterium"
+            # Verify new context sections are present
+            assert "training_plan" in data["stats_json"]
+            assert "route_details" in data["stats_json"]
+            assert "weather_forecast" in data["stats_json"]
+            assert "historical_performance" in data["stats_json"]
         elif resp.status_code in (404, 405):
             # Endpoint may not be implemented yet — verify service function exists
             from app.services.llm_analysis import compile_event_stats

@@ -23,7 +23,7 @@ import type {
   DeficiencyResponse,
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
-import { getGreeting } from '@/components/dashboard/helpers';
+import { getGreeting } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
 import { TodayTab } from '@/components/dashboard/TodayTab';
@@ -233,11 +233,11 @@ export default function DashboardPage() {
     <div className="space-y-8" aria-live="polite">
       {/* ── Error Banner ────────────────────────────────────────────────────── */}
       {downloadError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           <span>{downloadError}</span>
           <button
             onClick={() => setDownloadError(null)}
-            className="shrink-0 text-red-400 hover:text-red-300"
+            className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
             ✕
@@ -246,14 +246,14 @@ export default function DashboardPage() {
       )}
 
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white">{getGreeting()} 👋</h1>
-          <p className="text-muted mt-1">
+      <div className="flex flex-wrap items-end justify-between gap-4 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">{getGreeting()} 👋</h1>
+          <p className="text-muted mt-1 text-sm sm:text-base">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-        <div className="flex items-end gap-4">
+        <div className="flex flex-wrap items-end gap-4 min-w-0">
           <DashboardRefresh />
           <WeatherWidget />
           {hasReadiness && (
@@ -270,12 +270,12 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Tab Navigation ───────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit">
+      <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">
         {(['today', 'weekly', 'monthly'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${
+            className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize whitespace-nowrap ${
               activeTab === tab
                 ? 'bg-accent text-white'
                 : 'text-muted hover:text-white hover:bg-surface-light/50'

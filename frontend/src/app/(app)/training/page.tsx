@@ -17,6 +17,7 @@ import type {
   ChartData,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
 import { WeeklyView } from '@/components/training/WeeklyView';
@@ -25,10 +26,10 @@ import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  draft: 'bg-surface-light/20 text-muted border-muted/30',
   active: 'bg-green-500/20 text-positive border-green-500/30',
   completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  archived: 'bg-gray-500/20 text-gray-500 border-gray-500/30',
+  archived: 'bg-surface-light/20 text-muted border-muted/30',
 };
 
 const EVENT_TYPE_EMOJI: Record<string, string> = {
@@ -129,7 +130,7 @@ export default function TrainingPage() {
   });
 
   const { data: periodizationChart } = useQuery<ChartData>({
-    queryKey: ['chart-periodization'],
+     queryKey: ['chart-periodization', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
   });
 
@@ -261,11 +262,11 @@ export default function TrainingPage() {
 
       {/* Error banner */}
       {actionError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
-            className="shrink-0 text-red-400 hover:text-red-300"
+            className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
             ✕
@@ -285,8 +286,8 @@ export default function TrainingPage() {
               <CardTitle>My Plans</CardTitle>
             </CardHeader>
             <div className="space-y-2">
-              {plansLoading && <p className="text-muted text-sm">Loading...</p>}
-              {plansError && <p className="text-red-400 text-sm">Failed to load plans: {plansErrorMessage?.message}</p>}
+              {plansLoading && <SkeletonRow className="h-20" />}
+              {plansError && <p className="text-warning text-sm">Failed to load plans: {plansErrorMessage?.message}</p>}
               {plans && plans.length === 0 && (
                 <p className="text-muted text-sm text-center py-4">No plans yet. Generate one to get started!</p>
               )}
@@ -411,7 +412,7 @@ export default function TrainingPage() {
                             deleteEventMutation.mutate(evt.id);
                             setConfirmingDeleteId(null);
                           }}
-                          className="text-xs text-warning hover:text-red-300 font-medium"
+                          className="text-xs text-warning hover:text-warning/80 font-medium"
                         >
                           Yes
                         </button>

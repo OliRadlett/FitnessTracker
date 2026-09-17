@@ -194,6 +194,7 @@ from app.api.activities import router as activities_router
 from app.api.auth import router as auth_router
 from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
+from app.api.cross_domain import router as cross_domain_router
 from app.api.cycling import router as cycling_router
 from app.api.dashboard import router as dashboard_router
 from app.api.deficiency import router as deficiency_router
@@ -256,5 +257,8 @@ app.include_router(
 )
 app.include_router(
     llm_analysis_router, prefix="/api/v1/cycling/llm-analysis", tags=["LLM Analysis"]
+)
+app.include_router(
+    cross_domain_router, prefix="/api/v1/cross-domain", tags=["cross-domain"]
 )
 app.include_router(weather_router, prefix="/api/v1/weather", tags=["weather"])

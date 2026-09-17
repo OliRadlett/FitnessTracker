@@ -44,7 +44,7 @@ import { RoutePickerModal } from './RoutePickerModal';
 const DAY_TYPES: PlanDayType[] = ['rest', 'easy', 'moderate', 'hard', 'race'];
 
 const DAY_TYPE_COLORS: Record<string, string> = {
-  rest: 'bg-gray-800/60 border-gray-600/50 text-gray-400',
+  rest: 'bg-surface-light/20 border-muted/30 text-muted',
   easy: 'bg-green-900/30 border-green-700/40 text-green-300',
   moderate: 'bg-blue-900/30 border-blue-700/40 text-blue-300',
   hard: 'bg-orange-900/30 border-orange-700/40 text-orange-300',
@@ -80,10 +80,10 @@ const TEMPLATE_OPTIONS = [
 ] as const;
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  draft: 'bg-surface-light/20 text-muted border-muted/30',
   active: 'bg-green-500/20 text-positive border-green-500/30',
   completed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  archived: 'bg-gray-500/20 text-gray-500 border-gray-500/30',
+  archived: 'bg-surface-light/20 text-muted border-muted/30',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -1301,7 +1301,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                 </button>
                 <button
                   onClick={() => onPatch({ planned_route_id: null })}
-                  className="text-xs text-warning hover:text-red-300"
+                  className="text-xs text-warning hover:text-warning/80"
                 >
                   Remove
                 </button>

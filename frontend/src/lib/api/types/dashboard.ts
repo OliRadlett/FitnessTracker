@@ -57,6 +57,11 @@ export interface PRHighlight {
   estimated_1rm?: number;
   achieved_date: string;
   improvement_pct?: number;
+  // Cycling PR fields (populated when pr_type == "cycling")
+  pr_type?: string;
+  power_watts?: number;
+  w_per_kg?: number;
+  duration_label?: string;
 }
 
 export interface BestActivity {

@@ -20,6 +20,14 @@ const CATEGORY_STYLES: Record<string, string> = {
   '4': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
 };
 
+const CLIMB_TYPE_LABELS: Record<string, string> = {
+  kick: 'Steep Kick',
+  punchy: 'Punchy',
+  steady: 'Steady',
+  wall: 'Wall',
+  hc: 'HC',
+};
+
 function fmtSegTime(seconds: number | null): string {
   if (seconds == null) return '—';
   const m = Math.floor(seconds / 60);
@@ -150,6 +158,16 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
                         className={`border rounded px-1.5 py-0.5 text-[10px] font-bold ${catStyle}`}
                       >
                         Cat {cat}
+                      </span>
+                    )}
+                    {seg.climb_type && (
+                      <span className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/20 text-blue-400 border-blue-500/30">
+                        {CLIMB_TYPE_LABELS[seg.climb_type] ?? seg.climb_type}
+                      </span>
+                    )}
+                    {seg.difficulty_score != null && (
+                      <span className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-400 border-purple-500/30">
+                        {seg.difficulty_score.toFixed(1)} diff
                       </span>
                     )}
                   </div>

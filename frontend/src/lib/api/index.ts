@@ -4,6 +4,7 @@
 export * from './types';
 export * from './fetch';
 export * from './lifting';
+export * from './cycling';
 export * from './routes';
 export * from './goals';
 export * from './trainingPlans';
@@ -18,3 +19,4 @@ export * from './search';
 export * from './preferences';
 export * from './account';
 export * from './healthPrefs';
+export * from './crossDomain';

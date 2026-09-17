@@ -1,17 +1,20 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type {
   CyclingProfile,
   CyclingProfileUpdate,
   CyclingMetricsSummary,
+  CyclingPowerRecord,
   TrainingLoadResponse,
   PowerCurveResponse,
   PowerZonesResponse,
   HrZonesResponse,
   PowerVsHrResponse,
+  PowerModelResultsResponse,
+  WeatherAnalysisResponse,
   ChartData,
   FtpEstimate,
   LifetimePBsResponse,
@@ -21,11 +24,14 @@ import type {
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
 } from '@/lib/api';
+import { type PREvent } from '@/components/ui/PRCelebration';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
+import { PowerModelSection } from '@/components/cycling/PowerModelSection';
+import { WeatherAnalysisSection } from '@/components/cycling/WeatherAnalysisSection';
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
@@ -34,7 +40,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
@@ -112,6 +118,21 @@ export default function CyclingPage() {
     queryKey: ['power-curve'],
     queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  const { data: powerModel, isLoading: powerModelLoading } = useQuery<PowerModelResultsResponse>({
+    queryKey: ['power-model'],
+    queryFn: () => authFetch<PowerModelResultsResponse>('/api/v1/cycling/power-model'),
+    staleTime: 600_000,
+    enabled: !!token,
+  });
+
+  const { data: weatherAnalysis, isLoading: weatherLoading } = useQuery<WeatherAnalysisResponse>({
+    queryKey: ['weather-analysis'],
+    queryFn: () => authFetch<WeatherAnalysisResponse>('/api/v1/cycling/weather-analysis'),
+    staleTime: 600_000,
+    enabled: !!token,
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
@@ -137,7 +158,31 @@ export default function CyclingPage() {
     queryKey: ['chart-stream-power-curve', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
+
+  // Merge the Morton 2004 fitted curve (keyed by duration seconds) into the
+  // stream power-curve chart as a second series overlay.
+  const fittedCurveData = useMemo<ChartData | undefined>(() => {
+    if (!chartPowerCurve || !powerCurve?.fitted_curve) return undefined;
+    const labelToSeconds = new Map(
+      (powerCurve.data ?? []).map((p) => [p.duration_label, p.duration_seconds])
+    );
+    const fittedValues = (chartPowerCurve.labels ?? []).map((label) => {
+      const secs = labelToSeconds.get(label);
+      if (secs == null) return null;
+      const v = powerCurve.fitted_curve?.[String(secs)];
+      return typeof v === 'number' ? v : null;
+    });
+    if (fittedValues.every((v) => v == null)) return undefined;
+    return {
+      ...chartPowerCurve,
+      series: [
+        ...chartPowerCurve.series,
+        { name: 'Fitted (CP model)', data: fittedValues, color: '#22d3ee' },
+      ],
+    };
+  }, [chartPowerCurve, powerCurve]);
 
   const [comparisonDays, setComparisonDays] = useState(30);
   const comparisonBaselineDays = comparisonDays * 3;
@@ -234,6 +279,43 @@ export default function CyclingPage() {
     queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
     staleTime: 300_000,
+  });
+
+  // ── Cycling Power PRs ───────────────────────────────────────────────────
+  const { data: cyclingPRs, isLoading: cyclingPRsLoading, refetch: refetchPRs } = useQuery<CyclingPowerRecord[]>({
+    queryKey: ['cycling-prs'],
+    queryFn: () => authFetch<CyclingPowerRecord[]>('/api/v1/cycling/prs'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
+
+  const checkPRsMutation = useMutation({
+    mutationFn: () => authFetch<{ checked: number; new_prs: number; updated_prs: number; prs: CyclingPowerRecord[] }>(
+      '/api/v1/cycling/prs/check',
+      { method: 'POST', body: JSON.stringify({}) }
+    ),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['cycling-prs'] });
+      if (data.prs && data.prs.length > 0) {
+        // Celebrate the first new PR (improvement_pct > 0 or null = new)
+        const newPR = data.prs.find(p => p.improvement_pct === null || (p.improvement_pct ?? 0) > 0);
+        if (newPR) {
+          setCelebrationPR({
+            type: 'cycling',
+            duration_label: newPR.duration_label,
+            new_power: newPR.power_watts,
+            previous_power: null,
+            improvement_pct: newPR.improvement_pct ?? null,
+            w_per_kg: newPR.w_per_kg,
+          });
+        }
+      }
+    },
+    onError: (error: Error) => {
+      console.error('PR check failed:', error.message);
+    },
   });
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -508,8 +590,8 @@ export default function CyclingPage() {
       {/* Recalculate TSS Banner */}
       {profile?.ftp_watts && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm font-medium text-white">
                 {(metrics?.recent_tss ?? 0) === 0 ? 'No TSS data found' : 'Recalculate TSS'}
               </p>
@@ -524,7 +606,7 @@ export default function CyclingPage() {
               <button
                 onClick={() => recalculateTssMutation.mutate()}
                 disabled={recalculateTssMutation.isPending}
-                className="px-4 py-2 text-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/30 transition-colors disabled:opacity-50 font-medium"
+                className="min-h-[44px] px-4 py-2 text-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
               >
                 {recalculateTssMutation.isPending ? 'Calculating...' : '⚡ (Re)calculate TSS'}
               </button>
@@ -538,8 +620,8 @@ export default function CyclingPage() {
 
       {/* Fetch Streams Banner */}
       <Card className="border-blue-500/30 bg-blue-500/5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-sm font-medium text-white">
               {powerCurve?.data?.some(p => p.best_power_watts != null)
                 ? 'Fetch stream data for all cycling activities'
@@ -554,7 +636,7 @@ export default function CyclingPage() {
             <button
               onClick={() => backfillStreamsMutation.mutate()}
               disabled={backfillStreamsMutation.isPending}
-              className="px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium"
+              className="min-h-[44px] px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
             >
               {backfillStreamsMutation.isPending ? 'Fetching...' : '📡 Fetch Streams from Strava'}
             </button>
@@ -570,6 +652,7 @@ export default function CyclingPage() {
         <PowerCurveSection
           powerCurve={powerCurve}
           chartPowerCurve={chartPowerCurve}
+          fittedCurveData={fittedCurveData}
           curveLoading={curveLoading}
           powerZones={powerZones}
           chartPowerZones={chartPowerZones}
@@ -585,6 +668,10 @@ export default function CyclingPage() {
           chartWeightTrend={chartWeightTrend}
         />
       </div>
+
+      {/* Personalized Power Model + Weather-Performance Analysis */}
+      <PowerModelSection powerModel={powerModel} isLoading={powerModelLoading} />
+      <WeatherAnalysisSection weatherAnalysis={weatherAnalysis} isLoading={weatherLoading} />
 
       {/* Weight Management */}
       <div className="max-w-2xl">
@@ -610,6 +697,13 @@ export default function CyclingPage() {
           backfillFtpResult={backfillFtpResult}
           onBackfillFtp={() => backfillFtpHistoryMutation.mutate()}
           isBackfillingFtp={backfillFtpHistoryMutation.isPending}
+          cyclingPRs={cyclingPRs}
+          cyclingPRsLoading={cyclingPRsLoading}
+          celebrationPR={celebrationPR}
+          onDismissCelebration={() => setCelebrationPR(null)}
+          onCheckPRs={() => checkPRsMutation.mutate()}
+          isCheckingPRs={checkPRsMutation.isPending}
+          onInvalidatePRs={() => { void refetchPRs(); }}
         />
       </div>
     </div>

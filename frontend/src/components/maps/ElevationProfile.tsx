@@ -9,7 +9,9 @@ interface ElevationProfileProps {
   encodedPolyline: string;
   elevations: (number | null)[];
   className?: string;
-  onHover?: (index: number | null) => void;
+  height?: number;
+  /** hover distance in km (null when the pointer leaves) — for 3D hover sync */
+  onHover?: (distanceKm: number | null) => void;
 }
 
 interface ElevationPoint {
@@ -21,6 +23,8 @@ export function ElevationProfile({
   encodedPolyline,
   elevations,
   className = '',
+  height = 150,
+  onHover,
 }: ElevationProfileProps) {
   const data = useMemo(() => {
     const points = decodePolyline(encodedPolyline);
@@ -56,8 +60,16 @@ export function ElevationProfile({
   return (
     <div className={className}>
       <h3 className="text-sm font-medium text-muted mb-2">Elevation Profile</h3>
-      <ResponsiveContainer width="100%" height={150}>
-        <AreaChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={height}>
+        <AreaChart
+          data={data}
+          margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+          onMouseMove={(state) => {
+            const idx = state?.activeTooltipIndex;
+            onHover?.(typeof idx === 'number' ? (data[idx]?.distance ?? null) : null);
+          }}
+          onMouseLeave={() => onHover?.(null)}
+        >
           <defs>
             <linearGradient id="elevGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />

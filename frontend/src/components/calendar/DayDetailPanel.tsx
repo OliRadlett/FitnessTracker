@@ -13,6 +13,7 @@ import type {
   DailyMetricSummary,
   SleepLogSummary,
 } from '@/lib/api';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import {
   getSportEmoji,
   getSportTextColor,
@@ -277,7 +278,7 @@ export function DayDetailPanel({
                     )}
                     {daySleepLog.awake_seconds != null && (
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-400">Awake</span>
+                        <span className="text-muted">Awake</span>
                         <span className="text-white">{formatSleepHrs(daySleepLog.awake_seconds)}</span>
                       </div>
                     )}
@@ -308,13 +309,9 @@ export function DayDetailPanel({
 
       {/* Activity details */}
       {isLoading ? (
-        <div className="animate-pulse space-y-3">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-32 bg-surface-light rounded-lg" />
-          ))}
-        </div>
+        <SkeletonRow className="h-32" />
       ) : hasQueryError ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300 text-sm">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
           Failed to load: {queryErrorMessage}
         </div>
       ) : activities && activities.length > 0 ? (

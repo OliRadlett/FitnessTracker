@@ -31,7 +31,7 @@ export function DecouplingSection({ decoupling, chartDecouplingTrend }: Decoupli
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 decoupling.classification === 'Excellent' ? 'bg-green-500/20 text-positive'
                 : decoupling.classification === 'Acceptable' ? 'bg-yellow-500/20 text-yellow-400'
-                : 'bg-red-500/20 text-warning'
+                : 'bg-warning/20 text-warning'
               }`}>
                 {decoupling.classification}
               </span>

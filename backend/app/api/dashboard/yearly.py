@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.activity import Activity
+from app.models.cycling import CyclingPowerRecord
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, PersonalRecord
 from app.models.user import User
@@ -116,12 +117,25 @@ async def yearly_summary(
         )
         .order_by(PersonalRecord.achieved_date.desc())
     )
-    year_prs = list(result.scalars().all())
-    total_prs = len(year_prs)
+    year_lifting_prs = list(result.scalars().all())
 
-    # Top 5 PR highlights by improvement % — compute from previous PRs if available
+    # Also fetch cycling power PRs in the same year
+    result = await db.execute(
+        select(CyclingPowerRecord)
+        .where(
+            CyclingPowerRecord.user_id == uid,
+            CyclingPowerRecord.achieved_date >= year_start,
+            CyclingPowerRecord.achieved_date <= effective_end,
+        )
+        .order_by(CyclingPowerRecord.achieved_date.desc())
+    )
+    year_cycling_prs = list(result.scalars().all())
+
+    total_prs = len(year_lifting_prs) + len(year_cycling_prs)
+
+    # Top PR highlights by improvement % — lifting first, then cycling
     pr_highlights: list[PRHighlight] = []
-    for pr in year_prs[:5]:
+    for pr in year_lifting_prs[:5]:
         # Try to find previous PR for same exercise & record type to compute improvement
         prev_result = await db.execute(
             select(PersonalRecord)
@@ -157,8 +171,36 @@ async def yearly_summary(
                 estimated_1rm=pr.estimated_1rm,
                 achieved_date=pr.achieved_date,
                 improvement_pct=improvement_pct,
+                pr_type="lifting",
             )
         )
+
+    # Add top cycling PR highlights (by improvement_pct, then power_watts)
+    cycling_sorted = sorted(
+        year_cycling_prs[:5],
+        key=lambda p: (p.improvement_pct or 0, p.power_watts),
+        reverse=True,
+    )
+    for pr in cycling_sorted:
+        pr_highlights.append(
+            PRHighlight(
+                exercise_name=f"{pr.duration_label} Power",
+                record_type="power",
+                weight_kg=pr.power_watts,
+                reps=pr.duration_seconds,
+                estimated_1rm=pr.w_per_kg,
+                achieved_date=pr.achieved_date,
+                improvement_pct=pr.improvement_pct,
+                pr_type="cycling",
+                power_watts=pr.power_watts,
+                w_per_kg=pr.w_per_kg,
+                duration_label=pr.duration_label,
+            )
+        )
+
+    # Sort highlights by achieved_date descending (most recent first)
+    pr_highlights.sort(key=lambda h: h.achieved_date, reverse=True)
+    pr_highlights = pr_highlights[:10]
 
     # ── Monthly breakdown ────────────────────────────────────────────────
     # Lifting by month
@@ -212,7 +254,7 @@ async def yearly_summary(
             "time": _safe_agg(row.time),
         }
 
-    # PRs by month
+    # PRs by month (lifting + cycling)
     result = await db.execute(
         select(
             func.to_char(PersonalRecord.achieved_date, "YYYY-MM").label("month"),
@@ -228,6 +270,22 @@ async def yearly_summary(
     prs_by_month: dict[str, int] = {}
     for row in result.all():
         prs_by_month[row.month] = int(row.prs)
+
+    # Add cycling power PRs to monthly counts
+    result = await db.execute(
+        select(
+            func.to_char(CyclingPowerRecord.achieved_date, "YYYY-MM").label("month"),
+            func.count(CyclingPowerRecord.id).label("prs"),
+        )
+        .where(
+            CyclingPowerRecord.user_id == uid,
+            CyclingPowerRecord.achieved_date >= year_start,
+            CyclingPowerRecord.achieved_date <= effective_end,
+        )
+        .group_by("month")
+    )
+    for row in result.all():
+        prs_by_month[row.month] = prs_by_month.get(row.month, 0) + int(row.prs)
 
     # Recovery by month
     result = await db.execute(
@@ -401,6 +459,16 @@ async def yearly_summary(
             )
         )
         prev_prs = int(result.scalar() or 0)
+
+        # Also count previous year's cycling power PRs
+        result = await db.execute(
+            select(func.count(CyclingPowerRecord.id)).where(
+                CyclingPowerRecord.user_id == uid,
+                CyclingPowerRecord.achieved_date >= prev_year_start,
+                CyclingPowerRecord.achieved_date <= prev_year_end,
+            )
+        )
+        prev_prs += int(result.scalar() or 0)
 
         result = await db.execute(
             select(func.avg(DailyMetric.recovery_score)).where(

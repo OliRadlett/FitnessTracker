@@ -69,6 +69,13 @@
 | `MetricCard` | Unified metric card — supports simple trend strings (dashboard) and complex MetricTrend/benchmark (cycling). Icon, unit, tooltip, subtitle |
 | `NotificationBell` | Fixed top-right bell with unread badge (`['notifications']`, 30s refetch) + dropdown panel (severity-tagged, type icons, mark-read on click, mark-all, "View all" → `/notifications`). Mounted in `(app)/layout.tsx` |
 | `CommandPalette` | **Global ⌘P/Ctrl+P search (Phase C §3.4)** — modal command palette over `GET /api/v1/search`, debounced, keyboard-navigable (↑/↓/Enter/Esc), grouped cross-domain hits with deep links (`?activity=`, `?route=`, `?session=`). Opens via keyboard or sidebar Search button (`fittrack:command-palette` custom event). Mounted in `(app)/layout.tsx` |
+| `TrendArrow` | Trend direction arrow (↑/↓/→) with color coding — moved from `dashboard/helpers` |
+| `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page. Moved from `dashboard/` |
+
+### `analysis/` — Shared analysis components
+| Component | Purpose |
+|-----------|---------|
+| `AiAnalysisCard` | Shared AI analysis card — base component for all per-domain AI analysis cards (cycling, lifting, health, events). NEW |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -87,10 +94,10 @@
 | `ProfileEditor` | FTP/weight/LTHR + home lat/lng editor (feeds weather location) |
 | `RideAnalysisCard` | Post-ride analysis card |
 | `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
-| `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
-| `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) |
 | `WeightPanel` | **Body-weight management (Phase C §3.1)** — quick-add form (date + kg → `POST /metrics/weight`), 7-day rolling avg summary, editable/deletable history (Whoop entries read-only), invalidates `['weight-history']` + weight/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop) |
+| `PowerModelSection` | **Modal power models** — CP/W′/R² + personalized VO2max + adaptive CTL/ATL taus (`['power-model']` query, GET `/cycling/power-model`); empty state notes weekly Sunday fitting |
+| `WeatherAnalysisSection` | **Modal weather-performance** — power-vs-temp, wind penalties, decoupling threshold, HR drift, insight bullets (`['weather-analysis']` query, GET `/cycling/weather-analysis`); rendered on `/cycling` after the power model |
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -104,15 +111,18 @@
 | `LiveWorkout` | Active-session UI for `/lifting/live` — header (elapsed timer from `started_at` timestamp, volume/sets, count-up since-last-set pill, sync status pill that shows `⟳ N to sync` while sets/deletes are queued locally instead of a false ✓), exercise autocomplete + recent chips, weight/reps steppers (`Stepper`, tap-target ≥44px, configurable step size cycled ±1/2.5/5kg persisted in localStorage; draft-buffer input allows natural typing incl. trailing decimal points, select-all on focus, commit-on-blur), optional RPE dots + warm-up toggle, last-session reference line (`reference.ts` map), set log with double-tap undo, bottom LOG SET button (debounced), inline PR toasts via `detectPr()` (Brzycki e1RM vs stored PRs). Prefill uses `reference.lastSet` (true last logged set, not highest-volume) |
 | `ManualPRForm` | Manual PR entry form |
 | `WarmupTemplateManager` | Warmup template CRUD |
-| `VideoEmbed` | **§1.1** — YouTube/Vimeo embed iframe or R2 `<video>` player; auto-resolves embed URLs from watch/short URLs, retries failed R2 stream loads |
-| `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count |
+| `VideoEmbed` | **§1.1** — R2 `<video>` player; resolves a presigned GET via `getVideoStreamUrl`, retries failed loads |
+| `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count. Split from `VideoEmbed` |
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
-| `LiftVideoForm` | **§1.1** — Add-strength-video modal: URL mode (YouTube/Vimeo link) or upload mode (R2 presigned PUT with progress bar); exercise autocomplete, optional session/PR linkage |
+| `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage |
 
 ### `health/` — Health-specific
 | Component | Purpose |
 |-----------|---------|
 | `HealthAiAnalysisCard` | AI health analysis (HRV, sleep, recovery — on-demand Gemini) |
+| `HealthAlertsSection` | Health alert history with dismiss — moved from `dashboard/` |
+| `RespiratoryRateCard` | Respiratory rate trend card — moved from `dashboard/` |
+| `WhoopWeeklyCard` | Whoop weekly recovery/strain summary — moved from `dashboard/` |
 
 ### `routes/` — Route components
 | Component | Purpose |
@@ -124,16 +134,16 @@
 | `RoutesGridView` | Grid of route cards for visual/mobile browsing, touch-friendly |
 | `RouteDetailPanel` | Slide-over detail panel with tabs (Overview, Map & Profile, History, Merged View, Weather, Effort), edit/favorite/delete actions. Map & Profile tab has a 2D/3D toggle — 3D lazy-loads `Route3D`. `scrollable={false}` disables the panel's own scrollers when embedded in the mobile sheet (single-scroller) |
 | `MobileRouteDetailSheet` | Mobile (<lg) bottom-sheet wrapper around `RouteDetailPanel` — slides up from bottom with backdrop, velocity-aware swipe-down to dismiss, 44px grab handle, Escape close, dialog semantics; passes `scrollable={false}` |
-| `Route3D` | **§3.16 3D terrain** — three.js drapes the route polyline over an Open-Meteo Copernicus DEM heightmap (≤100-point grid via `computeGrid`, no API key, attribution shown); vertex-coloured by elevation or slope (gradient), start/end markers, orbit/zoom/pan via `OrbitControls`, WebGL fallback + graceful flat-drape when the DEM fetch fails. Lazily imported `next/dynamic ssr:false` so `three` stays out of the `/routes` first-load bundle. Pure math in `lib/route3d.ts` (unit-tested `src/__tests__/route3d.test.ts`); DEM fetch in `lib/terrain.ts` |
+| `Route3D` | **§3.16 3D terrain** — three.js drapes the route polyline (fat `Line2` drape) over an Open-Meteo Copernicus DEM heightmap (≤200-point grid via `computeGrid`, no API key, attribution shown); vertex-coloured by elevation or diverging slope ramp (blue descent → green flat → red climb via `slopeColor`/`DESCENT_COLOR`, legend spans `minSlopePct…GRADE_SCALE`), start/end/summit markers, **§3.13 climb-segment overlays** (orange spans + name labels via `segments` prop), in-scene **north arrow + world-unit scale bar**, 2D-profile **hover marker** (`highlightDistKm`), **relief slider** (auto or 1–15×) + **frame top-climb/steepest-km** button, orbit/zoom/pan via `OrbitControls` (camera pose preserved across rebuilds), WebGL fallback + graceful flat-drape when the DEM fetch fails. Lazily imported `next/dynamic ssr:false` so `three` stays out of the `/routes` first-load bundle; side-by-side instances in `CompareRoutesModal`. Pure math in `lib/route3d.ts` (unit-tested `src/__tests__/route3d.test.ts`); DEM fetch in `lib/terrain.ts`. Roadmap: `plans/3d-ride-view-enhancements.md` |
 | `MergedRouteMapView` | Merged route view — draws each contributing source's polyline with distinct colors + highlights ridden activity segments in green |
 | `QualityBadge` | Circular quality score indicator with color tiers (Excellent/Good/Average/Fair/Poor) |
 | `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
 | `RouteHistorySection` | Ride history table with personal best summary |
-| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
+| `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4) **+ Modal intelligence badges (climb-type chip, difficulty score)**; expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
 | `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
 | `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
-| `VirtualRouteList` | Virtualised list fallback for route browse (perf, no map) |
+| `DifficultyBadge` | Route difficulty badge (Easy/Moderate/Hard/Extreme from elevation/distance ratio) — extracted from `routeUtils` |
 
 ### `maps/` — Map components
 | Component | Purpose |
@@ -147,9 +157,11 @@
 |-----------|---------|
 | `SummaryStatsBar` | Summary stats grid (count, distance, time, TSS) shown above activity list |
 | `ActivityCard` | Activity list item card with sport badge, source badges, weather, compare checkbox, linked lifting indicator |
-| `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 selected activities |
-| `Replay3D` | **§3.16 3D fly-through** — three.js scene (speed-coloured path, growing ridden trail, rider marker, orbit/zoom, play/scrub/1·4·8×) fed by `buildReplay()` from `lib/replay`; lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG power/HR overlay with synced playhead. Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`) |
+| `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 activities; **3D Side-by-Side tab** with linked playback (one master clock, Linked/Independent toggle) |
+| `Replay3D` | **§3.16 3D ride replay** — three.js scene (fat `Line2` path coloured by **speed/power/HR/grade** with per-mode legend, missing samples as slate gaps; growing ridden trail, heading-oriented rider cone, km-marker dots + sprite labels, live speed/power/HR/cadence/grade HUD chip, **orbit/chase/cockpit cameras** (bounded zoom, zoom-to-cursor, double-click focus, Reset/Top/Rider presets), scene-scale ground grid, play/scrub/tour-speeds (whole ride in ~2m/1m/30s)) fed by `buildReplay()` from `lib/replay` (result carries `lat0/lng0/altMin/zScale` frame for mesh alignment; points carry `cadence` + `grade`); **opt-in DEM terrain button** (off by default — lazy `terrain.ts` + `route3d.buildTerrainMesh`, swaps `GridHelper` for Copernicus bed, attribution footer); power stream lookup tries `watts` (Strava) then `power` (FIT); velocity lookup tries `velocity` (FIT) then `velocity_smooth` (Strava); `onElapsed` 10 fps callback drives the `3D ▸ m:ss` chip in the expanded activity view; optional `link: ReplayLink` for parent-owned linked playback (side-by-side compare); lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG HR/power + expandable speed/cadence/altitude rows with synced playhead and live values; Coggan zone bands behind the power row when `ftpWatts` is passed. The expanded activity view marks the 3D playhead on the 2D stream chart via `ChartData.reference_line` (2 fps quantized). Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`). Roadmap: `plans/3d-ride-view-enhancements.md` |
 | `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
+| `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) — moved from `cycling/`, uses shared `AiAnalysisCard` |
+| `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) — moved from `cycling/` |
 
 ### `calendar/` — Calendar page components
 | Component | Purpose |
@@ -161,10 +173,10 @@
 | Component | Purpose |
 |-----------|---------|
 | `RestDayBanner` | Rest-day suggestion banner — TSB/recovery/consecutive-days triptych + reasons list; shared by Today + Weekly tabs |
-| `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
 | `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
 | `DashboardRefresh` | **§3.15 stale-data UX** — "Last updated" timestamp (freshest `dataUpdatedAt` across the 16 dashboard queries, via `queryCache.subscribe`) + manual refresh button (`refetchQueries` by query-key prefix) + spinning "Syncing…" state (`useIsFetching` predicate). Hero header next to `WeatherWidget`; all dashboard queries also set `refetchOnWindowFocus: true` |
+| `CrossDomainInsightsCard` | **Modal cross-domain** — sleep-performance / cross-sport / race-retrospective insight groups (`['cross-domain-insights']` query, GET `/cross-domain`); returns null when empty. Rendered on dashboard WeeklyTab |
 
 ### `goals/` — Goal management
 | Component | Purpose |
@@ -194,6 +206,7 @@
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
+| `IntelligenceStatusCard` | **Modal intelligence status** — per-feature fitted/not-fitted state from `CyclingProfile` (`power_model_fitted_at`, `weather_analyzed_at`) + static entries for cross-domain/segments. Rendered on `/settings` before Export Data |
 
 #### `onboarding/` — First-run wizard (§3.10)
 | Component | Purpose |
@@ -209,6 +222,7 @@
 | `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |
 | `healthPrefs.ts` | **§3.12 Health-alert preferences client** — `getHealthPreferences` / `updateHealthPreferences` (`GET/PUT /metrics/health-preferences`; types + `HEALTH_SIGNAL_LABELS` in `lib/api/types/health.ts`). Used by `settings/HealthAlertSettings` |
+| `routeUtils.ts` | Pure route utility functions (renamed from `.tsx`) — distance/elevation formatting, difficulty calculation, + re-exports `DifficultyBadge` |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic
@@ -217,6 +231,12 @@
 | `useLiveSession.ts` | Local-first live-session state hook. Persists full state to localStorage (`fittrack-live-session`) on every change; background syncer lazily POSTs the remote session (idempotent via stable `liveKey`, accumulated sets carry `client_id`) on first flush and maps **real** remote ids from the echoed response (undo deletes remotely); pushes unsynced sets / pending deletes with per-set `client_id` idempotency; flush progress merged into freshest storage (`mergeWithStorage`) so mid-flight logging isn't clobbered, undo-race sets get queued for remote delete, and a mid-flush discard aborts the sync (`mergeWithStorage` → `null`); follows up with another flush pass if a mutation landed mid-flight; never blocks logging on network — failures stay queued and retry on `online`/`visibilitychange` and a 4s finish-retry effect that runs even with no `sessionId`; finish flow persists `endedAt` at request time (not sync time) and PATCHes local-tz `session_date` + `ended_at`; network calls read the token via `authFetchRef` so a refreshed backend token is picked up. `resumeSession(serverSession)` rebuilds an active state from `GET /sessions/active` (same-device recovery when local state was lost). Exposes `logSet`/`undoLastSet`/`requestFinish`/`discardSession`/`resumeSession` |
 
 | `reference.ts` | Session-start reference data: `buildLastSessionMap` (exercise → most recent sets, limited to the **last 12 weeks** so stale prescriptions never prefill as current), `recentExerciseNames`, `detectPr` (Brzycki e1RM vs stored PRs + today's sets), `brzycki1rm` |
+
+### `lib/hooks/` — Shared React hooks
+| File | Purpose |
+|------|---------|
+| `useAiAnalysis.ts` | Shared hook for on-demand Gemini AI analysis — fetches `/analysis/{domain}/{id}`, handles loading/error/analysis states. Used by all AI analysis cards (cycling, lifting, health, events) |
+
 ## Patterns
 
 - **Auth**: `useAuthFetch()` hook returns `{ authFetch, authFetchWithHeaders }` — injects JWT from session
@@ -224,11 +244,11 @@
 - **Styling**: Tailwind with custom dark theme tokens. No CSS modules
 - **State**: Local `useState` for UI state. React Query for server state. Zustand stores for cross-component state (`lib/stores/routesStore.ts`: view mode, selection, tags, filters, detail tab, compare mode). No global Redux
 - **Error handling**: `ErrorBoundary` wraps app layout. Query errors shown inline. AI analysis cards show user-friendly error messages for Gemini API failures
-- **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar with `pt-16` clearance
+- **Mobile**: Responsive grids (`grid-cols-1 sm:grid-cols-N`), `Modal` bottom-sheet on phones, calendar agenda view (`md:hidden`), hamburger sidebar + bottom tab bar (`MobileBottomNav`, `md:hidden`, 5 primary destinations + More) with `pt-20`/`pb-24` shell clearance, 44px touch targets on header/tab/filter buttons, Routes `Organize` drawer (`lg:hidden`) instead of the persistent sidebar
 - **PWA**: `manifest.ts` (App Router metadata route; installable — icons, standalone), `public/sw.js` (runtime caching — network-only for `/api/v1/` API calls since they're authenticated/user-specific; cached navigations/statically-versioned assets only; **§3.8 Web Push**: `push` → `showNotification`, `notificationclick` → focus/open under `/fittrack` base; CACHE_NAME `fittrack-v4`), `PwaRegister.tsx` (production-only SW registration + **§3.7 install prompt**: `beforeinstallprompt` capture → in-app Install pill w/ localStorage dismiss + `appinstalled`). `lib/useOnlineStatus.ts` (online/offline state + last-online stamp) → `OfflineBanner` (amber "You're offline" bar, §3.7) and `OfflineSnapshot` (§3.7 — persists last-known `dashboard*` query data to localStorage, restores stale on next load so the dashboard works offline; refreshed on first successful refetch)
 - **Sport utils**: `lib/sportUtils.ts` — `getSportColor`, `getSportTextColor`, `getSportBorderColor`, `getSportEmoji`, `isStrengthType`, `isCyclingOrRunning`, `STRENGTH_TYPES`, `getRecoveryColor`
-- **3D replay (§3.16)**: `lib/replay.ts` — pure flight-path math (`buildReplay`: polyline→local metric plane, velocity×resolution→cumulative distance→polyline mapping, altitude z-exaggeration, `maxSamples` decimation; `projectPolyline`/`cumulativeFromVelocity`/`timeFmt`). Rendered by `components/activities/Replay3D.tsx` (three.js, lazily imported `ssr:false`). No external tile/API-key dependency — local-plane projection only
-- **3D route terrain (§3.16)**: `lib/route3d.ts` — pure route-view math (`computeGrid`: ≤100-point DEM grid over the padded bbox; `buildRoute3D`: local-plane path drape with z-exaggeration from route `elevation_profile` or bilinear-sampled DEM; `pointColor`: hypsometric elevation / Strava-style grade ramps; `buildTerrainMesh`). DEM heights via `lib/terrain.ts` → Open-Meteo `/v1/elevation` (Copernicus GLO-90, free, no key — same provider as the weather caches). Rendered by `components/routes/Route3D.tsx` (three.js, lazily imported `ssr:false`, WebGL fallback, flat-drape when the DEM fetch fails)
+- **3D replay (§3.16)**: `lib/replay.ts` — pure flight-path math (`buildReplay`: polyline→local metric plane, velocity×resolution→cumulative distance→polyline mapping, altitude z-exaggeration, `maxSamples` decimation; `projectPolyline`/`cumulativeFromVelocity`/`timeFmt`). Rendered by `components/activities/Replay3D.tsx` (three.js, lazily imported `ssr:false`). No external tile/API-key dependency — local-plane projection only. Rider marker asset: `public/models/cube-agree-c62-2026.glb` (2026 glacier'n'black Cube Agree C62 Race, 74K faces / 10.4MB, meters, nose +Z / up +Y (verified numerically); built from `bike_model/` via `retexture_glacier.py` → `surgical_clean.py` → `fork_split.py`/`classify_frame.py` → `transplant_decals.py` → `build_glb_blender.py`)
+- **3D route terrain (§3.16)**: `lib/route3d.ts` — pure route-view math (`computeGrid`: ≤200-point DEM grid over the padded bbox (≥80 m cells); `buildRoute3D`: local-plane path drape with z-exaggeration from route `elevation_profile` or bilinear-sampled DEM; `pointColor`/`slopeColor`: hypsometric elevation / diverging slope ramp (blue descent → red climb); `steepestKm`: max ~1 km-window gradient; `buildTerrainMesh`). DEM heights via `lib/terrain.ts` → Open-Meteo `/v1/elevation` (Copernicus GLO-90, free, no key — same provider as the weather caches). Rendered by `components/routes/Route3D.tsx` (three.js, lazily imported `ssr:false`, WebGL fallback, flat-drape when the DEM fetch fails; 2D `ElevationProfile` hover syncs a marker via `highlightDistKm`)
 - **Page titles**: `usePageTitle('Page Name')` hook in `lib/usePageTitle.ts` — sets `document.title` with " | FitTrack" suffix
 - **Deep-links**: `useDeepLink` hook in `lib/useDeepLink.ts` — reads URL query params once on mount and updates them via `history.replaceState` (no Suspense needed). Powers record deep-linking: `/activities?activity=`, `/routes?route=`, `/lifting?session=`
 - **Live Lift sync**: `lib/lifting/useLiveSession.ts` — local-first session state (localStorage), lazy idempotent sync (create→set→delete→finish via `live_key`/`client_id`, backend contract in AGENTS pitfall 18), finish-retry backoff, resume-from-server. **§3.7b explicit offline mode**: tracks `navigator.onLine` (`isOffline`), `pendingCount`, 4-state `syncStatus` (`synced`/`pending`/`offline`/`error`); flush scheduling is skipped while browser-offline and the whole backlog replays on the `online` event

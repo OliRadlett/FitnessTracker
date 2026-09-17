@@ -2,8 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReplay,
   cumulativeFromVelocity,
+  powerZoneBounds,
   projectPolyline,
+  replayMetricColor,
+  replayMetricMax,
+  replayMetricScale,
+  replayMetricValue,
   timeFmt,
+  tourRate,
 } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 
@@ -128,6 +134,18 @@ describe('buildReplay', () => {
     expect(long.totalDistance).toBeLessThan(28000);
   });
 
+  it('exposes the projection frame for external mesh alignment', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5, 5, 5, 5, 5] },
+      altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
+    });
+    expect(result.lat0).toBeCloseTo(51.505, 3);
+    expect(result.lng0).toBeCloseTo(-0.1, 5);
+    expect(result.altMin).toBe(10);
+    expect(result.zScale).toBeGreaterThan(1);
+  });
+
   it('clips to at most maxSamples even when the ride is short', () => {
     const result = buildReplay({
       polyline: encodePoints([[51.5, -0.1], [51.5005, -0.1]]),
@@ -135,6 +153,102 @@ describe('buildReplay', () => {
       maxSamples: 2,
     });
     expect(result.points.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('replay metric colours', () => {
+  const polyline = encodePoints([
+    [51.5, -0.1],
+    [51.51008, -0.1],
+  ]);
+
+  it('carries cadence and grade on each point', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5, 5, 5] },
+      altitude: { values: [0, 10, 20, 30, 40] },
+      cadence: { values: [0, 80, 85, 90, 88] },
+    });
+    expect(result.points[2].cadence).toBe(85);
+    // 10 m over 5 m → steep test hill, but finite and positive.
+    expect(result.points[2].grade).toBeCloseTo(200, 0);
+    expect(result.points[0].grade).toBeNull();
+  });
+
+  it('leaves grade null without altitude', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5] },
+    });
+    expect(result.points.every((p) => p.grade === null)).toBe(true);
+    expect(result.points.every((p) => p.cadence === null)).toBe(true);
+  });
+
+  it('normalises intensity metrics by max, grade by the fixed ramp', () => {
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 10] },
+      power: { values: [0, 100, 200] },
+    });
+    expect(replayMetricMax(result.points, 'speed')).toBe(10);
+    expect(replayMetricMax(result.points, 'power')).toBe(200);
+    expect(replayMetricMax(result.points, 'hr')).toBe(1);
+    expect(replayMetricMax(result.points, 'grade')).toBe(12);
+    expect(replayMetricValue(result.points[1], 'power')).toBe(100);
+  });
+
+  it('scales colour by p95 so one spike does not flatten contrast', () => {
+    // Twenty samples at 10 m/s plus one GPS spike at 100.
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [...Array<number>(20).fill(10), 100] },
+    });
+    expect(replayMetricMax(result.points, 'speed')).toBe(100);
+    expect(replayMetricScale(result.points, 'speed')).toBeCloseTo(11, 5);
+  });
+
+  it('falls back to max for tiny or all-zero data', () => {
+    const tiny = buildReplay({ polyline, velocity: { values: [0, 5, 10] } });
+    expect(replayMetricScale(tiny.points, 'speed')).toBe(10);
+    const flat = buildReplay({ polyline, velocity: { values: [0, 0, 0] } });
+    expect(replayMetricScale(flat.points, 'speed')).toBe(1);
+    expect(replayMetricScale(tiny.points, 'grade')).toBe(12);
+  });
+
+  it('renders missing samples as slate gaps, never false zeros', () => {
+    const [r, g, b] = replayMetricColor(null, 200);
+    expect([r, g, b][1]).toBeGreaterThan(0.4);
+    const [r0] = replayMetricColor(0, 200);
+    expect(r0).toBeCloseTo(0.231, 3);
+    const [r1] = replayMetricColor(200, 200);
+    expect(r1).toBeCloseTo(0.937, 3);
+  });
+});
+
+describe('powerZoneBounds', () => {
+  it('scales Coggan fractions by FTP', () => {
+    const b = powerZoneBounds(200);
+    expect(b).toHaveLength(7);
+    expect(b[0]).toBeCloseTo(110, 5);
+    expect(b[3]).toBeCloseTo(210, 5);
+    expect(b[6]).toBe(Infinity);
+    for (let i = 1; i < 6; i++) expect(b[i]).toBeGreaterThan(b[i - 1]);
+  });
+});
+
+describe('tourRate', () => {
+  it('finishes an hour ride in about a minute at 60x', () => {
+    expect(tourRate(3600, 60)).toBe(60);
+    expect(tourRate(4044, 60)).toBe(67);
+    expect(tourRate(3600, 120)).toBe(30);
+    expect(tourRate(3600, 30)).toBe(120);
+  });
+
+  it('floors at 1x for short or invalid durations', () => {
+    expect(tourRate(20, 60)).toBe(1);
+    expect(tourRate(0, 60)).toBe(1);
+    expect(tourRate(-5, 60)).toBe(1);
+    expect(tourRate(3600, 0)).toBe(1);
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DESCENT_COLOR,
   ELEVATION_RAMP,
   GRADE_RAMP,
   GRADE_SCALE,
@@ -12,6 +13,8 @@ import {
   gridSampleCoords,
   hexToRgb,
   pointColor,
+  slopeColor,
+  steepestKm,
 } from '@/lib/route3d';
 
 // A 1 km north-south hill at 5% grade: 50 m gain over 0.00898° of latitude.
@@ -201,6 +204,56 @@ describe('colour ramps', () => {
     // Max slope saturates at GRADE_SCALE %.
     const steep = { x: 1, y: 0, z: 10, distKm: 0.01, slopePct: GRADE_SCALE, elevation: 10 };
     expect(pointColor(steep, 'slope', 0, 100)).toEqual(hexToRgb(GRADE_RAMP[GRADE_RAMP.length - 1][1]));
+  });
+
+  it('slopeColor renders descents blue instead of flat green', () => {
+    expect(slopeColor(-GRADE_SCALE)).toEqual(hexToRgb(DESCENT_COLOR));
+    expect(slopeColor(0)).toEqual(hexToRgb(GRADE_RAMP[0][1]));
+    // pointColor follows suit for a downhill point.
+    const down = { x: 0, y: 0, z: 0, distKm: 0, slopePct: -8, elevation: 10 };
+    const [r, g, b] = pointColor(down, 'slope', 0, 100);
+    const [br, , bb] = hexToRgb(DESCENT_COLOR);
+    expect(r).toBeGreaterThan(br * 0.5);
+    expect(b).toBeGreaterThan(bb * 0.5);
+    expect(g).toBeLessThan(0.9);
+  });
+
+  it('buildRoute3D tracks minSlopePct for the legend', () => {
+    const downhill: [number, number][] = [
+      [51.50898, -0.1],
+      [51.5, -0.1],
+    ];
+    const build = buildRoute3D({ coords: downhill, elevations: [50, 0] });
+    expect(build.minSlopePct).toBeLessThan(0);
+    expect(build.minSlopePct).toBeCloseTo(-5, 1);
+  });
+
+  it('steepestKm finds the ~5% hill over its 1 km window', () => {
+    // 1.2 km climb gaining 60 m (≈5%): two 600 m legs.
+    const coords: [number, number][] = [
+      [51.5, -0.1],
+      [51.50539, -0.1],
+      [51.51078, -0.1],
+    ];
+    const build = buildRoute3D({ coords, elevations: [0, 30, 60] });
+    const s = steepestKm(build.path);
+    expect(s).not.toBeNull();
+    expect(s!.avgGradePct).toBeCloseTo(5, 0);
+    expect(s!.endKm - s!.startKm).toBeGreaterThanOrEqual(1);
+    expect(s!.gainM).toBeCloseTo(60, 0);
+  });
+
+  it('steepestKm returns null for short or flat routes', () => {
+    const short = buildRoute3D({
+      coords: [
+        [51.5, -0.1],
+        [51.5005, -0.1],
+      ],
+      elevations: [10, 12],
+    });
+    expect(steepestKm(short.path)).toBeNull();
+    const flat = buildRoute3D({ coords: hill, elevations: [10, 10] });
+    expect(steepestKm(flat.path)).toBeNull();
   });
 
   it('pointColor maps the lowest elevation to the ramp start', () => {

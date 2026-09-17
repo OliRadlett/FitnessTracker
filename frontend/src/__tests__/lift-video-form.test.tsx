@@ -72,6 +72,7 @@ function renderForm(open: boolean = true) {
 describe('LiftVideoForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('alert', vi.fn());
   });
 
   it('renders the form when open', () => {
@@ -85,21 +86,35 @@ describe('LiftVideoForm', () => {
     expect(container.querySelector('[data-testid="modal"]')).toBeNull();
   });
 
-  it('switches to upload mode', () => {
-    renderForm();
-    fireEvent.click(screen.getByText('Upload video'));
+  it('shows the file picker (upload-only, no URL mode)', () => {
+    const { container } = renderForm();
     expect(screen.getByText('Video file')).toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).toBeInTheDocument();
+    expect(screen.queryByText('External URL (YouTube/Vimeo)')).toBeNull();
   });
 
-  it('shows URL input by default (url mode)', () => {
+  it('alerts when submitting without selecting a file', () => {
     renderForm();
-    expect(screen.getByText('Video URL')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Save Video'));
+    expect(window.alert).toHaveBeenCalledWith('Please select a file to upload');
   });
 
-  it('marks URL field as required (native validation blocks empty submit)', () => {
-    renderForm();
-    const urlInput = screen.getByPlaceholderText('https://www.youtube.com/watch?v=...');
-    expect(urlInput).toHaveAttribute('required');
+  it('rejects unsupported file formats', () => {
+    const { container } = renderForm();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const badFile = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.change(input, { target: { files: [badFile] } });
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining('Unsupported format'),
+    );
+  });
+
+  it('rejects files over 250 MB', () => {
+    const { container } = renderForm();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const bigFile = { name: 'huge.mp4', size: 300 * 1024 * 1024, type: 'video/mp4' };
+    fireEvent.change(input, { target: { files: [bigFile] } });
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('File too large'));
   });
 
   it('populates session dropdown', () => {

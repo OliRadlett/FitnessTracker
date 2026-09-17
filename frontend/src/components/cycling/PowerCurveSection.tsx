@@ -27,6 +27,7 @@ interface PowerCurveSectionProps {
   powerVsHr: PowerVsHrResponse | undefined;
   chartDailyTss: ChartData | undefined;
   chartWeightTrend: ChartData | undefined;
+  fittedCurveData?: ChartData | undefined;
 }
 
 export function PowerCurveSection({
@@ -45,6 +46,7 @@ export function PowerCurveSection({
   powerVsHr,
   chartDailyTss,
   chartWeightTrend,
+  fittedCurveData,
 }: PowerCurveSectionProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -79,6 +81,10 @@ export function PowerCurveSection({
       }
     : null;
 
+  // Fitted CP-model overlay takes precedence when available; falls back to
+  // the plain stream power curve.
+  const curveChart = fittedCurveData ?? chartPowerCurve;
+
   return (
     <>
       {/* Power Curve + Power Zones */}
@@ -94,7 +100,25 @@ export function PowerCurveSection({
             </div>
           ) : powerCurve?.data?.some(p => p.best_power_watts != null) ? (
             <>
-              {chartPowerCurve && <Chart data={chartPowerCurve} height={280} />}
+              {/* CP / W' / R² badges */}
+              {powerCurve.cp && (
+                <div className="flex gap-3 mb-3 px-1">
+                  <span className="text-xs text-accent font-mono">
+                    CP: {powerCurve.cp.toFixed(0)}W
+                  </span>
+                  {powerCurve.w_prime && (
+                    <span className="text-xs text-purple-400 font-mono">
+                      W&apos;: {(powerCurve.w_prime / 1000).toFixed(1)}kJ
+                    </span>
+                  )}
+                  {powerCurve.model_r_squared != null && (
+                    <span className="text-xs text-positive font-mono">
+                      R²: {(powerCurve.model_r_squared * 100).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              )}
+              {curveChart && <Chart data={curveChart} height={280} />}
               <div className="mt-4">
                 <PowerCurveTable data={powerCurve.data} ftpWatts={powerCurve.ftp_watts} />
               </div>
@@ -137,14 +161,14 @@ export function PowerCurveSection({
       {/* Power Curve Comparison */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between w-full">
+          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
             <CardTitle>⚡ Power Curve Comparison</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {[14, 30, 60, 90].map((d) => (
                 <button
                   key={d}
                   onClick={() => setComparisonDays(d)}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                  className={`min-h-[44px] px-3 py-1 text-xs rounded border transition-colors ${
                     comparisonDays === d
                       ? 'bg-accent/20 text-accent border-accent/30'
                       : 'text-muted border-surface-light hover:border-accent/30'

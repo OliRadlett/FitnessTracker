@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 
 from celery import Celery
 from celery.schedules import crontab
@@ -149,6 +150,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.compute_route_quality_scores",
         "schedule": crontab(hour=3, minute=0, day_of_week=0),
     },
+    # Classify route terrain weekly (Saturday 2:30 AM UTC, before quality scoring)
+    "classify-route-terrain": {
+        "task": "app.tasks.scheduler.classify_route_terrain",
+        "schedule": crontab(hour=2, minute=30, day_of_week=6),
+    },
     # Recompute ride segments + efforts weekly (Sunday 3:15 AM UTC, post quality)
     "recompute-ride-segments": {
         "task": "app.tasks.scheduler.recompute_ride_segments",
@@ -159,10 +165,40 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.backfill_activity_context",
         "schedule": crontab(hour=3, minute=30, day_of_week=0),
     },
+    # Fit personalized power models weekly (Sunday 5:30 AM UTC, post streams/FTP)
+    "fit-personalized-power-models": {
+        "task": "app.tasks.scheduler.fit_personalized_power_models",
+        "schedule": crontab(hour=5, minute=30, day_of_week=0),
+        "options": {"expires": 7200},
+    },
+    # Analyze weather-performance correlations weekly (Sunday 6 AM UTC)
+    "analyze-weather-performance": {
+        "task": "app.tasks.scheduler.analyze_weather_performance_weekly",
+        "schedule": crontab(hour=6, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
+    },
+    # Analyze segments: clustering, difficulty, predictions (Sunday 6:15 AM UTC)
+    "analyze-segments-intelligence": {
+        "task": "app.tasks.scheduler.analyze_segments_intelligence_weekly",
+        "schedule": crontab(hour=6, minute=15, day_of_week=0),
+        "options": {"expires": 7200},
+    },
+    # Cross-domain correlation analysis (Sunday 7 AM UTC)
+    "analyze-cross-domain": {
+        "task": "app.tasks.scheduler.analyze_cross_domain_weekly",
+        "schedule": crontab(hour=7, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
+    },
     # Auto-estimate FTP weekly for opted-in users (every Sunday at 4 AM UTC)
     "auto-estimate-ftp-weekly": {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
         "schedule": crontab(hour=4, minute=0, day_of_week=0),
+    },
+    # Check cycling power PRs weekly (Sunday 4:30 AM UTC — after stream backfill)
+    "check-cycling-prs-weekly": {
+        "task": "app.tasks.scheduler.check_cycling_prs_weekly",
+        "schedule": crontab(hour=4, minute=30, day_of_week=0),
+        "options": {"expires": 3600},
     },
     # FTP drift scan for non-auto users (Sunday 4:15 AM UTC, post auto-estimate)
     "check-stale-ftp": {
@@ -938,6 +974,105 @@ def compute_route_quality_scores() -> dict:
     return asyncio.run(_run_task_guarded("compute_route_quality_scores", _run))
 
 
+@celery_app.task(name="app.tasks.scheduler.classify_route_terrain")
+def classify_route_terrain() -> dict:
+    """Classify terrain for all routes with elevation profiles.
+
+    Runs weekly (Saturday 2:30 AM UTC, before quality scoring).
+    Uses Modal for batch analysis when configured, falls back to
+    local classification otherwise.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.route import Route
+
+    async def _run():
+        async with task_session() as db:
+            # Get all routes with elevation profiles but no terrain classification
+            result = await db.execute(
+                select(Route).where(
+                    Route.elevation_profile.isnot(None),
+                    Route.terrain_classification.is_(None),
+                )
+            )
+            routes_to_classify = list(result.scalars().all())
+
+            if not routes_to_classify:
+                return {"classified": 0, "note": "All routes already classified"}
+
+            # Try Modal for batch classification
+            classified = 0
+            try:
+                from app.integrations.route_intelligence import (
+                    analyze_routes_on_modal,
+                    classify_route_terrain,
+                )
+
+                # Prepare route data for Modal
+                routes_data = []
+                for route in routes_to_classify:
+                    points = []
+                    if route.encoded_polyline:
+                        from app.services.polyline_utils import decode_polyline
+
+                        points = decode_polyline(route.encoded_polyline)
+                    routes_data.append(
+                        {
+                            "id": str(route.id),
+                            "polyline": [(p[0], p[1]) for p in points],
+                            "distance_meters": route.distance_meters,
+                            "elevation_gain_meters": route.elevation_gain_meters or 0,
+                            "elevation_profile": route.elevation_profile,
+                        }
+                    )
+
+                # Call Modal for batch terrain classification
+                modal_result = analyze_routes_on_modal(
+                    routes_data=routes_data,
+                    compute_similarity=False,
+                    compute_terrain=True,
+                    compute_effort_predictions=False,
+                )
+
+                terrain_classifications = modal_result.get("terrain_classifications", {})
+
+                for route in routes_to_classify:
+                    terrain = terrain_classifications.get(str(route.id))
+                    if terrain:
+                        route.terrain_classification = terrain
+                        classified += 1
+
+                await db.commit()
+
+            except Exception as e:
+                logger.warning(
+                    f"Modal terrain classification failed, falling back to local: {e}"
+                )
+                # Fallback: local classification
+                from app.integrations.route_intelligence import classify_route_terrain
+
+                for route in routes_to_classify:
+                    try:
+                        terrain = classify_route_terrain(route.elevation_profile)
+                        route.terrain_classification = terrain
+                        classified += 1
+                    except Exception as e2:
+                        logger.warning(
+                            f"Local terrain classification failed for route {route.id}: {e2}"
+                        )
+                await db.commit()
+
+            return {
+                "classified": classified,
+                "total": len(routes_to_classify),
+            }
+
+    return asyncio.run(_run_task_guarded("classify_route_terrain", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.recompute_ride_segments")
 def recompute_ride_segments() -> dict:
     """Recompute ride segments (§3.13) for all users with cycling routes.
@@ -1040,6 +1175,679 @@ def backfill_activity_context() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.fit_personalized_power_models")
+def fit_personalized_power_models() -> dict:
+    """Fit personalized power models for all cycling users via Modal.
+
+    Runs weekly (Sunday 5:30 AM UTC). For each user with cycling activities:
+    1. Computes the best power curve from streams → fits CP/W' (Morton 2004)
+    2. Collects steady-state rides → fits personalized VO2max from power-HR regression
+    3. Collects daily TSS + HRV → fits adaptive CTL/ATL time constants
+
+    Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity, ActivityStream
+    from app.models.cycling import CyclingPowerRecord, CyclingProfile
+    from app.models.user import User
+    from app.services.cycling.power_curve import (
+        POWER_DURATION_BUCKETS,
+        compute_power_curve_from_streams,
+    )
+
+    async def _run():
+        import json
+
+        from app.integrations.power_models import (
+            _modal_configured,
+            fit_personalized_vo2max,
+            fit_power_models_on_modal,
+        )
+
+        if not _modal_configured():
+            return {"skipped": True, "reason": "Modal not configured"}
+
+        async with task_session() as db:
+            # Get all users with a cycling profile
+            result = await db.execute(
+                select(CyclingProfile.user_id).distinct()
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            fitted_count = 0
+            errors: list[str] = []
+
+            for uid in user_ids:
+                try:
+                    # 1. Build power curve data from CyclingPowerRecord
+                    result = await db.execute(
+                        select(CyclingPowerRecord).where(
+                            CyclingPowerRecord.user_id == uid
+                        )
+                    )
+                    records = list(result.scalars().all())
+
+                    durations = []
+                    best_watts = []
+                    for rec in records:
+                        if rec.duration_seconds and rec.power_watts:
+                            durations.append(rec.duration_seconds)
+                            best_watts.append(rec.power_watts)
+
+                    # Fall back to stream-based curve if no records
+                    if not durations:
+                        best_power = await compute_power_curve_from_streams(
+                            db, uid, days=90
+                        )
+                        durations = list(best_power.keys())
+                        best_watts = list(best_power.values())
+
+                    if not durations:
+                        continue
+
+                    power_curve_data = {
+                        "durations": durations,
+                        "best_watts": best_watts,
+                    }
+
+                    # 2. Collect steady-state rides for VO2max fitting
+                    # (activities >20min with relatively stable power)
+                    result = await db.execute(
+                        select(Activity).where(
+                            Activity.user_id == uid,
+                            Activity.sport_type == "cycling",
+                            Activity.duration_seconds >= 1200,  # >20min
+                            Activity.average_power.isnot(None),
+                            Activity.average_heartrate.isnot(None),
+                        ).order_by(Activity.start_date.desc()).limit(100)
+                    )
+                    activities = list(result.scalars().all())
+
+                    steady_state_rides = []
+                    for act in activities:
+                        if (
+                            act.average_power
+                            and act.average_power > 0
+                            and act.average_heartrate
+                            and act.average_heartrate > 0
+                        ):
+                            steady_state_rides.append(
+                                {
+                                    "avg_watts": float(act.average_power),
+                                    "avg_hr": float(act.average_heartrate),
+                                    "duration_seconds": int(act.duration_seconds or 0),
+                                }
+                            )
+
+                    # 3. Get weight
+                    profile_result = await db.execute(
+                        select(CyclingProfile).where(
+                            CyclingProfile.user_id == uid
+                        )
+                    )
+                    profile = profile_result.scalar_one_or_none()
+                    weight = profile.weight_kg if profile else None
+
+                    # 4. Call Modal
+                    results = fit_power_models_on_modal(
+                        power_curve_data=power_curve_data,
+                        steady_state_rides=steady_state_rides,
+                        weight_kg=weight,
+                    )
+
+                    # 5. Store results in CyclingProfile
+                    if profile and results.get("critical_power"):
+                        cp_result = results["critical_power"]
+                        if cp_result.get("cp"):
+                            profile.critical_power = cp_result["cp"]
+                            profile.w_prime = cp_result.get("w_prime")
+                            profile.power_model_r_squared = cp_result.get(
+                                "model_r_squared"
+                            )
+                        vo2_result = results.get("personalized_vo2max", {})
+                        if vo2_result.get("vo2max"):
+                            profile.personalized_vo2max = vo2_result["vo2max"]
+                        constants = results.get("adaptive_constants", {})
+                        if constants.get("ctl_tau"):
+                            profile.ctl_tau = constants["ctl_tau"]
+                        if constants.get("atl_tau"):
+                            profile.atl_tau = constants["atl_tau"]
+                        profile.power_model_fitted_at = datetime.now(UTC)
+
+                        fitted_count += 1
+                        await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fit power model for user {uid}: {e}",
+                        exc_info=True,
+                    )
+                    errors.append(str(uid))
+                    await db.rollback()
+
+            return {
+                "users_checked": len(user_ids),
+                "models_fitted": fitted_count,
+                "errors": errors,
+            }
+
+    return asyncio.run(_run_task_guarded("fit_personalized_power_models", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.analyze_weather_performance_weekly")
+def analyze_weather_performance_weekly() -> dict:
+    """Analyze weather-performance correlations for all cycling users via Modal.
+
+    Runs weekly (Sunday 6 AM UTC). For each user with enough weather-tagged
+    cycling activities, collects ride data with weather conditions, computes
+    personalized weather coefficients and insights via Modal, and stores
+    results in the cycling profile.
+
+    Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity
+    from app.models.cycling import CyclingProfile
+
+    async def _run():
+        from app.integrations.weather_analysis import (
+            _modal_configured,
+            analyze_weather_on_modal,
+        )
+
+        if not _modal_configured():
+            return {"skipped": True, "reason": "Modal not configured"}
+
+        async with task_session() as db:
+            # Get all users with a cycling profile
+            result = await db.execute(
+                select(CyclingProfile.user_id).distinct()
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            analyzed_count = 0
+            errors: list[str] = []
+
+            for uid in user_ids:
+                try:
+                    # Collect cycling activities with weather data
+                    result = await db.execute(
+                        select(Activity).where(
+                            Activity.user_id == uid,
+                            Activity.sport_type == "cycling",
+                            Activity.weather_temperature.isnot(None),
+                            Activity.average_power.isnot(None),
+                            Activity.duration_seconds >= 600,  # >10min
+                        ).order_by(Activity.start_date.desc()).limit(200)
+                    )
+                    activities = list(result.scalars().all())
+
+                    if len(activities) < 15:
+                        continue
+
+                    # Build rides data for Modal
+                    rides = []
+                    for act in activities:
+                        ride = {
+                            "date": act.start_date.date().isoformat()
+                            if act.start_date
+                            else None,
+                            "avg_watts": float(act.average_power)
+                            if act.average_power
+                            else None,
+                            "normalized_power": float(act.normalized_power)
+                            if act.normalized_power
+                            else None,
+                            "decoupling_pct": float(act.decoupling_pct)
+                            if hasattr(act, "decoupling_pct") and act.decoupling_pct
+                            else None,
+                            "avg_hr": float(act.average_heartrate)
+                            if act.average_heartrate
+                            else None,
+                            "moving_time": int(act.duration_seconds)
+                            if act.duration_seconds
+                            else None,
+                            "weather": {
+                                "temperature": float(act.weather_temperature)
+                                if act.weather_temperature
+                                else None,
+                                "wind_speed_kmh": float(act.weather_wind_speed_kmh)
+                                if act.weather_wind_speed_kmh
+                                else None,
+                                "wind_direction": None,  # stored as string, parse if needed
+                                "humidity": None,  # not stored on activity model
+                                "precipitation_mm": float(act.weather_precipitation_mm)
+                                if act.weather_precipitation_mm
+                                else None,
+                                "pressure_hpa": None,  # not stored on activity model
+                                "conditions": act.weather_conditions,
+                            },
+                        }
+                        rides.append(ride)
+
+                    # Call Modal
+                    results = analyze_weather_on_modal(rides)
+
+                    # Store results in CyclingProfile
+                    profile_result = await db.execute(
+                        select(CyclingProfile).where(
+                            CyclingProfile.user_id == uid
+                        )
+                    )
+                    profile = profile_result.scalar_one_or_none()
+
+                    if profile and results.get("data_quality", {}).get("sufficient"):
+                        profile.weather_coefficients = results.get(
+                            "weather_coefficients"
+                        )
+                        profile.weather_insights = results.get(
+                            "personalized_insights"
+                        )
+                        profile.weather_analyzed_at = datetime.now(UTC)
+                        analyzed_count += 1
+                        await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to analyze weather for user {uid}: {e}",
+                        exc_info=True,
+                    )
+                    errors.append(str(uid))
+                    await db.rollback()
+
+            return {
+                "users_checked": len(user_ids),
+                "users_analyzed": analyzed_count,
+                "errors": errors,
+            }
+
+    return asyncio.run(_run_task_guarded("analyze_weather_performance_weekly", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.analyze_segments_intelligence_weekly")
+def analyze_segments_intelligence_weekly() -> dict:
+    """Analyze segment intelligence: clustering, difficulty, predictions via Modal.
+
+    Runs weekly (Sunday 6:15 AM UTC). For each user with segments, clusters
+    segments by gradient signature, classifies climb types, and predicts
+    personal effort for each segment.
+
+    Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.cycling import CyclingProfile
+    from app.models.segment import Segment, SegmentEffort
+
+    async def _run():
+        from app.integrations.segment_intelligence import (
+            _modal_configured,
+            analyze_segments_on_modal,
+        )
+
+        if not _modal_configured():
+            return {"skipped": True, "reason": "Modal not configured"}
+
+        async with task_session() as db:
+            # Get all users with segments
+            result = await db.execute(
+                select(Segment.user_id).distinct()
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            analyzed_count = 0
+            errors: list[str] = []
+
+            for uid in user_ids:
+                try:
+                    # Get user's segments
+                    result = await db.execute(
+                        select(Segment).where(Segment.user_id == uid)
+                    )
+                    segments = list(result.scalars().all())
+
+                    if not segments:
+                        continue
+
+                    # Get efforts for these segments
+                    segment_ids = [s.id for s in segments]
+                    result = await db.execute(
+                        select(SegmentEffort).where(
+                            SegmentEffort.segment_id.in_(segment_ids)
+                        )
+                    )
+                    efforts = list(result.scalars().all())
+
+                    # Get user fitness
+                    profile_result = await db.execute(
+                        select(CyclingProfile).where(
+                            CyclingProfile.user_id == uid
+                        )
+                    )
+                    profile = profile_result.scalar_one_or_none()
+                    user_fitness = {
+                        "ctl": 50,  # default
+                        "atl": 30,
+                        "recent_vam": 1000,
+                    }
+                    if profile:
+                        # Use training load if available
+                        from datetime import date, timedelta
+
+                        from app.services.cycling import (
+                            compute_training_load,
+                            get_daily_tss,
+                        )
+
+                        today = date.today()
+                        daily_tss = await get_daily_tss(
+                            db, uid, today - timedelta(days=90), today
+                        )
+                        series = compute_training_load(
+                            daily_tss, today, lookback_days=90
+                        )
+                        if series:
+                            latest = series[-1]
+                            user_fitness["ctl"] = latest.get("ctl", 50)
+                            user_fitness["atl"] = latest.get("atl", 30)
+
+                    # Build data for Modal
+                    segments_data = []
+                    for seg in segments:
+                        segments_data.append({
+                            "id": str(seg.id),
+                            "route_id": str(seg.route_id),
+                            "distance_m": seg.distance_m,
+                            "elevation_gain_m": seg.elevation_gain_m,
+                            "avg_gradient_pct": seg.avg_gradient_pct,
+                            "max_gradient_pct": seg.max_gradient_pct,
+                            "start_lat": seg.start_lat,
+                            "start_lng": seg.start_lng,
+                            "end_lat": seg.end_lat,
+                            "end_lng": seg.end_lng,
+                        })
+
+                    efforts_data = []
+                    for eff in efforts:
+                        efforts_data.append({
+                            "segment_id": str(eff.segment_id),
+                            "elapsed_seconds": eff.elapsed_seconds,
+                            "avg_power_watts": eff.avg_power_watts,
+                            "avg_hr": eff.avg_hr,
+                            "effort_vam": eff.effort_vam,
+                        })
+
+                    # Call Modal
+                    results = analyze_segments_on_modal(
+                        segments_data, efforts_data, user_fitness
+                    )
+
+                    # Update segments with results
+                    for seg in segments:
+                        seg_id = str(seg.id)
+                        smoothed = results.get("smoothed_segments", {}).get(seg_id, {})
+                        prediction = results.get("difficulty_predictions", {}).get(seg_id, {})
+
+                        # Find cluster
+                        cluster_id = None
+                        for cluster in results.get("similarity_clusters", []):
+                            if seg_id in cluster.get("segment_ids", []):
+                                cluster_id = cluster.get("cluster_id")
+                                break
+
+                        seg.cluster_id = cluster_id
+                        seg.climb_type = smoothed.get("climb_type")
+                        seg.sustainedness = smoothed.get("sustainedness")
+                        seg.difficulty_score = prediction.get("difficulty_score")
+                        seg.predicted_vam = prediction.get("predicted_vam")
+                        seg.predicted_time_seconds = prediction.get("predicted_time_seconds")
+                        seg.predicted_power_watts = prediction.get("predicted_power_watts")
+                        seg.prediction_confidence = prediction.get("confidence")
+                        seg.intelligence_analyzed_at = datetime.now(UTC)
+
+                    analyzed_count += 1
+                    await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to analyze segments for user {uid}: {e}",
+                        exc_info=True,
+                    )
+                    errors.append(str(uid))
+                    await db.rollback()
+
+            return {
+                "users_checked": len(user_ids),
+                "users_analyzed": analyzed_count,
+                "errors": errors,
+            }
+
+    return asyncio.run(_run_task_guarded("analyze_segments_intelligence_weekly", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.analyze_cross_domain_weekly")
+def analyze_cross_domain_weekly() -> dict:
+    """Analyze cross-domain correlations: sleep-performance, cross-sport, race retrospective.
+
+    Runs weekly (Sunday 7 AM UTC). For each user with sufficient data,
+    collects sleep, training, and performance data, runs cross-domain
+    analysis via Modal, and stores insights in cross_domain_insights table.
+
+    Requires MODAL_TOKEN_ID + MODAL_TOKEN_SECRET. Skips gracefully if unset.
+    """
+    import asyncio
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity
+    from app.models.cross_domain import CrossDomainInsight
+    from app.models.cycling import CyclingProfile
+    from app.models.daily_metric import DailyMetric
+    from app.models.event import Event
+    from app.models.lifting import LiftingSession
+    from app.models.sleep import SleepLog
+
+    async def _run():
+        from app.integrations.cross_domain import (
+            _modal_configured,
+            analyze_cross_domain_on_modal,
+        )
+
+        if not _modal_configured():
+            return {"skipped": True, "reason": "Modal not configured"}
+
+        async with task_session() as db:
+            # Get all users
+            result = await db.execute(
+                select(CyclingProfile.user_id).distinct()
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            analyzed_count = 0
+            errors: list[str] = []
+
+            for uid in user_ids:
+                try:
+                    # Collect sleep data (last 90 days)
+                    cutoff = datetime.now(UTC) - timedelta(days=90)
+                    result = await db.execute(
+                        select(SleepLog).where(
+                            SleepLog.user_id == uid,
+                            SleepLog.created_at >= cutoff,
+                        ).order_by(SleepLog.sleep_date.desc())
+                    )
+                    sleep_logs = list(result.scalars().all())
+
+                    sleep_data = []
+                    for log in sleep_logs:
+                        total_h = None
+                        if log.total_sleep_seconds:
+                            total_h = log.total_sleep_seconds / 3600
+                        elif log.sleep_start and log.sleep_end:
+                            delta = (log.sleep_end - log.sleep_start).total_seconds()
+                            total_h = delta / 3600
+
+                        deep_h = log.deep_sleep_seconds / 3600 if log.deep_sleep_seconds else None
+                        rem_h = log.rem_sleep_seconds / 3600 if log.rem_sleep_seconds else None
+
+                        sleep_data.append({
+                            "date": log.sleep_date.isoformat(),
+                            "total_sleep_hours": round(total_h, 2) if total_h else None,
+                            "deep_sleep_hours": round(deep_h, 2) if deep_h else None,
+                            "rem_sleep_hours": round(rem_h, 2) if rem_h else None,
+                            "sleep_efficiency": log.sleep_efficiency,
+                        })
+
+                    # Collect performance data from DailyMetric (HRV, recovery)
+                    result = await db.execute(
+                        select(DailyMetric).where(
+                            DailyMetric.user_id == uid,
+                            DailyMetric.created_at >= cutoff,
+                        ).order_by(DailyMetric.metric_date.desc())
+                    )
+                    daily_metrics = list(result.scalars().all())
+
+                    # Enrich sleep data with HRV and recovery from DailyMetric
+                    metric_by_date = {m.metric_date.isoformat(): m for m in daily_metrics}
+                    for s in sleep_data:
+                        metric = metric_by_date.get(s["date"])
+                        if metric:
+                            s["hrv_ms"] = metric.hrv_ms
+                            s["recovery_score"] = metric.recovery_score
+
+                    recovery_data = [
+                        {
+                            "date": m.metric_date.isoformat(),
+                            "recovery_score": m.recovery_score,
+                            "hrv_ms": m.hrv_ms,
+                            "resting_hr": m.resting_hr,
+                        }
+                        for m in daily_metrics
+                        if m.recovery_score is not None
+                    ]
+
+                    # Collect cycling performance data
+                    result = await db.execute(
+                        select(Activity).where(
+                            Activity.user_id == uid,
+                            Activity.sport_type == "cycling",
+                            Activity.average_power.isnot(None),
+                            Activity.duration_seconds >= 600,
+                            Activity.created_at >= cutoff,
+                        ).order_by(Activity.start_date.desc())
+                    )
+                    cycling_activities = list(result.scalars().all())
+
+                    cycling_data = []
+                    performance_data = []
+                    for act in cycling_activities:
+                        date_str = act.start_date.date().isoformat() if act.start_date else None
+                        if not date_str:
+                            continue
+
+                        perf = {
+                            "date": date_str,
+                            "avg_watts": float(act.average_power) if act.average_power else None,
+                            "normalized_power": float(act.normalized_power) if act.normalized_power else None,
+                            "tss": float(act.tss) if act.tss else None,
+                            "decoupling_pct": float(act.decoupling_pct) if hasattr(act, "decoupling_pct") and act.decoupling_pct else None,
+                        }
+                        if perf["avg_watts"]:
+                            performance_data.append(perf)
+                        cycling_data.append({
+                            "date": date_str,
+                            "tss": perf["tss"],
+                            "avg_watts": perf["avg_watts"],
+                            "normalized_power": perf["normalized_power"],
+                        })
+
+                    # Collect lifting data
+                    result = await db.execute(
+                        select(LiftingSession).where(
+                            LiftingSession.user_id == uid,
+                            LiftingSession.created_at >= cutoff,
+                        ).order_by(LiftingSession.session_date.desc())
+                    )
+                    lifting_sessions = list(result.scalars().all())
+
+                    lifting_data = [
+                        {
+                            "date": ls.session_date.isoformat(),
+                            "volume_kg": float(ls.total_volume_kg) if ls.total_volume_kg else None,
+                            "duration_seconds": ls.duration_seconds,
+                            "rpe": float(ls.rpe_session) if ls.rpe_session else None,
+                            "focus": ls.focus,
+                        }
+                        for ls in lifting_sessions
+                        if ls.total_volume_kg
+                    ]
+
+                    # Skip if insufficient data
+                    if len(sleep_data) < 14 or len(performance_data) < 14:
+                        continue
+
+                    # Call Modal
+                    results = analyze_cross_domain_on_modal(
+                        sleep_data=sleep_data,
+                        performance_data=performance_data,
+                        lifting_data=lifting_data,
+                        cycling_data=cycling_data,
+                        recovery_data=recovery_data,
+                    )
+
+                    # Store results
+                    for insight_type in ["sleep_performance", "cross_sport", "race_retrospective"]:
+                        insight_data = results.get(insight_type)
+                        if not insight_data:
+                            continue
+
+                        # Check if data is sufficient
+                        data_quality = insight_data.get("data_quality", {})
+                        if not data_quality.get("sufficient", False):
+                            continue
+
+                        insight = CrossDomainInsight(
+                            user_id=uid,
+                            insight_type=insight_type,
+                            results=insight_data,
+                            insights=insight_data.get("insights", []),
+                            data_quality=data_quality,
+                        )
+                        db.add(insight)
+
+                    analyzed_count += 1
+                    await db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to analyze cross-domain for user {uid}: {e}",
+                        exc_info=True,
+                    )
+                    errors.append(str(uid))
+                    await db.rollback()
+
+            return {
+                "users_checked": len(user_ids),
+                "users_analyzed": analyzed_count,
+                "errors": errors,
+            }
+
+    return asyncio.run(_run_task_guarded("analyze_cross_domain_weekly", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.auto_estimate_ftp_weekly")
@@ -1234,6 +2042,64 @@ def check_stale_ftp() -> dict:
             }
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.check_cycling_prs_weekly")
+def check_cycling_prs_weekly() -> dict:
+    """Check and record cycling power PRs for all users.
+
+    Runs weekly (Sunday 4:30 AM UTC, after stream backfill). Scans all
+    cycling activities for each user and updates stored PRs from the
+    all-time bests. Catches PRs that were missed during sync (e.g.
+    activities whose streams were backfilled later).
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.cycling import CyclingPowerRecord
+    from app.services.cycling import check_cycling_prs_all_activities
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(
+                select(CyclingPowerRecord.user_id).distinct()
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            # Also check users who have cycling activities but no PRs yet
+            from app.models.activity import Activity
+
+            existing_result = await db.execute(
+                select(Activity.user_id)
+                .where(Activity.sport_type == "cycling")
+                .distinct()
+            )
+            all_cycling_users = {r for (r,) in existing_result.all()}
+            user_ids = list(set(user_ids) | all_cycling_users)
+
+            total_updated = 0
+            done = 0
+            for user_id in user_ids:
+                try:
+                    updated = await check_cycling_prs_all_activities(db, user_id)
+                    total_updated += len(updated)
+                    await db.commit()
+                    done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Cycling PR check failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "users_checked": done,
+                "prs_updated": total_updated,
+            }
+
+    return asyncio.run(_run_task_guarded("check_cycling_prs_weekly", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.sync_all_whoop_data")
@@ -2157,5 +3023,205 @@ def record_goal_checkins() -> dict:
                 "checkins_recorded": checkins_recorded,
                 "milestone_notifications": milestone_notifications,
             }
+
+    return asyncio.run(_run())
+
+
+# ── Video Processing (§1.1) ────────────────────────────────────────────────
+
+
+@celery_app.task(name="app.tasks.scheduler.process_lift_video")
+def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
+    """Process an uploaded lift video: trim dead time and classify via Gemini Vision.
+
+    Dispatches to Modal for the heavy lifting (ffmpeg + Gemini Vision API).
+    Updates the LiftVideo row with results.
+    """
+    import asyncio
+
+    async def _run():
+        import uuid
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select
+
+        from app.config import get_settings
+        from app.database import task_session
+        from app.models.lifting import LiftVideo
+
+        settings = get_settings()
+        vid = uuid.UUID(video_id)
+
+        async with task_session() as db:
+            video = (
+                await db.execute(select(LiftVideo).where(LiftVideo.id == vid))
+            ).scalar_one_or_none()
+
+            if video is None:
+                logger.error("process_lift_video: video %s not found", video_id)
+                return {"status": "not_found"}
+
+            if video.analysis_status == "completed":
+                logger.info("process_lift_video: video %s already processed", video_id)
+                return {"status": "already_processed"}
+
+            # Mark as processing
+            video.analysis_status = "processing"
+            await db.commit()
+
+            try:
+                from app.integrations.modal_client import process_video_on_modal
+                from app.integrations.r2 import (
+                    create_presigned_get,
+                    create_presigned_put,
+                )
+
+                # Generate presigned URLs for Modal to use
+                presigned_get = await create_presigned_get(video.r2_key)
+
+                presigned_put = await create_presigned_put(
+                    video.user_id,
+                    f"trimmed-{video.file_name}",
+                    "video/mp4",
+                    video.size_bytes or 0,
+                )
+
+                # Call Modal for processing
+                result = process_video_on_modal(
+                    video_id=video_id,
+                    r2_key=video.r2_key,
+                    r2_presigned_get=presigned_get,
+                    r2_presigned_put=presigned_put["upload_url"],
+                    r2_upload_key=presigned_put["key"],
+                    analysis_depth=analysis_depth,
+                )
+
+                # Update video with results
+                video.trimmed_r2_key = result.get("trimmed_r2_key")
+                video.trim_start_sec = result.get("trim_start_sec")
+                video.trim_end_sec = result.get("trim_end_sec")
+                video.analysis_text = result.get("analysis_text")
+
+                # Only update exercise if user didn't set one
+                if result.get("exercise") and not video.exercise_name:
+                    video.exercise_auto = result["exercise"]
+
+                if result.get("reps"):
+                    video.reps_count = result["reps"]
+                if result.get("weight_kg"):
+                    video.weight_kg = result["weight_kg"]
+                if result.get("confidence"):
+                    video.confidence = result["confidence"]
+                if result.get("duration_seconds"):
+                    video.duration_seconds = round(result["duration_seconds"])
+
+                # ── Form analysis (§3.18) ──────────────────────────────────
+                if result.get("form_score") is not None:
+                    video.form_score = result["form_score"]
+                if result.get("competition_valid") is not None:
+                    video.competition_valid = result["competition_valid"]
+                if result.get("form_analysis_json"):
+                    video.form_analysis_json = json.dumps(result["form_analysis_json"])
+                if result.get("form_deviations"):
+                    video.form_deviations = json.dumps(result["form_deviations"])
+                if result.get("form_coaching_cues"):
+                    video.form_coaching_cues = json.dumps(result["form_coaching_cues"])
+
+                # ── Velocity / VBT (§3.18) ─────────────────────────────────
+                if result.get("mean_concentric_velocity") is not None:
+                    video.mean_concentric_velocity = result["mean_concentric_velocity"]
+                if result.get("peak_velocity") is not None:
+                    video.peak_velocity = result["peak_velocity"]
+                if result.get("velocity_loss_pct") is not None:
+                    video.velocity_loss_pct = result["velocity_loss_pct"]
+                if result.get("velocity_profile_json") is not None:
+                    video.velocity_profile_json = json.dumps(result["velocity_profile_json"])
+                if result.get("vbt_zone"):
+                    video.vbt_zone = result["vbt_zone"]
+
+                # ── Rest timing ────────────────────────────────────────────
+                if result.get("rest_periods_json") is not None:
+                    video.rest_periods_json = json.dumps(result["rest_periods_json"])
+                if result.get("avg_rest_seconds") is not None:
+                    video.avg_rest_seconds = result["avg_rest_seconds"]
+                if result.get("rest_cv") is not None:
+                    video.rest_cv = result["rest_cv"]
+
+                # ── Rep consistency (§3.18) ────────────────────────────────
+                if result.get("rep_consistency_score") is not None:
+                    video.rep_consistency_score = result["rep_consistency_score"]
+                if result.get("tempo_consistency_cv") is not None:
+                    video.tempo_consistency_cv = result["tempo_consistency_cv"]
+                if result.get("rep_timing_json"):
+                    video.rep_timing_json = json.dumps(result["rep_timing_json"])
+
+                # ── Setup analysis (§3.18) ─────────────────────────────────
+                if result.get("setup_score") is not None:
+                    video.setup_score = result["setup_score"]
+                if result.get("setup_analysis_json"):
+                    video.setup_analysis_json = json.dumps(result["setup_analysis_json"])
+                if result.get("setup_duration_seconds") is not None:
+                    video.setup_duration_seconds = result["setup_duration_seconds"]
+
+                # ── RPE estimation (§3.18) ─────────────────────────────────
+                if result.get("estimated_rpe") is not None:
+                    video.estimated_rpe = result["estimated_rpe"]
+                if result.get("rpe_confidence") is not None:
+                    video.rpe_confidence = result["rpe_confidence"]
+                if result.get("rpe_evidence_json"):
+                    video.rpe_evidence_json = json.dumps(result["rpe_evidence_json"])
+
+                video.analysis_status = "completed"
+                video.processed_at = datetime.now(UTC)
+                await db.commit()
+
+                # Send notification
+                from app.services.notifications import notify
+
+                await notify(
+                    db,
+                    video.user_id,
+                    type="video_processed",
+                    title="Video processed",
+                    body=(
+                        "Your video has been processed"
+                        + (
+                            f" — detected: {video.exercise_auto or video.exercise_name}"
+                            if video.exercise_auto or video.exercise_name
+                            else ""
+                        )
+                    ),
+                    severity="success",
+                    link="/lifting/videos",
+                    dedup_key=f"video_processed:{video_id}",
+                )
+                await db.commit()
+
+                logger.info("process_lift_video: completed for %s", video_id)
+                return {"status": "completed", "video_id": video_id}
+
+            except Exception as e:
+                logger.error(
+                    "process_lift_video failed for %s: %s", video_id, e, exc_info=True
+                )
+                video.analysis_status = "failed"
+                video.analysis_text = str(e)
+                await db.commit()
+
+                from app.services.notifications import notify
+
+                await notify(
+                    db,
+                    video.user_id,
+                    type="video_processed",
+                    title="Video processing failed",
+                    body=f"Failed to process your video: {e!s:.100}",
+                    severity="error",
+                    link="/lifting/videos",
+                    dedup_key=f"video_failed:{video_id}",
+                )
+                await db.commit()
+
+                return {"status": "failed", "error": str(e)}
 
     return asyncio.run(_run())

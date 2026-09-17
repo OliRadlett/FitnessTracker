@@ -62,6 +62,7 @@ class Activity(Base):
     max_heartrate: Mapped[float | None] = mapped_column(Float, nullable=True)
     average_power: Mapped[float | None] = mapped_column(Float, nullable=True)
     normalized_power: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_power: Mapped[float | None] = mapped_column(Float, nullable=True)
     average_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
     average_cadence: Mapped[float | None] = mapped_column(Float, nullable=True)
     tss: Mapped[float | None] = mapped_column(

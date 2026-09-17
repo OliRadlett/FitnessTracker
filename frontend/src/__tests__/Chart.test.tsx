@@ -110,6 +110,20 @@ describe('Chart rendering', () => {
     expect(container.textContent).not.toContain('undefined');
   });
 
+  it('renders line chart with a reference_line playhead (3D marker)', () => {
+    const data: ChartData = {
+      chart_type: 'line',
+      title: 'velocity_smooth over time',
+      labels: Array.from({ length: 50 }, (_, i) => String(i)),
+      series: [{ name: 'velocity_smooth', data: Array.from({ length: 50 }, (_, i) => 5 + Math.sin(i)) }],
+      x_label: 'Sample',
+      y_label: 'velocity_smooth',
+      reference_line: { x: '12', label: '3D' },
+    };
+    const { container } = render(<Chart data={data} height={250} />);
+    expect(container.querySelector('.recharts-reference-line')).toBeInTheDocument();
+  });
+
   it('renders heatmap chart type', () => {
     const data: ChartData = {
       chart_type: 'heatmap',

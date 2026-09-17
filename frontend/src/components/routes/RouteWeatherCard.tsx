@@ -5,6 +5,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { RouteData } from '@/lib/api/types';
 import { weatherEmoji } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 
 export function RouteWeatherCard({ route }: { route: RouteData }) {
   const { authFetch, token } = useAuthFetch();
@@ -35,9 +36,9 @@ export function RouteWeatherCard({ route }: { route: RouteData }) {
       <h4 className="text-xs text-muted uppercase tracking-wider">Weather</h4>
 
       {isPending && (
-        <div className="animate-pulse space-y-2">
-          <div className="h-4 bg-surface-light rounded w-3/4" />
-          <div className="h-3 bg-surface-light rounded w-1/2" />
+        <div className="space-y-2">
+          <SkeletonLine width="75%" height="1rem" />
+          <SkeletonLine width="50%" height="0.75rem" />
         </div>
       )}
 

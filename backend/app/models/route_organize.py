@@ -164,6 +164,7 @@ class RouteQuality(Base):
     popularity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     surface_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     effort_match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    terrain_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

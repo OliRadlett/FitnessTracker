@@ -3,11 +3,11 @@
 Keeping lifting videos in **Cloudflare R2** (S3-compatible object storage).
 Uploads go browser → R2 via a presigned PUT; playback streams via a presigned
 GET. Everything is implemented server-side (`app/integrations/r2.py`) and
-frontend-side (`LiftVideoForm` upload mode / `VideoEmbed`), so this page is
+frontend-side (`LiftVideoForm` / `VideoEmbed`), so this page is
 only about **creating your Cloudflare resources and turning the feature on.**
 
-> Without these steps the upload endpoints return **501** and only the
-> URL-only (YouTube/Vimeo) mode works. Nothing here costs money for a
+> Without these steps the upload endpoints return **501** and video uploads
+> are unavailable. Nothing here costs money for a
 > personal library — see [cost](#cost) below.
 
 ---
@@ -121,6 +121,6 @@ nothing; billing is rounded up to the next GB-month.
 | Presigned PUT/GET + delete + CORS helpers | `backend/app/integrations/r2.py` |
 | Upload URL, create row, stream URL, delete endpoints | `backend/app/api/videos.py` |
 | CORS bootstrap command | `backend/app/scripts/r2_bootstrap.py` |
-| Browser PUT with progress bar + embed | `frontend/src/components/lifting/LiftVideoForm.tsx` |
-| Playback (R2 `<video>` / YouTube / Vimeo) | `frontend/src/components/lifting/VideoEmbed.tsx` |
+| Browser PUT with progress bar | `frontend/src/components/lifting/LiftVideoForm.tsx` |
+| Playback (R2 `<video>`) | `frontend/src/components/lifting/VideoEmbed.tsx` |
 | Config fields | `backend/app/config.py` (`r2_*`) |

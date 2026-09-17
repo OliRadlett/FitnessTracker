@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import type { RouteData } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
@@ -23,6 +24,12 @@ import {
   fmtDurationShort,
   haversineDistance,
 } from '@/lib/routeUtils';
+
+// Lazy-loaded: three.js stays out of the bundle unless the modal opens (§3.16).
+const Route3D = dynamic(
+  () => import('@/components/routes/Route3D').then((m) => m.Route3D),
+  { ssr: false, loading: () => <div className="h-[320px] animate-pulse rounded bg-surface-light/20" /> }
+);
 
 function buildElevationData(encodedPolyline: string, elevations: (number | null)[]) {
   const points = decodePolyline(encodedPolyline);
@@ -198,16 +205,31 @@ export function CompareRoutesModal({
             </div>
           )}
 
+          {/* Side-by-side 3D terrain (§3.16) */}
+          <div>
+            <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">3D Terrain</h4>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {[routeA, routeB].map((r) => (
+                <Route3D
+                  key={r.id}
+                  polyline={r.encoded_polyline}
+                  elevations={r.elevation_profile?.elevations ?? null}
+                  name={r.name}
+                />
+              ))}
+            </div>
+          </div>
+
           {/* Stats delta table */}
           <div className="overflow-x-auto -mx-1 px-1">
             <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">Stats Comparison</h4>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted border-b border-surface-light/50">
-                  <th className="text-left py-2">Metric</th>
-                  <th className="text-right py-2">{routeA.name}</th>
-                  <th className="text-right py-2">{routeB.name}</th>
-                  <th className="text-right py-2">{'\u0394'}</th>
+                  <th className="text-left py-2 pr-2">Metric</th>
+                  <th className="text-right py-2 pl-2 max-w-[110px] truncate" title={routeA.name}>{routeA.name}</th>
+                  <th className="text-right py-2 pl-2 max-w-[110px] truncate" title={routeB.name}>{routeB.name}</th>
+                  <th className="text-right py-2 pl-2">{'\u0394'}</th>
                 </tr>
               </thead>
               <tbody>

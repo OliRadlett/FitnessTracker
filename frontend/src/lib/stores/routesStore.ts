@@ -45,6 +45,7 @@ export interface RoutesState {
   compareRouteB: string | null;
   setCompareRoutes: (a: string | null, b: string | null) => void;
   toggleCompare: (id: string) => void;
+  clearCompareRoutes: () => void;
 
   // UI state
    showFilters: boolean;
@@ -134,6 +135,8 @@ export const useRoutesStore = create<RoutesState>()(
         }
         return { compareRouteB: id };
       }),
+
+    clearCompareRoutes: () => set({ compareRouteA: null, compareRouteB: null }),
 
      // UI state
      showFilters: false,

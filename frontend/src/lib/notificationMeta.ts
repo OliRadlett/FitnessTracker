@@ -14,12 +14,13 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
   event_countdown: '⏳',
   taper_start: '🧘',
   ride_weather: '🌧️',
+  video_processed: '📹',
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
-  error: 'bg-red-500/15 text-red-400',
+  error: 'bg-warning/15 text-warning',
   warning: 'bg-amber-500/15 text-amber-400',
-  success: 'bg-emerald-500/15 text-emerald-400',
+  success: 'bg-positive/15 text-positive',
   info: 'bg-blue-500/15 text-blue-400',
 };
 
@@ -35,4 +36,5 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   event_countdown: 'Event countdown',
   taper_start: 'Taper',
   ride_weather: 'Ride weather',
+  video_processed: 'Videos',
 };

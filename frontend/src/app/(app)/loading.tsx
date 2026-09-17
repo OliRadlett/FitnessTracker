@@ -1,30 +1,34 @@
 'use client';
 
+import { SkeletonLine, SkeletonMetric, SkeletonRow } from '@/components/ui/Skeleton';
+
 export default function AppLoading() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="space-y-6">
       {/* Page header skeleton */}
       <div className="space-y-2">
-        <div className="h-8 w-48 bg-surface-light rounded-lg"></div>
-        <div className="h-4 w-72 bg-surface-light/60 rounded-lg"></div>
+        <SkeletonLine height="2rem" width="12rem" />
+        <SkeletonLine height="1rem" width="18rem" />
       </div>
 
-      {/* Content skeleton */}
+      {/* Content skeleton — metric cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-28 bg-surface rounded-xl border border-surface-light/30"></div>
+          <SkeletonMetric key={i} />
         ))}
       </div>
 
+      {/* Content skeleton — charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="h-80 bg-surface rounded-xl border border-surface-light/30"></div>
+          <SkeletonRow key={i} className="h-80" />
         ))}
       </div>
 
+      {/* Content skeleton — list items */}
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-20 bg-surface rounded-xl border border-surface-light/30"></div>
+          <SkeletonRow key={i} />
         ))}
       </div>
     </div>

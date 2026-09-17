@@ -11,6 +11,7 @@ import {
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceArea as RechartsReferenceArea,
+  ReferenceLine as RechartsReferenceLine,
   Brush,
 } from 'recharts';
 
@@ -261,7 +262,16 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
   const renderLegend = () =>
     data.series.length > 1 ? (
-      <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
+      <Legend
+        iconSize={10}
+        wrapperStyle={{
+          color: '#94a3b8',
+          fontSize: isNarrow ? '11px' : '12px',
+          lineHeight: '16px',
+          maxWidth: '100%',
+          overflow: 'hidden',
+        }}
+      />
     ) : null;
 
   const renderBrush = () => {
@@ -269,7 +279,8 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     return (
       <Brush
         dataKey="x"
-        height={isNarrow ? 24 : 30}
+        height={isNarrow ? 32 : 30}
+        travellerWidth={isNarrow ? 20 : 10}
         stroke="#334155"
         fill="#1e293b"
         ariaLabel="Zoom range"
@@ -303,6 +314,19 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <YAxis yAxisId="right" orientation="right" {...commonAxisProps} />
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
+            {data.reference_line && (
+              <RechartsReferenceLine
+                yAxisId="left"
+                x={data.reference_line.x}
+                stroke={data.reference_line.color ?? '#22d3ee'}
+                strokeDasharray="4 2"
+                label={
+                  data.reference_line.label
+                    ? { value: data.reference_line.label, position: 'insideTopRight', fill: '#22d3ee', fontSize: 10 }
+                    : undefined
+                }
+              />
+            )}
             {renderBrush()}
             {renderTooltip()}
             {renderLegend()}

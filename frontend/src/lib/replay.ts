@@ -26,6 +26,10 @@ export interface ReplayPoint {
   speed: number;
   power: number | null;
   hr: number | null;
+  /** pedalling cadence, rpm */
+  cadence: number | null;
+  /** segment gradient %, derived from altitude ÷ distance (null when unknown) */
+  grade: number | null;
 }
 
 export interface StreamInput {
@@ -113,6 +117,7 @@ export interface ReplayBuildOptions {
   altitude?: StreamInput;
   power?: StreamInput;
   hr?: StreamInput;
+  cadence?: StreamInput;
   /** vertical exaggeration applied to altitude */
   zScale?: number;
   /** max output samples (path decimation for the GPU) */
@@ -124,6 +129,12 @@ export interface ReplayBuildResult {
   totalTime: number;
   totalDistance: number;
   maxSpeed: number;
+  /** projection centroid (see projectPolyline) — aligns external meshes (DEM) */
+  lat0: number;
+  lng0: number;
+  /** altitude base + exaggeration used for z (for DEM mesh alignment) */
+  altMin: number;
+  zScale: number;
 }
 
 /**
@@ -134,7 +145,7 @@ export function buildReplay(
   opts: ReplayBuildOptions
 ): ReplayBuildResult {
   const coords = decodePolyline(opts.polyline);
-  const { xs, ys } = projectPolyline(coords);
+  const { xs, ys, lat0, lng0 } = projectPolyline(coords);
   const polyDist = cumulativePolyline(coords, xs, ys);
 
   const velocity = opts.velocity?.values ?? [];
@@ -159,9 +170,11 @@ export function buildReplay(
   const altValues = opts.altitude?.values ?? [];
   const powerValues = opts.power?.values ?? [];
   const hrValues = opts.hr?.values ?? [];
+  const cadenceValues = opts.cadence?.values ?? [];
   const altByDist = resampleByDistance(altValues, sampleDist, sampleDist);
   const powerByDist = resampleByDistance(powerValues, sampleDist, sampleDist);
   const hrByDist = resampleByDistance(hrValues, sampleDist, sampleDist);
+  const cadenceByDist = resampleByDistance(cadenceValues, sampleDist, sampleDist);
 
   // Altitude min for z-normalisation.
   const alts = altByDist.filter((v): v is number => v != null);
@@ -191,7 +204,7 @@ export function buildReplay(
     return lo / (polyDist.length - 1) + ((target - a) / denom) * (1 / (polyDist.length - 1));
   };
 
-  const points: ReplayPoint[] = indices.map((k) => {
+  const points: ReplayPoint[] = indices.map((k, n) => {
     const distance = sampleDist[k] ?? 0;
     const polyFrac = polylineFracAtDist(distance);
     const px = xs.length ? interp(xs, polyFrac) : 0;
@@ -199,6 +212,15 @@ export function buildReplay(
     const rawAlt = altByDist[k];
     const z = rawAlt == null ? 0 : (rawAlt - altMin) * zScale;
     const speed = velocity[k] ?? 0;
+    // Gradient between consecutive output samples (stride-averaged when decimated).
+    let grade: number | null = null;
+    if (n > 0) {
+      const pk = indices[n - 1];
+      const a0 = altByDist[pk];
+      const a1 = altByDist[k];
+      const dd = (sampleDist[k] ?? 0) - (sampleDist[pk] ?? 0);
+      if (a0 != null && a1 != null && dd > 0) grade = ((a1 - a0) / dd) * 100;
+    }
     return {
       elapsed: k * resid,
       distance,
@@ -208,6 +230,8 @@ export function buildReplay(
       speed: Number.isFinite(speed) ? speed : 0,
       power: powerByDist[k],
       hr: hrByDist[k],
+      cadence: cadenceByDist[k],
+      grade,
     };
   });
 
@@ -218,7 +242,90 @@ export function buildReplay(
     totalTime,
     totalDistance,
     maxSpeed,
+    lat0,
+    lng0,
+    altMin,
+    zScale,
   };
+}
+
+/** Coggan classic power-zone UPPER bounds in watts (last entry Infinity) */
+export function powerZoneBounds(ftpWatts: number): number[] {
+  return [0.55, 0.75, 0.9, 1.05, 1.2, 1.5].map((f) => f * ftpWatts).concat(Infinity);
+}
+
+/** tour-speed presets: whole-ride playback in ~2 min / ~1 min / ~30 s */
+export const TOUR_PRESETS = [
+  { label: '2m', secs: 120 },
+  { label: '1m', secs: 60 },
+  { label: '30s', secs: 30 },
+] as const;
+
+/** playback rate finishing totalSeconds in ~targetSecs (min 1×) */
+export function tourRate(totalSeconds: number, targetSecs: number): number {
+  if (!(totalSeconds > 0) || !(targetSecs > 0)) return 1;
+  return Math.max(1, Math.round(totalSeconds / targetSecs));
+}
+
+/** path colour modes for the replay line (Phase D) */
+export type ReplayColorMode = 'speed' | 'power' | 'hr' | 'grade';
+
+const METRIC_SLOW: [number, number, number] = [0.231, 0.51, 0.965]; // #3b82f6
+const METRIC_FAST: [number, number, number] = [0.937, 0.267, 0.267]; // #ef4444
+/** missing samples render as slate gaps, never as false zeros */
+const METRIC_GAP: [number, number, number] = [0.392, 0.475, 0.545]; // #64748b
+
+export function replayMetricValue(p: ReplayPoint, mode: ReplayColorMode): number | null {
+  switch (mode) {
+    case 'speed':
+      return p.speed;
+    case 'power':
+      return p.power;
+    case 'hr':
+      return p.hr;
+    case 'grade':
+      return p.grade;
+  }
+}
+
+/** normalisation max for a mode (grade uses the fixed ±12 % ramp scale) */
+export function replayMetricMax(points: ReplayPoint[], mode: ReplayColorMode): number {
+  if (mode === 'grade') return 12;
+  let m = 0;
+  for (const p of points) {
+    const v = replayMetricValue(p, mode);
+    if (v != null && v > m) m = v;
+  }
+  return m > 0 ? m : 1;
+}
+
+/**
+ * Robust colour scale: 95th percentile so one GPS spike doesn't flatten
+ * contrast across the whole ride. True maxima still render full-red
+ * (the colour ramp clamps). Falls back to the max for tiny/all-zero data.
+ */
+export function replayMetricScale(points: ReplayPoint[], mode: ReplayColorMode): number {
+  if (mode === 'grade') return 12;
+  const vs = points
+    .map((p) => replayMetricValue(p, mode))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  if (!vs.length) return 1;
+  const sorted = [...vs].sort((a, b) => a - b);
+  const max = sorted[sorted.length - 1];
+  if (max <= 0) return 1;
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+  return p95 > 0 ? Math.min(max, p95 * 1.1) : max;
+}
+
+/** blue→red intensity colour for a metric value (grade is coloured by the caller via slopeColor) */
+export function replayMetricColor(value: number | null, max: number): [number, number, number] {
+  if (value == null) return METRIC_GAP;
+  const t = Math.max(0, Math.min(1, value / (max || 1)));
+  return [
+    METRIC_SLOW[0] + (METRIC_FAST[0] - METRIC_SLOW[0]) * t,
+    METRIC_SLOW[1] + (METRIC_FAST[1] - METRIC_SLOW[1]) * t,
+    METRIC_SLOW[2] + (METRIC_FAST[2] - METRIC_SLOW[2]) * t,
+  ];
 }
 
 function interp(values: number[], frac: number): number {

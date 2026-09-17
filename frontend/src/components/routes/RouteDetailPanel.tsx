@@ -1,10 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { downloadRouteGpx, useAuthFetch } from '@/lib/api';
-import type { RouteData, MergedRouteView } from '@/lib/api/types';
+import { downloadRouteGpx, getSegments, useAuthFetch } from '@/lib/api';
+import type { RouteData, MergedRouteView, Segment } from '@/lib/api/types';
 import { getMergedRouteView } from '@/lib/api/routes';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { TabGroup } from '@/components/ui/TabGroup';
@@ -48,6 +48,19 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
   const [renameValue, setRenameValue] = useState('');
   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
   const [profileMode, setProfileMode] = useState<'2d' | '3d'>('2d');
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+
+  // §3.13 segments for the 3D climb overlays — same key as SegmentsCard, shared cache.
+  const { data: segments } = useQuery<Segment[]>({
+    queryKey: ['route-segments', route?.id],
+    queryFn: () => getSegments(authFetch, route!.id),
+    enabled: !!token && !!route && (detailTab === 'map' || detailTab === 'segments'),
+    staleTime: 300_000,
+  });
+
+  useEffect(() => {
+    setHoverKm(null);
+  }, [route?.id]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authFetch(`/api/v1/routes/${id}`, { method: 'DELETE' }),
@@ -162,7 +175,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                       setRenameValue(route.name);
                       setIsRenaming(true);
                     }}
-                    className="text-xs text-muted hover:text-accent transition-colors"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs text-muted hover:text-accent transition-colors"
                     aria-label="Rename route"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -175,7 +188,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
             <div className="flex gap-2">
               <button
                 onClick={() => favoriteMutation.mutate({ id: route.id, is_favorite: !route.is_favorite })}
-                className={`p-1.5 rounded transition-colors ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded transition-colors ${
                   route.is_favorite
                     ? 'text-yellow-400 hover:text-yellow-300 bg-surface-light/50'
                     : 'text-muted hover:text-white bg-surface-light/50'
@@ -187,7 +200,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
               <button
                 onClick={() => downloadRouteGpx(route.id, route.name, token)}
                 aria-label="Download GPX"
-                className="p-1.5 text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -198,7 +211,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   }
                 }}
                 aria-label="Delete route"
-                className="p-1.5 text-warning hover:text-red-300 hover:bg-red-500/10 bg-surface-light/50 rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-warning hover:text-warning/80 hover:bg-warning/10 bg-surface-light/50 rounded transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -236,7 +249,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                 <span
                   key={s.id}
                   className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${
-                    PROVIDER_COLORS[s.provider] || 'bg-gray-500'
+                    PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >
                   <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}
@@ -312,11 +325,23 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   </div>
                 </div>
                 {profileMode === '3d' ? (
-                  <Route3D
-                    polyline={route.encoded_polyline}
-                    elevations={route.elevation_profile?.elevations ?? null}
-                    name={route.name}
-                  />
+                  <>
+                    <Route3D
+                      polyline={route.encoded_polyline}
+                      elevations={route.elevation_profile?.elevations ?? null}
+                      name={route.name}
+                      segments={segments ?? null}
+                      highlightDistKm={hoverKm}
+                    />
+                    {route.elevation_profile?.elevations && (
+                      <ElevationProfile
+                        encodedPolyline={route.encoded_polyline}
+                        elevations={route.elevation_profile.elevations}
+                        height={110}
+                        onHover={setHoverKm}
+                      />
+                    )}
+                  </>
                 ) : (
                   <>
                     <RouteMap

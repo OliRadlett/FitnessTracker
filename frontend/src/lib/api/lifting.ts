@@ -10,6 +10,7 @@ import type {
   VideoUploadRequest,
   VideoUploadResponse,
   VideoStreamUrl,
+  VideoProcessStatus,
   LiftVideoListParams,
 } from './types';
 
@@ -78,7 +79,6 @@ export async function getLiftVideos(
   params?: LiftVideoListParams,
 ): Promise<LiftVideo[]> {
   const query = new URLSearchParams();
-  if (params?.source) query.set('source', params.source);
   if (params?.exercise_name) query.set('exercise_name', params.exercise_name);
   if (params?.lifting_session_id) query.set('lifting_session_id', params.lifting_session_id);
   if (params?.personal_record_id) query.set('personal_record_id', params.personal_record_id);
@@ -125,4 +125,29 @@ export async function deleteLiftVideo(authFetch: AuthFetch, videoId: string): Pr
   return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`, {
     method: 'DELETE',
   });
+}
+
+// ─── Video Processing (§1.1) ───────────────────────────────────────────────
+
+export async function processLiftVideo(
+  authFetch: AuthFetch,
+  videoId: string,
+  depth: 'basic' | 'full' = 'full',
+  force = false,
+): Promise<{ status: string; video_id: string; analysis_depth: string }> {
+  const params = new URLSearchParams({ depth });
+  if (force) params.set('force', 'true');
+  return authFetch<{ status: string; video_id: string; analysis_depth: string }>(
+    `/api/v1/lifting/videos/${videoId}/process?${params}`,
+    { method: 'POST' },
+  );
+}
+
+export async function getVideoProcessStatus(
+  authFetch: AuthFetch,
+  videoId: string,
+): Promise<VideoProcessStatus> {
+  return authFetch<VideoProcessStatus>(
+    `/api/v1/lifting/videos/${videoId}/process-status`,
+  );
 }

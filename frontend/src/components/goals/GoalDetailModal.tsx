@@ -210,7 +210,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             <p className="text-xs text-accent">{goal.filter_json.exercise || goal.filter_json.sport}</p>
           )}
         </div>
-        <button onClick={onClose} className="text-muted hover:text-white text-xl" aria-label="Close">
+        <button onClick={onClose} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white text-xl shrink-0" aria-label="Close">
           ×
         </button>
       </div>
@@ -327,7 +327,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2"
           >
             <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Log Check-in</h4>
-            <div className="flex gap-2 items-start">
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start">
               <input
                 type="number"
                 step="any"
@@ -335,7 +335,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 onChange={(e) => setCheckValue(e.target.value)}
                 required
                 placeholder={`Current${unit ? ` (${unit})` : ''}`}
-                className="w-32 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full sm:w-32 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <textarea
                 value={checkNote}
@@ -343,12 +343,12 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 rows={1}
                 maxLength={500}
                 placeholder="Note (optional)"
-                className="flex-1 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
+                className="flex-1 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent resize-y"
               />
               <button
                 type="submit"
                 disabled={checkInMutation.isPending}
-                className="px-3 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                className="px-4 py-2 min-h-[44px] bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 shrink-0"
               >
                 {checkInMutation.isPending ? '…' : 'Log'}
               </button>
@@ -477,7 +477,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-warning border border-red-500/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
+                className="px-3 py-1.5 text-sm bg-warning/20 hover:bg-warning/30 text-warning border border-warning/30 rounded-lg transition-colors disabled:opacity-50 font-medium"
               >
                 {deleteMutation.isPending ? 'Deleting…' : 'Confirm Delete'}
               </button>
@@ -512,7 +512,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 const BADGE_STYLES: Record<string, string> = {
   'On Track': 'bg-green-500/20 text-positive border-green-500/30',
   'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Unlikely': 'bg-red-500/20 text-warning border-red-500/30',
+  'Unlikely': 'bg-warning/20 text-warning border-warning/30',
   'Not enough data': 'bg-muted/20 text-muted border-muted/30',
 };
 

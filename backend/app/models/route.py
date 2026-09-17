@@ -52,6 +52,8 @@ class Route(Base):
     quality_score: Mapped[float | None] = mapped_column(
         Float, nullable=True, index=True
     )
+    terrain_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    predicted_effort: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

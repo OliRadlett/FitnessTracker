@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
-import { deleteLiftVideo } from '@/lib/api/lifting';
+import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
@@ -13,20 +13,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
 
-type SourceFilter = 'all' | 'upload' | 'url';
-
-const SOURCE_TABS: { key: SourceFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'url', label: 'External' },
-  { key: 'upload', label: 'Uploaded' },
-];
-
 export default function VideosPage() {
   usePageTitle('Videos');
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [exerciseFilter, setExerciseFilter] = useState('');
   const [afterFilter, setAfterFilter] = useState('');
   const [beforeFilter, setBeforeFilter] = useState('');
@@ -35,13 +26,12 @@ export default function VideosPage() {
 
   const queryParams = new URLSearchParams();
   queryParams.set('limit', '100');
-  if (sourceFilter !== 'all') queryParams.set('source', sourceFilter);
   if (exerciseFilter) queryParams.set('exercise_name', exerciseFilter);
   if (afterFilter) queryParams.set('after', afterFilter);
   if (beforeFilter) queryParams.set('before', beforeFilter);
 
   const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
-    queryKey: ['lift-videos', sourceFilter, exerciseFilter, afterFilter, beforeFilter],
+    queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     staleTime: 30_000,
   });
@@ -65,9 +55,15 @@ export default function VideosPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
   });
 
+  const processMutation = useMutation({
+    mutationFn: ({ videoId, force }: { videoId: string; force?: boolean }) =>
+      processLiftVideo(authFetch, videoId, 'full', force),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
+  });
+
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const hasFilters = sourceFilter !== 'all' || exerciseFilter || afterFilter || beforeFilter;
+  const hasFilters = exerciseFilter || afterFilter || beforeFilter;
 
   return (
     <div className="space-y-6">
@@ -84,23 +80,6 @@ export default function VideosPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Source tabs */}
-        <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50">
-          {SOURCE_TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setSourceFilter(key)}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sourceFilter === key
-                  ? 'bg-accent/20 text-accent font-medium'
-                  : 'text-muted hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {/* Exercise filter */}
         <input
           type="text"
@@ -130,7 +109,6 @@ export default function VideosPage() {
         {hasFilters && (
           <button
             onClick={() => {
-              setSourceFilter('all');
               setExerciseFilter('');
               setAfterFilter('');
               setBeforeFilter('');
@@ -156,7 +134,7 @@ export default function VideosPage() {
           description={
             hasFilters
               ? 'Try adjusting your filters or add a video.'
-              : 'Add a lift video — paste a YouTube/Vimeo link or upload a recording.'
+              : 'Add a lift video — upload a recording of your set.'
           }
           action={
             !hasFilters
@@ -183,12 +161,49 @@ export default function VideosPage() {
               <div className="p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-white truncate max-w-[200px]">
-                    {video.exercise_name || 'Uncategorized'}
+                    {video.exercise_name || video.exercise_auto || 'Uncategorized'}
                   </p>
-                  <Badge variant={video.source === 'upload' ? 'lifting' : 'muted'}>
-                    {video.source === 'upload' ? 'Uploaded' : 'URL'}
-                  </Badge>
+                  <div className="flex items-center gap-1">
+                    {video.analysis_status === 'completed' && (
+                      <Badge variant="lifting">Processed</Badge>
+                    )}
+                    {video.analysis_status === 'processing' && (
+                      <Badge variant="cycling">Processing…</Badge>
+                    )}
+                    {video.analysis_status === 'failed' && (
+                      <Badge variant="warning">Failed</Badge>
+                    )}
+                    {(!video.analysis_status || video.analysis_status === 'pending') && (
+                      <Badge variant="lifting">Uploaded</Badge>
+                    )}
+                  </div>
                 </div>
+
+                {/* Auto-detected info */}
+                {video.analysis_status === 'completed' && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    {video.exercise_auto && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.exercise_auto}
+                      </span>
+                    )}
+                    {video.reps_count != null && video.reps_count > 0 && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.reps_count} reps
+                      </span>
+                    )}
+                    {video.weight_kg != null && video.weight_kg > 0 && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded">
+                        {video.weight_kg} kg
+                      </span>
+                    )}
+                    {video.confidence != null && video.confidence > 0 && (
+                      <span className="text-muted/60">
+                        {Math.round(video.confidence * 100)}% conf
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-xs text-muted">
                   <span>{new Date(video.created_at).toLocaleDateString()}</span>
@@ -210,6 +225,26 @@ export default function VideosPage() {
                   <p className="text-xs text-muted truncate">{video.notes}</p>
                 )}
 
+                {video.analysis_status === 'completed' && (video.form_score != null || video.estimated_rpe != null) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {video.form_score != null && (
+                      <Badge variant={video.form_score >= 90 ? 'positive' : video.form_score >= 75 ? 'lifting' : video.form_score >= 60 ? 'warning' : 'warning'}>
+                        Form {Math.round(video.form_score)}
+                      </Badge>
+                    )}
+                    {video.mean_concentric_velocity != null && (
+                      <Badge variant="cycling">
+                        {video.mean_concentric_velocity.toFixed(2)} m/s
+                      </Badge>
+                    )}
+                    {video.estimated_rpe != null && (
+                      <Badge variant="muted">
+                        RPE {video.estimated_rpe.toFixed(1)}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex items-center gap-2 pt-1">
                   {video.lifting_session_id && (
@@ -221,6 +256,29 @@ export default function VideosPage() {
                     </a>
                   )}
                   <div className="flex-1" />
+                  {video.r2_key &&
+                    (!video.analysis_status ||
+                      video.analysis_status === 'pending' ||
+                      video.analysis_status === 'failed' ||
+                      video.analysis_status === 'processing') && (
+                      <button
+                        onClick={() =>
+                          processMutation.mutate({
+                            videoId: video.id,
+                            force: video.analysis_status === 'processing',
+                          })
+                        }
+                        disabled={processMutation.isPending}
+                        className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
+                        title="Process video (trim + classify)"
+                      >
+                        {processMutation.isPending
+                          ? 'Queuing…'
+                          : video.analysis_status === 'processing'
+                            ? '🔄 Retry'
+                            : '⚡ Process'}
+                      </button>
+                    )}
                   {confirmDeleteId === video.id ? (
                     <>
                       <button

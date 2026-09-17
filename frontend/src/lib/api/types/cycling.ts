@@ -9,6 +9,18 @@ export interface CyclingProfile {
   home_lat?: number | null;
   home_lng?: number | null;
   auto_estimate_ftp: boolean;
+  // Personalized power model fields
+  critical_power?: number | null;
+  w_prime?: number | null;
+  power_model_r_squared?: number | null;
+  personalized_vo2max?: number | null;
+  ctl_tau?: number | null;
+  atl_tau?: number | null;
+  power_model_fitted_at?: string | null;
+  // Weather analysis fields
+  weather_coefficients?: Record<string, unknown> | null;
+  weather_insights?: string[] | null;
+  weather_analyzed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,11 +71,52 @@ export interface PowerDurationPoint {
   duration_seconds: number;
   best_power_watts?: number;
   date_achieved?: string;
+  activity_id?: string | null;
+  improvement_pct?: number | null;
+}
+
+export interface CyclingPowerRecord {
+  id: string;
+  user_id: string;
+  duration_label: string;
+  duration_seconds: number;
+  power_watts: number;
+  weight_kg?: number | null;
+  w_per_kg?: number | null;
+  improvement_pct?: number | null;
+  achieved_date: string;
+  activity_id?: string | null;
+  activity_name?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CyclingPowerRecordCreate {
+  duration_label: string;
+  duration_seconds: number;
+  power_watts: number;
+  achieved_date: string;
+  notes?: string | null;
+}
+
+export interface PrCheckRequest {
+  activity_id?: string | null;
+}
+
+export interface PrCheckResponse {
+  checked: number;
+  new_prs: number;
+  updated_prs: number;
+  prs: CyclingPowerRecord[];
 }
 
 export interface PowerCurveResponse {
   data: PowerDurationPoint[];
   ftp_watts?: number;
+  cp?: number;
+  w_prime?: number;
+  model_r_squared?: number;
+  fitted_curve?: Record<string, number>;
 }
 
 export interface PowerZoneDistribution {
@@ -177,6 +230,9 @@ export interface LifetimePB {
   duration_seconds: number;
   best_power_watts: number | null;
   pct_ftp: number | null;
+  date_achieved?: string | null;
+  activity_id?: string | null;
+  improvement_pct?: number | null;
 }
 
 export interface LifetimePBsResponse {
@@ -304,3 +360,104 @@ export interface RideAnalysis {
     time_descending_s?: number;
   };
 }
+
+// ─── Personalized Power Model ──────────────────────────────────────────────
+
+export interface PowerModelCriticalPower {
+  cp: number | null;
+  w_prime: number | null;
+  model_r_squared: number | null;
+  fitted_curve: Record<string, number> | null;
+  method: string | null;
+  data_points_used: number;
+}
+
+export interface PowerModelPersonalizedVo2max {
+  vo2max: number | null;
+  method: string | null;
+  r_squared: number | null;
+  regression_slope: number | null;
+  regression_intercept: number | null;
+  data_points_used: number;
+}
+
+export interface PowerModelAdaptiveConstants {
+  ctl_tau: number;
+  atl_tau: number;
+  improvement_pct: number | null;
+  correlation: number | null;
+  method: string | null;
+  data_points_used: number;
+}
+
+export interface PowerModelResultsResponse {
+  critical_power: PowerModelCriticalPower | null;
+  personalized_vo2max: PowerModelPersonalizedVo2max | null;
+  adaptive_constants: PowerModelAdaptiveConstants | null;
+  fitted_at: string | null;
+}
+
+// ─── Weather-Performance Analysis ──────────────────────────────────────────
+
+export interface WeatherPowerVsTemp {
+  slope_per_celsius: number | null;
+  intercept: number | null;
+  r_squared: number | null;
+  optimal_range_c: [number, number] | null;
+  data_points: number;
+}
+
+export interface WeatherPowerVsWind {
+  headwind_penalty_pct: number | null;
+  tailwind_boost_pct: number | null;
+  crosswind_penalty_pct: number | null;
+  power_vs_speed_slope: number | null;
+  power_vs_speed_r_squared: number | null;
+  data_points: Record<string, number> | null;
+}
+
+export interface WeatherDecouplingVsTemp {
+  slope_per_celsius: number | null;
+  r_squared: number | null;
+  threshold_c: number | null;
+  penalty_above_pct: number | null;
+  data_points: number;
+}
+
+export interface WeatherHrVsTemp {
+  slope_bpm_per_celsius: number | null;
+  intercept: number | null;
+  r_squared: number | null;
+  data_points: number;
+}
+
+export interface WeatherCoefficients {
+  features: string[];
+  coefficients: Record<string, number>;
+  intercept: number;
+  r_squared: number;
+  data_points: number;
+}
+
+export interface WeatherAnalysisResponse {
+  power_vs_temp: WeatherPowerVsTemp | null;
+  power_vs_wind: WeatherPowerVsWind | null;
+  decoupling_vs_temp: WeatherDecouplingVsTemp | null;
+  hr_vs_temp: WeatherHrVsTemp | null;
+  weather_coefficients: WeatherCoefficients | null;
+  personalized_insights: string[];
+  analyzed_at: string | null;
+}
+
+// ─── Cross-Domain Insights ─────────────────────────────────────────────────
+
+export interface CrossDomainInsightType {
+  results: Record<string, unknown>;
+  insights: string[];
+  data_quality: Record<string, unknown>;
+  analyzed_at: string | null;
+  period_start: string | null;
+  period_end: string | null;
+}
+
+export type CrossDomainInsightsResponse = Record<string, CrossDomainInsightType>;

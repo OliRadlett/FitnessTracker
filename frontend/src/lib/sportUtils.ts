@@ -30,7 +30,7 @@ export function getSportColor(sportType: string): string {
   if (matches(sportType, STRENGTH_KEYWORDS)) return 'bg-purple-500';
   if (matches(sportType, SWIMMING_KEYWORDS)) return 'bg-cyan-500';
   if (matches(sportType, WALKING_KEYWORDS)) return 'bg-amber-500';
-  return 'bg-gray-500';
+  return 'bg-muted';
 }
 
 export function getSportTextColor(sportType: string): string {
@@ -39,7 +39,7 @@ export function getSportTextColor(sportType: string): string {
   if (matches(sportType, STRENGTH_KEYWORDS)) return 'text-purple-400';
   if (matches(sportType, SWIMMING_KEYWORDS)) return 'text-cyan-400';
   if (matches(sportType, WALKING_KEYWORDS)) return 'text-amber-400';
-  return 'text-gray-400';
+  return 'text-muted';
 }
 
 export function getSportBorderColor(sportType: string): string {
@@ -48,7 +48,7 @@ export function getSportBorderColor(sportType: string): string {
   if (matches(sportType, STRENGTH_KEYWORDS)) return 'border-purple-500/30';
   if (matches(sportType, SWIMMING_KEYWORDS)) return 'border-cyan-500/30';
   if (matches(sportType, WALKING_KEYWORDS)) return 'border-amber-500/30';
-  return 'border-gray-500/30';
+  return 'border-muted/30';
 }
 
 export function getSportEmoji(sportType: string): string {
@@ -61,7 +61,7 @@ export function getSportEmoji(sportType: string): string {
 }
 
 export function getRecoveryColor(score: number): string {
-  if (score >= 70) return 'text-green-400';
+  if (score >= 70) return 'text-positive';
   if (score >= 40) return 'text-yellow-400';
-  return 'text-red-400';
+  return 'text-warning';
 }

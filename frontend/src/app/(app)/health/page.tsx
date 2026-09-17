@@ -18,12 +18,13 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
-import { MetricCard, RespiratoryRateCard } from '@/components/dashboard/helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
 
 const SEVERITY_BADGE: Record<string, string> = {
-  critical: 'bg-red-500/15 text-red-400 border-red-500/30',
+  critical: 'bg-warning/15 text-warning border-warning/30',
   warning: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   info: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
 };
@@ -356,14 +357,14 @@ export default function HealthPage() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between w-full">
+            <div className="flex flex-wrap items-center justify-between gap-2 w-full">
               <CardTitle>Health Alert History</CardTitle>
               <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30">
                 {(['all', 'active', 'dismissed'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setAlertTab(tab)}
-                    className={`px-2.5 py-1 text-[11px] font-medium rounded-md capitalize transition-colors ${
+                    className={`min-h-[44px] px-3 py-1 text-xs font-medium rounded-md capitalize transition-colors ${
                       alertTab === tab ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
                     }`}
                   >
@@ -393,7 +394,7 @@ export default function HealthPage() {
                       <button
                         onClick={() => dismissMutation.mutate(alert.id)}
                         disabled={dismissMutation.isPending}
-                        className="shrink-0 text-[11px] text-muted hover:text-white disabled:opacity-50"
+                        className="shrink-0 min-h-[44px] min-w-[44px] px-2 text-xs text-muted hover:text-white disabled:opacity-50"
                       >
                         Dismiss
                       </button>

@@ -8,7 +8,11 @@ pure (no DB) — the DB-touching callers (`compute_power_curve_from_streams`,
 
 import pytest
 
-from app.services.cycling import POWER_DURATION_BUCKETS, best_power_rolling_average
+from app.services.cycling import (
+    POWER_DURATION_BUCKETS,
+    best_power_rolling_average,
+    personalized_power_curve,
+)
 
 
 def naive_best(data, d):
@@ -88,3 +92,19 @@ def test_short_and_empty():
 def test_rounding_to_one_decimal():
     # 100 + 101 + 100 = 301 / 3 = 100.333... -> 100.3
     assert best_power_rolling_average([100.0, 101.0, 100.0], 3) == 100.3
+
+
+def test_personalized_power_curve_morton():
+    # P(t) = W'/t + CP with CP=250 W, W'=20000 J
+    curve = personalized_power_curve(250, 20000)
+    assert set(curve) == {d for d, _ in POWER_DURATION_BUCKETS}
+    assert curve[60] == 583.3
+    assert curve[3600] == 255.6
+    # hyperbola: short durations well above CP, long durations asymptote to CP
+    assert curve[5] > curve[60] > curve[3600] >= 250
+
+
+def test_personalized_power_curve_zero_w_prime():
+    # w_prime=0 (e.g. profile has CP but no W') -> flat line at CP
+    curve = personalized_power_curve(250, 0)
+    assert all(v == 250.0 for v in curve.values())

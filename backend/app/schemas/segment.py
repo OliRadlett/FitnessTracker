@@ -30,6 +30,16 @@ class SegmentRead(BaseModel):
     times_ridden: int = 0
     has_pr: bool = False
     effort_count: int = 0
+    # Intelligence fields (fitted by Modal weekly task)
+    cluster_id: int | None = None
+    climb_type: str | None = None
+    sustainedness: float | None = None
+    difficulty_score: float | None = None
+    predicted_vam: float | None = None
+    predicted_time_seconds: float | None = None
+    predicted_power_watts: float | None = None
+    prediction_confidence: float | None = None
+    intelligence_analyzed_at: datetime | None = None
 
 
 class SegmentEffortRead(BaseModel):
