@@ -353,6 +353,10 @@ def process_video_on_modal(
                         weight_kg=weight,
                     )
                     full_result.update(pose_result)
+                    # Step 7 never sets reps (classification only) — take the
+                    # rep count from pose rep detection so reps_count and RPE
+                    # have real inputs (was always 0 → RPE NULL; 2026-09-17).
+                    reps = pose_result.get("rep_count_detected", 0) or reps
                     _logger.info("Pose analysis complete: form_score=%s",
                                 pose_result.get("form", {}).get("overall_form_score"))
                 except Exception as e:

@@ -736,14 +736,15 @@ def track_barbell_optical_flow(
             continue
 
         tracked_count += 1
-        # Median vertical displacement (robust to outliers)
+        # Median vertical displacement (robust to outliers).
+        # NOTE: this assumes a static (tripod) camera, which holds for lift
+        # videos. An earlier revision subtracted the global median motion as
+        # "camera motion" — but both medians were computed over the same
+        # features, so bar_motion was identically zero on every frame and no
+        # velocity was ever measured (found 2026-09-17).
         dy = good_new[:, 1] - good_old[:, 1]
         median_dy = float(np.median(dy))
-
-        # Subtract global camera motion (median of all feature displacements)
-        all_dx = good_new[:, 0] - good_old[:, 0]
-        global_motion_y = float(np.median(good_new[:, 1] - good_old[:, 1]))
-        bar_motion = median_dy - global_motion_y
+        bar_motion = median_dy
 
         if vertical_positions:
             vertical_positions.append(vertical_positions[-1] + bar_motion)
@@ -1167,7 +1168,11 @@ def estimate_rpe_heuristic(analysis_result: dict, exercise_name: str, rep_count:
     form_data = analysis_result.get("form", {})
 
     mean_vel = vel_data.get("mean_concentric_velocity", 0.5)
-    vel_loss = vel_data.get("velocity_loss_pct", 0)
+    # NOTE: .get default only applies to MISSING keys — the optical-flow
+    # result includes velocity_loss_pct=None when <2 reps are tracked, and
+    # None > 0 raises TypeError. `or 0` normalizes both cases (2026-09-17 —
+    # this crash nulled every RPE estimate).
+    vel_loss = vel_data.get("velocity_loss_pct") or 0
     form_score = form_data.get("overall_form_score", 70)
     form_severity = form_data.get("severity", "unknown")
     consistency_score = analysis_result.get("consistency", {}).get("consistency_score", 70)
