@@ -23,7 +23,7 @@ import type {
   DeficiencyResponse,
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
-import { getGreeting } from '@/components/dashboard/helpers';
+import { getGreeting } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
 import { TodayTab } from '@/components/dashboard/TodayTab';

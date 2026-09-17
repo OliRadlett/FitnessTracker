@@ -18,7 +18,8 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
-import { MetricCard, RespiratoryRateCard } from '@/components/dashboard/helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
 

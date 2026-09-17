@@ -18,9 +18,9 @@ import type {
 } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
-import { ActivityAiAnalysisCard } from '@/components/cycling/ActivityAiAnalysisCard';
+import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
-import { WeatherBadge } from '@/components/cycling/WeatherBadge';
+import { WeatherBadge } from '@/components/activities/WeatherBadge';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(

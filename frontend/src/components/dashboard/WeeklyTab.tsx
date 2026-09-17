@@ -28,11 +28,14 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { LlmAnalysisCard } from '@/components/cycling/LlmAnalysisCard';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
-import { MetricCard, WhoopWeeklyCard, RespiratoryRateCard, ActivityRow, SessionRow, ListSkeleton } from './helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { WhoopWeeklyCard } from '@/components/health/WhoopWeeklyCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { ActivityRow, SessionRow, ListSkeleton } from '@/components/dashboard/helpers';
 import { RestDayBanner } from './RestDayBanner';
-import { HealthAlertsSection } from './HealthAlertsSection';
+import { HealthAlertsSection } from '@/components/health/HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
-import { DeficiencyCard } from './DeficiencyCard';
+import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 
 interface WeeklyTabProps {
   summary: DashboardSummary | undefined;

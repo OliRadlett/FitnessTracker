@@ -69,6 +69,13 @@
 | `MetricCard` | Unified metric card — supports simple trend strings (dashboard) and complex MetricTrend/benchmark (cycling). Icon, unit, tooltip, subtitle |
 | `NotificationBell` | Fixed top-right bell with unread badge (`['notifications']`, 30s refetch) + dropdown panel (severity-tagged, type icons, mark-read on click, mark-all, "View all" → `/notifications`). Mounted in `(app)/layout.tsx` |
 | `CommandPalette` | **Global ⌘P/Ctrl+P search (Phase C §3.4)** — modal command palette over `GET /api/v1/search`, debounced, keyboard-navigable (↑/↓/Enter/Esc), grouped cross-domain hits with deep links (`?activity=`, `?route=`, `?session=`). Opens via keyboard or sidebar Search button (`fittrack:command-palette` custom event). Mounted in `(app)/layout.tsx` |
+| `TrendArrow` | Trend direction arrow (↑/↓/→) with color coding — moved from `dashboard/helpers` |
+| `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page. Moved from `dashboard/` |
+
+### `analysis/` — Shared analysis components
+| Component | Purpose |
+|-----------|---------|
+| `AiAnalysisCard` | Shared AI analysis card — base component for all per-domain AI analysis cards (cycling, lifting, health, events). NEW |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -87,9 +94,7 @@
 | `ProfileEditor` | FTP/weight/LTHR + home lat/lng editor (feeds weather location) |
 | `RideAnalysisCard` | Post-ride analysis card |
 | `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
-| `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
-| `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) |
 | `WeightPanel` | **Body-weight management (Phase C §3.1)** — quick-add form (date + kg → `POST /metrics/weight`), 7-day rolling avg summary, editable/deletable history (Whoop entries read-only), invalidates `['weight-history']` + weight/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop) |
 
 ### `lifting/` — Lifting-specific
@@ -105,7 +110,7 @@
 | `ManualPRForm` | Manual PR entry form |
 | `WarmupTemplateManager` | Warmup template CRUD |
 | `VideoEmbed` | **§1.1** — R2 `<video>` player; resolves a presigned GET via `getVideoStreamUrl`, retries failed loads |
-| `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count |
+| `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count. Split from `VideoEmbed` |
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
 | `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage |
 
@@ -113,6 +118,9 @@
 | Component | Purpose |
 |-----------|---------|
 | `HealthAiAnalysisCard` | AI health analysis (HRV, sleep, recovery — on-demand Gemini) |
+| `HealthAlertsSection` | Health alert history with dismiss — moved from `dashboard/` |
+| `RespiratoryRateCard` | Respiratory rate trend card — moved from `dashboard/` |
+| `WhoopWeeklyCard` | Whoop weekly recovery/strain summary — moved from `dashboard/` |
 
 ### `routes/` — Route components
 | Component | Purpose |
@@ -133,7 +141,7 @@
 | `SegmentsCard` | **§3.13** Climb-segment browser in `RouteDetailPanel`'s Segments tab: `['route-segments', routeId]` (GET `/segments?route_id=`); per-segment PR time / times-ridden / best power with Strava-style Category badge (HC/1–4); expandable rows fetch `['segment-detail', id]` leaderboard-of-self (rank, PR flag, elapsed, avg W, VAM, date); "↻ Recompute" → `POST /routes/{id}/segments/recompute` |
 | `CompareRoutesModal` | Side-by-side route comparison — overlaid elevation profiles, surface breakdown, stats delta table |
 | `MapBrowseView` | Leaflet map with route markers for browse mode — click marker to select route |
-| `VirtualRouteList` | Virtualised list fallback for route browse (perf, no map) |
+| `DifficultyBadge` | Route difficulty badge (Easy/Moderate/Hard/Extreme from elevation/distance ratio) — extracted from `routeUtils` |
 
 ### `maps/` — Map components
 | Component | Purpose |
@@ -150,6 +158,8 @@
 | `CompareActivitiesModal` | Stream-overlay comparison modal — power/HR charts + stats delta table for 2 activities; **3D Side-by-Side tab** with linked playback (one master clock, Linked/Independent toggle) |
 | `Replay3D` | **§3.16 3D ride replay** — three.js scene (fat `Line2` path coloured by **speed/power/HR/grade** with per-mode legend, missing samples as slate gaps; growing ridden trail, heading-oriented rider cone, km-marker dots + sprite labels, live speed/power/HR/cadence/grade HUD chip, **orbit/chase/cockpit cameras** (bounded zoom, zoom-to-cursor, double-click focus, Reset/Top/Rider presets), scene-scale ground grid, play/scrub/tour-speeds (whole ride in ~2m/1m/30s)) fed by `buildReplay()` from `lib/replay` (result carries `lat0/lng0/altMin/zScale` frame for mesh alignment; points carry `cadence` + `grade`); **opt-in DEM terrain button** (off by default — lazy `terrain.ts` + `route3d.buildTerrainMesh`, swaps `GridHelper` for Copernicus bed, attribution footer); power stream lookup tries `watts` (Strava) then `power` (FIT); velocity lookup tries `velocity` (FIT) then `velocity_smooth` (Strava); `onElapsed` 10 fps callback drives the `3D ▸ m:ss` chip in the expanded activity view; optional `link: ReplayLink` for parent-owned linked playback (side-by-side compare); lazy-loaded via `next/dynamic` `ssr:false` so `three` stays out of the `/activities` first-load bundle; WebGL fallback message. `TelemetryStrip` (same file): SVG HR/power + expandable speed/cadence/altitude rows with synced playhead and live values; Coggan zone bands behind the power row when `ftpWatts` is passed. The expanded activity view marks the 3D playhead on the 2D stream chart via `ChartData.reference_line` (2 fps quantized). Pure math lives in `lib/replay.ts` (unit-tested in `src/__tests__/replay.test.ts`). Roadmap: `plans/3d-ride-view-enhancements.md` |
 | `StatsView` | Stats tab view — monthly distance bars, sport breakdown pie, weekly TSS trend |
+| `ActivityAiAnalysisCard` | Per-activity AI ride analysis (on-demand Gemini) — moved from `cycling/`, uses shared `AiAnalysisCard` |
+| `WeatherBadge` | Inline `🌧️ 12°C 💨 25km/h` indicator for activity rows (weather fields on `Activity`) — moved from `cycling/` |
 
 ### `calendar/` — Calendar page components
 | Component | Purpose |
@@ -161,7 +171,6 @@
 | Component | Purpose |
 |-----------|---------|
 | `RestDayBanner` | Rest-day suggestion banner — TSB/recovery/consecutive-days triptych + reasons list; shared by Today + Weekly tabs |
-| `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page |
 | `GoalsSection` | Compact top-3 active goals on dashboard — progress bars + "View all →" link to /goals |
 | `WeatherWidget` | Current-conditions card (`['weather-current']` query) — hero header of dashboard; prompt state when no home location set |
 | `DashboardRefresh` | **§3.15 stale-data UX** — "Last updated" timestamp (freshest `dataUpdatedAt` across the 16 dashboard queries, via `queryCache.subscribe`) + manual refresh button (`refetchQueries` by query-key prefix) + spinning "Syncing…" state (`useIsFetching` predicate). Hero header next to `WeatherWidget`; all dashboard queries also set `refetchOnWindowFocus: true` |
@@ -209,6 +218,7 @@
 | `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |
 | `healthPrefs.ts` | **§3.12 Health-alert preferences client** — `getHealthPreferences` / `updateHealthPreferences` (`GET/PUT /metrics/health-preferences`; types + `HEALTH_SIGNAL_LABELS` in `lib/api/types/health.ts`). Used by `settings/HealthAlertSettings` |
+| `routeUtils.ts` | Pure route utility functions (renamed from `.tsx`) — distance/elevation formatting, difficulty calculation, + re-exports `DifficultyBadge` |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 
 ### `lib/lifting/` — Live session logic
@@ -217,6 +227,12 @@
 | `useLiveSession.ts` | Local-first live-session state hook. Persists full state to localStorage (`fittrack-live-session`) on every change; background syncer lazily POSTs the remote session (idempotent via stable `liveKey`, accumulated sets carry `client_id`) on first flush and maps **real** remote ids from the echoed response (undo deletes remotely); pushes unsynced sets / pending deletes with per-set `client_id` idempotency; flush progress merged into freshest storage (`mergeWithStorage`) so mid-flight logging isn't clobbered, undo-race sets get queued for remote delete, and a mid-flush discard aborts the sync (`mergeWithStorage` → `null`); follows up with another flush pass if a mutation landed mid-flight; never blocks logging on network — failures stay queued and retry on `online`/`visibilitychange` and a 4s finish-retry effect that runs even with no `sessionId`; finish flow persists `endedAt` at request time (not sync time) and PATCHes local-tz `session_date` + `ended_at`; network calls read the token via `authFetchRef` so a refreshed backend token is picked up. `resumeSession(serverSession)` rebuilds an active state from `GET /sessions/active` (same-device recovery when local state was lost). Exposes `logSet`/`undoLastSet`/`requestFinish`/`discardSession`/`resumeSession` |
 
 | `reference.ts` | Session-start reference data: `buildLastSessionMap` (exercise → most recent sets, limited to the **last 12 weeks** so stale prescriptions never prefill as current), `recentExerciseNames`, `detectPr` (Brzycki e1RM vs stored PRs + today's sets), `brzycki1rm` |
+
+### `lib/hooks/` — Shared React hooks
+| File | Purpose |
+|------|---------|
+| `useAiAnalysis.ts` | Shared hook for on-demand Gemini AI analysis — fetches `/analysis/{domain}/{id}`, handles loading/error/analysis states. Used by all AI analysis cards (cycling, lifting, health, events) |
+
 ## Patterns
 
 - **Auth**: `useAuthFetch()` hook returns `{ authFetch, authFetchWithHeaders }` — injects JWT from session

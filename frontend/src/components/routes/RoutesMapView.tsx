@@ -13,14 +13,16 @@ export function RoutesMapView({
   routes,
   onSelectRoute,
   showHeatmap = false,
+  compareMode = false,
 }: {
   routes: RouteSummary[];
   onSelectRoute: (id: string) => void;
   showHeatmap?: boolean;
+  compareMode?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
-  const { selectedRouteId } = useRoutesStore();
+  const { selectedRouteId, compareRouteA, compareRouteB, toggleCompare } = useRoutesStore();
   const { token } = useAuthFetch();
 
   // Fetch home area heatmap data
@@ -119,6 +121,7 @@ export function RoutesMapView({
         const markerEl = document.createElement('div');
         markerEl.className = 'route-marker';
         const isSelected = selectedRouteId === route.id;
+        const isCompareSelected = compareRouteA === route.id || compareRouteB === route.id;
 
         let qualityHtml = '';
         if (route.quality_score != null) {
@@ -155,7 +158,7 @@ export function RoutesMapView({
         marker.bindPopup(
           `<div style="min-width:200px; font-size:13px;">` +
             `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">` +
-              `<strong>${route.name}</strong>` +
+             `<strong>${route.name}</strong>` +
               `${route.is_favorite ? ' ★' : ''}` +
               `${qualityHtml ? `<span style="margin-left:auto;font-size:10px;background:${route.quality_score! >= 70 ? '#22c55e' : '#64748b'};color:white;padding:1px 4px;border-radius:3px;">${Math.round(route.quality_score!)}</span>` : ''}` +
             `</div>` +
@@ -165,12 +168,17 @@ export function RoutesMapView({
               `${diffLabel}` +
             `</span><br/>` +
             `<span style="color:#64748b;font-size:11px">${route.is_loop ? '🔄 Loop' : '➡️ Point-to-point'}</span>` +
-            `${route.last_ridden_date ? `<br/><span style="color:#fbbf24;font-size:11px">🚴 ${new Date(route.last_ridden_date).toLocaleDateString()}</span>` : ''}` +
-          `</div>`,
-        );
+             `${route.last_ridden_date ? `<br/><span style="color:#fbbf24;font-size:11px">🚴 ${new Date(route.last_ridden_date).toLocaleDateString()}</span>` : ''}` +
+           `<br/><label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;color:#cbd5e1;cursor:pointer;"><input type="checkbox" ${isCompareSelected ? 'checked' : ''} style="width:12px;height:12px;cursor:pointer;" readonly/> Compare</label>` +
+           `</div>`,
+         );
 
         marker.on('click', () => {
-          onSelectRoute(route.id);
+          if (compareMode) {
+            toggleCompare(route.id);
+          } else {
+            onSelectRoute(route.id);
+          }
         });
       }
 
@@ -189,7 +197,7 @@ export function RoutesMapView({
     return () => {
       if (cleanup) cleanup();
     };
-  }, [routes, onSelectRoute, selectedRouteId, showHeatmap, heatmapData]);
+  }, [routes, onSelectRoute, selectedRouteId, compareRouteA, compareRouteB, showHeatmap, heatmapData, compareMode]);
 
   if (routes.length === 0) {
     return (

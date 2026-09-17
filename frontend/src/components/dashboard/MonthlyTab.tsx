@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { MetricCard } from './helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
 
 interface MonthlyTabProps {
   monthlySummary: MonthlySummaryItem[] | undefined;

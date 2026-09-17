@@ -7,6 +7,7 @@ import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { QualityBadge } from '@/components/routes/QualityBadge';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { formatDistance } from '@/lib/utils';
+import { useRoutesStore } from '@/lib/stores/routesStore';
 
 const RouteRow = ({
   route,
@@ -16,6 +17,8 @@ const RouteRow = ({
   onSelect: (route: RouteSummary) => void;
 }) => {
   const diff = computeDifficulty(route.elevation_gain_meters, route.distance_meters);
+  const { compareRouteA, compareRouteB, toggleCompare } = useRoutesStore();
+  const isCompareSelected = compareRouteA === route.id || compareRouteB === route.id;
 
   return (
     <Card
@@ -32,6 +35,19 @@ const RouteRow = ({
               {route.quality_score != null && (
                 <QualityBadge score={route.quality_score} size="sm" />
               )}
+              <label className="flex items-center justify-center w-4 h-4 rounded border border-surface-light bg-surface-light text-accent focus:ring-accent cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isCompareSelected}
+                  readOnly
+                  className="w-3 h-3"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCompare(route.id);
+                  }}
+                />
+                <span className="sr-only">Compare</span>
+              </label>
             </div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant={getSportBadgeVariant(route.sport_type)}>
@@ -43,7 +59,7 @@ const RouteRow = ({
                 <span
                   key={s.provider}
                   className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${
-                    PROVIDER_COLORS[s.provider] || 'bg-gray-500'
+                    PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >
                   <ProviderIcon provider={s.provider} size={12} /> {s.provider}
@@ -117,4 +133,3 @@ export function RoutesListView({
     </div>
   );
 }
-

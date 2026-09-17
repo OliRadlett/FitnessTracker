@@ -13,14 +13,15 @@ import { SkeletonRouteCard } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { RoutesMapView } from '@/components/routes/RoutesMapView';
-import { RoutesListView } from '@/components/routes/VirtualRouteList';
+import { RoutesListView } from '@/components/routes/RoutesListView';
 import { RoutesGridView } from '@/components/routes/RoutesGridView';
 import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
 import { MobileRouteDetailSheet } from '@/components/routes/MobileRouteDetailSheet';
 import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
+import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy } from 'lucide-react';
+import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RoutesPage() {
@@ -43,8 +44,12 @@ export default function RoutesPage() {
     setShowImportModal,
     showHeatmap,
     setShowHeatmap,
+    compareRouteA,
+    compareRouteB,
+    clearCompareRoutes,
   } = useRoutesStore();
 
+  const compareMode = compareRouteA !== null || compareRouteB !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Deep-link: select the route referenced by ?route=<id> on load
@@ -115,6 +120,21 @@ export default function RoutesPage() {
     queryKey: ['route', selectedRouteId],
     queryFn: () => getRoute(selectedRouteId!, token),
     enabled: !!selectedRouteId,
+    staleTime: 300_000,
+  });
+
+  // Fetch compare route data
+  const { data: compareRouteAData } = useQuery<RouteData>({
+    queryKey: ['route', compareRouteA],
+    queryFn: () => getRoute(compareRouteA!, token),
+    enabled: !!compareRouteA,
+    staleTime: 300_000,
+  });
+
+  const { data: compareRouteBData } = useQuery<RouteData>({
+    queryKey: ['route', compareRouteB],
+    queryFn: () => getRoute(compareRouteB!, token),
+    enabled: !!compareRouteB,
     staleTime: 300_000,
   });
 
@@ -239,21 +259,32 @@ export default function RoutesPage() {
                  {syncMutation.isPending ? 'Syncing...' : 'Sync'}
                </button>
 
-               {viewMode === 'map' && (
-                 <button
-                   onClick={() => setShowHeatmap(!showHeatmap)}
-                   aria-label="Toggle heatmap"
-                   className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
-                     showHeatmap
-                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                       : 'bg-surface-light hover:bg-surface-light/80 text-white'
-                   }`}
-                 >
-                   <MapPin className="w-4 h-4" />
-                   {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
-                 </button>
-               )}
-             </div>
+                {viewMode === 'map' && (
+                  <button
+                    onClick={() => setShowHeatmap(!showHeatmap)}
+                    aria-label="Toggle heatmap"
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                      showHeatmap
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        : 'bg-surface-light hover:bg-surface-light/80 text-white'
+                    }`}
+                  >
+                    <MapPin className="w-4 h-4" />
+                    {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
+                  </button>
+                )}
+
+                {compareMode && (
+                  <button
+                    onClick={() => clearCompareRoutes()}
+                    aria-label="Exit compare mode"
+                    className="px-3 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <X className="w-4 h-4" />
+                    Exit Compare
+                  </button>
+                )}
+              </div>
           </div>
         </div>
 
@@ -298,30 +329,31 @@ export default function RoutesPage() {
                  {viewMode === 'map' && (
                    <div className="p-4">
                      <Card>
-                       <RoutesMapView
-                         routes={routes}
-                         onSelectRoute={handleSelectRoute}
-                         showHeatmap={showHeatmap}
-                       />
+                        <RoutesMapView
+                          routes={routes}
+                          onSelectRoute={handleSelectRoute}
+                          showHeatmap={showHeatmap}
+                          compareMode={compareMode}
+                        />
                      </Card>
                    </div>
                 )}
 
                 {viewMode === 'list' && (
                   <div className="p-4">
-                    <RoutesListView
-                      routes={routes}
-                      onSelect={handleSelectRouteFromList}
-                    />
+                      <RoutesListView
+                        routes={routes}
+                        onSelect={handleSelectRouteFromList}
+                      />
                   </div>
                 )}
 
                 {viewMode === 'grid' && (
                   <div className="p-4">
-                    <RoutesGridView
-                      routes={routes}
-                      onSelect={handleSelectRouteFromList}
-                    />
+                      <RoutesGridView
+                        routes={routes}
+                        onSelect={handleSelectRouteFromList}
+                      />
                   </div>
                 )}
               </>
@@ -382,6 +414,15 @@ export default function RoutesPage() {
             />
           </div>
         </Modal>
+      )}
+
+      {/* Compare Routes Modal */}
+      {compareMode && (compareRouteAData || compareRouteBData) && (
+        <CompareRoutesModal
+          routeA={compareRouteAData!}
+          routeB={compareRouteBData!}
+          onClose={() => clearCompareRoutes()}
+        />
       )}
     </div>
   );

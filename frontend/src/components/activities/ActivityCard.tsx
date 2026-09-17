@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { WeatherBadge } from '@/components/cycling/WeatherBadge';
+import { WeatherBadge } from '@/components/activities/WeatherBadge';
 import { formatDistance, formatDuration } from '@/lib/utils';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';

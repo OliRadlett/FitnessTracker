@@ -24,7 +24,10 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { RestDayBanner } from './RestDayBanner';
-import { MetricCard, RespiratoryRateCard, formatDistance, formatDuration, ListSkeleton } from './helpers';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { formatDistance, formatDuration } from '@/lib/utils';
+import { ListSkeleton } from '@/components/dashboard/helpers';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
