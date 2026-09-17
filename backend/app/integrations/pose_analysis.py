@@ -37,7 +37,7 @@ def extract_pose_landmarks(
     """
     import cv2
     import mediapipe as mp
-    from mediapipe.tasks.python import vision, BaseOptions
+    from mediapipe.tasks.python import BaseOptions, vision
 
     segment_duration = trim_end - trim_start
     if segment_duration <= 0:
