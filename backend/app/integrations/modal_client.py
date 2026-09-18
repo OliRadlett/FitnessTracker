@@ -437,13 +437,32 @@ def process_video_on_modal(
                 _logger.warning("RPE estimation failed: %s", e)
 
             # ── Step 9: Upload trimmed video to R2 ────────────────────────
-            httpx.put(
-                presigned_put,
-                content=trimmed_bytes,
-                headers={"Content-Type": "video/mp4"},
-                timeout=120,
-            ).raise_for_status()
-            _logger.info("Uploaded trimmed video to R2: %s", upload_key)
+            # Retry with backoff: Modal→R2 uploads flake (ReadTimeouts), and
+            # failing the whole analysis AFTER pose/form/velocity/RPE all
+            # succeeded is pure waste. If the upload still fails, return the
+            # analysis with trimmed_r2_key=None (frontend falls back to the
+            # original video) instead of raising.
+            import time as _time
+
+            uploaded_key: str | None = upload_key
+            for _attempt in range(3):
+                try:
+                    httpx.put(
+                        presigned_put,
+                        content=trimmed_bytes,
+                        headers={"Content-Type": "video/mp4"},
+                        timeout=300,
+                    ).raise_for_status()
+                    _logger.info("Uploaded trimmed video to R2: %s", upload_key)
+                    break
+                except Exception as e:
+                    _logger.warning("Trimmed upload attempt %d failed: %s",
+                                    _attempt + 1, e)
+                    _time.sleep(5 * (_attempt + 1))
+            else:
+                _logger.warning("Trimmed upload failed permanently; "
+                                "returning analysis without trimmed video")
+                uploaded_key = None
 
             form_data = full_result.get("form", {})
             vel_data = full_result.get("velocity", {})
@@ -473,7 +492,7 @@ def process_video_on_modal(
                 return obj
 
             return _to_py({
-                "trimmed_r2_key": upload_key,
+                "trimmed_r2_key": uploaded_key,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
                 "trim_end_sec": round(trim_end, 2),
