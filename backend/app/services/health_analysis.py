@@ -118,7 +118,7 @@ def _hrv_trend_signal(hrv_values: list[float | None]) -> float:
 def _sleep_efficiency_signal(sleep_logs: list[SleepLog]) -> float:
     """Score 0-100 based on sleep efficiency using EWMA.
 
-    Uses exponential weighting (2-day half-life) so a single bad
+    Uses exponential weighting (2-day time constant) so a single bad
     night has meaningful impact on the score.
     """
     efficiencies = [
@@ -127,7 +127,7 @@ def _sleep_efficiency_signal(sleep_logs: list[SleepLog]) -> float:
     if not efficiencies:
         return 0.0
 
-    # EWMA with 2-day half-life
+    # EWMA with 2-day time constant
     alpha = 1 - math.exp(-1 / 2)
     ewma = efficiencies[0]
     for eff in efficiencies[1:]:
@@ -151,7 +151,11 @@ def _volume_spike_signal(
 
     Only considers prior weeks where the user was active (had any
     training activity). Requires ≥2 prior active weeks before firing.
-    Uses EWMA with 4-week half-life to reduce impact of old data.
+    Uses EWMA with 4-week time constant to reduce impact of old data.
+    ``prior_week_volumes`` is newest-first; the EWMA folds it oldest-first.
+    Note: with only a handful of prior weeks the oldest (seed) week keeps the
+    largest single weight, so this behaves as a slow-moving baseline rather
+    than a strongly recency-weighted average.
 
     Args:
         current_week_volume: Total lifting volume kg for the most recent 7 days.
@@ -167,10 +171,13 @@ def _volume_spike_signal(
     if len(active_volumes) < 2:
         return 0.0
 
-    # EWMA with 4-week half-life (alpha = 1 - e^(-1/half_life))
+    # EWMA with 4-week time constant (alpha = 1 - e^(-1/tau)).
+    # active_volumes is newest-first — reverse so the oldest week seeds and
+    # the most recent week gets the most weight.
+    ordered = active_volumes[::-1]  # oldest first
     alpha = 1 - math.exp(-1 / 4)
-    ewma = active_volumes[0]  # seed with first actual value
-    for vol in active_volumes[1:]:  # oldest first
+    ewma = ordered[0]  # seed with oldest actual value
+    for vol in ordered[1:]:
         ewma = alpha * vol + (1 - alpha) * ewma
 
     if ewma <= 0:
@@ -277,6 +284,33 @@ def _classify_severity(score: float) -> str:
     return "none"
 
 
+def _illness_composite(
+    recovery_s: float,
+    rr_s: float,
+    hrv_s: float,
+    sleep_s: float,
+    fatigue_s: float,
+    has_rr_data: bool,
+) -> float:
+    """Weighted illness composite (0-100).
+
+    Full weights: recovery 25% + RR 20% + HRV 25% + sleep 15% + fatigue 15%.
+    When respiratory-rate data is missing, its 20% is redistributed
+    proportionally over the remaining 80% (divide by 0.80 — signals are
+    already 0-100, so no further scaling).
+    """
+    if has_rr_data:
+        return (
+            recovery_s * 0.25
+            + rr_s * 0.20
+            + hrv_s * 0.25
+            + sleep_s * 0.15
+            + fatigue_s * 0.15
+        )
+    raw_total = recovery_s * 0.25 + hrv_s * 0.25 + sleep_s * 0.15 + fatigue_s * 0.15
+    return raw_total / 0.80
+
+
 # ── Main analysis functions ──────────────────────────────────────────────────
 
 
@@ -319,13 +353,17 @@ async def analyze_overtraining(
             },
         }
 
-    # Get TSB from activities
+    # Get TSB from activities. CTL (τ=42) needs a long EWMA warm-up from 0,
+    # so fetch a wide window and compute over 180 reported days (sliced to
+    # the last 7 below); a 7-day lookback seeds CTL at 0 and drives TSB
+    # spuriously negative for any sustained load.
     from app.services.cycling import compute_training_load, get_daily_tss
+    from app.services.cycling.training_load import CTL_WARMUP_DAYS
 
     end_date = date.today()
-    start_date = end_date - timedelta(days=49)
+    start_date = end_date - timedelta(days=180 + CTL_WARMUP_DAYS)
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)
-    load_data = compute_training_load(daily_tss, end_date, lookback_days=7)
+    load_data = compute_training_load(daily_tss, end_date, lookback_days=180)
     tsb_values = [d["tsb"] for d in load_data[-7:]]
 
     # Get sleep logs
@@ -406,7 +444,7 @@ async def analyze_injury_risk(
     """Analyze injury risk from volume spikes, rest days, and training patterns.
 
     Uses activity-aware weeks to distinguish rest weeks from pre-tracking zeros.
-    Volume spike uses EWMA with 4-week half-life and requires ≥2 prior active
+    Volume spike uses EWMA with 4-week time constant and requires ≥2 prior active
     weeks before firing.
 
     Always returns a dict with score, severity, title, description, and evidence.
@@ -646,20 +684,9 @@ async def analyze_illness(
     # Weighted composite — physiology focused
     # When respiratory rate data is missing, redistribute its weight
     has_rr_data = current_rr is not None and baseline_rr is not None
-    if has_rr_data:
-        score = (
-            recovery_illness_s * 0.25
-            + rr_s * 0.20
-            + hrv_s * 0.25
-            + sleep_s * 0.15
-            + fatigue_s * 0.15
-        )
-    else:
-        # Redistribute RR's 20% proportionally to the other 80%
-        raw_total = (
-            recovery_illness_s * 0.25 + hrv_s * 0.25 + sleep_s * 0.15 + fatigue_s * 0.15
-        )
-        score = raw_total / 0.80 * 100
+    score = _illness_composite(
+        recovery_illness_s, rr_s, hrv_s, sleep_s, fatigue_s, has_rr_data
+    )
 
     severity = _classify_severity(score)
 

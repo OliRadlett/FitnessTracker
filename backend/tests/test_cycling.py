@@ -5,14 +5,18 @@ from datetime import date, timedelta
 import pytest
 
 from app.services.cycling import (
+    calculate_hr_tss,
     calculate_intensity_factor,
     calculate_power_tss,
     calculate_vam,
     calculate_variability_index,
+    compute_decoupling_from_streams,
     compute_normalized_power,
     compute_training_load,
     estimate_ftp_from_power_curve,
+    estimate_ftp_from_power_curve_detailed,
 )
+from app.services.cycling.vo2max import _acsm_vo2max
 
 
 class TestCalculatePowerTSS:
@@ -87,13 +91,23 @@ class TestComputeNormalizedPower:
         assert compute_normalized_power([]) is None
 
     def test_all_zeros(self):
-        """All zeros → None (cleaned out)."""
-        assert compute_normalized_power([0.0] * 60) is None
+        """All zeros → 0.0 (coasting is valid data, not missing data)."""
+        assert compute_normalized_power([0.0] * 60) == pytest.approx(0.0)
 
     def test_mixed_with_zeros(self):
-        """Zeros filtered out; if < 30 remain → None."""
+        """Zeros kept: 40 zeros + 20×200W over 30s windows → ~82.4W."""
         data = [0.0] * 40 + [200.0] * 20
-        assert compute_normalized_power(data) is None
+        assert compute_normalized_power(data) == pytest.approx(82.4, abs=0.5)
+
+    def test_coasting_not_dropped(self):
+        """5 min @250W + 5 min @0W → NP ≈ 208.5, not 250 (zeros retained)."""
+        data = [250.0] * 300 + [0.0] * 300
+        assert compute_normalized_power(data) == pytest.approx(208.5, abs=0.5)
+
+    def test_none_and_nonfinite_dropped(self):
+        """None/NaN/inf samples are discarded; real zeros are kept."""
+        data = [None, float("nan"), float("inf"), 200.0] * 40
+        assert compute_normalized_power(data) == pytest.approx(200.0, abs=0.1)
 
 
 class TestCalculateVAM:
@@ -110,6 +124,49 @@ class TestCalculateVAM:
 
     def test_zero_elevation(self):
         assert calculate_vam(0.0, 3600) is None
+
+
+class TestCalculateHrTSS:
+    """hrTSS is quadratic in intensity (TrainingPeaks convention)."""
+
+    def test_quadratic_intensity(self):
+        """1h at avg 160 / threshold 170 / rest 50 → (110/120)²×100 ≈ 84.0."""
+        assert calculate_hr_tss(3600, 160.0, 170.0, 50.0) == pytest.approx(
+            84.0, abs=0.1
+        )
+
+    def test_at_threshold(self):
+        """1h at threshold HR → hrTSS = 100."""
+        assert calculate_hr_tss(3600, 170.0, 170.0, 50.0) == pytest.approx(
+            100.0, abs=0.1
+        )
+
+    def test_guards(self):
+        assert calculate_hr_tss(3600, 160.0, 50.0, 60.0) == 0.0  # threshold ≤ rest
+        assert calculate_hr_tss(3600, 55.0, 170.0, 60.0) == 0.0  # avg ≤ rest
+
+
+class TestDecoupling:
+    """Pw:HR decoupling uses the ratio of half-averages."""
+
+    def test_flat_ride_zero_decoupling(self):
+        r = compute_decoupling_from_streams([200.0] * 120, [100.0] * 120)
+        assert r["decoupling_pct"] == pytest.approx(0.0)
+        assert r["first_half_ratio"] == pytest.approx(2.0)
+        assert r["classification"] == "Excellent"
+
+    def test_ratio_of_averages(self):
+        """200W/100bpm then 180W/100bpm → (2.0−1.8)/2.0 = 10%."""
+        r = compute_decoupling_from_streams(
+            [200.0] * 120 + [180.0] * 120, [100.0] * 240
+        )
+        assert r["decoupling_pct"] == pytest.approx(10.0)
+        assert r["second_half_ratio"] == pytest.approx(1.8)
+        assert r["classification"] == "Aerobic Deficiency"
+
+    def test_insufficient_data(self):
+        assert compute_decoupling_from_streams([200.0] * 30, [100.0] * 30) is None
+        assert compute_decoupling_from_streams([], []) is None
 
 
 class TestEstimateFTPFromPowerCurve:
@@ -145,6 +202,36 @@ class TestEstimateFTPFromPowerCurve:
         ftp = estimate_ftp_from_power_curve(curve)
         assert ftp is not None
         assert 150 < ftp < 220  # Reasonable range
+
+    def test_rich_curve_gates_low_confidence_tiers(self):
+        """Crude 5-min/Riegel extras must not drag the blend far above gold."""
+        detailed = estimate_ftp_from_power_curve_detailed(
+            {300: 380.0, 600: 340.0, 1200: 310.0, 1800: 300.0, 3600: 285.0}
+        )
+        assert detailed is not None
+        assert detailed.method == "20-min × 0.95"
+        assert detailed.ftp == pytest.approx(294.5, abs=8.0)
+        # Confidence reflects the blend, not the max tier.
+        assert detailed.confidence < 1.0
+
+    def test_five_minute_factor(self):
+        """Lone 5-min signal uses ×0.85 and stays low-confidence."""
+        detailed = estimate_ftp_from_power_curve_detailed({300: 350.0})
+        assert detailed is not None
+        assert detailed.ftp == pytest.approx(299.0, abs=5.0)
+        assert detailed.confidence <= 0.5
+
+
+class TestAcsmVo2max:
+    """ACSM leg ergometry: 1.8 × (kgm/min)/kg + 7 with 1 W = 6.12 kgm/min."""
+
+    def test_coefficient(self):
+        """300 W @75 kg → 11.016×300/75 + 7 = 51.064."""
+        assert _acsm_vo2max(300.0, 75.0) == pytest.approx(51.064, abs=0.001)
+
+    def test_rest_term(self):
+        """Zero watts still yields the 7 ml/kg/min intercept."""
+        assert _acsm_vo2max(0.0, 75.0) == pytest.approx(7.0)
 
 
 class TestComputeTrainingLoad:
@@ -184,3 +271,20 @@ class TestComputeTrainingLoad:
         assert last["ctl"] > 80
         # ATL (7-day EWMA) should be close to 100
         assert last["atl"] > 90
+
+    def test_steady_load_converges_with_warmup(self):
+        """A year at 100 TSS/day → CTL ≈ 100 and TSB ≈ 0 (warmed-up EWMA)."""
+        today = date.today()
+        daily_tss = {today - timedelta(days=i): 100.0 for i in range(365)}
+        result = compute_training_load(daily_tss, end_date=today, lookback_days=90)
+        assert len(result) == 91  # warm-up days are not returned
+        last = result[-1]
+        assert last["ctl"] == pytest.approx(100.0, abs=1.0)
+        assert last["tsb"] == pytest.approx(0.0, abs=1.0)
+
+    def test_warmup_output_length_unchanged(self):
+        """Internal warm-up must not change the reported window length."""
+        today = date.today()
+        result = compute_training_load({}, end_date=today, lookback_days=30)
+        assert len(result) == 31
+        assert all(e["ctl"] == pytest.approx(0.0, abs=0.01) for e in result)

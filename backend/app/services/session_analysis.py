@@ -291,6 +291,10 @@ async def analyze_ride(
     hr_data = _extract_stream_data(hr_stream)
     altitude_data = _extract_stream_data(altitude_stream)
 
+    # Normalized power — computed once and reused by the VI/IF/EF sections
+    # below (and exposed in the result for cached ride contexts).
+    np_val = compute_normalized_power(power_data) if power_data else None
+
     # 1. Power zones (requires FTP)
     power_zones = []
     if power_data:
@@ -403,7 +407,6 @@ async def analyze_ride(
     # 4. Variability index (NP / AP)
     variability_index = None
     if power_data:
-        np_val = compute_normalized_power(power_data)
         if np_val and activity.average_power:
             variability_index = calculate_variability_index(
                 np_val, activity.average_power
@@ -412,7 +415,6 @@ async def analyze_ride(
     # 5. Intensity factor (NP / FTP)
     intensity_factor = None
     if power_data:
-        np_val = compute_normalized_power(power_data)
         if np_val:
             # Get FTP from profile
             if not profile:
@@ -445,7 +447,6 @@ async def analyze_ride(
     # 7. Efficiency factor (NP / avg HR)
     efficiency_factor = None
     if power_data:
-        np_val = compute_normalized_power(power_data)
         if np_val and activity.average_heartrate and activity.average_heartrate > 0:
             efficiency_factor = round(np_val / activity.average_heartrate, 2)
 
@@ -521,6 +522,7 @@ async def analyze_ride(
         }
 
     return {
+        "normalized_power": np_val,
         "power_zones": power_zones,
         "power_distribution": power_distribution,
         "pacing_analysis": pacing_analysis

@@ -14,6 +14,7 @@ from app.services.adaptive import (
     RECOVERY_LOW,
     TSB_FATIGUE_THRESHOLD,
     TSB_OVERLOAD_THRESHOLD,
+    _worst_alert_severity,
     derive_adaptive_advice,
 )
 
@@ -152,3 +153,19 @@ def test_no_side_effects_on_inputs():
     derive_adaptive_advice(tsb=tsb, recovery=rec)
     assert tsb == -40.0
     assert rec == 30.0
+
+
+# ── Alert severity ranking ─────────────────────────────────────────────
+
+
+def test_worst_alert_severity_uses_rank_not_alphabet():
+    # Plain max() would return "warning" here ("critical" < "warning").
+    assert _worst_alert_severity(["critical", "warning"]) == "critical"
+    assert _worst_alert_severity(["warning", "info"]) == "warning"
+    assert _worst_alert_severity(["info"]) == "info"
+
+
+def test_worst_alert_severity_ignores_unknown_and_empty():
+    assert _worst_alert_severity(["critical", "bogus", None]) == "critical"
+    assert _worst_alert_severity([]) is None
+    assert _worst_alert_severity([None]) is None

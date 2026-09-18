@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24 | Total: 88 bugs | Fixed: 78 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
+> Generated: 2026-08-24, updated 2026-09-18 | Total: 88 bugs | Fixed: 78 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
 
 ---
 
@@ -471,7 +471,7 @@
 - **Status:** FIXED
 - **File:** `backend/app/services/merge_service.py:135`, `backend/app/services/route_service.py:109`, `backend/app/config.py:72-76`
 - **Issue:** Activity merge: date proximity weighted 50% (too dominant). Route merge: proximity weighted 40% (too dominant) — a >1km start-point difference caps score at 0.60 (the threshold). Near-identical rides from different devices treated as separate.
-- **Fix:** Activity weights: date 40%, sport 20%, duration 20%, distance 20%. Route weights: proximity 25%, distance 25%, name 15%, shape 35%. Added 1-2km proximity tier (0.15). Lowered both thresholds from 0.60 to 0.55.
+- **Fix:** Activity weights: date 40%, sport 20%, duration 20%, distance 20%. Route weights: proximity 20%, distance 20%, name 10%, shape 50% (see `route_service.py` — the 25/25/15/35 values in the original fix note were superseded). Added 1-2km proximity tier (0.15). Lowered both thresholds from 0.60 to 0.55.
 
 ---
 

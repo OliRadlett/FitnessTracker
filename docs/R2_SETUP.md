@@ -43,7 +43,7 @@ short alphanumeric id, in the top-right account area.
 ## 4. Set the env vars
 
 Add these to **both** `.env` (local dev) and the Droplet's `.env`
-(`~/docker/fittrack/.env`), then restart:
+(`/opt/fitness-tracker/.env`), then restart:
 
 ```dotenv
 R2_ACCOUNT_ID=your_account_id_16_chars

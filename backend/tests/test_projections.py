@@ -154,17 +154,21 @@ class TestProjectToTarget:
         )
         assert result is None
 
-    def test_already_past_target_returns_none(self):
-        """Current value already past target → negative remaining → None."""
+    def test_already_past_target_projects_today(self):
+        """Current value already past target → zero days left (not None, so
+        the badge reads On Track instead of Unlikely)."""
+        today = date(2026, 8, 25)
         result = project_to_target(
             slope_per_day=0.2,
             intercept=10.0,
-            current_date=date(2026, 8, 25),
+            current_date=today,
             current_value=35.0,
             target_value=30.0,
             direction="increase",
         )
-        assert result is None
+        assert result is not None
+        assert result["days_remaining"] == 0
+        assert result["projected_date"] == today
 
 
 # ── success_badge ────────────────────────────────────────────────────────────

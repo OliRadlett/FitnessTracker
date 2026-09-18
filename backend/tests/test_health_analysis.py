@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.services.health_analysis import (
     _hrv_trend_signal,
+    _illness_composite,
     _recovery_signal,
     _rest_day_signal,
     _sleep_efficiency_signal,
@@ -72,7 +73,7 @@ class TestRecoverySignal:
 class TestVolumeSpikeSignal:
     """Volume spike: percentage increase over prior weeks (EWMA).
 
-    Uses EWMA with 4-week half-life. Need enough prior weeks for
+    Uses EWMA with 4-week time constant. Need enough prior weeks for
     EWMA to converge close to the steady-state value.
     """
 
@@ -114,6 +115,45 @@ class TestVolumeSpikeSignal:
             _volume_spike_signal(200, [100, 100, 100, 100], [True, False, False, False])
             == 0.0
         )
+
+    def test_recency_weighting_newest_first(self):
+        """Priors are newest-first: a ramp [200,150,100,100,100] with current
+        180 is a ~38% spike over the recency-weighted baseline → 70.
+
+        (The old code consumed them oldest-first and reported 40.)
+        """
+        assert (
+            _volume_spike_signal(180, [200, 150, 100, 100, 100], [True] * 5) == 70.0
+        )
+
+    def test_declining_history_does_not_false_fire(self):
+        """Falling back toward baseline is not a spike."""
+        assert (
+            _volume_spike_signal(100, [120, 150, 200, 200, 200], [True] * 5) == 0.0
+        )
+
+
+class TestIllnessComposite:
+    """RR-missing redistribution renormalises to 0-100 (no ×100)."""
+
+    def test_rr_missing_single_signal(self):
+        """One signal at 40 with no RR data → 40×0.25/0.80 = 12.5 (info)."""
+        assert _illness_composite(40.0, 0.0, 0.0, 0.0, 0.0, False) == (
+            12.5
+        )
+
+    def test_rr_missing_all_max(self):
+        assert _illness_composite(100.0, 0.0, 100.0, 100.0, 100.0, False) == (
+            100.0
+        )
+
+    def test_full_weights(self):
+        assert _illness_composite(100.0, 100.0, 100.0, 100.0, 100.0, True) == (
+            100.0
+        )
+
+    def test_all_quiet(self):
+        assert _illness_composite(0.0, 0.0, 0.0, 0.0, 0.0, False) == 0.0
 
 
 class TestRestDaySignal:

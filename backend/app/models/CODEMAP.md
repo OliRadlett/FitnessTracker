@@ -9,7 +9,7 @@
 | `lifting.py` | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `WarmupTemplate`, `WarmupTemplateStep`, `LiftVideo` | Session has many Sets; Template has many Steps; LiftVideo links a user to LiftingSession + PersonalRecord (§1.1 strength-video system, migration 047). Live-sync idempotency keys: `LiftingSession.live_key` (unique, nullable) + `LiftingSet.client_id` (unique per session, nullable) — NULL = manual entry, exempt. **All models are registered in `app/models/__init__.py`** — a model class without an import there won't be created by `Base.metadata.create_all()` (e.g. `Exercise` and `LiftVideo` were both broken the same way) |
 | `route.py` | `Route`, `RouteSource` | Route has many Sources; has many Activities. Tags via secondary link. Quality via FK. `is_favorite`, `quality_score` (denormalized for fast filtering) |
 | `route_organize.py` | `RouteTag`, `RouteTagging`, `RouteCollection`, `RouteCollectionItem`, `RouteQuality` | Tags flat multi-assign via route_taggings. Collections manual + smart (rules JSONB). Quality per-route scores computed nightly |
-| `cycling.py` | `CyclingProfile`, `FtpHistory` | One profile per user; FTP changes tracked over time |
+| `cycling.py` | `CyclingProfile`, `FtpHistory`, `CyclingPowerRecord` | One profile per user; FTP changes tracked over time; power records (best-power snapshots for lifetime PBs) |
 | `daily_metric.py` | `DailyMetric` | Recovery, HRV, strain per day per source |
 | `sleep.py` | `SleepLog` | Sleep stages, efficiency |
 | `health_alert.py` | `HealthAlert` | Overtraining/illness/injury with JSONB evidence |
@@ -21,5 +21,10 @@
 | `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |
 | `webhook_event.py` | `StravaWebhookEvent` | Async Strava webhook queue: raw payload, received_at, processed_at, attempts, status (pending/processed/failed), error. Drained by `process_strava_webhook_events` Celery task |
-| `notification.py` | `Notification` | In-app notifications: type (health_alert/pr/goal_milestone/plan_reminder), title/body, severity, link, read/read_at, dedup_key (partial unique (user_id, dedup_key)), `payload` Python attr → DB column `metadata` (SQLAlchemy reserves the attr name). Per-user toggles live in `User.notification_preferences` (JSONB) |
+| `notification.py` | `Notification` | In-app notifications: type (11 types: health_alert/pr/goal_milestone/plan_reminder/connection_reauth/ftp_stale/event_result/race_day/event_countdown/taper_start/ride_weather), title/body, severity, link, read/read_at, dedup_key (partial unique (user_id, dedup_key)), `payload` Python attr → DB column `metadata` (SQLAlchemy reserves the attr name). Per-user toggles live in `User.notification_preferences` (JSONB) |
 | `push.py` | `PushSubscription` | §3.8 Web Push device subscription: user_id + endpoint (unique pair), p256dh/auth base64url keys, `consecutive_failures`, `last_error_at`, `created_at`. Delivered by `services/push.send_push_to_user` (VAPID), pruned on 410/404 or after MAX failures (5) |
+| `segment.py` | `Segment`, `SegmentEffort` | §3.13 ride climb segments (`Segment`: route-scoped climb with category/length/gain) + per-ride efforts (`SegmentEffort`: elapsed/power/HR/VAM, PR flags). Rebuilt by `services/segments.py` |
+| `nutrition.py` | `RideFuelPlan` | Ride fuel plans: targets + timed schedule + logged actuals per activity |
+| `rpe_calibration.py` | `RpeCalibration` | Personal RPE calibration (lifting-video intelligence: predicted vs reported RPE) |
+| `lift_video_analysis.py` | `LiftVideoAnalysis` | Lifting-video intelligence results (form/VBT/rest/consistency, analysis_depth) per `LiftVideo` |
+| `cross_domain.py` | `CrossDomainInsight` | Modal cross-domain insights (sleep-performance, cross-sport fatigue, race retrospective), stored weekly |

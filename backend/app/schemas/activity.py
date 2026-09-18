@@ -207,6 +207,7 @@ class PacingSegment(BaseModel):
 
 class RideAnalysisResponse(BaseModel):
     model_config = {"from_attributes": True}
+    normalized_power: float | None = None
     power_zones: list[PowerZoneDistribution]
     power_distribution: list[PowerHistogramBucket]
     pacing_analysis: dict  # segments list + power_variability

@@ -20,6 +20,7 @@ POWER_DURATION_BUCKETS = [
     (60, "1min"),
     (120, "2min"),
     (300, "5min"),
+    (480, "8min"),
     (600, "10min"),
     (1200, "20min"),
     (1800, "30min"),
@@ -50,7 +51,8 @@ def estimate_ftp_from_power_curve(power_curve: dict[int, float]) -> float | None
     Uses a tiered approach with established multipliers:
     1. Best 20-min power × 0.95 (gold standard)
     2. Best 8-min power × 0.90 × 0.95 (well-established fallback)
-    3. Best 5-min power × 0.95 (rough estimate)
+    3. Best 5-min power × 0.85 (rough estimate — 5-min power is
+       typically ~115-120% of FTP)
     4. Best 60-min power (directly equals FTP by definition)
 
     Also includes Riegel extrapolation from shorter efforts as an
@@ -119,9 +121,10 @@ def estimate_ftp_from_power_curve_detailed(
             (power_curve[600] * 0.92 * FTP_FACTOR, 0.7, 600, "10-min × 0.92 × 0.95")
         )
 
-    # 5-min power × 0.95 (rough estimate, lower confidence)
+    # 5-min power × 0.85 (rough estimate, lower confidence — 5-min best
+    # power sits well above FTP, so the 0.95 FTP-test factor does not apply)
     if 300 in power_curve and power_curve[300] > 0:
-        estimates.append((power_curve[300] * FTP_FACTOR, 0.5, 300, "5-min × 0.95"))
+        estimates.append((power_curve[300] * 0.85, 0.5, 300, "5-min × 0.85"))
 
     # Riegel extrapolation from shorter efforts as additional signals
     riegel_sources = [
@@ -147,20 +150,30 @@ def estimate_ftp_from_power_curve_detailed(
     if not estimates:
         return None
 
-    # Weighted average
-    total_weight = sum(c for _, c, _, _ in estimates)
+    # Gate low-confidence tiers: when a high-confidence signal exists, crude
+    # short-effort extrapolations only add upward bias, so keep estimates
+    # within 0.3 of the best available confidence. (A lone 5-min/Riegel
+    # signal still yields an estimate — just flagged low-confidence.)
+    best_conf = max(c for _, c, _, _ in estimates)
+    gated = [e for e in estimates if e[1] >= best_conf - 0.3]
+
+    # Weighted average of the gated estimates
+    total_weight = sum(c for _, c, _, _ in gated)
     if total_weight <= 0:
         return None
 
-    weighted_ftp = sum(ftp * c for ftp, c, _, _ in estimates) / total_weight
+    weighted_ftp = sum(ftp * c for ftp, c, _, _ in gated) / total_weight
 
     # Sanity check: FTP should be reasonable (50-600W for most humans)
     if weighted_ftp < 50 or weighted_ftp > 600:
         return None
 
-    # Overall confidence: based on best available data duration
-    best_estimate = max(estimates, key=lambda e: e[1])  # highest confidence
-    overall_confidence = round(best_estimate[1], 2)
+    # Overall confidence: confidence-weighted mean of the estimates actually
+    # blended — reporting the max would overstate certainty in the blend.
+    overall_confidence = round(
+        sum(c * c for _, c, _, _ in gated) / total_weight, 2
+    )
+    best_estimate = max(gated, key=lambda e: e[1])  # highest confidence
 
     # Determine primary method (highest confidence)
     primary_method = best_estimate[3]
@@ -291,6 +304,9 @@ async def compute_power_curve_from_streams(
         )
         for stream in result.scalars().all():
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+            # Read resolution before expunging: bucket durations are seconds,
+            # so a duration is duration/resolution samples (no-op at 1 Hz).
+            res = stream.resolution or 1
             # Release the ORM row (and its JSONB payload) now that the plain
             # floats are extracted; only objects loaded by this function are
             # expunged, so callers holding their own rows are unaffected.
@@ -298,8 +314,12 @@ async def compute_power_curve_from_streams(
             if not data or len(data) < 2:
                 continue
 
-            # Filter out None/zero values and use only positive power
-            power_data = [float(p) for p in data if p is not None and float(p) > 0]
+            # Drop only None/non-finite samples. Zero watts (coasting) is
+            # valid data: excluding it compresses the timeline and inflates
+            # best-power averages (and hence FTP/VO2max estimates).
+            power_data = [
+                float(p) for p in data if p is not None and math.isfinite(float(p))
+            ]
             n = len(power_data)
             if n < 2:
                 continue
@@ -307,9 +327,10 @@ async def compute_power_curve_from_streams(
             # §5.4 single-pass prefix-sum rolling average per bucket; sorted_buckets
             # is ascending so we can stop early once a window exceeds the data.
             for duration_sec, _ in sorted_buckets:
-                if duration_sec > n:
+                window = max(1, round(duration_sec / res))
+                if window > n:
                     break  # remaining buckets are even longer
-                best_avg = best_power_rolling_average(power_data, duration_sec)
+                best_avg = best_power_rolling_average(power_data, window)
                 if best_avg is None:
                     continue
                 if duration_sec not in best_power or best_avg > best_power[duration_sec]:
@@ -373,15 +394,19 @@ async def backfill_ftp_estimates(
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
             if not data or len(data) < 2:
                 continue
-            power_data = [float(p) for p in data if p is not None and float(p) > 0]
+            res = stream.resolution or 1
+            power_data = [
+                float(p) for p in data if p is not None and math.isfinite(float(p))
+            ]
             if len(power_data) < 2:
                 continue
 
             for duration_sec, _ in POWER_DURATION_BUCKETS:
-                if duration_sec > len(power_data):
+                window = max(1, round(duration_sec / res))
+                if window > len(power_data):
                     continue
                 # §5.4 single-pass prefix-sum window max (shared with read path).
-                best_avg = best_power_rolling_average(power_data, duration_sec)
+                best_avg = best_power_rolling_average(power_data, window)
                 if best_avg is None:
                     continue
                 if (
@@ -409,7 +434,7 @@ async def backfill_ftp_estimates(
         elif 480 in best_power:
             source_method = f"8-min: {best_power[480]} W × 0.855"
         elif 300 in best_power:
-            source_method = f"5-min: {best_power[300]} W × 0.95"
+            source_method = f"5-min: {best_power[300]} W × 0.85"
 
         entry = FtpHistory(
             user_id=user_id,
