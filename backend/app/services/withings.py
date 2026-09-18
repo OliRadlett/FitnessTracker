@@ -59,6 +59,29 @@ RANGE_VALIDATORS: dict[str, tuple[float, float]] = {
 # but still stored.
 WEIGHT_DELTA_FLAG_KG = 3.0
 
+# Initial import window for brand-new connections (no watermark yet).
+# Withings rejects unbounded getmeas calls (API status 503), so a bounded
+# window is mandatory — not just an optimization.
+INITIAL_SYNC_DAYS = 365
+
+
+def resolve_startdate(
+    last_synced_at: datetime | None,
+    startdate: int | None,
+    now: int | None = None,
+) -> int:
+    """Resolve the getmeas ``startdate`` (unix timestamp).
+
+    Priority: explicit caller value → watermark minus 24h overlap →
+    initial-import window (new connections).
+    """
+    if startdate is not None:
+        return startdate
+    ref = now if now is not None else int(datetime.now(UTC).timestamp())
+    if last_synced_at is not None:
+        return int((last_synced_at - timedelta(hours=24)).timestamp())
+    return ref - INITIAL_SYNC_DAYS * 86400
+
 
 def decode_measure_value(value: float, unit: int) -> float:
     """Decode Withings value encoding: actual = value * 10^unit."""
@@ -183,8 +206,10 @@ async def sync_withings_measurements(
     """Fetch Withings scale measurements and upsert into WeightLog.
 
     Incremental: when *startdate* is omitted, resumes from the connection's
-    ``last_synced_at`` watermark minus 24h overlap. The caller owns the
-    watermark update + commit (matches the Strava/Whoop task pattern).
+    ``last_synced_at`` watermark minus 24h overlap, or imports the last
+    ``INITIAL_SYNC_DAYS`` days for brand-new connections (Withings rejects
+    unbounded queries). The caller owns the watermark update + commit
+    (matches the Strava/Whoop task pattern).
 
     Returns the list of upserted WeightLog records.
     """
@@ -194,9 +219,7 @@ async def sync_withings_measurements(
 
     connection = await refresh_if_needed(db, connection)
 
-    if startdate is None and connection.last_synced_at:
-        overlap = connection.last_synced_at - timedelta(hours=24)
-        startdate = int(overlap.timestamp())
+    startdate = resolve_startdate(connection.last_synced_at, startdate)
     if enddate is None:
         enddate = int(time.time())
 
@@ -208,6 +231,15 @@ async def sync_withings_measurements(
         )
     except Exception as e:
         logger.warning(f"Failed to fetch Withings measurements for user {user_id}: {e}")
+        return []
+
+    if not isinstance(payload, dict) or payload.get("status", 0) != 0:
+        # Withings signals errors in-body (e.g. 503 = unbounded/too-broad
+        # query) while still returning HTTP 200 — never silently swallow.
+        status = payload.get("status") if isinstance(payload, dict) else None
+        logger.warning(
+            f"Withings getmeas rejected for user {user_id}: api_status={status}"
+        )
         return []
 
     body = payload.get("body", {}) if isinstance(payload, dict) else {}

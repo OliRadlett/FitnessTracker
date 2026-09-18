@@ -2,9 +2,11 @@
 
 from app.integrations.withings_client import withings_client
 from app.services.withings import (
+    INITIAL_SYNC_DAYS,
     RANGE_VALIDATORS,
     decode_measure_value,
     group_measurements,
+    resolve_startdate,
 )
 
 
@@ -197,3 +199,22 @@ class TestNormalizeTokenResponse:
     def test_error_payload_untouched(self):
         raw = {"status": 286, "error": "Invalid code"}
         assert withings_client.normalize_token_response(raw) == raw
+
+
+class TestResolveStartdate:
+    def test_explicit_value_wins(self):
+        assert resolve_startdate(None, 12345, now=99999) == 12345
+
+    def test_watermark_minus_24h_overlap(self):
+        from datetime import UTC, datetime, timedelta
+
+        watermark = datetime(2024, 9, 16, 12, 0, tzinfo=UTC)
+        expected = int((watermark - timedelta(hours=24)).timestamp())
+        assert resolve_startdate(watermark, None) == expected
+
+    def test_new_connection_gets_bounded_initial_window(self):
+        # Regression test: unbounded getmeas is rejected by Withings
+        # (API status 503), so new connections must use a bounded window.
+        now = 1726444800
+        start = resolve_startdate(None, None, now=now)
+        assert start == now - INITIAL_SYNC_DAYS * 86400
