@@ -41,7 +41,7 @@
 | `projections.ts` | `/api/v1/projections/` | `getGoalProjection` (`GET /goal/{id}`) — types in `types/projections.ts`: `GoalProjectionResponse`, `TrendInfo`, `ProjectionPoint` |
 | `exercises.ts` | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` — DB-backed exercise library CRUD (`types`: `ExerciseEntry`, `ExerciseDetail`) |
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
-| `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD (types via `types/health.ts` `WeightEntry` incl. `id`/`WeightHistoryResponse`) |
+| `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD with optional body-composition payload (`WeightEntryPayload`: body_fat_% + muscle; types via `types/health.ts` `WeightEntry` incl. composition fields/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
 | `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
 | `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download). Types in `types/export.ts` |
@@ -95,7 +95,7 @@
 | `RideAnalysisCard` | Post-ride analysis card |
 | `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
 | `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
-| `WeightPanel` | **Body-weight management (Phase C §3.1)** — quick-add form (date + kg → `POST /metrics/weight`), 7-day rolling avg summary, editable/deletable history (Whoop entries read-only), invalidates `['weight-history']` + weight/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop) |
+| `WeightPanel` | **Body-weight management (Phase C §3.1)** + Withings composition — quick-add form (date + kg → `POST /metrics/weight`, optional body-fat %/muscle via +Composition toggle), 7-day rolling avg summary, source badges (Withings teal / Whoop purple / Manual gray; non-manual entries read-only), expandable per-entry composition grid, invalidates `['weight-history']` + weight/body-comp/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop) |
 | `PowerModelSection` | **Modal power models** — CP/W′/R² + personalized VO2max + adaptive CTL/ATL taus (`['power-model']` query, GET `/cycling/power-model`); empty state notes weekly Sunday fitting |
 | `WeatherAnalysisSection` | **Modal weather-performance** — power-vs-temp, wind penalties, decoupling threshold, HR drift, insight bullets (`['weather-analysis']` query, GET `/cycling/weather-analysis`); rendered on `/cycling` after the power model |
 

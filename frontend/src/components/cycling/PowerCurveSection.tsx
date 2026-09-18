@@ -64,6 +64,13 @@ export function PowerCurveSection({
     enabled: !!token,
   });
 
+  const { data: chartBodyComp } = useQuery<ChartData>({
+    queryKey: ['chart-body-comp', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/body_composition_trend?days=90'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
   // Power vs HR chart data
   const powerVsHrChart: ChartData | null = powerVsHr?.data?.length
     ? {
@@ -229,6 +236,24 @@ export function PowerCurveSection({
                 No weight data available.{' '}
                 <Link href="/settings" className="text-accent hover:text-accent-hover underline">Log weight in settings</Link>{' '}
                 or sync from Whoop.
+              </>
+            }
+            height={280}
+          />
+        </Card>
+
+        {/* Body Composition (Withings) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Body Composition (90 days)</CardTitle>
+          </CardHeader>
+          <ChartBody
+            data={chartBodyComp}
+            emptyMessage={
+              <>
+                No body composition data yet.{' '}
+                <Link href="/settings" className="text-accent hover:text-accent-hover underline">Connect Withings</Link>{' '}
+                to track body fat, muscle mass, and hydration.
               </>
             }
             height={280}

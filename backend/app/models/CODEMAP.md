@@ -13,7 +13,7 @@
 | `daily_metric.py` | `DailyMetric` | Recovery, HRV, strain per day per source |
 | `sleep.py` | `SleepLog` | Sleep stages, efficiency |
 | `health_alert.py` | `HealthAlert` | Overtraining/illness/injury with JSONB evidence |
-| `weight.py` | `WeightLog` | Weight tracking per day |
+| `weight.py` | `WeightLog` | Weight tracking per day + nullable body-composition columns (Withings BIA: body_fat_%, fat/lean/muscle/bone mass, hydration_%, visceral index, BMI; migration 060). Unique `(user_id, date, source)` — Whoop + Withings coexist per day, Withings wins at read time |
 | `goal.py` | `Goal`, `GoalCheckIn` | Semantic goals (Phase 6): `metric` key → registry in `services/goal_metrics.py`, `filter_json` (e.g. exercise/sport), `starting_value` snapshot (direction derived start-vs-target, no column), cached `current_value`; status active/achieved/expired/abandoned. Goal has many CheckIns (`check_in_date`, value, alignment_pct, source auto/manual) |
 | `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day: `sport` (cycle/strength/rest), `planned_focus` (squat/bench/deadlift/overhead_press/accessories/full_body/push/pull/legs/upper/lower), planned exercises/volume/RPE/power/zone/route targets, optionally links Activity + LiftingSession; Plan optionally links Event (`event_id`) for auto-taper |
 | `exercise.py` | `Exercise` | User-editable exercise library. Global seed rows (`user_id=NULL`) + per-user additions. Unique `(user_id, name)`. Fields: name, category (big3/compound/accessory), aliases (JSONB), is_active |
