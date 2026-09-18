@@ -21,7 +21,10 @@ from app.models.daily_metric import DailyMetric
 from app.models.goal import Goal, GoalCheckIn
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.weight import WeightLog
-from app.services.cycling.training_load import compute_training_load
+from app.services.cycling.training_load import (
+    CTL_WARMUP_DAYS,
+    compute_training_load,
+)
 from app.services.cycling.tss import get_daily_tss
 from app.services.goal_metrics import METRIC_REGISTRY, resolve_metric
 from app.services.goals import derive_direction
@@ -87,6 +90,7 @@ def project_to_target(
 
     Returns ``{"projected_date": date, "days_remaining": int}`` or ``None``
     if the slope is heading away from the target (wrong direction) or is zero.
+    An already-met target projects today with zero days remaining.
     """
     if slope_per_day == 0:
         return None
@@ -107,9 +111,9 @@ def project_to_target(
     remaining = (target_value - current_value) / slope_per_day
 
     if remaining < 0:
-        # Already past target (shouldn't happen if direction check passed,
-        # but guard anyway)
-        return None
+        # Target already met or passed — project today with zero days left
+        # rather than None (which the badge would read as "Unlikely").
+        return {"projected_date": current_date, "days_remaining": 0}
 
     days_remaining = math.ceil(remaining)
     projected_date = current_date + timedelta(days=days_remaining)
@@ -190,6 +194,56 @@ def tsb_projection(
 
 
 # ── DB-backed functions ──────────────────────────────────────────────────────
+
+
+async def _session_best_1rm_by_date(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    exercise_names: list[str],
+    cutoff: date,
+) -> dict[date, dict[str, float]]:
+    """Best estimated 1RM per session date, rebuilt from working sets.
+
+    ``PersonalRecord`` rows are updated in place (one row per exercise), so
+    they carry no history. Session sets do: for each session date this keeps
+    the best Brzycki estimate per exercise over low-rep working sets (same
+    contention rules as live PR checks). Stored names are normalised before
+    matching so pre-normalisation rows are not lost.
+    """
+    from app.models.lifting import LiftingSession, LiftingSet
+    from app.services.exercise_db import normalise_exercise_name
+    from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
+
+    wanted = set(exercise_names)
+    result = await db.execute(
+        select(
+            LiftingSession.session_date,
+            LiftingSet.exercise_name,
+            LiftingSet.weight_kg,
+            LiftingSet.reps,
+        )
+        .join(LiftingSet, LiftingSet.session_id == LiftingSession.id)
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.session_date >= cutoff,
+            LiftingSet.is_warmup.is_(False),
+            LiftingSet.reps >= 1,
+            LiftingSet.reps <= MAX_REPS_FOR_1RM_PR,
+        )
+        .order_by(LiftingSession.session_date.asc())
+    )
+    best: dict[date, dict[str, float]] = {}
+    for session_date, name, weight_kg, reps in result.all():
+        if not weight_kg or weight_kg <= 0:
+            continue
+        canonical = normalise_exercise_name(name or "")
+        if canonical not in wanted:
+            continue
+        est = brzycki_1rm(float(weight_kg), int(reps))
+        day = best.setdefault(session_date, {})
+        if canonical not in day or est > day[canonical]:
+            day[canonical] = round(est, 1)
+    return best
 
 
 async def compute_goal_projection(
@@ -382,28 +436,22 @@ async def compute_metric_trend(
         points = [(row[0], float(row[1])) for row in result.all()]
 
     elif metric_key == "estimated_1rm":
-        from app.models.lifting import PersonalRecord
         from app.services.exercise_db import normalise_exercise_name
 
         exercise = (filter_json or {}).get("exercise")
         if exercise:
             canonical = normalise_exercise_name(str(exercise))
-            result = await db.execute(
-                select(PersonalRecord.achieved_date, PersonalRecord.estimated_1rm)
-                .where(
-                    PersonalRecord.user_id == user_id,
-                    PersonalRecord.exercise_name == canonical,
-                    PersonalRecord.record_type == "1rm",
-                    PersonalRecord.estimated_1rm.isnot(None),
-                    PersonalRecord.achieved_date >= cutoff,
-                )
-                .order_by(PersonalRecord.achieved_date.asc())
+            best_by_date = await _session_best_1rm_by_date(
+                db, user_id, [canonical], cutoff
             )
-            points = [(row[0], float(row[1])) for row in result.all()]
+            points = sorted(
+                (d, day[canonical])
+                for d, day in best_by_date.items()
+                if canonical in day
+            )
 
     elif metric_key in ("squat_bw_ratio", "bench_bw_ratio", "deadlift_bw_ratio"):
         from app.models.cycling import CyclingProfile
-        from app.models.lifting import PersonalRecord
 
         exercise_map = {
             "squat_bw_ratio": "Back Squat",
@@ -412,74 +460,57 @@ async def compute_metric_trend(
         }
         exercise_name = exercise_map[metric_key]
 
-        # Get body weight history for ratio computation
+        # Period-correct bodyweight: latest weigh-in on/before each date,
+        # falling back to the profile weight when no weigh-in exists yet.
         weight_result = await db.execute(
             select(WeightLog.date, WeightLog.weight_kilogram)
-            .where(WeightLog.user_id == user_id, WeightLog.date >= cutoff)
+            .where(
+                WeightLog.user_id == user_id,
+                WeightLog.weight_kilogram.isnot(None),
+            )
             .order_by(WeightLog.date.asc())
         )
-        weight_rows = weight_result.all()
-        weight_by_date = {row[0]: float(row[1]) for row in weight_rows if row[1]}
-
-        # Get PR history for the exercise
-        result = await db.execute(
-            select(PersonalRecord.achieved_date, PersonalRecord.estimated_1rm)
-            .where(
-                PersonalRecord.user_id == user_id,
-                PersonalRecord.exercise_name == exercise_name,
-                PersonalRecord.record_type == "1rm",
-                PersonalRecord.estimated_1rm.isnot(None),
-                PersonalRecord.achieved_date >= cutoff,
-            )
-            .order_by(PersonalRecord.achieved_date.asc())
+        weight_history = [
+            (d, float(w)) for d, w in weight_result.all() if w and float(w) > 0
+        ]
+        profile_result = await db.execute(
+            select(CyclingProfile.weight_kg).where(CyclingProfile.user_id == user_id)
         )
-        pr_rows = result.all()
+        profile_weight = profile_result.scalar_one_or_none()
 
-        # For each PR, find the closest body weight
-        weight_dates = sorted(weight_by_date.keys())
-        for pr_date, one_rm in pr_rows:
-            # Find nearest weight on or before PR date
+        best_by_date = await _session_best_1rm_by_date(
+            db, user_id, [exercise_name], cutoff
+        )
+        for pr_date in sorted(best_by_date):
+            one_rm = best_by_date[pr_date].get(exercise_name)
+            if not one_rm:
+                continue
             best_weight = None
-            for wd in reversed(weight_dates):
+            for wd, w in reversed(weight_history):
                 if wd <= pr_date:
-                    best_weight = weight_by_date[wd]
+                    best_weight = w
                     break
+            if (not best_weight) and profile_weight and profile_weight > 0:
+                best_weight = float(profile_weight)
             if best_weight and best_weight > 0:
-                ratio = float(one_rm) / best_weight
-                points.append((pr_date, round(ratio, 3)))
+                points.append((pr_date, round(one_rm / best_weight, 3)))
 
     elif metric_key == "big3_total":
-        from app.models.lifting import PersonalRecord
         from app.services.exercise_db import BIG_3_ORDER
 
-        result = await db.execute(
-            select(
-                PersonalRecord.exercise_name,
-                PersonalRecord.achieved_date,
-                PersonalRecord.estimated_1rm,
-            )
-            .where(
-                PersonalRecord.user_id == user_id,
-                PersonalRecord.exercise_name.in_(BIG_3_ORDER),
-                PersonalRecord.record_type == "1rm",
-                PersonalRecord.estimated_1rm.isnot(None),
-                PersonalRecord.achieved_date >= cutoff,
-            )
-            .order_by(PersonalRecord.achieved_date.asc())
+        best_by_date = await _session_best_1rm_by_date(
+            db, user_id, list(BIG_3_ORDER), cutoff
         )
-        rows = result.all()
 
         # Track best per lift, accumulate total when any lift improves
         best_per_lift: dict[str, float] = {}
         totals_by_date: dict[date, float] = {}
-        for exercise_name, achieved_date, one_rm in rows:
-            val = float(one_rm)
-            if exercise_name not in best_per_lift or val > best_per_lift[exercise_name]:
-                best_per_lift[exercise_name] = val
+        for d in sorted(best_by_date):
+            for lift, val in best_by_date[d].items():
+                if lift not in best_per_lift or val > best_per_lift[lift]:
+                    best_per_lift[lift] = val
             if best_per_lift:
-                totals_by_date[achieved_date] = round(
-                    sum(best_per_lift.values()), 1
-                )
+                totals_by_date[d] = round(sum(best_per_lift.values()), 1)
         points = sorted(totals_by_date.items())
 
     elif metric_key == "vo2max":
@@ -638,7 +669,8 @@ async def compute_tsb_projection(
     2. Get current CTL/ATL from training_load service
     3. Get planned TSS for next N days from TrainingPlanDay
     4. Run tsb_projection
-    5. Compute race-day TSB (last entry)
+    5. Compute race-day TSB (entry at the event date when inside the
+       projected window, else the last projected day)
 
     Returns ``{plan_id, event_date, current_tsb, race_day_tsb,
     projection, freshness_assessment}``.
@@ -664,7 +696,9 @@ async def compute_tsb_projection(
 
     # 2. Get current CTL/ATL
     today = date.today()
-    daily_tss = await get_daily_tss(db, user_id, today - timedelta(days=90), today)
+    daily_tss = await get_daily_tss(
+        db, user_id, today - timedelta(days=90 + CTL_WARMUP_DAYS), today
+    )
 
     current_ctl = 0.0
     current_atl = 0.0
@@ -702,8 +736,14 @@ async def compute_tsb_projection(
     # 4. Run projection
     projection_data = tsb_projection(current_ctl, current_atl, planned_tss_per_day)
 
-    # 5. Race-day TSB
+    # 5. Race-day TSB — the entry at the event date when it falls inside the
+    # projected window, else the last projected day.
     race_day_tsb = projection_data[-1]["tsb"] if projection_data else None
+    if event_date is not None:
+        for entry in projection_data:
+            if entry["date"] == event_date:
+                race_day_tsb = entry["tsb"]
+                break
 
     # Freshness assessment
     freshness = None

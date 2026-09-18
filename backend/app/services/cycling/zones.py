@@ -20,7 +20,8 @@ POWER_ZONES = [
     ("Z7", "Neuromuscular", 1.50, 5.0),
 ]
 
-# Heart Rate zones
+# Heart Rate zones as fractions of HRmax (NOT LTHR). Kept for reference;
+# the LTHR-normalised distribution path uses LTHR_HR_ZONES below.
 HR_ZONES = [
     ("Z1", "Active Recovery", 0.0, 0.68),
     ("Z2", "Endurance", 0.68, 0.83),
@@ -72,7 +73,8 @@ async def compute_hr_zones_from_streams(
 ) -> list[dict]:
     """Compute heart rate zone distribution from HR stream data.
 
-    Uses LTHR (Lactate Threshold Heart Rate) based zones.
+    Uses LTHR (Lactate Threshold Heart Rate) based zones
+    (``LTHR_HR_ZONES`` — the Coggan LTHR model, not the %HRmax table).
     """
     if not lthr or lthr <= 0:
         return []
@@ -99,7 +101,7 @@ async def compute_hr_zones_from_streams(
     )
     streams = list(result.scalars().all())
 
-    zone_times: dict[str, int] = {z[0]: 0 for z in HR_ZONES}
+    zone_times: dict[str, int] = {z[0]: 0 for z in LTHR_HR_ZONES}
 
     for stream in streams:
         data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
@@ -113,24 +115,26 @@ async def compute_hr_zones_from_streams(
                 continue
 
             pct_lthr = hr / lthr
-            for zone_id, _, lower, upper in HR_ZONES:
+            for zone_id, _, lower, upper in LTHR_HR_ZONES:
                 if lower <= pct_lthr < upper:
                     zone_times[zone_id] += resolution
                     break
             else:
-                zone_times["Z6"] += resolution
+                zone_times["Z5"] += resolution
 
     total_time = sum(zone_times.values()) or 1
 
     zones = []
-    for zone_id, zone_name, lower, upper in HR_ZONES:
+    for zone_id, zone_name, lower, upper in LTHR_HR_ZONES:
         time_s = zone_times.get(zone_id, 0)
         zones.append(
             {
                 "zone": zone_id,
                 "zone_name": zone_name,
                 "lower_bound_hr": round(lthr * lower),
-                "upper_bound_hr": round(lthr * upper),
+                "upper_bound_hr": round(lthr * upper)
+                if upper < 5.0
+                else round(lthr * 1.3),
                 "time_seconds": time_s,
                 "percentage": round(time_s / total_time * 100, 1),
             }

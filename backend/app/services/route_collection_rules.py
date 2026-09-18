@@ -19,7 +19,7 @@ The rules are applied as a conjunction (AND) of all present filters.
 import logging
 from typing import Any
 
-from sqlalchemy import Float, Integer, select
+from sqlalchemy import Float, Integer, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -65,9 +65,9 @@ async def evaluate_smart_collection(
 
     # Apply each rule
     if rules.get("surface_type"):
+        # A route matches when it contains ANY of the listed surfaces.
         surfaces = rules["surface_type"]
-        for s in surfaces:
-            query = query.where(Route.surface_profile.has_key(s))
+        query = query.where(or_(*[Route.surface_profile.has_key(s) for s in surfaces]))
 
     if "min_distance_km" in rules and rules["min_distance_km"] is not None:
         min_m = float(rules["min_distance_km"]) * 1000

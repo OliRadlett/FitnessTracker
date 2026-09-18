@@ -248,9 +248,10 @@ def plan_workout(
     tss_low = round(duration_hours * if_low**2 * 100, 1)
     tss_high = round(duration_hours * if_high**2 * 100, 1)
 
-    # Calorie estimation: ~3.6 * watts * hours (mechanical) / 0.25 (human efficiency)
-    # Simplified: ~4 * watts * hours * 60 (kJ to kcal approximation)
-    cal_factor = 4.0  # kJ to kcal rough multiplier (accounts for ~25% efficiency)
+    # Calorie estimation: 1 W sustained for 1 h = 3.6 kJ of mechanical work,
+    # which costs ~3.6 kcal at typical ~24% gross cycling efficiency
+    # (1 kJ of work ≈ 1 kcal of metabolic energy).
+    cal_factor = 3.6
     cal_low = round(power_low * duration_hours * cal_factor)
     cal_high = round(power_high * duration_hours * cal_factor)
 
@@ -481,9 +482,12 @@ async def find_matching_routes(
             # No HR data for unridden routes
             est_hr = None
 
+            # est_power is derived deterministically from est_tss, so scoring
+            # it as an independent signal would double-count TSS — match on
+            # TSS + duration only (renormalised over present signals).
             score = _compute_route_match_score(
                 avg_tss=est_tss,
-                avg_power=est_power,
+                avg_power=None,
                 avg_hr=est_hr,
                 avg_duration_min=est_duration_min,
                 target_tss_mid=target_tss_mid,

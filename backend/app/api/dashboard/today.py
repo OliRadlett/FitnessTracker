@@ -46,9 +46,13 @@ async def _today_load_values(db: AsyncSession, user_id: uuid.UUID) -> list[float
     TSS chain + training-load computation isn't repeated on every dashboard
     load (§5.3). Fail-open: a Redis outage just recomputes.
     """
-    from app.services.cycling import compute_training_load, get_daily_tss
+    from app.services.cycling import (
+        CTL_WARMUP_DAYS,
+        compute_training_load,
+        get_daily_tss,
+    )
 
-    start_date = date.today() - timedelta(days=90)
+    start_date = date.today() - timedelta(days=90 + CTL_WARMUP_DAYS)
     daily_tss = await get_daily_tss(db, user_id, start_date, date.today())
     load_data = compute_training_load(daily_tss, date.today(), lookback_days=90)
     if load_data:

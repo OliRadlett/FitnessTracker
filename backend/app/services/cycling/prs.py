@@ -42,11 +42,26 @@ def _duration_label(duration_sec: int) -> str:
     """Map a duration in seconds to the human-readable bucket label."""
     if duration_sec == 1:
         return "max"
-    labels = {k: v for k, v in [(5, "5s"), (10, "10s"), (15, "15s"), (30, "30s"),
-                                (60, "1min"), (120, "2min"), (300, "5min"),
-                                (600, "10min"), (1200, "20min"), (1800, "30min"),
-                                (2700, "45min"), (3600, "60min"), (5400, "90min"),
-                                (7200, "120min")]}
+    labels = {
+        k: v
+        for k, v in [
+            (5, "5s"),
+            (10, "10s"),
+            (15, "15s"),
+            (30, "30s"),
+            (60, "1min"),
+            (120, "2min"),
+            (300, "5min"),
+            (480, "8min"),
+            (600, "10min"),
+            (1200, "20min"),
+            (1800, "30min"),
+            (2700, "45min"),
+            (3600, "60min"),
+            (5400, "90min"),
+            (7200, "120min"),
+        ]
+    }
     return labels.get(duration_sec, f"{duration_sec}s")
 
 
@@ -55,10 +70,13 @@ def _duration_label(duration_sec: int) -> str:
 
 async def _get_activity_power_data(
     db: AsyncSession, activity_id: uuid.UUID
-) -> list[float] | None:
-    """Extract the power (watts) data array from an activity's stream.
+) -> tuple[list[float], float] | None:
+    """Extract power samples and stream resolution from an activity's stream.
 
-    Returns ``None`` if no power stream exists.
+    Zero-watt samples (coasting) are valid data and must be kept — dropping
+    them compresses the timeline and inflates best-power averages. Only
+    ``None``/non-finite samples are discarded. Returns ``(samples,
+    resolution)`` or ``None`` if no power stream exists.
     """
     result = await db.execute(
         select(ActivityStream).where(
@@ -73,7 +91,8 @@ async def _get_activity_power_data(
         raw = stream.data.get("data", [])
     else:
         raw = stream.data or []
-    return [float(p) for p in raw if p is not None and float(p) > 0]
+    samples = [float(p) for p in raw if p is not None and math.isfinite(float(p))]
+    return samples, (stream.resolution or 1)
 
 
 async def compute_activity_power_curve(
@@ -84,7 +103,10 @@ async def compute_activity_power_curve(
     Returns a dict mapping duration_seconds -> best_power_watts.
     Also includes ``1`` for peak instantaneous (max) power.
     """
-    power_data = await _get_activity_power_data(db, activity_id)
+    got = await _get_activity_power_data(db, activity_id)
+    if not got:
+        return {}
+    power_data, resolution = got
     if not power_data or len(power_data) < 2:
         return {}
 
@@ -96,9 +118,12 @@ async def compute_activity_power_curve(
 
     sorted_buckets = sorted(POWER_DURATION_BUCKETS, key=lambda b: b[0])
     for duration_sec, _ in sorted_buckets:
-        if duration_sec > n:
+        # Bucket durations are seconds; a bucket is duration/resolution
+        # samples (no-op at the nominal 1 Hz).
+        window = max(1, round(duration_sec / resolution))
+        if window > n:
             break
-        best_avg = best_power_rolling_average(power_data, duration_sec)
+        best_avg = best_power_rolling_average(power_data, window)
         if best_avg is not None:
             result[duration_sec] = best_avg
 
@@ -108,9 +133,7 @@ async def compute_activity_power_curve(
 # ── PR checking (per-activity) ────────────────────────────────────────────────
 
 
-async def _get_user_weight_kg(
-    db: AsyncSession, user_id: uuid.UUID
-) -> float | None:
+async def _get_user_weight_kg(db: AsyncSession, user_id: uuid.UUID) -> float | None:
     """Fetch the user's current weight from their cycling profile."""
     result = await db.execute(
         select(CyclingProfile.weight_kg).where(CyclingProfile.user_id == user_id)
@@ -236,9 +259,7 @@ async def check_and_record_cycling_prs(
     weight_kg = await _get_user_weight_kg(db, user_id)
     updated_prs: list[CyclingPowerRecord] = []
 
-    for duration_sec, power_watts in sorted(
-        power_curve.items(), key=lambda x: x[0]
-    ):
+    for duration_sec, power_watts in sorted(power_curve.items(), key=lambda x: x[0]):
         label = _duration_label(duration_sec)
         existing = await _get_existing_pr(db, user_id, label)
 
@@ -253,13 +274,17 @@ async def check_and_record_cycling_prs(
             )
 
         pr = await _save_pr(
-            db, user_id, label, duration_sec, power_watts,
-            activity, weight_kg, improvement_pct,
+            db,
+            user_id,
+            label,
+            duration_sec,
+            power_watts,
+            activity,
+            weight_kg,
+            improvement_pct,
         )
         await db.flush()
-        await _notify_cycling_pr(
-            db, user_id, pr, previous_power
-        )
+        await _notify_cycling_pr(db, user_id, pr, previous_power)
         updated_prs.append(pr)
 
     return updated_prs
@@ -288,7 +313,11 @@ async def check_cycling_prs_all_activities(
     weight_kg = await _get_user_weight_kg(db, user_id)
     updated_prs: list[CyclingPowerRecord] = []
 
-    for duration_sec, (best_power, activity_id, activity_date) in power_with_activity.items():
+    for duration_sec, (
+        best_power,
+        activity_id,
+        activity_date,
+    ) in power_with_activity.items():
         label = _duration_label(duration_sec)
 
         # Fetch the activity for date/activity linkage
@@ -310,8 +339,14 @@ async def check_cycling_prs_all_activities(
             )
 
         pr = await _save_pr(
-            db, user_id, label, duration_sec, best_power,
-            activity, weight_kg, improvement_pct,
+            db,
+            user_id,
+            label,
+            duration_sec,
+            best_power,
+            activity,
+            weight_kg,
+            improvement_pct,
         )
         await db.flush()
         await _notify_cycling_pr(db, user_id, pr, previous_power)
@@ -367,13 +402,19 @@ async def _compute_power_curve_alltime(
         )
         for stream in result.scalars().all():
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+            # Read resolution before expunging (bucket durations are seconds).
+            res = stream.resolution or 1
             # Release the ORM row (and its JSONB payload) now that the plain
             # floats are extracted; only objects loaded here are expunged.
             db.expunge(stream)
             if not data or len(data) < 2:
                 continue
 
-            power_data = [float(p) for p in data if p is not None and float(p) > 0]
+            # Keep zero-watt samples (coasting); drop only None/non-finite,
+            # mirroring compute_power_curve_from_streams.
+            power_data = [
+                float(p) for p in data if p is not None and math.isfinite(float(p))
+            ]
             n = len(power_data)
             if n < 2:
                 continue
@@ -387,12 +428,16 @@ async def _compute_power_curve_alltime(
                 best_power[1] = (peak, activity_id, activity_date)
 
             for duration_sec, _ in sorted_buckets:
-                if duration_sec > n:
+                window = max(1, round(duration_sec / res))
+                if window > n:
                     break
-                best_avg = best_power_rolling_average(power_data, duration_sec)
+                best_avg = best_power_rolling_average(power_data, window)
                 if best_avg is None:
                     continue
-                if duration_sec not in best_power or best_avg > best_power[duration_sec][0]:
+                if (
+                    duration_sec not in best_power
+                    or best_avg > best_power[duration_sec][0]
+                ):
                     best_power[duration_sec] = (best_avg, activity_id, activity_date)
 
     return best_power

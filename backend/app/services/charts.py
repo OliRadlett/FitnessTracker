@@ -14,6 +14,7 @@ from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
 from app.models.weight import WeightLog
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
     _classify_decoupling,
     _classify_vo2max,
@@ -26,6 +27,7 @@ from app.services.cycling import (
     get_daily_tss,
     get_or_create_cycling_profile,
 )
+from app.services.lifting import brzycki_1rm
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -349,7 +351,7 @@ class ChartService:
     async def training_load(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
         """CTL, ATL, TSB over time."""
         end_date = date.today()
-        start_date = end_date - timedelta(days=days + 42)
+        start_date = end_date - timedelta(days=days + CTL_WARMUP_DAYS)
 
         daily_tss = await get_daily_tss(self.db, user_id, start_date, end_date)
         load_data = compute_training_load(daily_tss, end_date, lookback_days=days)
@@ -719,8 +721,8 @@ class ChartService:
             key = r.session_date.isoformat()
             if key not in sessions:
                 sessions[key] = {"best_1rm": 0, "volume": 0}
-            # Brzycki formula: est_1rm = weight × (36 / (37 - reps))
-            est_1rm = r.weight_kg * (36 / max(37 - r.reps, 1))
+            # Single shared Brzycki implementation (services/lifting.py).
+            est_1rm = brzycki_1rm(r.weight_kg, r.reps)
             if est_1rm > sessions[key]["best_1rm"]:
                 sessions[key]["best_1rm"] = round(est_1rm, 1)
             sessions[key]["volume"] += r.weight_kg * r.reps
@@ -1776,11 +1778,15 @@ class ChartService:
     async def ramp_rate(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
         """Week-over-week CTL change with safe-ramp reference bands."""
         end_date = date.today()
-        start_date = end_date - timedelta(weeks=weeks, days=42)
+        # Report the last `weeks` plus one extra week of CTL for the first
+        # delta; the TSS fetch covers the reported window plus the full
+        # CTL warm-up so the seeded-from-zero bias is negligible.
+        lookback_days = weeks * 7 + 42
+        start_date = end_date - timedelta(days=lookback_days + CTL_WARMUP_DAYS)
 
         daily_tss_map = await get_daily_tss(self.db, user_id, start_date, end_date)
         load_data = compute_training_load(
-            daily_tss_map, end_date, lookback_days=weeks * 7 + 42
+            daily_tss_map, end_date, lookback_days=lookback_days
         )
 
         # CTL at the end of each ISO week (dates are ascending, so last wins)

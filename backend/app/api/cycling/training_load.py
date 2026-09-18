@@ -15,6 +15,7 @@ from app.schemas.cycling import (
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     auto_compute_tss_for_activity,
     compute_normalized_power,
     compute_training_load,
@@ -41,7 +42,9 @@ async def get_training_load(
     TSB = Training Stress Balance (form) = CTL - ATL
     """
     end_date = date.today()
-    start_date = end_date - timedelta(days=days + 42)  # extra buffer for CTL ramp-up
+    start_date = end_date - timedelta(
+        days=days + CTL_WARMUP_DAYS
+    )  # warm-up buffer so CTL (τ=42) converges before the reported window
 
     daily_tss = await get_daily_tss(db, current_user.id, start_date, end_date)
     load_data = compute_training_load(daily_tss, end_date, lookback_days=days)

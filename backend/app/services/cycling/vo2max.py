@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
+from app.models.weight import WeightLog
 
 # ── VO2max Estimation ─────────────────────────────────────────────────────
 
@@ -25,8 +26,11 @@ class Vo2maxEstimate:
 
 
 def _acsm_vo2max(power_watts: float, weight_kg: float) -> float:
-    """ACSM cycling equation: VO2 (ml/kg/min) = (10.8 × watts / kg) + 7."""
-    return (10.8 * power_watts) / weight_kg + 7.0
+    """ACSM leg-ergometry equation: VO2 (ml/kg/min) = 1.8 × (kgm/min)/kg + 7.
+
+    1 W = 6.12 kgm/min, so the power coefficient is 1.8 × 6.12 = 11.016.
+    """
+    return (11.016 * power_watts) / weight_kg + 7.0
 
 
 def _classify_vo2max(vo2max: float) -> str:
@@ -56,8 +60,8 @@ async def estimate_vo2max(
 ) -> Vo2maxEstimate | None:
     """Estimate VO2max from power and/or heart rate data.
 
-    Method 1 (Power-based): Uses ACSM cycling formula:
-        VO2 (ml/kg/min) = (10.8 × watts) / body_mass_kg + 7
+    Method 1 (Power-based): Uses ACSM leg-ergometry formula:
+        VO2 (ml/kg/min) = (11.016 × watts) / body_mass_kg + 7
         Uses best 5-min power as proxy for VO2max power.
         Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
 
@@ -137,12 +141,15 @@ async def estimate_vo2max(
     )
     hr_max = result.scalar()
 
-    # HRrest: get from the most recent daily_metric with resting_hr
+    # HRrest: most recent daily metric with resting_hr, at most 30 days old —
+    # a stale resting HR would silently bias the Uth estimate.
+    hr_cutoff = date.today() - timedelta(days=30)
     result = await db.execute(
         select(DailyMetric.resting_hr)
         .where(
             DailyMetric.user_id == user_id,
             DailyMetric.resting_hr.isnot(None),
+            DailyMetric.metric_date >= hr_cutoff,
         )
         .order_by(DailyMetric.metric_date.desc())
         .limit(1)
@@ -197,6 +204,20 @@ async def compute_vo2max_history(
     profile = await get_or_create_cycling_profile(db, user_id)
     profile_weight = getattr(profile, "weight_kg", None)
 
+    # Weigh-in history for period-correct bodyweight (falls back to the
+    # profile weight, then to 75 kg flagged as defaulted).
+    weight_result = await db.execute(
+        select(WeightLog.date, WeightLog.weight_kilogram)
+        .where(
+            WeightLog.user_id == user_id,
+            WeightLog.weight_kilogram.isnot(None),
+        )
+        .order_by(WeightLog.date.asc())
+    )
+    weight_history = [
+        (d, float(w)) for d, w in weight_result.all() if w and float(w) > 0
+    ]
+
     for i in range(months, 0, -1):
         month_date = today.replace(day=1) - timedelta(days=(i - 1) * 30)
         if month_date > today:
@@ -231,8 +252,15 @@ async def compute_vo2max_history(
         best_5min = 0.0
         for stream in streams:
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-            power_data = [float(p) for p in data if p is not None and float(p) > 0]
-            if len(power_data) < 300:
+            # Keep zero-watt samples (coasting); drop only None/non-finite.
+            power_data = [
+                float(p) for p in data if p is not None and math.isfinite(float(p))
+            ]
+            # A 5-minute window is 300 samples only at 1 Hz; scale by the
+            # stream resolution otherwise.
+            res = getattr(stream, "resolution", None) or 1
+            window = max(1, round(300 / res))
+            if len(power_data) < window:
                 continue
 
             # Find best 5-min average
@@ -241,10 +269,10 @@ async def compute_vo2max_history(
                 prefix[k + 1] = prefix[k] + power_data[k]
 
             max_sum = 0.0
-            for k in range(len(power_data) - 299):
-                s = prefix[k + 300] - prefix[k]
+            for k in range(len(power_data) - window + 1):
+                s = prefix[k + window] - prefix[k]
                 max_sum = max(max_sum, s)
-            avg = max_sum / 300
+            avg = max_sum / window
             best_5min = max(best_5min, avg)
 
         if best_5min <= 0:
@@ -252,6 +280,10 @@ async def compute_vo2max_history(
 
         weight_kg = profile_weight
         weight_defaulted = False
+        # Prefer a weigh-in from on/before this window over today's weight.
+        hist = [w for d, w in weight_history if d <= window_end]
+        if hist:
+            weight_kg = hist[-1]
         if not weight_kg or weight_kg <= 0:
             weight_kg = 75.0
             weight_defaulted = True
@@ -323,11 +355,16 @@ def compute_decoupling_from_streams(
     power_data = power_data[:min_len]
     hr_data = hr_data[:min_len]
 
-    # Filter to valid pairs (both power > 0 and HR > 0)
+    # Filter to valid pairs (both power > 0 and HR > 0, finite)
     valid_pairs = [
         (p, h)
         for p, h in zip(power_data, hr_data)
-        if p is not None and h is not None and float(p) > 0 and float(h) > 0
+        if p is not None
+        and h is not None
+        and math.isfinite(float(p))
+        and math.isfinite(float(h))
+        and float(p) > 0
+        and float(h) > 0
     ]
 
     if len(valid_pairs) < 60:
@@ -341,9 +378,15 @@ def compute_decoupling_from_streams(
     if len(first_half) < 30 or len(second_half) < 30:
         return None
 
-    # Compute average power:HR ratio for each half
-    ratio_1 = sum(p / h for p, h in first_half) / len(first_half)
-    ratio_2 = sum(p / h for p, h in second_half) / len(second_half)
+    # Pw:HR ratio per half from the ratio of averages (TrainingPeaks
+    # convention): mean power over mean HR — not the mean of per-sample
+    # ratios, which is a different, noisier statistic.
+    ratio_1 = (sum(p for p, _ in first_half) / len(first_half)) / (
+        sum(h for _, h in first_half) / len(first_half)
+    )
+    ratio_2 = (sum(p for p, _ in second_half) / len(second_half)) / (
+        sum(h for _, h in second_half) / len(second_half)
+    )
 
     if ratio_1 <= 0:
         return None

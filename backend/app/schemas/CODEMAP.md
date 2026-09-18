@@ -20,3 +20,8 @@
 | `weather.py` | `CurrentWeatherResponse`, `ForecastDay`, `ForecastResponse`, `ActivityWeatherResponse`, `TagActivityResponse` (Open-Meteo normalized contract) |
 | `projections.py` | `TrendInfo` (slope_per_day/week, r_squared, data_points), `ProjectionPoint` (date+value), `GoalProjectionResponse` (goal projection with badge/history/projection_line), `MetricTrendResponse` (metric trend with classification), `TsbProjectionPoint` (date/ctl/atl/tsb), `TsbProjectionResponse` (plan TSB projection with freshness_assessment) |
 | `notification.py` | `NotificationRead` (id/type/title/body/severity/link/read/created_at/payload — payload maps the ORM `payload` attr → DB `metadata` column), `NotificationPreferences` (4 toggles), `NotificationPreferencesUpdate` (partial) |
+| `segment.py` | `SegmentRead`, `SegmentEffortRead`, `SegmentDetail` (segment + leaderboard-of-self), `SegmentRecomputeResponse` |
+| `push.py` | `PushSubscriptionCreate`, `PushSubscriptionRead`, `PushSubscriptionList`, `PushUnregister` (§3.8 Web Push contract) |
+| `preferences.py` | `UserPreferences` (unit_system/locale/time_format with defaults), `UserPreferencesUpdate` (partial, per-field validated) |
+| `metrics.py` | `WeightEntryCreate/Update` (manual weigh-ins + optional body-composition), `BodyComposition`, `HealthPreferencesUpdate` (§3.12 tuning) |
+| `conformity.py` | `ConformityComponent`, `ConformityResult`, `WeeklyConformity`, `PlanConformityResponse`, `DayConformityResponse`, `LinkActivitiesResponse` (Phase 5C plan-conformity contract) |

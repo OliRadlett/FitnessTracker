@@ -3,6 +3,7 @@
 import pytest
 
 from app.services.deficiency import (
+    _big3_ratio_advice,
     classify_ftp_absolute,
     classify_ftp_wkg,
     classify_push_pull,
@@ -99,6 +100,29 @@ class TestBig3Ratios:
         assert high["bench_deadlift_ratio"][1] == "medium"
 
 
+class TestBig3RatioAdvice:
+    """Advice direction follows each metric's own bounds, not 1."""
+
+    def test_bench_deadlift_above_ideal_advises_hinge(self):
+        # 115/150 = 0.767 — above ideal (0.45–0.75) yet below 1.
+        detail, recommendation = _big3_ratio_advice("bench_deadlift_ratio", 0.767)
+        assert "0.77" in detail
+        assert recommendation == "Deadlift lags relative to bench — add hinge volume"
+
+    def test_bench_deadlift_below_ideal_advises_press(self):
+        detail, recommendation = _big3_ratio_advice("bench_deadlift_ratio", 0.34)
+        assert recommendation == "Bench lags relative to deadlift — add pressing volume"
+
+    def test_bench_squat_dominant_advises_squat(self):
+        # 110/120 = 0.917 — above ideal yet below 1.
+        _, recommendation = _big3_ratio_advice("bench_squat_ratio", 0.917)
+        assert recommendation == "Bench dominant — balance with more squat frequency"
+
+    def test_deadlift_squat_weak_advises_hinge(self):
+        _, recommendation = _big3_ratio_advice("deadlift_squat_ratio", 0.93)
+        assert recommendation == "Weak deadlift relative to squat — add hinge volume"
+
+
 # ── Push/pull classification and balance ─────────────────────────────────────
 
 
@@ -126,14 +150,16 @@ class TestPushPullClassification:
     def test_balance_in_range_returns_none(self):
         assert evaluate_push_pull_ratio(10000, 9000) is None
 
-    def test_pulling_deficit_high(self):
+    def test_pushing_deficit_high(self):
+        """0.5 push/pull = pull-dominant → pushing deficit (not pulling)."""
         result = evaluate_push_pull_ratio(5000, 10000)
         assert result is not None
         assert result["severity"] == "high"
         assert result["value"] == pytest.approx(0.5)
+        assert "pushing deficit" in result["detail"]
 
     def test_moderate_imbalance_severities(self):
-        r = evaluate_push_pull_ratio(6000, 10000)  # 0.6 → high (pulling deficit)
+        r = evaluate_push_pull_ratio(6000, 10000)  # 0.6 → high (pushing deficit)
         assert r["severity"] == "high"
         r = evaluate_push_pull_ratio(8000, 10000)  # 0.8 → medium
         assert r["severity"] == "medium"
@@ -142,9 +168,30 @@ class TestPushPullClassification:
         r = evaluate_push_pull_ratio(18000, 10000)  # 1.8 → medium
         assert r["severity"] == "medium"
 
-    def test_zero_volume_side_returns_none(self):
-        assert evaluate_push_pull_ratio(0, 10000) is None
-        assert evaluate_push_pull_ratio(10000, 0) is None
+    def test_push_deficit_recommends_pressing_not_pulling(self):
+        """Ratio < 1 means more pulling than pushing — advice must add press."""
+        r = evaluate_push_pull_ratio(8000, 10000)  # 0.8, pushing deficit
+        assert "pressing" in r["recommendation"]
+        assert "pulling" not in r["recommendation"]
+
+    def test_push_dominant_recommends_pulling(self):
+        """Ratio > 1.3 means push-dominant — advice must add pulls."""
+        r = evaluate_push_pull_ratio(14000, 10000)  # 1.4
+        assert "pull" in r["recommendation"].lower()
+
+    def test_one_sided_volume_flags_high(self):
+        """A missing movement pattern is an imbalance, not 'no data'."""
+        r = evaluate_push_pull_ratio(0, 10000)
+        assert r is not None
+        assert r["severity"] == "high"
+        assert r["value"] is None
+        r = evaluate_push_pull_ratio(10000, 0)
+        assert r is not None
+        assert r["severity"] == "high"
+        assert r["value"] is None
+
+    def test_no_volume_returns_none(self):
+        assert evaluate_push_pull_ratio(0, 0) is None
 
 
 # ── FTP classification ───────────────────────────────────────────────────────

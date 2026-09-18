@@ -115,6 +115,9 @@ NEXT_PUBLIC_PUBLIC_URL=https://oliradlett.co.uk
 NEXTAUTH_URL=https://oliradlett.co.uk/fittrack/api/auth
 NEXTAUTH_SECRET=<generate-a-strong-secret>        # openssl rand -base64 48
 INTERNAL_API_URL=http://backend:8000
+# ⚠️ REQUIRED — protects /sync-user from anonymous access. Generate with:
+# python -c "import secrets; print(secrets.token_hex(32))"
+INTERNAL_API_SECRET=<generate-a-strong-secret>
 
 # ─── Google OAuth ─────────────────────────────────────────
 GOOGLE_CLIENT_ID=<from-google-cloud-console>
@@ -131,6 +134,24 @@ WHOOP_CLIENT_ID=
 WHOOP_CLIENT_SECRET=
 WAHOO_CLIENT_ID=
 WAHOO_CLIENT_SECRET=
+WITHINGS_CLIENT_ID=
+WITHINGS_CLIENT_SECRET=
+
+# ─── AI / compute (optional) ─────────────────────────────
+GEMINI_API_KEY=          # weekly + on-demand analysis; tasks skip if unset
+MODAL_TOKEN_ID=          # Modal Intelligence Platform; endpoints 501 if unset
+MODAL_TOKEN_SECRET=
+
+# ─── Strength videos (optional) ──────────────────────────
+R2_ACCOUNT_ID=           # Cloudflare R2; upload endpoints 501 if unset
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+
+# ─── Web Push (optional) ─────────────────────────────────
+VAPID_PUBLIC_KEY=        # /push/vapid-public-key 404s if unset
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=
 
 # ─── Komoot (optional) ───────────────────────────────────
 KOMOOT_EMAIL=
@@ -173,6 +194,7 @@ Register these in each provider's developer console:
 | Strava | `https://oliradlett.co.uk/api/v1/auth/oauth/strava/callback` | covered automatically — see 8.2 |
 | Whoop | `https://oliradlett.co.uk/api/v1/auth/oauth/whoop/callback` | `https://dev.oliradlett.co.uk/api/v1/auth/oauth/whoop/callback` |
 | Wahoo | `https://oliradlett.co.uk/api/v1/auth/oauth/wahoo/callback` | `https://dev.oliradlett.co.uk/api/v1/auth/oauth/wahoo/callback` |
+| Withings | `https://oliradlett.co.uk/api/v1/auth/oauth/withings/callback` | `https://dev.oliradlett.co.uk/api/v1/auth/oauth/withings/callback` |
 
 Strava webhooks: `https://oliradlett.co.uk/api/v1/webhooks/strava`
 

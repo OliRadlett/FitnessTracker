@@ -4,10 +4,11 @@
 > See `CODEMAP.md` for the high-level overview — this file documents each module's
 > exports, backend endpoints, and return types.
 
-> **2026-09 dead-client sweep**: the `activities`, `cycling`, `dashboard`,
+> **2026-09 dead-client sweep**: the `activities`,
+> `dashboard`,
 > `nutrition`, `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth`
 > API-client modules were deleted (zero importers — pages call those endpoints
-> inline via `authFetch`). Dead functions were pruned from the surviving modules.
+> inline via `authFetch`). Dead functions were pruned from the surviving modules. (A `cycling` client was deleted in the sweep but later recreated — `cycling.ts` is live with 12 exports.)
 > The domain **types** in `types/` are unaffected and still exported via
 > `types.ts`.
 
@@ -32,8 +33,8 @@ Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `tra
 | Module | Backend Prefix | Exported Functions | Key Types |
 |--------|---------------|-------------------|-----------|
 | **`routes.ts`** | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, `getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`, `downloadRouteGpx`, `getMergedRouteView`, `getHomeAreaHeatmap`, **`createCollectionFromFilters`** (POST smart collection from current filter state) | `RouteSummary`, `RouteData`, `RouteFilters`, `RouteSyncResult`, `DuplicatePair`, `MergedRouteView`, `HomeAreaHeatmapResponse`, `RouteCollection`, `RouteCollectionCreate` |
-| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`getLiftVideos`** (list+filter by exercise/session/PR/date), **`getLiftVideo`**, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (R2 presigned GET), **`deleteLiftVideo`** | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`**, **`LiftVideoListParams`** |
-| **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout` | `TrainingPlanSummary`, `TrainingWeekResponse`, `UpdateTrainingPlanDayPayload`, `TrainingPlanDay`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
+| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`getLiftVideos`** (list+filter by exercise/session/PR/date), **`getLiftVideo`**, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (R2 presigned GET), **`deleteLiftVideo`**, **`processLiftVideo`** (Modal video AI), **`getVideoProcessStatus`** | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`**, **`LiftVideoListParams`** |
+| **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout`, `getAdaptiveSuggestions` (§3.11) | `TrainingPlanSummary`, `TrainingWeekResponse`, `UpdateTrainingPlanDayPayload`, `TrainingPlanDay`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
 | **`goals.ts`** | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` | `Goal`, `GoalCheckIn`, `MetricInfo`, `CreateGoalPayload`, `UpdateGoalPayload`, `GoalCheckInPayload`, `ReactivateResponse` |
 | **`conformity.ts`** | `/api/v1/training-plans/` | `getPlanConformity`, `getDayConformity`, `linkPlanActivities` | `PlanConformityResponse`, `DayConformityResponse`, `LinkActivitiesResponse` |
 | **`weather.ts`** | `/api/v1/weather/` | `getCurrentWeather`, `getForecast` | `CurrentWeather`, `ForecastResponse` |
@@ -42,11 +43,17 @@ Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `tra
 | **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
 | **`cycling.ts`** | `/api/v1/cycling/` | `getCyclingPRs`, `createCyclingPR`, `checkCyclingPRs`, `getCyclingProfile`, `updateCyclingProfile`, `getFtpHistory`, `addFtpHistory`, `getPowerCurve`, `getLifetimePBs`, `getCyclingMetricsSummary`, **`getPowerModel`** (Modal CP/W′/VO2max/adaptive taus), **`getWeatherAnalysis`** (Modal weather-performance) | `CyclingProfile`, `PowerCurveResponse`, `PowerModelResultsResponse`, `WeatherAnalysisResponse`, `CyclingMetricsSummary` |
 | **`crossDomain.ts`** | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) | `CrossDomainInsightsResponse`, `CrossDomainInsightType` |
+| **`segments.ts`** | `/api/v1/segments`, `/api/v1/routes/{id}/segments` | `getSegments`, `getSegmentDetail`, `recomputeRouteSegments` (§3.13) | `SegmentRead`, `SegmentDetail` |
+| **`weight.ts`** | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` (manual weigh-ins + body composition) | `WeightEntry`, `WeightHistoryResponse` |
+| **`search.ts`** | `/api/v1/search` | `globalSearch` (command-palette lookup) | cross-domain result types |
+| **`preferences.ts`** | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` | `UserPreferences` |
+| **`account.ts`** | `/api/v1/export`, `/api/v1/account` | `exportFullJson`, `deleteAccount`, `downloadExport` (§3.9 portability) | `types/export.ts` |
+| **`healthPrefs.ts`** | `/api/v1/metrics/health-preferences` | `getHealthPreferences`, `updateHealthPreferences` (§3.12) | `types/health.ts` |
 
 > Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
 > analysis, workout planner, deficiency) call their endpoints **inline** via
-> `authFetch` instead of a typed client — that's why only 9 API-client modules
-> remain.
+> `authFetch` instead of a typed client — that's why only 17 API-client modules
+> remain (barrel in `index.ts`).
 
 ### `types/` subdirectory
 Domain type modules re-exported via `types.ts`:
@@ -54,7 +61,8 @@ Domain type modules re-exported via `types.ts`:
   `types/cycling.ts`, `types/health.ts`, `types/dashboard.ts`,
   `types/training.ts`, `types/llm.ts`, `types/deficiency.ts`,
   `types/nutrition.ts`, `types/weather.ts`, `types/conformity.ts`,
-  `types/projections.ts`, `types/notifications.ts`
+  `types/projections.ts`, `types/notifications.ts`, `types/segments.ts`,
+  `types/export.ts`, `types/preferences.ts`
 
 ## Lifting Utilities (`src/lib/lifting/`)
 
@@ -63,7 +71,7 @@ Domain type modules re-exported via `types.ts`:
 |--------|------|-------------|
 | `brzycki1rm(weightKg, reps)` | `function` | Brzycki formula for estimated 1RM. Returns `null` for invalid inputs. |
 | `ExerciseReference` | `interface` | `{ date, sets: { weight_kg, reps, rpe? }[] }` — one exercise's reference data |
-| `buildLastSessionMap(sessions, excludeSessionId?)` | `function` | Returns `Record<exerciseName, ExerciseReference>` from most recent session per exercise. Skips warmup sets. Caps at 8 sets per exercise. |
+| `buildLastSessionMap(sessions, excludeSessionId?)` | `function` | Returns `Record<exerciseName, ExerciseReference>` from most recent session per exercise (12-week `withinDays = 84` window). Skips warmup sets. Caps at 8 sets per exercise. |
 | `detectPr(exerciseName, weightKg, reps, prs, todaySets)` | `function` | Returns PR celebration text if the set beats stored PRs + today's prior sets, else `null`. Uses `brzycki1rm` with 0.5% tolerance. |
 | `recentExerciseNames(sessions, limit?)` | `function` | Returns exercises sorted by most recent use (default limit 6). |
 

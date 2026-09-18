@@ -14,6 +14,13 @@ from app.models.cycling import CyclingProfile
 CTL_DAYS = 42  # Chronic Training Load time constant
 ATL_DAYS = 7  # Acute Training Load time constant
 
+# EWMA warm-up: the loop seeds CTL/ATL at 0, so it iterates this many extra
+# leading days (real TSS where the caller fetched it, else 0) before the
+# reported window. 5τ for CTL leaves <1% residual bias. Callers must fetch
+# at least ``lookback_days + CTL_WARMUP_DAYS`` of daily TSS for the full
+# benefit; output length is unchanged (warm-up days are not returned).
+CTL_WARMUP_DAYS = 210
+
 
 # ── CTL / ATL / TSB ─────────────────────────────────────────────────────────
 
@@ -30,9 +37,14 @@ def compute_training_load(
     ATL_t = ATL_{t-1} + (TSS_t - ATL_{t-1}) × (1 - e^(-1/7))
     TSB_t = CTL_t - ATL_t
 
+    The EWMAs seed at 0, so iteration starts ``CTL_WARMUP_DAYS`` before the
+    reported window (consuming real TSS from ``daily_tss`` where present).
+    Only the requested ``lookback_days + 1`` points are returned.
+
     Returns a list of dicts with keys: date, tss, ctl, atl, tsb.
     """
     start_date = end_date - timedelta(days=lookback_days)
+    warmup_start = start_date - timedelta(days=CTL_WARMUP_DAYS)
     ctl_decay = 1 - math.exp(-1 / CTL_DAYS)
     atl_decay = 1 - math.exp(-1 / ATL_DAYS)
 
@@ -40,7 +52,7 @@ def compute_training_load(
     ctl = 0.0
     atl = 0.0
 
-    current = start_date
+    current = warmup_start
     while current <= end_date:
         raw_tss = daily_tss.get(current, 0.0)
         tss = (
@@ -52,15 +64,16 @@ def compute_training_load(
         atl = atl + (tss - atl) * atl_decay
         tsb = ctl - atl
 
-        result.append(
-            {
-                "date": current,
-                "tss": round(tss, 1),
-                "ctl": round(ctl, 1),
-                "atl": round(atl, 1),
-                "tsb": round(tsb, 1),
-            }
-        )
+        if current >= start_date:
+            result.append(
+                {
+                    "date": current,
+                    "tss": round(tss, 1),
+                    "ctl": round(ctl, 1),
+                    "atl": round(atl, 1),
+                    "tsb": round(tsb, 1),
+                }
+            )
         current += timedelta(days=1)
 
     return result

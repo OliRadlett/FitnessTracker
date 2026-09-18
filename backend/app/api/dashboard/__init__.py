@@ -163,10 +163,14 @@ async def _suggest_rest_days(
     current_tsb = None
 
     # 1. Check TSB
-    from app.services.cycling import compute_training_load, get_daily_tss
+    from app.services.cycling import (
+        CTL_WARMUP_DAYS,
+        compute_training_load,
+        get_daily_tss,
+    )
 
     end_date = date.today()
-    start_date = end_date - timedelta(days=90)
+    start_date = end_date - timedelta(days=90 + CTL_WARMUP_DAYS)
     daily_tss = await get_daily_tss(db, user_id, start_date, end_date)
     load_data = compute_training_load(daily_tss, end_date, lookback_days=90)
     if load_data:

@@ -86,13 +86,13 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (37 tables, UUID PKs)
+## Database (42 tables, UUID PKs)
 
 **Relationships (compact)**:
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
@@ -197,8 +197,8 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
-7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/api/auth/*` → frontend, `/api/v1/*` → backend
-8. **Alembic numbering**: Initial = `"001"`. Sequential numbering. ⚠️ `014_add_composite_indexes.py` is a stale duplicate — the real chain is 013→014(surface)→015(indexes)→016→017→018→019→020→021→022→023→024→…→040(head)
+7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/fittrack*` → frontend (with `/api/auth*` redirected to `/fittrack` for NextAuth basePath), `/api/v1/*` → backend, `/health` → backend
+8. **Alembic numbering**: Revisions are sequential `"001"`→head (`061`). ⚠️ Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"` (chain is 002→004→005, intact; do NOT rename the file). Trust `revision`/`down_revision` headers, not filenames
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab/boto3**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
@@ -206,7 +206,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
 14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
 15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
-16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:223`.
+16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:73`.
 17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
 18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
 19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
@@ -234,15 +234,15 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 ## Planned / Incomplete
 
 - **Strength-video R2 uploads** — **fully implemented, R2-only** (presigned PUT/GET/delete, CORS bootstrap via `python -m app.scripts.r2_bootstrap`, boto3 dep; URL/embed mode removed 2026-09-09, migration 048). User must create a Cloudflare R2 bucket + token and populate the `R2_*` env vars. Walkthrough: [`docs/R2_SETUP.md`](docs/R2_SETUP.md). Until then upload endpoints return 501.
-- **Komoot client rework**: Basic Auth fallback, v007 API (Phase 7)
+- **Komoot client rework**: Done — Basic Auth fallback, v007 API (was Phase 7, archived)
 - **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
 - **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
 - **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. **Phase B done (§1.2, 2026-09-08)** — `?include_context=true` serves the §1.3 cached `ride_context` inline (zero extra queries; load position stays on-demand).
 - **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
-- **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). **Phase 8B: Route intelligence done** — terrain classification (flat/rolling/hilly/mountainous), Fréchet distance matching, segment-level effort prediction, smart collection rules for terrain type. [Modal expansion plan](plans/modal-expansion.md). Phases 3-4: calendar planner integration, social popularity, full E2E tests.
+- **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). **Phase 8B: Route intelligence done** — terrain classification (flat/rolling/hilly/mountainous), Fréchet distance matching, segment-level effort prediction, smart collection rules for terrain type. [Modal expansion plan](plans/archive/modal-expansion.md). Phases 3-4: calendar planner integration, social popularity, full E2E tests.
 - **Modal Intelligence Platform — COMPLETE**: All 5 phases implemented. Route intelligence (Fréchet, terrain, effort prediction), power models (CP/Morton 2004, personalized VO2max, adaptive CTL/ATL), weather-performance correlation, segment intelligence (DBSCAN clustering, climb classification, difficulty prediction), cross-domain analysis (sleep-performance, cross-sport fatigue, race retrospective). Weekly Celery tasks via Modal + stored results in DB.
 - **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
-- **3D visualisations (§3.16)**: Done (2026-09-09). Ride-replay fly-through (three.js `Replay3D` + `lib/replay`) **and** the 3D route view (three.js `Route3D` + `lib/route3d` draping the route over an Open-Meteo Copernicus DEM heightmap from `lib/terrain` — free, keyless; toggle in RouteDetailPanel Map & Profile). Side-by-side **synced** 3D comparison in the compare modals still deferred — see the plan
+- **3D visualisations (§3.16)**: Done (2026-09-09). Ride-replay fly-through (three.js `Replay3D` + `lib/replay`) **and** the 3D route view (three.js `Route3D` + `lib/route3d` draping the route over an Open-Meteo Copernicus DEM heightmap from `lib/terrain` — free, keyless; toggle in RouteDetailPanel Map & Profile). Side-by-side **synced** 3D comparison in the compare modals still deferred — see the archived plan (`plans/archive/3d-ride-view-enhancements.md`)
 - **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.
 - See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
 
