@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,11 +139,11 @@ async def oauth_authorize(
     return RedirectResponse(url=url)
 
 
-@router.get("/oauth/{provider}/callback")
+@router.api_route("/oauth/{provider}/callback", methods=["GET", "POST"])
 async def oauth_callback(
     request: Request,
     provider: str,
-    code: str = Query(...),
+    code: str | None = Query(default=None),
     redirect_uri: str = Query(default=None),
     state: str = Query(default=None, description="State parameter from authorize step (contains JWT)"),
     db: AsyncSession = Depends(get_db),
@@ -180,6 +180,18 @@ async def oauth_callback(
                 url=f"{_frontend_url}/settings?error=Unsupported+provider:+{provider}"
             )
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+
+    # Withings validates registered redirect URIs with a codeless POST probe
+    # (portal error "Fail to connect to callback url ... 405" when only GET
+    # is allowed). Answer 200 so app registration succeeds; the real OAuth
+    # flow always carries ?code= via GET.
+    if request.method == "POST" and not code:
+        return JSONResponse(
+            {
+                "detail": "FitTrack OAuth callback is reachable. "
+                "Complete authorization in your browser to receive a code."
+            }
+        )
 
     # For token exchange, we need the same redirect_uri that was used during authorization.
     token_exchange_redirect_uri = redirect_uri
