@@ -60,6 +60,14 @@ export interface WeightEntry {
   date: string;
   weight_kg: number;
   source: string;
+  body_fat_percent?: number | null;
+  fat_mass_kg?: number | null;
+  lean_mass_kg?: number | null;
+  muscle_mass_kg?: number | null;
+  bone_mass_kg?: number | null;
+  hydration_percent?: number | null;
+  visceral_fat_index?: number | null;
+  bmi?: number | null;
 }
 
 export interface WeightHistoryResponse {

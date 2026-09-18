@@ -34,8 +34,12 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
 
   const [weightInput, setWeightInput] = useState('');
   const [dateInput, setDateInput] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bodyFatInput, setBodyFatInput] = useState('');
+  const [muscleInput, setMuscleInput] = useState('');
+  const [showCompInputs, setShowCompInputs] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: history, isLoading } = useQuery({
@@ -47,18 +51,23 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: WEIGHT_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: ['chart-weight-trend'] });
+    queryClient.invalidateQueries({ queryKey: ['chart-body-comp'] });
     queryClient.invalidateQueries({ queryKey: ['cycling-profile'] });
     queryClient.invalidateQueries({ queryKey: ['chart-wkg'] });
   };
 
   const addMutation = useMutation({
-    mutationFn: (kg: number) =>
+    mutationFn: (payload: { kg: number; body_fat?: number; muscle?: number }) =>
       createWeightEntry(authFetch, {
         date: dateInput || undefined,
-        weight_kg: kg,
+        weight_kg: payload.kg,
+        ...(payload.body_fat !== undefined ? { body_fat_percent: payload.body_fat } : {}),
+        ...(payload.muscle !== undefined ? { muscle_mass_kg: payload.muscle } : {}),
       }),
     onSuccess: () => {
       setWeightInput('');
+      setBodyFatInput('');
+      setMuscleInput('');
       setError(null);
       invalidate();
     },
@@ -88,7 +97,21 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
       setError(`Enter a valid weight in ${isImperial ? 'lb' : 'kg'}.`);
       return;
     }
-    addMutation.mutate(displayWeightToKg(value));
+    const bodyFat = bodyFatInput.trim() === '' ? undefined : parseFloat(bodyFatInput);
+    const muscle = muscleInput.trim() === '' ? undefined : parseFloat(muscleInput);
+    if (bodyFat !== undefined && (!Number.isFinite(bodyFat) || bodyFat < 3 || bodyFat > 60)) {
+      setError('Body fat must be between 3 and 60%.');
+      return;
+    }
+    if (muscle !== undefined && (!Number.isFinite(muscle) || muscle <= 0)) {
+      setError(`Enter a valid muscle mass in ${isImperial ? 'lb' : 'kg'}.`);
+      return;
+    }
+    addMutation.mutate({
+      kg: displayWeightToKg(value),
+      body_fat: bodyFat,
+      muscle: muscle !== undefined ? displayWeightToKg(muscle) : undefined,
+    });
   };
 
   // Latest rolling average for a summary line.
@@ -146,7 +169,52 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
         >
           {addMutation.isPending ? 'Saving…' : 'Log weigh-in'}
         </button>
+        <button
+          type="button"
+          onClick={() => setShowCompInputs((v) => !v)}
+          className="px-3 py-2 min-h-[44px] text-xs text-muted hover:text-white"
+          aria-expanded={showCompInputs}
+        >
+          {showCompInputs ? '− Composition' : '+ Composition'}
+        </button>
       </form>
+      {showCompInputs && (
+        <div className="flex flex-wrap items-end gap-2 px-4 py-2 border-b border-surface-light/50">
+          <div>
+            <label htmlFor="weight-panel-bodyfat" className="block text-xs text-muted mb-1">
+              Body fat (%)
+            </label>
+            <input
+              id="weight-panel-bodyfat"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={3}
+              max={60}
+              value={bodyFatInput}
+              onChange={(e) => setBodyFatInput(e.target.value)}
+              placeholder="e.g. 18.5"
+              className="w-28 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label htmlFor="weight-panel-muscle" className="block text-xs text-muted mb-1">
+              Muscle ({isImperial ? 'lb' : 'kg'})
+            </label>
+            <input
+              id="weight-panel-muscle"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={0}
+              value={muscleInput}
+              onChange={(e) => setMuscleInput(e.target.value)}
+              placeholder={isImperial ? 'e.g. 70' : 'e.g. 32'}
+              className="w-28 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="px-4 py-2 text-xs text-warning" role="alert">{error}</p>
@@ -178,12 +246,23 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
           )}
           {entries.map((entry) => {
             const isEditing = editingId === entry.id;
-            const isWhoop = entry.source === 'whoop';
+            const isReadOnly = entry.source === 'whoop' || entry.source === 'withings';
+            const compRows: [string, string][] = [];
+            if (entry.body_fat_percent != null) compRows.push(['Body fat', `${entry.body_fat_percent.toFixed(1)}%`]);
+            if (entry.fat_mass_kg != null) compRows.push(['Fat mass', formatWeight(entry.fat_mass_kg)]);
+            if (entry.lean_mass_kg != null) compRows.push(['Lean mass', formatWeight(entry.lean_mass_kg)]);
+            if (entry.muscle_mass_kg != null) compRows.push(['Muscle', formatWeight(entry.muscle_mass_kg)]);
+            if (entry.bone_mass_kg != null) compRows.push(['Bone', formatWeight(entry.bone_mass_kg)]);
+            if (entry.hydration_percent != null) compRows.push(['Hydration', `${entry.hydration_percent.toFixed(1)}%`]);
+            if (entry.visceral_fat_index != null) compRows.push(['Visceral fat', entry.visceral_fat_index.toFixed(0)]);
+            if (entry.bmi != null) compRows.push(['BMI', entry.bmi.toFixed(1)]);
+            const isExpanded = expandedId === entry.id;
             return (
               <div
                 key={entry.id}
-                className="flex items-center gap-2 px-4 py-2.5 border-b border-surface-light/30 text-sm"
+                className="px-4 py-2.5 border-b border-surface-light/30 text-sm"
               >
+              <div className="flex items-center gap-2">
                 <span className="w-28 shrink-0 text-white">{formatDateDMY(entry.date)}</span>
                 {isEditing ? (
                   <>
@@ -219,7 +298,11 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                     <span className="font-medium text-white">
                       {formatWeight(entry.weight_kg)}
                     </span>
-                    {isWhoop ? (
+                    {entry.source === 'withings' ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-teal-500/15 text-teal-400 uppercase font-medium">
+                        Withings
+                      </span>
+                    ) : entry.source === 'whoop' ? (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-400 uppercase font-medium">
                         Whoop
                       </span>
@@ -228,8 +311,18 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                         Manual
                       </span>
                     )}
+                    {compRows.length > 0 && (
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                        className="min-h-[44px] flex items-center text-xs text-muted hover:text-white"
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? 'Hide' : 'Show'} body composition for ${entry.date}`}
+                      >
+                        {isExpanded ? '▾' : '▸'} comp
+                      </button>
+                    )}
                     <span className="ml-auto flex items-center gap-2">
-                      {!isWhoop && (
+                      {!isReadOnly && (
                         <>
                           <button
                             onClick={() => {
@@ -254,6 +347,17 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                     </span>
                   </>
                 )}
+              </div>
+              {isExpanded && compRows.length > 0 && (
+                <dl className="mt-1 ml-28 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs">
+                  {compRows.map(([label, value]) => (
+                    <div key={label} className="flex gap-1">
+                      <dt className="text-muted">{label}:</dt>
+                      <dd className="text-white font-medium">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
               </div>
             );
           })}

@@ -253,6 +253,40 @@ async def get_respiratory_rate(
 
 # ── Weight ─────────────────────────────────────────────────────────────────
 
+# Source priority for same-day dedup: direct scale measurement beats
+# Whoop estimation beats manual entry.
+_WEIGHT_SOURCE_PRIORITY = {"withings": 0, "whoop": 1, "manual": 2}
+
+
+def _weight_log_to_dict(log) -> dict:
+    return {
+        "id": str(log.id),
+        "date": log.date.isoformat(),
+        "weight_kg": log.weight_kilogram,
+        "source": log.source,
+        "body_fat_percent": log.body_fat_percent,
+        "fat_mass_kg": log.fat_mass_kg,
+        "lean_mass_kg": log.lean_mass_kg,
+        "muscle_mass_kg": log.muscle_mass_kg,
+        "bone_mass_kg": log.bone_mass_kg,
+        "hydration_percent": log.hydration_percent,
+        "visceral_fat_index": log.visceral_fat_index,
+        "bmi": log.bmi,
+    }
+
+
+def _dedup_weight_logs(logs) -> list:
+    """Deduplicate logs to one entry per date, preferring Withings > Whoop > Manual."""
+    best: dict = {}
+    for log in logs:
+        key = log.date.isoformat()
+        current = best.get(key)
+        if current is None or _WEIGHT_SOURCE_PRIORITY.get(
+            log.source, 99
+        ) < _WEIGHT_SOURCE_PRIORITY.get(current.source, 99):
+            best[key] = log
+    return [best[k] for k in sorted(best)]
+
 
 @router.get("/weight")
 async def get_weight_history(
@@ -260,7 +294,11 @@ async def get_weight_history(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get weight history with 7-day rolling average."""
+    """Get weight history with 7-day rolling average.
+
+    When Whoop and Withings both report a weight for the same day, the
+    Withings scale measurement wins (direct measurement vs estimation).
+    """
     cutoff = date.today() - timedelta(days=days)
 
     result = await db.execute(
@@ -276,18 +314,11 @@ async def get_weight_history(
     if not logs:
         return {"entries": [], "rolling_avg": []}
 
-    entries = [
-        {
-            "id": str(log.id),
-            "date": log.date.isoformat(),
-            "weight_kg": log.weight_kilogram,
-            "source": log.source,
-        }
-        for log in logs
-    ]
+    deduped = _dedup_weight_logs(logs)
+    entries = [_weight_log_to_dict(log) for log in deduped]
 
-    # Compute 7-day rolling average
-    weights = [log.weight_kilogram for log in logs]
+    # Compute 7-day rolling average on the deduped series
+    weights = [log.weight_kilogram for log in deduped]
     rolling = []
     for i in range(len(weights)):
         window = weights[max(0, i - 6) : i + 1]
@@ -296,7 +327,7 @@ async def get_weight_history(
     return {
         "entries": entries,
         "rolling_avg": [
-            {"date": logs[i].date.isoformat(), "weight_kg": rolling[i]}
+            {"date": deduped[i].date.isoformat(), "weight_kg": rolling[i]}
             for i in range(len(rolling))
         ],
     }
@@ -313,12 +344,26 @@ async def create_weight_entry(
     Upserts on the (user_id, date, source) unique key so a repeated weigh-in
     on the same day replaces the earlier one. Also keeps the cycling profile's
     reference weight (W/kg charts) in sync with the latest manual value.
+    Accepts optional body composition fields for manual entry.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.services.cycling import get_or_create_cycling_profile
 
     log_date = payload.date or date.today()
+    comp = payload.model_dump(
+        include={
+            "body_fat_percent",
+            "fat_mass_kg",
+            "lean_mass_kg",
+            "muscle_mass_kg",
+            "bone_mass_kg",
+            "hydration_percent",
+            "visceral_fat_index",
+            "bmi",
+        },
+        exclude_none=False,
+    )
     stmt = (
         pg_insert(WeightLog)
         .values(
@@ -326,10 +371,11 @@ async def create_weight_entry(
             date=log_date,
             weight_kilogram=payload.weight_kg,
             source="manual",
+            **comp,
         )
         .on_conflict_do_update(
             index_elements=["user_id", "date", "source"],
-            set_={"weight_kilogram": payload.weight_kg},
+            set_={"weight_kilogram": payload.weight_kg, **comp},
         )
         .returning(WeightLog)
     )
@@ -340,12 +386,7 @@ async def create_weight_entry(
     profile.weight_kg = payload.weight_kg
     await db.flush()
 
-    return {
-        "id": str(log.id),
-        "date": log.date.isoformat(),
-        "weight_kg": log.weight_kilogram,
-        "source": log.source,
-    }
+    return _weight_log_to_dict(log)
 
 
 async def _get_owned_manual_weight(
@@ -368,11 +409,24 @@ async def update_weight_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update a manual weight entry's value."""
+    """Update a manual weight entry's value (Withings/Whoop entries are read-only)."""
     log = await _get_owned_manual_weight(db, current_user.id, log_id)
     if not log:
         raise HTTPException(status_code=404, detail="Weight entry not found")
     log.weight_kilogram = payload.weight_kg
+    for field in (
+        "body_fat_percent",
+        "fat_mass_kg",
+        "lean_mass_kg",
+        "muscle_mass_kg",
+        "bone_mass_kg",
+        "hydration_percent",
+        "visceral_fat_index",
+        "bmi",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(log, field, value)
 
     # Re-sync the profile reference weight when this is the latest manual entry.
     latest_date = (
@@ -390,12 +444,7 @@ async def update_weight_entry(
         profile.weight_kg = payload.weight_kg
     await db.flush()
 
-    return {
-        "id": str(log.id),
-        "date": log.date.isoformat(),
-        "weight_kg": log.weight_kilogram,
-        "source": log.source,
-    }
+    return _weight_log_to_dict(log)
 
 
 @router.delete("/weight/{log_id}")

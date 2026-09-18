@@ -92,6 +92,14 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "client_secret": lambda: settings.whoop_client_secret,
         "scopes": "offline read:recovery read:cycles read:sleep read:workout read:profile read:body_measurement",
     },
+    "withings": {
+        "authorize_url": "https://account.withings.com/oauth2_user/authorize2",
+        "token_url": "https://wbsapi.withings.net/v2/oauth2",
+        "userinfo_url": "https://wbsapi.withings.net/v2/user?action=getbyuserid",
+        "client_id": lambda: settings.withings_client_id,
+        "client_secret": lambda: settings.withings_client_secret,
+        "scopes": "user.info,user.metrics",
+    },
 }
 
 
@@ -161,6 +169,16 @@ def get_authorize_url(provider: str, redirect_uri: str, state: str | None = None
             "scope": scopes,
             "state": whoop_state,
         }
+        return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
+    elif provider == "withings":
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+        }
+        if state:
+            params["state"] = state
         return f"{cfg['authorize_url']}?{urllib.parse.urlencode(params)}"
     raise ValueError(f"Unsupported provider: {provider}")
 
@@ -271,6 +289,16 @@ async def exchange_code_for_user(
         last = userinfo.get("last_name", "")
         name = f"{first} {last}".strip() or "Whoop User"
         email = userinfo.get("email") or f"whoop_{provider_user_id}@whoop.local"
+        avatar_url = None
+    elif provider == "withings":
+        # Withings userinfo (getbyuserid) nests under body; token response
+        # also carries userid — accept either shape.
+        body = userinfo.get("body", userinfo)
+        provider_user_id = str(
+            body.get("userid", body.get("user_id", userinfo.get("userid", "")))
+        )
+        email = f"withings_{provider_user_id}@withings.local"
+        name = "Withings User"
         avatar_url = None
     else:
         raise ValueError(f"Unsupported provider: {provider}")
