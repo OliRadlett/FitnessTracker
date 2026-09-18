@@ -263,9 +263,10 @@ def classify_exercise(landmarks_per_frame: list,
     # (the clean bends the torso horizontal, tripping the hinge gate).
     # Uses the longest CONSECUTIVE overhead hold (a lockout), not the share
     # of frames: in a 45s 1RM video the 1-2s lockout is a tiny fraction.
-    # Threshold 0.3s (3 frames @10fps): lockouts are held, noise isn't —
-    # and elbow_range + hip_range must also trip (measured 0.40s hold on a
-    # real log press vs 0.5s guess; don't re-tighten without data).
+    # Threshold just above 2 frames @10fps: a Modal-side probe measured
+    # 0.30s where local measured 0.40s on the same video (one frame of
+    # alignment noise) — anything near 0.3 is a knife-edge. The elbow_range
+    # + hip_range conjunctions carry the specificity, not this threshold.
     # The hip_range guard keeps bench press out (hips stay put on a bench
     # while the bar locks out overhead).
     longest_hold = 0.0
@@ -282,7 +283,7 @@ def classify_exercise(landmarks_per_frame: list,
         else:
             hold_start = None
 
-    if elbow_range > 40 and longest_hold > 0.3 and hip_range > 20:
+    if elbow_range > 40 and longest_hold > 0.2 and hip_range > 20:
         exercise = "Overhead Press"
         confidence = min(0.95, 0.7 + elbow_range / 200)
         variation = "Push Press" if hip_range > 30 else "Strict Press"
