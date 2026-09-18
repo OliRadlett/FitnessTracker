@@ -305,6 +305,7 @@ class LiftVideoBase(BaseModel):
     lifting_session_id: uuid.UUID | None = None
     personal_record_id: uuid.UUID | None = None
     notes: str | None = None
+    expected_reps: int | None = None
 
 
 class LiftVideoCreate(LiftVideoBase):

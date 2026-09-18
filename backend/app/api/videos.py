@@ -10,6 +10,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,6 +111,7 @@ async def create_video(
         lifting_session_id=payload.lifting_session_id,
         personal_record_id=payload.personal_record_id,
         notes=payload.notes,
+        expected_reps=payload.expected_reps,
     )
     db.add(video)
     await db.commit()
@@ -331,4 +333,49 @@ async def delete_video(
 
     await db.delete(video)
     await db.commit()
+    return video
+
+
+class VideoPatchRequest(BaseModel):
+    """Partial update for a strength video (owner only)."""
+
+    exercise_name: str | None = None
+    expected_reps: int | None = None
+    notes: str | None = None
+
+
+@router.patch("/{video_id}", response_model=LiftVideoRead)
+async def update_video(
+    video_id: uuid.UUID,
+    payload: VideoPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a strength video's metadata (owner only).
+
+    Setting `expected_reps` constrains the next reprocessing run to the
+    deepest valid cycles (calibration aid for rep detection); reprocess
+    via POST /{video_id}/reprocess afterwards to apply it.
+    """
+    video = (
+        await db.execute(
+            select(LiftVideo).where(
+                LiftVideo.id == video_id, LiftVideo.user_id == current_user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if video is None:
+        raise HTTPException(404, "Video not found")
+
+    if payload.exercise_name is not None:
+        video.exercise_name = payload.exercise_name
+    if payload.expected_reps is not None:
+        if payload.expected_reps < 0:
+            raise HTTPException(400, "expected_reps must be >= 0")
+        video.expected_reps = payload.expected_reps
+    if payload.notes is not None:
+        video.notes = payload.notes
+
+    await db.commit()
+    await db.refresh(video)
     return video

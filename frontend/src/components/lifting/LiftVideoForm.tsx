@@ -28,6 +28,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [exerciseName, setExerciseName] = useState('');
+  const [expectedReps, setExpectedReps] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [prId, setPrId] = useState('');
@@ -38,6 +39,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   useEffect(() => {
     if (open) {
       setExerciseName('');
+      setExpectedReps('');
       setNotes('');
       setSessionId('');
       setPrId('');
@@ -82,6 +84,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
 
     const base: Record<string, unknown> = {
       exercise_name: exerciseName || null,
+      expected_reps: expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
       notes: notes || null,
       lifting_session_id: sessionId || null,
       personal_record_id: prId || null,
@@ -174,6 +177,20 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             value={exerciseName}
             onChange={setExerciseName}
             placeholder="e.g. Bench Press"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">
+            Expected reps <span className="text-muted/70">(helps rep detection)</span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={expectedReps}
+            onChange={(e) => setExpectedReps(e.target.value)}
+            placeholder="e.g. 1 for a max attempt"
+            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
