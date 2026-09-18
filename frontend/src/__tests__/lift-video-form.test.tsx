@@ -143,4 +143,63 @@ describe('LiftVideoForm', () => {
     fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('renders the expected reps input', () => {
+    renderForm();
+    expect(screen.getByText(/Expected reps/)).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('e.g. 1 for a max attempt'),
+    ).toBeInTheDocument();
+  });
+
+  it('submits expected_reps with the create payload', async () => {
+    const { getVideoUploadUrl, createLiftVideo } = await import('@/lib/api');
+    vi.mocked(getVideoUploadUrl).mockResolvedValue({
+      upload_url: 'https://example.com/put',
+      key: 'k1',
+    } as any);
+    vi.mocked(createLiftVideo).mockResolvedValue({} as any);
+
+    // Stub XHR PUT upload
+    const xhrMocks: any[] = [];
+    vi.stubGlobal(
+      'XMLHttpRequest',
+      vi.fn(() => {
+        const mock = {
+          upload: {},
+          open: vi.fn(),
+          setRequestHeader: vi.fn(),
+          send: vi.fn(function (this: any) {
+            mock.status = 200;
+            mock.onload?.();
+          }),
+          status: 0,
+          onload: null as any,
+          onerror: null as any,
+        };
+        xhrMocks.push(mock);
+        return mock;
+      }),
+    );
+
+    const { container } = renderForm();
+    const fileInput = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['x'], 'lift.mp4', { type: 'video/mp4' })] },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 1 for a max attempt'), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByText('Save Video'));
+
+    await vi.waitFor(() => {
+      expect(createLiftVideo).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ expected_reps: 3 }),
+      );
+    });
+    vi.unstubAllGlobals();
+  });
 });

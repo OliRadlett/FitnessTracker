@@ -121,6 +121,8 @@ def main() -> int:
     ap.add_argument("--trim-end", type=float, default=None)
     ap.add_argument("--exercise", default=None,
                     help="skip auto-classification, e.g. Squat")
+    ap.add_argument("--expected-reps", type=int, default=None,
+                    help="user-declared rep count: select deepest valid cycles")
     ap.add_argument("--skip-flow", action="store_true",
                     help="skip optical-flow velocity (faster)")
     ap.add_argument("--workdir", type=Path, default=None,
@@ -169,8 +171,10 @@ def main() -> int:
             cls["exercise"], cls["confidence"], cls["variation"])
     print(f"Classification: {exercise} ({variation}) conf={confidence}")
 
-    reps = detect_reps_from_pose(landmarks, timestamps, exercise)
-    print(f"Reps detected: {len(reps)}")
+    reps = detect_reps_from_pose(landmarks, timestamps, exercise,
+                                 expected_reps=args.expected_reps)
+    print(f"Reps detected: {len(reps)}"
+          + (f" (expected {args.expected_reps})" if args.expected_reps else ""))
 
     if args.dump_trajectories:
         import csv
@@ -199,7 +203,8 @@ def main() -> int:
     pose_result = run_pose_analysis(
         input_path=input_path, tmpdir=str(tmpdir),
         trim_start=trim_start, trim_end=trim_end,
-        exercise_name=exercise, rep_count=len(reps), weight_kg=0.0)
+        exercise_name=exercise,
+        rep_count=args.expected_reps or len(reps), weight_kg=0.0)
     form = pose_result.get("form", {})
     print(f"Form score: {form.get('overall_form_score')} "
           f"severity={form.get('severity')}")
