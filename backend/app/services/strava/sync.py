@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
@@ -617,10 +617,12 @@ async def backfill_all_activities_stream(
     )
     linked_activity_ids = set(linked_ids_result.scalars().all())
 
-    # 2. Fetch all Strava activities with lifting_session eagerly loaded
+    # 2. Fetch all Strava activities with lifting_session eagerly loaded.
+    # Defer the `context` JSONB (ride analytics): this path reads sport_type,
+    # dates, names, distances, route links and raw_data polylines only.
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.lifting_session))
+        .options(selectinload(Activity.lifting_session), defer(Activity.context))
         .where(
             Activity.user_id == user_id,
             Activity.source == "strava",
@@ -783,7 +785,12 @@ async def backfill_streams_for_all_activities(
         .exists()
     )
 
-    query = select(Activity).where(
+    # Narrow columns only: the loop below needs (id, user_id, provider id).
+    # Loading full rows would drag both JSONB payloads (raw_data, context)
+    # for every stream-missing activity across all users.
+    query = select(
+        Activity.id, Activity.user_id, Activity.provider_activity_id
+    ).where(
         Activity.sport_type == "cycling",
         Activity.provider_activity_id.isnot(None),
         not_(stream_exists),
@@ -792,15 +799,15 @@ async def backfill_streams_for_all_activities(
         query = query.where(Activity.user_id == user_id)
 
     result = await db.execute(query)
-    activities = list(result.scalars().all())
+    rows = list(result.all())
 
-    if not activities:
+    if not rows:
         return {"backfilled": 0, "total": 0}
 
     # Group by user to batch token refresh
-    activities_by_user: dict[uuid.UUID, list[Activity]] = defaultdict(list)
-    for a in activities:
-        activities_by_user[a.user_id].append(a)
+    activities_by_user: dict[uuid.UUID, list[tuple[uuid.UUID, str]]] = defaultdict(list)
+    for activity_id, uid, provider_activity_id in rows:
+        activities_by_user[uid].append((activity_id, provider_activity_id))
 
     backfilled = 0
     total = len(activities)
@@ -819,10 +826,10 @@ async def backfill_streams_for_all_activities(
             logger.warning(f"Could not refresh Strava token for user {uid}: {e}")
             continue
 
-        for activity in user_activities:
+        for activity_id, provider_activity_id in user_activities:
             try:
                 streams = await strava_client.get_activity_streams(
-                    connection.access_token, int(activity.provider_activity_id)
+                    connection.access_token, int(provider_activity_id)
                 )
                 for stream_type, stream_data in streams.items():
                     if "data" in stream_data:
@@ -834,7 +841,7 @@ async def backfill_streams_for_all_activities(
                             resolution = int(raw_res)
 
                         stream = ActivityStream(
-                            activity_id=activity.id,
+                            activity_id=activity_id,
                             stream_type=stream_type,
                             data={"data": stream_data["data"]},
                             resolution=resolution,
@@ -843,7 +850,7 @@ async def backfill_streams_for_all_activities(
                 backfilled += 1
             except Exception as e:
                 logger.warning(
-                    f"Failed to fetch streams for activity {activity.id}: {e}"
+                    f"Failed to fetch streams for activity {activity_id}: {e}"
                 )
 
         # Commit per user to save progress
@@ -964,8 +971,12 @@ async def sync_strava_routes(
     # Find cycling activities that have map.summary_polyline in raw_data
     from sqlalchemy import select as sa_select
 
+    # Defer the `context` JSONB: only raw_data polylines + narrow columns
+    # are read below.
     result = await db.execute(
-        sa_select(Activity).where(
+        sa_select(Activity)
+        .options(defer(Activity.context))
+        .where(
             Activity.user_id == user_id,
             Activity.sport_type == "cycling",
             Activity.source == "strava",

@@ -192,6 +192,10 @@ def estimate_ftp_from_power_curve_detailed(
 _power_curve_cache: dict[str, tuple[float, dict[int, float]]] = {}
 _POWER_CURVE_CACHE_TTL_SEC = 3600  # 1 hour
 
+# Max activities whose streams coexist in RAM: 10 rides x ~1.8 MB worst-case
+# 1 Hz streams keeps the transient under ~20 MB (was ~60-120 MB via .all()).
+_STREAM_CHUNK_SIZE = 10
+
 
 def best_power_rolling_average(
     power_data: list[float], duration_sec: int
@@ -268,42 +272,48 @@ async def compute_power_curve_from_streams(
     if not activity_ids:
         return {}
 
-    # Fetch power streams for these activities
-    result = await db.execute(
-        select(ActivityStream).where(
-            ActivityStream.activity_id.in_(activity_ids),
-            ActivityStream.stream_type == "watts",
-        )
-    )
-    streams = list(result.scalars().all())
-
+    # Fetch power streams in small per-activity chunks: loading 90d of 1 Hz
+    # streams at once peaks at ~60-120 MB (OOM risk on the 1 GB prod worker).
+    # Output is identical — per-bucket bests are order-independent (max).
     best_power: dict[int, float] = {}
 
     # Sort buckets by duration so shorter durations are processed first;
     # once a duration exceeds the data length we can break early.
     sorted_buckets = sorted(POWER_DURATION_BUCKETS, key=lambda b: b[0])
 
-    for stream in streams:
-        data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-        if not data or len(data) < 2:
-            continue
-
-        # Filter out None/zero values and use only positive power
-        power_data = [float(p) for p in data if p is not None and float(p) > 0]
-        n = len(power_data)
-        if n < 2:
-            continue
-
-        # §5.4 single-pass prefix-sum rolling average per bucket; sorted_buckets
-        # is ascending so we can stop early once a window exceeds the data.
-        for duration_sec, _ in sorted_buckets:
-            if duration_sec > n:
-                break  # remaining buckets are even longer
-            best_avg = best_power_rolling_average(power_data, duration_sec)
-            if best_avg is None:
+    for i in range(0, len(activity_ids), _STREAM_CHUNK_SIZE):
+        chunk = activity_ids[i : i + _STREAM_CHUNK_SIZE]
+        result = await db.execute(
+            select(ActivityStream).where(
+                ActivityStream.activity_id.in_(chunk),
+                ActivityStream.stream_type == "watts",
+            )
+        )
+        for stream in result.scalars().all():
+            data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+            # Release the ORM row (and its JSONB payload) now that the plain
+            # floats are extracted; only objects loaded by this function are
+            # expunged, so callers holding their own rows are unaffected.
+            db.expunge(stream)
+            if not data or len(data) < 2:
                 continue
-            if duration_sec not in best_power or best_avg > best_power[duration_sec]:
-                best_power[duration_sec] = best_avg
+
+            # Filter out None/zero values and use only positive power
+            power_data = [float(p) for p in data if p is not None and float(p) > 0]
+            n = len(power_data)
+            if n < 2:
+                continue
+
+            # §5.4 single-pass prefix-sum rolling average per bucket; sorted_buckets
+            # is ascending so we can stop early once a window exceeds the data.
+            for duration_sec, _ in sorted_buckets:
+                if duration_sec > n:
+                    break  # remaining buckets are even longer
+                best_avg = best_power_rolling_average(power_data, duration_sec)
+                if best_avg is None:
+                    continue
+                if duration_sec not in best_power or best_avg > best_power[duration_sec]:
+                    best_power[duration_sec] = best_avg
 
     _power_curve_cache[cache_key] = (now, best_power)
     return best_power
