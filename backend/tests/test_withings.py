@@ -1,5 +1,6 @@
 """Tests for Withings body-composition sync — pure helpers (no DB)."""
 
+from app.integrations.withings_client import withings_client
 from app.services.withings import (
     RANGE_VALIDATORS,
     decode_measure_value,
@@ -164,3 +165,35 @@ class TestWeightDedupPriority:
 
         deduped = _dedup_weight_logs([_Log("manual", 75.0), _Log("whoop", 74.8)])
         assert deduped[0].source == "whoop"
+
+
+class TestNormalizeTokenResponse:
+    """Regression test: the oauth2 endpoint nests tokens under ``body``.
+
+    Without flattening, the callback sees no top-level ``access_token``
+    and fails with 'token exchange failed' despite HTTP 200.
+    """
+
+    def test_nested_body_flattened(self):
+        raw = {
+            "status": 0,
+            "body": {
+                "access_token": "tok",
+                "refresh_token": "ref",
+                "expires_in": 10800,
+                "userid": "12345",
+            },
+        }
+        flat = withings_client.normalize_token_response(raw)
+        assert flat["access_token"] == "tok"
+        assert flat["refresh_token"] == "ref"
+        assert flat["expires_in"] == 10800
+        assert flat["userid"] == "12345"
+
+    def test_top_level_passthrough(self):
+        raw = {"access_token": "tok", "userid": "12345"}
+        assert withings_client.normalize_token_response(raw) == raw
+
+    def test_error_payload_untouched(self):
+        raw = {"status": 286, "error": "Invalid code"}
+        assert withings_client.normalize_token_response(raw) == raw

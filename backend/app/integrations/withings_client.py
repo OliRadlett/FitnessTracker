@@ -110,6 +110,27 @@ class WithingsClient:
 
         return await retry_request(_fetch)
 
+    def normalize_token_response(self, data: dict) -> dict:
+        """Flatten a Withings token response.
+
+        The oauth2 endpoint nests tokens under ``body``::
+
+            {"status": 0, "body": {"access_token": ..., "refresh_token": ...,
+                                   "expires_in": ..., "userid": ...}}
+
+        while callers expect them top-level. Merges ``body`` up when the
+        top-level has no ``access_token``. Passes anything else through
+        untouched (including error payloads).
+        """
+        if not isinstance(data, dict):
+            return data
+        if "access_token" in data:
+            return data
+        nested = data.get("body")
+        if isinstance(nested, dict):
+            return {**data, **nested}
+        return data
+
     async def refresh_access_token(self, refresh_token: str) -> dict:
         """Refresh an expired Withings OAuth2 access token.
 
@@ -143,13 +164,7 @@ class WithingsClient:
                 return resp.json()
 
         data = await retry_request(_fetch)
-        # Normalize: some Withings responses nest tokens under "body".
-        if "access_token" in data:
-            return data
-        body = data.get("body", {})
-        if "access_token" in body:
-            return body
-        return data
+        return self.normalize_token_response(data)
 
 
 # Singleton

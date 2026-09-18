@@ -238,6 +238,14 @@ async def oauth_callback(
                         url=f"{_frontend_url}/settings?error={provider.title()}+token+exchange+failed"
                     )
 
+            # Withings nests tokens under body.status/body ({"status":0,
+            # "body":{"access_token",...,"userid"...}}) — flatten so the
+            # access_token/userid lookups below work.
+            if provider == "withings":
+                from app.integrations.withings_client import withings_client
+
+                token_data = withings_client.normalize_token_response(token_data)
+
             if token_resp.status_code != 200:
                 _logger.error(
                     "%s token exchange failed: status=%s, response=%s",
