@@ -35,6 +35,7 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     recovery trends, recent PRs, and decoupling trends.
     """
     from app.services.cycling import (
+        CTL_WARMUP_DAYS,
         compute_decoupling_history,
         compute_power_curve_from_streams,
         compute_training_load,
@@ -51,7 +52,7 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
     # 1. Training load (CTL/ATL/TSB)
     try:
-        daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
+        daily_tss = await get_daily_tss(db, user_id, tss_fetch_start, today)
         training_load = compute_training_load(daily_tss, today, lookback_days=90)
         # Only include the last 28 days for the LLM
         recent_load = training_load[-28:] if training_load else []
@@ -733,11 +734,15 @@ async def compile_activity_context(
 
     # CTL/ATL/TSB
     try:
-        from app.services.cycling import compute_training_load, get_daily_tss
+        from app.services.cycling import (
+            CTL_WARMUP_DAYS,
+            compute_training_load,
+            get_daily_tss,
+        )
 
         today = date.today()
-        ninety_days_ago = today - timedelta(days=90)
-        daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
+        tss_fetch_start = today - timedelta(days=90 + CTL_WARMUP_DAYS)
+        daily_tss = await get_daily_tss(db, user_id, tss_fetch_start, today)
         training_load = compute_training_load(daily_tss, today, lookback_days=90)
         if training_load:
             latest = training_load[-1]
@@ -1878,11 +1883,15 @@ async def compile_health_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
     # ── Training Load Context (correlate health metrics with training stress) ────
     try:
-        from app.services.cycling import compute_training_load, get_daily_tss
+        from app.services.cycling import (
+            CTL_WARMUP_DAYS,
+            compute_training_load,
+            get_daily_tss,
+        )
 
         today = date.today()
-        ninety_days_ago = today - timedelta(days=90)
-        daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
+        tss_fetch_start = today - timedelta(days=90 + CTL_WARMUP_DAYS)
+        daily_tss = await get_daily_tss(db, user_id, tss_fetch_start, today)
         training_load = compute_training_load(daily_tss, today, lookback_days=90)
         if training_load:
             latest = training_load[-1]
@@ -2068,10 +2077,14 @@ async def compile_event_stats(
 
     # 2. Current fitness (CTL/ATL/TSB)
     try:
-        from app.services.cycling import compute_training_load, get_daily_tss
+        from app.services.cycling import (
+            CTL_WARMUP_DAYS,
+            compute_training_load,
+            get_daily_tss,
+        )
 
-        ninety_days_ago = today - timedelta(days=90)
-        daily_tss = await get_daily_tss(db, user_id, ninety_days_ago, today)
+        tss_fetch_start = today - timedelta(days=90 + CTL_WARMUP_DAYS)
+        daily_tss = await get_daily_tss(db, user_id, tss_fetch_start, today)
         training_load = compute_training_load(daily_tss, today, lookback_days=90)
         if training_load:
             latest = training_load[-1]

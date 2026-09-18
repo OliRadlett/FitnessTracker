@@ -21,7 +21,10 @@ from app.models.daily_metric import DailyMetric
 from app.models.goal import Goal, GoalCheckIn
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.weight import WeightLog
-from app.services.cycling.training_load import compute_training_load
+from app.services.cycling.training_load import (
+    CTL_WARMUP_DAYS,
+    compute_training_load,
+)
 from app.services.cycling.tss import get_daily_tss
 from app.services.goal_metrics import METRIC_REGISTRY, resolve_metric
 from app.services.goals import derive_direction
@@ -664,7 +667,9 @@ async def compute_tsb_projection(
 
     # 2. Get current CTL/ATL
     today = date.today()
-    daily_tss = await get_daily_tss(db, user_id, today - timedelta(days=90), today)
+    daily_tss = await get_daily_tss(
+        db, user_id, today - timedelta(days=90 + CTL_WARMUP_DAYS), today
+    )
 
     current_ctl = 0.0
     current_atl = 0.0

@@ -14,6 +14,7 @@ from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
 from app.models.weight import WeightLog
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
     _classify_decoupling,
     _classify_vo2max,
@@ -349,7 +350,7 @@ class ChartService:
     async def training_load(self, user_id: uuid.UUID, days: int = 90) -> ChartData:
         """CTL, ATL, TSB over time."""
         end_date = date.today()
-        start_date = end_date - timedelta(days=days + 42)
+        start_date = end_date - timedelta(days=days + CTL_WARMUP_DAYS)
 
         daily_tss = await get_daily_tss(self.db, user_id, start_date, end_date)
         load_data = compute_training_load(daily_tss, end_date, lookback_days=days)
@@ -1776,7 +1777,7 @@ class ChartService:
     async def ramp_rate(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
         """Week-over-week CTL change with safe-ramp reference bands."""
         end_date = date.today()
-        start_date = end_date - timedelta(weeks=weeks, days=42)
+        start_date = end_date - timedelta(weeks=weeks, days=CTL_WARMUP_DAYS)
 
         daily_tss_map = await get_daily_tss(self.db, user_id, start_date, end_date)
         load_data = compute_training_load(

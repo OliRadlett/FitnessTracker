@@ -1024,6 +1024,7 @@ async def get_activity_context(
         should_recompute_for_ftp,
     )
     from app.services.cycling import (
+        CTL_WARMUP_DAYS,
         compute_training_load,
         get_daily_tss,
         get_or_create_cycling_profile,
@@ -1234,7 +1235,7 @@ async def get_activity_context(
         if profile.ftp_watts:
             lookback = 90
             end_date = activity_date
-            start_date = end_date - _td(days=lookback + 42)
+            start_date = end_date - _td(days=lookback + CTL_WARMUP_DAYS)
             daily_tss = await get_daily_tss(db, current_user.id, start_date, end_date)
             load_data = compute_training_load(
                 daily_tss, end_date, lookback_days=lookback

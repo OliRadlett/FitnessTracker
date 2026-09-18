@@ -43,6 +43,7 @@ from app.schemas.training_plan import (
     WeekRouteMatch,
 )
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     compute_training_load,
     get_daily_tss,
     get_or_create_cycling_profile,
@@ -857,7 +858,9 @@ async def get_plan_week(
     await db.refresh(profile)
 
     readiness = None
-    daily_tss = await get_daily_tss(db, user_id, today - timedelta(days=90), today)
+    daily_tss = await get_daily_tss(
+        db, user_id, today - timedelta(days=90 + CTL_WARMUP_DAYS), today
+    )
     if daily_tss:
         load_data = compute_training_load(daily_tss, today, lookback_days=90)
         last = load_data[-1]

@@ -388,7 +388,11 @@ def _fields_for_scale(day: TrainingPlanDay, factor: float) -> dict[str, float | 
                 day.planned_volume_kg, factor, 100, 200000
             )
         if day.planned_rpe is not None:
-            fields["planned_rpe"] = _scaled(day.planned_rpe, factor, 1, 10)
+            scaled_rpe = _scaled(day.planned_rpe, factor, 1, 10)
+            # RPE is prescribed in whole numbers.
+            fields["planned_rpe"] = (
+                round(scaled_rpe) if scaled_rpe is not None else None
+            )
     return fields
 
 
@@ -475,11 +479,16 @@ async def generate_adaptive_suggestions(
     # ── Training load (CTL/ATL/TSB) ────────────────────────────────────────
     tsb = ctl = atl = None
     try:
-        from app.services.cycling.training_load import compute_training_load
+        from app.services.cycling.training_load import (
+            CTL_WARMUP_DAYS,
+            compute_training_load,
+        )
         from app.services.cycling.tss import get_daily_tss
 
         today = date.today()
-        daily = await get_daily_tss(db, user_id, today - timedelta(days=90), today)
+        daily = await get_daily_tss(
+            db, user_id, today - timedelta(days=90 + CTL_WARMUP_DAYS), today
+        )
         series = compute_training_load(daily, today, lookback_days=90)
         if series:
             last = series[-1]

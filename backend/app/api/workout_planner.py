@@ -18,6 +18,7 @@ from app.schemas.workout_planner import (
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     compute_training_load,
     get_daily_tss,
     get_or_create_cycling_profile,
@@ -50,7 +51,7 @@ async def get_workout_zones(
 
     # Compute current CTL/ATL/TSB
     today = date.today()
-    lookback = today - timedelta(days=90)
+    lookback = today - timedelta(days=90 + CTL_WARMUP_DAYS)
     daily_tss = await get_daily_tss(db, current_user.id, lookback, today)
     load_data = compute_training_load(daily_tss, today, lookback_days=90)
 

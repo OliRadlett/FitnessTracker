@@ -159,6 +159,42 @@ def evaluate_big3_ratios(
     return issues
 
 
+# Display context per ratio metric. ``low`` is the boundary between the
+# "below ideal" and "above ideal" advice — it must be the metric's own
+# bound, not 1 (e.g. bench:dead 0.80 is *above* ideal yet below 1).
+_BIG3_RATIO_CONTEXT = {
+    "bench_squat_ratio": {
+        "label": "Bench:squat ratio",
+        "ideal": "0.65–0.85",
+        "low": 0.65,
+        "below": "Bench Press lags behind Back Squat — add pressing volume",
+        "above": "Bench dominant — balance with more squat frequency",
+    },
+    "deadlift_squat_ratio": {
+        "label": "Deadlift:squat ratio",
+        "ideal": "1.0–1.35",
+        "low": 1.0,
+        "below": "Weak deadlift relative to squat — add hinge volume",
+        "above": "Squat weak relative to deadlift — add squat frequency",
+    },
+    "bench_deadlift_ratio": {
+        "label": "Bench:deadlift ratio",
+        "ideal": "0.45–0.75",
+        "low": 0.6,
+        "below": "Bench lags relative to deadlift — add pressing volume",
+        "above": "Deadlift lags relative to bench — add hinge volume",
+    },
+}
+
+
+def _big3_ratio_advice(metric: str, value: float) -> tuple[str, str]:
+    """(detail, recommendation) for an out-of-range Big-3 ratio."""
+    ctx = _BIG3_RATIO_CONTEXT[metric]
+    recommendation = ctx["below"] if value < ctx["low"] else ctx["above"]
+    detail = f"{ctx['label']} is {value:.2f} (ideal {ctx['ideal']})"
+    return detail, recommendation
+
+
 # ── Pure functions: push/pull volume balance ─────────────────────────────────
 
 
@@ -182,10 +218,37 @@ def evaluate_push_pull_ratio(push_volume: float, pull_volume: float) -> dict | N
     """Classify push/pull volume balance. Ideal ratio is 1.0–1.3.
 
     Returns a dict with value/severity/detail/recommendation for
-    out-of-range balances, or None when in range.
+    out-of-range balances, or None when in range (or when neither side
+    has any volume).
     """
-    if push_volume <= 0 or pull_volume <= 0:
+    if push_volume <= 0 and pull_volume <= 0:
         return None
+
+    if push_volume <= 0:
+        return {
+            "value": None,
+            "severity": "high",
+            "detail": (
+                f"No pushing volume logged in the window "
+                f"({pull_volume:.0f}kg pulled) — pressing pattern absent"
+            ),
+            "recommendation": (
+                "Add pressing volume: bench press, overhead press and dips"
+            ),
+        }
+    if pull_volume <= 0:
+        return {
+            "value": None,
+            "severity": "high",
+            "detail": (
+                f"No pulling volume logged in the window "
+                f"({push_volume:.0f}kg pushed) — pulling pattern absent, "
+                f"elevated shoulder injury risk"
+            ),
+            "recommendation": (
+                "Add pulling volume: rows, pull-ups and face pulls"
+            ),
+        }
 
     ratio = push_volume / pull_volume
     ratio_r = round(ratio, 2)
@@ -200,10 +263,10 @@ def evaluate_push_pull_ratio(push_volume: float, pull_volume: float) -> dict | N
             "detail": (
                 f"Push/pull volume ratio is {ratio_r:.2f} "
                 f"({push_volume:.0f}kg pushed vs {pull_volume:.0f}kg pulled) — "
-                f"pulling deficit, increased shoulder injury risk"
+                f"pushing deficit, press strength lags well behind pulling"
             ),
             "recommendation": (
-                "Add pulling volume: rows, pull-ups and face pulls — "
+                "Add pressing volume: bench press, overhead press and dips — "
                 "target roughly equal push and pull tonnage"
             ),
         }
@@ -410,30 +473,9 @@ async def analyze_deficiencies(
 
     if squat_1rm and bench_1rm and deadlift_1rm:
         ratio_issues = evaluate_big3_ratios(squat_1rm, bench_1rm, deadlift_1rm)
-        ratio_context = {
-            "bench_squat_ratio": {
-                "label": "Bench:squat ratio",
-                "ideal": "0.65–0.75",
-                "below": "Bench Press lags behind Back Squat — add pressing volume",
-                "above": "Bench dominant — balance with more squat frequency",
-            },
-            "deadlift_squat_ratio": {
-                "label": "Deadlift:squat ratio",
-                "ideal": "1.0–1.2",
-                "below": "Weak deadlift relative to squat — add hinge volume",
-                "above": "Squat weak relative to deadlift — add squat frequency",
-            },
-            "bench_deadlift_ratio": {
-                "label": "Bench:deadlift ratio",
-                "ideal": "0.55–0.65",
-                "below": "Bench lags relative to deadlift — add pressing volume",
-                "above": "Deadlift lags relative to bench — add hinge volume",
-            },
-        }
 
         for metric, value, severity in ratio_issues:
-            ctx = ratio_context[metric]
-            recommendation = ctx["below"] if value < 1 else ctx["above"]
+            detail, recommendation = _big3_ratio_advice(metric, value)
             items.append(
                 _item(
                     category="lifting",
@@ -445,7 +487,7 @@ async def analyze_deficiencies(
                     level=None,
                     next_level_target=None,
                     severity=severity,  # type: ignore[arg-type]
-                    detail=f"{ctx['label']} is {value:.2f} (ideal {ctx['ideal']})",
+                    detail=detail,
                     recommendation=recommendation,
                 )
             )
@@ -499,10 +541,18 @@ async def analyze_deficiencies(
     pull_volume = 0.0
     for exercise_name, weight_kg, reps in volume_rows:
         kind = classify_push_pull(exercise_name)
+        if kind is None:
+            continue
+        w = weight_kg if weight_kg and weight_kg > 0 else None
+        if w is None:
+            # Bodyweight movement (pull-ups, dips, push-ups): count the
+            # athlete's bodyweight when known, else the set adds no tonnage.
+            w = bodyweight if bodyweight and bodyweight > 0 else 0.0
+        vol = w * (reps or 0)
         if kind == "push":
-            push_volume += weight_kg * reps
-        elif kind == "pull":
-            pull_volume += weight_kg * reps
+            push_volume += vol
+        else:
+            pull_volume += vol
 
     push_pull_result = evaluate_push_pull_ratio(push_volume, pull_volume)
     push_pull_in_range = (

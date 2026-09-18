@@ -28,6 +28,7 @@ from app.schemas.cycling import (
 )
 from app.services.auth import get_current_user
 from app.services.cycling import (
+    CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
     compute_power_curve_from_streams,
     compute_power_zones_from_streams,
@@ -388,7 +389,7 @@ async def get_cycling_metrics_summary(
     ctl_benchmark = None
     # Compute CTL for benchmark classification
     end_date = date.today()
-    start_date = end_date - timedelta(days=90 + 42)
+    start_date = end_date - timedelta(days=90 + CTL_WARMUP_DAYS)
     daily_tss_data = await get_daily_tss(db, uid, start_date, end_date)
     load_data = compute_training_load(daily_tss_data, end_date, lookback_days=90)
     current_ctl = load_data[-1]["ctl"] if load_data else None
@@ -524,7 +525,7 @@ async def get_suggested_cycle(
     today = date.today()
 
     # 1. Get training load (CTL/ATL/TSB)
-    ninety_days_ago = today - timedelta(days=90)
+    ninety_days_ago = today - timedelta(days=90 + CTL_WARMUP_DAYS)
     daily_tss = await get_daily_tss(db, current_user.id, ninety_days_ago, today)
     training_load = compute_training_load(daily_tss, today, lookback_days=90)
 

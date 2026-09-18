@@ -30,6 +30,7 @@ from app.services.cycling.prs import (
 from app.services.cycling.training_load import (
     ATL_DAYS,
     CTL_DAYS,
+    CTL_WARMUP_DAYS,
     RANGE_LABELS,
     TYPICAL_RANGES,
     classify_metric,

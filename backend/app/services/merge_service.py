@@ -118,10 +118,10 @@ def _compute_activity_match_score(
     """Compute weighted match score between a candidate activity and new activity data.
 
     Weights:
-    - Date proximity  50%
+    - Date proximity  40%
     - Sport type       20%
-    - Duration         15%
-    - Distance         15%
+    - Duration         20%
+    - Distance         20%
     """
     date_s = _date_proximity_score(candidate.start_date, start_date)
     sport_s = _sport_type_score(candidate.sport_type, sport_type)

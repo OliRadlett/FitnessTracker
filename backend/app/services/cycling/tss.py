@@ -38,8 +38,9 @@ def calculate_hr_tss(
 ) -> float:
     """Calculate heart rate-based TSS (hrTSS).
 
-    Uses the % of HR reserve method.
-    hrTSS = (duration_s / 3600) * (avg_hr_%HRR / threshold_%HRR) * 100
+    Uses the % of HR reserve method (TrainingPeaks convention — quadratic
+    in intensity, like power TSS):
+    hrTSS = (duration_s / 3600) * (avg_hr_%HRR / threshold_%HRR)^2 * 100
     """
     if not threshold_hr or threshold_hr <= resting_hr:
         return 0.0
@@ -51,7 +52,7 @@ def calculate_hr_tss(
     threshold_hrr = 1.0  # threshold is 100% HRR by definition
 
     hours = duration_seconds / 3600
-    return round(hours * (avg_hrr / threshold_hrr) * 100, 1)
+    return round(hours * (avg_hrr / threshold_hrr) ** 2 * 100, 1)
 
 
 def calculate_intensity_factor(normalized_power: float, ftp: float) -> float | None:
@@ -74,11 +75,16 @@ def compute_normalized_power(power_data: list[float]) -> float | None:
     """Compute Normalized Power from per-second power data.
 
     Standard algorithm:30-second rolling average → 4th power mean → 4th root.
+    Zero-watt samples (coasting) are valid data and must be kept — dropping
+    them compresses the timeline and inflates NP. Only None/non-finite
+    samples are discarded.
     """
     if not power_data or len(power_data) < 30:
         return None
 
-    clean = [float(p) for p in power_data if p is not None and float(p) > 0]
+    clean = [
+        float(p) for p in power_data if p is not None and math.isfinite(float(p))
+    ]
     if len(clean) < 30:
         return None
 
