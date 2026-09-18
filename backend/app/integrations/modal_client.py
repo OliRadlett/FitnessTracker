@@ -84,6 +84,7 @@ def process_video_on_modal(
     r2_upload_key: str,
     analysis_depth: str = "full",
     expected_reps: int | None = None,
+    user_exercise: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -106,6 +107,10 @@ def process_video_on_modal(
     expected_reps:
         User-declared rep count (calibration aid): the deepest valid
         cycles are selected instead of all valid cycles.
+    user_exercise:
+        User-declared exercise name (DB). Selects the analyzer — pose
+        auto-classification only validates (bench is unclassifiable from
+        pose statistics alone: identical medians to a deadlift).
 
     Returns
     -------
@@ -142,6 +147,7 @@ def process_video_on_modal(
         upload_key: str,
         depth: str,
         expected: int | None,
+        user_ex: str | None,
     ) -> dict:
         import logging
         import subprocess
@@ -321,21 +327,31 @@ def process_video_on_modal(
                 from app.integrations.pose_analysis import (
                     classify_exercise,
                     extract_pose_landmarks,
+                    route_exercise,
                 )
 
                 landmarks, pose_timestamps = extract_pose_landmarks(
                     input_path, tmpdir, trim_start, trim_end, fps=10.0,
                 )
                 if landmarks:
-                    classification = classify_exercise(landmarks)
-                    if classification["confidence"] >= 0.6:
-                        exercise = classification["exercise"]
-                        confidence = classification["confidence"]
-                        analysis_text = f"Pose classification: {exercise} ({classification['variation']}) conf={confidence}"
-                    else:
-                        analysis_text = f"Pose classification low confidence ({classification['confidence']}), keeping user exercise: {exercise}"
+                    classification = classify_exercise(landmarks, pose_timestamps)
+                    auto_ex = classification["exercise"]
+                    auto_conf = classification["confidence"]
+                    # User declaration selects the analyzer; auto validates.
+                    routed, source, _ = route_exercise(
+                        user_ex, auto_ex, auto_conf)
+                    exercise = routed or auto_ex
+                    confidence = auto_conf
+                    analysis_text = (
+                        f"Analyzing as {exercise} "
+                        f"(user: {user_ex or '-'}, auto: {auto_ex} "
+                        f"{auto_conf:.2f} via {source})"
+                    )
+                    if source == "user" and auto_ex and auto_ex != routed:
+                        analysis_text += f" — auto disagrees ({auto_ex})"
                 else:
                     analysis_text = "No pose landmarks detected, keeping user exercise"
+                    exercise = user_ex or ""
                 _logger.info("Classification: exercise=%s reps=%d conf=%.2f", exercise, reps, confidence)
             except Exception as e:
                 _logger.warning("Pose classification failed: %s", e)
@@ -540,4 +556,5 @@ def process_video_on_modal(
             r2_upload_key,
             analysis_depth,
             expected_reps,
+            user_exercise,
         )

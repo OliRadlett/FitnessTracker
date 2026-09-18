@@ -257,7 +257,7 @@ def classify_exercise(landmarks_per_frame: list,
     confidence = 0.0
     variation = ""
 
-    # Overhead press (strict / push press / log press) FIRST: elbows extend
+    # Overhead press (strict / push press / log press): elbows extend
     # while the hands finish overhead, WITH leg drive (dip/clean). Verified
     # 2026-09-18: a strongman log clean-and-press read "Deadlift 0.95"
     # (the clean bends the torso horizontal, tripping the hinge gate).
@@ -306,7 +306,17 @@ def classify_exercise(landmarks_per_frame: list,
     elif hip_range > 40 and knee_range > 50:
         exercise = "Squat"
         confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        variation = "Front Squat" if mean_sh_diff > 0.05 else "Back Squat"
+        if mean_sh_diff > 0.05:
+            variation = "Front Squat"
+        else:
+            # Low vs high bar by median torso lean across the set:
+            # low-bar lifters ride 25-35°+ inclined throughout, high-bar
+            # stay ~10-20°. Threshold 22° separates the observed cases
+            # (28° vs 16°). Form thresholds are bar-style agnostic (lean
+            # is measured at the standing top), so this is labeling only.
+            med_lean = float(np.median(
+                [_torso_angle(lm) for lm in landmarks_per_frame]))
+            variation = "Low Bar Squat" if med_lean > 22 else "High Bar Squat"
     elif elbow_range > 50 and hip_range < 15 and knee_range < 15:
         exercise = "Bench Press"
         confidence = min(0.95, 0.7 + elbow_range / 200)
@@ -354,38 +364,66 @@ def detect_reps_from_pose(
         for lm in landmarks_per_frame
     ], window=7)
 
-    # Find local maxima (tops: standing/lockout). Tops bound the reps;
-    # bottoms are found inside each slice (occluded and noisy — never
-    # trust them as boundaries).
+    # Find all raw extrema, then filter by PROMINENCE (height above the
+    # surrounding signal). Jitter wobbles (±2°) and setup shuffles never
+    # qualify; true bottoms/tops (40-120° of relief) always do. Without
+    # this, every micro-wiggle becomes a boundary and reps fragment —
+    # e.g. a grinder's sticking-point hesitation split one rep into two
+    # bottom-fragments with no top inside (0df141e8), and a video starting
+    # mid-descent produced a lockout-less leading fragment (a0bc93ce).
     diff = np.diff(signal)
-    maxima_idx = []
+    raw_max, raw_min = [], []
     for i in range(1, len(diff)):
         if diff[i - 1] > 0 and diff[i] <= 0:
-            maxima_idx.append(i)
+            raw_max.append(i)
+        elif diff[i - 1] < 0 and diff[i] >= 0:
+            raw_min.append(i)
 
-    # Pair CONSECUTIVE maxima into reps: one top-to-top cycle each, with
-    # exactly one bottom inside. Boundaries at standing lockouts are clean
-    # (unoccluded, high-visibility); bottoms are occluded and noisy, and
-    # sticking-point wobbles mid-ascent used to split grinds into fragments
-    # (a 53° bottom + 97° hesitation read as two "reps", neither containing
-    # a top — lockout then always failed. Found 2026-09-18 on 0df141e8).
-    # Leading/trailing partials ([0, first top], [last top, end]) cover
-    # videos that start mid-descent or end at the bottom.
-    bounds = [0] + maxima_idx + [len(signal) - 1]
-    # Deduplicate adjacent bounds (e.g. start already at a top)
-    deduped = [bounds[0]]
-    for b in bounds[1:]:
-        if b - deduped[-1] >= 3:
-            deduped.append(b)
-    bounds = deduped
+    def _prom(idx: int, is_max: bool) -> float:
+        # Topographic prominence against the best ground on EACH SIDE of
+        # the whole signal (not nearest-extremum intervals: a flat bottom
+        # full of wiggles must measure against the surrounding tops, not
+        # sibling wiggles — nearest-neighbor scoring gave a 107°-deep bench
+        # bottom prominence ~7 and dropped every rep. Found 2026-09-18 on
+        # af920f0e).
+        if is_max:
+            left = float(np.min(signal[:idx])) if idx > 0 else float(signal[idx])
+            right = (float(np.min(signal[idx + 1:]))
+                     if idx + 1 < len(signal) else float(signal[idx]))
+            return float(signal[idx]) - max(left, right)
+        left = float(np.max(signal[:idx])) if idx > 0 else float(signal[idx])
+        right = (float(np.max(signal[idx + 1:]))
+                 if idx + 1 < len(signal) else float(signal[idx]))
+        return min(left, right) - float(signal[idx])
+
+    kept_max = [i for i in raw_max if _prom(i, True) >= 10.0]
+    # Bottoms must also clear anatomical plausibility (<30° is beyond max
+    # joint flexion: always an occlusion glitch, never a real bottom).
+    kept_min = [i for i in raw_min
+                if _prom(i, False) >= 25.0 and signal[i] >= 30.0]
+
+    # Each kept bottom gets the nearest kept top on each side as bounds
+    # (falling back to the signal ends for videos starting/ending mid-rep).
+    # Slices sharing identical bounds are deduped, keeping the deeper one.
+    candidates: dict[tuple[int, int], float] = {}
+    for mi in kept_min:
+        left = [m for m in kept_max if m < mi]
+        right = [m for m in kept_max if m > mi]
+        start = left[-1] if left else 0
+        end = right[0] if right else len(signal) - 1
+        if end - start < 3:
+            continue
+        key = (start, end)
+        depth = float(signal[mi])
+        if key not in candidates or depth < candidates[key]:
+            candidates[key] = depth
     #
     # Each slice must also have enough JOINT RANGE to be a real rep:
     # standing-weight-shifts and setup steps create genuine minima but only
     # wiggle a few degrees (live: "reps" with 3° range). Powerlifters move.
     min_amp = 20.0 if exercise in ("Bench Press",) else 25.0
     reps = []
-    for k in range(len(bounds) - 1):
-        start, end = bounds[k], bounds[k + 1]
+    for start, end in sorted(candidates):
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
         if duration < 0.8 or duration > 10.0:
@@ -476,6 +514,10 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in idxs
     ])
+    hvals = _median_filter([
+        calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26))
+        for i in idxs
+    ])
     # Bottom: no visibility gate (min_vis=0). Deep flexion occludes knees
     # behind arms/plates, so visibility is systematically LOW at true
     # bottoms — gating rejects them and falls back shallow (verified:
@@ -485,7 +527,12 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
                         want_max=False, min_vis=0.0)
     bottom_lm = all_landmarks[bi]
     bottom_knee = float(kvals[idxs.index(bi)])
-    ti = _best_extremum(all_landmarks, idxs, kvals, (11, 12), want_max=True)
+    # Top = frame where BOTH knee and hip peak (weakest-link max). Pure
+    # knee-argmax lands on straight-knee bent-over frames (setup grips,
+    # stiff-legged finishes) whose hips never extended — verified
+    # 2026-09-18 (top_knee 179 with top_hip 77 scored as the lockout).
+    topvals = np.minimum(kvals, hvals)
+    ti = _best_extremum(all_landmarks, idxs, topvals, (11, 12), want_max=True)
     top_lm = all_landmarks[ti]
 
     def _win_med(fn):
@@ -530,34 +577,41 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
 def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
 
-    # Bottom frame: max wrist Y (lowest bar position)
-    bottom_wrist_y = -1
-    bottom_lm = all_landmarks[min(si, len(all_landmarks) - 1)]
+    # Chest contact: at the bottom the bar meets the chest, i.e. the wrist
+    # reaches shoulder height. Measured as the rep's closest approach
+    # (an arched back raises the chest to the bar, so torso-length ratios
+    # misfire on lying lifters — verified 2026-09-18: bar visibly touching
+    # while the old ratio test said no contact).
+    gaps = []
     for i in range(si, min(ei, len(all_landmarks))):
+        sy = np.mean([all_landmarks[i][11].y, all_landmarks[i][12].y])
         wy = np.mean([all_landmarks[i][15].y, all_landmarks[i][16].y])
-        if wy > bottom_wrist_y:
-            bottom_wrist_y = wy
-            bottom_lm = all_landmarks[i]
+        gaps.append(abs(wy - sy))
+    chest_contact = bool(np.min(gaps) < 0.10) if gaps else False
 
-    # Chest contact: bar below shoulders
-    shoulder_y = np.mean([bottom_lm[11].y, bottom_lm[12].y])
-    chest_contact = (bottom_wrist_y - shoulder_y) > 0.05
-
-    # Pause: bar velocity ≈ 0 near bottom
+    # Pause: bar velocity ≈ 0 near bottom. Threshold 0.005 normalized
+    # units/frame (5%/s): tracking jitter alone stays under it, while even
+    # a slow grind exceeds it — the old 0.002 sat inside jitter noise.
     pause_frames = 0
     for i in range(max(si, si), min(ei, len(all_landmarks) - 1)):
         dy = abs(all_landmarks[i + 1][15].y - all_landmarks[i][15].y)
-        if dy < 0.002:
+        if dy < 0.005:
             pause_frames += 1
     pause = pause_frames >= int(fps * 0.3)
 
-    # Butt lift
+    # Butt lift: hips must RISE and STAY up (sustained run below baseline),
+    # not just bounce with leg drive. A momentary excursion is normal on a
+    # max attempt; a lifted butt stays up for much of the rep.
     hip_ys = [np.mean([all_landmarks[i][23].y, all_landmarks[i][24].y]) for i in range(si, min(ei, len(all_landmarks)))]
     butt_lift = False
     if len(hip_ys) > 5:
-        start_hip = np.mean(hip_ys[:max(1, len(hip_ys) // 5)])
-        min_hip = min(hip_ys)
-        butt_lift = (start_hip - min_hip) > 0.02
+        baseline = float(np.median(hip_ys))
+        up = [h < baseline - 0.02 for h in hip_ys]
+        longest, cur = 0, 0
+        for u in up:
+            cur = cur + 1 if u else 0
+            longest = max(longest, cur)
+        butt_lift = longest > len(hip_ys) * 0.3
 
     # Lockout + symmetry are evaluated at the TOP (arms extended), not at
     # the rep end (a bottom, where the elbows are always bent). Median
@@ -610,7 +664,9 @@ def _detect_hitching(knee_angles: list[float]) -> bool:
     mid = n * 3 // 4
     peak = max(knee_angles[:mid]) if mid > 0 else knee_angles[0]
     trough = min(knee_angles[mid:])
-    return (peak - trough) > 15
+    # bool(): inputs may be numpy scalars (median-filtered series), and a
+    # numpy bool breaks json.dumps downstream (found 2026-09-18).
+    return bool((peak - trough) > 15)
 
 
 def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
@@ -626,12 +682,19 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
         calculate_angle(_mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26), _mid(all_landmarks[i], 27, 28))
         for i in didx
     ])
+    hvals = _median_filter([
+        calculate_angle(_mid(all_landmarks[i], 11, 12), _mid(all_landmarks[i], 23, 24), _mid(all_landmarks[i], 25, 26))
+        for i in didx
+    ])
     # No visibility gate on the bottom (occlusion is expected at depth).
+    # Top uses weakest-link max like squat (straight-knee bent-over setup
+    # frames must not win over true standing lockouts).
     bottom_lm = all_landmarks[_best_extremum(
         all_landmarks, didx, dvals, (23, 24, 25, 26), want_max=False,
         min_vis=0.0)]
     top_lm = all_landmarks[_best_extremum(
-        all_landmarks, didx, dvals, (11, 12, 23, 24), want_max=True)]
+        all_landmarks, didx, np.minimum(dvals, hvals), (11, 12, 23, 24),
+        want_max=True)]
 
     lockout = _deadlift_lockout(top_lm)
     top_hip_angle = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
@@ -886,6 +949,46 @@ def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float
     }
 
 
+# ── Exercise Routing (user declaration wins) ─────────────────────────────
+
+
+def route_exercise(user_name: str | None, auto_exercise: str,
+                   auto_confidence: float) -> tuple[str, str, str]:
+    """Pick the analyzer for a video. Returns (routed, source, auto).
+
+    The user knows what they lifted; pose-only auto-classification cannot
+    reliably distinguish bench (lying, foreshortened, leg drive) from
+    standing presses/deadlifts with similar joint statistics — verified
+    2026-09-18 (bench medians identical to a deadlift's). So a recognized
+    user declaration always wins; auto is authoritative only when the user
+    declared nothing (or nothing recognizable), and is always reported for
+    calibration. Do NOT re-add pose-only bench gates without real data.
+    """
+    key = (user_name or "").strip().lower()
+
+    def family(name: str) -> str:
+        n = name.lower()
+        if "bench" in n:
+            return "Bench Press"
+        if "deadlift" in n:
+            return "Deadlift"
+        if "squat" in n:
+            return "Squat"
+        if any(w in n for w in ("press", "overhead", "ohp", "log", "strict")):
+            return "Overhead Press"
+        if "stone" in n or "sandbag" in n:
+            return "Squat"  # closest judged pattern (pick from crouch + stand)
+        return ""
+
+    user_family = family(key)
+    auto_family = family(auto_exercise) if auto_confidence >= 0.6 else ""
+    if user_family:
+        return user_family, "user", auto_family
+    if auto_family:
+        return auto_family, "auto", auto_family
+    return "", "none", auto_family
+
+
 # ── Main Orchestrator ────────────────────────────────────────────────────────
 
 
@@ -912,15 +1015,22 @@ def run_pose_analysis(
         logger.warning("No pose landmarks extracted")
         return result
 
-    # Classify exercise (validate user's choice)
+    # Classify exercise (auto guess) + route: user declaration wins.
     classification = classify_exercise(landmarks, timestamps)
-    if classification["confidence"] >= 0.6:
-        result["exercise_detected"] = classification["exercise"]
-        result["exercise_variation"] = classification["variation"]
-    else:
-        result["exercise_detected"] = exercise_name
+    routed, source, auto_ex = route_exercise(
+        exercise_name,
+        classification["exercise"],
+        classification["confidence"],
+    )
+    result["exercise_detected"] = routed
+    result["exercise_routed_from"] = source
+    result["auto_exercise"] = auto_ex
+    result["exercise_variation"] = (
+        classification["variation"] if routed == auto_ex and auto_ex else "")
 
-    exercise = result.get("exercise_detected", exercise_name)
+    exercise = routed
+    # Empty exercise flows through to generic-50 analysis below (same as
+    # the old low-confidence fallback) rather than failing the video.
 
     # Detect reps (rep_count = user-declared expectation, if any)
     expected = rep_count if rep_count and rep_count > 0 else None
