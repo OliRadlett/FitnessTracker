@@ -337,10 +337,10 @@ def detect_reps_from_pose(
     Returns list of per-rep dicts with start/end indices.
 
     expected_reps (user-declared at upload, for calibration): when given,
-    the deepest valid cycles are selected instead of all valid cycles —
-    setup dips, walkout shuffles and rerack bends all oscillate but are
-    shallower than the working rep(s). Without it, every valid cycle is
-    returned (legacy behavior).
+    the largest-amplitude valid cycles are selected instead of all valid
+    cycles — setup dips, walkout shuffles and rerack bends all oscillate
+    but span less ROM than the working rep(s). Without it, every valid
+    cycle is returned (legacy behavior).
     """
     if len(landmarks_per_frame) < 5:
         return []
@@ -354,50 +354,71 @@ def detect_reps_from_pose(
         for lm in landmarks_per_frame
     ], window=7)
 
-    # Find local minima (bottom of rep) — these are the inflection points.
-    # Minima deeper than anatomical plausibility (<30°: beyond max joint
-    # flexion, always an occlusion glitch) are excluded from candidacy —
-    # otherwise a 24° spike becomes the "deepest" rep and wins selection.
+    # Find local maxima (tops: standing/lockout). Tops bound the reps;
+    # bottoms are found inside each slice (occluded and noisy — never
+    # trust them as boundaries).
     diff = np.diff(signal)
-    minima_idx = []
+    maxima_idx = []
     for i in range(1, len(diff)):
-        if diff[i - 1] < 0 and diff[i] >= 0 and signal[i] >= 30.0:
-            minima_idx.append(i)
+        if diff[i - 1] > 0 and diff[i] <= 0:
+            maxima_idx.append(i)
 
-    # Pair CONSECUTIVE minima into reps: one bottom-to-bottom cycle each.
-    # (An earlier revision spanned minima[i-1]→minima[i+1], covering two
-    # cycles per "rep" with heavy overlap — doubling the rep count and
-    # evaluating lockout/posture at bottom frames. Found 2026-09-17.)
+    # Pair CONSECUTIVE maxima into reps: one top-to-top cycle each, with
+    # exactly one bottom inside. Boundaries at standing lockouts are clean
+    # (unoccluded, high-visibility); bottoms are occluded and noisy, and
+    # sticking-point wobbles mid-ascent used to split grinds into fragments
+    # (a 53° bottom + 97° hesitation read as two "reps", neither containing
+    # a top — lockout then always failed. Found 2026-09-18 on 0df141e8).
+    # Leading/trailing partials ([0, first top], [last top, end]) cover
+    # videos that start mid-descent or end at the bottom.
+    bounds = [0] + maxima_idx + [len(signal) - 1]
+    # Deduplicate adjacent bounds (e.g. start already at a top)
+    deduped = [bounds[0]]
+    for b in bounds[1:]:
+        if b - deduped[-1] >= 3:
+            deduped.append(b)
+    bounds = deduped
     #
     # Each slice must also have enough JOINT RANGE to be a real rep:
     # standing-weight-shifts and setup steps create genuine minima but only
     # wiggle a few degrees (live: "reps" with 3° range). Powerlifters move.
     min_amp = 20.0 if exercise in ("Bench Press",) else 25.0
     reps = []
-    for i in range(len(minima_idx) - 1):
-        start = minima_idx[i]
-        end = minima_idx[i + 1]
+    for k in range(len(bounds) - 1):
+        start, end = bounds[k], bounds[k + 1]
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
         if duration < 0.8 or duration > 10.0:
             continue
-        if float(np.max(signal[start:end + 1]) - np.min(signal[start:end + 1])) < min_amp:
+        seg = signal[start:end + 1]
+        seg_min = float(np.min(seg))
+        if seg_min < 30.0:
+            # Glitch-contaminated slice (beyond max joint flexion, always
+            # an occlusion gap, never a real bottom).
+            continue
+        amplitude = float(np.max(seg) - seg_min)
+        if amplitude < min_amp:
             continue
 
         reps.append({
             "rep_number": len(reps) + 1,
             "start_idx": start,
             "end_idx": end,
-            "bottom_depth": round(float(signal[start]), 1),
+            "bottom_depth": round(seg_min, 1),
+            "amplitude": round(amplitude, 1),
             "start_time": round(timestamps[min(start, len(timestamps) - 1)], 2),
             "end_time": round(timestamps[min(end, len(timestamps) - 1)], 2),
             "duration": round(duration, 2),
         })
 
-    # User-declared rep count: keep the deepest valid cycles (the working
-    # reps), drop setup/walkout/rerack fragments. Re-sorted by time.
+    # User-declared rep count: keep the largest-amplitude valid cycles (the
+    # working reps), drop setup/walkout/rerack fragments. Amplitude, not
+    # depth: a descent-only leading fragment shares the true bottom (tie
+    # on depth) but spans half the ROM — verified 2026-09-18 on a0bc93ce,
+    # where depth-ranking picked a lockout-less fragment over the full rep.
+    # Re-sorted by time afterwards.
     if expected_reps is not None and expected_reps > 0 and len(reps) > expected_reps:
-        reps = sorted(reps, key=lambda r: r["bottom_depth"])[:expected_reps]
+        reps = sorted(reps, key=lambda r: (-r["amplitude"], r["bottom_depth"]))[:expected_reps]
         reps = sorted(reps, key=lambda r: r["start_idx"])
         for n, r in enumerate(reps, 1):
             r["rep_number"] = n
@@ -494,6 +515,8 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
         "depth_achieved": depth,
         "lockout_complete": lockout,
         "lockout_soft": soft_lockout,
+        "top_hip_angle": round(hip_angle_top, 1),
+        "top_knee_angle": round(knee_angle_top, 1),
         "knee_valgus": valgus,
         "heels_flat": heels,
         "back_angle_deviation": round(back_dev, 1),
