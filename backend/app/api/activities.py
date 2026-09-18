@@ -82,6 +82,11 @@ def _enrich_activity_read(
     # the cached values as-is since power zones are still valid until FTP changes.
     if include_context:
         read.ride_context = context_to_ride_metrics(activity.context)
+    # Stream presence from the eager-loaded relationship when available. Guard
+    # on __dict__ — other _enrich callers (FIT upload, manual create, lifting)
+    # don't eager-load streams, and lazy loading is illegal in async context.
+    if "streams" in activity.__dict__:
+        read.has_streams = len(activity.streams or []) > 0
     return read
 
 
@@ -202,6 +207,9 @@ async def list_activities(
             selectinload(Activity.lifting_session).selectinload(LiftingSession.sets),
             selectinload(Activity.sources),
             selectinload(Activity.route),
+            # Id-only stream rows feed `has_streams` (P2-2) — one batched
+            # query, no JSONB payload. Never touch `.data` here.
+            selectinload(Activity.streams).load_only(ActivityStream.id),
         )
         .where(*base_filters)
         .order_by(order_clause)
