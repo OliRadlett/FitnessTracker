@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 # points + peak max). Others are still tracked/stored but stay silent.
 NOTIFICATION_DURATIONS: set[int] = {5, 60, 300, 1200, 3600}
 
+# Max activities whose streams coexist in RAM in _compute_power_curve_alltime:
+# 10 rides x ~1.8 MB worst-case 1 Hz streams (was ~80-200 MB via .all()).
+_STREAM_CHUNK_SIZE = 10
+
 
 def _duration_label(duration_sec: int) -> str:
     """Map a duration in seconds to the human-readable bucket label."""
@@ -346,44 +350,50 @@ async def _compute_power_curve_alltime(
     activity_ids = [row[0] for row in activities]
     activity_dates = {row[0]: row[1] for row in activities}
 
-    result = await db.execute(
-        select(ActivityStream).where(
-            ActivityStream.activity_id.in_(activity_ids),
-            ActivityStream.stream_type.in_(["watts", "power"]),
-        )
-    )
-    streams = list(result.scalars().all())
-
+    # Fetch streams in small per-activity chunks: an all-time load peaks at
+    # ~80-200 MB (OOM risk on the 1 GB prod worker). Output is identical —
+    # per-bucket bests are order-independent (max).
     best_power: dict[int, tuple[float, uuid.UUID, date]] = {}
 
     sorted_buckets = sorted(POWER_DURATION_BUCKETS, key=lambda b: b[0])
 
-    for stream in streams:
-        data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-        if not data or len(data) < 2:
-            continue
-
-        power_data = [float(p) for p in data if p is not None and float(p) > 0]
-        n = len(power_data)
-        if n < 2:
-            continue
-
-        activity_id = stream.activity_id
-        activity_date = activity_dates.get(activity_id, date.today())
-
-        # Max (1s peak)
-        peak = max(power_data)
-        if 1 not in best_power or peak > best_power[1][0]:
-            best_power[1] = (peak, activity_id, activity_date)
-
-        for duration_sec, _ in sorted_buckets:
-            if duration_sec > n:
-                break
-            best_avg = best_power_rolling_average(power_data, duration_sec)
-            if best_avg is None:
+    for i in range(0, len(activity_ids), _STREAM_CHUNK_SIZE):
+        chunk = activity_ids[i : i + _STREAM_CHUNK_SIZE]
+        result = await db.execute(
+            select(ActivityStream).where(
+                ActivityStream.activity_id.in_(chunk),
+                ActivityStream.stream_type.in_(["watts", "power"]),
+            )
+        )
+        for stream in result.scalars().all():
+            data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+            # Release the ORM row (and its JSONB payload) now that the plain
+            # floats are extracted; only objects loaded here are expunged.
+            db.expunge(stream)
+            if not data or len(data) < 2:
                 continue
-            if duration_sec not in best_power or best_avg > best_power[duration_sec][0]:
-                best_power[duration_sec] = (best_avg, activity_id, activity_date)
+
+            power_data = [float(p) for p in data if p is not None and float(p) > 0]
+            n = len(power_data)
+            if n < 2:
+                continue
+
+            activity_id = stream.activity_id
+            activity_date = activity_dates.get(activity_id, date.today())
+
+            # Max (1s peak)
+            peak = max(power_data)
+            if 1 not in best_power or peak > best_power[1][0]:
+                best_power[1] = (peak, activity_id, activity_date)
+
+            for duration_sec, _ in sorted_buckets:
+                if duration_sec > n:
+                    break
+                best_avg = best_power_rolling_average(power_data, duration_sec)
+                if best_avg is None:
+                    continue
+                if duration_sec not in best_power or best_avg > best_power[duration_sec][0]:
+                    best_power[duration_sec] = (best_avg, activity_id, activity_date)
 
     return best_power
 

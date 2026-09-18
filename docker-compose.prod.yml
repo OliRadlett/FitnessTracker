@@ -7,9 +7,11 @@
 # These overrides replace dev-friendly settings with production equivalents
 # (pre-built GHCR images, no hot-reload, restart policies).
 #
-# IMPORTANT: this file intentionally does NOT define command/entrypoint/volumes.
+# IMPORTANT: this file intentionally does NOT define entrypoint/volumes.
 # Docker Compose v2.18 cannot clear base values via overrides (exec-form command
-# gets mangled; `volumes: []` does not unset). The base file stays volume-free;
+# gets mangled; `volumes: []` does not unset). String-form `command:` overrides
+# (backend/worker below) are safe — only exec-form arrays are affected.
+# The base file stays volume-free;
 # dev mounts live in docker-compose.dev.yml. Frontend runs via the image's
 # ENTRYPOINT ["node", "server.js"] (see frontend/Dockerfile).
 #
@@ -17,21 +19,40 @@
 # Hardcoded to oliradlett/fitnesstracker to avoid case-sensitivity issues.
 
 services:
+  db:
+    mem_limit: 200m
+
+  redis:
+    mem_limit: 100m
+
   backend:
     image: ghcr.io/oliradlett/fitnesstracker/backend:latest
     restart: unless-stopped
+    mem_limit: 250m
+    # Prod must NOT use --reload (base command): the reloader doubles backend RSS
+    # (watcher + worker) for no benefit behind GHCR images. String form is safe;
+    # only exec-form (JSON array) is mangled by Compose v2.18 overrides.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   worker:
     image: ghcr.io/oliradlett/fitnesstracker/worker:latest
     restart: unless-stopped
+    # Steady ~142 MB + legit weekly peaks ~200 MB; the cap kills 1.6 GB runaways
+    # instead of letting them OOM the box. Concurrency pinned: 1-vCPU droplet, and
+    # concurrent stream-staging tasks multiply peak RAM.
+    mem_limit: 400m
+    command: celery -A app.tasks.scheduler worker --loglevel=info --concurrency=1
 
   beat:
     image: ghcr.io/oliradlett/fitnesstracker/worker:latest
     restart: unless-stopped
+    mem_limit: 120m
 
   frontend:
     image: ghcr.io/oliradlett/fitnesstracker/frontend:latest
     restart: unless-stopped
+    mem_limit: 200m
 
   caddy:
     restart: unless-stopped
+    mem_limit: 80m
