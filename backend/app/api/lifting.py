@@ -378,7 +378,10 @@ async def create_pr(
     current_user: User = Depends(get_current_user),
 ):
     """Manually create a personal record (for sessions not logged in the app)."""
-    pr = await lifting_service.create_manual_pr(db, current_user.id, data)
+    try:
+        pr = await lifting_service.create_manual_pr(db, current_user.id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return PersonalRecordRead.model_validate(pr)
 
 

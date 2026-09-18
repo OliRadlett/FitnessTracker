@@ -1,11 +1,13 @@
 """Route quality scoring — computes composite scores for each route.
 
 Called nightly by Celery task `compute_route_quality_scores`.
-Factors (weights sum to 1.0):
-  - completeness_score  (30%): has elevation profile, surface profile, time estimate
-  - popularity_score    (20%): ride count (log-scaled), last ridden recency
-  - surface_quality     (25%): paved / packed surface fraction vs. technical
+Factors (weights sum to 1.0; see WEIGHTS — missing components are dropped
+and the remainder renormalised):
+  - completeness_score  (25%): has elevation profile, surface profile, time estimate
+  - popularity_score    (15%): ride count (log-scaled), last ridden recency
+  - surface_quality     (20%): paved / packed surface fraction vs. technical
   - effort_match_score  (25%): estimated effort vs. user's FTP profile
+  - terrain_quality     (15%): terrain classification richness + climb data
 
 The overall_score is a weighted average clamped to 0–100.
 """

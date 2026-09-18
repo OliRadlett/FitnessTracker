@@ -30,6 +30,11 @@ from app.services.exercise_db import normalise_exercise_name
 
 # ── Brzycki 1RM formula ──────────────────────────────────────────────────────
 
+# Brzycki degrades beyond ~10-12 reps: a high-rep back-off set must never
+# dethrone a true near-maximal PR via an inflated estimate, so only sets at
+# or below this rep count contend for 1RM records.
+MAX_REPS_FOR_1RM_PR = 12
+
 
 def brzycki_1rm(weight_kg: float, reps: int) -> float:
     """Estimated 1RM using Brzycki formula: weight × (36 / (37 - reps))."""
@@ -89,7 +94,7 @@ async def create_session(
     for s in data.sets:
         lifting_set = LiftingSet(
             session_id=session.id,
-            exercise_name=s.exercise_name,
+            exercise_name=normalise_exercise_name(s.exercise_name),
             set_number=s.set_number,
             weight_kg=s.weight_kg,
             reps=s.reps,
@@ -521,15 +526,25 @@ async def _check_and_record_pr(
     set_data: LiftingSetCreate,
     session: LiftingSession,
 ) -> PersonalRecord | None:
-    """Check if the set beats any existing PR for the exercise. Updates or creates a PR."""
-    estimated_1rm = brzycki_1rm(set_data.weight_kg, set_data.reps)
+    """Check if the set beats any existing PR for the exercise. Updates or creates a PR.
+
+    Only low-rep sets (``1..MAX_REPS_FOR_1RM_PR``) contend: Brzycki inflates
+    rapidly beyond ~10 reps, so a high-rep back-off set must never dethrone a
+    true near-maximal PR.
+    """
+    reps = set_data.reps or 0
+    if reps <= 0 or reps > MAX_REPS_FOR_1RM_PR:
+        return None
+
+    exercise_name = normalise_exercise_name(set_data.exercise_name)
+    estimated_1rm = brzycki_1rm(set_data.weight_kg, reps)
 
     # Find current best 1RM for this exercise
     result = await db.execute(
         select(PersonalRecord)
         .where(
             PersonalRecord.user_id == user_id,
-            PersonalRecord.exercise_name == set_data.exercise_name,
+            PersonalRecord.exercise_name == exercise_name,
             PersonalRecord.record_type == "1rm",
         )
         .order_by(PersonalRecord.estimated_1rm.desc())
@@ -541,10 +556,10 @@ async def _check_and_record_pr(
         # No PR exists yet — create one
         pr = PersonalRecord(
             user_id=user_id,
-            exercise_name=set_data.exercise_name,
+            exercise_name=exercise_name,
             record_type="1rm",
             weight_kg=set_data.weight_kg,
-            reps=set_data.reps,
+            reps=reps,
             estimated_1rm=estimated_1rm,
             achieved_date=session.session_date,
             session_id=session.id,
@@ -555,7 +570,7 @@ async def _check_and_record_pr(
     elif estimated_1rm > (current_pr.estimated_1rm or 0):
         # Update existing PR in-place (deduplication)
         current_pr.weight_kg = set_data.weight_kg
-        current_pr.reps = set_data.reps
+        current_pr.reps = reps
         current_pr.estimated_1rm = estimated_1rm
         current_pr.achieved_date = session.session_date
         current_pr.session_id = session.id
@@ -587,7 +602,10 @@ async def _recalculate_pr_after_set_change(
     )
     existing_pr = result.scalar_one_or_none()
 
-    # Find the best remaining set across all sessions for this exercise
+    # Find the best remaining set across all sessions for this exercise.
+    # Only low-rep working sets contend for 1RM records (see
+    # MAX_REPS_FOR_1RM_PR); the reps < 37 guard also protects the inline
+    # Brzycki expression from division by zero (BUG-029).
     best_set_result = await db.execute(
         select(LiftingSet)
         .join(LiftingSession)
@@ -595,7 +613,9 @@ async def _recalculate_pr_after_set_change(
             LiftingSession.user_id == user_id,
             LiftingSet.exercise_name == exercise_name,
             LiftingSet.is_warmup.is_(False),
-            LiftingSet.reps < 37,  # BUG-029: guard against division by zero in Brzycki
+            LiftingSet.reps >= 1,
+            LiftingSet.reps <= MAX_REPS_FOR_1RM_PR,
+            LiftingSet.reps < 37,
         )
         .order_by(
             # Order by estimated 1RM descending (best first)
@@ -812,9 +832,19 @@ async def create_manual_pr(
     user_id: uuid.UUID,
     data: PersonalRecordCreate,
 ) -> PersonalRecord:
-    """Create a PR manually (for sessions not logged in the app)."""
+    """Create a PR manually (for sessions not logged in the app).
+
+    Raises ``ValueError`` when the rep count is outside the 1RM-valid range:
+    high-rep estimates are not trustworthy enough to become records.
+    """
+    reps = data.reps or 0
+    if reps <= 0 or reps > MAX_REPS_FOR_1RM_PR:
+        raise ValueError(
+            f"Manual 1RM records require 1–{MAX_REPS_FOR_1RM_PR} reps "
+            f"(got {data.reps}) — Brzycki estimates beyond ~12 reps are unreliable."
+        )
     normalised_name = normalise_exercise_name(data.exercise_name)
-    estimated_1rm = brzycki_1rm(data.weight_kg, data.reps)
+    estimated_1rm = brzycki_1rm(data.weight_kg, reps)
 
     # Check if existing PR exists — update if new one is better, create otherwise
     result = await db.execute(
@@ -870,7 +900,10 @@ async def cleanup_orphaned_prs(
     or remove the PR. Returns a list of exercise names that were cleaned up.
     """
     result = await db.execute(
-        select(PersonalRecord).where(PersonalRecord.user_id == user_id)
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == user_id,
+            PersonalRecord.record_type == "1rm",
+        )
     )
     prs = list(result.scalars().all())
 
@@ -882,7 +915,9 @@ async def cleanup_orphaned_prs(
             continue
         exercises_seen.add(pr.exercise_name)
 
-        # Find the best remaining set for this exercise
+        # Find the best remaining set for this exercise. Same contention
+        # rules as live PR checks: working sets in the 1RM-valid rep range
+        # (the reps < 37 guard also protects the inline Brzycki expression).
         best_set_result = await db.execute(
             select(LiftingSet)
             .join(LiftingSession)
@@ -890,6 +925,9 @@ async def cleanup_orphaned_prs(
                 LiftingSession.user_id == user_id,
                 LiftingSet.exercise_name == pr.exercise_name,
                 LiftingSet.is_warmup.is_(False),
+                LiftingSet.reps >= 1,
+                LiftingSet.reps <= MAX_REPS_FOR_1RM_PR,
+                LiftingSet.reps < 37,
             )
             .order_by((LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc())
             .limit(1)

@@ -88,7 +88,7 @@ async def estimate_ftp(
     Uses a weighted multi-method approach:
     - 20-min × 0.95 (gold standard, confidence 1.0)
     - 30-min × 0.95, 8-min × 0.855, 10-min × 0.92 (well-established)
-    - 5-min × 0.95 (rough estimate)
+    - 5-min × 0.85 (rough estimate)
     - Riegel extrapolation from shorter efforts (lower confidence)
     """
     best_power = await compute_power_curve_from_streams(db, current_user.id, days)

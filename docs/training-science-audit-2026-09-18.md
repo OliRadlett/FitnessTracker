@@ -20,6 +20,13 @@
 > Read-only audit — all fixes are proposals only, no code changed.
 > **PROVEN** = traced in code; **SUSPECTED** = needs runtime data to confirm.
 > Index cross-checked against `docs/algorithms.md` and `backend/app/services/CODEMAP.md`.
+>
+> **Run 2 (2026-09-18, same day):** full re-audit of the post-fix tree covering
+> all training-science domains (cycling, ride analysis, strength, planning,
+> recovery, nutrition, route heuristics) — appended below as
+> "Run 2 follow-up audit". Verifies fix completeness across call sites,
+> second-order effects, tests, and adds new findings with evidence traces.
+> Read-only: no code changed.
 
 ---
 
@@ -369,3 +376,244 @@ constant prior volumes (hides the EWMA-order bug) and never exercises the
 illness/overtraining composites (hides `:662` and `:328`);
 `tests/test_cycling.py:184` asserts only `ctl > 80`, which passes with the 88.3
 warm-up bias.
+
+---
+
+## Run 2 follow-up audit (2026-09-18)
+
+> Read-only verification of the post-fix tree. Scope extended beyond run 1 to
+> ALL training-science domains: `services/cycling/` (all 7 files),
+> `session_analysis.py`, `activity_context.py`, `lifting.py`, `deficiency.py`,
+> `charts.py` (strength charts), `goal_metrics.py`, `workout_planner.py`,
+> `training_plan.py`, `conformity.py`, `adaptive.py`, `projections.py`,
+> `health_analysis.py`, `whoop.py` (intelligence helpers), `nutrition.py`,
+> `effort_estimator.py`, `route_quality_service.py`, `route_collection_rules.py`,
+> `segments.py`. **PROVEN** = traced in code (`file:line`); **SUSPECTED** =
+> needs runtime data.
+>
+> Scope note: `nutrition.py` is ride-fueling only (no BMR/TDEE/macro/deficit
+> equations exist in the codebase), so there were no invented energy
+> coefficients to audit.
+
+### Run-2 fix verification — completeness across call sites
+
+| Fixed item | Complete? | Evidence / second-order effect |
+|---|---|---|
+| Illness-composite scaling | ✅ | `/0.80` renormalisation correct (`health_analysis.py:285-309`). |
+| Overtraining TSB window | ✅ | 180+210 fetch, slice last 7 (`health_analysis.py:362-365`). |
+| Volume-EWMA ordering | ⚠️ partial | Reversed to oldest-first seed (`health_analysis.py:175-179`); unit test `test_health_analysis.py:119-127` passes, but the seed still carries the **largest single weight** (`(1−α)^4 = 0.368 > α = 0.221`), so the "recent weeks carry the most weight" docstring is false for the 5-week live path. |
+| Zero-preserving NP/power-curve | ⚠️ partial | `tss.py:74-102`, `power_curve.py:308-336` correct; **`prs.py` still drops zeros and ignores resolution** (new finding #2 below). |
+| CTL warm-up + widened fetches | ⚠️ partial | Most call sites fetch `lookback+210` (api/power, api/training_load, dashboard, activities, adaptive, training_plan, charts, llm_analysis); **`tasks/scheduler.py:1562-1564` fetches only 90 d** (known open, confirmed live); `charts.ramp_rate` (`charts.py:1780-1785`) is short by 42 warm-up days (minor). |
+| FTP tier gating + 5-min ×0.85 + blend confidence | ✅ code, ⚠️ wiring | `power_curve.py:123-126,156-174` correct; but the **8-min tier is dead** — `480 ∉ POWER_DURATION_BUCKETS` (`power_curve.py:15-30`) so `power_curve.py:112-115`, `api/cycling/ftp.py:122` (`best_power_available["8min"]` always None) and `vo2max.py:80-81,118` never fire. `api/cycling/ftp.py:91` docstring still says "5-min × 0.95". |
+| LTHR zone table | ✅ | `zones.py:35-41`; `HR_ZONES` (6-zone %HRmax) unused, no downstream break. |
+| Big-3 advice direction | ✅ | `_BIG3_RATIO_CONTEXT` bounds used (`deficiency.py:165-195`); tested `test_deficiency.py:103-123`. |
+| One-sided push/pull + wording + bodyweight sets | ⚠️ partial | One-sided severity correct; bodyweight counted (`deficiency.py:546-550`); **0.7–1.0 band recommendation direction wrong** (new finding #5). |
+| Calorie ×3.6 | ✅ | `workout_planner.py:251-256`; but `effort_estimator.py:261` uses kJ×1.1 (~10 % divergence). |
+| Decoupling ratio-of-means | ✅ | `vo2max.py:375-388`; tested `test_cycling.py:157-164`. |
+| Resolution-aware windows | ⚠️ partial | OK in power curve/zones/VO2/history; **not in `prs.py`**. |
+| Unridden-power exclusion | ✅ | `workout_planner.py:485-497` (power weight dropped for estimates). |
+| Historic VO2max weights | ✅ | `vo2max.py:203-284` (weigh-in ≤ window_end, `weight_defaulted` flag). |
+| RPE rounding | ✅ | `adaptive.py:391-395`. |
+| Quadratic hrTSS | ✅ math, ❌ wiring | `tss.py:33-55` quadratic; **zero production callers** (new finding #3). |
+
+### New top-5 safety-critical issues (run 2)
+
+#### 1. A high-rep back-off set dethrones a true near-maximal PR
+
+`brzycki_1rm` (`lifting.py:34-40`) has no rep ceiling (Brzycki degrades beyond
+~10–12 reps; only `reps ≥ 37` guarded). `_check_and_record_pr` compares raw
+`estimated_1rm > current` with no rep filter (`lifting.py:525,555`);
+`create_manual_pr` (`lifting.py:817,831`) and
+`_recalculate_pr_after_set_change` (`lifting.py:598,615`) share it.
+`cleanup_orphaned_prs` (`lifting.py:894`) additionally lacks the `reps<37`
+guard (division-by-zero risk) and updates *all* record types.
+
+Failing example: true PR `100 kg × 5` → `100·36/32 = 112.5 kg`; back-off
+`60 kg × 20` → `60·36/17 = 127.1 kg` → PR row overwritten to 60×20
+(`50 kg × 30` → 257 kg). Minimal fix: restrict 1RM-PR contention to
+`reps ≤ 12` (keep raw estimates for display). Regression sketch: session with
+`(100,5)` then `(60,20)` must leave the PR at 100×5.
+
+#### 2. Cycling PR scan drops zero watts and ignores stream resolution
+
+`_get_activity_power_data` filters `float(p) > 0` (`prs.py:76`);
+`_compute_power_curve_alltime` filters the same (`prs.py:376`) and calls
+`best_power_rolling_average(power_data, duration_sec)` with the raw sample
+count (`prs.py:101,392`) instead of `round(duration_sec/resolution)` — the
+fix applied to `power_curve.py:308-336` was never carried to `prs.py`.
+
+Failing example: 120 s of alternating 10 s @300 W / 10 s coast (1 Hz). True
+best 60 s = 150 W (main curve returns 150); `prs.py` strips the 60 zero
+samples so the 60 nonzero samples become contiguous → best 60 s = 300 W,
+written as an all-time PR. Minimal fix: keep zeros, scale the window by
+`resolution`, reuse the shared helper. Regression sketch: a coast-heavy ride
+must produce identical 60 s bests in both paths.
+
+#### 3. HR-only rides contribute zero training load (hrTSS is dead code)
+
+`calculate_hr_tss` (`tss.py:33-55`) has no production caller (only tests +
+package export). `auto_compute_tss_for_activity` returns `None` without FTP
+(`tss.py:152-153`) and only computes power TSS (`tss.py:160`), contradicting
+the "hrTSS fallback" claim in `docs/algorithms.md:23`.
+
+Failing example: an FTP-less user (or a power-meter-less ride) logs
+3 × 90 min Z2 rides → all `tss=None` → `get_daily_tss` omits them →
+CTL/ATL ≈ 0 → overtraining alerts (`health_analysis.py:382`), adaptive advice
+(`adaptive.py:492`), readiness and race-day TSB all see a falsely fresh
+athlete. Minimal fix: wire `calculate_hr_tss(duration, avg_hr, LTHR, rest)`
+when power/NP is unavailable; keep `None` when no threshold exists.
+Regression sketch: an HR-only activity must land in `get_daily_tss`; missing
+LTHR must still yield `None`.
+
+#### 4. Health-alert severity taken by alphabetic `max()` — critical reported as warning
+
+`adaptive.py:547-550` computes
+`max((a.severity for a in alerts if a.severity in _SEVERITY_ORDER))` without
+the severity-rank key (`_SEVERITY_ORDER`, `adaptive.py:41`, is unused).
+Failing example: alerts `["critical","warning"]` → `"warning"` (string order),
+so the health axis and suggestion (`adaptive.py:286-307`) under-call a
+critical condition. Minimal fix: `max(..., key=_SEVERITY_ORDER.get)`.
+Regression sketch: mixed-severity alerts must yield `alert_severity ==
+"critical"` (structurally untested today — only the pure `derive_*` path has
+unit tests).
+
+#### 5. Push/pull advice tells a push-deficient athlete to add pulling
+
+`evaluate_push_pull_ratio` (`deficiency.py:273-283`): ratio `push/pull < 1.0`
+means **more pulling than pushing**, yet the recommendation for the 0.7–1.0
+band is `"Add one extra pulling movement per upper-body session"` —
+the opposite direction (failing example: push 8000 / pull 10000 → ratio 0.80
+→ advice adds pulls). The `>1.0` branches (`deficiency.py:296,307-309`) are
+correct. Minimal fix: prescribe *pressing* volume in the 0.7–1.0 band; also
+reconsider the ideal band itself — ground-truth coaching norms favour
+pull ≥ push, so `1.0–1.3` is arguably inverted. Regression sketch: assert on
+the `recommendation` text, not just `severity` (`test_deficiency.py:161-169`
+asserts severity only — exactly why this slipped through).
+
+### Run-2 consistency audit (same concept, multiple implementations)
+
+| Concept | A | B | Divergence |
+|---|---|---|---|
+| Brzycki 1RM | `lifting.py:34-40` | `charts.py:724` (`max(37−r,1)`) | r=0: `W` vs `0.973·W`; r≥37: `W·2` vs `W·36` |
+| Best rolling power | `power_curve.py:212-246` (zeros kept, res-aware) | `prs.py:76,101,376,392` (zeros dropped, res ignored) | PR values ≠ main curve (finding #2) |
+| Calories | `workout_planner.py:251-256` (W·h·3.6 kcal) | `effort_estimator.py:258-261` (kJ·1.1) | ~10 % disagreement |
+| FTP W/kg classes | `deficiency.py:317-334` (2.5/3.2/4.0) | `training_load.py:84-91` (2/3/4/5) | same value, different label |
+| Bodyweight | `goal_metrics.py:55-67` (latest `WeightLog`) | `goal_metrics.py:241-244`, `deficiency.py:390-392`, `nutrition.py:186-191`, `vo2max.py:87-88` (`CyclingProfile.weight_kg`); `vo2max.py:203-213` period-correct `WeightLog` | four sources, unreconciled |
+| "sleep_consistency" | `whoop.py:1061-1112` (bedtime σ, `100−σ/120·100`) | `health_analysis.py:983-1051` (duration σ, 60/120 min) | same name, different definition |
+| `exercise_name` normalisation | `lifting.add_set` (`lifting.py:362`) normalises | `lifting.create_session` (`lifting.py:89-101`) does not | duplicate PR keys per alias |
+| NP in ride context | `session_analysis.py:406` computes NP but omits it from the return dict (`:523-536`) | `activity_context.py:86` reads `analysis["normalized_power"]` | `ride.normalized_power` always `None` in cached context (`api/activities.py:1218-1229`) |
+| Segment means | `segments.py:323-333` drops `0` | `tss.py:74-102` keeps `0` | segment avg power inflated |
+
+### Run-2 known-open-item assessments
+
+- **`tsb_projection` linear `/42`,`/7` vs EWMA.** Per-day factor 0.023810 vs
+  0.023530 (~1.2 % relative). For a 300-TSS/week athlete the 14-day CTL error
+  is <1 point — below every downstream band resolution. Quantified: cosmetic,
+  do not change.
+- **`tasks/scheduler.py` warm-up.** Confirmed live: seed-at-0 with only 90 d
+  biases CTL ≈ 11.7 % low for steady-state users; only feeds Modal segment
+  difficulty (`user_fitness["ctl"]`). Low blast radius.
+- **Male-only strength tables.** `deficiency.STANDARDS` (`deficiency.py:37-46`)
+  carries no male/sex/age qualifier (honesty gap); `power_profile.py:4-6` is
+  explicitly "male… rough bands"; `segments.climb_category` is labelled
+  "Strava-style". Only the strength table needs a label.
+- **Additional run-2 edges (plan-quality, not top-5):** `project_to_target`
+  returns `None` for already-achieved goals → badge "Unlikely"
+  (`projections.py:94-119,140-141`); `race_day_tsb` is really
+  today+`days_ahead` (API default 14, `api/projections.py:77`), not the event
+  date — only `pdf_report.py:752-753` passes the true horizon;
+  `compute_metric_trend` 1RM/big3/BW-ratio trends are structurally empty
+  because PRs are updated in place (one row per exercise); `route_quality`
+  docstring weights (30/20/25/25) disagree with code (25/15/20/25/15,
+  `route_quality_service.py:4-9` vs `:29-35`); smart-collection `surface_type`
+  is ANDed (`.has_key` per surface, `route_collection_rules.py:67-70`) though
+  list semantics imply OR; ACSM coefficient `10.8` vs literature-derived
+  `11.016` and submaximal-equation-on-maximal-effort mismatch
+  (`vo2max.py:28-30`); Uth HRrest has no staleness bound
+  (`vo2max.py:141-151`); plan templates provide no strength overload
+  (weights `None`, fixed RPE) and no deload in `build`
+  (`training_plan.py:288-371`); climb `est_speed` comment vs formula mismatch
+  (`route_quality_service.py:147-151`); carb ceiling 100 g/hr exceeds the
+  conventional 90 g/hr multi-transportable bound without a stated
+  glucose:fructose ratio (`nutrition.py:47-58`).
+
+### Run-2 test-suite grading
+
+Covered well: TSS/NP/VI (`test_cycling.py`), rolling-average helper
+(`test_power_curve.py`), adaptive pure inference (`test_adaptive.py`),
+volume-spike constant series, illness-composite scaling. Structural gaps:
+`evaluate_push_pull_ratio` recommendation direction (severity-only asserts),
+hand-built `{480:…}` FTP test masking the dead 8-min tier, PR-contention with
+high-rep sets untested, `generate_adaptive_suggestions` alert-severity path
+untested, 1RM-trend emptiness untested, hrTSS wiring untested (no caller to
+test). Missing regression sketches are given per finding above.
+
+### Run-2 not verified (production data needed)
+
+prs.py inflation magnitude (real coast-heavy streams + stored PRs);
+power/HR stream offset/resolution misalignment in decoupling; Uth HRrest age
+distribution; volume-EWMA seed bias on real ramps; `PersonalRecord`
+row-count-per-exercise (trend emptiness); `get_daily_tss` DB-timezone date
+bucketing; frontend `days` param for `GET /projections/tsb/{plan}`;
+segment zero-drop impact; NULL-`tss`-with-HR activity share. Modal
+containers, LLM prompts, frontend out of scope.
+
+---
+
+## Run 2 implementation status (2026-09-18, same session)
+
+> All code changes below are implemented and verified (unit tests on host;
+> DB-backed paths verified against `fittrack_test` with rolled-back
+> transactions; host lacks `fastapi`/`redis`/`prometheus_client`, so the new
+> `tests/integration/*` files run in CI/container). Read-only audit sections
+> above are unchanged. Not committed — awaiting review.
+
+Implemented (maps to run-2 findings):
+
+1. **Brzycki PR rep cap** (`lifting.py: MAX_REPS_FOR_1RM_PR = 12`): only
+   `1..12`-rep working sets contend in `_check_and_record_pr`,
+   `_recalculate_pr_after_set_change`, `cleanup_orphaned_prs`
+   (which also gained the missing `reps < 37` guard and a
+   `record_type == "1rm"` filter); `create_manual_pr` raises `ValueError`
+   outside the range (API maps to 400); `create_session` normalises exercise
+   names like `add_set`; `charts.py` uses the shared `brzycki_1rm`.
+   Tests: `tests/integration/test_lifting_pr_rep_cap.py`.
+2. **Cycling PR zero/resolution parity** (`prs.py`): both PR paths keep zeros,
+   scale windows by `stream.resolution`, and share the rolling-average helper
+   with the main curve; `8min` label added. Tests:
+   `tests/integration/test_cycling_pr_zeros.py`.
+3. **hrTSS wired** (`tss.py: auto_compute_hr_tss_for_activity`, exported from
+   `cycling/__init__.py`): power TSS preferred; fallback needs profile LTHR
+   + resting HR ≤30 d old. Tests:
+   `tests/integration/test_hr_tss_fallback.py`.
+4. **Alert severity ranking** (`adaptive.py: _worst_alert_severity`): worst by
+   rank, not alphabetic `max()`. Tests: `tests/test_adaptive.py`.
+5. **Push/pull advice direction** (`deficiency.py`): 0.7–1.0 band now
+   prescribes pressing; recommendation text asserted in
+   `tests/test_deficiency.py`.
+6. **8-min bucket live** (`power_curve.py`: `(480, "8min")`): FTP 8-min tier,
+   FTP API `8min` field, and VO2max 8-min signal now fire. Tests:
+   `tests/integration/test_power_curve_buckets.py`.
+7. **ACSM 10.8 → 11.016** (`vo2max.py`, `docs/algorithms.md`); **Uth HRrest
+   ≤30 d bound** (`vo2max.py`). Tests: `TestAcsmVo2max`,
+   `test_power_curve_buckets.py`.
+8. **Met-goal projection** (`projections.py`): 0 days remaining → On Track
+   (existing test updated); **race_day_tsb** = event-date entry when inside
+   the window (`test_tsb_projection_event.py`); **ramp_rate** TSS fetch covers
+   the full warm-up.
+9. **1RM-family trends from session sets** (`projections.py:
+   _session_best_1rm_by_date`): estimated_1rm / BW-ratio (period-correct
+   weight + profile fallback) / big3_total now return real history. Tests:
+   `tests/integration/test_metric_trend_history.py`.
+10. **Small fixes**: smart-collection `surface_type` OR;
+    `analyze_ride` returns `normalized_power` (single computation; schema
+    `RideAnalysisResponse` + cached context carry it); stale docstrings
+    corrected (route-quality weights, FTP 5-min ×0.85, 4-wk time constant,
+    male-based strength norms comment).
+
+Deliberately NOT changed: `tasks/scheduler.py` warm-up fetch (owned by
+another session per the run-1 header); push/pull ideal-band direction and
+volume-EWMA weighting (judgment calls — docstrings corrected instead);
+TSB `/42` projection (quantified cosmetic); SUSPECTED items needing
+production data (decoupling alignment, `get_daily_tss` timezone, segment
+zero-drop impact).

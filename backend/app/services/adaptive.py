@@ -41,6 +41,19 @@ DAY_ACTION_LIMIT = 3
 _SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 
 
+def _worst_alert_severity(severities: list[str | None]) -> str | None:
+    """Worst severity by rank.
+
+    Plain ``max()`` on severity strings is alphabetical (``critical`` <
+    ``info`` < ``warning``) and would report ``warning`` when a ``critical``
+    alert is present.
+    """
+    ranked = [s for s in severities if s in _SEVERITY_ORDER]
+    if not ranked:
+        return None
+    return max(ranked, key=lambda s: _SEVERITY_ORDER[s])
+
+
 # ── Pure inference ────────────────────────────────────────────────────────
 
 
@@ -542,12 +555,7 @@ async def generate_adaptive_suggestions(
         )
     )
     alerts = list(alert_result.scalars().all())
-    alert_severity = None
-    if alerts:
-        alert_severity = max(
-            (a.severity for a in alerts if a.severity in _SEVERITY_ORDER),
-            default=None,
-        )
+    alert_severity = _worst_alert_severity([a.severity for a in alerts])
 
     # ── Top deficiency (advisory) ──────────────────────────────────────────
     top_deficiency = None

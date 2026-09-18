@@ -33,7 +33,10 @@ from app.services.exercise_db import normalise_exercise_name
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-# Bodyweight multipliers per lift: (beginner, intermediate, advanced, elite)
+# Bodyweight multipliers per lift: (beginner, intermediate, advanced, elite).
+# Population norms in the Symmetric Strength / StrengthLevel tradition, i.e.
+# calibrated on male lifters — treat as rough reference bands for other
+# athletes, not precise targets.
 STANDARDS: dict[str, dict[str, float]] = {
     "Back Squat": {"beginner": 1.0, "intermediate": 1.5, "advanced": 2.0, "elite": 2.5},
     "Bench Press": {
@@ -279,7 +282,7 @@ def evaluate_push_pull_ratio(push_volume: float, pull_volume: float) -> dict | N
                 f"({push_volume:.0f}kg pushed vs {pull_volume:.0f}kg pulled), "
                 f"slightly below the ideal 1.0–1.3 range"
             ),
-            "recommendation": "Add one extra pulling movement per upper-body session",
+            "recommendation": "Add one extra pressing movement per upper-body session",
         }
     if ratio <= 1.3:
         return None  # in ideal range

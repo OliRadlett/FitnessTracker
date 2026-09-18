@@ -152,8 +152,10 @@ def _volume_spike_signal(
     Only considers prior weeks where the user was active (had any
     training activity). Requires ≥2 prior active weeks before firing.
     Uses EWMA with 4-week time constant to reduce impact of old data.
-    ``prior_week_volumes`` is newest-first; the EWMA consumes it
-    oldest-first so recent weeks carry the most weight.
+    ``prior_week_volumes`` is newest-first; the EWMA folds it oldest-first.
+    Note: with only a handful of prior weeks the oldest (seed) week keeps the
+    largest single weight, so this behaves as a slow-moving baseline rather
+    than a strongly recency-weighted average.
 
     Args:
         current_week_volume: Total lifting volume kg for the most recent 7 days.
@@ -442,7 +444,7 @@ async def analyze_injury_risk(
     """Analyze injury risk from volume spikes, rest days, and training patterns.
 
     Uses activity-aware weeks to distinguish rest weeks from pre-tracking zeros.
-    Volume spike uses EWMA with 4-week half-life and requires ≥2 prior active
+    Volume spike uses EWMA with 4-week time constant and requires ≥2 prior active
     weeks before firing.
 
     Always returns a dict with score, severity, title, description, and evidence.

@@ -168,6 +168,17 @@ class TestPushPullClassification:
         r = evaluate_push_pull_ratio(18000, 10000)  # 1.8 → medium
         assert r["severity"] == "medium"
 
+    def test_push_deficit_recommends_pressing_not_pulling(self):
+        """Ratio < 1 means more pulling than pushing — advice must add press."""
+        r = evaluate_push_pull_ratio(8000, 10000)  # 0.8, pushing deficit
+        assert "pressing" in r["recommendation"]
+        assert "pulling" not in r["recommendation"]
+
+    def test_push_dominant_recommends_pulling(self):
+        """Ratio > 1.3 means push-dominant — advice must add pulls."""
+        r = evaluate_push_pull_ratio(14000, 10000)  # 1.4
+        assert "pull" in r["recommendation"].lower()
+
     def test_one_sided_volume_flags_high(self):
         """A missing movement pattern is an imbalance, not 'no data'."""
         r = evaluate_push_pull_ratio(0, 10000)

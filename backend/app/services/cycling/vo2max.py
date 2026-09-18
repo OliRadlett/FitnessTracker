@@ -26,8 +26,11 @@ class Vo2maxEstimate:
 
 
 def _acsm_vo2max(power_watts: float, weight_kg: float) -> float:
-    """ACSM cycling equation: VO2 (ml/kg/min) = (10.8 × watts / kg) + 7."""
-    return (10.8 * power_watts) / weight_kg + 7.0
+    """ACSM leg-ergometry equation: VO2 (ml/kg/min) = 1.8 × (kgm/min)/kg + 7.
+
+    1 W = 6.12 kgm/min, so the power coefficient is 1.8 × 6.12 = 11.016.
+    """
+    return (11.016 * power_watts) / weight_kg + 7.0
 
 
 def _classify_vo2max(vo2max: float) -> str:
@@ -57,8 +60,8 @@ async def estimate_vo2max(
 ) -> Vo2maxEstimate | None:
     """Estimate VO2max from power and/or heart rate data.
 
-    Method 1 (Power-based): Uses ACSM cycling formula:
-        VO2 (ml/kg/min) = (10.8 × watts) / body_mass_kg + 7
+    Method 1 (Power-based): Uses ACSM leg-ergometry formula:
+        VO2 (ml/kg/min) = (11.016 × watts) / body_mass_kg + 7
         Uses best 5-min power as proxy for VO2max power.
         Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
 
@@ -138,12 +141,15 @@ async def estimate_vo2max(
     )
     hr_max = result.scalar()
 
-    # HRrest: get from the most recent daily_metric with resting_hr
+    # HRrest: most recent daily metric with resting_hr, at most 30 days old —
+    # a stale resting HR would silently bias the Uth estimate.
+    hr_cutoff = date.today() - timedelta(days=30)
     result = await db.execute(
         select(DailyMetric.resting_hr)
         .where(
             DailyMetric.user_id == user_id,
             DailyMetric.resting_hr.isnot(None),
+            DailyMetric.metric_date >= hr_cutoff,
         )
         .order_by(DailyMetric.metric_date.desc())
         .limit(1)

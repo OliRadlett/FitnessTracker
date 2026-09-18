@@ -20,6 +20,7 @@ POWER_DURATION_BUCKETS = [
     (60, "1min"),
     (120, "2min"),
     (300, "5min"),
+    (480, "8min"),
     (600, "10min"),
     (1200, "20min"),
     (1800, "30min"),

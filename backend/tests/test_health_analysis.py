@@ -73,7 +73,7 @@ class TestRecoverySignal:
 class TestVolumeSpikeSignal:
     """Volume spike: percentage increase over prior weeks (EWMA).
 
-    Uses EWMA with 4-week half-life. Need enough prior weeks for
+    Uses EWMA with 4-week time constant. Need enough prior weeks for
     EWMA to converge close to the steady-state value.
     """
 

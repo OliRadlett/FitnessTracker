@@ -2,7 +2,7 @@
 
 import math
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,23 +143,74 @@ async def auto_compute_tss_for_activity(
 ) -> float | None:
     """Auto-compute TSS for an activity if not already set.
 
-    Priority: power-based TSS (if FTP available), else None.
+    Priority: power-based TSS (if FTP available), else hrTSS from average HR
+    (if LTHR + recent resting HR are available), else None.
     Returns the computed TSS or None.
     """
     if activity.tss is not None:
         return activity.tss
 
-    if not ftp or ftp <= 0:
-        return None
+    if ftp and ftp > 0:
+        # Use normalized_power if available, else average_power
+        np = activity.normalized_power or activity.average_power
+        if np and activity.duration_seconds:
+            tss = calculate_power_tss(activity.duration_seconds, np, ftp)
+            if tss > 0:
+                activity.tss = tss
+                return tss
 
-    # Use normalized_power if available, else average_power
-    np = activity.normalized_power or activity.average_power
-    if not np or not activity.duration_seconds:
-        return None
-
-    tss = calculate_power_tss(activity.duration_seconds, np, ftp)
-    if tss > 0:
-        activity.tss = tss
-        return tss
+    # Fallback: HR-based TSS for power-meter-less rides.
+    hr_tss = await auto_compute_hr_tss_for_activity(db, activity)
+    if hr_tss:
+        activity.tss = hr_tss
+        return hr_tss
 
     return None
+
+
+async def auto_compute_hr_tss_for_activity(
+    db: AsyncSession,
+    activity: Activity,
+) -> float | None:
+    """HR-based TSS fallback for activities without usable power data.
+
+    Needs the profile LTHR and a recent resting HR (≤30 days old); returns
+    None when either is missing so no fabricated load is recorded.
+    """
+    from app.models.cycling import CyclingProfile
+    from app.models.daily_metric import DailyMetric
+
+    if not activity.average_heartrate or not activity.duration_seconds:
+        return None
+
+    result = await db.execute(
+        select(CyclingProfile.lactate_threshold_hr).where(
+            CyclingProfile.user_id == activity.user_id
+        )
+    )
+    lthr = result.scalar_one_or_none()
+    if not lthr or lthr <= 0:
+        return None
+
+    cutoff = date.today() - timedelta(days=30)
+    result = await db.execute(
+        select(DailyMetric.resting_hr)
+        .where(
+            DailyMetric.user_id == activity.user_id,
+            DailyMetric.resting_hr.isnot(None),
+            DailyMetric.metric_date >= cutoff,
+        )
+        .order_by(DailyMetric.metric_date.desc())
+        .limit(1)
+    )
+    resting_hr = result.scalar_one_or_none()
+    if not resting_hr or resting_hr <= 0:
+        return None
+
+    tss = calculate_hr_tss(
+        activity.duration_seconds,
+        activity.average_heartrate,
+        lthr,
+        resting_hr,
+    )
+    return tss if tss > 0 else None
