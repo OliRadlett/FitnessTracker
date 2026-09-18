@@ -152,6 +152,22 @@ async def _handle_activity_create(
         await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
         await db.flush()
 
+    # Precompute ride context now that streams are stored — parity with the
+    # incremental sync path (sync.py §1.3). Best-effort: failures stay None
+    # and are healed by the weekly backfill or the on-read fallback.
+    if activity.sport_type == "cycling":
+        try:
+            from app.services.activity_context import ensure_activity_contexts
+
+            if await ensure_activity_contexts(db, [activity]):
+                await db.flush()
+        except Exception:
+            logger.warning(
+                "Ride-context compute failed for activity %s after webhook create",
+                activity.id,
+                exc_info=True,
+            )
+
     # Auto-link to lifting session if this is a strength activity
     await link_activity_to_lifting_sessions(db, activity)
 

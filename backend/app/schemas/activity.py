@@ -78,6 +78,11 @@ class ActivityRead(ActivityBase):
     # (ATL/CTL/TSB) deliberately excluded (moving window, stays on-demand).
     ride_context: dict | None = None
 
+    # Whether any ActivityStream rows exist for this activity. Set from the
+    # eager-loaded `streams` relationship when present (list + detail
+    # endpoints); False otherwise — never triggers a lazy load (P2-2).
+    has_streams: bool = False
+
     model_config = {"from_attributes": True}
 
 

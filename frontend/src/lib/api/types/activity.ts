@@ -39,6 +39,7 @@ export interface Activity {
   linked_lifting_session?: LinkedLiftingSessionSummary;
   encoded_polyline?: string;
   ride_context?: RideMetrics | null;
+  has_streams?: boolean;
   sources?: ActivitySource[];
   synced_at: string;
   created_at: string;

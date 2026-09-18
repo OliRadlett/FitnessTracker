@@ -6,6 +6,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityStream, ChartData } from '@/lib/api';
 import { buildReplay, timeFmt, tourRate, TOUR_PRESETS, type ReplayBuildResult } from '@/lib/replay';
+import {
+  HEARTRATE_STREAM_TYPES,
+  POWER_STREAM_TYPES,
+  VELOCITY_STREAM_TYPES,
+  ALTITUDE_STREAM_TYPES,
+  CADENCE_STREAM_TYPES,
+  getStreamValues,
+  streamInput,
+} from '@/lib/streams';
 import { Chart } from '@/components/charts/Chart';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration, formatDistance } from '@/lib/utils';
@@ -28,61 +37,35 @@ export function CompareActivitiesModal({
 }) {
   const { authFetch, token } = useAuthFetch();
 
-  const { data: streamsA, isLoading: loadingA } = useQuery<ActivityStream[]>({
+  const { data: streamsA, isLoading: loadingA, isError: errorA } = useQuery<ActivityStream[]>({
     queryKey: ['activity-streams', activityA.id],
     queryFn: () => authFetch<ActivityStream[]>(`/api/v1/activities/${activityA.id}/streams`),
-    enabled: !!token,
+    enabled: !!token && !!activityA.id,
   });
 
-  const { data: streamsB, isLoading: loadingB } = useQuery<ActivityStream[]>({
+  const { data: streamsB, isLoading: loadingB, isError: errorB } = useQuery<ActivityStream[]>({
     queryKey: ['activity-streams', activityB.id],
     queryFn: () => authFetch<ActivityStream[]>(`/api/v1/activities/${activityB.id}/streams`),
-    enabled: !!token,
+    enabled: !!token && !!activityB.id,
   });
 
   const isLoading = loadingA || loadingB;
-
-  function getStreamValues(streams: ActivityStream[] | undefined, ...types: string[]): number[] {
-    if (!streams) return [];
-    for (const type of types) {
-      const s = streams.find((s) => s.stream_type === type);
-      if (!s) continue;
-      const data = s.data as Record<string, unknown>;
-      const values = (data?.data as number[]) ?? [];
-      if (values.length) return values;
-    }
-    return [];
-  }
-
-  // Strava sync writes "watts", FIT imports write "power" — try both spellings.
-  function streamInput(
-    streams: ActivityStream[] | undefined,
-    ...types: string[]
-  ): { values: number[]; resolution: number } | undefined {
-    for (const type of types) {
-      const s = streams?.find((x) => x.stream_type === type);
-      if (!s) continue;
-      const data = s.data as Record<string, unknown>;
-      const values = (data?.data as number[]) ?? [];
-      if (values.length) return { values, resolution: s.resolution ?? 1 };
-    }
-    return undefined;
-  }
+  const streamsError = errorA || errorB;
 
   // §3.16 side-by-side replay: build a ReplayBuildResult (pure) for each ride.
   function buildReplayFor(
     activity: Activity,
     streams: ActivityStream[] | undefined
   ): ReplayBuildResult | null {
-    const velocity = streamInput(streams, 'velocity', 'velocity_smooth');
+    const velocity = streamInput(streams, ...VELOCITY_STREAM_TYPES);
     if (!velocity || !activity.encoded_polyline) return null;
     const res = buildReplay({
       polyline: activity.encoded_polyline,
       velocity,
-      altitude: streamInput(streams, 'altitude'),
-      power: streamInput(streams, 'watts', 'power'),
-      hr: streamInput(streams, 'heartrate'),
-      cadence: streamInput(streams, 'cadence'),
+      altitude: streamInput(streams, ...ALTITUDE_STREAM_TYPES),
+      power: streamInput(streams, ...POWER_STREAM_TYPES),
+      hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
+      cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
       maxSamples: 800,
     });
     return res;
@@ -158,10 +141,10 @@ export function CompareActivitiesModal({
     onRate: masterRate,
   };
 
-  const powerA = getStreamValues(streamsA, 'watts', 'power');
-  const powerB = getStreamValues(streamsB, 'watts', 'power');
-  const hrA = getStreamValues(streamsA, 'heartrate');
-  const hrB = getStreamValues(streamsB, 'heartrate');
+  const powerA = getStreamValues(streamsA, ...POWER_STREAM_TYPES);
+  const powerB = getStreamValues(streamsB, ...POWER_STREAM_TYPES);
+  const hrA = getStreamValues(streamsA, ...HEARTRATE_STREAM_TYPES);
+  const hrB = getStreamValues(streamsB, ...HEARTRATE_STREAM_TYPES);
 
   // Build power overlay chart
   const powerChart: ChartData | null = (powerA.length > 0 || powerB.length > 0)
@@ -380,7 +363,13 @@ export function CompareActivitiesModal({
               </div>
             )}
             {!powerChart && !hrChart && (
-              <p className="text-muted text-sm text-center py-8">No stream data available for comparison</p>
+              streamsError ? (
+                <p className="text-warning text-sm text-center py-8">Couldn’t load stream data — check your connection and reopen the compare view.</p>
+              ) : [activityA, activityB].every((a) => a.source === 'wahoo') ? (
+                <p className="text-muted text-sm text-center py-8">Wahoo sync doesn’t include per-second streams — compare summary stats below instead.</p>
+              ) : (
+                <p className="text-muted text-sm text-center py-8">No stream data available for comparison</p>
+              )
             )}
 
             {/* Stats delta table */}
