@@ -217,7 +217,8 @@ def _torso_angle(landmarks) -> float:
 # ── Exercise Classification ──────────────────────────────────────────────────
 
 
-def classify_exercise(landmarks_per_frame: list) -> dict:
+def classify_exercise(landmarks_per_frame: list,
+                      timestamps: list[float] | None = None) -> dict:
     """Classify exercise from pose landmark sequence using joint angle patterns.
 
     Returns {"exercise": str, "confidence": float, "variation": str}.
@@ -256,17 +257,47 @@ def classify_exercise(landmarks_per_frame: list) -> dict:
     confidence = 0.0
     variation = ""
 
+    # Overhead press (strict / push press / log press) FIRST: elbows extend
+    # while the hands finish overhead, WITH leg drive (dip/clean). Verified
+    # 2026-09-18: a strongman log clean-and-press read "Deadlift 0.95"
+    # (the clean bends the torso horizontal, tripping the hinge gate).
+    # Uses the longest CONSECUTIVE overhead hold (a lockout), not the share
+    # of frames: in a 45s 1RM video the 1-2s lockout is a tiny fraction.
+    # Threshold 0.3s (3 frames @10fps): lockouts are held, noise isn't —
+    # and elbow_range + hip_range must also trip (measured 0.40s hold on a
+    # real log press vs 0.5s guess; don't re-tighten without data).
+    # The hip_range guard keeps bench press out (hips stay put on a bench
+    # while the bar locks out overhead).
+    longest_hold = 0.0
+    hold_start = None
+    if timestamps is None:  # assume 10fps extraction cadence
+        timestamps = [i / 10.0 for i in range(len(landmarks_per_frame))]
+    for t, lm in zip(timestamps, landmarks_per_frame):
+        wrist_y = (lm[15].y + lm[16].y) / 2
+        shoulder_y = (lm[11].y + lm[12].y) / 2
+        if wrist_y < shoulder_y - 0.1:
+            if hold_start is None:
+                hold_start = t
+            longest_hold = max(longest_hold, t - hold_start)
+        else:
+            hold_start = None
+
+    if elbow_range > 40 and longest_hold > 0.3 and hip_range > 20:
+        exercise = "Overhead Press"
+        confidence = min(0.95, 0.7 + elbow_range / 200)
+        variation = "Push Press" if hip_range > 30 else "Strict Press"
     # NOTE: elbow_range is deliberately NOT a veto for lower-body lifts.
     # Real squat/deadlift videos show large arm movement (unracking, bar
     # stabilization, arm swing) — e.g. hip_range=143, knee_range=118 with
     # elbow_range=179 on a confirmed back-squat video (2026-09-17).
     # Classification keys on hip/knee dominance instead.
     #
-    # Hinge check FIRST: deadlifts satisfy the squat ROM thresholds too
-    # (both move hips + knees through large ranges), so the squat branch
-    # would shadow them. Verified 2026-09-17: two "Squat 0.95" videos were
-    # visually conventional/strongman deadlifts (torso horizontal).
-    if hip_range > 35 and knee_range > 30 and bottom_lean > 60:
+    # Hinge check: deadlifts satisfy the squat ROM thresholds too (both
+    # move hips + knees through large ranges), so the squat branch would
+    # shadow them — hence elif-chained AFTER the press branch above.
+    # Verified 2026-09-17: two "Squat 0.95" videos were visually
+    # conventional/strongman deadlifts (torso horizontal).
+    elif hip_range > 35 and knee_range > 30 and bottom_lean > 60:
         exercise = "Deadlift"
         confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
         knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
@@ -858,7 +889,7 @@ def run_pose_analysis(
         return result
 
     # Classify exercise (validate user's choice)
-    classification = classify_exercise(landmarks)
+    classification = classify_exercise(landmarks, timestamps)
     if classification["confidence"] >= 0.6:
         result["exercise_detected"] = classification["exercise"]
         result["exercise_variation"] = classification["variation"]

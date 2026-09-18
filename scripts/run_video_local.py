@@ -166,7 +166,7 @@ def main() -> int:
     if args.exercise:
         exercise, confidence, variation = args.exercise, 1.0, ""
     else:
-        cls = classify_exercise(landmarks)
+        cls = classify_exercise(landmarks, timestamps)
         exercise, confidence, variation = (
             cls["exercise"], cls["confidence"], cls["variation"])
     print(f"Classification: {exercise} ({variation}) conf={confidence}")
