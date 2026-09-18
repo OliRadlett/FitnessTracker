@@ -37,7 +37,7 @@ python fittrack.py patch-cert       # Fix SSL cert errors (regen Caddy CA + inst
 ```bash
 python fittrack.py exec <service> <command>
 # e.g.
-python fittrack.py exec backend pytest backend/tests/ -v --tb=short
+python fittrack.py exec backend pytest tests/ -v --tb=short
 python fittrack.py exec backend python -c "from app.main import app; print('OK')"
 python fittrack.py exec backend alembic current
 ```
@@ -59,13 +59,13 @@ Run inside the backend container (has all deps + DB access):
 
 ```bash
 # Full suite
-python fittrack.py exec backend pytest backend/tests/ -v --tb=short
+python fittrack.py exec backend pytest tests/ -v --tb=short
 
 # Unit tests only (fast, no integration marker)
-python fittrack.py exec backend pytest backend/tests/ -m "not integration"
+python fittrack.py exec backend pytest tests/ -m "not integration"
 
 # Quick CI subset
-python fittrack.py exec backend pytest backend/tests/ -m smoke
+python fittrack.py exec backend pytest tests/ -m smoke
 ```
 
 Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
@@ -109,7 +109,7 @@ OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.jso
 
 ## Database Migrations
 
-⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→024.
+⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→061(head).
 
 ```bash
 # Generate
