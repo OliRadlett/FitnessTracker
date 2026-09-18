@@ -94,6 +94,15 @@ const integrations = [
     color: 'bg-purple-500',
     available: true,
   },
+  {
+    id: 'withings',
+    name: 'Withings',
+    description: 'Body weight and body composition (body fat, muscle mass, hydration) from Withings scales',
+    icon: `${BASE_PATH}/icons/withings.svg`,
+    emoji: '⚖️',
+    color: 'bg-teal-500',
+    available: true,
+  },
 ];
 
 export default function SettingsPage() {

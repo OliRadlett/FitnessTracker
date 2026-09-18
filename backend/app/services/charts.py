@@ -1332,6 +1332,107 @@ class ChartService:
             insights=insights,
         )
 
+    # ── Body composition trend ────────────────────────────────────────────
+
+    async def body_composition_trend(
+        self, user_id: uuid.UUID, days: int = 90
+    ) -> ChartData:
+        """Body composition over time (Withings BIA data).
+
+        Multi-series: weight (kg), body fat (%), muscle mass (kg),
+        hydration (%) — each with a 7-day rolling average. Recomposition
+        (fat down + muscle up) is surfaced as an insight.
+        """
+        cutoff = date.today() - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(
+                WeightLog.date,
+                WeightLog.weight_kilogram,
+                WeightLog.body_fat_percent,
+                WeightLog.muscle_mass_kg,
+                WeightLog.hydration_percent,
+            )
+            .where(
+                WeightLog.user_id == user_id,
+                WeightLog.date >= cutoff,
+            )
+            .order_by(WeightLog.date)
+        )
+        rows = result.all()
+
+        # Only composition-capable rows carry signal — but keep weight-only
+        # rows for the weight series so the chart still renders.
+        comp_rows = [r for r in rows if r.body_fat_percent is not None]
+        if not rows:
+            return ChartData(
+                chart_type="line",
+                title="Body Composition Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="",
+            )
+
+        def _rolling(values: list[float | None]) -> list[float | None]:
+            out: list[float | None] = []
+            for i in range(len(values)):
+                window = [v for v in values[max(0, i - 6) : i + 1] if v is not None]
+                out.append(round(sum(window) / len(window), 1) if window else None)
+            return out
+
+        labels = [r.date.isoformat() for r in rows]
+        weights = [r.weight_kilogram for r in rows]
+        fat = [r.body_fat_percent for r in rows]
+        muscle = [r.muscle_mass_kg for r in rows]
+        hydration = [r.hydration_percent for r in rows]
+
+        insights: list[str] = []
+        if len(comp_rows) >= 2:
+            first, latest = comp_rows[0], comp_rows[-1]
+            fat_delta = latest.body_fat_percent - first.body_fat_percent
+            insights.append(
+                f"Body fat {'decreased' if fat_delta < 0 else 'increased'} "
+                f"{abs(fat_delta):.1f}pp over {len(comp_rows)} weigh-ins "
+                f"({first.body_fat_percent:.1f}% → {latest.body_fat_percent:.1f}%)."
+            )
+            if latest.muscle_mass_kg is not None and first.muscle_mass_kg is not None:
+                muscle_delta = latest.muscle_mass_kg - first.muscle_mass_kg
+                if fat_delta < 0 and muscle_delta > 0:
+                    insights.append(
+                        "Body fat decreasing while muscle mass increasing — "
+                        "recomposition detected."
+                    )
+                elif muscle_delta != 0:
+                    direction = "gained" if muscle_delta > 0 else "lost"
+                    insights.append(
+                        f"Muscle mass {direction} {abs(muscle_delta):.1f}kg "
+                        f"over the period."
+                    )
+        elif not comp_rows:
+            insights.append(
+                "No body composition data yet — connect Withings to track "
+                "body fat, muscle mass, and hydration."
+            )
+
+        return ChartData(
+            chart_type="line",
+            title="Body Composition Trend",
+            labels=labels,
+            series=[
+                ChartSeries(name="Weight (kg)", data=weights, color="#8b5cf6"),
+                ChartSeries(
+                    name="Weight 7-day Avg", data=_rolling(weights), color="#f59e0b"
+                ),
+                ChartSeries(name="Body Fat (%)", data=fat, color="#ef4444"),
+                ChartSeries(name="Muscle Mass (kg)", data=muscle, color="#22c55e"),
+                ChartSeries(name="Hydration (%)", data=hydration, color="#3b82f6"),
+            ],
+            x_label="Date",
+            y_label="kg / %",
+            insights=insights,
+        )
+
     # ── Training Load Balance ───────────────────────────────────────────────
 
     async def training_load_balance(

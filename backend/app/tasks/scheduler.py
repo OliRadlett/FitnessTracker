@@ -211,6 +211,12 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "options": {"expires": 3600},
     },
+    # Sync Withings scale data every 30 minutes (weight + body composition)
+    "sync-withings-data": {
+        "task": "app.tasks.scheduler.sync_all_withings_data",
+        "schedule": crontab(minute="*/30"),
+        "options": {"expires": 3600},
+    },
     # Weekly database backup (Sunday 2 AM UTC)
     "backup-database": {
         "task": "app.tasks.scheduler.backup_database",
@@ -2294,6 +2300,112 @@ def sync_all_whoop_data() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("sync_all_whoop_data", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.sync_all_withings_data")
+def sync_all_withings_data() -> dict:
+    """Sync Withings scale data for all connected users (weight + body composition).
+
+    Enqueued by Celery Beat every 30 minutes. Incremental via the
+    ``last_synced_at`` watermark (minus 24h overlap) computed inside
+    :func:`app.services.withings.sync_withings_measurements`.
+    """
+    import asyncio
+    from datetime import UTC
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.integrations.errors import PermanentAuthError, TransientSyncError
+    from app.models.user import OAuthConnection
+    from app.services.connection_health import (
+        CONNECTION_STATUS_NEEDS_REAUTH,
+        mark_connection_reauth,
+    )
+    from app.services.withings import (
+        refresh_if_needed as withings_refresh,
+    )
+    from app.services.withings import (
+        sync_withings_measurements,
+    )
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(
+                select(OAuthConnection).where(
+                    OAuthConnection.provider == "withings"
+                )
+            )
+            connections = list(result.scalars().all())
+            synced_weighins = 0
+            skipped_reauth = 0
+            skipped_locked = 0
+
+            for conn in connections:
+                if conn.status == CONNECTION_STATUS_NEEDS_REAUTH:
+                    skipped_reauth += 1
+                    continue
+
+                lock = await _try_acquire_user_lock(conn.user_id, "withings")
+                if lock is None:
+                    logger.info(
+                        f"Skipping Withings sync for user {conn.user_id} — already in progress"
+                    )
+                    skipped_locked += 1
+                    continue
+
+                try:
+                    conn = await withings_refresh(db, conn)
+                except PermanentAuthError as e:
+                    skipped_reauth += 1
+                    logger.warning(
+                        f"Skipping Withings sync for user {conn.user_id}: {e}"
+                    )
+                    await lock.__aexit__(None, None, None)
+                    continue
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Withings refresh transient failure for user {conn.user_id}: {e}"
+                    )
+                    await lock.__aexit__(None, None, None)
+                    continue
+
+                try:
+                    logs = await sync_withings_measurements(db, conn.user_id)
+                    synced_weighins += len(logs)
+                    from datetime import datetime
+
+                    conn.last_synced_at = datetime.now(UTC)
+                    await db.commit()
+                except PermanentAuthError as e:
+                    skipped_reauth += 1
+                    logger.warning(
+                        f"Withings sync auth failure for user {conn.user_id}: {e}"
+                    )
+                    await mark_connection_reauth(db, conn, str(e))
+                    await db.rollback()
+                except TransientSyncError as e:
+                    logger.warning(
+                        f"Withings sync transient failure for user {conn.user_id}: {e}"
+                    )
+                    await db.rollback()
+                except Exception as e:
+                    logger.error(
+                        f"Withings sync error for user {conn.user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+                finally:
+                    await lock.__aexit__(None, None, None)
+
+            return {
+                "synced_weighins": synced_weighins,
+                "skipped_reauth": skipped_reauth,
+                "skipped_locked": skipped_locked,
+                "users_processed": len(connections),
+            }
+
+    return asyncio.run(_run_task_guarded("sync_all_withings_data", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.backup_database")

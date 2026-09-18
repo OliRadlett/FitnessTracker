@@ -290,6 +290,65 @@ async def _dispatch_sync(connection, current_user, db):
                 status_code=409,
                 detail="Connection expired or revoked — disconnect and reconnect Whoop.",
             )
+    elif connection.provider == "withings":
+        try:
+            from app.services.withings import (
+                refresh_if_needed as withings_refresh,
+            )
+            from app.services.withings import (
+                sync_withings_measurements,
+            )
+
+            # Refresh token first (same as Celery task does)
+            connection = await withings_refresh(db, connection)
+            # Incremental window matching the scheduled task: watermark minus
+            # 24h overlap — avoids refetching full history on every click.
+            from datetime import UTC as _UTC
+            from datetime import datetime as _dt
+            from datetime import timedelta as _timedelta
+
+            startdate = None
+            if connection.last_synced_at:
+                overlap = connection.last_synced_at - _timedelta(hours=24)
+                startdate = int(overlap.timestamp())
+            logs = await sync_withings_measurements(
+                db, current_user.id, startdate=startdate
+            )
+
+            if logs:
+                connection.last_synced_at = _dt.now(_UTC)
+            await db.commit()
+            return {
+                "detail": f"Synced {len(logs)} weigh-ins from Withings",
+                "synced_count": len(logs),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except PermanentAuthError as e:
+            logger.warning(
+                f"Withings sync auth failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Withings.",
+            )
+        except TransientSyncError as e:
+            logger.warning(
+                f"Withings sync transient failure for user {current_user.id}: {e}"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Withings is temporarily unavailable — please try again later.",
+            )
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Withings token refresh failed for user {current_user.id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Connection expired or revoked — disconnect and reconnect Withings.",
+            )
     else:
         raise HTTPException(
             status_code=400,

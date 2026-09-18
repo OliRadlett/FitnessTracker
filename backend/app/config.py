@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     wahoo_client_id: str = ""
     wahoo_client_secret: str = ""
 
+    # Withings OAuth (body composition scales)
+    withings_client_id: str = ""
+    withings_client_secret: str = ""
+
     # Komoot Basic Auth
     komoot_email: str = ""
     komoot_password: str = ""
@@ -183,6 +187,7 @@ class Settings(BaseSettings):
             "Strava": (self.strava_client_id, self.strava_client_secret),
             "Whoop": (self.whoop_client_id, self.whoop_client_secret),
             "Wahoo": (self.wahoo_client_id, self.wahoo_client_secret),
+            "Withings": (self.withings_client_id, self.withings_client_secret),
             "Google OAuth": (self.google_client_id, self.google_client_secret),
             "GitHub OAuth": (self.github_client_id, self.github_client_secret),
             "Komoot": (self.komoot_email, self.komoot_password),

@@ -71,6 +71,7 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     },
     "hrv_trend_detailed": {"method": "hrv_trend_detailed", "params": ["days"]},
     "weight_trend": {"method": "weight_trend", "params": ["days"]},
+    "body_composition_trend": {"method": "body_composition_trend", "params": ["days"]},
     "training_load_balance": {"method": "training_load_balance", "params": ["weeks"]},
     "rest_day_analysis": {"method": "rest_day_analysis", "params": ["days"]},
     # VO2max and decoupling charts

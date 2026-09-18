@@ -132,7 +132,7 @@ async def oauth_authorize(
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
     # For fitness integrations, use the backend callback URL via public_url
-    if not redirect_uri and provider in ("strava", "whoop", "wahoo"):
+    if not redirect_uri and provider in ("strava", "whoop", "wahoo", "withings"):
         redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
 
     url = get_authorize_url(provider, redirect_uri, state=state)
@@ -175,7 +175,7 @@ async def oauth_callback(
     )
 
     if provider not in OAUTH_PROVIDERS:
-        if provider in ("strava", "whoop", "wahoo"):
+        if provider in ("strava", "whoop", "wahoo", "withings"):
             return RedirectResponse(
                 url=f"{_frontend_url}/settings?error=Unsupported+provider:+{provider}"
             )
@@ -189,22 +189,27 @@ async def oauth_callback(
         )
 
     # For fitness integrations, save connection to existing user instead of creating new one
-    if provider in ("strava", "whoop", "wahoo"):
+    if provider in ("strava", "whoop", "wahoo", "withings"):
         try:
             # Exchange code for tokens directly
             import httpx as _httpx
 
             cfg = OAUTH_PROVIDERS[provider]
+            # Withings uses a non-standard token exchange: action=requesttoken
+            # in the form body (same endpoint as refresh with action=refresh).
+            token_form: dict = {
+                "client_id": cfg["client_id"](),
+                "client_secret": cfg["client_secret"](),
+                "code": code,
+                "redirect_uri": token_exchange_redirect_uri,
+                "grant_type": "authorization_code",
+            }
+            if provider == "withings":
+                token_form["action"] = "requesttoken"
             async with _httpx.AsyncClient() as client:
                 token_resp = await client.post(
                     cfg["token_url"],
-                    data={
-                        "client_id": cfg["client_id"](),
-                        "client_secret": cfg["client_secret"](),
-                        "code": code,
-                        "redirect_uri": token_exchange_redirect_uri,
-                        "grant_type": "authorization_code",
-                    },
+                    data=token_form,
                     headers={"Accept": "application/json"},
                 )
                 try:
@@ -263,26 +268,47 @@ async def oauth_callback(
                     userinfo_resp = await client.get(fallback_url, headers=headers)
 
                 if userinfo_resp.status_code != 200:
-                    _logger.error(
-                        "%s userinfo fetch failed: status=%s",
-                        provider.title(),
-                        userinfo_resp.status_code,
-                    )
-                    return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+failed"
-                    )
+                    # Withings: token response already carries userid, so a
+                    # userinfo failure is non-fatal — fall through with empty info.
+                    if provider == "withings" and token_data.get("userid"):
+                        _logger.warning(
+                            "Withings userinfo fetch failed (status=%s) — "
+                            "falling back to userid from token response",
+                            userinfo_resp.status_code,
+                        )
+                        userinfo = {}
+                    else:
+                        _logger.error(
+                            "%s userinfo fetch failed: status=%s",
+                            provider.title(),
+                            userinfo_resp.status_code,
+                        )
+                        return RedirectResponse(
+                            url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+failed"
+                        )
                 try:
                     userinfo = userinfo_resp.json()
                 except Exception:
-                    return RedirectResponse(
-                        url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+invalid+JSON"
-                    )
+                    if provider == "withings" and token_data.get("userid"):
+                        userinfo = {}
+                    else:
+                        return RedirectResponse(
+                            url=f"{_frontend_url}/settings?error={provider.title()}+userinfo+invalid+JSON"
+                        )
 
             # Extract provider user ID
             if provider == "strava":
                 provider_user_id = str(userinfo.get("id", ""))
             elif provider == "whoop":
                 provider_user_id = str(userinfo.get("user_id", ""))
+            elif provider == "withings":
+                # Token response carries userid; userinfo nests under body.
+                _w_body = userinfo.get("body") or userinfo
+                provider_user_id = str(
+                    token_data.get("userid", "")
+                    or _w_body.get("userid", "")
+                    or _w_body.get("user_id", "")
+                )
             else:
                 provider_user_id = str(userinfo.get("id", ""))
 
