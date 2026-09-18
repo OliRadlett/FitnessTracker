@@ -297,11 +297,18 @@ def detect_reps_from_pose(
     landmarks_per_frame: list,
     timestamps: list[float],
     exercise: str,
+    expected_reps: int | None = None,
 ) -> list[dict]:
     """Detect individual reps from pose landmark sequence.
 
     Uses joint angle oscillation to find rep boundaries.
     Returns list of per-rep dicts with start/end indices.
+
+    expected_reps (user-declared at upload, for calibration): when given,
+    the deepest valid cycles are selected instead of all valid cycles —
+    setup dips, walkout shuffles and rerack bends all oscillate but are
+    shallower than the working rep(s). Without it, every valid cycle is
+    returned (legacy behavior).
     """
     if len(landmarks_per_frame) < 5:
         return []
@@ -315,11 +322,14 @@ def detect_reps_from_pose(
         for lm in landmarks_per_frame
     ], window=7)
 
-    # Find local minima (bottom of rep) — these are the inflection points
+    # Find local minima (bottom of rep) — these are the inflection points.
+    # Minima deeper than anatomical plausibility (<30°: beyond max joint
+    # flexion, always an occlusion glitch) are excluded from candidacy —
+    # otherwise a 24° spike becomes the "deepest" rep and wins selection.
     diff = np.diff(signal)
     minima_idx = []
     for i in range(1, len(diff)):
-        if diff[i - 1] < 0 and diff[i] >= 0:
+        if diff[i - 1] < 0 and diff[i] >= 0 and signal[i] >= 30.0:
             minima_idx.append(i)
 
     # Pair CONSECUTIVE minima into reps: one bottom-to-bottom cycle each.
@@ -346,10 +356,19 @@ def detect_reps_from_pose(
             "rep_number": len(reps) + 1,
             "start_idx": start,
             "end_idx": end,
+            "bottom_depth": round(float(signal[start]), 1),
             "start_time": round(timestamps[min(start, len(timestamps) - 1)], 2),
             "end_time": round(timestamps[min(end, len(timestamps) - 1)], 2),
             "duration": round(duration, 2),
         })
+
+    # User-declared rep count: keep the deepest valid cycles (the working
+    # reps), drop setup/walkout/rerack fragments. Re-sorted by time.
+    if expected_reps is not None and expected_reps > 0 and len(reps) > expected_reps:
+        reps = sorted(reps, key=lambda r: r["bottom_depth"])[:expected_reps]
+        reps = sorted(reps, key=lambda r: r["start_idx"])
+        for n, r in enumerate(reps, 1):
+            r["rep_number"] = n
 
     return reps
 
@@ -825,7 +844,11 @@ def run_pose_analysis(
     weight_kg: float,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
-    with the existing run_full_analysis result format."""
+    with the existing run_full_analysis result format.
+
+    rep_count doubles as the user-declared expected rep count (0/None =
+    auto-detect): when positive, the deepest valid cycles are selected.
+    """
     result = {}
 
     # Extract pose landmarks
@@ -844,8 +867,10 @@ def run_pose_analysis(
 
     exercise = result.get("exercise_detected", exercise_name)
 
-    # Detect reps
-    reps = detect_reps_from_pose(landmarks, timestamps, exercise)
+    # Detect reps (rep_count = user-declared expectation, if any)
+    expected = rep_count if rep_count and rep_count > 0 else None
+    reps = detect_reps_from_pose(landmarks, timestamps, exercise,
+                                 expected_reps=expected)
 
     # Per-rep analysis
     per_rep = []
@@ -987,6 +1012,9 @@ def bar_velocity_from_pose(
                 velocities[0], velocities[-1])
             result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
     else:
+        # No measurable reps (slices below amplitude floor): report failure
+        # so callers fall back to optical flow instead of storing 0.0.
+        result["tracking_quality"] = "failed"
         result["mean_concentric_velocity"] = 0.0
         result["peak_velocity"] = 0.0
     return result

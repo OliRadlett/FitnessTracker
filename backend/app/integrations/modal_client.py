@@ -83,6 +83,7 @@ def process_video_on_modal(
     r2_presigned_put: str,
     r2_upload_key: str,
     analysis_depth: str = "full",
+    expected_reps: int | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -102,6 +103,9 @@ def process_video_on_modal(
         ``"basic"`` for trim + classify only (current behaviour),
         ``"full"`` for deep analysis (form, velocity, rest, consistency,
         setup, RPE estimation).
+    expected_reps:
+        User-declared rep count (calibration aid): the deepest valid
+        cycles are selected instead of all valid cycles.
 
     Returns
     -------
@@ -137,6 +141,7 @@ def process_video_on_modal(
         presigned_put: str,
         upload_key: str,
         depth: str,
+        expected: int | None,
     ) -> dict:
         import logging
         import subprocess
@@ -351,7 +356,7 @@ def process_video_on_modal(
                         trim_start=trim_start,
                         trim_end=trim_end,
                         exercise_name=exercise,
-                        rep_count=reps,
+                        rep_count=expected or reps,
                         weight_kg=weight,
                     )
                     full_result.update(pose_result)
@@ -383,7 +388,8 @@ def process_video_on_modal(
                     _cap.release()
                     if landmarks and pose_timestamps and _fh > 0:
                         _pose_reps = detect_reps_from_pose(
-                            landmarks, pose_timestamps, exercise)
+                            landmarks, pose_timestamps, exercise,
+                            expected_reps=expected)
                         vel_result = bar_velocity_from_pose(
                             landmarks, pose_timestamps, _pose_reps,
                             exercise, _fh, _get_rom(exercise))
@@ -514,4 +520,5 @@ def process_video_on_modal(
             r2_presigned_put,
             r2_upload_key,
             analysis_depth,
+            expected_reps,
         )

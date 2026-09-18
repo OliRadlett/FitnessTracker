@@ -16,6 +16,7 @@ export interface LiftVideo {
   lifting_session_id?: string | null;
   personal_record_id?: string | null;
   notes?: string | null;
+  expected_reps?: number | null;
   created_at: string;
   updated_at: string;
   // Video processing fields

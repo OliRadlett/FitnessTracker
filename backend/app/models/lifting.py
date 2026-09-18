@@ -254,6 +254,9 @@ class LiftVideo(Base):
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    expected_reps: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # user-declared rep count (calibration aid for rep detection)
 
     # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
     trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
