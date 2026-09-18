@@ -37,6 +37,16 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
+import {
+  CADENCE_STREAM_TYPES,
+  ALTITUDE_STREAM_TYPES,
+  HEARTRATE_STREAM_TYPES,
+  POWER_STREAM_TYPES,
+  VELOCITY_STREAM_TYPES,
+  hasStream,
+  presentStreamTypes,
+  streamInput,
+} from '@/lib/streams';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
@@ -120,12 +130,16 @@ function ActivityExpanded({
   activity,
   activityDetail,
   context,
+  detailLoading,
+  detailError,
 }: {
   activity: Activity;
   activityDetail?: ActivityDetail;
   context?: ActivityContext | null;
+  detailLoading?: boolean;
+  detailError?: boolean;
 }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const streamTypes = activityDetail?.streams?.map((s) => s.stream_type) ?? [];
   const [selectedStream, setSelectedStream] = useState<string>('');
 
@@ -135,7 +149,7 @@ function ActivityExpanded({
   const { data: rideAnalysis } = useQuery<RideAnalysis>({
     queryKey: ['ride-analysis', activity.id],
     queryFn: () => authFetch<RideAnalysis>(`/api/v1/activities/${activity.id}/analysis`),
-    enabled: isCycling,
+    enabled: isCycling && !!token,
   });
 
   const streamChart: ChartData | null = useMemo(() => {
@@ -162,29 +176,32 @@ function ActivityExpanded({
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
     if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
     const streams = activityDetail.streams!;
-    const findStream = (...types: string[]) => {
-      for (const type of types) {
-        const s = streams.find((st) => st.stream_type === type);
-        if (!s) continue;
-        const data = (s.data as Record<string, unknown>)?.data as number[] | undefined;
-        if (!data || data.length === 0) continue;
-        return { values: data, resolution: s.resolution ?? 1 };
-      }
-      return undefined;
-    };
-    const velocity = findStream('velocity', 'velocity_smooth');
+    const velocity = streamInput(streams, ...VELOCITY_STREAM_TYPES);
     if (!velocity) return null;
     return buildReplay({
       polyline: activity.encoded_polyline,
       velocity,
-      altitude: findStream('altitude'),
-      // Strava sync writes "watts", FIT imports write "power".
-      power: findStream('watts', 'power'),
-      hr: findStream('heartrate'),
-      cadence: findStream('cadence'),
+      altitude: streamInput(streams, ...ALTITUDE_STREAM_TYPES),
+      power: streamInput(streams, ...POWER_STREAM_TYPES),
+      hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
+      cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
       maxSamples: 800,
     });
   }, [activity, activityDetail, isCycling]);
+
+  // Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
+  // Loading/error/empty-streams cases are covered by the stream section below.
+  const replayMissingReason: string | null = useMemo(() => {
+    if (!isCycling || detailLoading || detailError) return null;
+    const streams = activityDetail?.streams;
+    if (!streams?.length) return null;
+    if (!activity.encoded_polyline) return 'No route attached — 3D replay needs GPS.';
+    if (!hasStream(streams, ...VELOCITY_STREAM_TYPES)) {
+      const present = presentStreamTypes(streams);
+      return `3D replay needs a speed stream — this ride has ${present.length ? present.join(', ') : 'no readable streams'} but no velocity.`;
+    }
+    return null;
+  }, [activity, activityDetail, detailError, detailLoading, isCycling]);
 
   // Shared 3D playhead (Phase D: live readout; Phase E: full chart link).
   const [replayElapsed, setReplayElapsed] = useState<number | null>(null);
@@ -196,13 +213,15 @@ function ActivityExpanded({
     setReplayElapsed(null);
     setChartMarker(null);
     markerRef.current = null;
+    // Reset the selected stream tab — the previous ride's type may not exist here (P2-3).
+    setSelectedStream('');
   }, [activity.id]);
 
   // Cycling FTP for power zone bands (shared ['cycling-profile'] cache).
   const { data: profile } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
-    enabled: isCycling,
+    enabled: isCycling && !!token,
   });
 
   const selectedResolution = Math.max(
@@ -294,9 +313,16 @@ function ActivityExpanded({
           />
         </div>
       )}
+      {replayMissingReason && (
+        <p className="mb-4 text-sm text-muted">{replayMissingReason}</p>
+      )}
 
       {/* Stream Data */}
-      {streamTypes.length > 0 ? (
+      {detailLoading ? (
+        <div className="h-[250px] bg-surface-light/20 rounded-lg animate-pulse" aria-label="Loading stream data" />
+      ) : detailError ? (
+        <p className="text-warning text-sm">Couldn’t load stream data — check your connection and reopen this activity.</p>
+      ) : streamTypes.length > 0 ? (
         <>
           <div className="flex flex-wrap gap-2 mb-4">
             {streamTypes.map((st) => (
@@ -321,7 +347,13 @@ function ActivityExpanded({
           {streamChartEl}
         </>
       ) : (
-        <p className="text-muted text-sm">No stream data available</p>
+        activity.source === 'wahoo' ? (
+          <p className="text-muted text-sm">Wahoo sync doesn’t include per-second streams — summary metrics above still work.</p>
+        ) : isCycling ? (
+          <p className="text-muted text-sm">No streams stored for this ride — run a backfill from the Cycling page to fetch them.</p>
+        ) : (
+          <p className="text-muted text-sm">No stream data available</p>
+        )
       )}
 
       {/* Ride Analysis Card — cycling activities only */}
@@ -352,7 +384,7 @@ function ActivityExpanded({
 
 export default function ActivitiesPage() {
   usePageTitle('Activities');
-  const { authFetch, authFetchWithHeaders, authUpload } = useAuthFetch();
+  const { authFetch, authFetchWithHeaders, authUpload, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<ActivityFilters>({});
@@ -460,13 +492,14 @@ export default function ActivitiesPage() {
       if (countHeader) setTotalCount(parseInt(countHeader, 10));
       return result.data;
     },
+    enabled: !!token,
   });
 
   // Fetch context for the expanded activity (lazy / on-demand)
   const { data: expandedContext } = useQuery<ActivityContext>({
     queryKey: ['activity-context', selectedActivityId],
     queryFn: () => authFetch<ActivityContext>(`/api/v1/activities/${selectedActivityId}/context`),
-    enabled: !!selectedActivityId,
+    enabled: !!selectedActivityId && !!token,
     staleTime: 1000 * 60 * 10, // 10 minutes — context doesn't change often
   });
 
@@ -495,6 +528,9 @@ export default function ActivitiesPage() {
       });
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String(allActivities.length));
+      // Keep parity with the first page (§1.2 Phase B) so appended rows
+      // also carry cached ride metrics for badges.
+      params.set('include_context', 'true');
       const query = params.toString();
       const result = await authFetchWithHeaders<Activity[]>(`/api/v1/activities${query ? `?${query}` : ''}`);
       setAllActivities((prev) => [...(prev || []), ...result.data]);
@@ -557,10 +593,10 @@ export default function ActivitiesPage() {
     URL.revokeObjectURL(url);
   }, [displayActivities, bulkSelected]);
 
-  const { data: activityDetail } = useQuery<ActivityDetail>({
+  const { data: activityDetail, isLoading: detailLoading, isError: detailError } = useQuery<ActivityDetail>({
     queryKey: ['activity', selectedActivityId],
     queryFn: () => authFetch<ActivityDetail>(`/api/v1/activities/${selectedActivityId}`),
-    enabled: !!selectedActivityId,
+    enabled: !!selectedActivityId && !!token,
   });
 
   // Fetch aggregate totals across ALL matching activities (not just the current page)
@@ -577,7 +613,7 @@ export default function ActivitiesPage() {
   const { data: activitySummary } = useQuery<ActivitySummary>({
     queryKey: ['activity-summary', summaryParams],
     queryFn: () => authFetch<ActivitySummary>(`/api/v1/activities/summary${summaryParams ? `?${summaryParams}` : ''}`),
-    enabled: viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0,
+    enabled: viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && !!token,
   });
 
   // Deep-linked activity that isn't in the currently loaded list (e.g. opened
@@ -652,7 +688,7 @@ export default function ActivitiesPage() {
   const { data: statsActivities, isLoading: statsLoading } = useQuery<Activity[]>({
     queryKey: ['activities-stats'],
     queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=200&sort_by=start_date&sort_order=desc`),
-    enabled: viewMode === 'timeline' || viewMode === 'patterns',
+    enabled: (viewMode === 'timeline' || viewMode === 'patterns') && !!token,
   });
 
   // Calendar data for timeline view (last 30 days by default)
@@ -668,7 +704,7 @@ export default function ActivitiesPage() {
     queryFn: () => authFetch<CalendarDayData>(
       `/api/v1/activities/calendar?start_date=${thirtyDaysAgo}&end_date=${today}`,
     ),
-    enabled: viewMode === 'timeline',
+    enabled: viewMode === 'timeline' && !!token,
   });
 
   function renderWeekGroup(weekKey: string, weekActivities: Activity[]) {
@@ -721,7 +757,7 @@ export default function ActivitiesPage() {
               onToggleCompare={() => toggleCompare(activity.id)}
             />
             {selectedActivityId === activity.id && (
-              <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} />
+              <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} detailLoading={detailLoading} detailError={detailError} />
             )}
           </React.Fragment>
         ))}
@@ -1029,7 +1065,7 @@ export default function ActivitiesPage() {
                   onToggleBulk={() => toggleBulkSelect(activity.id)}
                 />
                 {selectedActivityId === activity.id && (
-                  <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} />
+                  <ActivityExpanded activity={activity} activityDetail={activityDetail} context={expandedContext} detailLoading={detailLoading} detailError={detailError} />
                 )}
               </React.Fragment>
             ))}
@@ -1053,7 +1089,7 @@ export default function ActivitiesPage() {
             isSelected
             onSelect={() => handleSelectActivity(null)}
           />
-          <ActivityExpanded activity={selectedActivity} activityDetail={activityDetail} context={expandedContext} />
+          <ActivityExpanded activity={selectedActivity} activityDetail={activityDetail} context={expandedContext} detailLoading={detailLoading} detailError={detailError} />
         </div>
       )}
 

@@ -53,8 +53,9 @@ export default function CyclingPage() {
   const [visibleSections, setVisibleSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    // NOTE: powerCurve has no observer entry — its queries are eager (P1-2).
+    // The powerCurveRef div below is a plain anchor.
     const sections = [
-      { ref: powerCurveRef, name: 'powerCurve' },
       { ref: vo2maxRef, name: 'vo2max' },
       { ref: decouplingRef, name: 'decoupling' },
       { ref: ftpRef, name: 'ftp' },
@@ -85,7 +86,20 @@ export default function CyclingPage() {
     for (const { ref } of sections) {
       if (ref.current) observer.observe(ref.current);
     }
-    return () => observer.disconnect();
+    // Fallback: if sections never intersect (short page, hidden ancestor,
+    // no-IO environment), enable them anyway so queries still fire (P1-2).
+    const fallback = setTimeout(() => {
+      setVisibleSections((prev) => {
+        if (prev.size === sections.length) return prev;
+        const next = new Set(prev);
+        for (const s of sections) next.add(s.name);
+        return next;
+      });
+    }, 3000);
+    return () => {
+      observer.disconnect();
+      clearTimeout(fallback);
+    };
   }, []);
 
   // Cleanup timeouts on unmount (BUG-026)
@@ -100,18 +114,21 @@ export default function CyclingPage() {
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: metrics } = useQuery<CyclingMetricsSummary>({
     queryKey: ['cycling-metrics'],
     queryFn: () => authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary'),
     staleTime: 120_000,
+    enabled: !!token,
   });
 
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
     queryKey: ['training-load', loadDays],
     queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${loadDays}`),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
@@ -138,7 +155,7 @@ export default function CyclingPage() {
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
     queryKey: ['power-zones'],
     queryFn: () => authFetch<PowerZonesResponse>('/api/v1/cycling/power-zones?days=30'),
-    enabled: !!profile?.ftp_watts,
+    enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
@@ -146,12 +163,14 @@ export default function CyclingPage() {
     queryKey: ['power-vs-hr'],
     queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: chartTrainingLoad } = useQuery<ChartData>({
     queryKey: ['chart-training-load', loadDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${loadDays}`),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
@@ -190,12 +209,13 @@ export default function CyclingPage() {
     queryKey: ['chart-power-comparison', comparisonDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   const { data: chartPowerZones } = useQuery<ChartData>({
     queryKey: ['chart-power-zones', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
-    enabled: !!profile?.ftp_watts,
+    enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
@@ -203,75 +223,76 @@ export default function CyclingPage() {
     queryKey: ['chart-daily-tss', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
     staleTime: 120_000,
+    enabled: !!token,
   });
 
   const { data: lifetimePBs } = useQuery<LifetimePBsResponse>({
     queryKey: ['lifetime-pbs'],
     queryFn: () => authFetch<LifetimePBsResponse>('/api/v1/cycling/lifetime-pbs'),
-    enabled: visibleSections.has('ftp'),
+    enabled: !!token && visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
   const { data: ftpHistory } = useQuery<FtpHistoryEntry[]>({
     queryKey: ['ftp-history'],
     queryFn: () => authFetch<FtpHistoryEntry[]>('/api/v1/cycling/ftp-history'),
-    enabled: visibleSections.has('ftp'),
+    enabled: !!token && visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
   const { data: chartFtpHistory } = useQuery<ChartData>({
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
-    enabled: visibleSections.has('ftp'),
+    enabled: !!token && visibleSections.has('ftp'),
     staleTime: 300_000,
   });
 
   const { data: hrZones } = useQuery<HrZonesResponse>({
     queryKey: ['hr-zones'],
     queryFn: () => authFetch<HrZonesResponse>('/api/v1/cycling/hr-zones?days=30'),
-    enabled: !!profile?.lactate_threshold_hr,
+    enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: chartHrZones } = useQuery<ChartData>({
     queryKey: ['chart-hr-zones', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
-    enabled: !!profile?.lactate_threshold_hr,
+    enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: vo2max, isLoading: vo2maxLoading } = useQuery<Vo2maxResponse>({
     queryKey: ['vo2max'],
     queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
-    enabled: visibleSections.has('vo2max'),
+    enabled: !!token && visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
     queryKey: ['vo2max-history'],
     queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
-    enabled: visibleSections.has('vo2max'),
+    enabled: !!token && visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
     queryKey: ['chart-vo2max-trend', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
-    enabled: visibleSections.has('vo2max'),
+    enabled: !!token && visibleSections.has('vo2max'),
     staleTime: 600_000,
   });
 
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
     queryKey: ['decoupling-history'],
     queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
-    enabled: visibleSections.has('decoupling'),
+    enabled: !!token && visibleSections.has('decoupling'),
     staleTime: 600_000,
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
     queryKey: ['chart-decoupling-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
-    enabled: visibleSections.has('decoupling'),
+    enabled: !!token && visibleSections.has('decoupling'),
     staleTime: 600_000,
   });
 
@@ -279,6 +300,7 @@ export default function CyclingPage() {
     queryKey: ['chart-weight-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
     staleTime: 300_000,
+    enabled: !!token,
   });
 
   // ── Cycling Power PRs ───────────────────────────────────────────────────
@@ -412,6 +434,17 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['power-zones'] });
       queryClient.invalidateQueries({ queryKey: ['chart-power-zones'] });
       queryClient.invalidateQueries({ queryKey: ['cycling-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-wkg-power-curve'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-power-duration-percentile'] });
+      queryClient.invalidateQueries({ queryKey: ['power-vs-hr'] });
+      queryClient.invalidateQueries({ queryKey: ['vo2max'] });
+      queryClient.invalidateQueries({ queryKey: ['vo2max-history'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-vo2max-trend'] });
+      queryClient.invalidateQueries({ queryKey: ['decoupling-history'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-decoupling-trend'] });
+      queryClient.invalidateQueries({ queryKey: ['cycling-prs'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-streams'] });
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
     },
     onError: (error: Error) => {
       setBackfillResult(`Error: ${error.message}`);
