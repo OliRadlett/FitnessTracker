@@ -7,6 +7,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '2026-09-20',
+    date: '2026-09-20',
+    title: 'Live Lift Reliability + Power-Ups',
+    bullets: [
+      'Fixed a sync bug where undoing a set could leave the "to sync" counter stuck and block Finish — completed deletes are no longer re-queued, and deleting a row that is already gone is treated as done',
+      'Fixed a race where a late background sync could overwrite a session you had just started or resumed',
+      'Delete any set (not just the last) with a two-tap confirm',
+      'Live e1RM projection while you lift, a plate calculator, and recovery-adapted rest targets',
+      "Start from today's plan to get a per-exercise set-target checklist; export a finished session to CSV",
+    ],
+  },
+  {
     version: '2026-09-10',
     date: '2026-09-10',
     title: 'Video Uploads Go Live',
