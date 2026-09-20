@@ -13,14 +13,20 @@ import {
   updateLiftingSession,
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
-import type { WarmupTemplate, TrainingPlanSummary, TrainingWeekDay } from '@/lib/api/types';
+import type {
+  WarmupTemplate,
+  TrainingPlanSummary,
+  TrainingWeekDay,
+  ReadinessResponse,
+} from '@/lib/api/types';
 import { LiveWorkout } from '@/components/lifting/LiveWorkout';
 import {
   buildLastSessionMap,
   recentExerciseNames,
   type ExerciseReference,
 } from '@/lib/lifting/reference';
-import { useLiveSession } from '@/lib/lifting/useLiveSession';
+import { useLiveSession, type PlanTarget } from '@/lib/lifting/useLiveSession';
+import { setsToCsv, downloadTextFile } from '@/lib/lifting/csv';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { usePageTitle } from '@/lib/usePageTitle';
 
@@ -47,6 +53,13 @@ export default function LiveLiftPage() {
     queryKey: ['warmup-templates'],
     queryFn: () => getWarmupTemplates(authFetch),
     staleTime: 300_000,
+  });
+  // Recovery feeds a suggested rest length (suggestion only — no enforcement).
+  const { data: readiness } = useQuery<ReadinessResponse>({
+    queryKey: ['readiness'],
+    queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
+    staleTime: 5 * 60_000,
+    enabled: !!live.state,
   });
 
   // An orphaned server-side session that never finished (e.g. a previous tab
@@ -105,6 +118,7 @@ export default function LiveLiftPage() {
     planName: string;
     focus: string | null;
     firstExercise: string;
+    targets: PlanTarget[];
   } | null>(null);
   const handleLoadPlan = () => {
     if (!planDayForToday) return;
@@ -113,6 +127,11 @@ export default function LiveLiftPage() {
       planName,
       focus: planDay.planned_focus ?? null,
       firstExercise: planDay.planned_exercises?.[0]?.exercise ?? '',
+      targets: (planDay.planned_exercises ?? []).map((e) => ({
+        exercise: e.exercise,
+        sets: e.sets,
+        reps: e.reps,
+      })),
     });
     setFocus(planDay.planned_focus ?? null);
   };
@@ -144,6 +163,15 @@ export default function LiveLiftPage() {
     workingSets: number;
     exercises: string[];
     rpe: number | null;
+    date: string;
+    sets: {
+      exercise_name: string;
+      set_number: number;
+      weight_kg: number;
+      reps: number;
+      rpe?: number;
+      is_warmup: boolean;
+    }[];
   } | null>(null);
 
   // Complete any interrupted finish flow from a previous session
@@ -168,6 +196,7 @@ export default function LiveLiftPage() {
     live.startSession({
       programName: planPreset ? planPreset.planName : programName,
       focus: planPreset ? planPreset.focus ?? undefined : focus ?? undefined,
+      planTargets: planPreset?.targets,
     });
     if (planPreset?.firstExercise) live.setCurrentExercise(planPreset.firstExercise);
     if (selectedTemplate) {
@@ -196,6 +225,15 @@ export default function LiveLiftPage() {
       workingSets: live.state?.sets.filter((s) => !s.is_warmup).length ?? 0,
       exercises: live.exercises,
       rpe,
+      date: new Date().toISOString().slice(0, 10),
+      sets: (live.state?.sets ?? []).map((s) => ({
+        exercise_name: s.exercise_name,
+        set_number: s.set_number,
+        weight_kg: s.weight_kg,
+        reps: s.reps,
+        rpe: s.rpe,
+        is_warmup: s.is_warmup,
+      })),
     };
     const ok = await live.requestFinish({
       rpe_session: rpe ?? undefined,
@@ -272,6 +310,8 @@ export default function LiveLiftPage() {
           live={live}
           prs={prs}
           referenceMap={referenceMap}
+          recoveryScore={readiness?.recovery_score ?? null}
+          readiness={readiness?.readiness ?? 'unknown'}
           onRequestFinish={() => setShowFinish(true)}
         />
         {showFinish && (
@@ -336,6 +376,14 @@ export default function LiveLiftPage() {
               >
                 View session log
               </Link>
+            )}
+            {finishedSummary.sets.length > 0 && (
+              <button
+                onClick={() => downloadSessionCsv(finishedSummary)}
+                className="w-full px-4 py-3 rounded-lg bg-surface-light text-white font-semibold"
+              >
+                Export CSV
+              </button>
             )}
             <button
               onClick={() => setFinishedSummary(null)}
@@ -535,6 +583,24 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+/** Client-side CSV of a finished session's sets — no server round-trip. */
+function downloadSessionCsv(summary: {
+  date: string;
+  sets: {
+    exercise_name: string;
+    set_number: number;
+    weight_kg: number;
+    reps: number;
+    rpe?: number;
+    is_warmup: boolean;
+  }[];
+}) {
+  downloadTextFile(
+    `fittrack-lift-${summary.date}.csv`,
+    setsToCsv(summary.sets)
+  );
 }
 
 function FinishSheet({

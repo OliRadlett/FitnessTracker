@@ -3,8 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { PlateCalculator } from '@/components/lifting/PlateCalculator';
 import type { PersonalRecord } from '@/lib/api/types';
-import { detectPr, type ExerciseReference } from '@/lib/lifting/reference';
+import {
+  brzycki1rm,
+  detectPr,
+  normaliseExerciseKey,
+  type ExerciseReference,
+} from '@/lib/lifting/reference';
+import { suggestedRestSeconds } from '@/lib/lifting/rest';
 import { useLiveSession } from '@/lib/lifting/useLiveSession';
 
 // ─── Timers ──────────────────────────────────────────────────────────────────
@@ -117,10 +124,20 @@ interface LiveWorkoutProps {
   live: ReturnType<typeof useLiveSession>;
   prs: PersonalRecord[] | undefined;
   referenceMap: Record<string, ExerciseReference>;
+  /** Whoop recovery (0–100) for today, if synced. Suggestion only. */
+  recoveryScore?: number | null;
+  readiness?: 'green' | 'yellow' | 'red' | 'unknown';
   onRequestFinish: () => void;
 }
 
-export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWorkoutProps) {
+export function LiveWorkout({
+  live,
+  prs,
+  referenceMap,
+  recoveryScore = null,
+  readiness = 'unknown',
+  onRequestFinish,
+}: LiveWorkoutProps) {
   const { state } = live;
   const now = useTicker();
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
@@ -133,7 +150,8 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
   const [showRpe, setShowRpe] = useState(false);
   const [isWarmup, setIsWarmup] = useState(false);
   const [stepSizeIdx, setStepSizeIdx] = useState(1); // default 2.5kg
-  const [undoArmed, setUndoArmed] = useState(false);
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
+  const [showPlates, setShowPlates] = useState(false);
   const [logLocked, setLogLocked] = useState(false);
   const logLockedRef = useRef(false);
 
@@ -180,7 +198,17 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisible);
+      // Release on unmount — otherwise finishing a session in-place (overlay →
+      // summary without navigation) leaves the screen locked on indefinitely.
+      const lock = wakeLockRef.current;
       wakeLockRef.current = null;
+      if (lock) {
+        try {
+          void lock.release().catch(() => {});
+        } catch {
+          // Already released — non-critical
+        }
+      }
     };
   }, []);
 
@@ -206,9 +234,20 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
     };
   }, [live, referenceMap]);
 
+  // Prefill whenever the exercise changes — including the initial mount (plan
+  // preset / resumed session), which previously kept the 20×5 defaults because
+  // only chip taps called prefillFor. Guarded so a mid-session reference
+  // refetch can't overwrite values the user is editing.
+  const prefilledExerciseRef = useRef<string | null>(null);
+  useEffect(() => {
+    const name = exercise.trim();
+    if (!name || prefilledExerciseRef.current === name) return;
+    prefilledExerciseRef.current = name;
+    prefillFor(name);
+  }, [exercise, prefillFor]);
+
   const selectExercise = (name: string) => {
     setExercise(name);
-    if (name.trim()) prefillFor(name.trim());
   };
 
   const currentSets = live.setsForExercise(exercise || null);
@@ -217,9 +256,31 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
 
   const reference = exercise ? referenceMap[exercise.trim()] : undefined;
 
+  // Live e1RM projection: the estimate for the set currently on the steppers,
+  // plus the best estimate already logged this session for this exercise.
+  const projectedE1rm = isWarmup ? null : brzycki1rm(weight, reps);
+  const sessionBestE1rm = currentSets.reduce((best, s) => {
+    if (s.is_warmup) return best;
+    const est = brzycki1rm(s.weight_kg, s.reps);
+    return est !== null && est > best ? est : best;
+  }, 0);
+
+  // Today's-plan checklist: working sets logged vs the planned target.
+  const planProgress = (state?.planTargets ?? []).map((t) => {
+    const key = normaliseExerciseKey(t.exercise);
+    const done = (state?.sets ?? []).filter(
+      (s) => !s.is_warmup && normaliseExerciseKey(s.exercise_name) === key
+    ).length;
+    return { ...t, done, complete: done >= t.sets };
+  });
+
   const elapsedSeconds = state ? (now - new Date(state.startedAt).getTime()) / 1000 : 0;
   const sinceLastSetSeconds =
     state?.lastSetAt ? (now - new Date(state.lastSetAt).getTime()) / 1000 : null;
+
+  // Recovery-adapted rest suggestion (Whoop). Informational — the pill just
+  // turns green once the target is reached.
+  const restTargetSeconds = suggestedRestSeconds(recoveryScore, readiness);
 
   const handleLogSet = () => {
     const name = exercise.trim();
@@ -239,19 +300,23 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
       { exercise_name: name, weight_kg: weight, reps, rpe: rpe ?? undefined, is_warmup: isWarmup },
       prText
     );
-    setUndoArmed(false);
+    setArmedDeleteId(null);
     // Straight-set flow: everything stays as-is, just clear optional RPE
     setRpe(null);
   };
 
-  const handleUndo = () => {
-    if (!undoArmed) {
-      setUndoArmed(true);
-      setTimeout(() => setUndoArmed(false), 2500);
+  // Two-tap delete for any set — the first tap arms it, the second removes it.
+  const handleSetTap = (clientId: string) => {
+    if (armedDeleteId === clientId) {
+      live.removeSet(clientId);
+      setArmedDeleteId(null);
       return;
     }
-    live.undoLastSet();
-    setUndoArmed(false);
+    setArmedDeleteId(clientId);
+    setTimeout(
+      () => setArmedDeleteId((cur) => (cur === clientId ? null : cur)),
+      2500
+    );
   };
 
   if (!state) return null;
@@ -261,6 +326,7 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
   const pendingCount = live.pendingCount;
 
   return (
+    <>
     <div className="fixed inset-0 flex flex-col bg-background">
       {/* Header */}
       <header className="shrink-0 px-4 pt-4 pb-3 bg-surface border-b border-surface-light/50">
@@ -279,6 +345,8 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
               {Math.round(live.totalVolume)}kg ·{' '}
               {state.sets.filter((s) => !s.is_warmup).length} working sets
               {state.focus ? ` · ${state.focus}` : ''}
+              {recoveryScore !== null &&
+                ` · rest ~${formatClock(restTargetSeconds)} (recovery ${recoveryScore}%)`}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5">
@@ -286,13 +354,14 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             {sinceLastSetSeconds !== null ? (
               <span
                 className={`px-3 py-1 rounded-full text-sm font-medium tabular-nums ${
-                  sinceLastSetSeconds >= 120
+                  sinceLastSetSeconds >= restTargetSeconds
                     ? 'bg-positive/15 text-positive'
                     : 'bg-surface-light text-muted'
                 }`}
-                title="Time since your last set"
+                title={`Time since your last set — suggested rest ~${formatClock(restTargetSeconds)}`}
               >
-                ⏱ {formatClock(sinceLastSetSeconds)} since last
+                ⏱ {formatClock(sinceLastSetSeconds)}
+                <span className="opacity-60"> / {formatClock(restTargetSeconds)}</span>
               </span>
             ) : (
               <span className="px-3 py-1 rounded-full text-sm bg-surface-light text-muted">First set</span>
@@ -382,6 +451,37 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
           )}
         </section>
 
+        {/* Today's plan checklist (suggest-only, from the pre-start plan chip) */}
+        {planProgress.length > 0 && (
+          <section className="space-y-1.5">
+            <p className="text-xs uppercase tracking-wider text-muted">
+              Today&apos;s plan
+            </p>
+            <div className="space-y-1">
+              {planProgress.map((t) => (
+                <button
+                  key={t.exercise}
+                  type="button"
+                  onClick={() => selectExercise(t.exercise)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] rounded-lg text-sm transition-colors ${
+                    t.complete
+                      ? 'bg-positive/10 text-positive'
+                      : 'bg-surface-light/60 text-muted hover:text-white'
+                  }`}
+                >
+                  <span className="capitalize truncate">
+                    {t.exercise.replace(/_/g, ' ')}
+                  </span>
+                  <span className="tabular-nums shrink-0">
+                    {t.complete ? '✓ ' : ''}
+                    {t.done}/{t.sets} × {t.reps}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Reference lines */}
         {canLog && (
           <section className="space-y-1 text-sm">
@@ -415,6 +515,16 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
           />
           <Stepper label="Reps" value={reps} onChange={(v) => setReps(Math.max(1, Math.round(v)))} step={1} min={1} />
 
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowPlates(true)}
+              className="px-3 py-1.5 min-h-[44px] rounded-lg text-xs bg-surface-light text-muted"
+            >
+              🧮 Plate calculator
+            </button>
+          </div>
+
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -444,6 +554,32 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
             </button>
           </div>
 
+          {(projectedE1rm !== null || sessionBestE1rm > 0) && (
+            <p className="text-xs text-muted text-center">
+              {projectedE1rm !== null && (
+                <>
+                  Projected e1RM{' '}
+                  <span
+                    className={
+                      projectedE1rm > sessionBestE1rm
+                        ? 'text-accent font-semibold'
+                        : 'text-white'
+                    }
+                  >
+                    {projectedE1rm.toFixed(1)}kg
+                  </span>
+                </>
+              )}
+              {projectedE1rm !== null && sessionBestE1rm > 0 && ' · '}
+              {sessionBestE1rm > 0 && (
+                <>
+                  Session best{' '}
+                  <span className="text-white">{sessionBestE1rm.toFixed(1)}kg</span>
+                </>
+              )}
+            </p>
+          )}
+
           {showRpe && (
             <div className="grid grid-cols-5 gap-1" role="group" aria-label="RPE">
               {[6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((val) => (
@@ -466,31 +602,22 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
         {currentSets.length > 0 && (
           <section>
             <p className="text-xs uppercase tracking-wider text-muted mb-1.5">
-              {exercise} · tap last set twice to undo
+              {exercise} · tap a set twice to delete
             </p>
             <div className="flex flex-wrap gap-2">
-              {currentSets.map((s, idx) => {
-                const isLast = idx === currentSets.length - 1;
+              {currentSets.map((s) => {
+                const armed = armedDeleteId === s.clientId;
                 return (
                   <button
                     key={s.clientId}
                     type="button"
-                    onClick={isLast ? handleUndo : undefined}
-                    disabled={!isLast}
-                    className={`px-3 py-1.5 rounded-lg text-sm tabular-nums ${
-                      isLast
-                        ? undoArmed
-                          ? 'bg-warning/25 text-warning ring-1 ring-warning'
-                          : 'bg-positive/10 text-positive'
-                        : 'bg-surface-light/60 text-muted'
+                    onClick={() => handleSetTap(s.clientId)}
+                    className={`px-3 py-1.5 min-h-[44px] rounded-lg text-sm tabular-nums ${
+                      armed
+                        ? 'bg-warning/25 text-warning ring-1 ring-warning'
+                        : 'bg-positive/10 text-positive'
                     } ${s.is_warmup ? 'opacity-50 italic' : ''}`}
-                    title={
-                      isLast
-                        ? undoArmed
-                          ? 'Tap again to delete this set'
-                          : 'Tap twice to undo'
-                        : undefined
-                    }
+                    title={armed ? 'Tap again to delete this set' : 'Tap twice to delete'}
                   >
                     {s.is_warmup ? 'W· ' : ''}
                     {s.weight_kg}×{s.reps}
@@ -520,5 +647,11 @@ export function LiveWorkout({ live, prs, referenceMap, onRequestFinish }: LiveWo
         </button>
       </footer>
     </div>
+    <PlateCalculator
+      open={showPlates}
+      onClose={() => setShowPlates(false)}
+      weightKg={weight}
+    />
+    </>
   );
 }

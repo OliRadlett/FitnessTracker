@@ -26,6 +26,13 @@ export interface LoggedSet {
   remoteId: string | null;
 }
 
+/** A planned exercise target carried from today's training plan. */
+export interface PlanTarget {
+  exercise: string;
+  sets: number;
+  reps: number;
+}
+
 export interface LiveSessionState {
   phase: 'active' | 'finishing';
   sessionId: string | null;
@@ -34,6 +41,8 @@ export interface LiveSessionState {
   startedAt: string;
   programName?: string;
   focus?: string;
+  /** Today's plan targets (suggest-only checklist); survives reload. */
+  planTargets?: PlanTarget[];
   currentExercise: string | null;
   sets: LoggedSet[];
   /** Remote set ids queued for deletion (undo of already-synced sets) */
@@ -71,20 +80,34 @@ function loadState(): LiveSessionState | null {
   }
 }
 
+const EMPTY_DELETE_SET: ReadonlySet<string> = new Set();
+
 /**
  * Merge flush-progress (`working`, snapshotted when the flush began) into the
  * freshest storage state. Logging a set while a request is in flight (or from
  * another tab) mutates storage directly; saving `working` alone would clobber
  * those mutations. Sync progress always wins for remoteIds; user data wins
  * from storage.
+ *
+ * `processedDeletes` lists remote ids this flush has already deleted. They must
+ * be removed from the merged queue even though storage still holds them (storage
+ * isn't touched until the next commit), otherwise every completed delete would
+ * be re-queued and re-issued forever.
  */
-function mergeWithStorage(working: LiveSessionState): LiveSessionState | null {
+export function mergeWithStorage(
+  working: LiveSessionState,
+  processedDeletes: ReadonlySet<string> = EMPTY_DELETE_SET
+): LiveSessionState | null {
   const stored = loadState();
   // The session was discarded mid-flush — stop syncing it and never resurrect
   // it locally (B2). Any remote rows this flush already created are orphaned,
   // which is acceptable; the local state is authoritative.
   if (!stored) return null;
-  if (stored.startedAt !== working.startedAt) return working;
+  // A *different* session replaced this one mid-flush (discard + start, or a
+  // resume). The snapshot is stale: stop syncing it and leave the replacement's
+  // storage untouched. Returning `working` here would clobber the new session
+  // with the old one.
+  if (stored.startedAt !== working.startedAt) return null;
 
   const workingById = new Map(working.sets.map((s) => [s.clientId, s]));
   // Newest set data from storage; overlay any remoteId learned during the flush
@@ -98,6 +121,8 @@ function mergeWithStorage(working: LiveSessionState): LiveSessionState | null {
   // have already persisted it — do NOT resurrect the set locally; instead queue
   // the newly-learned remote id for deletion so the server copy is cleaned up.
   const pendingDeletes = new Set([...working.pendingDeletes, ...stored.pendingDeletes]);
+  // Completed deletes are done — never re-queue them from stale storage.
+  for (const id of processedDeletes) pendingDeletes.delete(id);
   for (const w of working.sets) {
     if (sets.some((s) => s.clientId === w.clientId)) continue;
     if (w.remoteId) pendingDeletes.add(w.remoteId);
@@ -215,12 +240,16 @@ export function useLiveSession(authFetch: AuthFetch) {
     syncingRef.current = true;
 
     let working = current;
+    // Remote ids this flush has successfully deleted. Without this, commit()'s
+    // merge would re-queue them from the not-yet-updated storage snapshot and
+    // the flush would re-issue the same DELETE forever (404 → retry loop).
+    const processedDeletes = new Set<string>();
     // Fold sync progress into the freshest storage state (which may have been
     // mutated mid-flight) and mirror it into React state. The extra spread
     // guarantees a new reference so setState always re-renders. Returns false
-    // if the session was discarded mid-flush — the sync must stop.
+    // if the session was discarded/replaced mid-flush — the sync must stop.
     const commit = (): boolean => {
-      const merged = mergeWithStorage(working);
+      const merged = mergeWithStorage(working, processedDeletes);
       if (merged === null) {
         syncingRef.current = false;
         return false;
@@ -280,8 +309,16 @@ export function useLiveSession(authFetch: AuthFetch) {
 
       // Step 3: push pending deletes
       for (const remoteId of [...working.pendingDeletes]) {
-        await deleteLiftingSet(authFetchRef.current, remoteId);
+        try {
+          await deleteLiftingSet(authFetchRef.current, remoteId);
+        } catch (err) {
+          // A set already deleted elsewhere (another tab/device) returns 404.
+          // Treat it as done so a stale id can never wedge the queue (and the
+          // finish step behind it) in a permanent retry loop.
+          if ((err as { status?: number } | null)?.status !== 404) throw err;
+        }
         working.pendingDeletes = working.pendingDeletes.filter((id) => id !== remoteId);
+        processedDeletes.add(remoteId);
         if (!commit()) return { finished: false };
       }
 
@@ -378,7 +415,7 @@ export function useLiveSession(authFetch: AuthFetch) {
   // ── Mutations ──
 
   const startSession = useCallback(
-    (opts: { programName?: string; focus?: string }) => {
+    (opts: { programName?: string; focus?: string; planTargets?: PlanTarget[] }) => {
       const existing = loadState();
       if (existing && existing.phase !== 'finishing') return; // never clobber an active session
       const fresh: LiveSessionState = {
@@ -388,6 +425,7 @@ export function useLiveSession(authFetch: AuthFetch) {
         startedAt: new Date().toISOString(),
         programName: opts.programName || undefined,
         focus: opts.focus || undefined,
+        planTargets: opts.planTargets?.length ? opts.planTargets : undefined,
         currentExercise: null,
         sets: [],
         pendingDeletes: [],
@@ -461,6 +499,26 @@ export function useLiveSession(authFetch: AuthFetch) {
     });
     scheduleFlush();
   }, [patch, scheduleFlush]);
+
+  /** Delete a specific set (not just the last) — e.g. a mis-tapped middle set.
+   *  A synced set's remote id is queued for deletion, same as undo. */
+  const removeSet = useCallback(
+    (clientId: string) => {
+      patch((prev) => {
+        const target = prev.sets.find((s) => s.clientId === clientId);
+        if (!target) return prev;
+        return {
+          ...prev,
+          sets: prev.sets.filter((s) => s.clientId !== clientId),
+          pendingDeletes: target.remoteId
+            ? [...prev.pendingDeletes, target.remoteId]
+            : prev.pendingDeletes,
+        };
+      });
+      scheduleFlush();
+    },
+    [patch, scheduleFlush]
+  );
 
   const setCurrentExercise = useCallback(
     (name: string) => {
@@ -629,6 +687,7 @@ export function useLiveSession(authFetch: AuthFetch) {
     startSession,
     logSet,
     undoLastSet,
+    removeSet,
     setCurrentExercise,
     discardSession,
     requestFinish,

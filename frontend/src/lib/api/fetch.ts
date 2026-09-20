@@ -40,7 +40,13 @@ export async function apiFetchWithHeaders<T>(path: string, options: RequestInit 
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    const err = new Error(error.detail || `API error: ${response.status}`) as Error & {
+      status?: number;
+    };
+    // Expose the HTTP status so callers can distinguish "already gone" (404)
+    // from a genuine failure without string-matching the message.
+    err.status = response.status;
+    throw err;
   }
 
   // Handle 204 No Content and other empty responses
