@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthFetch, updatePlanDay } from '@/lib/api';
+import type { TrainingPlanDay } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { RouteMap } from '@/components/maps/RouteMap';
 import { formatDistance } from '@/lib/utils';
@@ -238,11 +239,22 @@ function FitBar({
   );
 }
 
-export function WorkoutPlanner() {
+export function WorkoutPlanner({
+  planId,
+  planDays,
+}: {
+  /** RM1 — when a plan is selected, computed targets can be written to a day. */
+  planId?: string | null;
+  planDays?: TrainingPlanDay[];
+}) {
   const { authFetch } = useAuthFetch();
+  const queryClient = useQueryClient();
   const [selectedZone, setSelectedZone] = useState<string>('z2');
   const [duration, setDuration] = useState<number>(60);
   const [showRoutes, setShowRoutes] = useState(false);
+  // RM1 — write-back target day + outcome message.
+  const [targetDayId, setTargetDayId] = useState('');
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
   // Fetch zones
   const { data: zonesData, isLoading: zonesLoading, isError: zonesIsError, error: zonesErrorObj } = useQuery<WorkoutZonesResponse>({
@@ -299,6 +311,38 @@ export function WorkoutPlanner() {
     matchMutation.mutate();
     setShowRoutes(true);
   };
+
+  // RM1 — write the computed targets to the chosen plan day (mid-range power
+  // + TSS, zone, duration). Only provided fields change; the day keeps its
+  // sport/type and other columns.
+  const applyMutation = useMutation({
+    mutationFn: (dayId: string) => {
+      if (!plan || !planId) throw new Error('No workout or plan selected');
+      const midPower = Math.round((plan.target_power_low + plan.target_power_high) / 2);
+      const midTss = Math.round((plan.target_tss_low + plan.target_tss_high) / 2);
+      return updatePlanDay(authFetch, planId, dayId, {
+        sport: 'cycle',
+        planned_duration_min: plan.duration_minutes,
+        planned_tss: midTss,
+        planned_power_watts: midPower,
+        planned_zone: plan.zone_name,
+        workout_description: `${plan.zone_name} · ${plan.duration_minutes} min · ${midPower}W · ~${midTss} TSS (from Workout Planner)`,
+      });
+    },
+    onSuccess: () => {
+      setApplyMsg('✓ Added to plan day.');
+      if (planId) {
+        queryClient.invalidateQueries({ queryKey: ['plan-week', planId] });
+        queryClient.invalidateQueries({ queryKey: ['plan-conformity', planId] });
+        queryClient.invalidateQueries({ queryKey: ['adaptive-suggestions', planId] });
+        queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
+        queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      }
+    },
+    onError: (err: Error) => {
+      setApplyMsg(`⚠️ ${err.message}`);
+    },
+  });
 
   const plan = planResult;
   const routeMatches = routeResult;
@@ -549,6 +593,37 @@ export function WorkoutPlanner() {
           <div className="mt-3 flex gap-4 text-xs text-muted">
             <span>🔥 Est. {plan.estimated_calories_low}–{plan.estimated_calories_high} cal</span>
           </div>
+
+          {/* RM1 — write-back to a plan day (standalone section kept, now with write). */}
+          {planId && (planDays?.length ?? 0) > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <select
+                value={targetDayId}
+                onChange={(e) => { setTargetDayId(e.target.value); setApplyMsg(null); }}
+                aria-label="Plan day to apply workout to"
+                className="flex-1 min-w-[180px] px-2 py-2 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+              >
+                <option value="">Add to plan day…</option>
+                {(planDays ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.day_date} — {d.sport}{d.sport !== 'rest' ? ` (${d.planned_type})` : ''}{d.completed ? ' ✓' : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => targetDayId && applyMutation.mutate(targetDayId)}
+                disabled={!targetDayId || applyMutation.isPending}
+                className="px-4 py-2 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
+              >
+                {applyMutation.isPending ? 'Adding…' : '＋ Add to plan day'}
+              </button>
+              {applyMsg && <span className="text-xs text-muted w-full">{applyMsg}</span>}
+            </div>
+          ) : (
+            <p className="mt-3 text-[11px] text-muted">
+              Select a training plan above to write these targets to a plan day.
+            </p>
+          )}
         </Card>
       )}
 

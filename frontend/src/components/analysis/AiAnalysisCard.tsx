@@ -144,8 +144,70 @@ export function AiAnalysisCard({
           <div className="bg-surface-light/30 rounded-lg p-4 border border-surface-light/50">
             {renderAnalysisText(analysis.analysis_text)}
           </div>
+
+          {/* RM2 — grounding chips: key facts the analysis was based on. */}
+          <StatsGrounding stats={analysis.stats_json} />
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * RM2 — collapsed-by-default "Based on" line from `stats_json` (previously
+ * never rendered). Defensive lookups across known producer shapes; renders
+ * nothing when no recognised facts are present.
+ */
+function StatsGrounding({ stats }: { stats: Record<string, unknown> | null | undefined }) {
+  if (!stats || typeof stats !== 'object') return null;
+
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+  // Producers nest load under various keys — check each defensively.
+  const load =
+    (stats.load as Record<string, unknown> | undefined) ??
+    (stats.training_load as Record<string, unknown> | undefined) ??
+    (stats.ctl_atl_tsb as Record<string, unknown> | undefined);
+
+  const facts: string[] = [];
+  const ctl = num(load?.ctl ?? stats.current_ctl ?? stats.ctl);
+  const atl = num(load?.atl ?? stats.current_atl ?? stats.atl);
+  const tsb = num(load?.tsb ?? stats.current_tsb ?? stats.tsb);
+  if (ctl !== null || atl !== null || tsb !== null) {
+    facts.push(
+      `CTL ${ctl?.toFixed(0) ?? '—'} · ATL ${atl?.toFixed(0) ?? '—'} · TSB ${tsb?.toFixed(1) ?? '—'}`,
+    );
+  }
+  const ftp = num(stats.ftp_watts ?? stats.ftp);
+  if (ftp !== null) facts.push(`FTP ${Math.round(ftp)}W`);
+  const vo2 = stats.vo2max ?? stats.vo2_max;
+  const vo2Num = num(vo2);
+  const vo2Str =
+    vo2Num !== null
+      ? `VO₂max ${vo2Num.toFixed(1)}`
+      : typeof vo2 === 'string' && vo2
+        ? `VO₂max ${vo2}`
+        : null;
+  if (vo2Str) facts.push(vo2Str);
+  const tss = num(stats.weekly_tss ?? stats.total_tss);
+  if (tss !== null) facts.push(`Week TSS ${Math.round(tss)}`);
+  const recovery = num(stats.recovery_score ?? stats.recovery);
+  if (recovery !== null) facts.push(`Recovery ${Math.round(recovery)}%`);
+
+  const shown = facts.slice(0, 5);
+  if (shown.length === 0) return null;
+
+  return (
+    <details className="mt-3 text-xs text-muted">
+      <summary className="cursor-pointer hover:text-white transition-colors">
+        Based on {shown.length} fact{shown.length === 1 ? '' : 's'}
+      </summary>
+      <ul className="mt-1.5 space-y-0.5 list-disc list-inside">
+        {shown.map((f, i) => (
+          <li key={i}>{f}</li>
+        ))}
+      </ul>
+    </details>
   );
 }

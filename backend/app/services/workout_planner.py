@@ -80,11 +80,17 @@ def compute_workout_zones(
     ctl: float = 0.0,
     atl: float = 0.0,
     tsb: float = 0.0,
+    legs_loaded: bool = False,
 ) -> WorkoutZonesResult:
     """Compute all workout zones from current FTP and LTHR.
 
     Returns zone definitions with power/HR/TSS ranges, plus a readiness
     recommendation based on current CTL/TSB.
+
+    ``legs_loaded`` (CD1) caps the readiness recommendation at Z2. Call
+    sites that have not already loaded yesterday's lifting (the zones API
+    and the training-plan week view) intentionally leave the default
+    ``False`` to avoid extra per-request queries.
     """
     zones = []
     for zone_id, name, if_low, if_high, lthr_pct_low, lthr_pct_high in WORKOUT_ZONES:
@@ -114,7 +120,7 @@ def compute_workout_zones(
             )
         )
 
-    readiness = get_readiness_recommendation(ctl, atl, tsb)
+    readiness = get_readiness_recommendation(ctl, atl, tsb, legs_loaded=legs_loaded)
 
     return WorkoutZonesResult(
         zones=zones,
@@ -128,6 +134,7 @@ def get_readiness_recommendation(
     ctl: float,
     atl: float,
     tsb: float,
+    legs_loaded: bool = False,
 ) -> ReadinessInfo:
     """Determine recommended max workout zone based on training stress balance.
 
@@ -137,52 +144,49 @@ def get_readiness_recommendation(
     - Neutral (-10 to 5): Moderate and below recommended
     - Fatigued (-30 to -10): Easy and below, avoid Z5
     - Very fatigued (< -30): Recovery only
+
+    CD1: when ``legs_loaded`` is True (yesterday's lifting loaded the
+    legs — see ``cross_sport_fatigue`` in ``services/adaptive.py``), the
+    recommended max zone is capped at ``z2`` endurance with a note, since
+    TSB alone cannot see leg fatigue. Default ``False`` keeps prior
+    behavior unchanged. Callers that have not already loaded lifting data
+    (the zones API, the training-plan week view) leave the default to
+    avoid extra per-request queries.
     """
     if tsb > 25:
-        return ReadinessInfo(
-            current_ctl=round(ctl, 1),
-            current_atl=round(atl, 1),
-            current_tsb=round(tsb, 1),
-            recommended_max_zone="z5",
-            readiness_note="Very fresh — great time for a hard session!",
-            is_fatigued=False,
-        )
+        max_zone = "z5"
+        note = "Very fresh — great time for a hard session!"
+        fatigued = False
     elif tsb > 5:
-        return ReadinessInfo(
-            current_ctl=round(ctl, 1),
-            current_atl=round(atl, 1),
-            current_tsb=round(tsb, 1),
-            recommended_max_zone="z5",
-            readiness_note="Fresh — all intensity levels available.",
-            is_fatigued=False,
-        )
+        max_zone = "z5"
+        note = "Fresh — all intensity levels available."
+        fatigued = False
     elif tsb > -10:
-        return ReadinessInfo(
-            current_ctl=round(ctl, 1),
-            current_atl=round(atl, 1),
-            current_tsb=round(tsb, 1),
-            recommended_max_zone="z3",
-            readiness_note="Neutral — moderate intensity recommended. Hard efforts OK if well-recovered.",
-            is_fatigued=False,
-        )
+        max_zone = "z3"
+        note = "Neutral — moderate intensity recommended. Hard efforts OK if well-recovered."
+        fatigued = False
     elif tsb > -30:
-        return ReadinessInfo(
-            current_ctl=round(ctl, 1),
-            current_atl=round(atl, 1),
-            current_tsb=round(tsb, 1),
-            recommended_max_zone="z2",
-            readiness_note="Fatigued — stick to easy endurance rides. Avoid threshold and above.",
-            is_fatigued=True,
-        )
+        max_zone = "z2"
+        note = "Fatigued — stick to easy endurance rides. Avoid threshold and above."
+        fatigued = True
     else:
-        return ReadinessInfo(
-            current_ctl=round(ctl, 1),
-            current_atl=round(atl, 1),
-            current_tsb=round(tsb, 1),
-            recommended_max_zone="z1",
-            readiness_note="Very fatigued — active recovery only. Consider a rest day.",
-            is_fatigued=True,
-        )
+        max_zone = "z1"
+        note = "Very fatigued — active recovery only. Consider a rest day."
+        fatigued = True
+
+    if legs_loaded and max_zone in ("z3", "z4", "z5"):
+        max_zone = "z2"
+        note += " Legs loaded from yesterday's lifting — cap at easy endurance (Z2)."
+        fatigued = True
+
+    return ReadinessInfo(
+        current_ctl=round(ctl, 1),
+        current_atl=round(atl, 1),
+        current_tsb=round(tsb, 1),
+        recommended_max_zone=max_zone,
+        readiness_note=note,
+        is_fatigued=fatigued,
+    )
 
 
 # ── Workout Target Planning ──────────────────────────────────────────────────

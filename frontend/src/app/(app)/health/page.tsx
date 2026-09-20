@@ -85,6 +85,27 @@ export default function HealthPage() {
     enabled: !!token,
   });
 
+  const { data: recoveryVsPerfChart, isLoading: recoveryVsPerfLoading } = useQuery<ChartData>({
+    queryKey: ['chart-recovery-vs-performance', 60],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/recovery_vs_performance?days=60'),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
+  const { data: sleepQualityChart, isLoading: sleepQualityLoading } = useQuery<ChartData>({
+    queryKey: ['chart-sleep-quality', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/sleep_quality_trend?days=90'),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
+  const { data: strainTrendChart, isLoading: strainTrendLoading } = useQuery<ChartData>({
+    queryKey: ['chart-whoop-strain', 30],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/whoop_strain_trend?days=30'),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
   // ── Sleep intelligence (the previously unreferenced endpoints) ───────────
   const { data: sleepConsistency } = useQuery<SleepConsistencyResponse>({
     queryKey: ['sleep-consistency', 7],
@@ -235,6 +256,39 @@ export default function HealthPage() {
             isLoading={respirationLoading}
             data={respirationChart}
             emptyMessage="No respiratory rate data — sync Whoop to populate."
+            height={260}
+          />
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recovery vs Next-Day Performance (60 days)</CardTitle>
+          </CardHeader>
+          <ChartBody
+            isLoading={recoveryVsPerfLoading}
+            data={recoveryVsPerfChart}
+            emptyMessage="Not enough recovery + training data yet — sync Whoop and log sessions."
+            height={260}
+          />
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Sleep Quality (90 days)</CardTitle>
+          </CardHeader>
+          <ChartBody
+            isLoading={sleepQualityLoading}
+            data={sleepQualityChart}
+            emptyMessage="No sleep data — sync Whoop to populate."
+            height={260}
+          />
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Whoop Strain (30 days)</CardTitle>
+          </CardHeader>
+          <ChartBody
+            isLoading={strainTrendLoading}
+            data={strainTrendChart}
+            emptyMessage="No strain data — sync Whoop to populate."
             height={260}
           />
         </Card>

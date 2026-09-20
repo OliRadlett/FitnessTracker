@@ -343,12 +343,10 @@ async def create_weight_entry(
 
     Upserts on the (user_id, date, source) unique key so a repeated weigh-in
     on the same day replaces the earlier one. Also keeps the cycling profile's
-    reference weight (W/kg charts) in sync with the latest manual value.
-    Accepts optional body composition fields for manual entry.
+    reference weight (W/kg charts) in sync with the latest value across all
+    sources (QW1). Accepts optional body composition fields for manual entry.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-    from app.services.cycling import get_or_create_cycling_profile
 
     log_date = payload.date or date.today()
     comp = payload.model_dump(
@@ -382,9 +380,10 @@ async def create_weight_entry(
     result = await db.execute(stmt)
     log = result.scalar_one()
 
-    profile = await get_or_create_cycling_profile(db, current_user.id)
-    profile.weight_kg = payload.weight_kg
-    await db.flush()
+    # Canonical reference weight = latest weigh-in across all sources (QW1).
+    from app.services.cycling import sync_profile_reference_weight
+
+    await sync_profile_reference_weight(db, current_user.id)
 
     return _weight_log_to_dict(log)
 
@@ -428,21 +427,10 @@ async def update_weight_entry(
         if value is not None:
             setattr(log, field, value)
 
-    # Re-sync the profile reference weight when this is the latest manual entry.
-    latest_date = (
-        await db.execute(
-            select(func.max(WeightLog.date)).where(
-                WeightLog.user_id == current_user.id,
-                WeightLog.source == "manual",
-            )
-        )
-    ).scalar()
-    if latest_date == log.date:
-        from app.services.cycling import get_or_create_cycling_profile
+    # Re-sync the canonical reference weight (latest across all sources, QW1).
+    from app.services.cycling import sync_profile_reference_weight
 
-        profile = await get_or_create_cycling_profile(db, current_user.id)
-        profile.weight_kg = payload.weight_kg
-    await db.flush()
+    await sync_profile_reference_weight(db, current_user.id)
 
     return _weight_log_to_dict(log)
 
@@ -459,6 +447,10 @@ async def delete_weight_entry(
         raise HTTPException(status_code=404, detail="Weight entry not found")
     await db.delete(log)
     await db.flush()
+    # Recompute the canonical reference weight after a delete (QW1).
+    from app.services.cycling import sync_profile_reference_weight
+
+    await sync_profile_reference_weight(db, current_user.id)
     return {"deleted": True}
 
 

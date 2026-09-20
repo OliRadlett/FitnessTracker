@@ -9,7 +9,7 @@ import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import type { Activity, ActivitySource, ActivityContext } from '@/lib/api';
 import { ActivityConnectionsBar } from '@/components/activities/ActivityConnectionsBar';
-import { ActivityContextBadges } from '@/components/activities/ActivityContextBadges';
+import { ActivityContextBadges, TssSourceBadge } from '@/components/activities/ActivityContextBadges';
 import { ActivityHealthOverlay } from '@/components/activities/ActivityHealthOverlay';
 
 // ── Source Badges ────────────────────────────────────────────────────────────
@@ -149,7 +149,11 @@ export function ActivityCard({
             <span className="text-warning/70">{Math.round(activity.average_heartrate)} bpm avg</span>
           ) : null}
           {activity.tss != null && activity.tss > 0 ? (
-            <span className="text-blue-400">{activity.tss} TSS</span>
+            <span className="text-blue-400 inline-flex items-center gap-1">
+              {activity.tss} TSS
+              {/* QW4 — power vs HR vs provider provenance */}
+              <TssSourceBadge source={activity.tss_source ?? context?.ride_metrics?.tss_source} />
+            </span>
           ) : null}
           {activity.rpe != null && activity.rpe > 0 ? (
             <span className="text-orange-400">RPE {activity.rpe}</span>

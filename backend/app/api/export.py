@@ -151,6 +151,7 @@ async def export_activities_csv(
             "average_power",
             "normalized_power",
             "tss",
+            "tss_source",
             "calories",
         ]
     )
@@ -170,6 +171,7 @@ async def export_activities_csv(
                 a.average_power or "",
                 a.normalized_power or "",
                 a.tss or "",
+                a.tss_source or "",
                 a.calories or "",
             ]
         )

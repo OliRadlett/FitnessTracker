@@ -47,6 +47,9 @@ async def compile_cycling_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     today = date.today()
     four_weeks_ago = today - timedelta(days=28)
     ninety_days_ago = today - timedelta(days=90)
+    # CTL needs a 210-day EWMA warm-up before the 90-day window (QW5: this
+    # was previously an undefined name, silently nulling all load context).
+    tss_fetch_start = today - timedelta(days=90 + CTL_WARMUP_DAYS)
 
     stats: dict = {}
 
@@ -630,12 +633,12 @@ Provide your analysis in the following structure:
 ### Health & Wellness
 - Sleep quality and consistency trends
 - Weight trend interpretation (if data available)
-- Any health alerts and their significance
+- NOTE: active health alerts are already diagnosed on the Health page with severity and evidence — do NOT re-diagnose them here. Only mention an alert if it directly constrains next week's training, in one line.
 
 ### Training Plan & Deficiency Analysis
 - Is the rider following an active training plan? Reference plan name, type, and upcoming sessions for the next 2 weeks.
 - Is the current training load (CTL) aligned with the plan's scheduled TSS? Are there upcoming hard days or recovery days?
-- Based on the deficiency analysis, what are the top 2-3 weakness areas (e.g., strength standards, inter-exercise ratios, zone distribution, decoupling) and how should they be addressed in the next training block?
+- NOTE: the top weakness areas and their recommendations are already computed in the deficiency analysis above — do NOT invent additional weaknesses. Reference at most the top 2-3 by name and how they fit the next block.
 - Are there any active goals the rider is working toward? Reference goal metrics, target values, and progress.
 
 ### Event Preparation
@@ -2278,41 +2281,39 @@ async def compile_event_stats(
         )
         profile = profile_result.scalar_one_or_none()
         if profile and profile.home_lat is not None and profile.home_lng is not None:
+            from app.services.weather import cache_coords
+
             forecast_day = event.event_date if days_until > 0 else today
+            # Cache rows are keyed on 2-dp rounded coords (see cache_coords).
+            rlat, rlng = cache_coords(profile.home_lat, profile.home_lng)
             # Look for cached forecast weather near the event date
             forecast_result = await db.execute(
                 select(CachedWeather).where(
                     CachedWeather.user_id == user_id,
                     CachedWeather.weather_type == "forecast",
-                    CachedWeather.latitude == profile.home_lat,
-                    CachedWeather.longitude == profile.home_lng,
+                    CachedWeather.latitude == rlat,
+                    CachedWeather.longitude == rlng,
                 )
                 .order_by(CachedWeather.cached_at.desc())
                 .limit(1)
             )
             cached = forecast_result.scalar_one_or_none()
             if cached and isinstance(cached.weather_data, dict):
-                # Extract forecast for the event date
-                daily = cached.weather_data.get("daily", {})
-                time_list = daily.get("time", [])
-                if time_list:
-                    target_str = forecast_day.isoformat()
-                    for idx, t in enumerate(time_list):
-                        if t == target_str:
-                            weather_forecast = {
-                                "date": target_str,
-                                "weather_code": daily.get("weathercode", [None])[idx]
-                                if idx < len(daily.get("weathercode", [])) else None,
-                                "temperature_max": daily.get("temperature_2m_max", [None])[idx]
-                                if idx < len(daily.get("temperature_2m_max", [])) else None,
-                                "temperature_min": daily.get("temperature_2m_min", [None])[idx]
-                                if idx < len(daily.get("temperature_2m_min", [])) else None,
-                                "wind_speed": daily.get("windspeed_10m_max", [None])[idx]
-                                if idx < len(daily.get("windspeed_10m_max", [])) else None,
-                                "precipitation": daily.get("precipitation_sum", [None])[idx]
-                                if idx < len(daily.get("precipitation_sum", [])) else None,
-                            }
-                            break
+                # Cache stores the normalized {"days": [...]} shape (see
+                # _normalize_daily), not the raw Open-Meteo "daily" arrays.
+                target_str = forecast_day.isoformat()
+                for day in cached.weather_data.get("days", []) or []:
+                    if isinstance(day, dict) and day.get("date") == target_str:
+                        weather_forecast = {
+                            "date": target_str,
+                            "weather_code": day.get("weather_code"),
+                            "conditions": day.get("conditions"),
+                            "temperature_max": day.get("temp_max"),
+                            "temperature_min": day.get("temp_min"),
+                            "wind_speed": day.get("wind_speed_max"),
+                            "precipitation": day.get("precipitation_sum"),
+                        }
+                        break
     except Exception as e:
         logger.warning("Failed to get weather forecast for event context: %s", e)
 

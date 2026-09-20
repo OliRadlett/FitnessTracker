@@ -68,6 +68,11 @@ class Activity(Base):
     tss: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )  # Training Stress Score
+    # QW4 — TSS provenance: how Activity.tss was produced. 'power' = computed
+    # from power (NP/AP + FTP), 'hr' = hrTSS fallback (avg HR + LTHR/resting HR),
+    # 'provider' = supplied by a sync provider payload, 'manual' = hand-entered.
+    # NULL = unknown (rows predating this column; see migration 062 heuristic).
+    tss_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe: Mapped[float | None] = mapped_column(
         Float, nullable=True

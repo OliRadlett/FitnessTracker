@@ -11,6 +11,7 @@ import type {
   RespiratoryRateResponse,
   Event,
   ChartData,
+  Goal,
   TrainingWeekDay,
   TrainingWeekResponse,
   TrainingPlanSummary,
@@ -24,6 +25,8 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { RestDayBanner } from './RestDayBanner';
+import { GoalsSection } from './GoalsSection';
+import { TodayAdaptiveAction } from './TodayAdaptiveAction';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { formatDistance, formatDuration } from '@/lib/utils';
@@ -56,6 +59,8 @@ interface TodayTabProps {
   hasReadiness: boolean;
   respiratoryRate: RespiratoryRateResponse | undefined;
   upcomingEvents: Event[] | undefined;
+  /** QW6 — compact top-3 goals, same component as the Weekly tab. */
+  goals?: Goal[];
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -68,6 +73,7 @@ export function TodayTab({
   hasReadiness,
   respiratoryRate,
   upcomingEvents,
+  goals,
 }: TodayTabProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -137,7 +143,20 @@ export function TodayTab({
       {(summary?.rest_day_suggestion || displayEvents.length > 0) && (
         <div className="space-y-4">
           {summary?.rest_day_suggestion && (
-            <RestDayBanner suggestion={summary.rest_day_suggestion} />
+            <RestDayBanner
+              suggestion={summary.rest_day_suggestion}
+              action={
+                activePlan ? (
+                  <TodayAdaptiveAction
+                    planId={activePlan.id}
+                    todayDayId={todayPlanDay?.id ?? null}
+                    todayDateStr={todayStr}
+                    planDays={planWeek?.days}
+                    variant="row"
+                  />
+                ) : undefined
+              }
+            />
           )}
           {displayEvents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -175,6 +194,17 @@ export function TodayTab({
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Adaptive action when there is no rest-day banner (QW3) ────────────── */}
+      {!summary?.rest_day_suggestion && activePlan && (
+        <TodayAdaptiveAction
+          planId={activePlan.id}
+          todayDayId={todayPlanDay?.id ?? null}
+          todayDateStr={todayStr}
+          planDays={planWeek?.days}
+          variant="standalone"
+        />
       )}
 
       {/* ── Readiness & Health Strip ─────────────────────────────────────────── */}
@@ -358,6 +388,9 @@ export function TodayTab({
           </div>
         </div>
       </div>
+
+      {/* ── Goals (QW6 — same compact top-3 as Weekly) ─────────────────────── */}
+      <GoalsSection goals={goals} />
 
       {/* ── Today's Activities + Lifting ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

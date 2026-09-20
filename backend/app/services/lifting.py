@@ -667,6 +667,95 @@ async def _recalculate_pr_after_set_change(
         return pr
 
 
+# ── e1RM resolution + load suggestion (FL3) ───────────────────────────────
+
+
+async def resolve_exercise_e1rm(
+    db: AsyncSession, user_id: uuid.UUID, exercise_name: str
+) -> tuple[float | None, str]:
+    """Current e1RM for an exercise: PR first, else best recent set (FL3).
+
+    Normalises the name, then prefers the stored ``PersonalRecord``
+    (``record_type == "1rm"`` with a non-null ``estimated_1rm``). When no PR
+    exists, falls back to the best-set Brzycki estimate over non-warmup sets
+    in the 1RM-valid rep range (same contention rules as the PR checks).
+    Returns ``(e1rm_kg, source)`` where source is ``"pr"`` / ``"recent_sets"``
+    / ``"none"`` (None e1RM when no history exists at all).
+    """
+    normalised = normalise_exercise_name(exercise_name)
+
+    pr_result = await db.execute(
+        select(PersonalRecord)
+        .where(
+            PersonalRecord.user_id == user_id,
+            PersonalRecord.exercise_name == normalised,
+            PersonalRecord.record_type == "1rm",
+            PersonalRecord.estimated_1rm.isnot(None),
+        )
+        .order_by(PersonalRecord.estimated_1rm.desc())
+        .limit(1)
+    )
+    pr = pr_result.scalar_one_or_none()
+    if pr is not None and pr.estimated_1rm:
+        return float(pr.estimated_1rm), "pr"
+
+    best_result = await db.execute(
+        select(LiftingSet)
+        .join(LiftingSession)
+        .where(
+            LiftingSession.user_id == user_id,
+            LiftingSet.exercise_name == normalised,
+            LiftingSet.is_warmup.is_(False),
+            LiftingSet.reps >= 1,
+            LiftingSet.reps <= MAX_REPS_FOR_1RM_PR,
+            LiftingSet.reps < 37,
+        )
+        .order_by((LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc())
+        .limit(1)
+    )
+    best = best_result.scalar_one_or_none()
+    if best is None:
+        return None, "none"
+    return brzycki_1rm(best.weight_kg, best.reps), "recent_sets"
+
+
+async def suggest_strength_load(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    exercise_name: str,
+    sets: int,
+    reps: int,
+    pct_1rm: float = 0.8,
+) -> dict:
+    """Suggest a working weight as a fraction of the current e1RM (FL3).
+
+    ``sets``/``reps`` describe the planned scheme (validated positive; they
+    don't move the %1RM solve — recorded for future RPE autoregulation).
+    Raises ``ValueError`` on out-of-range inputs (routers map it to 422).
+    """
+    if not exercise_name or not exercise_name.strip():
+        raise ValueError("exercise_name is required")
+    if sets < 1 or reps < 1:
+        raise ValueError("sets and reps must be >= 1")
+    if not 0.3 <= pct_1rm <= 1.0:
+        raise ValueError("pct_1rm must be between 0.3 and 1.0")
+
+    basis_1rm, source = await resolve_exercise_e1rm(db, user_id, exercise_name)
+    if basis_1rm is None:
+        return {
+            "target_kg": None,
+            "basis_1rm_kg": None,
+            "pct_1rm": pct_1rm,
+            "basis_source": "none",
+        }
+    return {
+        "target_kg": round(basis_1rm * pct_1rm, 1),
+        "basis_1rm_kg": round(basis_1rm, 1),
+        "pct_1rm": pct_1rm,
+        "basis_source": source,
+    }
+
+
 # ── Volume trends ─────────────────────────────────────────────────────────────
 
 

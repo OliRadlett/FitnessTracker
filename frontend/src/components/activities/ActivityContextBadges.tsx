@@ -12,6 +12,54 @@ interface ActivityContextBadgesProps {
   };
 }
 
+/**
+ * QW4 — tiny TSS provenance badge: power-TSS vs hrTSS are not comparable when
+ * HR substitutes silently. Renders next to the TSS value; null source → no badge.
+ */
+export function TssSourceBadge({ source }: { source: string | null | undefined }) {
+  if (!source) return null;
+  switch (source) {
+    case 'power':
+      return (
+        <span
+          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
+          title="Power-based TSS"
+        >
+          ⚡P
+        </span>
+      );
+    case 'hr':
+      return (
+        <span
+          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30"
+          title="HR-estimated TSS — less precise"
+        >
+          ~H
+        </span>
+      );
+    case 'provider':
+      return (
+        <span
+          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30"
+          title="TSS from provider (Strava/Wahoo/etc.)"
+        >
+          ⧉P
+        </span>
+      );
+    case 'manual':
+      return (
+        <span
+          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-surface-light/40 text-muted border border-surface-light/60"
+          title="Manually entered TSS"
+        >
+          ✎M
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
 export function ActivityContextBadges({ context }: ActivityContextBadgesProps) {
   const { ride_metrics, load_context, sport_type } = context;
   const isCycling = sport_type === 'cycling';
@@ -40,6 +88,16 @@ export function ActivityContextBadges({ context }: ActivityContextBadgesProps) {
   // Ride-specific analytical metrics
   if (isCycling && ride_metrics) {
     const rm = ride_metrics;
+
+    // QW4 — TSS value with provenance badge (power vs HR vs provider).
+    if (rm.tss !== undefined && rm.tss !== null) {
+      items.push(
+        <span key="tss" className="text-xs text-blue-400 whitespace-nowrap inline-flex items-center gap-1">
+          ⚡ {Math.round(rm.tss)} TSS
+          <TssSourceBadge source={rm.tss_source} />
+        </span>
+      );
+    }
 
     if (rm.intensity_factor !== undefined && rm.intensity_factor !== null) {
       let intensityLabel = '';

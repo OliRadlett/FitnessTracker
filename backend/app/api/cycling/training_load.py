@@ -120,6 +120,7 @@ async def recalculate_tss(
                     np_map[stream.activity_id] = np_val
 
     updated = 0
+    by_source: dict[str, int] = {}
     for activity in activities:
         # Backfill normalized_power from stream data
         if not activity.normalized_power and activity.id in np_map:
@@ -128,9 +129,20 @@ async def recalculate_tss(
         # Clear existing TSS if forcing recalculation
         if force:
             activity.tss = None
+            activity.tss_source = None
         tss = await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
         if tss is not None:
             updated += 1
+            # QW4 — auto_compute records which branch it took on
+            # activity.tss_source; surface the split so callers can badge it.
+            if activity.tss_source:
+                by_source[activity.tss_source] = (
+                    by_source.get(activity.tss_source, 0) + 1
+                )
 
     await db.flush()
-    return {"updated": updated, "total_checked": len(activities)}
+    return {
+        "updated": updated,
+        "total_checked": len(activities),
+        "by_source": by_source,
+    }

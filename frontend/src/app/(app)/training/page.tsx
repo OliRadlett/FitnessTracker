@@ -511,8 +511,8 @@ export default function TrainingPage() {
         </div>
       </div>
 
-      {/* Workout Planner */}
-      <WorkoutPlanner />
+      {/* Workout Planner — RM1: writes back to the selected plan's days */}
+      <WorkoutPlanner planId={selectedPlan?.id ?? null} planDays={selectedPlan?.days} />
 
       {/* Periodization Chart */}
       {periodizationChart && (

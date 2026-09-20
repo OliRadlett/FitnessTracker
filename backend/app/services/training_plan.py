@@ -752,6 +752,269 @@ def _difficulty_for_day(day: TrainingPlanDay) -> str:
     return _TYPE_TO_DIFFICULTY.get(day.planned_type, "z3")
 
 
+# ── FL1: load-coherence propagation ──────────────────────────────────────
+# Epsilons shared by the refresh endpoint and the week-view staleness flag:
+# a recomputed target only counts as "different" beyond rounding noise when
+# power moves >2 W or TSS moves >2.
+POWER_STALE_EPS_W = 2.0
+TSS_STALE_EPS = 2.0
+
+# CP vs FTP cross-check threshold: >10% divergence is reported, never
+# silently re-anchored (zones stay FTP-based until the athlete updates FTP).
+CP_FTP_MISMATCH_PCT = 10.0
+
+
+def targets_stale_for_day(
+    day: TrainingPlanDay,
+    ftp_watts: float | None,
+    lthr: float | None,
+) -> bool:
+    """True when fresh ``plan_workout`` targets differ from stored ones.
+
+    Pure computation — no DB access. Returns False whenever staleness is
+    unevaluable (non-cycle day, no duration, both targets null, no FTP).
+    TSS is FTP-independent by formula (duration × IF² × 100), so in practice
+    FTP moves surface through the power comparison.
+    """
+    if day.sport != "cycle":
+        return False
+    if not day.planned_duration_min:
+        return False
+    if day.planned_power_watts is None and day.planned_tss is None:
+        return False
+    if not ftp_watts or ftp_watts <= 0:
+        return False
+    targets = plan_workout(
+        ftp=ftp_watts,
+        lthr=lthr,
+        weight_kg=None,
+        difficulty=_difficulty_for_day(day),
+        duration_minutes=day.planned_duration_min,
+    )
+    if targets is None:
+        return False
+    if (
+        day.planned_power_watts is not None
+        and abs(targets.target_power_low - day.planned_power_watts) > POWER_STALE_EPS_W
+    ):
+        return True
+    return (
+        day.planned_tss is not None
+        and abs(targets.target_tss_low - day.planned_tss) > TSS_STALE_EPS
+    )
+
+
+async def refresh_cycle_targets(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+) -> dict:
+    """Recompute cycle-day targets from the CURRENT profile FTP (FL1).
+
+    For each upcoming (``day_date`` >= today) uncompleted cycle day carrying
+    at least one stored target (power/TSS) and the inputs to recompute it
+    (a non-rest ``planned_type`` + ``planned_duration_min``), fresh targets
+    are derived via ``plan_workout`` with the current FTP. Days whose fresh
+    power or TSS differs beyond epsilon are updated in place (both stored
+    fields re-anchored to the fresh low-end values, filling a null side
+    when the day qualifies via the other).
+
+    Strength days are skipped — %1RM propagation belongs to FL3. Past and
+    completed days are never touched.
+
+    Returns a dict matching ``RefreshTargetsResponse``.
+    """
+    from app.models.cycling import CyclingProfile
+
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    result = await db.execute(
+        select(CyclingProfile).where(CyclingProfile.user_id == user_id)
+    )
+    profile = result.scalar_one_or_none()
+    ftp = profile.ftp_watts if profile and profile.ftp_watts else None
+    lthr = profile.lactate_threshold_hr if profile else None
+
+    today = date.today()
+    refreshed: list[dict] = []
+    stale_but_unchanged: list[uuid.UUID] = []
+    strength_days_skipped = 0
+
+    for day in plan.days:
+        if day.day_date < today or day.completed:
+            continue
+        if day.sport == "strength":
+            # FL3 (e1RM/RPE autoregulation) owns strength propagation.
+            strength_days_skipped += 1
+            continue
+        if day.sport != "cycle":
+            continue
+        if day.planned_power_watts is None and day.planned_tss is None:
+            continue
+        if not day.planned_type or day.planned_type == "rest":
+            continue
+        if not day.planned_duration_min:
+            continue
+        if not ftp or ftp <= 0:
+            continue
+        targets = plan_workout(
+            ftp=ftp,
+            lthr=lthr,
+            weight_kg=profile.weight_kg if profile else None,
+            difficulty=_difficulty_for_day(day),
+            duration_minutes=day.planned_duration_min,
+        )
+        if targets is None:
+            continue
+        if not targets_stale_for_day(day, ftp, lthr):
+            stale_but_unchanged.append(day.id)
+            continue
+        old_power = day.planned_power_watts
+        old_tss = day.planned_tss
+        day.planned_power_watts = targets.target_power_low
+        day.planned_tss = targets.target_tss_low
+        refreshed.append(
+            {
+                "day_id": day.id,
+                "day_date": day.day_date,
+                "old_power": old_power,
+                "new_power": targets.target_power_low,
+                "old_tss": old_tss,
+                "new_tss": targets.target_tss_low,
+            }
+        )
+
+    cp_ftp_mismatch = None
+    cp = profile.critical_power if profile else None
+    if ftp and ftp > 0 and cp and cp > 0:
+        pct_diff = abs(cp - ftp) / ftp * 100
+        if pct_diff > CP_FTP_MISMATCH_PCT:
+            cp_ftp_mismatch = {
+                "ftp": ftp,
+                "critical_power": cp,
+                "pct_diff": round(pct_diff, 1),
+            }
+
+    await db.flush()
+    return {
+        "refreshed": refreshed,
+        "stale_but_unchanged": stale_but_unchanged,
+        "cp_ftp_mismatch": cp_ftp_mismatch,
+        "strength_days_skipped": strength_days_skipped,
+    }
+
+
+# ── FL3: %e1RM strength-target propagation ─────────────────────────────
+# A recomputed strength weight only counts as "different" beyond plate-loading
+# noise when it moves more than this.
+STRENGTH_REFRESH_EPS_KG = 0.5
+
+
+async def refresh_strength_targets(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+) -> dict:
+    """Recompute strength-day weights from the CURRENT e1RMs (FL3).
+
+    For each upcoming (``day_date`` >= today) uncompleted strength day, every
+    ``planned_exercises`` entry carrying a ``pct_1rm`` basis is re-solved as
+    ``weight_kg = round(e1RM × pct_1rm, 1)`` with the e1RM resolved via
+    ``lifting.resolve_exercise_e1rm`` (stored PR first, else best recent set).
+    Entries without a basis, entries with an unresolvable e1RM, past and
+    completed days, and non-strength days are skipped. ``planned_volume_kg``
+    is re-derived from the refreshed list (same rule as ``update_plan_day``).
+
+    Returns ``{"strength_refreshed": [...]}`` matching
+    ``RefreshTargetsResponse.strength_refreshed``.
+    """
+    from app.services.lifting import resolve_exercise_e1rm
+
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    today = date.today()
+    refreshed: list[dict] = []
+
+    for day in plan.days:
+        if day.day_date < today or day.completed:
+            continue
+        if day.sport != "strength":
+            continue
+        exercises = day.planned_exercises or []
+        if not exercises:
+            continue
+        new_list: list[dict] = []
+        changed = False
+        for ex in exercises:
+            if not isinstance(ex, dict):
+                new_list.append(ex)
+                continue
+            pct = ex.get("pct_1rm")
+            if pct is None:
+                new_list.append(ex)
+                continue
+            try:
+                pct_f = float(pct)
+            except (TypeError, ValueError):
+                new_list.append(ex)
+                continue
+            if not 0 < pct_f <= 1.0:
+                new_list.append(ex)
+                continue
+            basis_1rm, source = await resolve_exercise_e1rm(
+                db, user_id, str(ex.get("exercise") or "")
+            )
+            if basis_1rm is None:
+                new_list.append(ex)
+                continue
+            new_weight = round(basis_1rm * pct_f, 1)
+            old_weight = ex.get("weight_kg")
+            if old_weight is not None:
+                try:
+                    if abs(float(old_weight) - new_weight) <= STRENGTH_REFRESH_EPS_KG:
+                        new_list.append(ex)
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            updated = dict(ex)
+            updated["weight_kg"] = new_weight
+            new_list.append(updated)
+            changed = True
+            refreshed.append(
+                {
+                    "day_id": day.id,
+                    "day_date": day.day_date,
+                    "exercise": ex.get("exercise"),
+                    "old_weight_kg": old_weight,
+                    "new_weight_kg": new_weight,
+                    "pct_1rm": pct_f,
+                    "basis_1rm_kg": round(basis_1rm, 1),
+                    "basis_source": source,
+                }
+            )
+        if changed:
+            # Reassign (don't mutate in place) so the JSONB column flags dirty.
+            day.planned_exercises = new_list
+            if any(isinstance(e, dict) and e.get("weight_kg") for e in new_list):
+                day.planned_volume_kg = round(
+                    sum(
+                        (e.get("weight_kg") or 0) * e.get("sets", 0) * e.get("reps", 0)
+                        for e in new_list
+                        if isinstance(e, dict)
+                    ),
+                    2,
+                )
+            else:
+                day.planned_volume_kg = None
+
+    await db.flush()
+    return {"strength_refreshed": refreshed}
+
+
 async def update_plan_day(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -1037,6 +1300,18 @@ async def get_plan_week(
         else:
             day_status = "missed"
 
+        # FL1 staleness flag — cheap: profile already loaded, no extra
+        # queries per day. Only upcoming uncompleted days can be stale.
+        targets_stale = (
+            day.day_date >= today
+            and not day.completed
+            and targets_stale_for_day(
+                day,
+                profile.ftp_watts if profile else None,
+                profile.lactate_threshold_hr if profile else None,
+            )
+        )
+
         entries.append(
             TrainingWeekDay(
                 **base,
@@ -1051,6 +1326,7 @@ async def get_plan_week(
                 if day.warmup_template_id
                 else None,
                 day_status=day_status,
+                targets_stale=targets_stale,
             )
         )
 
@@ -1201,3 +1477,200 @@ async def copy_plan_day(
     db.add(new_day)
     await db.flush()
     return new_day
+
+
+# ── FL2: missed-session reconciliation ───────────────────────────────────
+
+
+class PlanDayConflictError(ValueError):
+    """Target date already holds an uncompleted non-rest day (HTTP 409)."""
+
+
+async def reschedule_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    target_date: date,
+) -> TrainingPlanDay:
+    """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
+
+    All planned fields travel with the day; linked actuals (if any) stay
+    attached. Raises ``PlanDayConflictError`` when another uncompleted
+    non-rest day already occupies the target date, ``ValueError`` for
+    unknown plans/days, completed days, or out-of-range targets.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    day = next((d for d in plan.days if d.id == day_id), None)
+    if day is None:
+        raise ValueError("Training plan day not found")
+    if day.completed:
+        raise ValueError("Cannot reschedule a completed day")
+
+    if target_date < plan.start_date or target_date > plan.end_date:
+        raise ValueError("Target date is outside the plan range")
+
+    occupant = next(
+        (
+            d
+            for d in plan.days
+            if d.id != day.id
+            and d.day_date == target_date
+            and d.sport != "rest"
+            and not d.completed
+        ),
+        None,
+    )
+    if occupant is not None:
+        raise PlanDayConflictError(
+            f"Target date {target_date.isoformat()} already holds an "
+            "uncompleted session"
+        )
+
+    day.day_date = target_date
+    await db.flush()
+    return day
+
+
+async def substitute_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    sport: str,
+    planned_type: str,
+    overrides: dict | None = None,
+) -> TrainingPlanDay:
+    """Convert a missed day into an alternate session on the same date (FL2).
+
+    E.g. a missed threshold ride becomes an endurance spin. ``sport`` must be
+    one of cycle/strength/rest and ``planned_type`` one of the
+    ``VALID_DAY_TYPES`` — anything else raises ``ValueError("Invalid ...")``
+    (the router maps these to HTTP 422). Optional ``overrides`` replace the
+    matching planned targets (duration/tss/power/volume/rpe); every other
+    planned field is preserved. The conversion is recorded in ``notes``.
+    Completed days are rejected — substitution is for missed sessions.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    day = next((d for d in plan.days if d.id == day_id), None)
+    if day is None:
+        raise ValueError("Training plan day not found")
+    if day.completed:
+        raise ValueError("Cannot substitute a completed day")
+
+    if sport not in ("cycle", "strength", "rest"):
+        raise ValueError(f"Invalid sport: {sport}")
+    if planned_type not in VALID_DAY_TYPES:
+        raise ValueError(f"Invalid planned_type: {planned_type}")
+
+    old_sport, old_type = day.sport, day.planned_type
+    day.sport = sport
+    day.planned_type = planned_type
+
+    for key in (
+        "planned_duration_min",
+        "planned_tss",
+        "planned_power_watts",
+        "planned_volume_kg",
+        "planned_rpe",
+    ):
+        if overrides and overrides.get(key) is not None:
+            setattr(day, key, overrides[key])
+
+    annotation = (
+        f"Substituted {old_sport}/{old_type} → {sport}/{planned_type} "
+        "(missed session alternate)"
+    )
+    day.notes = f"{day.notes}; {annotation}" if day.notes else annotation
+
+    await db.flush()
+    return day
+
+
+async def get_unplanned_actuals(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    days: int = 14,
+) -> dict:
+    """Activities + lifting sessions in the last ``days`` linked to NO plan day.
+
+    Linkage is whatever ``link_activities_to_plan_days`` records:
+    ``TrainingPlanDay.activity_id`` / ``lifting_session_id`` across ALL of
+    the user's plans (a session claimed by another plan is not unplanned).
+    Returns compact actuals for the FL2 "extra session" surface.
+    """
+    from datetime import UTC, datetime
+
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    if days < 1 or days > 90:
+        raise ValueError("days must be between 1 and 90")
+
+    today = date.today()
+    cutoff = today - timedelta(days=days)
+
+    link_rows = (
+        await db.execute(
+            select(TrainingPlanDay.activity_id, TrainingPlanDay.lifting_session_id)
+            .join(TrainingPlan, TrainingPlan.id == TrainingPlanDay.plan_id)
+            .where(TrainingPlan.user_id == user_id)
+        )
+    ).all()
+    linked_activity_ids = {r[0] for r in link_rows if r[0] is not None}
+    linked_session_ids = {r[1] for r in link_rows if r[1] is not None}
+
+    cutoff_dt = datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=UTC)
+    act_query = select(Activity).where(
+        Activity.user_id == user_id,
+        Activity.start_date >= cutoff_dt,
+    )
+    if linked_activity_ids:
+        act_query = act_query.where(Activity.id.notin_(linked_activity_ids))
+    act_query = act_query.order_by(Activity.start_date.desc())
+    activities = list((await db.execute(act_query)).scalars().all())
+
+    lift_query = select(LiftingSession).where(
+        LiftingSession.user_id == user_id,
+        LiftingSession.session_date >= cutoff,
+    )
+    if linked_session_ids:
+        lift_query = lift_query.where(LiftingSession.id.notin_(linked_session_ids))
+    lift_query = lift_query.order_by(LiftingSession.session_date.desc())
+    sessions = list((await db.execute(lift_query)).scalars().all())
+
+    return {
+        "plan_id": plan.id,
+        "days": days,
+        "activities": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "sport_type": a.sport_type,
+                "start_date": a.start_date,
+                "duration_seconds": a.duration_seconds,
+                "distance_meters": a.distance_meters,
+                "tss": a.tss,
+                "average_power": a.average_power,
+            }
+            for a in activities
+        ],
+        "lifting_sessions": [
+            {
+                "id": s.id,
+                "session_date": s.session_date,
+                "focus": s.focus,
+                "total_volume_kg": s.total_volume_kg,
+                "duration_seconds": s.duration_seconds,
+            }
+            for s in sessions
+        ],
+    }
