@@ -14,16 +14,16 @@ describe('Changelog', () => {
   it('expands the first release by default', () => {
     render(<Changelog />);
     // First release bullets should be visible
-    expect(screen.getByText(/R2 video uploads end-to-end/)).toBeInTheDocument();
+    expect(screen.getByText(/Fixed a sync bug/)).toBeInTheDocument();
   });
 
   it('collapses expanded release when clicked again', () => {
     render(<Changelog />);
     // Click the first release header to collapse it
-    const firstHeader = screen.getByText(/Video Uploads Go Live/).closest('button')!;
+    const firstHeader = screen.getByText(/Live Lift Reliability/).closest('button')!;
     fireEvent.click(firstHeader);
     // Bullet should no longer be visible
-    expect(screen.queryByText(/R2 video uploads end-to-end/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fixed a sync bug/)).not.toBeInTheDocument();
   });
 
   it('expands a collapsed release when clicked', () => {

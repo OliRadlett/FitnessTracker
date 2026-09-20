@@ -123,6 +123,15 @@ export function detectPr(
   return `PR! Est. 1RM ${est.toFixed(1)}kg`;
 }
 
+/**
+ * Loose key for matching a plan's planned-exercise name (usually `snake_case`)
+ * against a free-typed exercise name ("Back Squat"). Case/underscore/hyphen and
+ * whitespace insensitive.
+ */
+export function normaliseExerciseKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
 /** Recent-exercise chips, most-recently-used first. */
 export function recentExerciseNames(sessions: LiftingSession[], limit = 6): string[] {
   const names: string[] = [];
