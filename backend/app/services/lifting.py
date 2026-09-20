@@ -55,6 +55,75 @@ def calculate_session_volume(sets: list[dict]) -> float:
     )
 
 
+# ── Implausible-duration fallback (Strava) ───────────────────────────────────
+
+# A single lifting session this long is implausible — almost always a live
+# session whose finish landed days late (killed tab, lost local state, then
+# resume → finish against a stale started_at). When such a session is linked
+# to a Strava activity, the activity's recorded duration/start are trusted
+# instead.
+MAX_PLAUSIBLE_SESSION_DURATION_SECONDS = 3 * 3600
+
+
+def session_duration_implausible(duration_seconds: int | None) -> bool:
+    """True when a stored session duration is too long to be a real workout."""
+    return (
+        duration_seconds is not None
+        and duration_seconds >= MAX_PLAUSIBLE_SESSION_DURATION_SECONDS
+    )
+
+
+def session_span_implausible(session: LiftingSession) -> bool:
+    """True when the session's stored duration OR wall-clock span is implausible."""
+    if session_duration_implausible(session.duration_seconds):
+        return True
+    if session.started_at is not None and session.ended_at is not None:
+        try:
+            span = (session.ended_at - session.started_at).total_seconds()
+        except (TypeError, OverflowError):
+            return False
+        if span >= MAX_PLAUSIBLE_SESSION_DURATION_SECONDS:
+            return True
+    return False
+
+
+def apply_strava_duration_fallback(
+    session: LiftingSession, activity: Activity | None
+) -> bool:
+    """Reset an implausibly long session to its linked Strava activity's time.
+
+    Sets ``duration_seconds`` from the activity and realigns ``started_at`` /
+    ``ended_at`` to the activity window. Returns True when the fallback was
+    applied. No-op (False) when the session is plausible or the activity has
+    no usable duration.
+    """
+    if not session_span_implausible(session):
+        return False
+    if (
+        activity is None
+        or not activity.duration_seconds
+        or activity.duration_seconds <= 0
+    ):
+        return False
+    session.duration_seconds = activity.duration_seconds
+    if activity.start_date is not None:
+        session.started_at = activity.start_date
+        try:
+            session.ended_at = activity.start_date + timedelta(
+                seconds=activity.duration_seconds
+            )
+        except (TypeError, OverflowError):
+            pass
+    elif session.started_at is not None:
+        try:
+            session.ended_at = session.started_at + timedelta(
+                seconds=activity.duration_seconds
+            )
+        except (TypeError, OverflowError):
+            pass
+    return True
+
+
 # ── Session CRUD ──────────────────────────────────────────────────────────────
 
 
@@ -208,6 +277,16 @@ async def update_session(
     for field, value in update_data.items():
         setattr(session, field, value)
 
+    # Guard the live-finish path: a stale started_at (resume of a days-old
+    # orphan) would otherwise store a multi-day duration verbatim. Fall back
+    # to the linked Strava activity's recorded time instead.
+    if session_span_implausible(session):
+        activity = session.linked_activity
+        if activity is None and session.activity_id is not None:
+            activity = await db.get(Activity, session.activity_id)
+        if activity is not None:
+            apply_strava_duration_fallback(session, activity)
+
     await db.flush()
     # Re-fetch with relationships loaded to avoid MissingGreenlet on sets
     return await get_session(db, session.id, user_id)  # type: ignore[return-value]
@@ -274,6 +353,10 @@ async def link_session_to_activity(
         # Backfill duration from activity if session doesn't have one
         if not session.duration_seconds and activity.duration_seconds:
             session.duration_seconds = activity.duration_seconds
+        # …or when the stored time is implausibly long, default to the
+        # linked activity's recorded time (and realign the window to it).
+        elif session_span_implausible(session):
+            apply_strava_duration_fallback(session, activity)
     else:
         # Unlink
         session.activity_id = None

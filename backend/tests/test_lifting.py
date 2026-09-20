@@ -1,8 +1,18 @@
 """Tests for lifting service — pure functions (brzycki_1rm, calculate_session_volume)."""
 
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+
 import pytest
 
-from app.services.lifting import brzycki_1rm, calculate_session_volume
+from app.services.lifting import (
+    MAX_PLAUSIBLE_SESSION_DURATION_SECONDS,
+    apply_strava_duration_fallback,
+    brzycki_1rm,
+    calculate_session_volume,
+    session_duration_implausible,
+    session_span_implausible,
+)
 
 
 class TestBrzycki1RM:
@@ -76,3 +86,125 @@ class TestCalculateSessionVolume:
             {"weight_kg": 100, "reps": 5},
         ]
         assert calculate_session_volume(sets) == 500.0
+
+
+def _lifting_session(**overrides):
+    """Duck-typed session (SimpleNamespace) for the fallback helpers."""
+    base = {
+        "duration_seconds": None,
+        "started_at": None,
+        "ended_at": None,
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _activity(**overrides):
+    base = {"duration_seconds": None, "start_date": None}
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+class TestSessionDurationImplausible:
+    """Threshold is 3h (10800s): ≥ threshold is implausible."""
+
+    def test_threshold_is_three_hours(self):
+        assert MAX_PLAUSIBLE_SESSION_DURATION_SECONDS == 3 * 3600
+
+    def test_none_is_plausible(self):
+        assert session_duration_implausible(None) is False
+
+    def test_normal_workout_is_plausible(self):
+        assert session_duration_implausible(5219) is False  # 1h26
+
+    def test_just_under_threshold_is_plausible(self):
+        assert session_duration_implausible(3 * 3600 - 1) is False
+
+    def test_at_threshold_is_implausible(self):
+        assert session_duration_implausible(3 * 3600) is True
+
+    def test_stale_finish_is_implausible(self):
+        assert session_duration_implausible(535413) is True  # ~148h
+
+
+class TestSessionSpanImplausible:
+    """Triggers on stored duration OR wall-clock started_at→ended_at span."""
+
+    def test_plausible_session(self):
+        start = datetime(2026, 9, 14, 17, 38)
+        session = _lifting_session(
+            duration_seconds=5219,
+            started_at=start,
+            ended_at=start + timedelta(seconds=5219),
+        )
+        assert session_span_implausible(session) is False
+
+    def test_implausible_duration_triggers(self):
+        session = _lifting_session(duration_seconds=535413)
+        assert session_span_implausible(session) is True
+
+    def test_implausible_wall_clock_span_triggers(self):
+        """ended_at days after started_at, even with no/short duration."""
+        start = datetime(2026, 9, 14, 17, 38)
+        session = _lifting_session(
+            duration_seconds=None,
+            started_at=start,
+            ended_at=start + timedelta(days=6),
+        )
+        assert session_span_implausible(session) is True
+
+    def test_open_session_without_duration_is_plausible(self):
+        session = _lifting_session(
+            started_at=datetime(2026, 9, 14, 17, 38), ended_at=None
+        )
+        assert session_span_implausible(session) is False
+
+
+class TestApplyStravaDurationFallback:
+    """Implausible sessions default to the linked activity's recorded time."""
+
+    def test_applies_duration_and_realigns_window(self):
+        activity_start = datetime(2026, 9, 14, 17, 38)
+        session = _lifting_session(
+            duration_seconds=535413,
+            started_at=datetime(2026, 9, 14, 17, 38, 8),
+            ended_at=datetime(2026, 9, 20, 22, 21, 41),
+        )
+        activity = _activity(duration_seconds=5219, start_date=activity_start)
+        assert apply_strava_duration_fallback(session, activity) is True
+        assert session.duration_seconds == 5219
+        assert session.started_at == activity_start
+        assert session.ended_at == activity_start + timedelta(seconds=5219)
+
+    def test_noop_when_session_plausible(self):
+        session = _lifting_session(duration_seconds=5219)
+        activity = _activity(
+            duration_seconds=3600, start_date=datetime(2026, 9, 14, 17, 38)
+        )
+        assert apply_strava_duration_fallback(session, activity) is False
+        assert session.duration_seconds == 5219
+
+    def test_noop_without_activity(self):
+        session = _lifting_session(duration_seconds=535413)
+        assert apply_strava_duration_fallback(session, None) is False
+        assert session.duration_seconds == 535413
+
+    def test_noop_when_activity_has_no_duration(self):
+        session = _lifting_session(duration_seconds=535413)
+        activity = _activity(
+            duration_seconds=None, start_date=datetime(2026, 9, 14, 17, 38)
+        )
+        assert apply_strava_duration_fallback(session, activity) is False
+        assert session.duration_seconds == 535413
+
+    def test_keeps_session_start_when_activity_start_missing(self):
+        """Falls back to started_at + activity duration for ended_at."""
+        start = datetime(2026, 9, 14, 17, 38)
+        session = _lifting_session(
+            duration_seconds=535413, started_at=start, ended_at=start
+        )
+        activity = _activity(duration_seconds=5219, start_date=None)
+        assert apply_strava_duration_fallback(session, activity) is True
+        assert session.duration_seconds == 5219
+        assert session.started_at == start
+        assert session.ended_at == start + timedelta(seconds=5219)
