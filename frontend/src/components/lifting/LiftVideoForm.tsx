@@ -6,6 +6,7 @@ import { useAuthFetch, getVideoUploadUrl, createLiftVideo } from '@/lib/api';
 import type { LiftingSession, PersonalRecord } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { Spinner } from '@/components/ui/Spinner';
 
 const MAX_FILE_SIZE = 250 * 1024 * 1024;
 const ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
@@ -35,6 +36,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -46,6 +48,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       setFile(null);
       setUploadProgress(0);
       setUploadComplete(false);
+      setFormError(null);
     }
   }, [open]);
 
@@ -53,13 +56,14 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     const f = e.target.files?.[0];
     if (!f) return;
     if (!ALLOWED_TYPES.includes(f.type)) {
-      alert(`Unsupported format. Allowed: ${ALLOWED_TYPES.join(', ')}`);
+      setFormError(`Unsupported format — use ${ALLOWED_TYPES.map((t) => TYPE_LABELS[t]).join(', ')}.`);
       return;
     }
     if (f.size > MAX_FILE_SIZE) {
-      alert(`File too large (${(f.size / (1024 * 1024)).toFixed(1)} MB). Max: 250 MB.`);
+      setFormError(`File too large (${(f.size / (1024 * 1024)).toFixed(1)} MB). Max 250 MB.`);
       return;
     }
+    setFormError(null);
     setFile(f);
   };
 
@@ -73,9 +77,6 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       setTimeout(() => {
         onClose();
       }, 2000);
-    },
-    onError: (err: Error) => {
-      alert(`Failed: ${err.message}`);
     },
   });
 
@@ -91,9 +92,10 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     };
 
     if (!file) {
-      alert('Please select a file to upload');
+      setFormError('Please select a video file to upload.');
       return;
     }
+    setFormError(null);
 
     try {
       const uploadRes = await getVideoUploadUrl(authFetch, {
@@ -128,17 +130,17 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
         size_bytes: file.size,
       });
     } catch (err: any) {
-      alert(`Upload failed: ${err.message || err}`);
+      setFormError(`Upload failed: ${err?.message || 'please try again.'}`);
     }
   };
 
   return (
     <Modal open={open} onClose={onClose} size="lg" aria-label="Add strength video">
-      <ModalHeader title="Add Strength Video" onClose={onClose} icon="📹" />
+      <ModalHeader title="Add Strength Video" onClose={onClose} />
 
       {uploadComplete ? (
         <div className="flex flex-col items-center justify-center py-8 gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <Spinner size={32} label="Video uploaded, processing" />
           <p className="text-sm text-white font-medium">Video uploaded!</p>
           <p className="text-xs text-muted text-center">
             Processing will happen in the background —<br />
@@ -147,6 +149,11 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
         </div>
       ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
+        {formError ? (
+          <p role="alert" className="text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5">
+            {formError}
+          </p>
+        ) : null}
         <div>
           <label className="block text-sm text-muted mb-1">Video file</label>
           <input
@@ -241,14 +248,14 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-4 py-2 text-sm text-muted hover:text-white transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+            className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
           >
             {createMutation.isPending ? 'Saving...' : 'Save Video'}
           </button>

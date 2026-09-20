@@ -37,11 +37,12 @@ export function RoutesGridView({
         return (
           <Card
             key={route.id}
+            onClick={() => onSelect(route)}
             className={`cursor-pointer transition-all hover:shadow-lg ${
               isSelected ? 'border-accent ring-1 ring-accent/30' : ''
             }`}
           >
-            <div className="p-4" onClick={() => onSelect(route)}>
+            <div className="p-4">
               <div className="flex items-start justify-between mb-3">
                 <h3 className="text-white font-medium text-sm truncate flex-1">
                   {route.name}
@@ -105,23 +106,21 @@ export function RoutesGridView({
               </div>
 
               {/* Compare checkbox */}
-              <div
-                className="mt-3 pt-2 border-t border-surface-light/30 flex justify-between items-center"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleCompare(route.id);
-                }}
-              >
-                <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
+              <div className="mt-3 pt-2 border-t border-surface-light/30 flex justify-between items-center">
+                <label
+                  className="flex items-center gap-2 min-h-[44px] pr-2 text-xs text-muted cursor-pointer rounded-lg hover:text-white"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={isCompareSelected}
-                    readOnly
-                    className="w-3 h-3 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleCompare(route.id);
+                    onChange={() => toggleCompare(route.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
                     }}
+                    aria-label={`Compare ${route.name}`}
+                    className="w-4 h-4 rounded border-surface-light bg-surface-light accent-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
                   />
                   <span>Compare</span>
                 </label>

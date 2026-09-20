@@ -10,6 +10,8 @@ import {
   updateWeightEntry,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { useUnits } from '@/lib/units';
 import {
   displayWeightToKg,
@@ -41,6 +43,8 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
   const [editingValue, setEditingValue] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; date: string; weight: string } | null>(null);
+  const toast = useToast();
 
   const { data: history, isLoading } = useQuery({
     queryKey: WEIGHT_QUERY_KEY,
@@ -86,8 +90,15 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteWeightEntry(authFetch, id),
-    onSuccess: invalidate,
-    onError: () => setError('Failed to delete weight entry.'),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      toast.success('Weight entry deleted');
+      invalidate();
+    },
+    onError: () => {
+      setDeleteTarget(null);
+      setError('Failed to delete weight entry.');
+    },
   });
 
   const submitAdd = (e: React.FormEvent) => {
@@ -126,6 +137,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
   );
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Body Weight</CardTitle>
@@ -335,8 +347,13 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                             Edit
                           </button>
                           <button
-                            onClick={() => deleteMutation.mutate(entry.id)}
-                            disabled={deleteMutation.isPending}
+                            onClick={() =>
+                              setDeleteTarget({
+                                id: entry.id,
+                                date: formatDateDMY(entry.date),
+                                weight: formatWeight(entry.weight_kg),
+                              })
+                            }
                             aria-label={`Delete weight for ${entry.date}`}
                             className="min-h-[44px] flex items-center text-xs text-warning hover:text-warning/80 disabled:opacity-50"
                           >
@@ -370,5 +387,24 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
         </p>
       )}
     </Card>
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      title="Delete weight entry?"
+      description={
+        deleteTarget
+          ? `Delete the ${deleteTarget.date} entry (${deleteTarget.weight})? This cannot be undone.`
+          : undefined
+      }
+      confirmLabel="Delete"
+      danger
+      pending={deleteMutation.isPending}
+      onConfirm={() => {
+        if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+      }}
+      onCancel={() => {
+        if (!deleteMutation.isPending) setDeleteTarget(null);
+      }}
+    />
+    </>
   );
 }

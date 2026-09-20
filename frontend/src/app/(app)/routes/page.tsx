@@ -461,13 +461,29 @@ export default function RoutesPage() {
         </Modal>
       )}
 
-      {/* Compare Routes Modal */}
-      {compareMode && (compareRouteAData || compareRouteBData) && (
+      {/* Compare Routes Modal — only once both routes have loaded */}
+      {compareMode && compareRouteAData && compareRouteBData && (
         <CompareRoutesModal
-          routeA={compareRouteAData!}
-          routeB={compareRouteBData!}
+          routeA={compareRouteAData}
+          routeB={compareRouteBData}
           onClose={() => clearCompareRoutes()}
         />
+      )}
+
+      {/* One-route hint: guide the user to pick a second route */}
+      {compareMode && !(compareRouteAData && compareRouteBData) && (
+        <div
+          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-surface border border-accent/30 rounded-xl px-4 py-3 shadow-2xl"
+          role="status"
+        >
+          <p className="text-sm text-white whitespace-nowrap">Select a second route to compare</p>
+          <button
+            onClick={() => clearCompareRoutes()}
+            className="min-h-[44px] px-3 text-sm font-medium text-accent hover:text-white rounded-lg transition-colors"
+          >
+            Exit Compare
+          </button>
+        </div>
       )}
     </div>
   );

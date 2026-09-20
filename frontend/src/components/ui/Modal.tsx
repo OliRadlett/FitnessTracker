@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { X } from 'lucide-react';
 
 interface ModalProps {
   open: boolean;
@@ -142,8 +143,8 @@ export function ModalHeader({ title, onClose, icon }: ModalHeaderProps) {
         {icon && <span aria-hidden="true">{icon}</span>}
         {title}
       </h3>
-      <button onClick={onClose} className="text-muted hover:text-white text-xl min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Close">
-        ×
+      <button onClick={onClose} className="text-muted hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Close">
+        <X size={20} aria-hidden="true" />
       </button>
     </div>
   );
