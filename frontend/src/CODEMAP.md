@@ -27,13 +27,15 @@
 > **2026-09 dead-client sweep**: the `activities`, `dashboard`, `nutrition`,
 > `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth` client modules were
 > deleted (zero importers — those pages call endpoints inline via `authFetch`), and dead
-> functions were pruned from survivors. (A `cycling` client was deleted in the sweep but later recreated — `cycling.ts` is live.) Domain **types** under `types/` are unaffected.
+> functions were pruned from survivors. **B-10 (2026-09-20)**: `cycling.ts` (12 unused fns),
+> `crossDomain.ts`, `preferences.ts` deleted; 3 unused video fns pruned from `lifting.ts`.
+> All remaining module functions are imported somewhere. Domain **types** under `types/` are unaffected.
 
 | File | Backend Prefix | Key Functions |
 |------|---------------|---------------|
 | `fetch.ts` | — | `apiFetch`, `apiFetchWithHeaders`, `apiUpload`, `useAuthFetch` hook |
 | `types.ts` | — | Barrel re-exports from `types/` domain modules |
-| `lifting.ts` | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, `suggestLoad` (`POST /suggest-load` %e1RM prescription, FL3), video AI (`getLiftVideos`, `getLiftVideo`, `createLiftVideo`, `getVideoUploadUrl`, `getVideoStreamUrl`, `deleteLiftVideo`, `processLiftVideo`, `getVideoProcessStatus`) |
+| `lifting.ts` | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, `suggestLoad` (`POST /suggest-load` %e1RM prescription, FL3), video AI (`createLiftVideo`, `getVideoUploadUrl`, `getVideoStreamUrl`, `deleteLiftVideo`, `processLiftVideo` — read-path fns removed B-10, pages fetch inline) |
 | `routes.ts` | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, **duplicates** (`getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`), `downloadRouteGpx`, **merged view** (`getMergedRouteView` — per-source polylines + ridden segments), **heatmap** (`getHomeAreaHeatmap` — activity points near home). Smart collections via typed `createCollectionFromFilters`; remaining tag/quality/effort/bulk operations are called inline by the routes UI |
 | `goals.ts` | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` |
 | `trainingPlans.ts` | `/api/v1/training-plans/` | `getTrainingPlans`, **week view** (`getPlanWeek` — `GET /{id}/week/{n}?include_weather`; days carry `targets_stale`, FL1), targeted day edits (`updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`), **target refresh** (`refreshTargets` — `POST /{id}/refresh-targets`, FL1/FL3), **workout preview** (`previewWorkout` + `WorkoutPreviewTargets`/`WorkoutPreviewResponse` types — used by PlanBuilder), **adaptive** (`getAdaptiveSuggestions` — §3.11 weekly advice) |
@@ -44,13 +46,12 @@
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
 | `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD with optional body-composition payload (`WeightEntryPayload`: body_fat_% + muscle; types via `types/health.ts` `WeightEntry` incl. composition fields/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
-| `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
-| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download). Types in `types/export.ts` |
-| `cycling.ts` | `/api/v1/cycling/` | PRs/profile/FTP/power-curve/lifetime-PBs/metrics-summary + Modal `getPowerModel` (CP/W′/VO2max/adaptive taus) and `getWeatherAnalysis` (weather-performance) |
+| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download), `logoutBackend` (`POST /auth/logout`, SEC-07). Types in `types/export.ts` |
 | `segments.ts` | `/api/v1/segments`, `/api/v1/routes/{id}/segments` | `getSegments`, `getSegmentDetail`, `recomputeRouteSegments` (§3.13 climb segments) |
 | `healthPrefs.ts` | `/api/v1/metrics/health-preferences` | `getHealthPreferences`, `updateHealthPreferences` (§3.12 tuning) |
-| `crossDomain.ts` | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) |
 | `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
+
+> B-10 removed `preferences.ts` (fns unused — `units.tsx` calls `/user/preferences` inline; types stay in `types/preferences.ts`) and `crossDomain.ts` (fn unused — WeeklyTab calls inline).
 
 ## Components
 

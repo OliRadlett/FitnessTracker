@@ -322,12 +322,14 @@ export default function DashboardPage() {
           goals={goals}
           deficiency={deficiency}
           deficiencyLoading={deficiencyLoading}
-          monthlySummary={monthlySummary}
-          selectedYear={selectedYear}
-          setSelectedYear={setSelectedYear}
-          currentYear={currentYear}
-          yearlySummary={yearlySummary}
-          yearlyLoading={yearlyLoading}
+          period={{
+            monthlySummary,
+            selectedYear,
+            setSelectedYear,
+            currentYear,
+            yearlySummary,
+            yearlyLoading,
+          }}
           upcomingEvents={upcomingEvents}
           llmAnalysis={llmAnalysis}
           llmLoading={llmLoading}

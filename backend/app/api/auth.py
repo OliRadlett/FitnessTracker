@@ -175,7 +175,8 @@ async def oauth_authorize(provider: str):
     return RedirectResponse(url=url)
 
 
-@router.api_route("/oauth/{provider}/callback", methods=["GET", "POST"])
+@router.get("/oauth/{provider}/callback", operation_id="oauth_callback_get")
+@router.post("/oauth/{provider}/callback", operation_id="oauth_callback_post")
 async def oauth_callback(
     request: Request,
     provider: str,

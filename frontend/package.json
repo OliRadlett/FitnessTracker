@@ -13,7 +13,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:bug-report": "playwright test e2e/bug-report.spec.ts"
+    "test:bug-report": "playwright test e2e/bug-report.spec.ts",
+    "codegen": "openapi-typescript http://localhost:8000/openapi.json -o src/lib/api/types/generated.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -53,6 +54,7 @@
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^4.3.0",
     "jsdom": "^25.0.0",
+    "openapi-typescript": "^7.13.0",
     "vitest": "^2.1.0"
   }
 }

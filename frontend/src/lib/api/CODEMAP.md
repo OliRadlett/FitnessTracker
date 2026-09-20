@@ -8,9 +8,20 @@
 > `dashboard`,
 > `nutrition`, `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth`
 > API-client modules were deleted (zero importers — pages call those endpoints
-> inline via `authFetch`). Dead functions were pruned from the surviving modules. (A `cycling` client was deleted in the sweep but later recreated — `cycling.ts` is live with 12 exports.)
+> inline via `authFetch`). Dead functions were pruned from the surviving modules.
 > The domain **types** in `types/` are unaffected and still exported via
 > `types.ts`.
+>
+> > **B-10 decision (2026-09-20, recorded): Option B for live modules, Option A
+> > for dead ones.** The recreated `cycling.ts` (12 fns, still zero importers —
+> > cycling pages call inline) was deleted again, with `crossDomain.ts`
+> > (`getCrossDomainInsights`) and `preferences.ts` (`getPreferences`,
+> > `updatePreferences`; `units.tsx` calls inline, types stay in
+> > `types/preferences.ts`), plus 3 unused video fns in `lifting.ts`
+> > (`getLiftVideos`, `getLiftVideo`, `getVideoProcessStatus`). Remaining
+> > modules are 100% used (survey 2026-09-20). Convention going forward: pages
+> > may call inline via `authFetch`; add a typed client fn only when ≥2 call
+> > sites need it.
 
 ## API Client Modules (`src/lib/api/`)
 
@@ -26,14 +37,14 @@ requests with an optional JWT Bearer token and `credentials: 'include'`.
 | `useAuthFetch()` | `hook` | Returns `{ authFetch, authFetchWithHeaders }` — injects JWT from NextAuth session. |
 
 ### `index.ts` — Barrel file
-Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `preferences`, `account`, `healthPrefs`, `crossDomain`.
+Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `account`, `healthPrefs`.
 
 ### Per-module API surface
 
 | Module | Backend Prefix | Exported Functions | Key Types |
 |--------|---------------|-------------------|-----------|
 | **`routes.ts`** | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, `getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`, `downloadRouteGpx`, `getMergedRouteView`, `getHomeAreaHeatmap`, **`createCollectionFromFilters`** (POST smart collection from current filter state) | `RouteSummary`, `RouteData`, `RouteFilters`, `RouteSyncResult`, `DuplicatePair`, `MergedRouteView`, `HomeAreaHeatmapResponse`, `RouteCollection`, `RouteCollectionCreate` |
-| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`getLiftVideos`** (list+filter by exercise/session/PR/date), **`getLiftVideo`**, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (R2 presigned GET), **`deleteLiftVideo`**, **`processLiftVideo`** (Modal video AI), **`getVideoProcessStatus`** | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`**, **`LiftVideoListParams`** |
+| **`lifting.ts`** | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `updateLiftingSession`, `createLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, **`createLiftVideo`**, **`getVideoUploadUrl`** (R2 presigned PUT), **`getVideoStreamUrl`** (R2 presigned GET), **`deleteLiftVideo`**, **`processLiftVideo`** (Modal video AI) — read-path video fns removed B-10 (pages fetch inline) | `LiftingSession`, `LiftingSet`, `PersonalRecord`, `AddSetPayload`, `CreateSessionPayload`, `UpdateSessionPayload`, `WarmupTemplate`, **`LiftVideo`**, **`VideoUploadRequest`**, **`VideoUploadResponse`**, **`VideoStreamUrl`** |
 | **`trainingPlans.ts`** | `/api/v1/training-plans/` | `getTrainingPlans`, `getPlanWeek`, `updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`, `previewWorkout`, `getAdaptiveSuggestions` (§3.11) | `TrainingPlanSummary`, `TrainingWeekResponse`, `UpdateTrainingPlanDayPayload`, `TrainingPlanDay`, `WorkoutPreviewTargets`, `WorkoutPreviewResponse` |
 | **`goals.ts`** | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` | `Goal`, `GoalCheckIn`, `MetricInfo`, `CreateGoalPayload`, `UpdateGoalPayload`, `GoalCheckInPayload`, `ReactivateResponse` |
 | **`conformity.ts`** | `/api/v1/training-plans/` | `getPlanConformity`, `getDayConformity`, `linkPlanActivities` | `PlanConformityResponse`, `DayConformityResponse`, `LinkActivitiesResponse` |
@@ -41,18 +52,20 @@ Re-exports from: `types`, `fetch`, `lifting`, `cycling`, `routes`, `goals`, `tra
 | **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection` | `GoalProjectionResponse` |
 | **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
 | **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
-| **`cycling.ts`** | `/api/v1/cycling/` | `getCyclingPRs`, `createCyclingPR`, `checkCyclingPRs`, `getCyclingProfile`, `updateCyclingProfile`, `getFtpHistory`, `addFtpHistory`, `getPowerCurve`, `getLifetimePBs`, `getCyclingMetricsSummary`, **`getPowerModel`** (Modal CP/W′/VO2max/adaptive taus), **`getWeatherAnalysis`** (Modal weather-performance) | `CyclingProfile`, `PowerCurveResponse`, `PowerModelResultsResponse`, `WeatherAnalysisResponse`, `CyclingMetricsSummary` |
-| **`crossDomain.ts`** | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) | `CrossDomainInsightsResponse`, `CrossDomainInsightType` |
 | **`segments.ts`** | `/api/v1/segments`, `/api/v1/routes/{id}/segments` | `getSegments`, `getSegmentDetail`, `recomputeRouteSegments` (§3.13) | `SegmentRead`, `SegmentDetail` |
 | **`weight.ts`** | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` (manual weigh-ins + body composition) | `WeightEntry`, `WeightHistoryResponse` |
 | **`search.ts`** | `/api/v1/search` | `globalSearch` (command-palette lookup) | cross-domain result types |
-| **`preferences.ts`** | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` | `UserPreferences` |
-| **`account.ts`** | `/api/v1/export`, `/api/v1/account` | `exportFullJson`, `deleteAccount`, `downloadExport` (§3.9 portability) | `types/export.ts` |
+| **`account.ts`** | `/api/v1/export`, `/api/v1/account` | `exportFullJson`, `deleteAccount`, `downloadExport` (§3.9 portability), `logoutBackend` (SEC-07 token revocation) | `types/export.ts` |
 | **`healthPrefs.ts`** | `/api/v1/metrics/health-preferences` | `getHealthPreferences`, `updateHealthPreferences` (§3.12) | `types/health.ts` |
+
+> B-10 removals (2026-09-20): `cycling.ts` (12 unused fns), `crossDomain.ts`,
+> `preferences.ts` (fns only — types stay in `types/`) deleted; 3 unused video
+> fns pruned from `lifting.ts`. All remaining module functions are imported
+> somewhere (survey 2026-09-20).
 
 > Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
 > analysis, workout planner, deficiency) call their endpoints **inline** via
-> `authFetch` instead of a typed client — that's why only 17 API-client modules
+> `authFetch` instead of a typed client — that's why only 14 API-client modules
 > remain (barrel in `index.ts`).
 
 ### `types/` subdirectory
@@ -63,6 +76,16 @@ Domain type modules re-exported via `types.ts`:
   `types/nutrition.ts`, `types/weather.ts`, `types/conformity.ts`,
   `types/projections.ts`, `types/notifications.ts`, `types/segments.ts`,
   `types/export.ts`, `types/preferences.ts`
+
+### `types/generated.ts` — OpenAPI codegen (B-11, §5.9)
+Regenerate with `npm run codegen` (requires the backend stack for
+`http://localhost:8000/openapi.json`). Import as a namespace —
+`import type { components } from '@/lib/api/types/generated'` then
+`components['schemas']['EventWithCountdown']` — and do NOT add it to the
+barrel (schema names like `Event` would collide with DOM lib types).
+Manual `types/*.ts` are now deltas: when adding a field, prefer the
+generated schema type; keep a manual interface only when the frontend needs
+a shaped subset. Re-run codegen whenever backend schemas change.
 
 ## Lifting Utilities (`src/lib/lifting/`)
 
