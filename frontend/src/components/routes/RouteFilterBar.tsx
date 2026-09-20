@@ -41,13 +41,13 @@ export function RouteFilterBar() {
   const [collectionName, setCollectionName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Debounced search
+  // Debounced search — only writes when the query actually changed, otherwise
+  // the new filter object re-triggers this effect forever (update loop).
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localQ.trim()) {
-        setFilters({ ...filters, q: localQ.trim() });
-      } else if (filters.q) {
-        setFilters({ ...filters, q: undefined });
+      const q = localQ.trim() || undefined;
+      if (filters.q !== q) {
+        setFilters({ ...filters, q });
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -95,6 +95,7 @@ export function RouteFilterBar() {
       if (filters.max_elevation) rules.max_elevation = filters.max_elevation;
       if (filters.min_quality_score) rules.min_quality_score = filters.min_quality_score;
       if (filters.is_loop !== undefined) rules.is_loop = filters.is_loop;
+      if (filters.is_ridden !== undefined) rules.is_ridden = filters.is_ridden;
       if (filters.is_favorite) rules.is_favorite = true;
       if (filters.sport_type) rules.sport_type = filters.sport_type;
 

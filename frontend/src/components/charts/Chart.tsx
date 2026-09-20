@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import type { ChartData } from '@/lib/api';
+import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import {
   ResponsiveContainer,
   LineChart, Line,
@@ -103,14 +105,26 @@ interface ChartFrameProps {
 }
 
 /**
- * Renders a chart body with built-in loading and empty states.
+ * Renders a chart body with built-in loading, error, and empty states.
  * Use directly inside a Card when you need custom chrome around it.
  */
-export function ChartBody({ isLoading, data, emptyMessage = 'No data available', height = 400, className = '' }: ChartFrameProps & { isLoading?: boolean; emptyMessage?: React.ReactNode }) {
+export function ChartBody({ isLoading, isError, onRetry, data, emptyMessage = 'No data available', height = 400, className = '' }: ChartFrameProps & { isLoading?: boolean; isError?: boolean; onRetry?: () => void; emptyMessage?: React.ReactNode }) {
   if (isLoading) {
     return (
-      <div className={`h-80 flex items-center justify-center ${className}`} style={{ height }}>
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" aria-label="Loading chart" />
+      <div className={`flex items-center justify-center ${className}`} style={{ height }}>
+        <Spinner size={32} label="Loading chart" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className={`flex flex-col items-center justify-center gap-2 text-center ${className}`} style={{ height }} role="alert">
+        <p className="text-sm text-warning">Couldn&apos;t load this chart</p>
+        {onRetry ? (
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }

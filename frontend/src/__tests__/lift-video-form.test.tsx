@@ -72,7 +72,6 @@ function renderForm(open: boolean = true) {
 describe('LiftVideoForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('alert', vi.fn());
   });
 
   it('renders the form when open', () => {
@@ -93,10 +92,12 @@ describe('LiftVideoForm', () => {
     expect(screen.queryByText('External URL (YouTube/Vimeo)')).toBeNull();
   });
 
-  it('alerts when submitting without selecting a file', () => {
+  it('shows an inline error when submitting without selecting a file', () => {
     renderForm();
     fireEvent.click(screen.getByText('Save Video'));
-    expect(window.alert).toHaveBeenCalledWith('Please select a file to upload');
+    const banner = screen.getByRole('alert');
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveTextContent('Please select a video file to upload.');
   });
 
   it('rejects unsupported file formats', () => {
@@ -104,9 +105,8 @@ describe('LiftVideoForm', () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     const badFile = new File(['x'], 'notes.txt', { type: 'text/plain' });
     fireEvent.change(input, { target: { files: [badFile] } });
-    expect(window.alert).toHaveBeenCalledWith(
-      expect.stringContaining('Unsupported format'),
-    );
+    const banner = screen.getByRole('alert');
+    expect(banner).toHaveTextContent('Unsupported format');
   });
 
   it('rejects files over 250 MB', () => {
@@ -114,7 +114,8 @@ describe('LiftVideoForm', () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     const bigFile = { name: 'huge.mp4', size: 300 * 1024 * 1024, type: 'video/mp4' };
     fireEvent.change(input, { target: { files: [bigFile] } });
-    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('File too large'));
+    const banner = screen.getByRole('alert');
+    expect(banner).toHaveTextContent('File too large');
   });
 
   it('populates session dropdown', () => {

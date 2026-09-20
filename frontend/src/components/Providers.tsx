@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { SessionProvider } from 'next-auth/react';
+import { ToastProvider } from '@/components/ui/Toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +53,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider basePath="/fittrack/api/auth">
       <QueryClientProvider client={queryClient}>
         <BackendTokenWatcher />
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </QueryClientProvider>
     </SessionProvider>
   );
