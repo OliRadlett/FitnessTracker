@@ -10,6 +10,10 @@ from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity
 from app.models.lifting import LiftingSession
+from app.services.lifting import (
+    apply_strava_duration_fallback,
+    session_span_implausible,
+)
 
 # Sport types that represent strength/weight training (used in filters)
 STRENGTH_SPORT_TYPES = (
@@ -194,6 +198,10 @@ async def link_activity_to_lifting_sessions(
     # Also backfill duration if session is missing it and activity has it
     if not best_session.duration_seconds and activity.duration_seconds:
         best_session.duration_seconds = activity.duration_seconds
+    # …or when the stored time is implausibly long (≥3h, stale live finish),
+    # default to the newly linked activity's recorded time.
+    elif session_span_implausible(best_session):
+        apply_strava_duration_fallback(best_session, activity)
 
     await db.flush()
     return best_session
