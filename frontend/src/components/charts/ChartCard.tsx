@@ -9,6 +9,8 @@ interface ChartCardProps {
   title: React.ReactNode;
   actions?: React.ReactNode;
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   data?: ChartData | null;
   emptyMessage?: React.ReactNode;
   height?: number;
@@ -16,13 +18,15 @@ interface ChartCardProps {
 }
 
 /**
- * Card wrapper around Chart with built-in loading skeleton and empty state.
+ * Card wrapper around Chart with built-in loading, error, and empty states.
  * Use `actions` for range selectors or other header controls.
  */
 export function ChartCard({
   title,
   actions,
   isLoading,
+  isError,
+  onRetry,
   data,
   emptyMessage,
   height = 320,
@@ -38,6 +42,8 @@ export function ChartCard({
       </CardHeader>
       <ChartBody
         isLoading={isLoading}
+        isError={isError}
+        onRetry={onRetry}
         data={data ?? undefined}
         emptyMessage={emptyMessage}
         height={height}

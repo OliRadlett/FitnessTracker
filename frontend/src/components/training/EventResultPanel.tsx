@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Event, EventResult } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 
 // Formats like "3:24:10" / "3h 24m". Returns the raw string if unparseable.
 function formatFinishingTime(secondsOrStr: string | number | undefined | null): string {
@@ -54,6 +56,8 @@ export function EventResultPanel({ event }: { event: Event }) {
 
   const [form, setForm] = useState<EventResult>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const toast = useToast();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['events'] });
@@ -80,9 +84,15 @@ export function EventResultPanel({ event }: { event: Event }) {
   const clearMutation = useMutation({
     mutationFn: () =>
       authFetch<Event>(`/api/v1/events/${event.id}/result`, { method: 'DELETE' }),
-    onSuccess: invalidate,
-    onError: (err: Error) =>
-      setActionError(err.message || 'Failed to clear result'),
+    onSuccess: () => {
+      setConfirmClear(false);
+      toast.success('Race result cleared');
+      invalidate();
+    },
+    onError: (err: Error) => {
+      setConfirmClear(false);
+      setActionError(err.message || 'Failed to clear result');
+    },
   });
 
   if (!isPast && !hasResult) return null;
@@ -105,9 +115,8 @@ export function EventResultPanel({ event }: { event: Event }) {
                   {showForm ? 'Cancel' : 'Edit result'}
                 </button>
                 <button
-                  onClick={() => clearMutation.mutate()}
-                  disabled={clearMutation.isPending}
-                  className="text-[11px] text-warning hover:text-warning/80 disabled:opacity-50"
+                  onClick={() => setConfirmClear(true)}
+                  className="min-h-[44px] px-1 text-[11px] text-warning hover:text-warning/80 disabled:opacity-50"
                 >
                   Clear
                 </button>
@@ -208,6 +217,18 @@ export function EventResultPanel({ event }: { event: Event }) {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear race result?"
+        description={`Clear the saved result for "${event.name}"? This cannot be undone.`}
+        confirmLabel="Clear result"
+        danger
+        pending={clearMutation.isPending}
+        onConfirm={() => clearMutation.mutate()}
+        onCancel={() => {
+          if (!clearMutation.isPending) setConfirmClear(false);
+        }}
+      />
     </>
   );
 }

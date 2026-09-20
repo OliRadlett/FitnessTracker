@@ -4,22 +4,53 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import {
+  Activity,
+  Bell,
+  Bike,
+  BookOpen,
+  CalendarDays,
+  ChevronsLeft,
+  ClipboardList,
+  Dumbbell,
+  HeartPulse,
+  House,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Route,
+  Search,
+  Settings,
+  Target,
+  Video,
+  X,
+  Zap,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { AppIcon } from '@/components/ui/AppIcon';
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/training', label: 'Training', icon: '📋' },
-  { href: '/activities', label: 'Activities', icon: '🏃' },
-  { href: '/calendar', label: 'Calendar', icon: '📅' },
-  { href: '/cycling', label: 'Cycling', icon: '🚴' },
-  { href: '/health', label: 'Health', icon: '🩺' },
-  { href: '/lifting', label: 'Lifting', icon: '🏋️' },
-  { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
-  { href: '/lifting/videos', label: 'Videos', icon: '📹' },
-  { href: '/goals', label: 'Goals', icon: '🎯' },
-  { href: '/routes', label: 'Routes', icon: '🗺️' },
-  { href: '/wiki', label: 'Wiki', icon: '📖' },
-  { href: '/notifications', label: 'Notifications', icon: '🔔' },
-  { href: '/settings', label: 'Settings', icon: '⚙️' },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  section: 'Overview' | 'Train' | 'Resources';
+}
+
+const navItems: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays, section: 'Overview' },
+  { href: '/notifications', label: 'Notifications', icon: Bell, section: 'Overview' },
+  { href: '/training', label: 'Training', icon: ClipboardList, section: 'Train' },
+  { href: '/goals', label: 'Goals', icon: Target, section: 'Train' },
+  { href: '/activities', label: 'Activities', icon: Activity, section: 'Train' },
+  { href: '/lifting', label: 'Lifting', icon: Dumbbell, section: 'Train' },
+  { href: '/lifting/live', label: 'Live Lift', icon: Zap, section: 'Train' },
+  { href: '/lifting/videos', label: 'Videos', icon: Video, section: 'Train' },
+  { href: '/cycling', label: 'Cycling', icon: Bike, section: 'Train' },
+  { href: '/health', label: 'Health', icon: HeartPulse, section: 'Train' },
+  { href: '/routes', label: 'Routes', icon: Route, section: 'Train' },
+  { href: '/wiki', label: 'Wiki', icon: BookOpen, section: 'Resources' },
+  { href: '/settings', label: 'Settings', icon: Settings, section: 'Resources' },
 ];
 
 // ── Sidebar Context ──────────────────────────────────────────────────────────
@@ -131,13 +162,7 @@ export function MobileMenuButton() {
       aria-controls="sidebar-navigation"
       className="md:hidden fixed top-4 left-4 z-50 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
     >
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        {isOpen ? (
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        ) : (
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        )}
-      </svg>
+      {isOpen ? <AppIcon icon={X} size={24} /> : <AppIcon icon={Menu} size={24} />}
     </button>
   );
 }
@@ -147,12 +172,12 @@ export function MobileMenuButton() {
 // The full 14-item list stays in the hamburger drawer; this bar covers the
 // 4 most-used pages + a More button that opens the drawer.
 
-const bottomNavItems = [
-  { href: '/dashboard', label: 'Home', icon: '📊' },
-  { href: '/activities', label: 'Activity', icon: '🏃' },
-  { href: '/training', label: 'Training', icon: '📋' },
-  { href: '/lifting/live', label: 'Live Lift', icon: '⚡' },
-  { href: '/routes', label: 'Routes', icon: '🗺️' },
+const bottomNavItems: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: '/dashboard', label: 'Home', icon: House },
+  { href: '/activities', label: 'Activity', icon: Activity },
+  { href: '/training', label: 'Training', icon: ClipboardList },
+  { href: '/lifting/live', label: 'Live Lift', icon: Zap },
+  { href: '/routes', label: 'Routes', icon: Route },
 ];
 
 export function MobileBottomNav() {
@@ -180,9 +205,7 @@ export function MobileBottomNav() {
                   : 'text-muted hover:text-white active:bg-surface-light/50'
               }`}
             >
-              <span className="text-xl leading-none" aria-hidden="true">
-                {item.icon}
-              </span>
+              <AppIcon icon={item.icon} size={20} />
               <span className="leading-tight truncate max-w-full px-0.5">
                 {item.label}
               </span>
@@ -286,12 +309,16 @@ export function Sidebar() {
         `}
       >
         <div className={`border-b border-surface-light/50 ${isCollapsed ? 'md:px-2 md:py-4 md:flex md:justify-center p-6' : 'p-6'}`}>
-          <h1 className={`text-xl font-bold text-white flex items-center gap-2 ${isCollapsed ? 'md:hidden' : ''}`}>
-            <span className="text-2xl" aria-hidden="true">💪</span>
-            Fitness Tracker
+          <h1 className={`text-xl font-bold text-white flex items-center gap-2.5 ${isCollapsed ? 'md:hidden' : ''}`}>
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent" aria-hidden="true">
+              <Zap size={18} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+            </span>
+            FitTrack
           </h1>
           {isCollapsed && (
-            <span className="hidden md:inline text-2xl" aria-hidden="true">💪</span>
+            <span className="hidden md:inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent" aria-hidden="true">
+              <Zap size={18} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+            </span>
           )}
         </div>
 
@@ -303,13 +330,13 @@ export function Sidebar() {
               isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
             } text-muted hover:text-white hover:bg-surface-light/50 border border-surface-light/30 mb-1`}
           >
-            <span className="text-lg" aria-hidden="true">🔍</span>
+            <AppIcon icon={Search} size={18} className="shrink-0" />
             <span className={`flex-1 ${isCollapsed ? 'md:hidden' : ''}`}>Search</span>
-            <kbd className={`hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[10px] text-muted ${isCollapsed ? 'md:hidden' : ''}`}>
+            <kbd className={`hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[11px] text-muted ${isCollapsed ? 'md:hidden' : ''}`}>
               Ctrl+P
             </kbd>
           </button>
-          {navItems.map((item) => {
+          {(() => {
             // Longest-prefix match so sub-pages (e.g. /routes/duplicates)
             // highlight their parent item, and child items win over parents
             // (e.g. /lifting/live over /lifting) on their own pages.
@@ -319,26 +346,46 @@ export function Sidebar() {
                 (best, i) => (!best || i.href.length > best.length ? i.href : best),
                 undefined,
               );
-            const isActive = activeHref === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={isActive ? 'page' : undefined}
-                title={isCollapsed ? item.label : undefined}
-                className={`flex items-center rounded-lg text-sm font-medium transition-colors ${
-                  isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
-                } ${
-                  isActive
-                    ? 'bg-accent/20 text-accent border border-accent/30'
-                    : 'text-muted hover:text-white hover:bg-surface-light/50'
-                }`}
-              >
-                <span className="text-lg" aria-hidden="true">{item.icon}</span>
-                <span className={isCollapsed ? 'md:hidden' : ''}>{item.label}</span>
-              </Link>
-            );
-          })}
+            let lastSection: NavItem['section'] | null = null;
+            return navItems.map((item) => {
+              const isActive = activeHref === item.href;
+              const showSection = item.section !== lastSection;
+              lastSection = item.section;
+              return (
+                <React.Fragment key={item.href}>
+                  {showSection && !isCollapsed && (
+                    <p className="px-4 pt-4 pb-1 text-[11px] font-medium text-muted/70 uppercase tracking-wider" aria-hidden="true">
+                      {item.section}
+                    </p>
+                  )}
+                  {showSection && isCollapsed && (
+                    <span className="hidden md:block mx-4 my-2 border-t border-surface-light/50" aria-hidden="true" />
+                  )}
+                  <Link
+                    href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    title={isCollapsed ? item.label : undefined}
+                    className={`relative flex items-center rounded-lg text-sm font-medium transition-colors ${
+                      isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
+                    } ${
+                      isActive
+                        ? 'bg-accent/20 text-accent border border-accent/30'
+                        : 'text-muted hover:text-white hover:bg-surface-light/50'
+                    }`}
+                  >
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-accent"
+                      />
+                    )}
+                    <AppIcon icon={item.icon} size={18} className="shrink-0" />
+                    <span className={isCollapsed ? 'md:hidden' : ''}>{item.label}</span>
+                  </Link>
+                </React.Fragment>
+              );
+            });
+          })()}
         </nav>
 
         {/* Collapse toggle — desktop only */}
@@ -347,15 +394,9 @@ export function Sidebar() {
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className="hidden md:flex items-center justify-center mx-2 mb-2 p-2 rounded-lg text-muted hover:text-white hover:bg-surface-light/50 transition-colors"
         >
-          <svg
-            className={`w-5 h-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
+          <span className={`inline-flex transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}>
+            <AppIcon icon={ChevronsLeft} size={20} />
+          </span>
         </button>
 
         {session?.user && (
@@ -382,9 +423,9 @@ export function Sidebar() {
             >
               <span className={isCollapsed ? 'md:hidden' : ''}>Sign out</span>
               {isCollapsed && (
-                <svg className="hidden md:inline w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
+                <span className="hidden md:inline-flex">
+                  <AppIcon icon={LogOut} size={20} />
+                </span>
               )}
             </button>
           </div>

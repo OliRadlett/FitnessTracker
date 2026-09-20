@@ -38,7 +38,7 @@ test.describe('Sidebar Navigation', () => {
 
   test('sidebar shows app title', async ({ authenticatedPage: page }) => {
     const sidebar = page.locator('#sidebar-navigation');
-    await expect(sidebar.locator('text=Fitness Tracker')).toBeVisible();
+    await expect(sidebar.locator('text=FitTrack')).toBeVisible();
   });
 
   test('clicking each nav link navigates to correct page', async ({ authenticatedPage: page }) => {

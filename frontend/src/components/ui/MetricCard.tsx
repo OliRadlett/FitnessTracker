@@ -95,11 +95,11 @@ export function MetricCard({
         {icon && <span className="text-base">{icon}</span>}
         <p className="text-sm text-muted">{label}</p>
         {tooltip && (
-          <span className="text-muted/50 text-xs cursor-help" title={tooltip}>ⓘ</span>
+          <span className="text-muted text-xs cursor-help" title={tooltip} tabIndex={0} aria-label={tooltip}>ⓘ</span>
         )}
       </div>
       <div className="flex items-center gap-2">
-        <p className={`text-2xl font-bold ${color}`}>
+        <p className={`text-2xl font-bold tabular-nums ${color}`}>
           {value !== undefined && value !== null ? value : '—'}
           {unit && <span className="text-sm font-normal text-muted ml-1">{unit}</span>}
         </p>
@@ -108,7 +108,7 @@ export function MetricCard({
       </div>
       {displayText && <p className="text-xs text-muted mt-1">{displayText}</p>}
       {tooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface text-xs text-muted rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface text-xs text-muted rounded-lg shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
           {tooltip}
         </div>
       )}

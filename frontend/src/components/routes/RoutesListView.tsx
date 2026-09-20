@@ -22,9 +22,10 @@ const RouteRow = ({
 
   return (
     <Card
+      onClick={() => onSelect(route)}
       className="mx-3 my-2 cursor-pointer transition-all hover:border-accent/50"
     >
-      <div className="p-4" onClick={() => onSelect(route)}>
+      <div className="p-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -35,18 +36,21 @@ const RouteRow = ({
               {route.quality_score != null && (
                 <QualityBadge score={route.quality_score} size="sm" />
               )}
-              <label className="flex items-center justify-center w-4 h-4 rounded border border-surface-light bg-surface-light text-accent focus:ring-accent cursor-pointer">
+              <label
+                className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -m-2 rounded-lg cursor-pointer hover:bg-surface-light/50"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <input
                   type="checkbox"
                   checked={isCompareSelected}
-                  readOnly
-                  className="w-3 h-3"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleCompare(route.id);
+                  onChange={() => toggleCompare(route.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
                   }}
+                  aria-label={`Compare ${route.name}`}
+                  className="w-4 h-4 accent-accent cursor-pointer"
                 />
-                <span className="sr-only">Compare</span>
               </label>
             </div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">

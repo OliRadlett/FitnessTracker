@@ -23,7 +23,7 @@ test.describe('Landing Page', () => {
     await page.waitForLoadState('networkidle');
 
     // Should show the app title
-    await expect(page.locator('h1')).toContainText('Fitness Tracker');
+    await expect(page.locator('h1')).toContainText('FitTrack');
 
     // Should show sign-in buttons
     await expect(page.getByRole('button', { name: /continue with google/i })).toBeVisible();
@@ -45,8 +45,8 @@ test.describe('Landing Page', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
 
-    // Should show the muscle emoji
-    await expect(page.locator('text=💪')).toBeVisible();
+    // Should show the brand mark (accent tile with logo)
+    await expect(page.locator('h1')).toContainText('FitTrack');
 
     // Should show the subtitle
     await expect(page.getByText(/track cycling, running/i)).toBeVisible();

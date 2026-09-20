@@ -14,6 +14,15 @@ module.exports = {
         positive: '#22c55e',
         warning: '#ef4444',
         muted: '#94a3b8',
+        // Semantic status tokens — bands desaturate upward:
+        // neutral → info → caution → danger (see CODEMAP > ui/).
+        info: '#38bdf8',
+        caution: '#f59e0b',
+        foreground: '#e2e8f0',
+      },
+      fontFamily: {
+        // Inter is loaded via next/font in src/app/layout.tsx (`--font-inter`).
+        sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },

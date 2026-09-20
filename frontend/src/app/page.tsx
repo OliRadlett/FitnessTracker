@@ -4,6 +4,8 @@ import React from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { Zap } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
 
 export default function LoginPage() {
   const { data: session, status } = useSession();
@@ -18,7 +20,7 @@ export default function LoginPage() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-accent"></div>
+        <Spinner size={48} label="Loading FitTrack" />
       </div>
     );
   }
@@ -30,10 +32,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
-        <div className="bg-surface rounded-2xl border border-surface-light/50 p-8 shadow-2xl">
+        <div className="bg-surface rounded-xl border border-surface-light/50 p-8 shadow-2xl">
           <div className="text-center mb-8">
-            <div className="text-5xl mb-4">💪</div>
-            <h1 className="text-3xl font-bold text-white mb-2">Fitness Tracker</h1>
+            <span className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-accent mb-4" aria-hidden="true">
+              <Zap size={28} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+            </span>
+            <h1 className="text-3xl font-bold text-white mb-2">FitTrack</h1>
             <p className="text-muted">
               Track your activities, lifting sessions, and performance metrics
             </p>
