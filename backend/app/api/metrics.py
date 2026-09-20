@@ -612,8 +612,7 @@ async def run_health_analysis(
             }
         )
 
-    await db.commit()
-
+    # BUG-015: no explicit commit; get_db commits at return.
     return {
         "analysis_results": all_results,
         "alerts_generated": alerts_generated,
@@ -669,11 +668,15 @@ async def trigger_health_ai_analysis(
     """
     from app.schemas.llm_analysis import LlmAnalysisRead
     from app.services.llm_analysis import run_health_ai_analysis
+    from app.services.llm_base import ai_generation_guard
 
     try:
-        analysis = await run_health_ai_analysis(db, current_user.id)
-        await db.commit()
+        async with ai_generation_guard(current_user.id, "health"):
+            analysis = await run_health_ai_analysis(db, current_user.id)
+        # BUG-015: no explicit commit; get_db commits at return.
         return LlmAnalysisRead.model_validate(analysis)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

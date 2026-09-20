@@ -64,7 +64,7 @@ async def create_cycling_pr(
     it is returned unchanged. Otherwise the record is created or updated in-place.
     """
     pr = await create_manual_cycling_pr(db, current_user.id, data)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(pr)
     return CyclingPowerRecordRead.model_validate(pr)
 
@@ -90,7 +90,7 @@ async def check_cycling_prs(
             )
 
         updated = await check_and_record_cycling_prs(db, current_user.id, activity)
-        await db.commit()
+        await db.flush()  # BUG-015: flush only; get_db commits at return.
         new_count = len([p for p in updated if p.improvement_pct is None or p.improvement_pct > 0])
         result_prs = []
         for p in updated:
@@ -105,7 +105,7 @@ async def check_cycling_prs(
         )
     else:
         updated = await check_cycling_prs_all_activities(db, current_user.id)
-        await db.commit()
+        await db.flush()  # BUG-015: flush only; get_db commits at return.
         new_count = len([p for p in updated if p.improvement_pct is None or p.improvement_pct > 0])
         result_prs = []
         for p in updated:

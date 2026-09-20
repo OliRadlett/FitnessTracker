@@ -14,6 +14,10 @@ All phases committed and pushed to `main`. Migrations 025–029 pending deployme
 (`python fittrack.py migrate`). Video system (Phase 9) is specced but not built —
 see the Phase 9 section for the full Cloudflare R2 architecture spec.
 
+> **Superseded (2026-09-09):** the Phase 9 video system has since been **implemented**
+> (R2-only uploads, migrations 047/048, Video Bank page) — see `plans/future-enhancements.md`
+> §1.1 and `docs/R2_SETUP.md`. The "spec-only" / "remaining work" notes below are historical.
+
 Key implementation notes:
 - Training-plan day saves send the FULL days array (backend deletes dates missing from payload)
 - `services/conformity.py::link_activities_to_plan_days` uses `populate_existing=True`

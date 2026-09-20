@@ -8,7 +8,7 @@
 // localStorage (`fittrack-onboarding-done`) so no server migration is needed;
 // the wizard never blocks but is soft-suggested until dismissed.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
@@ -37,6 +37,9 @@ export function OnboardingWizard() {
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('prefs');
+  // UX-02: one-shot guard so the auto-open timer never re-fires and yanks
+  // the user back to Welcome after they already started the wizard.
+  const autoOpened = useRef(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connLoaded, setConnLoaded] = useState(false);
 
@@ -76,16 +79,17 @@ export function OnboardingWizard() {
     setStep('prefs');
   }, []);
 
-  // Auto-open on first run (and when no data yet) once we have a token, and
-  // honor an explicit "re-open from Settings" custom event.
+  // Auto-open once on first run after the token resolves. Never resets the
+  // step: if the user already opened the wizard (or tapped through), a
+  // re-firing timer must not yank them back to Welcome (UX-02). Explicit
+  // re-opens from Settings go through openWizard, which intentionally
+  // restarts at prefs.
   useEffect(() => {
-    if (!token) return;
-    const showOnFirstRun = !done;
-    if (showOnFirstRun) {
-      const timer = setTimeout(openWizard, 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [token, done, open, openWizard]);
+    if (!token || done || autoOpened.current) return;
+    autoOpened.current = true;
+    const timer = setTimeout(() => setOpen(true), 1200);
+    return () => clearTimeout(timer);
+  }, [token, done]);
 
   useEffect(() => {
     const onReopen = () => openWizard();
@@ -147,6 +151,7 @@ export function OnboardingWizard() {
         });
       }
       setProfileMsg('Profile saved ✓');
+      next(); // UX-01: profile is reachable — advance to the goal step.
     } catch (err) {
       setProfileMsg(err instanceof Error ? `Save failed: ${err.message}` : 'Save failed');
     } finally {
@@ -169,6 +174,7 @@ export function OnboardingWizard() {
         filter_json: filterJson,
       });
       setGoalMsg('Goal created ✓');
+      next(); // UX-01: goal is reachable — advance to the done step.
     } catch (err) {
       setGoalMsg(err instanceof Error ? `Failed: ${err.message}` : 'Failed to create goal');
     } finally {
@@ -176,9 +182,21 @@ export function OnboardingWizard() {
     }
   };
 
-  const handleConnect = (provider: string) => {
-    const state = session?.backendToken ? `?state=${encodeURIComponent(session.backendToken)}` : '';
-    window.location.href = `/api/v1/auth/oauth/${provider}/authorize${state}`;
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const handleConnect = async (provider: string) => {
+    // SEC-02: single-use opaque state via backend — never the JWT in a URL.
+    setConnectError(null);
+    try {
+      const { authorize_url } = await authFetch<{ authorize_url: string }>(
+        `/api/v1/auth/oauth/${provider}/connect-state`,
+      );
+      window.location.href = authorize_url;
+    } catch (err) {
+      setConnectError(
+        err instanceof Error ? err.message : 'Could not start OAuth flow',
+      );
+    }
   };
 
   const stepTitle: Record<Step, string> = {
@@ -273,6 +291,9 @@ export function OnboardingWizard() {
             <p className="text-sm text-muted mb-2">
               Connect providers to sync activities, sleep, and routes. You can do this later.
             </p>
+            {connectError && (
+              <p className="text-xs text-warning mb-2">Connection failed: {connectError}</p>
+            )}
             {PROVIDERS.map((p) => {
               const conn = connections.find((c) => c.provider === p.id);
               const isConnected = !!conn && conn.status === 'active';

@@ -14,6 +14,7 @@ import {
   deleteAccount,
   downloadExport,
   exportFullJson,
+  logoutBackend,
 } from '@/lib/api/account';
 
 export function DataPortabilityCard() {
@@ -46,6 +47,11 @@ export function DataPortabilityCard() {
     try {
       await deleteAccount(authFetch, confirmEmail.trim());
       setConfirmOpen(false);
+      try {
+        await logoutBackend(authFetch);
+      } catch {
+        // Best-effort — account is already deleted; don't block sign-out.
+      }
       await signOut({ callbackUrl: '/' });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Delete failed');

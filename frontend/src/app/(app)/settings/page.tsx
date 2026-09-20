@@ -152,15 +152,22 @@ export default function SettingsPage() {
     }
   }
 
-  function handleConnect(provider: string) {
-    // Let the backend own the redirect_uri (derived from PUBLIC_URL) so the
+  async function handleConnect(provider: string) {
+    // SEC-02: the backend JWT must never travel in an OAuth `state` URL
+    // (provider logs / history leak a replayable login). Fetch a single-use
+    // opaque state bound to (user, provider) and navigate to that URL.
+    // The backend owns the redirect_uri (derived from PUBLIC_URL) so the
     // authorize step and the callback's token exchange always agree (BUG-025).
-    // The authorize navigation stays relative (Caddy routes /api/v1).
-    // The backend resolves the user from the state parameter (a JWT) in the
-    // callback — without it, connecting fails with "Could not identify
-    // authenticated user".
-    const state = session?.backendToken ? `?state=${encodeURIComponent(session.backendToken)}` : '';
-    window.location.href = `/api/v1/auth/oauth/${provider}/authorize${state}`;
+    try {
+      const { authorize_url } = await authFetch<{ authorize_url: string }>(
+        `/api/v1/auth/oauth/${provider}/connect-state`,
+      );
+      window.location.href = authorize_url;
+    } catch (err) {
+      setOauthNotice(
+        `Connection failed: ${err instanceof Error ? err.message : 'could not start OAuth flow'}`,
+      );
+    }
   }
 
   async function handleExport(apiPath: string, filename: string) {

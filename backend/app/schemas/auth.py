@@ -56,6 +56,7 @@ class TokenPayload(BaseModel):
     sub: str  # user UUID as string
     exp: int | None = None
     iat: int | None = None
+    jti: str | None = None  # unique token id — checked against the logout denylist
 
 
 class TokenResponse(BaseModel):

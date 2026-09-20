@@ -114,7 +114,7 @@ async def create_video(
         expected_reps=payload.expected_reps,
     )
     db.add(video)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
     return video
 
@@ -235,7 +235,7 @@ async def process_video(
 
     if force and video.analysis_status == "processing":
         video.analysis_status = None
-        await db.commit()
+        await db.flush()  # BUG-015: flush only; get_db commits at return.
 
     settings = get_settings()
     if not settings.modal_token_id or not settings.modal_token_secret:
@@ -332,7 +332,7 @@ async def delete_video(
             logger.warning("Failed to delete R2 object %s: %s", video.r2_key, e)
 
     await db.delete(video)
-    await db.commit()
+    # BUG-015: no explicit commit; get_db commits at return.
     return video
 
 
@@ -376,6 +376,6 @@ async def update_video(
     if payload.notes is not None:
         video.notes = payload.notes
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
     return video

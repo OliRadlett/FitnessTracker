@@ -1,6 +1,6 @@
 # Feature 7 — AI Overlays (POC)
 
-> **Status**: Approved (POC) — not started
+> **Status**: Approved (POC) — scoped into `plans/backlog-2026-09-20.md` (B-18, needs B-15) on 2026-09-20
 > **Type**: POC — optional interpretive layer over deterministic outputs
 > **Dependencies**: Feature 3 (insights), existing LLM analysis infra (`services/llm_analysis.py`, Gemini)
 > **Own plan**: this document. Work is discrete — do not bundle with other features.

@@ -1,6 +1,6 @@
 # Feature 3 — Correlation Engine + Analytics Page (POC)
 
-> **Status**: Approved (POC) — not started
+> **Status**: Approved (POC) — scoped into `plans/backlog-2026-09-20.md` (B-15; unblocks B-16/B-17) on 2026-09-20
 > **Type**: POC — has explicit go/no-go; drop cleanly without cascading
 > **Dependencies**: none strictly; feeds Feature 5 (brief) and Feature 6 (prescriptions)
 > **Own plan**: this document. Work is discrete — do not bundle with other features.

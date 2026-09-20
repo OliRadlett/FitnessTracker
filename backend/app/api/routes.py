@@ -320,7 +320,7 @@ async def create_tag(
     """Create a new tag."""
     tag = RouteTag(user_id=current_user.id, name=body.name, color=body.color)
     db.add(tag)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteTagRead.model_validate(tag)
 
 
@@ -344,7 +344,7 @@ async def update_tag(
         tag.name = body.name
     if body.color is not None:
         tag.color = body.color
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteTagRead.model_validate(tag)
 
 
@@ -364,7 +364,7 @@ async def delete_tag(
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     await db.delete(tag)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Tag deleted"}
 
 
@@ -401,7 +401,7 @@ async def add_route_tag(
 
     tagging = RouteTagging(tag_id=tag_id, route_id=route_id)
     db.add(tagging)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Route tagged"}
 
 
@@ -429,7 +429,7 @@ async def remove_route_tag(
         raise HTTPException(status_code=404, detail="Route not found")
 
     await db.delete(tagging)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Tag removed"}
 
 
@@ -468,7 +468,7 @@ async def create_collection(
         rules=body.rules,
     )
     db.add(collection)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteCollectionRead.model_validate(collection)
 
 
@@ -501,7 +501,7 @@ async def update_collection(
         collection.rules = body.rules
     if body.sort_order is not None:
         collection.sort_order = body.sort_order
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteCollectionRead.model_validate(collection)
 
 
@@ -522,7 +522,7 @@ async def delete_collection(
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
     await db.delete(collection)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Collection deleted"}
 
 
@@ -563,7 +563,7 @@ async def add_to_collection(
 
     item = RouteCollectionItem(collection_id=collection_id, route_id=route_id)
     db.add(item)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Route added to collection"}
 
 
@@ -591,7 +591,7 @@ async def remove_from_collection(
         raise HTTPException(status_code=404, detail="Route not found")
 
     await db.delete(item)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Route removed from collection"}
 
 
@@ -613,7 +613,7 @@ async def create_collection_from_filters(
         rules=body.rules,
     )
     db.add(collection)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteCollectionRead.model_validate(collection)
 
 
@@ -643,7 +643,11 @@ async def recompute_quality(
     """Trigger quality recompute for all user routes (or specific route_ids)."""
     from app.services.route_quality_service import compute_and_store_quality
 
-    result = await db.execute(select(Route).where(Route.user_id == current_user.id))
+    result = await db.execute(
+        select(Route)
+        .where(Route.user_id == current_user.id)
+        .options(selectinload(Route.sources))
+    )
     routes = list(result.scalars().all())
 
     updated = 0
@@ -654,7 +658,7 @@ async def recompute_quality(
         except Exception as e:
             logger.warning(f"Quality scoring failed for route {route.id}: {e}")
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"updated": updated, "total": len(routes)}
 
 
@@ -810,7 +814,7 @@ async def create_route(
         provider_name=name,
         elevation_profile=elevation_profile,
     )
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteRead.model_validate(route)
 
 
@@ -831,7 +835,7 @@ async def update_route(
         route.sport_type = body.sport_type
     if body.is_favorite is not None:
         route.is_favorite = body.is_favorite
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteRead.model_validate(route)
 
 
@@ -845,7 +849,7 @@ async def delete_route(
     deleted = await route_service.delete_route(db, route_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Route not found")
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"detail": "Route deleted"}
 
 
@@ -868,7 +872,7 @@ async def merge_routes_many(
         )
         if merged:
             results.append(RouteRead.model_validate(merged))
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return results
 
 
@@ -890,7 +894,7 @@ async def merge_routes(
     )
     if not merged:
         raise HTTPException(status_code=404, detail="One or both routes not found")
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteRead.model_validate(merged)
 
 
@@ -950,7 +954,7 @@ async def bulk_delete_routes(
         await db.delete(route)
         deleted_count += 1
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"deleted": deleted_count, "total": len(route_ids)}
 
 
@@ -1061,7 +1065,7 @@ async def upload_gpx(
         provider_name=parsed["name"],
         elevation_profile=elevation_profile,
     )
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return RouteRead.model_validate(route)
 
 
@@ -1103,7 +1107,7 @@ async def auto_merge_duplicates(
             if merged:
                 merged_count += 1
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"merged": merged_count, "threshold": threshold}
 
 
@@ -1271,7 +1275,7 @@ async def sync_routes(
                 )
             )
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return sync_results
 
 

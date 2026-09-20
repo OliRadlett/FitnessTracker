@@ -44,5 +44,5 @@ async def delete_account(
     result = await db.execute(delete(User).where(User.id == current_user.id))
     if result.rowcount != 1:
         raise HTTPException(status_code=404, detail="Account not found")
-    await db.commit()
+    # No explicit commit — get_db commits after the endpoint returns (BUG-015).
     return {"deleted": True}

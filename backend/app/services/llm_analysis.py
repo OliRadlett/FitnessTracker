@@ -24,6 +24,7 @@ from app.services.llm_base import (
     _call_gemini,
     _make_json_serializable,
     _store_analysis,
+    ensure_context_sufficient,
     logger,
 )
 
@@ -665,6 +666,7 @@ async def run_llm_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAnalysis:
     4. Return the record
     """
     stats = await compile_cycling_stats(db, user_id)
+    ensure_context_sufficient(stats, "cycling")
     analysis_text = await analyze_with_gemini(stats)
     return await _store_analysis(db, user_id, "cycling", stats, analysis_text)
 
@@ -1155,6 +1157,7 @@ async def run_activity_ai_analysis(
     if context is None:
         return None
 
+    ensure_context_sufficient(context, "activity")
     analysis_text = await analyze_activity_with_gemini(context)
     return await _store_analysis(
         db, user_id, "activity", context, analysis_text, activity_id=activity_id
@@ -1650,6 +1653,7 @@ async def run_lifting_session_ai_analysis(
     if context is None:
         return None
 
+    ensure_context_sufficient(context, "lifting session")
     analysis_text = await analyze_lifting_session_with_gemini(context)
     return await _store_analysis(
         db,
@@ -2031,6 +2035,7 @@ async def run_health_ai_analysis(db: AsyncSession, user_id: uuid.UUID) -> LlmAna
     from datetime import date as date_type
 
     stats = await compile_health_stats(db, user_id)
+    ensure_context_sufficient(stats, "health")
     analysis_text = await analyze_health_with_gemini(stats)
     return await _store_analysis(db, user_id, "health", stats, analysis_text)
 
@@ -2446,6 +2451,7 @@ async def run_event_ai_analysis(
     if stats is None:
         return None
 
+    ensure_context_sufficient(stats, "event")
     analysis_text = await analyze_event_with_gemini(stats)
     return await _store_analysis(
         db, user_id, "event", stats, analysis_text, event_id=event_id

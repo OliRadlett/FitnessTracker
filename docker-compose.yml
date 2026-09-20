@@ -6,7 +6,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fittrack_dev}
       POSTGRES_DB: ${POSTGRES_DB:-fittrack}
     ports:
-      - "5432:5432"
+      # SEC-01: loopback-only. Docker-published ports bypass UFW, so binding all
+      # interfaces would expose Postgres off-host. Localhost access is unaffected.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,7 +21,9 @@ services:
     image: redis:7-alpine
     command: redis-server --requirepass ${REDIS_PASSWORD:-redis_dev_password}
     ports:
-      - "6379:6379"
+      # SEC-01: loopback-only — the broker must never be reachable off-host
+      # (arbitrary Celery task injection). Localhost access is unaffected.
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_password}", "ping"]
       interval: 5s
@@ -31,7 +35,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # SEC-01: loopback-only — the raw API is served via Caddy.
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     depends_on:

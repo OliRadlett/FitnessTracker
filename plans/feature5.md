@@ -1,6 +1,6 @@
 # Feature 5 — Unified Brief (POC)
 
-> **Status**: Approved (POC) — not started
+> **Status**: Approved (POC) — scoped into `plans/backlog-2026-09-20.md` (B-16, needs B-15) on 2026-09-20
 > **Type**: POC — built isolated; value decision deferred
 > **Dependencies**: Feature 3 (insights) for the "top insight" element; otherwise uses existing endpoints
 > **Own plan**: this document. Work is discrete — do not bundle with other features.

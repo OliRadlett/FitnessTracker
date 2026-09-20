@@ -536,7 +536,7 @@ async def backfill_route_links(
     from app.services.merge_service import backfill_activity_route_links
 
     linked_count = await backfill_activity_route_links(db, current_user.id)
-    await db.commit()
+    # BUG-015: no explicit commit; get_db commits at return.
     return {
         "detail": f"Linked {linked_count} activities to routes",
         "linked_count": linked_count,
@@ -974,6 +974,7 @@ async def trigger_activity_ai_analysis(
     """
     from app.schemas.llm_analysis import LlmAnalysisRead
     from app.services.llm_analysis import run_activity_ai_analysis
+    from app.services.llm_base import ai_generation_guard
 
     # Verify activity exists and belongs to user
     result = await db.execute(
@@ -987,11 +988,16 @@ async def trigger_activity_ai_analysis(
         raise HTTPException(status_code=404, detail="Activity not found")
 
     try:
-        analysis = await run_activity_ai_analysis(db, current_user.id, activity_id)
+        async with ai_generation_guard(
+            current_user.id, "activity", str(activity_id)
+        ):
+            analysis = await run_activity_ai_analysis(db, current_user.id, activity_id)
         if analysis is None:
             raise HTTPException(status_code=404, detail="Activity not found")
-        await db.commit()
+        # BUG-015: no explicit commit; get_db commits at return.
         return LlmAnalysisRead.model_validate(analysis)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

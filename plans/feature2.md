@@ -1,6 +1,6 @@
 # Feature 2 — Surface Existing Intelligence (Core)
 
-> **Status**: Approved — not started
+> **Status**: Approved — scoped into `plans/backlog-2026-09-20.md` (B-14) on 2026-09-20
 > **Type**: Core
 > **Dependencies**: none (feature1 independent)
 > **Own plan**: this document. Work is discrete — do not bundle with other features.

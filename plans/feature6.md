@@ -1,6 +1,6 @@
 # Feature 6 — Prescriptions (POC)
 
-> **Status**: Approved (POC) — not started
+> **Status**: Approved (POC) — scoped into `plans/backlog-2026-09-20.md` (B-17, needs B-15 + B-16) on 2026-09-20
 > **Type**: POC — deterministic coaching layer
 > **Dependencies**: Feature 3 (insights) + Feature 5 (verdict engine)
 > **Own plan**: this document. Work is discrete — do not bundle with other features.

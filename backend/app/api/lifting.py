@@ -567,6 +567,7 @@ async def trigger_session_ai_analysis(
     from app.models.llm_analysis import LlmAnalysis
     from app.schemas.llm_analysis import LlmAnalysisRead
     from app.services.llm_analysis import run_lifting_session_ai_analysis
+    from app.services.llm_base import ai_generation_guard
 
     # Verify session exists and belongs to user
     result = await db.execute(
@@ -580,13 +581,18 @@ async def trigger_session_ai_analysis(
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
-        analysis = await run_lifting_session_ai_analysis(
-            db, current_user.id, session_id
-        )
+        async with ai_generation_guard(
+            current_user.id, "lifting_session", str(session_id)
+        ):
+            analysis = await run_lifting_session_ai_analysis(
+                db, current_user.id, session_id
+            )
         if analysis is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        await db.commit()
+        # BUG-015: no explicit commit; get_db commits at return.
         return LlmAnalysisRead.model_validate(analysis)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

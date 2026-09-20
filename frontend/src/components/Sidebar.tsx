@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { useAuthFetch } from '@/lib/api';
+import { logoutBackend } from '@/lib/api/account';
 
 interface NavItem {
   href: string;
@@ -230,6 +232,7 @@ export function MobileBottomNav() {
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { authFetch } = useAuthFetch();
   const { isOpen, close, isCollapsed, toggleCollapse, menuButtonRef } = useSidebar();
   const asideRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -415,7 +418,15 @@ export function Sidebar() {
               </div>
             </div>
             <button
-              onClick={() => signOut()}
+              onClick={async () => {
+                // SEC-07: revoke the backend JWT first; sign out regardless.
+                try {
+                  await logoutBackend(authFetch);
+                } catch {
+                  // Best-effort — a failed revocation must not trap the user.
+                }
+                await signOut();
+              }}
               aria-label="Sign out of your account"
               className={`w-full text-left text-sm text-muted hover:text-warning rounded-lg hover:bg-surface-light/50 transition-colors ${
                 isCollapsed ? 'md:flex md:justify-center md:py-2 px-3 py-2' : 'px-3 py-2'

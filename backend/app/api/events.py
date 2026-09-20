@@ -102,7 +102,7 @@ async def create_event(
         **data.model_dump(),
     )
     db.add(event)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     await db.refresh(event)
     return _enrich_event(event)
 
@@ -130,7 +130,7 @@ async def update_event(
             )
         setattr(event, key, value)
 
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     await db.refresh(event)
     return _enrich_event(event)
 
@@ -153,10 +153,10 @@ async def set_event_result(
     payload = data.model_dump(exclude_none=True)
     event.result = payload if payload else None
     event.result_updated_at = datetime.now(UTC)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     await db.refresh(event)
 
-    created = await notify(
+    await notify(
         db,
         current_user.id,
         "event_result",
@@ -165,8 +165,6 @@ async def set_event_result(
         link="/training?tab=races",
         dedup_key=f"event_result:{event.id}",
     )
-    if created:
-        await db.commit()
 
     return _enrich_event(event)
 
@@ -187,7 +185,7 @@ async def clear_event_result(
 
     event.result = None
     event.result_updated_at = None
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     await db.refresh(event)
     return _enrich_event(event)
 
@@ -223,7 +221,7 @@ async def delete_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     await db.delete(event)
-    await db.commit()
+    await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
 
 
 # ── Event AI Analysis ───────────────────────────────────────────────────────
@@ -243,12 +241,14 @@ async def trigger_event_ai_analysis(
     """
     from app.schemas.llm_analysis import LlmAnalysisRead
     from app.services.llm_analysis import run_event_ai_analysis
+    from app.services.llm_base import ai_generation_guard
 
     try:
-        analysis = await run_event_ai_analysis(db, current_user.id, event_id)
+        async with ai_generation_guard(current_user.id, "event", str(event_id)):
+            analysis = await run_event_ai_analysis(db, current_user.id, event_id)
         if analysis is None:
             raise HTTPException(status_code=404, detail="Event not found")
-        await db.commit()
+        await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
         return LlmAnalysisRead.model_validate(analysis)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

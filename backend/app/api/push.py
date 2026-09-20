@@ -63,7 +63,7 @@ async def create_subscription(
     sub = await register_subscription(
         db, current_user.id, payload.endpoint, payload.p256dh, payload.auth
     )
-    await db.commit()
+    # No explicit commit — get_db commits after the endpoint returns (BUG-015).
     return PushSubscriptionRead(id=str(sub.id), endpoint=sub.endpoint, created_at=None)
 
 
@@ -76,5 +76,5 @@ async def remove_subscription(
     if not payload.endpoint:
         raise HTTPException(status_code=422, detail="endpoint is required")
     removed = await unregister_subscription(db, current_user.id, payload.endpoint)
-    await db.commit()
+    # No explicit commit — get_db commits after the endpoint returns (BUG-015).
     return {"removed": removed}

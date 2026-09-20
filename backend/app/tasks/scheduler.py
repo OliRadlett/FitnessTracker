@@ -7,6 +7,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+import httpx
 from celery import Celery
 from celery.schedules import crontab
 
@@ -401,6 +402,15 @@ def sync_all_strava_activities() -> dict:
                     logger.warning(
                         f"Strava sync auth failure for user {conn.user_id}: {e}"
                     )
+                    await mark_connection_reauth(db, conn, str(e))
+                    await db.rollback()
+                except httpx.HTTPStatusError as e:
+                    # SYNC-03: raw 401/403 mid-sync (revoked after refresh
+                    # check) → needs_reauth + banner; else transient tally.
+                    logger.warning(
+                        f"Strava sync HTTP failure for user {conn.user_id}: {e}"
+                    )
+                    await handle_sync_http_error(db, conn, e)
                     await db.rollback()
                 except TransientSyncError as e:
                     logger.warning(
@@ -447,6 +457,14 @@ def sync_all_strava_activities() -> dict:
                     logger.warning(
                         f"Wahoo sync auth failure for user {conn.user_id}: {e}"
                     )
+                    await mark_connection_reauth(db, conn, str(e))
+                    await db.rollback()
+                except httpx.HTTPStatusError as e:
+                    # SYNC-03: see Strava loop above.
+                    logger.warning(
+                        f"Wahoo sync HTTP failure for user {conn.user_id}: {e}"
+                    )
+                    await handle_sync_http_error(db, conn, e)
                     await db.rollback()
                 except TransientSyncError as e:
                     logger.warning(
@@ -498,9 +516,13 @@ def reconcile_strava_activities() -> dict:
     from sqlalchemy import select
 
     from app.database import task_session
-    from app.integrations.errors import PermanentAuthError
+    from app.integrations.errors import PermanentAuthError, TransientSyncError
     from app.models.user import OAuthConnection
-    from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
+    from app.services.connection_health import (
+        CONNECTION_STATUS_NEEDS_REAUTH,
+        handle_sync_http_error,
+        mark_connection_reauth,
+    )
     from app.services.strava.webhook_queue import (
         reconcile_strava_activities as _reconcile,
     )
@@ -915,6 +937,7 @@ def compute_route_quality_scores() -> dict:
     import asyncio
 
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from app.database import task_session
     from app.models.route import Route
@@ -933,7 +956,9 @@ def compute_route_quality_scores() -> dict:
             for user_id in user_ids:
                 try:
                     result = await db.execute(
-                        select(Route).where(Route.user_id == user_id)
+                        select(Route)
+                        .where(Route.user_id == user_id)
+                        .options(selectinload(Route.sources))
                     )
                     routes = list(result.scalars().all())
 
@@ -1637,7 +1662,6 @@ def analyze_segments_intelligence_weekly() -> dict:
     return asyncio.run(_run_task_guarded("analyze_segments_intelligence_weekly", _run))
 
 
-@celery_app.task(name="app.tasks.scheduler.analyze_cross_domain_weekly")
 async def _build_race_retrospective_args(db, uid) -> tuple[dict, str | None]:
     """Assemble race-retrospective inputs for the most recent raced event (CD3).
 
@@ -1827,6 +1851,7 @@ async def _build_race_retrospective_args(db, uid) -> tuple[dict, str | None]:
     )
 
 
+@celery_app.task(name="app.tasks.scheduler.analyze_cross_domain_weekly")
 def analyze_cross_domain_weekly() -> dict:
     """Analyze cross-domain correlations: sleep-performance, cross-sport, race retrospective.
 
@@ -2341,6 +2366,7 @@ def sync_all_whoop_data() -> dict:
     from app.models.user import OAuthConnection
     from app.services.connection_health import (
         CONNECTION_STATUS_NEEDS_REAUTH,
+        handle_sync_http_error,
         mark_connection_reauth,
     )
     from app.services.whoop import (
@@ -2419,6 +2445,13 @@ def sync_all_whoop_data() -> dict:
                         f"Whoop cycle sync transient failure for user {conn.user_id}: {e}"
                     )
                     user_failed = True
+                except httpx.HTTPStatusError as e:
+                    # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                    logger.warning(
+                        f"Whoop cycle sync HTTP failure for user {conn.user_id}: {e}"
+                    )
+                    await handle_sync_http_error(db, conn, e)
+                    user_failed = True
                 except Exception as e:
                     logger.error(
                         f"Whoop cycle sync error for user {conn.user_id}: {e}",
@@ -2443,6 +2476,13 @@ def sync_all_whoop_data() -> dict:
                         logger.warning(
                             f"Whoop sleep sync transient failure for user {conn.user_id}: {e}"
                         )
+                    except httpx.HTTPStatusError as e:
+                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        logger.warning(
+                            f"Whoop sleep sync HTTP failure for user {conn.user_id}: {e}"
+                        )
+                        await handle_sync_http_error(db, conn, e)
+                        user_failed = True
                     except Exception as e:
                         logger.error(
                             f"Whoop sleep sync error for user {conn.user_id}: {e}",
@@ -2466,6 +2506,13 @@ def sync_all_whoop_data() -> dict:
                         logger.warning(
                             f"Whoop workout sync transient failure for user {conn.user_id}: {e}"
                         )
+                    except httpx.HTTPStatusError as e:
+                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        logger.warning(
+                            f"Whoop workout sync HTTP failure for user {conn.user_id}: {e}"
+                        )
+                        await handle_sync_http_error(db, conn, e)
+                        user_failed = True
                     except Exception as e:
                         logger.error(
                             f"Whoop workout sync error for user {conn.user_id}: {e}",
@@ -2487,6 +2534,13 @@ def sync_all_whoop_data() -> dict:
                         logger.warning(
                             f"Whoop weight sync transient failure for user {conn.user_id}: {e}"
                         )
+                    except httpx.HTTPStatusError as e:
+                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        logger.warning(
+                            f"Whoop weight sync HTTP failure for user {conn.user_id}: {e}"
+                        )
+                        await handle_sync_http_error(db, conn, e)
+                        user_failed = True
                     except Exception as e:
                         logger.error(
                             f"Whoop weight sync error for user {conn.user_id}: {e}",
