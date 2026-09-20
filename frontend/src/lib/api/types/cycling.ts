@@ -340,8 +340,8 @@ export interface RideAnalysis {
   variability_index?: number;
   intensity_factor?: number;
   decoupling?: {
-    first_half_ef?: number;
-    second_half_ef?: number;
+    first_half_ratio?: number;
+    second_half_ratio?: number;
     decoupling_pct?: number;
     classification?: string;
   };

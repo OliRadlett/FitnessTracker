@@ -20,6 +20,33 @@ def _validate_planned_exercises(
             raise ValueError(
                 f"planned_exercises[{i}] missing required keys: {sorted(missing)}"
             )
+    # FL3: optional %e1RM / RPE basis keys ride on the entry (no migration);
+    # validate their ranges when present, otherwise leave the shape alone.
+    for i, entry in enumerate(v):
+        pct = entry.get("pct_1rm")
+        if pct is not None:
+            try:
+                pct_f = float(pct)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"planned_exercises[{i}].pct_1rm must be a number"
+                ) from None
+            if not 0.3 <= pct_f <= 1.0:
+                raise ValueError(
+                    f"planned_exercises[{i}].pct_1rm must be between 0.3 and 1.0"
+                )
+        target_rpe = entry.get("target_rpe")
+        if target_rpe is not None:
+            try:
+                rpe_f = float(target_rpe)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"planned_exercises[{i}].target_rpe must be a number"
+                ) from None
+            if not 1 <= rpe_f <= 10:
+                raise ValueError(
+                    f"planned_exercises[{i}].target_rpe must be between 1 and 10"
+                )
     return v
 
 
@@ -193,6 +220,9 @@ class TrainingWeekDay(TrainingPlanDayRead):
     route_matches: list[WeekRouteMatch] | None = None
     warmup_template: WarmupTemplateRead | None = None
     day_status: Literal["pending", "completed", "partial", "missed", "rest"] = "pending"
+    # FL1: True when fresh plan_workout targets (current FTP) differ from
+    # the stored ones beyond epsilon. Only set on upcoming cycle days.
+    targets_stale: bool = False
 
 
 class TrainingWeekResponse(BaseModel):
@@ -313,3 +343,114 @@ class GeneratePlanRequest(BaseModel):
     start_date: date
     base_tss: float = 300.0  # weekly TSS starting point
     event_id: uuid.UUID | None = None  # optional — links plan and applies taper
+
+
+# ── FL1: refresh cycle targets ──────────────────────────────────────────
+
+
+class RefreshTargetDay(BaseModel):
+    """One plan day whose stored targets were re-anchored to current FTP."""
+
+    day_id: uuid.UUID
+    day_date: date
+    old_power: float | None = None
+    new_power: float | None = None
+    old_tss: float | None = None
+    new_tss: float | None = None
+
+
+class CpFtpMismatch(BaseModel):
+    """Honest cross-check: fitted CP vs profile FTP diverged >10%.
+
+    Zones stay FTP-anchored; this is surfaced, never silently applied.
+    """
+
+    ftp: float
+    critical_power: float
+    pct_diff: float
+
+
+class RefreshStrengthDay(BaseModel):
+    """One planned exercise whose %e1RM-basis weight was re-solved (FL3)."""
+
+    day_id: uuid.UUID
+    day_date: date
+    exercise: str
+    old_weight_kg: float | None = None
+    new_weight_kg: float | None = None
+    pct_1rm: float | None = None
+    basis_1rm_kg: float | None = None
+    basis_source: str | None = None
+
+
+class RefreshTargetsResponse(BaseModel):
+    """Result of POST /training-plans/{plan_id}/refresh-targets (FL1)."""
+
+    refreshed: list[RefreshTargetDay] = []
+    stale_but_unchanged: list[uuid.UUID] = []
+    cp_ftp_mismatch: CpFtpMismatch | None = None
+    # Upcoming uncompleted strength days skipped (FL3 owns %1RM later).
+    strength_days_skipped: int = 0
+    # FL3: strength days whose %e1RM-basis weights were re-solved (same call).
+    strength_refreshed: list[RefreshStrengthDay] = []
+
+
+# ── FL2: missed-session reconciliation ──────────────────────────────────
+
+
+class RescheduleDayRequest(BaseModel):
+    """Move an uncompleted day to another date within the plan."""
+
+    target_date: date
+
+
+class SubstituteDayRequest(BaseModel):
+    """Convert a missed day into an alternate session on the same date.
+
+    ``sport``/``planned_type`` use Literal vocab so unknown values fail
+    with HTTP 422 before reaching the service.
+    """
+
+    sport: Literal["cycle", "strength", "rest"]
+    planned_type: Literal["rest", "easy", "moderate", "hard", "race"]
+    planned_duration_min: int | None = None
+    planned_tss: float | None = None
+    planned_power_watts: float | None = None
+    planned_volume_kg: float | None = None
+    planned_rpe: float | None = None
+
+
+class UnplannedActivity(BaseModel):
+    """Compact actual for an activity linked to no plan day."""
+
+    id: uuid.UUID
+    name: str
+    sport_type: str
+    start_date: datetime
+    duration_seconds: int | None = None
+    distance_meters: float | None = None
+    tss: float | None = None
+    average_power: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class UnplannedLiftingSession(BaseModel):
+    """Compact actual for a lifting session linked to no plan day."""
+
+    id: uuid.UUID
+    session_date: date
+    focus: str | None = None
+    total_volume_kg: float | None = None
+    duration_seconds: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class UnplannedActualsResponse(BaseModel):
+    """Activities + lifting sessions in the last N days on no plan day."""
+
+    plan_id: uuid.UUID
+    days: int = 14
+    activities: list[UnplannedActivity] = []
+    lifting_sessions: list[UnplannedLiftingSession] = []

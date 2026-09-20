@@ -22,6 +22,7 @@ NOTIFICATION_TYPES = (
     "event_countdown",
     "taper_start",
     "ride_weather",
+    "plan_review",
 )
 
 

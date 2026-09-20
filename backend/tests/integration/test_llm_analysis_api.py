@@ -71,11 +71,6 @@ class TestCyclingLlmAnalysis:
         assert resp.status_code == 200
         assert resp.json() is None
 
-    async def test_history_returns_empty_list(self, client, test_cycling_profile):
-        resp = await client.get("/api/v1/cycling/llm-analysis/history")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
     async def test_on_demand_full_pipeline(
         self, client, test_cycling_profile, test_activity
     ):
@@ -110,41 +105,6 @@ class TestCyclingLlmAnalysis:
         assert data is not None
         assert data["analysis_type"] == "cycling"
         assert "Performance Assessment" in data["analysis_text"]
-
-    async def test_history_after_on_demand(
-        self, client, test_cycling_profile, test_activity
-    ):
-        """After triggering analysis, /history returns it."""
-        with _patch_gemini():
-            await client.post("/api/v1/cycling/llm-analysis/on-demand")
-
-        resp = await client.get("/api/v1/cycling/llm-analysis/history")
-        assert resp.status_code == 200
-        history = resp.json()
-        assert len(history) >= 1
-        assert history[0]["analysis_type"] == "cycling"
-
-    async def test_history_filter_by_type(
-        self, client, test_cycling_profile, test_activity
-    ):
-        """Filtering history by analysis_type works."""
-        with _patch_gemini():
-            await client.post("/api/v1/cycling/llm-analysis/on-demand")
-
-        resp = await client.get(
-            "/api/v1/cycling/llm-analysis/history",
-            params={"analysis_type": "cycling"},
-        )
-        assert resp.status_code == 200
-        assert len(resp.json()) >= 1
-
-        resp = await client.get(
-            "/api/v1/cycling/llm-analysis/history",
-            params={"analysis_type": "health"},
-        )
-        assert resp.status_code == 200
-        assert len(resp.json()) == 0
-
 
 # ── Stats Compilation ─────────────────────────────────────────────────────
 
@@ -393,24 +353,41 @@ class TestFullPipeline:
         # Lifting data should be present
         assert stats["lifting_session_count_4w"] >= 1
 
-    async def test_multiple_analyses_ordered_by_date(
+    async def test_multiple_analyses_latest_wins(
         self,
         client,
+        db_session,
         test_cycling_profile,
         test_activity,
     ):
-        """Multiple on-demand analyses should all be stored and ordered."""
+        """Triggering twice stores both; /latest returns the most recent.
+
+        Backdates the first row: same-transaction inserts share the
+        statement timestamp, so recency must be established explicitly.
+        """
+        from datetime import timedelta
+
+        from sqlalchemy import select
+
+        from app.models.llm_analysis import LlmAnalysis
+
         with _patch_gemini("Analysis 1"):
             resp1 = await client.post("/api/v1/cycling/llm-analysis/on-demand")
         assert resp1.status_code == 200
+
+        first_id = resp1.json()["id"]
+        row = (
+            await db_session.execute(
+                select(LlmAnalysis).where(LlmAnalysis.id == first_id)
+            )
+        ).scalar_one()
+        row.created_at = row.created_at - timedelta(days=1)
+        await db_session.flush()
 
         with _patch_gemini("Analysis 2"):
             resp2 = await client.post("/api/v1/cycling/llm-analysis/on-demand")
         assert resp2.status_code == 200
 
-        resp = await client.get("/api/v1/cycling/llm-analysis/history")
+        resp = await client.get("/api/v1/cycling/llm-analysis/latest")
         assert resp.status_code == 200
-        history = resp.json()
-        assert len(history) >= 2
-        # Most recent first
-        assert history[0]["created_at"] >= history[1]["created_at"]
+        assert resp.json()["analysis_text"] == "Analysis 2"

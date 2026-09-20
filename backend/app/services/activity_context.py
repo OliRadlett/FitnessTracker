@@ -62,10 +62,13 @@ def ride_context_from_analysis(
     ftp_watts: float | None,
     tss_fallback: float | None,
     computed_at: str | None = None,
+    tss_source: str | None = None,
 ) -> dict:
     """Pure: project `analyze_ride()` output (+ top speed) into the stored shape.
 
-    Mirrors the old inline mapping in `api/activities.py`.
+    Mirrors the old inline mapping in `api/activities.py`. ``tss_source`` (QW4)
+    snapshots ``Activity.tss_source`` so cached ride metrics stay badged even
+    if the activity row is later re-fetched without its columns.
     """
     power_zones = analysis.get("power_zones", [])
     decoupling = analysis.get("decoupling")
@@ -93,6 +96,7 @@ def ride_context_from_analysis(
             if decoupling
             else None,
             "tss": tss_bd.get("total_tss") if tss_bd else tss_fallback,
+            "tss_source": tss_source,
             "tss_per_hour": tss_bd.get("tss_per_hour") if tss_bd else None,
             "climbing_meters": climbing.get("total_climbing_m") if climbing else None,
             "top_speed_kmh": top_speed_kmh,
@@ -102,17 +106,25 @@ def ride_context_from_analysis(
     }
 
 
-def context_to_ride_metrics(context: dict | None) -> dict | None:
+def context_to_ride_metrics(
+    context: dict | None, tss_source: str | None = None
+) -> dict | None:
     """Pure: stored context back into the endpoint's `ride_metrics` dict.
 
     Returns ``None`` when the stored payload doesn't contain a ride block.
+    ``tss_source`` (QW4) overrides the cached value when given — list/detail
+    readers pass the live ``Activity.tss_source`` so rows cached before
+    migration 062 (no stored source) still badge correctly.
     """
     if not isinstance(context, dict):
         return None
     ride = context.get("ride")
     if not isinstance(ride, dict) or "power_zones" not in ride:
         return None
-    return dict(ride)
+    out = dict(ride)
+    if tss_source is not None:
+        out["tss_source"] = tss_source
+    return out
 
 
 def should_recompute_for_ftp(context: dict | None, ftp_watts: float | None) -> bool:
@@ -146,7 +158,9 @@ async def compute_activity_context(db, activity: Activity) -> dict | None:
     profile = profile_result.scalar_one_or_none()
     ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
-    return ride_context_from_analysis(analysis, top_speed, ftp, activity.tss)
+    return ride_context_from_analysis(
+        analysis, top_speed, ftp, activity.tss, tss_source=activity.tss_source
+    )
 
 
 async def ensure_activity_contexts(db, activities: list[Activity]) -> int:

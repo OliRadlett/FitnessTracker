@@ -32,6 +32,7 @@ import {
   copySessionToPlanDay,
   copyPlanDayToDate,
   previewWorkout,
+  suggestLoad,
   type WorkoutPreviewTargets,
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
@@ -947,6 +948,9 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const [swapDate, setSwapDate] = useState('');
   const [copyError, setCopyError] = useState<string | null>(null);
   const [previewTargets, setPreviewTargets] = useState<WorkoutPreviewTargets | null>(null);
+  // FL3 — %1RM suggestion state (one in-flight request at a time).
+  const [suggestIdx, setSuggestIdx] = useState<number | null>(null);
+  const [suggestMsg, setSuggestMsg] = useState<string | null>(null);
 
   // Fetch workout preview when type/duration changes for cycle days
   useEffect(() => {
@@ -1026,6 +1030,40 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
       planned_exercises: list,
       planned_volume_kg: computedVolumeKg(list),
     });
+  };
+
+  // FL3 — suggest a working weight as % of the current e1RM and fill weight_kg.
+  // The pct basis is stored on the entry so weekly refresh keeps re-solving it.
+  const handleSuggestLoad = async (idx: number) => {
+    const ex = day.planned_exercises?.[idx];
+    if (!ex || !ex.exercise.trim()) {
+      setSuggestMsg('Enter an exercise name first.');
+      return;
+    }
+    const pct = ex.pct_1rm ?? 0.8;
+    setSuggestIdx(idx);
+    setSuggestMsg(null);
+    try {
+      const res = await suggestLoad(authFetch, {
+        exercise_name: ex.exercise.trim(),
+        sets: ex.sets || 3,
+        reps: ex.reps || 8,
+        pct_1rm: pct,
+      });
+      if (res.target_kg == null) {
+        setSuggestMsg(`No PR or recent history for “${ex.exercise}” — enter weight manually.`);
+      } else {
+        patchExercise(idx, { weight_kg: res.target_kg, pct_1rm: res.pct_1rm });
+        setSuggestMsg(
+          `${ex.exercise}: ${res.target_kg}kg @ ${Math.round(res.pct_1rm * 100)}% ` +
+          `(e1RM ${res.basis_1rm_kg}kg via ${res.basis_source === 'pr' ? 'PR' : 'recent sets'})`,
+        );
+      }
+    } catch (err) {
+      setSuggestMsg(err instanceof Error ? err.message : 'Suggestion failed.');
+    } finally {
+      setSuggestIdx(null);
+    }
   };
 
   return (
@@ -1438,20 +1476,33 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   }
                   className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
                 />
-                <input
-                  type="number"
-                  min={0}
-                  step={2.5}
-                  aria-label="Weight kg"
-                  placeholder="kg"
-                  value={ex.weight_kg ?? ''}
-                  onChange={(e) =>
-                    patchExercise(idx, {
-                      weight_kg: e.target.value === '' ? null : parseFloat(e.target.value),
-                    })
-                  }
-                  className="col-span-2 sm:col-span-2 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
-                />
+                <div className="col-span-2 sm:col-span-2 flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    step={2.5}
+                    aria-label="Weight kg"
+                    placeholder="kg"
+                    title={ex.pct_1rm != null ? `Basis: ${Math.round(ex.pct_1rm * 100)}% 1RM` : undefined}
+                    value={ex.weight_kg ?? ''}
+                    onChange={(e) =>
+                      patchExercise(idx, {
+                        weight_kg: e.target.value === '' ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    className="flex-1 min-w-0 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                  />
+                  {/* FL3 — %1RM prescription helper */}
+                  <button
+                    onClick={() => handleSuggestLoad(idx)}
+                    disabled={suggestIdx !== null}
+                    title={`Suggest weight from current e1RM @ ${Math.round((ex.pct_1rm ?? 0.8) * 100)}% (stores the % basis for weekly refresh)`}
+                    aria-label={`Suggest weight from percent of 1RM for ${ex.exercise || 'exercise'}`}
+                    className="shrink-0 px-1.5 py-1.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {suggestIdx === idx ? '…' : '%1RM'}
+                  </button>
+                </div>
                 <input
                   type="number"
                   min={1}
@@ -1482,6 +1533,9 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             >
               + Add exercise
             </button>
+            {suggestMsg && (
+              <p className="text-[11px] text-muted">{suggestMsg}</p>
+            )}
           </div>
         </div>
       )}

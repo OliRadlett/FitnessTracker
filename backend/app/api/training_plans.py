@@ -16,6 +16,9 @@ from app.schemas.conformity import (
 from app.schemas.training_plan import (
     AdaptiveSuggestionsResponse,
     GeneratePlanRequest,
+    RefreshTargetsResponse,
+    RescheduleDayRequest,
+    SubstituteDayRequest,
     TrainingPlanCreate,
     TrainingPlanDayRead,
     TrainingPlanDayUpdate,
@@ -23,6 +26,7 @@ from app.schemas.training_plan import (
     TrainingPlanSummary,
     TrainingPlanUpdate,
     TrainingWeekResponse,
+    UnplannedActualsResponse,
 )
 from app.services import conformity as conformity_service
 from app.services import training_plan as plan_service
@@ -173,6 +177,132 @@ async def update_plan_day(
         code = 404 if "not found" in detail else 400
         raise HTTPException(status_code=code, detail=detail) from e
     return TrainingPlanDayRead.model_validate(day)
+
+
+# ── FL1: refresh cycle targets ──────────────────────────────────────────
+
+
+@router.post("/{plan_id}/refresh-targets", response_model=RefreshTargetsResponse)
+async def refresh_plan_targets(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recompute upcoming cycle-day targets from the current FTP (FL1).
+
+    Updates days whose stored power/TSS drifted beyond epsilon since they
+    were filled; reports a CP-vs-FTP cross-check when fitted critical power
+    diverges >10%. Strength days with a %e1RM basis are re-solved from
+    current PRs in the same call (FL3, reported under ``strength_refreshed``).
+    """
+    try:
+        result = await plan_service.refresh_cycle_targets(db, current_user.id, plan_id)
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    # FL3 rides the same endpoint: %e1RM strength propagation (additive key).
+    strength = await plan_service.refresh_strength_targets(db, current_user.id, plan_id)
+    result["strength_refreshed"] = strength.get("strength_refreshed", [])
+    return RefreshTargetsResponse.model_validate(result)
+
+
+# ── FL2: missed-session reconciliation ──────────────────────────────────
+
+
+@router.post("/{plan_id}/days/{day_id}/reschedule", response_model=TrainingPlanDayRead)
+async def reschedule_plan_day(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    data: RescheduleDayRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
+
+    All planned fields travel with the day. Returns 409 when another
+    uncompleted non-rest day already occupies the target date, 400 when the
+    day is completed or the target falls outside the plan range.
+    """
+    try:
+        day = await plan_service.reschedule_plan_day(
+            db, current_user.id, plan_id, day_id, data.target_date
+        )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanDayRead.model_validate(day)
+
+
+@router.post("/{plan_id}/days/{day_id}/substitute", response_model=TrainingPlanDayRead)
+async def substitute_plan_day(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    data: SubstituteDayRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Convert a missed day into an alternate session on the same date (FL2).
+
+    E.g. a missed threshold ride becomes an endurance spin; the conversion
+    is recorded in ``notes``. Unknown sport/type values fail with 422.
+    """
+    try:
+        day = await plan_service.substitute_plan_day(
+            db,
+            current_user.id,
+            plan_id,
+            day_id,
+            data.sport,
+            data.planned_type,
+            data.model_dump(
+                include={
+                    "planned_duration_min",
+                    "planned_tss",
+                    "planned_power_watts",
+                    "planned_volume_kg",
+                    "planned_rpe",
+                },
+                exclude_none=True,
+            ),
+        )
+    except ValueError as e:
+        detail = str(e)
+        if "not found" in detail:
+            code = 404
+        elif detail.startswith(("Invalid sport", "Invalid planned_type")):
+            code = 422
+        else:
+            code = 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanDayRead.model_validate(day)
+
+
+@router.get("/{plan_id}/unplanned", response_model=UnplannedActualsResponse)
+async def get_unplanned_actuals(
+    plan_id: uuid.UUID,
+    days: int = 14,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Activities + lifting sessions in the last ``days`` on no plan day (FL2).
+
+    Mirrors the linkage ``link_activities_to_plan_days`` records
+    (``activity_id`` / ``lifting_session_id`` across all of the user's
+    plans) and surfaces the leftovers as compact `extra` actuals.
+    """
+    if days < 1 or days > 90:
+        raise HTTPException(status_code=422, detail="days must be between 1 and 90")
+    try:
+        result = await plan_service.get_unplanned_actuals(
+            db, current_user.id, plan_id, days
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return UnplannedActualsResponse.model_validate(result)
 
 
 # ── Conformity endpoints (Phase 5C) ───────────────────────────────────────

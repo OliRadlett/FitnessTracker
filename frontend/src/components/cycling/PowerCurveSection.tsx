@@ -88,6 +88,20 @@ export function PowerCurveSection({
       }
     : null;
 
+  // W/kg lookup for the power-curve table: the wkg_power_curve chart is
+  // already normalized server-side by latest body weight (same duration
+  // buckets). Only use it when normalized — without a logged weight the
+  // backend falls back to raw watts (series "Best Power (W)").
+  const wkgByLabel: Map<string, number | null> = (() => {
+    const map = new Map<string, number | null>();
+    const series = wkgChart?.series?.[0];
+    if (!series || !series.name.includes('W/kg')) return map;
+    (wkgChart?.labels ?? []).forEach((label, i) => {
+      map.set(label, series.data[i] ?? null);
+    });
+    return map;
+  })();
+
   // Fitted CP-model overlay takes precedence when available; falls back to
   // the plain stream power curve.
   const curveChart = fittedCurveData ?? chartPowerCurve;
@@ -127,7 +141,7 @@ export function PowerCurveSection({
               )}
               {curveChart && <Chart data={curveChart} height={280} />}
               <div className="mt-4">
-                <PowerCurveTable data={powerCurve.data} ftpWatts={powerCurve.ftp_watts} />
+                <PowerCurveTable data={powerCurve.data} ftpWatts={powerCurve.ftp_watts} wkgByLabel={wkgByLabel} />
               </div>
             </>
           ) : (

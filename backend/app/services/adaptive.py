@@ -13,15 +13,20 @@ glues it to the database and attaches concrete day-level ``actions``.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.activity import Activity
 from app.models.daily_metric import DailyMetric
 from app.models.health_alert import HealthAlert
+from app.models.lifting import LiftingSession
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+logger = logging.getLogger(__name__)
 
 # Fatigue zones — TSB below this means the athlete is deep in the red.
 TSB_FATIGUE_THRESHOLD = -20.0
@@ -38,6 +43,57 @@ RAISE_FACTOR = 1.08
 # How many upcoming training days a scale-action touches.
 DAY_ACTION_LIMIT = 3
 
+# ── CD1: cross-sport fatigue interference ────────────────────────────────
+# Lifting "stress" below is an approximation: session volume_kg + session RPE
+# stand in for neuromuscular leg fatigue (there is no validated kg→TSS
+# mapping). Thresholds are deliberately conservative so only clearly heavy
+# days trigger a cross-sport vote.
+# Yesterday's lower-body volume at/above this marks the legs as loaded.
+LEGS_YESTERDAY_VOLUME_KG = 4000.0
+# A legs-focused session at/above this RPE marks the legs as loaded even
+# when recorded volume is low (e.g. heavy singles).
+LEGS_HIGH_RPE = 8.0
+# Yesterday's cycling TSS at/above this marks cycling as loaded.
+CYCLING_YESTERDAY_TSS = 150.0
+# Trailing-window average cycling TSS/day at/above this also marks cycling
+# as loaded (accumulated load, not just a single big ride).
+CYCLING_7D_AVG_TSS_PER_DAY = 100.0
+# Trailing window (days, ending yesterday inclusive) for accumulated load.
+CROSS_SPORT_WINDOW_DAYS = 7
+
+# LiftingSession.focus values treated as lower-body / leg-loading work.
+LOWER_BODY_FOCUS = frozenset(
+    {
+        "squat",
+        "deadlift",
+        "legs",
+        "lower",
+        "lower_body",
+        "full_body",
+        "full-body",
+    }
+)
+
+# ── CD2: recovery → strength autoregulation ──────────────────────────────
+# DailyMetric/HRV-gated scaling for strength volume. The thresholds are
+# deliberately simple and documented (not a black-box readiness score):
+# down-scale only on clearly poor recovery, up-scale only when recovery is
+# high AND recent lifting RPE ran easy AND no health alert is active.
+# Down-scale applied to strength-day volume when triggered.
+STRENGTH_READINESS_DOWN_FACTOR = 0.9
+# Conservative upside, gated on all three conditions below.
+STRENGTH_READINESS_UP_FACTOR = 1.05
+# Recovery at/above this (with easy RPE + no alerts) unlocks the upside.
+STRENGTH_READINESS_HIGH_RECOVERY = 80.0
+# Latest HRV below (1 − drop) × trailing baseline counts as "sharply down".
+HRV_BASELINE_DAYS = 7
+HRV_SHARP_DROP_PCT = 25.0
+# Minimum prior HRV points to trust the baseline (avoids single-point noise).
+HRV_BASELINE_MIN_POINTS = 3
+# Trailing window + ceiling for "recent RPE ran easy".
+STRENGTH_RPE_WINDOW_DAYS = 7
+STRENGTH_RPE_EASY_MAX = 6.0
+
 _SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 
 
@@ -52,6 +108,246 @@ def _worst_alert_severity(severities: list[str | None]) -> str | None:
     if not ranked:
         return None
     return max(ranked, key=lambda s: _SEVERITY_ORDER[s])
+
+
+# ── CD1: cross-sport fatigue helper ───────────────────────────────────────
+
+
+def _is_lower_body_focus(focus: str | None) -> bool:
+    """True when a lifting focus string denotes leg-loading work."""
+    if not focus:
+        return False
+    normalized = focus.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in LOWER_BODY_FOCUS:
+        return True
+    return any(token in normalized for token in ("squat", "deadlift", "leg", "lower"))
+
+
+async def cross_sport_fatigue(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    """Prior-day / trailing-week load across the lifting↔cycling boundary.
+
+    Computes (a) yesterday's lower-body lifting volume + session RPE +
+    whether any yesterday session had a squat/deadlift-legs focus, (b)
+    trailing-window lower-body lifting volume, (c) yesterday's cycling
+    TSS, (d) trailing-window cycling TSS.
+
+    Lifting "stress" is an approximation (volume_kg + session RPE, not a
+    validated muscle-damage model) — callers label it as such in reasons.
+
+    Returns ``{"legs_loaded", "legs_detail", "cycling_loaded",
+    "cycling_detail"}`` plus the raw numbers behind each flag.
+    """
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    window_start = yesterday - timedelta(days=CROSS_SPORT_WINDOW_DAYS - 1)
+
+    # ── Lifting: yesterday's sessions ────────────────────────────────────
+    lift_result = await db.execute(
+        select(LiftingSession).where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.session_date == yesterday,
+        )
+    )
+    lift_rows = lift_result.scalars().all()
+    yesterday_leg_volume = sum(
+        (s.total_volume_kg or 0.0) for s in lift_rows if _is_lower_body_focus(s.focus)
+    )
+    yesterday_leg_rpe = max(
+        [s.rpe_session for s in lift_rows if s.rpe_session is not None],
+        default=None,
+    )
+    legs_focused = any(_is_lower_body_focus(s.focus) for s in lift_rows)
+
+    # ── Lifting: trailing-window lower-body volume ───────────────────────
+    week_result = await db.execute(
+        select(LiftingSession).where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.session_date >= window_start,
+            LiftingSession.session_date <= yesterday,
+        )
+    )
+    week_rows = week_result.scalars().all()
+    trailing_leg_volume = sum(
+        (s.total_volume_kg or 0.0) for s in week_rows if _is_lower_body_focus(s.focus)
+    )
+
+    legs_loaded = (yesterday_leg_volume >= LEGS_YESTERDAY_VOLUME_KG) or (
+        legs_focused
+        and yesterday_leg_rpe is not None
+        and yesterday_leg_rpe >= LEGS_HIGH_RPE
+    )
+    legs_detail = (
+        f"yesterday lower-body volume {yesterday_leg_volume:.0f} kg"
+        + (
+            f", session RPE {yesterday_leg_rpe:.1f}"
+            if yesterday_leg_rpe is not None
+            else ""
+        )
+        + f" (7d lower-body {trailing_leg_volume:.0f} kg)"
+        if lift_rows
+        else "no lifting sessions logged yesterday"
+    )
+
+    # ── Cycling: TSS sums (UTC day windows on start_date) ────────────────
+    y_start = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=UTC)
+    t_start = y_start + timedelta(days=1)
+    w_start = y_start - timedelta(days=CROSS_SPORT_WINDOW_DAYS - 1)
+
+    yesterday_tss = (
+        await db.execute(
+            select(func.coalesce(func.sum(Activity.tss), 0.0)).where(
+                Activity.user_id == user_id,
+                Activity.sport_type == "cycling",
+                Activity.start_date >= y_start,
+                Activity.start_date < t_start,
+                Activity.tss.isnot(None),
+            )
+        )
+    ).scalar_one() or 0.0
+    trailing_tss = (
+        await db.execute(
+            select(func.coalesce(func.sum(Activity.tss), 0.0)).where(
+                Activity.user_id == user_id,
+                Activity.sport_type == "cycling",
+                Activity.start_date >= w_start,
+                Activity.start_date < t_start,
+                Activity.tss.isnot(None),
+            )
+        )
+    ).scalar_one() or 0.0
+    trailing_avg = float(trailing_tss) / CROSS_SPORT_WINDOW_DAYS
+
+    cycling_loaded = (float(yesterday_tss) >= CYCLING_YESTERDAY_TSS) or (
+        trailing_avg >= CYCLING_7D_AVG_TSS_PER_DAY
+    )
+    cycling_detail = (
+        f"yesterday cycling TSS {float(yesterday_tss):.0f} "
+        f"(7d avg {trailing_avg:.0f}/day)"
+    )
+
+    return {
+        "legs_loaded": bool(legs_loaded),
+        "legs_detail": legs_detail,
+        "cycling_loaded": bool(cycling_loaded),
+        "cycling_detail": cycling_detail,
+        "yesterday_leg_volume_kg": round(float(yesterday_leg_volume), 1),
+        "trailing_7d_leg_volume_kg": round(float(trailing_leg_volume), 1),
+        "yesterday_cycling_tss": round(float(yesterday_tss), 1),
+        "trailing_7d_cycling_tss": round(float(trailing_tss), 1),
+        "trailing_7d_avg_tss_per_day": round(float(trailing_avg), 1),
+    }
+
+
+# ── CD2: recovery → strength readiness ─────────────────────────────────
+
+
+async def strength_readiness(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    """Recovery/HRV-gated readiness factor for strength volume (CD2).
+
+    Returns ``{"factor": float, "note": str}``. ``factor`` is 1.0 by default;
+    0.9 when the latest recovery is below ``RECOVERY_LOW`` or the latest HRV
+    sits more than ``HRV_SHARP_DROP_PCT`` below its trailing baseline;
+    1.05 only when recovery is at/above ``STRENGTH_READINESS_HIGH_RECOVERY``
+    AND the trailing-window average session RPE ran easy AND no health alert
+    is active (conservative upside). Missing inputs degrade to neutral —
+    never to a down-scale.
+    """
+    today = date.today()
+
+    rec_row = (
+        await db.execute(
+            select(DailyMetric.recovery_score)
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.recovery_score.isnot(None),
+            )
+            .order_by(DailyMetric.metric_date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    recovery = float(rec_row) if rec_row is not None else None
+
+    if recovery is not None and recovery < RECOVERY_LOW:
+        return {
+            "factor": STRENGTH_READINESS_DOWN_FACTOR,
+            "note": (
+                f"Readiness check: latest recovery {recovery:.0f}/100 is below "
+                f"{RECOVERY_LOW:.0f} — strength volume scaled "
+                f"×{STRENGTH_READINESS_DOWN_FACTOR:g}."
+            ),
+        }
+
+    hrv_rows = (
+        (
+            await db.execute(
+                select(DailyMetric.hrv_ms)
+                .where(
+                    DailyMetric.user_id == user_id,
+                    DailyMetric.hrv_ms.isnot(None),
+                )
+                .order_by(DailyMetric.metric_date.desc())
+                .limit(HRV_BASELINE_DAYS + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if hrv_rows:
+        latest_hrv = float(hrv_rows[0])
+        baseline_pts = [float(v) for v in hrv_rows[1:]]
+        if len(baseline_pts) >= HRV_BASELINE_MIN_POINTS:
+            baseline = sum(baseline_pts) / len(baseline_pts)
+            if baseline > 0 and latest_hrv < baseline * (1 - HRV_SHARP_DROP_PCT / 100):
+                drop_pct = (baseline - latest_hrv) / baseline * 100
+                return {
+                    "factor": STRENGTH_READINESS_DOWN_FACTOR,
+                    "note": (
+                        f"Readiness check: latest HRV {latest_hrv:.0f} ms is "
+                        f"{drop_pct:.0f}% below its {HRV_BASELINE_DAYS}-day "
+                        f"baseline ({baseline:.0f} ms) — strength volume "
+                        f"scaled ×{STRENGTH_READINESS_DOWN_FACTOR:g}."
+                    ),
+                }
+
+    if recovery is not None and recovery >= STRENGTH_READINESS_HIGH_RECOVERY:
+        rpe_avg = (
+            await db.execute(
+                select(func.avg(LiftingSession.rpe_session)).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date
+                    >= today - timedelta(days=STRENGTH_RPE_WINDOW_DAYS),
+                    LiftingSession.rpe_session.isnot(None),
+                )
+            )
+        ).scalar_one()
+        if rpe_avg is not None and float(rpe_avg) <= STRENGTH_RPE_EASY_MAX:
+            active_alerts = (
+                await db.execute(
+                    select(func.count(HealthAlert.id)).where(
+                        HealthAlert.user_id == user_id,
+                        HealthAlert.status == "active",
+                    )
+                )
+            ).scalar_one() or 0
+            if not active_alerts:
+                return {
+                    "factor": STRENGTH_READINESS_UP_FACTOR,
+                    "note": (
+                        f"Readiness check: recovery {recovery:.0f}/100 with easy "
+                        f"recent RPE ({float(rpe_avg):.1f}) and no active "
+                        "alerts — strength volume scaled "
+                        f"×{STRENGTH_READINESS_UP_FACTOR:g}."
+                    ),
+                }
+
+    if recovery is None:
+        note = "Readiness check: no recent recovery data — full strength targets."
+    else:
+        note = (
+            f"Readiness check: recovery {recovery:.0f}/100 steady — "
+            "full strength targets."
+        )
+    return {"factor": 1.0, "note": note}
 
 
 # ── Pure inference ────────────────────────────────────────────────────────
@@ -365,6 +661,67 @@ def derive_adaptive_advice(
     }
 
 
+# ── QW6: goal-aware adaptive ────────────────────────────────────────────
+# Only these training-performance metrics can steer load advice; health /
+# body-composition goals never vote to raise training.
+PERFORMANCE_GOAL_METRICS = frozenset(
+    {"ftp_watts", "weekly_tss", "estimated_1rm", "weekly_sessions"}
+)
+# Projection badges that count as off-pace (see services/projections.py).
+GOAL_OFF_PACE_BADGES = frozenset({"At Risk", "Unlikely"})
+# The athlete must be absorbing the plan before a goal may add load.
+GOAL_RAISE_CONFORMITY_FLOOR = 70.0
+
+
+async def _off_pace_performance_goals(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[dict]:
+    """Active performance goals with target dates projecting off-pace.
+
+    Returns ``[{metric, target_value, target_date, projected_date, badge}]``
+    for goals whose ``compute_goal_projection`` badge is At Risk/Unlikely.
+    Goals already met (status != active) or ahead (On Track) are excluded —
+    callers must NOT ease off for those (see the QW6 note above).
+    Best-effort per goal: a failing projection skips that goal only.
+    """
+    from app.models.goal import Goal
+    from app.services.projections import compute_goal_projection
+
+    result = await db.execute(
+        select(Goal).where(
+            Goal.user_id == user_id,
+            Goal.status == "active",
+            Goal.target_date.isnot(None),
+            Goal.metric.in_(PERFORMANCE_GOAL_METRICS),
+        )
+    )
+    off_pace: list[dict] = []
+    for goal in result.scalars().all():
+        try:
+            proj = await compute_goal_projection(db, user_id, goal.id)
+        except Exception:
+            logger.warning(
+                "Goal projection failed for goal %s (%s)",
+                goal.id,
+                goal.metric,
+                exc_info=True,
+            )
+            continue
+        if proj.get("badge") not in GOAL_OFF_PACE_BADGES:
+            continue
+        projection = proj.get("projection") or {}
+        off_pace.append(
+            {
+                "metric": goal.metric,
+                "target_value": goal.target_value,
+                "target_date": goal.target_date,
+                "projected_date": projection.get("projected_date"),
+                "badge": proj.get("badge"),
+            }
+        )
+    return off_pace
+
+
 # ── DB glue + day-level actions ───────────────────────────────────────────
 
 
@@ -415,8 +772,14 @@ def _actions_for(
     kind: str,
     factor: float,
     force_rest: bool = False,
+    strength_volume_factor: float | None = None,
 ) -> list[dict]:
-    """Build one-tap apply actions for the upcoming training days."""
+    """Build one-tap apply actions for the upcoming training days.
+
+    ``strength_volume_factor`` (CD2): when set, strength-day
+    ``planned_volume_kg`` scales by this combined factor instead of ``factor``
+    (still clamped by the existing bounds); cycle days and RPE are untouched.
+    """
     actions: list[dict] = []
     for day in days:
         if force_rest:
@@ -424,6 +787,14 @@ def _actions_for(
             label = f"Rest on {day.day_date.isoformat()}"
         else:
             fields = _fields_for_scale(day, factor)
+            if (
+                strength_volume_factor is not None
+                and day.sport == "strength"
+                and day.planned_volume_kg is not None
+            ):
+                fields["planned_volume_kg"] = _scaled(
+                    day.planned_volume_kg, strength_volume_factor, 100, 200000
+                )
             if not fields:
                 continue
             noun = "volume" if day.sport == "strength" else "load"
@@ -490,19 +861,17 @@ async def generate_adaptive_suggestions(
         plan = result.scalars().first()
 
     # ── Training load (CTL/ATL/TSB) ────────────────────────────────────────
+    # Personalized path: fitted ctl_tau/atl_tau when the Modal power-model
+    # fit produced them, else the canonical 42/7 constants. Chart/dashboard
+    # call sites intentionally stay on compute_training_load's canonical
+    # constants so displayed CTL/ATL/TSB remain comparable across users;
+    # only adaptive advice reacts to personalized taus.
     tsb = ctl = atl = None
     try:
-        from app.services.cycling.training_load import (
-            CTL_WARMUP_DAYS,
-            compute_training_load,
-        )
-        from app.services.cycling.tss import get_daily_tss
+        from app.services.cycling.training_load import training_load_for_user
 
         today = date.today()
-        daily = await get_daily_tss(
-            db, user_id, today - timedelta(days=90 + CTL_WARMUP_DAYS), today
-        )
-        series = compute_training_load(daily, today, lookback_days=90)
+        series = await training_load_for_user(db, user_id, today, lookback_days=90)
         if series:
             last = series[-1]
             tsb, ctl, atl = last["tsb"], last["ctl"], last["atl"]
@@ -607,18 +976,142 @@ async def generate_adaptive_suggestions(
 
     if factor is not None and upcoming:
         kind = "cut" if factor < 1 else "raise"
+        # ── CD2: recovery → strength modulation ────────────────────────
+        # Strength-day volume scales by factor × readiness (cycle days keep
+        # the plain factor). Neutral readiness (1.0) leaves the actions
+        # identical to before; the note is appended only when modulated and
+        # only to suggestions that actually touch a strength day.
+        try:
+            _readiness = await strength_readiness(db, user_id)
+        except Exception:
+            logger.warning(
+                "strength_readiness failed; using neutral factor", exc_info=True
+            )
+            _readiness = {"factor": 1.0, "note": ""}
+        _readiness_factor = float(_readiness.get("factor") or 1.0)
+        _strength_scale = (
+            factor * _readiness_factor if _readiness_factor != 1.0 else None
+        )
+        _strength_day_ids = {str(d.id) for d in upcoming if d.sport == "strength"}
         # Attach to the scale-type suggestion(s) that drive the intensity stance.
         for s in outcome["suggestions"]:
             if (factor < 1 and s["type"] in ("intensity_cut",)) or (
                 factor > 1 and s["type"] == "intensity_raise"
             ):
-                s["actions"] = _actions_for(plan.id, upcoming, kind, factor)
+                s["actions"] = _actions_for(
+                    plan.id,
+                    upcoming,
+                    kind,
+                    factor,
+                    strength_volume_factor=_strength_scale,
+                )
+                if (
+                    _strength_scale is not None
+                    and _readiness.get("note")
+                    and any(a.get("day_id") in _strength_day_ids for a in s["actions"])
+                ):
+                    s["detail"] = f"{s['detail']} {_readiness['note']}".strip()
         # Rest advice attaches to the first upcoming training day.
         for s in outcome["suggestions"]:
             if s["type"] == "rest_day" and upcoming:
                 s["actions"] = _actions_for(
                     plan.id, upcoming, "rest", 1.0, force_rest=True
                 )
+
+    # ── CD1: cross-sport fatigue interference ────────────────────────────
+    # Legs loaded → ease the upcoming cycle day(s); hard cycling → scale
+    # the upcoming strength day(s). Reuses the intensity_cut machinery (no
+    # new action types); fields stay clamped via _fields_for_scale.
+    # Lifting stress is an approximation (volume + RPE) — reasons say so.
+    try:
+        cross = await cross_sport_fatigue(db, user_id)
+    except Exception:
+        cross = None
+    if cross and plan is not None and upcoming:
+        if cross.get("legs_loaded"):
+            cycle_days = [d for d in upcoming if d.sport == "cycle"][:DAY_ACTION_LIMIT]
+            if cycle_days:
+                outcome["suggestions"].append(
+                    {
+                        "type": "intensity_cut",
+                        "title": "Ease cycling after leg day",
+                        "detail": (
+                            f"Yesterday's lifting loaded the legs "
+                            f"({cross['legs_detail']}; lifting stress is an "
+                            f"approximation from volume + RPE). Lower planned "
+                            f"power/duration/TSS by "
+                            f"~{round((1 - CUT_FACTOR) * 100)}% on the next "
+                            f"cycle day(s)."
+                        ),
+                        "severity": "warning",
+                        "actions": _actions_for(plan.id, cycle_days, "cut", CUT_FACTOR),
+                    }
+                )
+        if cross.get("cycling_loaded"):
+            strength_days = [d for d in upcoming if d.sport == "strength"][
+                :DAY_ACTION_LIMIT
+            ]
+            if strength_days:
+                outcome["suggestions"].append(
+                    {
+                        "type": "intensity_cut",
+                        "title": "Ease lifting after hard riding",
+                        "detail": (
+                            f"Recent cycling load is high "
+                            f"({cross['cycling_detail']}). Scale the next "
+                            f"strength day volume down "
+                            f"~{round((1 - CUT_FACTOR) * 100)}%."
+                        ),
+                        "severity": "warning",
+                        "actions": _actions_for(
+                            plan.id, strength_days, "cut", CUT_FACTOR
+                        ),
+                    }
+                )
+
+    # ── QW6: goal-aware adaptive ─────────────────────────────────────────
+    # An off-pace performance goal (At Risk/Unlikely) votes to raise load
+    # when the athlete is absorbing the plan (conformity ≥ 70) and no
+    # health block exists. Reuses the intensity_raise machinery on the next
+    # training days; the reason cites the goal + projected date.
+    # Deliberately NO ease-off when a goal is met/ahead: cutting load
+    # because a goal looks safe would punish good progress and invite
+    # detraining (a perverse incentive) — the plan's own progression
+    # already absorbs it.
+    if (
+        plan is not None
+        and upcoming
+        and conformity_pct is not None
+        and conformity_pct >= GOAL_RAISE_CONFORMITY_FLOOR
+        and not alerts
+    ):
+        try:
+            off_pace = await _off_pace_performance_goals(db, user_id)
+        except Exception:
+            off_pace = []
+        for g in off_pace:
+            projected = g["projected_date"]
+            if projected is not None and hasattr(projected, "isoformat"):
+                trajectory = f"trend projects {projected.isoformat()}"
+            else:
+                trajectory = "trend is heading away from target"
+            outcome["suggestions"].append(
+                {
+                    "type": "intensity_raise",
+                    "title": f"Chase goal: {g['metric']}",
+                    "detail": (
+                        f"Goal {g['metric']} (target {g['target_value']:g} by "
+                        f"{g['target_date'].isoformat()}) is {g['badge']} — "
+                        f"{trajectory}. You are absorbing "
+                        f"the plan ({conformity_pct:.0f}% conformity), so raise "
+                        f"planned power/duration/TSS by "
+                        f"~{round((RAISE_FACTOR - 1) * 100)}% on the next "
+                        f"training days."
+                    ),
+                    "severity": "info",
+                    "actions": _actions_for(plan.id, upcoming, "raise", RAISE_FACTOR),
+                }
+            )
 
     for s in outcome["suggestions"]:
         s.setdefault("actions", [])

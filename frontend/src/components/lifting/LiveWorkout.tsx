@@ -8,6 +8,7 @@ import type { PersonalRecord } from '@/lib/api/types';
 import {
   brzycki1rm,
   detectPr,
+  adjustWeightForRpe,
   normaliseExerciseKey,
   type ExerciseReference,
 } from '@/lib/lifting/reference';
@@ -227,7 +228,8 @@ export function LiveWorkout({
       if (ref) {
         // Prefill the actual last logged working set, not the highest-volume
         // one — a pyramid/wave session should continue from where you left off.
-        setWeight(ref.lastSet.weight_kg);
+        // FL3: nudge from last session's set RPE (easy → +2.5%, grinder → −5%).
+        setWeight(adjustWeightForRpe(ref.lastSet.weight_kg, ref.lastSet.rpe));
         setReps(ref.lastSet.reps);
         return;
       }

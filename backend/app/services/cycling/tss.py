@@ -9,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
 
+# QW4 — TSS provenance values stored on Activity.tss_source.
+TSS_SOURCE_POWER = "power"  # computed from power (NP/AP + FTP)
+TSS_SOURCE_HR = "hr"  # hrTSS fallback (avg HR + LTHR/resting HR)
+TSS_SOURCE_PROVIDER = "provider"  # supplied by a sync provider payload
+TSS_SOURCE_MANUAL = "manual"  # hand-entered by the athlete
+
 
 def calculate_power_tss(
     duration_seconds: int,
@@ -157,14 +163,47 @@ async def auto_compute_tss_for_activity(
             tss = calculate_power_tss(activity.duration_seconds, np, ftp)
             if tss > 0:
                 activity.tss = tss
+                activity.tss_source = TSS_SOURCE_POWER
                 return tss
 
     # Fallback: HR-based TSS for power-meter-less rides.
     hr_tss = await auto_compute_hr_tss_for_activity(db, activity)
     if hr_tss:
         activity.tss = hr_tss
+        activity.tss_source = TSS_SOURCE_HR
         return hr_tss
 
+    return None
+
+
+def infer_tss_source(
+    activity: Activity, *, has_power_stream: bool = False
+) -> str | None:
+    """Conservative backfill heuristic for ``Activity.tss_source`` (QW4).
+
+    Only labels a row when the evidence is unambiguous; otherwise returns
+    None so the UI badges it as unknown rather than misleading:
+
+    - ``tss`` is NULL → None (nothing to label).
+    - Has power data (``normalized_power`` or ``average_power``) **and**
+      FTP-era power-stream evidence → ``'power'`` (power-first, mirrors the
+      auto-compute priority: a power-capable ride would have taken the power
+      branch had FTP been set).
+    - Else has ``average_heartrate`` → ``'hr'`` (the only other in-app
+      computation that writes TSS).
+    - Else None — notably NOT ``'provider'``: no current sync path ingests
+      provider-supplied TSS (Strava/Wahoo/FIT summaries carry no TSS field),
+      so a TSS with neither power nor HR evidence is left unknown rather
+      than attributed to a provider.
+
+    The Alembic 062 backfill implements the same rules in SQL.
+    """
+    if activity.tss is None:
+        return None
+    if (activity.normalized_power or activity.average_power) and has_power_stream:
+        return TSS_SOURCE_POWER
+    if activity.average_heartrate:
+        return TSS_SOURCE_HR
     return None
 
 
