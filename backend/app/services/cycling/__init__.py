@@ -37,6 +37,8 @@ from app.services.cycling.training_load import (
     compute_training_load,
     get_metric_benchmark,
     get_or_create_cycling_profile,
+    sync_profile_reference_weight,
+    training_load_for_user,
 )
 from app.services.cycling.tss import (
     auto_compute_hr_tss_for_activity,

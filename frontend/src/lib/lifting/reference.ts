@@ -132,6 +132,21 @@ export function normaliseExerciseKey(name: string): string {
   return name.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
 }
 
+/**
+ * FL3 autoregulation — nudge last session's weight from its set RPE.
+ *
+ * Rule: last working set RPE ≤ 6 → +2.5% (load was easy, progress it);
+ * RPE ≥ 9.5 → −5% (near-maximal/grinder, back off for safety); anything
+ * in between → as-is. RPE scale is 1–10; a missing RPE never adjusts.
+ * Result rounds to the nearest 0.5 kg (smallest common plate jump).
+ */
+export function adjustWeightForRpe(weightKg: number, rpe?: number | null): number {
+  if (rpe == null) return weightKg;
+  if (rpe <= 6) return Math.round(weightKg * 1.025 * 2) / 2;
+  if (rpe >= 9.5) return Math.round(weightKg * 0.95 * 2) / 2;
+  return weightKg;
+}
+
 /** Recent-exercise chips, most-recently-used first. */
 export function recentExerciseNames(sessions: LiftingSession[], limit = 6): string[] {
   const names: string[] = [];

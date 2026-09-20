@@ -176,6 +176,36 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
+  const { data: weeklyVolumeChart, isLoading: weeklyVolumeLoading } = useQuery<ChartData>({
+    queryKey: ['chart-weekly-volume', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
+    staleTime: 300_000,
+  });
+
+  // Estimated 1RM history — exercise selector mirrors ExerciseProgressSection:
+  // options derived from loaded sessions, auto-selects the first exercise.
+  const e1rmExerciseList = useMemo(() => {
+    if (!sessions) return [];
+    const names = new Set<string>();
+    for (const session of sessions) {
+      for (const set of session.sets || []) {
+        names.add(set.exercise_name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [sessions]);
+  const [selectedE1rmExercise, setSelectedE1rmExercise] = useState('');
+  const effectiveE1rmExercise = selectedE1rmExercise || e1rmExerciseList[0] || '';
+
+  const { data: e1rmHistoryChart, isLoading: e1rmHistoryLoading } = useQuery<ChartData>({
+    queryKey: ['chart-estimated-1rm-history', effectiveE1rmExercise],
+    queryFn: () => authFetch<ChartData>(
+      `/api/v1/charts/estimated_1rm_history?exercise_name=${encodeURIComponent(effectiveE1rmExercise)}`
+    ),
+    enabled: !!effectiveE1rmExercise,
+    staleTime: 300_000,
+  });
+
   const { data: sessionDetail } = useQuery<LiftingSession>({
     queryKey: ['lifting-session', selectedSessionId],
     queryFn: () => authFetch<LiftingSession>(`/api/v1/lifting/sessions/${selectedSessionId}`),
@@ -984,6 +1014,44 @@ export default function LiftingPage() {
           height={280}
         />
       </Card>
+
+      {/* Weekly Volume — backend attaches an injury-risk insight on spikes */}
+      <Card>
+        <CardHeader><CardTitle>Weekly Volume (16 weeks)</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={weeklyVolumeLoading}
+          data={weeklyVolumeChart}
+          emptyMessage="No lifting volume recorded yet"
+          height={280}
+        />
+      </Card>
+
+      {/* Estimated 1RM History */}
+      {e1rmExerciseList.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Estimated 1RM History</CardTitle>
+              <select
+                value={effectiveE1rmExercise}
+                onChange={(e) => setSelectedE1rmExercise(e.target.value)}
+                className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                aria-label="Select exercise for 1RM history"
+              >
+                {e1rmExerciseList.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          </CardHeader>
+          <ChartBody
+            isLoading={e1rmHistoryLoading}
+            data={e1rmHistoryChart}
+            emptyMessage="No 1RM history for this exercise yet"
+            height={280}
+          />
+        </Card>
+      )}
 
       {/* Exercise Progress */}
       <ExerciseProgressSection sessions={sessions} />

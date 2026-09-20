@@ -298,4 +298,12 @@ async def sync_withings_measurements(
 
     await db.flush()
     logger.info(f"Withings sync for user {user_id}: {len(synced)} weigh-ins upserted")
+
+    if synced:
+        # Keep the canonical reference weight (W/kg, strength standards,
+        # BW-ratio goals) in sync with scale weigh-ins — QW1.
+        from app.services.cycling import sync_profile_reference_weight
+
+        await sync_profile_reference_weight(db, user_id)
+
     return synced

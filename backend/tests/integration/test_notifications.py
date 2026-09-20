@@ -127,7 +127,7 @@ class TestHealthAlertWireIn:
         rows = list(result.scalars().all())
         assert len(rows) == 1
         assert rows[0].type == "health_alert"
-        assert rows[0].link == "/dashboard"
+        assert rows[0].link == "/health"
 
         # Re-upserting the same alert must not duplicate the notification.
         created_again = await upsert_alert(db_session, test_user.id, analysis)

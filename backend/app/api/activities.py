@@ -81,7 +81,9 @@ def _enrich_activity_read(
     # FTP staleness is handled by the /{id}/context read path — bulk list serves
     # the cached values as-is since power zones are still valid until FTP changes.
     if include_context:
-        read.ride_context = context_to_ride_metrics(activity.context)
+        read.ride_context = context_to_ride_metrics(
+            activity.context, tss_source=activity.tss_source
+        )
     # Stream presence from the eager-loaded relationship when available. Guard
     # on __dict__ — other _enrich callers (FIT upload, manual create, lifting)
     # don't eager-load streams, and lazy loading is illegal in async context.
@@ -1216,7 +1218,9 @@ async def get_activity_context(
         # the profile FTP moved since the cache was written we recompute rather
         # than serve stale zones. Top speed/decoupling/climbing never go stale.
         if not should_recompute_for_ftp(activity.context, profile.ftp_watts):
-            ride_metrics = context_to_ride_metrics(activity.context)
+            ride_metrics = context_to_ride_metrics(
+                activity.context, tss_source=activity.tss_source
+            )
         else:
             analysis = await analyze_ride(db, current_user.id, activity_id)
             if analysis is not None:
@@ -1225,6 +1229,7 @@ async def get_activity_context(
                     await compute_top_speed(db, activity_id),
                     profile.ftp_watts,
                     activity.tss,
+                    tss_source=activity.tss_source,
                 )
                 ride_metrics = context_to_ride_metrics(ctx)
 

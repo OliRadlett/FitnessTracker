@@ -20,9 +20,10 @@ import type {
   TrainingPlan,
   TrainingWeekDay,
   UpdateTrainingPlanDayPayload,
+  RefreshTargetsResponse,
   Event,
 } from '@/lib/api';
-import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities } from '@/lib/api';
+import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, refreshTargets } from '@/lib/api';
 import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
@@ -203,6 +204,11 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const realCurrentWeek = getCurrentRealWeek(plan);
   const todayStr = toDateStr(new Date());
 
+  // FL1 — last refresh-targets result (counts + CP/FTP cross-check), shown
+  // until the next week navigation or refresh.
+  const [refreshResult, setRefreshResult] = useState<RefreshTargetsResponse | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   // ── Query ───────────────────────────────────────────────────────────────
   const weekQuery = useQuery({
     queryKey: ['plan-week', plan.id, currentWeek],
@@ -238,10 +244,26 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     // Completion toggles / edits change scoring inputs → refresh both.
     queryClient.invalidateQueries({ queryKey: ['plan-conformity', plan.id] });
     queryClient.invalidateQueries({ queryKey: ['day-conformity'] });
+    queryClient.invalidateQueries({ queryKey: ['adaptive-suggestions', plan.id] });
     // Keep PlanBuilder's local state in sync when user switches views.
     queryClient.invalidateQueries({ queryKey: ['training-plan', plan.id] });
     queryClient.invalidateQueries({ queryKey: ['training-plans'] });
   };
+
+  // FL1 — re-anchor upcoming cycle (+%e1RM strength) targets to current FTP/PRs.
+  const refreshTargetsMutation = useMutation({
+    mutationFn: () => refreshTargets(authFetch, plan.id),
+    onSuccess: (data) => {
+      setRefreshResult(data);
+      setRefreshError(null);
+      queryClient.invalidateQueries({ queryKey: ['plan-week', plan.id, currentWeek] });
+      queryClient.invalidateQueries({ queryKey: ['plan-conformity', plan.id] });
+      queryClient.invalidateQueries({ queryKey: ['adaptive-suggestions', plan.id] });
+    },
+    onError: (err: Error) => {
+      setRefreshError(err.message);
+    },
+  });
 
   const linkActivities = useMutation({
     mutationFn: () => linkPlanActivities(plan.id, token),
@@ -331,6 +353,12 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     return entries as Array<[string, number]>;
   }, [conformity, currentWeek]);
 
+  // FL1 — upcoming cycle days whose stored targets drifted from current FTP.
+  const staleDays = useMemo(
+    () => (weekData?.days ?? []).filter((d) => d.targets_stale),
+    [weekData],
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -343,6 +371,27 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           </span>
         </h3>
         <div className="flex items-center gap-2">
+          {/* FL1 — week-level target refresh, emphasised while days are stale */}
+          <button
+            onClick={() => refreshTargetsMutation.mutate()}
+            disabled={refreshTargetsMutation.isPending}
+            title={
+              staleDays.length > 0
+                ? `${staleDays.length} day${staleDays.length > 1 ? 's' : ''} with stale targets — recompute from current FTP/PRs`
+                : 'Recompute upcoming targets from current FTP/PRs'
+            }
+            className={`px-3 py-1 text-xs rounded-lg transition-colors disabled:opacity-40 ${
+              staleDays.length > 0
+                ? 'bg-warning/20 text-warning border border-warning/30 hover:bg-warning/30'
+                : 'bg-surface-light/50 text-muted hover:text-white hover:bg-surface-light'
+            }`}
+          >
+            {refreshTargetsMutation.isPending
+              ? 'Refreshing…'
+              : staleDays.length > 0
+                ? `⟳ Refresh targets (${staleDays.length} stale)`
+                : '⟳ Refresh targets'}
+          </button>
           {currentWeek !== realCurrentWeek && (
             <button
               onClick={() => setCurrentWeek(realCurrentWeek)}
@@ -369,6 +418,34 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           </button>
         </div>
       </div>
+
+      {/* FL1 — refresh outcome + CP/FTP cross-check */}
+      {refreshError && (
+        <p className="text-xs text-warning">Refresh failed: {refreshError}</p>
+      )}
+      {refreshResult && !refreshError && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted">
+            ✓ Refreshed {refreshResult.refreshed.length} cycle day
+            {refreshResult.refreshed.length === 1 ? '' : 's'}
+            {refreshResult.strength_refreshed.length > 0 &&
+              ` + ${refreshResult.strength_refreshed.length} strength exercise${refreshResult.strength_refreshed.length === 1 ? '' : 's'}`}
+            {refreshResult.stale_but_unchanged.length > 0 &&
+              ` (${refreshResult.stale_but_unchanged.length} stale but unchanged)`}
+            .
+          </p>
+          {refreshResult.cp_ftp_mismatch && (
+            <p
+              className="text-xs text-warning"
+              title="Zones stay FTP-anchored; fitted critical power is shown for reference only"
+            >
+              ⚠️ Fitted critical power ({Math.round(refreshResult.cp_ftp_mismatch.critical_power)}W)
+              differs from FTP ({Math.round(refreshResult.cp_ftp_mismatch.ftp)}W) by{' '}
+              {refreshResult.cp_ftp_mismatch.pct_diff.toFixed(0)}% — check your FTP is current.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Readiness strip */}
       {readiness && (
@@ -758,6 +835,15 @@ function DayCard({
               {day.planned_tss != null && ` · ${Math.round(day.planned_tss)} TSS`}
               {day.planned_power_watts != null && ` · ${Math.round(day.planned_power_watts)}W`}
               {day.planned_zone && ` · ${day.planned_zone.toUpperCase()}`}
+              {day.targets_stale && (
+                <span
+                  className="ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border bg-warning/15 text-warning border-warning/30"
+                  title="Stored targets drifted from your current FTP — use Refresh targets above"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
+                  stale
+                </span>
+              )}
             </p>
           )}
           {day.sport === 'strength' && (

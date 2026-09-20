@@ -12,6 +12,8 @@ import type {
   VideoStreamUrl,
   VideoProcessStatus,
   LiftVideoListParams,
+  SuggestLoadRequest,
+  SuggestLoadResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -63,6 +65,19 @@ export async function deleteLiftingSet(authFetch: AuthFetch, setId: string): Pro
 
 export async function getPersonalRecords(authFetch: AuthFetch): Promise<PersonalRecord[]> {
   return authFetch<PersonalRecord[]>('/api/v1/lifting/prs');
+}
+
+// ─── Load Suggestion (FL3) ─────────────────────────────────────────────────
+
+/** Suggest a working weight as % of the current e1RM (PR, else best recent set). */
+export async function suggestLoad(
+  authFetch: AuthFetch,
+  payload: SuggestLoadRequest,
+): Promise<SuggestLoadResponse> {
+  return authFetch<SuggestLoadResponse>('/api/v1/lifting/suggest-load', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ─── Warmup Templates ────────────────────────────────────────────────────────

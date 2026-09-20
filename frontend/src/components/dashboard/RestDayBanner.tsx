@@ -5,9 +5,12 @@ import type { RestDaySuggestion } from '@/lib/api';
 
 interface RestDayBannerProps {
   suggestion: RestDaySuggestion;
+  /** Optional one-tap adaptive action row (QW3) — rendered below the reasons.
+   *  WeeklyTab passes nothing, so its banner is unchanged. */
+  action?: React.ReactNode;
 }
 
-export function RestDayBanner({ suggestion }: RestDayBannerProps) {
+export function RestDayBanner({ suggestion, action }: RestDayBannerProps) {
   const isWarning = suggestion.should_rest;
   return (
     <div className={`rounded-xl p-4 flex items-start gap-3 border ${
@@ -60,6 +63,7 @@ export function RestDayBanner({ suggestion }: RestDayBannerProps) {
             ))}
           </ul>
         )}
+        {action}
       </div>
     </div>
   );

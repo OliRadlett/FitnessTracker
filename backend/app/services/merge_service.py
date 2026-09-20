@@ -264,6 +264,11 @@ async def merge_activity(
         # Fill empty fields regardless of priority
         if existing_val is None or new_priority > primary_priority:
             setattr(primary, field, new_val)
+            # QW4 — a TSS arriving inside a provider payload is provider-
+            # supplied, not computed. (No current provider summary carries a
+            # TSS field, so this branch is defensive; it fires if/when one does.)
+            if field == "tss":
+                primary.tss_source = "provider"
 
     # 3. Merge raw_data — keep the primary's raw_data, but store full response in source
     # (raw_data on Activity stays from the primary provider)

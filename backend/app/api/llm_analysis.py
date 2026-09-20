@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.llm_analysis import LlmAnalysis
 from app.models.user import User
-from app.schemas.llm_analysis import LlmAnalysisRead, LlmAnalysisSummary
+from app.schemas.llm_analysis import LlmAnalysisRead
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -27,7 +27,8 @@ async def get_latest_analysis(
             LlmAnalysis.user_id == current_user.id,
             LlmAnalysis.analysis_type == "cycling",
         )
-        .order_by(LlmAnalysis.created_at.desc())
+        # id tie-break: same-second inserts otherwise order arbitrarily (RM2).
+        .order_by(LlmAnalysis.created_at.desc(), LlmAnalysis.id.desc())
         .limit(1)
     )
     analysis = result.scalar_one_or_none()
@@ -51,20 +52,3 @@ async def trigger_analysis(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")
-
-
-@router.get("/history", response_model=list[LlmAnalysisSummary])
-async def get_analysis_history(
-    limit: int = 10,
-    analysis_type: str | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get LLM analysis history for the current user, optionally filtered by type."""
-    query = select(LlmAnalysis).where(LlmAnalysis.user_id == current_user.id)
-    if analysis_type:
-        query = query.where(LlmAnalysis.analysis_type == analysis_type)
-    query = query.order_by(LlmAnalysis.created_at.desc()).limit(limit)
-    result = await db.execute(query)
-    analyses = result.scalars().all()
-    return [LlmAnalysisSummary.model_validate(a) for a in analyses]

@@ -4,6 +4,7 @@ import type {
   UpdateTrainingPlanDayPayload,
   TrainingPlanDay,
   AdaptiveSuggestionsResponse,
+  RefreshTargetsResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -46,6 +47,17 @@ export async function getAdaptiveSuggestions(
 ): Promise<AdaptiveSuggestionsResponse> {
   return authFetch<AdaptiveSuggestionsResponse>(
     `/api/v1/training-plans/${planId}/suggestions`
+  );
+}
+
+/** FL1 — recompute upcoming cycle (+%e1RM strength) targets from current FTP/PRs. */
+export async function refreshTargets(
+  authFetch: AuthFetch,
+  planId: string,
+): Promise<RefreshTargetsResponse> {
+  return authFetch<RefreshTargetsResponse>(
+    `/api/v1/training-plans/${planId}/refresh-targets`,
+    { method: 'POST' },
   );
 }
 

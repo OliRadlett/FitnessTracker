@@ -29,6 +29,8 @@ export interface Activity {
   average_speed?: number;
   average_cadence?: number;
   tss?: number;
+  /** QW4 — TSS provenance: 'power' | 'hr' | 'provider' | 'manual' | null (unknown). */
+  tss_source?: string | null;
   calories?: number;
   rpe?: number;
   weather_temperature?: number | null;
@@ -219,6 +221,8 @@ export interface RideMetrics {
   decoupling_pct?: number;
   decoupling_class?: string;
   tss?: number;
+  /** QW4 — mirrors Activity.tss_source so the UI can badge power-TSS vs hrTSS. */
+  tss_source?: string | null;
   tss_per_hour?: number;
   climbing_meters?: number;
   top_speed_kmh?: number;

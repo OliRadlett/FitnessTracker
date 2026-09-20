@@ -1443,6 +1443,12 @@ class ChartService:
         """Stacked area chart: Strava TSS + lifting volume per week.
 
         Shows how different training modalities contribute to total load.
+
+        QW4 note on the lifting series: lifting volume (kg) and cycling TSS
+        are different units on incommensurable scales — kg÷100 is a display
+        convenience (CD1 lifting-volume approximation), NOT a stress
+        equivalence. The series is labeled "(kg, estimate)" so the UI never
+        presents it as interchangeable with TSS.
         """
         cutoff = date.today() - timedelta(weeks=weeks)
         week_start_activity = func.date_trunc("week", Activity.start_date).label(
@@ -1528,7 +1534,7 @@ class ChartService:
                     color="#3b82f6",
                 ),
                 ChartSeries(
-                    name="Lifting Volume (÷100)",
+                    name="Lifting volume (kg÷100, estimate)",
                     data=[lift_map.get(w, 0) for w in all_weeks],
                     color="#8b5cf6",
                 ),

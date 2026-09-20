@@ -131,7 +131,8 @@ export default function DashboardPage() {
   const { data: goals } = useQuery<Goal[]>({
     queryKey: ['goals'],
     queryFn: () => authFetch<Goal[]>('/api/v1/goals'),
-    enabled: activeTab === 'weekly',
+    // QW6 — GoalsSection renders on both Today (compact top-3) and Weekly.
+    enabled: activeTab === 'weekly' || activeTab === 'today',
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   });
@@ -296,6 +297,7 @@ export default function DashboardPage() {
           hasReadiness={!!hasReadiness}
           respiratoryRate={respiratoryRate}
           upcomingEvents={upcomingEvents}
+          goals={goals}
         />
       )}
 

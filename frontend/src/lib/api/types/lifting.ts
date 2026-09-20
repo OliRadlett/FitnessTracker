@@ -304,3 +304,21 @@ export interface LiftingAnalysis {
   exercise_count: number;
   working_sets_count: number;
 }
+
+// ─── Load Suggestion (FL3) ─────────────────────────────────────────────────
+
+/** POST /lifting/suggest-load — working weight as % of current e1RM. */
+export interface SuggestLoadRequest {
+  exercise_name: string;
+  sets: number;
+  reps: number;
+  pct_1rm?: number;
+}
+
+/** Null target with "none" basis when no PR / recent-set history exists. */
+export interface SuggestLoadResponse {
+  target_kg: number | null;
+  basis_1rm_kg: number | null;
+  pct_1rm: number;
+  basis_source: 'pr' | 'recent_sets' | 'none';
+}

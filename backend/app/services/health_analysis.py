@@ -743,6 +743,33 @@ async def analyze_illness(
     }
 
 
+# How long a dismissed alert suppresses re-notification for the same type.
+# The condition is still tracked (the row reactivates silently), but the
+# athlete — who already saw and dismissed it — gets no fresh push.
+DISMISS_QUIET_DAYS = 7
+
+
+def alert_suppressed_by_prefs(
+    prefs: dict | None, alert_type: str, today: date
+) -> bool:
+    """True when the user disabled or snoozed this alert type.
+
+    Applies to ALL alert types (QW7) — the regeneration-signal path was the
+    only one honoring snooze; the Settings UI already offers snooze per type.
+    """
+    stored = prefs or {}
+    if alert_type in (stored.get("disabled") or []):
+        return True
+    snooze_until = (stored.get("snoozed") or {}).get(alert_type)
+    if snooze_until:
+        try:
+            if today < date.fromisoformat(str(snooze_until)[:10]):
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 async def upsert_alert(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -751,8 +778,18 @@ async def upsert_alert(
     """Create or update a health alert. Returns True if a new alert was created.
 
     Only creates alerts when severity is not "none" (i.e. actual risk detected).
+    Honors per-user disabled / snoozed preferences for every alert type, and
+    never re-notifies for an alert the athlete dismissed within
+    ``DISMISS_QUIET_DAYS`` (the row reactivates silently so the list stays
+    truthful without push fatigue).
     """
     if analysis is None or analysis.get("severity") == "none":
+        return False
+
+    user = await db.get(User, user_id)
+    if user is not None and alert_suppressed_by_prefs(
+        user.health_preferences, analysis["alert_type"], date.today()
+    ):
         return False
 
     # Check for existing active alert of this type
@@ -773,6 +810,27 @@ async def upsert_alert(
             existing.description = analysis["description"]
             existing.evidence = analysis["evidence"]
             existing.detected_date = date.today()
+        return False
+
+    # Recently dismissed: the athlete already saw this — reactivate silently.
+    quiet_since = date.today() - timedelta(days=DISMISS_QUIET_DAYS)
+    result = await db.execute(
+        select(HealthAlert).where(
+            HealthAlert.user_id == user_id,
+            HealthAlert.alert_type == analysis["alert_type"],
+            HealthAlert.status == "dismissed",
+            HealthAlert.dismissed_date >= quiet_since,
+        )
+    )
+    dismissed = result.scalar_one_or_none()
+    if dismissed:
+        dismissed.status = "active"
+        dismissed.dismissed_date = None
+        dismissed.severity = analysis["severity"]
+        dismissed.title = analysis["title"]
+        dismissed.description = analysis["description"]
+        dismissed.evidence = analysis["evidence"]
+        dismissed.detected_date = date.today()
         return False
 
     # Create new alert
@@ -797,7 +855,7 @@ async def upsert_alert(
         title=analysis["title"],
         body=analysis["description"],
         severity=severity_map.get(analysis["severity"], "warning"),
-        link="/dashboard",
+        link="/health",
         dedup_key=f"alert:{alert.id}",
         metadata={"alert_type": analysis["alert_type"]},
     )

@@ -22,6 +22,8 @@ from app.schemas.lifting import (
     LiftingSetUpdate,
     PersonalRecordCreate,
     PersonalRecordRead,
+    SuggestLoadRequest,
+    SuggestLoadResponse,
     VolumeTrendResponse,
     WarmupTemplateCreate,
     WarmupTemplateRead,
@@ -383,6 +385,34 @@ async def create_pr(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return PersonalRecordRead.model_validate(pr)
+
+
+# ── Load Suggestion (FL3) ─────────────────────────────────────────────────
+
+
+@router.post("/suggest-load", response_model=SuggestLoadResponse)
+async def suggest_load(
+    data: SuggestLoadRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest a working weight as % of the current e1RM (FL3).
+
+    Resolves the e1RM from the stored PR, else the best recent set; returns
+    a null target with ``basis_source: "none"`` when no history exists.
+    """
+    try:
+        result = await lifting_service.suggest_strength_load(
+            db,
+            current_user.id,
+            data.exercise_name,
+            data.sets,
+            data.reps,
+            data.pct_1rm,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return SuggestLoadResponse.model_validate(result)
 
 
 # ── Volume Trends ─────────────────────────────────────────────────────────────

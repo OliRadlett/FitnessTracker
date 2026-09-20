@@ -86,6 +86,10 @@ export interface PlannedExercise {
   reps: number;
   weight_kg?: number | null;
   rpe?: number | null;
+  /** FL3 — %e1RM basis (0.3–1.0). Stored so weekly refresh can re-solve kg from current PRs. */
+  pct_1rm?: number | null;
+  /** FL3 — RPE target (1–10) for the exercise. */
+  target_rpe?: number | null;
 }
 
 export type PlanSport = 'cycle' | 'strength' | 'rest';
@@ -324,6 +328,8 @@ export interface TrainingWeekDay extends TrainingPlanDay {
   route_matches?: WeekRouteMatchEntry[] | null;
   warmup_template?: WarmupTemplateRead | null;
   day_status?: 'pending' | 'completed' | 'partial' | 'missed' | 'rest';
+  /** FL1 — stored cycle targets drifted from current-FTP targets beyond epsilon. */
+  targets_stale?: boolean;
 }
 
 /** One Monday-based week of a plan — GET /training-plans/{id}/week/{n}. */
@@ -398,6 +404,46 @@ export interface UpdateEventPayload {
   target_tss?: number;
   taper_days?: number;
   notes?: string;
+}
+
+// ─── FL1: refresh cycle targets ──────────────────────────────────────────
+
+/** One plan day whose stored targets were re-anchored to the current FTP. */
+export interface RefreshTargetDay {
+  day_id: string;
+  day_date: string;
+  old_power?: number | null;
+  new_power?: number | null;
+  old_tss?: number | null;
+  new_tss?: number | null;
+}
+
+/** Fitted critical power vs profile FTP diverged >10% (surfaced, never auto-applied). */
+export interface CpFtpMismatch {
+  ftp: number;
+  critical_power: number;
+  pct_diff: number;
+}
+
+/** One planned exercise whose %e1RM-basis weight was re-solved (FL3, same call). */
+export interface RefreshStrengthDay {
+  day_id: string;
+  day_date: string;
+  exercise: string;
+  old_weight_kg?: number | null;
+  new_weight_kg?: number | null;
+  pct_1rm?: number | null;
+  basis_1rm_kg?: number | null;
+  basis_source?: string | null;
+}
+
+/** Result of POST /training-plans/{plan_id}/refresh-targets (FL1 + FL3). */
+export interface RefreshTargetsResponse {
+  refreshed: RefreshTargetDay[];
+  stale_but_unchanged: string[];
+  cp_ftp_mismatch?: CpFtpMismatch | null;
+  strength_days_skipped: number;
+  strength_refreshed: RefreshStrengthDay[];
 }
 
 // ─── Workout Planner ─────────────────────────────────────────────────────

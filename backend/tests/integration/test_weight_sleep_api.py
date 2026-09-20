@@ -118,6 +118,100 @@ class TestWeightEndpoints:
         assert resp.status_code == 404
 
 
+# ── Canonical reference weight (QW1) ─────────────────────────────────────
+
+
+class TestProfileReferenceWeight:
+    """sync_profile_reference_weight keeps CyclingProfile.weight_kg on the
+    latest weigh-in across all sources (Withings > Whoop > manual on ties)."""
+
+    async def test_latest_date_wins(self, db_session, test_user):
+        from app.models.weight import WeightLog
+        from app.services.cycling import sync_profile_reference_weight
+
+        db_session.add_all(
+            [
+                WeightLog(
+                    user_id=test_user.id,
+                    date=date.today() - timedelta(days=2),
+                    weight_kilogram=80.0,
+                    source="withings",
+                ),
+                WeightLog(
+                    user_id=test_user.id,
+                    date=date.today(),
+                    weight_kilogram=74.0,
+                    source="manual",
+                ),
+            ]
+        )
+        await db_session.flush()
+
+        assert await sync_profile_reference_weight(db_session, test_user.id) == 74.0
+
+    async def test_same_day_source_priority(self, db_session, test_user):
+        from app.models.weight import WeightLog
+        from app.services.cycling import sync_profile_reference_weight
+
+        db_session.add_all(
+            [
+                WeightLog(
+                    user_id=test_user.id,
+                    date=date.today(),
+                    weight_kilogram=74.0,
+                    source="manual",
+                ),
+                WeightLog(
+                    user_id=test_user.id,
+                    date=date.today(),
+                    weight_kilogram=75.0,
+                    source="whoop",
+                ),
+                WeightLog(
+                    user_id=test_user.id,
+                    date=date.today(),
+                    weight_kilogram=76.0,
+                    source="withings",
+                ),
+            ]
+        )
+        await db_session.flush()
+
+        # Withings scale measurement wins the same-day tie.
+        assert await sync_profile_reference_weight(db_session, test_user.id) == 76.0
+
+    async def test_backdated_entry_does_not_clobber(self, db_session, test_user):
+        from app.models.weight import WeightLog
+        from app.services.cycling import sync_profile_reference_weight
+
+        db_session.add(
+            WeightLog(
+                user_id=test_user.id,
+                date=date.today(),
+                weight_kilogram=74.0,
+                source="manual",
+            )
+        )
+        await db_session.flush()
+        await sync_profile_reference_weight(db_session, test_user.id)
+
+        db_session.add(
+            WeightLog(
+                user_id=test_user.id,
+                date=date.today() - timedelta(days=30),
+                weight_kilogram=90.0,
+                source="manual",
+            )
+        )
+        await db_session.flush()
+        assert await sync_profile_reference_weight(db_session, test_user.id) == 74.0
+
+    async def test_no_logs_returns_none(self, db_session, test_user):
+        from app.services.cycling import sync_profile_reference_weight
+
+        assert await sync_profile_reference_weight(db_session, test_user.id) is None
+
+
 # ── Sleep ────────────────────────────────────────────────────────────────
 
 

@@ -10,8 +10,9 @@ interface RideAnalysisCardProps {
 }
 
 function decouplingColor(pct: number): string {
-  if (pct < 3) return 'text-positive';
-  if (pct < 5) return 'text-warning';
+  // Mirrors backend _classify_decoupling (vo2max.py): <5 Excellent / ≤8 Acceptable / >8 Aerobic Deficiency
+  if (pct < 5) return 'text-positive';
+  if (pct <= 8) return 'text-yellow-400';
   return 'text-warning';
 }
 
@@ -158,16 +159,16 @@ export function RideAnalysisCard({ analysis }: RideAnalysisCardProps) {
               value={`${analysis.decoupling.decoupling_pct.toFixed(1)}%`}
               className={decouplingColor(analysis.decoupling.decoupling_pct)}
             />
-            {analysis.decoupling.first_half_ef != null && (
+            {analysis.decoupling.first_half_ratio != null && (
               <StatBadge
                 label="1st Half EF"
-                value={analysis.decoupling.first_half_ef.toFixed(2)}
+                value={analysis.decoupling.first_half_ratio.toFixed(2)}
               />
             )}
-            {analysis.decoupling.second_half_ef != null && (
+            {analysis.decoupling.second_half_ratio != null && (
               <StatBadge
                 label="2nd Half EF"
-                value={analysis.decoupling.second_half_ef.toFixed(2)}
+                value={analysis.decoupling.second_half_ratio.toFixed(2)}
               />
             )}
             {analysis.decoupling.classification && (

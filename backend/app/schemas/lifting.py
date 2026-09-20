@@ -1,7 +1,8 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── Lifting Set ───────────────────────────────────────────────────────────────
 
@@ -141,6 +142,32 @@ class PersonalRecordRead(BaseModel):
     activity_id: uuid.UUID | None = None
     notes: str | None = None
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Load Suggestion (FL3) ───────────────────────────────────────────────────
+
+
+class SuggestLoadRequest(BaseModel):
+    """Suggest a working weight as % of the current e1RM.
+
+    Out-of-range values fail with HTTP 422 via pydantic validation.
+    """
+
+    exercise_name: str = Field(..., min_length=1, max_length=255)
+    sets: int = Field(..., ge=1, le=20)
+    reps: int = Field(..., ge=1, le=30)
+    pct_1rm: float = Field(0.8, ge=0.3, le=1.0)
+
+
+class SuggestLoadResponse(BaseModel):
+    """%1RM-derived target; null target with ``"none"`` basis when history is empty."""
+
+    target_kg: float | None = None
+    basis_1rm_kg: float | None = None
+    pct_1rm: float
+    basis_source: Literal["pr", "recent_sets", "none"]
 
     model_config = {"from_attributes": True}
 

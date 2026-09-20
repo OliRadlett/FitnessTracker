@@ -51,6 +51,8 @@ class ActivityBase(BaseModel):
     average_speed: float | None = None
     average_cadence: float | None = None
     tss: float | None = None
+    # QW4 — TSS provenance: 'power' | 'hr' | 'provider' | 'manual' | None (unknown)
+    tss_source: str | None = None
     calories: float | None = None
     rpe: float | None = None
 
@@ -322,6 +324,8 @@ class RideMetricsRead(BaseModel):
     decoupling_pct: float | None = None
     decoupling_class: str | None = None
     tss: float | None = None
+    # QW4 — mirrors Activity.tss_source so the frontend can badge power-TSS vs hrTSS
+    tss_source: str | None = None
     tss_per_hour: float | None = None
     climbing_meters: float | None = None
     top_speed_kmh: float | None = None

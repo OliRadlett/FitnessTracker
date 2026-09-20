@@ -1297,6 +1297,10 @@ async def sync_whoop_weight(
 
     if weight_log:
         logger.info(f"Whoop weight synced for user {user_id}: {weight_kg}kg")
+        # Keep the canonical reference weight in sync — QW1.
+        from app.services.cycling import sync_profile_reference_weight
+
+        await sync_profile_reference_weight(db, user_id)
     return weight_log
 
 
