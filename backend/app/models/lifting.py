@@ -261,6 +261,10 @@ class LiftVideo(Base):
     expected_reps: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )  # user-declared rep count (calibration aid for rep detection)
+    # User-declared camera angle: side | back_left | back_right | front.
+    # Sagittal-plane form rules (torso lean, hip-vs-knee depth) are only valid
+    # on a side view, so this gates them. NULL => rules stay off (safe).
+    camera_view: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
     trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)

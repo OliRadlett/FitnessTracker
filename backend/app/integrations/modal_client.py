@@ -85,6 +85,7 @@ def process_video_on_modal(
     analysis_depth: str = "full",
     expected_reps: int | None = None,
     user_exercise: str | None = None,
+    camera_view: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -111,6 +112,10 @@ def process_video_on_modal(
         User-declared exercise name (DB). Selects the analyzer — pose
         auto-classification only validates (bench is unclassifiable from
         pose statistics alone: identical medians to a deadlift).
+    camera_view:
+        User-declared camera angle (``side``/``back_left``/``back_right``/
+        ``front``). Gates the sagittal-plane form rules; absent/unknown
+        leaves them off.
 
     Returns
     -------
@@ -148,6 +153,7 @@ def process_video_on_modal(
         depth: str,
         expected: int | None,
         user_ex: str | None,
+        user_view: str = "",
         gemini_key: str = "",
         gemini_model: str = "gemini-3.6-flash",
     ) -> dict:
@@ -314,12 +320,14 @@ def process_video_on_modal(
 
             _logger.info("Extracted %d key frames", len(frame_paths))
 
-            # ── Step 6b: Camera view via Gemini (one frame) ───────────────
-            # Gating sagittal rules needs the view; pose geometry cannot
-            # determine it (see classify_view_from_frame docstring). Failure
-            # leaves it "unknown" -> sagittal rules stay off (safe default).
-            view = "unknown"
-            if frame_paths and gemini_key:
+            # ── Step 6b: Camera view ──────────────────────────────────────
+            # Prefer the user-declared angle (free, reliable). Only if it's
+            # absent do we fall back to a VLM call — gated off by default
+            # because the Gemini daily quota is tiny. Pose geometry cannot
+            # determine the view (see classify_view_from_frame docstring).
+            # "unknown" leaves sagittal rules off (safe default).
+            view = user_view or "unknown"
+            if view == "unknown" and frame_paths and gemini_key:
                 try:
                     from app.integrations.video_analysis import (
                         classify_view_from_frame,
@@ -327,9 +335,10 @@ def process_video_on_modal(
 
                     view = classify_view_from_frame(
                         frame_paths[len(frame_paths) // 2], gemini_key, gemini_model)
-                    _logger.info("Camera view: %s", view)
+                    _logger.info("Camera view (VLM): %s", view)
                 except Exception as e:
                     _logger.warning("View classification failed: %s", e)
+            _logger.info("Camera view: %s", view)
 
             # ── Step 7: Classify via pose landmarks (local) ──────────────
             exercise = ""  # Will be determined by pose classification
@@ -594,9 +603,11 @@ def process_video_on_modal(
     # (the container image has no google-genai; the call is a raw REST request).
     # Gated OFF by default — a per-video call competes with the weekly/on-demand
     # LLM analysis under a low daily Gemini quota. Empty key => "unknown" view.
+    from app.integrations.video_analysis import normalize_user_view
     from app.services.llm_base import GEMINI_MODEL
 
     view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
+    user_view = normalize_user_view(camera_view)
 
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
@@ -607,6 +618,7 @@ def process_video_on_modal(
             analysis_depth,
             expected_reps,
             user_exercise,
+            user_view,
             view_key,
             GEMINI_MODEL,
         )

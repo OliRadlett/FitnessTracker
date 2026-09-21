@@ -30,6 +30,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
 
   const [exerciseName, setExerciseName] = useState('');
   const [expectedReps, setExpectedReps] = useState('');
+  const [cameraView, setCameraView] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [prId, setPrId] = useState('');
@@ -42,6 +43,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     if (open) {
       setExerciseName('');
       setExpectedReps('');
+      setCameraView('');
       setNotes('');
       setSessionId('');
       setPrId('');
@@ -86,6 +88,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     const base: Record<string, unknown> = {
       exercise_name: exerciseName || null,
       expected_reps: expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
+      camera_view: cameraView || null,
       notes: notes || null,
       lifting_session_id: sessionId || null,
       personal_record_id: prId || null,
@@ -199,6 +202,23 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             placeholder="e.g. 1 for a max attempt"
             className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">
+            Camera angle <span className="text-muted/70">(enables side-on form checks)</span>
+          </label>
+          <select
+            value={cameraView}
+            onChange={(e) => setCameraView(e.target.value)}
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Not sure</option>
+            <option value="side">Side-on</option>
+            <option value="back_left">Behind, left</option>
+            <option value="back_right">Behind, right</option>
+            <option value="front">Front-facing</option>
+          </select>
         </div>
 
         <div>

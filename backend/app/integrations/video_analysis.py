@@ -1158,6 +1158,25 @@ RPE_VELOCITY_LOSS_BANDS = [
 ]
 
 
+# User-declared camera angle -> the analyzer's view taxonomy. Sagittal rules
+# only run for "side"; valgus only for frontal/rear. Rear-quarter (back_left/
+# back_right) maps to "three_quarter" (conservative: no sagittal rules).
+USER_VIEW_MAP = {
+    "side": "side",
+    "front": "front",
+    "back_left": "three_quarter",
+    "back_right": "three_quarter",
+}
+
+
+def normalize_user_view(camera_view: str | None) -> str:
+    """Map a user-declared angle to the analyzer view taxonomy.
+
+    Unknown/absent input -> ``"unknown"`` (sagittal rules stay off).
+    """
+    return USER_VIEW_MAP.get((camera_view or "").strip().lower(), "unknown")
+
+
 VIEW_LABELS = ("three_quarter", "front", "rear", "side")
 
 _VIEW_PROMPT = (

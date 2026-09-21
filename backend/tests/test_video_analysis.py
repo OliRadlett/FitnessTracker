@@ -14,7 +14,26 @@ from app.integrations.video_analysis import (
     _velocity_loss_pct,
     classify_view_from_frame,
     estimate_rpe_heuristic,
+    normalize_user_view,
 )
+
+
+class TestNormalizeUserView:
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("side", "side"),
+            ("Side", "side"),
+            ("front", "front"),
+            ("back_left", "three_quarter"),
+            ("back_right", "three_quarter"),
+            (None, "unknown"),
+            ("", "unknown"),
+            ("nonsense", "unknown"),
+        ],
+    )
+    def test_mapping(self, raw, expected):
+        assert normalize_user_view(raw) == expected
 
 
 class TestVelocityLossPct:

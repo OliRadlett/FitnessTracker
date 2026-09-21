@@ -112,6 +112,7 @@ async def create_video(
         personal_record_id=payload.personal_record_id,
         notes=payload.notes,
         expected_reps=payload.expected_reps,
+        camera_view=payload.camera_view,
     )
     db.add(video)
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.

@@ -3628,6 +3628,7 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     analysis_depth=analysis_depth,
                     expected_reps=video.expected_reps,
                     user_exercise=video.exercise_name,
+                    camera_view=video.camera_view,
                 )
 
                 # Update video with results

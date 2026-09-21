@@ -17,6 +17,7 @@ export interface LiftVideo {
   personal_record_id?: string | null;
   notes?: string | null;
   expected_reps?: number | null;
+  camera_view?: 'side' | 'back_left' | 'back_right' | 'front' | null;
   created_at: string;
   updated_at: string;
   // Video processing fields
