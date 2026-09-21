@@ -58,10 +58,11 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import run_video_local as rvl
 from app.integrations.pose_analysis import (
     bar_velocity_from_pose,
+    bar_velocity_from_world,
     classify_exercise,
     detect_camera_view,
     detect_reps_from_pose,
-    extract_pose_landmarks,
+    extract_pose_track,
     run_pose_analysis,
 )
 from app.integrations.video_analysis import (
@@ -134,10 +135,12 @@ def _run_one(
     record["duration_s"] = round(duration, 2)
     record["trim"] = [round(trim_start, 2), round(trim_end, 2)]
 
-    landmarks, timestamps = extract_pose_landmarks(
-        video_path, str(tmpdir), trim_start, trim_end, fps=fps
-    )
+    track = extract_pose_track(video_path, str(tmpdir), trim_start, trim_end, fps=fps)
+    landmarks = track["landmarks"]
+    timestamps = track["timestamps"]
+    world = track["world"]
     record["pose_frames"] = len(landmarks)
+    record["world_frames"] = len(world)
     if not landmarks:
         record["error"] = "no_pose"
         return record
@@ -175,6 +178,7 @@ def _run_one(
         exercise_name=label.get("exercise") or classification["exercise"],
         rep_count=label.get("reps") or len(auto_reps),
         weight_kg=0.0,
+        track=track,
     )
     form = pose_result.get("form", {})
     record["form_score"] = form.get("overall_form_score")
@@ -184,15 +188,20 @@ def _run_one(
     record["deviations"] = form.get("deviations", [])
     record["form_rep_count"] = pose_result.get("rep_count_detected")
 
-    import cv2
-
-    cap = cv2.VideoCapture(str(video_path))
-    frame_h = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap.release()
     exercise = label.get("exercise") or classification["exercise"]
-    vel = bar_velocity_from_pose(
-        landmarks, timestamps, declared_reps, exercise, frame_h, _get_rom(exercise)
-    )
+    if world:
+        vel = bar_velocity_from_world(world, timestamps, declared_reps, exercise)
+        record["velocity_source"] = "world"
+    else:
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        frame_h = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        vel = bar_velocity_from_pose(
+            landmarks, timestamps, declared_reps, exercise, frame_h, _get_rom(exercise)
+        )
+        record["velocity_source"] = "2d"
     record["velocity_quality"] = vel.get("tracking_quality")
     record["mean_velocity"] = vel.get("mean_concentric_velocity")
     record["velocity_loss_pct"] = vel.get("velocity_loss_pct")

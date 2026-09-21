@@ -212,3 +212,49 @@ class TestSquatFormScoring:
         }
         reps = [{**rep, "rep_number": n} for n in (1, 2, 3)]
         assert pa.score_squat_form(reps)["overall_form_score"] > 0
+
+
+class TestWorldVelocity:
+    @staticmethod
+    def _frames(profile):
+        return [[Lm(0.5, y) for _ in range(33)] for y in profile]
+
+    @staticmethod
+    def _reps(n_frames):
+        return [{"rep_number": 1, "start_idx": 0, "end_idx": n_frames - 1}]
+
+    def test_metric_velocity_is_plausible(self):
+        # A 0.5 m squat rep over 1 s must read ~0.5 m/s. The old 2D path
+        # (excursion/hardcoded-ROM scaling) returned ~0.09 m/s.
+        profile = [0.0] * 5 + [0.5] * 10 + [0.0] * 10
+        ts = [i / 10 for i in range(len(profile))]
+        res = pa.bar_velocity_from_world(
+            self._frames(profile), ts, self._reps(len(profile)), "Back Squat"
+        )
+        assert 0.3 <= res["mean_concentric_velocity"] <= 0.6
+
+    def test_velocity_scales_with_amplitude(self):
+        ts = [i / 10 for i in range(25)]
+        small = pa.bar_velocity_from_world(
+            self._frames([0.0] * 5 + [0.25] * 10 + [0.0] * 10), ts,
+            self._reps(25), "Back Squat",
+        )
+        large = pa.bar_velocity_from_world(
+            self._frames([0.0] * 5 + [0.50] * 10 + [0.0] * 10), ts,
+            self._reps(25), "Back Squat",
+        )
+        ratio = large["mean_concentric_velocity"] / small["mean_concentric_velocity"]
+        assert 1.8 <= ratio <= 2.2
+
+    def test_rep_count_preserved_when_unmeasurable(self):
+        # A sub-threshold wobble must not silently drop the rep (this is what
+        # made 1/3 of production videos have form reps != velocity reps).
+        profile = [0.0] * 5 + [0.02] * 10 + [0.0] * 10
+        ts = [i / 10 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": len(profile) - 1},
+            {"rep_number": 2, "start_idx": 0, "end_idx": 5},
+        ]
+        res = pa.bar_velocity_from_world(self._frames(profile), ts, reps, "Back Squat")
+        assert len(res["rep_timings"]) == 2
+        assert all(e["concentric_velocity_ms"] is None for e in res["rep_timings"])

@@ -1129,17 +1129,24 @@ def run_pose_analysis(
     rep_count: int,
     weight_kg: float,
     view: str = "unknown",
+    track: dict | None = None,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
 
     rep_count doubles as the user-declared expected rep count (0/None =
     auto-detect): when positive, the deepest valid cycles are selected.
+
+    ``track`` optionally supplies an already-extracted ``extract_pose_track``
+    result (2D + world landmarks), avoiding a second pose-extraction pass.
     """
     result = {}
 
-    # Extract pose landmarks
-    landmarks, timestamps = extract_pose_landmarks(input_path, tmpdir, trim_start, trim_end, fps=10.0)
+    # Extract pose landmarks (unless a pre-extracted track was supplied).
+    if track is None:
+        track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps=10.0)
+    landmarks = track["landmarks"]
+    timestamps = track["timestamps"]
     if not landmarks:
         logger.warning("No pose landmarks extracted")
         return result
@@ -1308,6 +1315,106 @@ def bar_velocity_from_pose(
     else:
         # No measurable reps (slices below amplitude floor): report failure
         # so callers fall back to optical flow instead of storing 0.0.
+        result["tracking_quality"] = "failed"
+        result["mean_concentric_velocity"] = 0.0
+        result["peak_velocity"] = 0.0
+    return result
+
+
+def _velocity_tracked_indices(exercise: str) -> tuple[int, int]:
+    """Landmark pair whose vertical motion best tracks the bar for the lift.
+
+    Squat: shoulders (bar sits on the upper back). Bench/deadlift/press:
+    wrists (bar is in the hands). Hips are deliberately not used for squat —
+    in world coordinates the hip centre is the origin (y≈0) and never moves.
+    """
+    if exercise in ("Squat", "Front Squat", "Back Squat"):
+        return 11, 12
+    return 15, 16
+
+
+def bar_velocity_from_world(
+    world_frames: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    exercise: str,
+    min_amplitude_m: float = 0.10,
+) -> dict:
+    """Metric bar velocity from MediaPipe world landmarks (metres).
+
+    World landmarks are already in metres (hip-origin), so no
+    pixels-per-metre guessing or hardcoded ROM is needed — the failure mode
+    that made single-rep squats read 0.087-0.098 m/s (real ≈0.2-0.5) and
+    produced negative velocity loss.
+
+    Returns one ``rep_timings`` entry per input pose rep (velocity possibly
+    ``None`` for a slice with no measurable concentric phase) so form and
+    velocity rep counts always agree — the old function silently dropped
+    reps, so 1/3 of production videos had mismatched counts.
+    """
+    from app.integrations.video_analysis import (
+        _get_vbt_zone,
+        _smooth_signal,
+        _velocity_loss_pct,
+    )
+
+    n = min(len(world_frames), len(timestamps))
+    if n < 5 or not pose_reps:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    li, ri = _velocity_tracked_indices(exercise)
+    y = np.array([(w[li].y + w[ri].y) / 2 for w in world_frames[:n]])
+    ts = np.array(timestamps[:n])
+    pos = _smooth_signal(y, window=3)
+
+    velocities: list[float] = []
+    rep_data: list[dict] = []
+    for rep in pose_reps:
+        si = max(0, rep["start_idx"])
+        ei = min(n - 1, rep["end_idx"])
+        entry = {
+            "rep_number": rep["rep_number"],
+            "start_time": None,
+            "end_time": None,
+            "concentric_time": None,
+            "amplitude_m": None,
+            "concentric_velocity_ms": None,
+        }
+        if ei - si >= 3:
+            seg = pos[si:ei + 1]
+            bi = int(np.argmax(seg))  # bottom = largest world y (y grows down)
+            top_seg = seg[bi:]
+            ti = bi + int(np.argmin(top_seg))  # first top after the bottom
+            if ti > bi:
+                amp_m = float(seg[bi] - seg[ti])
+                dt = float(ts[si + ti] - ts[si + bi])
+                if dt > 0 and amp_m >= min_amplitude_m:
+                    v = amp_m / dt
+                    velocities.append(round(v, 3))
+                    entry.update({
+                        "start_time": round(float(ts[si + bi]), 2),
+                        "end_time": round(float(ts[si + ti]), 2),
+                        "concentric_time": round(dt, 2),
+                        "amplitude_m": round(amp_m, 3),
+                        "concentric_velocity_ms": round(v, 3),
+                    })
+        rep_data.append(entry)
+
+    result: dict = {
+        "tracking_quality": "pose",
+        "frame_count": n,
+        "rep_timings": rep_data,
+        "velocities": velocities,
+    }
+    if velocities:
+        mean_v = sum(velocities) / len(velocities)
+        result["mean_concentric_velocity"] = round(mean_v, 3)
+        result["peak_velocity"] = round(max(velocities), 3)
+        if len(velocities) >= 2:
+            result["velocity_loss_pct"] = _velocity_loss_pct(
+                velocities[0], velocities[-1])
+            result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
+    else:
         result["tracking_quality"] = "failed"
         result["mean_concentric_velocity"] = 0.0
         result["peak_velocity"] = 0.0

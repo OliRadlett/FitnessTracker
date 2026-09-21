@@ -135,9 +135,21 @@ These are the numbers the rewrite must move.
   knee valgus, deadlift back rounding, setup lean) behind an explicit `view` argument
   that defaults to `unknown` = *not assessed*. Effect: **`Excessive forward lean`
   flags 31 → 0** and `form_score_zero_rate` **0.44 → 0.22** on the production set.
-- ⏳ Metric scale from world landmarks; remove hardcoded `ROM_DEFAULTS` guessing.
-- ⏳ One canonical rep list shared by form and velocity; validate/hint vs `expected_reps`.
-- ⏳ Per-rep metric bar velocity from world coordinates; require load before RPE/VBT.
+- ✅ Metric bar velocity from world landmarks (`bar_velocity_from_world`) — no
+  pixels-per-metre guessing or hardcoded ROM. Squat tracks shoulders (hip is the
+  world origin, so hip y never moves), bench/deadlift/press track wrists. Effect:
+  `rep_count_mismatch_rate` **0.33 → 0.0**, `rpe_saturation_rate` **0.92 → 0.67**,
+  mean velocity 0.21 → 0.23 m/s and now 0.29–0.36 m/s for bench/deadlift.
+- ✅ One canonical rep list: `bar_velocity_from_world` emits one `rep_timings` entry
+  per pose rep (velocity may be `None`) so form and velocity counts always agree.
+- ⏳ **Rep segmentation accuracy** — `auto_rep_mae` still 1.33; the 2D angle-based
+  `detect_reps_from_pose` still merges rerack/setup fragments into working reps
+  (e.g. an 8-rep squat's last "rep" is a rerack, giving `velocity_loss = -100%`).
+  This is the next target.
+- ⏳ Tracked-point quality for squat (some side/rear squats still read 0.10–0.17 m/s)
+  and accessory lifts (atlas stone reads 0.0). Consider bar/plate detection or a
+  per-lift tracked-point validation.
+- ⏳ Require load before emitting RPE/VBT.
 
 ### Phase 2 — Honest scoring, gating, cleanup
 
