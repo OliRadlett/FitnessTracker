@@ -295,6 +295,17 @@ class TestWorldVelocity:
         ratio = large["mean_concentric_velocity"] / small["mean_concentric_velocity"]
         assert 1.8 <= ratio <= 2.2
 
+    def test_negative_velocity_loss_is_clamped_to_zero(self):
+        # rep 2 measurably faster than rep 1 -> raw loss negative -> report 0.
+        profile = [0.30] * 6 + [0.15] * 5 + [0.30] * 5 + [0.15] * 3 + [0.30] * 3
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 15},
+            {"rep_number": 2, "start_idx": 15, "end_idx": len(profile) - 1},
+        ]
+        res = pa.bar_velocity_from_world(self._frames(profile), ts, reps, "Back Squat")
+        assert res["velocity_loss_pct"] == 0.0
+
     def test_rep_count_preserved_when_unmeasurable(self):
         # A sub-threshold wobble must not silently drop the rep (this is what
         # made 1/3 of production videos have form reps != velocity reps).

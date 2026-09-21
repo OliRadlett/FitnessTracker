@@ -565,8 +565,16 @@ def detect_reps_from_pose(
     # Re-sorted by time afterwards.
     if expected_reps is not None and expected_reps > 0:
         if len(reps) > expected_reps:
-            reps = sorted(reps, key=lambda r: (-r["amplitude"], r["bottom_depth"]))[:expected_reps]
-            reps = sorted(reps, key=lambda r: r["start_idx"])
+            # Pick the best CONSECUTIVE run of the declared length, not the
+            # globally largest cycles. A working set is contiguous; picking
+            # by amplitude globally could grab a setup/walk-in cycle from
+            # elsewhere in the video (which the untrimmed fallback exposes).
+            best_i, best_score = 0, -1.0
+            for i in range(len(reps) - expected_reps + 1):
+                score = sum(r["amplitude"] for r in reps[i:i + expected_reps])
+                if score > best_score:
+                    best_score, best_i = score, i
+            reps = reps[best_i:best_i + expected_reps]
             for n, r in enumerate(reps, 1):
                 r["rep_number"] = n
     elif len(reps) >= 2:
@@ -1486,8 +1494,12 @@ def bar_velocity_from_world(
         result["peak_velocity"] = round(max(velocities), 3)
         result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
         if len(velocities) >= 2:
-            result["velocity_loss_pct"] = _velocity_loss_pct(
-                velocities[0], velocities[-1])
+            # Velocity loss is a fatigue measure and is non-negative by
+            # definition; a "negative" value means the last rep was measured
+            # faster (a segmentation/mistrack artifact). Clamp to 0 = "no
+            # measurable loss" rather than surfacing e.g. -100%.
+            result["velocity_loss_pct"] = max(
+                0.0, _velocity_loss_pct(velocities[0], velocities[-1]))
     else:
         result["tracking_quality"] = "failed"
         result["mean_concentric_velocity"] = 0.0

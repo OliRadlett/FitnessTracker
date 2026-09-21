@@ -252,13 +252,17 @@ def process_video_on_modal(
                         best_start = boundaries[i]
                         best_end = boundaries[i + 1]
 
-                # Add 0.5s padding, clamped to video bounds
-                trim_start = max(0.0, best_start - 0.5)
-                trim_end = min(duration, best_end + 0.5)
+                # Generous padding (start -1s, end +2s): a tight +0.5s end cut
+                # the lockout off short single-rep pulls, so the top frame read
+                # mid-pull and flagged "Incomplete lockout" (deadlift 85c3239f).
+                trim_start = max(0.0, best_start - 1.0)
+                trim_end = min(duration, best_end + 2.0)
             else:
-                # No clear scenes detected — keep the middle 80%
-                trim_start = duration * 0.1
-                trim_end = duration * 0.9
+                # No clear scenes detected — keep the WHOLE video. The old
+                # middle-80% fallback trimmed the last 10%, cutting the lockout
+                # off short single-rep pulls (deadlift 85c3239f).
+                trim_start = 0.0
+                trim_end = duration
 
             _logger.info("Trim points: %.2f -> %.2f", trim_start, trim_end)
 

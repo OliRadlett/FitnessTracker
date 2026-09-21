@@ -172,6 +172,14 @@ These are the numbers the rewrite must move.
   real rep on 77ca64a0. Effect: `auto_rep_mae` **1.33 → 0.25** with
   `declared_rep_exact_rate` back to 1.0. Two clips still read 2 vs 1 (a bench
   and a deadlift whose partial is ≥75% of max ROM).
+- ✅ **Trim fallback + deadlift lockout:** with no scene changes the trim now
+  keeps the WHOLE video (was middle-80%). The old fallback cut the last 10% —
+  exactly where a short single-rep deadlift locks out — so the top frame read
+  mid-pull (hip ~110°) and both deadlifts were wrongly flagged "Incomplete
+  lockout / would fail". Also: the declared path picks the best **consecutive**
+  run of cycles (not globally-largest, which could grab a setup cycle), and
+  negative velocity loss is clamped to 0. Effect: `Incomplete lockout` 7 → 4,
+  `Hitching` 2 → 1; `auto_rep_mae` 0.25 → 0.33 (one squat), everything else green.
 - ⏳ Tracked-point quality for squat (some side/rear squats still read 0.10–0.17 m/s)
   and accessory lifts (atlas stone reads 0.0). Consider bar/plate detection or a
   per-lift tracked-point validation.

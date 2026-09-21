@@ -94,11 +94,17 @@ def trim_points(scene_times: list[float], duration: float) -> tuple[float, float
             range(len(boundaries) - 1),
             key=lambda i: boundaries[i + 1] - boundaries[i],
         )
+        # Generous padding: a tight +0.5s end cut the lockout off short
+        # single-rep pulls (deadlift 85c3239f: rep slice ended mid-pull, so
+        # the top frame read hip 110 deg and flagged "Incomplete lockout").
         return (
-            max(0.0, boundaries[best] - 0.5),
-            min(duration, boundaries[best + 1] + 0.5),
+            max(0.0, boundaries[best] - 1.0),
+            min(duration, boundaries[best + 1] + 2.0),
         )
-    return duration * 0.1, duration * 0.9
+    # No usable scene changes: keep the WHOLE video. The old 10%-90% fallback
+    # trimmed the last 10%, which cut the lockout off short single-rep pulls
+    # (deadlift 85c3239f: 11.4s -> 1.14-10.29, lockout at ~10.3-11.0).
+    return 0.0, duration
 
 
 def ensure_model(tmpdir: Path) -> None:
