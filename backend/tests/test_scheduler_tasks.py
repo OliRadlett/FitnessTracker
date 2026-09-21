@@ -46,6 +46,23 @@ async def _mock_task_session(db):
     yield db
 
 
+@pytest.fixture(autouse=True)
+def _disable_redis_lock(monkeypatch):
+    """Neutralise the task-level Redis lock for these tests.
+
+    ``_run_task_guarded`` returns ``{"status": "skipped_lock"}`` when the lock
+    key is held. A leaked/held ``lock:celery-task:*`` key in the shared Redis
+    (dev stack, or an overlapping real run) therefore makes every assertion
+    fail spuriously. These tests exercise the per-user loop, not locking.
+    """
+
+    @asynccontextmanager
+    async def _noop_lock(name, ttl=600):
+        yield
+
+    monkeypatch.setattr("app.services.cache.redis_lock", _noop_lock)
+
+
 class TestStravaSyncErrorIsolation:
     """Test that one user's failure doesn't kill the loop for others."""
 

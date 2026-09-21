@@ -103,6 +103,25 @@ class TestRefreshConnection:
         assert conn.status == "active"
         assert conn.consecutive_failures == 1
 
+    async def test_missing_access_token_is_transient_not_keyerror(self):
+        # Regression: a provider returning HTTP 200 with an error body (Withings)
+        # used to raise a bare KeyError *after* the try/except, so no health
+        # state was recorded. It must now be a typed, recorded transient failure.
+        conn = _make_connection()
+        db = _mock_db(conn)
+        client = MagicMock()
+        client.refresh_access_token = AsyncMock(
+            return_value={"status": 342, "error": "invalid grant"}
+        )
+
+        with pytest.raises(TransientSyncError):
+            await refresh_connection(db, conn, client)
+
+        assert conn.status == "active"
+        assert conn.consecutive_failures == 1
+        assert conn.last_error is not None
+        db.commit.assert_called()
+
     async def test_success_updates_tokens_and_resets_health(self):
         conn = _make_connection()
         conn.consecutive_failures = 3

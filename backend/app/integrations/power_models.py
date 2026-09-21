@@ -11,12 +11,15 @@ Requires ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` env vars.
 import logging
 import math
 
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 
 def _modal_configured() -> bool:
+    # Imported lazily so the Modal remote container can import this module
+    # without app.config's dependencies (the worker decorates a module-global
+    # function, so the whole module is imported inside the bare image).
+    from app.config import get_settings
+
     settings = get_settings()
     return bool(settings.modal_token_id and settings.modal_token_secret)
 
@@ -520,8 +523,8 @@ def _fit_power_models_modal(
         result["personalized_vo2max"] = {"vo2max": None, "method": "insufficient_data"}
 
     # Adaptive time constants
-    if tss_data and hrv_data and len(tss_data) >= 30 and len(hrv_data) >= 30:
-        result["adaptive_constants"] = fit_adaptive_time_constants(tss_data, hrv_data)
+    if tss_data and hrv and len(tss_data) >= 30 and len(hrv) >= 30:
+        result["adaptive_constants"] = fit_adaptive_time_constants(tss_data, hrv)
     else:
         result["adaptive_constants"] = {
             "ctl_tau": 42,

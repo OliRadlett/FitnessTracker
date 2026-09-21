@@ -8,6 +8,11 @@ variables.
 """
 
 import inspect
+import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -39,3 +44,50 @@ def test_modal_worker_is_module_scope(module, fn_name):
     assert not fn.__code__.co_freevars, (
         f"{fn_name} closes over {fn.__code__.co_freevars}"
     )
+
+
+def test_worker_modules_import_without_config_or_pydantic():
+    """The Modal remote container imports each worker module from a bare image.
+
+    Regression guard for the failure where every compute Modal job crash-looped
+    with ``ModuleNotFoundError: pydantic_settings`` because the modules imported
+    ``app.config`` at import time. Blocking ``app.config`` / ``pydantic`` in a
+    fresh interpreter simulates the remote image — if a worker module drags any
+    of them in at module scope, this import fails.
+    """
+    module_names = sorted(module.__name__ for module, _ in WORKERS)
+    code = textwrap.dedent(
+        f"""
+        import importlib
+        import sys
+
+        BLOCKED = ("app.config", "pydantic", "pydantic_settings")
+
+        class _Blocker:
+            def find_spec(self, name, path=None, target=None):
+                if name in BLOCKED:
+                    raise ModuleNotFoundError(name)
+                return None
+
+        sys.meta_path.insert(0, _Blocker())
+
+        for name in {module_names!r}:
+            importlib.import_module(name)
+
+        print("IMPORT_OK")
+        """
+    )
+    backend_root = Path(__file__).resolve().parent.parent
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{backend_root}{os.pathsep}{existing}" if existing else str(backend_root)
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "IMPORT_OK" in result.stdout

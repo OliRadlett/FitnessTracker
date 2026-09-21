@@ -13,12 +13,15 @@ arguments, results via return values. Requires ``MODAL_TOKEN_ID`` and
 import logging
 import math
 
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 
 def _modal_configured() -> bool:
+    # Imported lazily so the Modal remote container can import this module
+    # without app.config's dependencies (the worker decorates a module-global
+    # function, so the whole module is imported inside the bare image).
+    from app.config import get_settings
+
     settings = get_settings()
     return bool(settings.modal_token_id and settings.modal_token_secret)
 
@@ -377,12 +380,16 @@ def analyze_weather_performance(
         y_target = []
         for r in feature_rides:
             w = r["weather"]
+            # ``or`` defaults (not ``.get(key, default)``): the API builds each
+            # ride's weather dict with the keys present but ``None`` when the
+            # value isn't stored (humidity/pressure are never stored), so a
+            # dict-default lookup still yields None and breaks the regression.
             x_matrix.append([
-                w.get("temperature", 0),
-                w.get("wind_speed_kmh", 0),
-                w.get("humidity", 50),
-                w.get("precipitation_mm", 0),
-                w.get("pressure_hpa", 1013),
+                w.get("temperature") or 0,
+                w.get("wind_speed_kmh") or 0,
+                w.get("humidity") or 50,
+                w.get("precipitation_mm") or 0,
+                w.get("pressure_hpa") or 1013,
             ])
             y_target.append(r.get("normalized_power") or r["avg_watts"])
 

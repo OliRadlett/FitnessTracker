@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24, updated 2026-09-18 | Total: 88 bugs | Fixed: 78 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
+> Generated: 2026-08-24, updated 2026-09-21 | Total: 93 bugs | Fixed: 83 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
 
 ---
 
@@ -601,4 +601,34 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **File:** `frontend/src/lib/lifting/useLiveSession.ts` (`mergeWithStorage`)
 - **Issue:** When storage held a *different* session than the flush snapshot (discard + start, or resume while a flush was mid-flight), `mergeWithStorage` returned `working` — the **old** session — so `commit()` overwrote the new session's localStorage with the stale one. The comment already intended "stop syncing it" but only handled the `stored === null` (discard) case.
 - **Fix:** `mergeWithStorage` now returns `null` (abort the flush, leave storage untouched) whenever `stored.startedAt !== working.startedAt`. Regression test simulates a replacement written while the create request is in flight and asserts storage keeps the new session id.
+
+### BUG-091: All Five Compute Modal Jobs Crash-Loop — `pydantic_settings` Missing in Remote Image
+- **Status:** FIXED
+- **Files:** `backend/app/integrations/{power_models,weather_analysis,segment_intelligence,cross_domain,route_intelligence}.py`
+- **Issue:** Each integration imported `from app.config import get_settings` at module scope. Modal imports the whole module inside a bare `debian_slim` image to hydrate the module-global worker, so the import failed with `ModuleNotFoundError: No module named 'pydantic_settings'`; containers crash-looped and `remote()` never returned a result. Every weekly compute job (`fit_personalized_power_models`, `analyze_weather_performance_weekly`, `analyze_segments_intelligence_weekly`, `analyze_cross_domain_weekly`) plus Saturday `classify_route_terrain` produced nothing since the platform was introduced — no cycling profile power/weather fields, 0/85 segments analysed, 0 cross-domain insights, 0/112 routes classified.
+- **Fix:** Moved the `get_settings` import inside `_modal_configured()` so the module imports stdlib-only in the remote container. Regression test `test_worker_modules_import_without_config_or_pydantic` imports each worker module in a fresh interpreter with `app.config`/`pydantic` blocked.
+
+### BUG-092: Power-Model Worker NameError (`hrv_data`) + Adaptive Constants Never Fitted
+- **Status:** FIXED
+- **Files:** `backend/app/integrations/power_models.py` (`_fit_power_models_modal`), `backend/app/tasks/scheduler.py` (`fit_personalized_power_models`)
+- **Issue:** The worker referenced an undefined `hrv_data` (the parsed value is `hrv`) — a `NameError` latent behind a short-circuit. Separately, the task never passed `daily_tss`/`hrv_data`, so `fit_adaptive_time_constants` always returned the default 42/7 constants.
+- **Fix:** Use `hrv`; the task now gathers 90 days of daily TSS (`get_daily_tss`) and HRV (`DailyMetric.hrv_ms`) and passes them to Modal.
+
+### BUG-093: Weather-Performance Modal Job Crashes on `None` Humidity/Pressure
+- **Status:** FIXED
+- **File:** `backend/app/integrations/weather_analysis.py`
+- **Issue:** The API builds each ride's weather dict with `humidity`/`pressure_hpa` keys present but `None` (they aren't stored on the Activity model). The regression used `w.get("humidity", 50)`, which returns `None` for a present-but-None key → `TypeError: unsupported operand type(s) for *: 'float' and 'NoneType'`. The weather job would have failed even after the import fix.
+- **Fix:** Use `w.get("humidity") or 50` (and `or` defaults for temperature/wind/precipitation/pressure).
+
+### BUG-094: Token Refresh `KeyError: 'access_token'` Skips Connection-Health Bookkeeping
+- **Status:** FIXED
+- **Files:** `backend/app/services/connection_health.py`, `backend/app/integrations/withings_client.py`
+- **Issue:** Withings returns errors as HTTP 200 with `{"status": <non-zero>, "error": ...}`. `normalize_token_response` returned it unchanged, and `refresh_connection` then did `token_data["access_token"]` → bare `KeyError`, raised *after* the try/except, so `consecutive_failures`/`last_error` were never recorded and the expired Withings connection (expired 2026-09-19) kept failing silently.
+- **Fix:** `withings_client.refresh_access_token` now raises `PermanentAuthError` for a non-zero status with no token (marks needs_reauth); `refresh_connection` defensively treats a missing `access_token` as a recorded transient failure.
+
+### BUG-095: Weekly LLM Analysis Has No Retry — a 503 Silently Costs a Week
+- **Status:** FIXED
+- **File:** `backend/app/services/llm_base.py` (`_call_gemini`)
+- **Issue:** `weekly_llm_analysis` (Sunday 05:00) calls Gemini once with no retry. On 2026-09-20 it hit `503 UNAVAILABLE` (model overloaded) and produced no cycling analysis (last was 2026-09-13), while on-demand analyses worked.
+- **Fix:** Bounded retry (3 attempts, exponential backoff) for transient errors (503/429/overload/timeout).
 

@@ -1327,10 +1327,41 @@ def fit_personalized_power_models() -> dict:
                     profile = profile_result.scalar_one_or_none()
                     weight = profile.weight_kg if profile else None
 
+                    # 3b. Daily TSS + HRV for adaptive CTL/ATL time constants
+                    # (QW: these were previously never passed, so the Modal
+                    # worker always fell back to the default 42/7 constants.)
+                    from datetime import date, timedelta
+
+                    from app.models.daily_metric import DailyMetric
+                    from app.services.cycling import get_daily_tss
+
+                    today = date.today()
+                    window_start = today - timedelta(days=90)
+                    tss_by_day = await get_daily_tss(db, uid, window_start, today)
+                    daily_tss_data = [
+                        {"date": day.isoformat(), "tss": float(tss)}
+                        for day, tss in tss_by_day.items()
+                    ]
+
+                    hrv_result = await db.execute(
+                        select(DailyMetric.metric_date, DailyMetric.hrv_ms).where(
+                            DailyMetric.user_id == uid,
+                            DailyMetric.metric_date >= window_start,
+                            DailyMetric.metric_date <= today,
+                            DailyMetric.hrv_ms.isnot(None),
+                        )
+                    )
+                    hrv_data = [
+                        {"date": m.metric_date.isoformat(), "hrv_ms": float(m.hrv_ms)}
+                        for m in hrv_result.all()
+                    ]
+
                     # 4. Call Modal
                     results = fit_power_models_on_modal(
                         power_curve_data=power_curve_data,
                         steady_state_rides=steady_state_rides,
+                        daily_tss=daily_tss_data,
+                        hrv_data=hrv_data,
                         weight_kg=weight,
                     )
 

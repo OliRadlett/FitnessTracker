@@ -4,6 +4,7 @@ Provides constants, JSON serialization, big-lift PR lookup, record storage,
 and the common Gemini API call wrapper used by all domain-specific analyzers.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -21,6 +22,30 @@ logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-3.6-flash"
 GEMINI_TIMEOUT_S = 60
+
+# Bounded retries for transient Gemini failures (503 overload, 429 rate limit,
+# timeouts). Without this a single upstream blip silently costs a weekly run
+# (e.g. the Sunday ``weekly_llm_analysis`` produced nothing on 2026-09-20 after
+# a 503 UNAVAILABLE).
+GEMINI_MAX_ATTEMPTS = 3
+GEMINI_RETRY_BASE_DELAY_S = 2.0
+_GEMINI_TRANSIENT_MARKERS = (
+    "503",
+    "unavailable",
+    "429",
+    "rate limit",
+    "overloaded",
+    "resource_exhausted",
+    "timeout",
+    "deadline",
+)
+
+
+def _is_transient_gemini_error(exc: BaseException) -> bool:
+    """True for retryable Gemini errors (overload / rate limit / timeout)."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _GEMINI_TRANSIENT_MARKERS)
+
 
 # ── AI spend guards (AI-01 / AI-03) ──────────────────────────────────────────
 
@@ -224,15 +249,32 @@ async def _call_gemini(prompt: str, truncation_label: str) -> str:
     client = genai.Client(api_key=settings.gemini_api_key)
 
     try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-                http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
-            ),
-        )
+        response = None
+        delay = GEMINI_RETRY_BASE_DELAY_S
+        for attempt in range(1, GEMINI_MAX_ATTEMPTS + 1):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=4096,
+                        http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
+                    ),
+                )
+                break
+            except Exception as e:
+                if not _is_transient_gemini_error(e) or attempt == GEMINI_MAX_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "Gemini transient error (attempt %d/%d); retrying in %.0fs: %s",
+                    attempt,
+                    GEMINI_MAX_ATTEMPTS,
+                    delay,
+                    e,
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
     except Exception as e:
         error_msg = str(e).lower()
         if "rate limit" in error_msg or "429" in error_msg:
