@@ -157,6 +157,10 @@ These are the numbers the rewrite must move.
   "not assessed" and view guidance is a high-value feature.
 - ✅ One canonical rep list: `bar_velocity_from_world` emits one `rep_timings` entry
   per pose rep (velocity may be `None`) so form and velocity counts always agree.
+- ✅ **Production wiring:** `modal_client._process` now extracts one
+  `extract_pose_track` (2D + world), reuses it for form analysis (`track=`) and
+  prefers `bar_velocity_from_world` (2D fallback). `scripts/run_video_local.py`
+  matches. Previously all these improvements existed only in the eval harness.
 - ⏳ **Rep segmentation accuracy** — `auto_rep_mae` still 1.33; the 2D angle-based
   `detect_reps_from_pose` still merges rerack/setup fragments into working reps
   (e.g. an 8-rep squat's last "rep" is a rerack, giving `velocity_loss = -100%`).

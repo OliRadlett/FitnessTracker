@@ -320,19 +320,24 @@ def process_video_on_modal(
             analysis_text = ""
             landmarks: list = []
             pose_timestamps: list = []
+            pose_world: list = []
+            pose_track: dict = {}
 
             try:
                 import sys
                 sys.path.insert(0, "/root")
                 from app.integrations.pose_analysis import (
                     classify_exercise,
-                    extract_pose_landmarks,
+                    extract_pose_track,
                     route_exercise,
                 )
 
-                landmarks, pose_timestamps = extract_pose_landmarks(
+                pose_track = extract_pose_track(
                     input_path, tmpdir, trim_start, trim_end, fps=10.0,
                 )
+                landmarks = pose_track["landmarks"]
+                pose_timestamps = pose_track["timestamps"]
+                pose_world = pose_track["world"]
                 if landmarks:
                     classification = classify_exercise(landmarks, pose_timestamps)
                     auto_ex = classification["exercise"]
@@ -374,6 +379,7 @@ def process_video_on_modal(
                         exercise_name=exercise,
                         rep_count=expected or reps,
                         weight_kg=weight,
+                        track=pose_track,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -391,28 +397,41 @@ def process_video_on_modal(
                 # in memory from step 7, so this costs nothing extra.
                 vel_result: dict = {"tracking_quality": "failed"}
                 try:
-                    import cv2
-
                     from app.integrations.pose_analysis import (
                         bar_velocity_from_pose,
+                        bar_velocity_from_world,
                         detect_reps_from_pose,
                     )
-                    from app.integrations.video_analysis import _get_rom
 
-                    _cap = cv2.VideoCapture(str(input_path))
-                    _fh = float(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    _cap.release()
-                    if landmarks and pose_timestamps and _fh > 0:
+                    if landmarks and pose_timestamps:
                         _pose_reps = detect_reps_from_pose(
                             landmarks, pose_timestamps, exercise,
                             expected_reps=expected)
-                        vel_result = bar_velocity_from_pose(
-                            landmarks, pose_timestamps, _pose_reps,
-                            exercise, _fh, _get_rom(exercise))
-                        _logger.info(
-                            "Velocity (pose): mean=%.3f m/s, %d reps",
-                            vel_result.get("mean_concentric_velocity", 0.0),
-                            len(vel_result.get("rep_timings", [])))
+                        # World landmarks give metric bar travel; fall back to
+                        # the 2D pixels-per-metre path only if they're absent.
+                        if pose_world:
+                            vel_result = bar_velocity_from_world(
+                                pose_world, pose_timestamps, _pose_reps, exercise)
+                            _logger.info(
+                                "Velocity (world): mean=%.3f m/s, %d reps",
+                                vel_result.get("mean_concentric_velocity", 0.0),
+                                len(vel_result.get("rep_timings", [])))
+                        if vel_result.get("tracking_quality") == "failed":
+                            import cv2
+
+                            from app.integrations.video_analysis import _get_rom
+
+                            _cap = cv2.VideoCapture(str(input_path))
+                            _fh = float(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            _cap.release()
+                            if _fh > 0:
+                                vel_result = bar_velocity_from_pose(
+                                    landmarks, pose_timestamps, _pose_reps,
+                                    exercise, _fh, _get_rom(exercise))
+                                _logger.info(
+                                    "Velocity (2d): mean=%.3f m/s, %d reps",
+                                    vel_result.get("mean_concentric_velocity", 0.0),
+                                    len(vel_result.get("rep_timings", [])))
                 except Exception as e:
                     _logger.warning("Pose velocity failed: %s", e)
 

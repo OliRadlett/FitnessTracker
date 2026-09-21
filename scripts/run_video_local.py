@@ -36,14 +36,15 @@ logger = logging.getLogger("run_video_local")
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.integrations.pose_analysis import (  # noqa: E402
+from app.integrations.pose_analysis import (
     bar_velocity_from_pose,
+    bar_velocity_from_world,
     classify_exercise,
     detect_reps_from_pose,
-    extract_pose_landmarks,
+    extract_pose_track,
     run_pose_analysis,
 )
-from app.integrations.video_analysis import (  # noqa: E402
+from app.integrations.video_analysis import (
     _get_rom,
     estimate_rpe_heuristic,
     track_barbell_optical_flow,
@@ -73,7 +74,7 @@ def detect_scenes(path: Path, duration: float) -> list[float]:
         ["ffmpeg", "-y", "-i", str(path),
          "-vf", "select='gt(scene,0.3)',showinfo",
          "-vsync", "0", "-f", "null", "-"],
-        capture_output=True, text=True, timeout=300,
+        capture_output=True, text=True, timeout=300, check=False,
     )
     times: list[float] = []
     for line in out.stderr.splitlines():
@@ -155,10 +156,13 @@ def main() -> int:
     ensure_model(tmpdir)
 
     # Step 7: pose extract + classify (same settings as Modal)
-    landmarks, timestamps = extract_pose_landmarks(
+    track = extract_pose_track(
         input_path, str(tmpdir), trim_start, trim_end, fps=10.0)
-    logger.info("pose landmarks: %d/%d frames", len(landmarks),
-                len(timestamps) or 0)
+    landmarks = track["landmarks"]
+    timestamps = track["timestamps"]
+    world = track["world"]
+    logger.info("pose landmarks: %d/%d frames (%d with world landmarks)",
+                len(landmarks), track["frames"], len(world))
     if not landmarks:
         print("No pose landmarks detected.")
         return 1
@@ -204,7 +208,8 @@ def main() -> int:
         input_path=input_path, tmpdir=str(tmpdir),
         trim_start=trim_start, trim_end=trim_end,
         exercise_name=exercise,
-        rep_count=args.expected_reps or len(reps), weight_kg=0.0)
+        rep_count=args.expected_reps or len(reps), weight_kg=0.0,
+        track=track)
     form = pose_result.get("form", {})
     print(f"Form score: {form.get('overall_form_score')} "
           f"severity={form.get('severity')}")
@@ -220,13 +225,17 @@ def main() -> int:
 
     if not args.skip_flow:
         vel = {"tracking_quality": "failed"}
-        cap = cv2.VideoCapture(str(input_path))
-        frame_h = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
-        if landmarks and timestamps and frame_h > 0:
-            vel = bar_velocity_from_pose(
-                landmarks, timestamps, reps, exercise, frame_h,
-                _get_rom(exercise))
+        if landmarks and timestamps:
+            if world:
+                vel = bar_velocity_from_world(world, timestamps, reps, exercise)
+            if vel.get("tracking_quality") == "failed":
+                cap = cv2.VideoCapture(str(input_path))
+                frame_h = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                if frame_h > 0:
+                    vel = bar_velocity_from_pose(
+                        landmarks, timestamps, reps, exercise, frame_h,
+                        _get_rom(exercise))
         if vel.get("tracking_quality") == "failed":
             print("Pose velocity unavailable, trying optical flow")
             vel = track_barbell_optical_flow(
