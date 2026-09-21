@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import shutil
 import sys
 import tempfile
 import time
@@ -58,6 +59,7 @@ import run_video_local as rvl
 from app.integrations.pose_analysis import (
     bar_velocity_from_pose,
     classify_exercise,
+    detect_camera_view,
     detect_reps_from_pose,
     extract_pose_landmarks,
     run_pose_analysis,
@@ -87,7 +89,26 @@ def probe_duration_cv2(path: Path) -> float:
     return rvl.probe_duration(path)
 
 
-def run_one(label: dict, videos_dir: Path, fps: float) -> dict:
+VIEW_TO_PLANE = {
+    "side": "side",
+    "three_quarter": "three_quarter",
+    "front": "frontal",
+    "rear": "frontal",
+    "frontal": "frontal",
+}
+
+
+def run_one(label: dict, videos_dir: Path, fps: float, views_only: bool = False) -> dict:
+    tmpdir = Path(tempfile.mkdtemp(prefix="videoeval_"))
+    try:
+        return _run_one(label, videos_dir, fps, views_only, tmpdir)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _run_one(
+    label: dict, videos_dir: Path, fps: float, views_only: bool, tmpdir: Path
+) -> dict:
     video_path = videos_dir / label["file"]
     record: dict = {
         "file": label["file"],
@@ -102,7 +123,6 @@ def run_one(label: dict, videos_dir: Path, fps: float) -> dict:
 
     t0 = time.time()
     duration = probe_duration_cv2(video_path)
-    tmpdir = Path(tempfile.mkdtemp(prefix="videoeval_"))
     rvl.ensure_model(tmpdir)
 
     trim = label.get("trim")
@@ -126,6 +146,16 @@ def run_one(label: dict, videos_dir: Path, fps: float) -> dict:
     record["auto_exercise"] = classification["exercise"]
     record["auto_confidence"] = classification["confidence"]
     record["auto_correct"] = family(classification["exercise"]) == family(label.get("exercise"))
+
+    view = detect_camera_view(landmarks)
+    record["view_detected"] = view["view"]
+    record["view_ratio"] = view["shoulder_ratio"]
+    label_plane = VIEW_TO_PLANE.get((label.get("camera_view") or "").lower())
+    if label_plane is not None:
+        record["view_correct"] = view["view"] == label_plane
+    if views_only:
+        record["elapsed_s"] = round(time.time() - t0, 1)
+        return record
 
     auto_reps = detect_reps_from_pose(landmarks, timestamps, classification["exercise"])
     record["auto_reps"] = len(auto_reps)
@@ -225,6 +255,7 @@ def aggregate(records: list[dict]) -> dict:
             "exact",
         ),
         "exercise_accuracy": _rate_true(present, "auto_correct"),
+        "view_accuracy": _rate_true(present, "view_correct"),
         "form_score_zero_rate": _rate_true(multi, "score_zero")
         if multi
         else None,
@@ -253,6 +284,7 @@ def print_summary(report: dict) -> None:
     for key in (
         "n_labelled", "n_present", "n_evaluated",
         "auto_rep_mae", "declared_rep_exact_rate", "exercise_accuracy",
+        "view_accuracy",
         "rep_count_mismatch_rate", "form_score_zero_rate",
         "velocity_in_band_rate", "mean_velocity",
         "velocity_loss_out_of_range_rate", "rpe_saturation_rate",
@@ -289,6 +321,7 @@ def main() -> int:
     ap.add_argument("--baseline", type=Path, default=None)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--fps", type=float, default=10.0)
+    ap.add_argument("--views-only", action="store_true", help="landmarks + view only (fast)")
     args = ap.parse_args()
 
     if not args.labels.exists():
@@ -302,7 +335,7 @@ def main() -> int:
 
     records = []
     for label in labels:
-        rec = run_one(label, args.videos_dir, args.fps)
+        rec = run_one(label, args.videos_dir, args.fps, views_only=args.views_only)
         status = "skip" if not rec.get("present") else "ok"
         print(f"  [{status}] {label['file']}")
         records.append(rec)

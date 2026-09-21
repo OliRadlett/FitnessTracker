@@ -121,13 +121,23 @@ These are the numbers the rewrite must move.
 - **Acceptance met:** every future video-code change is measured against the labeled set
   before merge; a baseline report exists (`reports/video-eval-baseline.json`).
 
-### Phase 1 — Measurement core
+### Phase 1 — Measurement core (in progress)
 
-- Extract both 2D and `pose_world_landmarks`; lower confidence if world landmarks absent.
-- View detection (side / front / ¾ / unknown); gate view-dependent checks.
-- Metric scale from world landmarks; remove hardcoded `ROM_DEFAULTS` guessing.
-- One canonical rep list shared by form and velocity; validate/hint vs `expected_reps`.
-- Per-rep metric bar velocity from world coordinates; require load before RPE/VBT.
+- ✅ Extract both 2D and `pose_world_landmarks` (`extract_pose_track`); the old
+  `extract_pose_landmarks` is a back-compat wrapper.
+- ⚠️ **View detection from pose geometry is unreliable** — verified on the 12 videos:
+  2D shoulder/torso ratio and the metric-3D world shoulder-line both fail to separate
+  side from rear (e.g. a true rear view scored more "side-like" than a true side view).
+  Front vs rear is unidentifiable from monocular 2D pose. **Do not gate on a geometric
+  classifier.** Reliable view classification needs a VLM (one frame) or a user
+  declaration — moved to Phase 3. `detect_camera_view` is retained as a diagnostic only.
+- ✅ View-gated the sagittal-only rules (torso lean, hip-vs-knee depth, heel lift,
+  knee valgus, deadlift back rounding, setup lean) behind an explicit `view` argument
+  that defaults to `unknown` = *not assessed*. Effect: **`Excessive forward lean`
+  flags 31 → 0** and `form_score_zero_rate` **0.44 → 0.22** on the production set.
+- ⏳ Metric scale from world landmarks; remove hardcoded `ROM_DEFAULTS` guessing.
+- ⏳ One canonical rep list shared by form and velocity; validate/hint vs `expected_reps`.
+- ⏳ Per-rep metric bar velocity from world coordinates; require load before RPE/VBT.
 
 ### Phase 2 — Honest scoring, gating, cleanup
 

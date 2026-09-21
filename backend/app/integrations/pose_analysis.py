@@ -20,20 +20,29 @@ logger = logging.getLogger(__name__)
 # ── MediaPipe Pose Extraction ────────────────────────────────────────────────
 
 
-def extract_pose_landmarks(
+def extract_pose_track(
     input_path: Path,
     tmpdir: str,
     trim_start: float,
     trim_end: float,
     fps: float = 10.0,
-) -> tuple[list, list[float]]:
-    """Extract MediaPipe Pose landmarks from a video segment.
+) -> dict:
+    """Extract MediaPipe Pose landmarks (2D + metric 3D) from a video segment.
 
     Uses the mediapipe.tasks API (PoseLandmarker) — the solutions API
     was removed in mediapipe >= 0.10.30.
 
-    Returns (landmarks_per_frame, timestamps).
-    Each landmarks_per_frame[i] is a list of 33 NormalizedLandmark objects.
+    Returns a dict:
+        landmarks:  list per detected frame of 33 normalised 2D landmarks
+        world:      parallel list of 33 metric 3D world landmarks (metres,
+                    hip-origin) where the model produced them
+        timestamps: per-frame timestamps in seconds (aligned to ``landmarks``)
+        detected:   number of frames with a pose
+        frames:     number of frames sampled
+
+    ``world`` is shorter than ``landmarks`` when the model omitted it; callers
+    must pair them by index only up to ``len(world)`` (the model emits world
+    landmarks for the same frames it emits 2D ones, in order).
     """
     import cv2
     import mediapipe as mp
@@ -41,7 +50,7 @@ def extract_pose_landmarks(
 
     segment_duration = trim_end - trim_start
     if segment_duration <= 0:
-        return [], []
+        return {"landmarks": [], "world": [], "timestamps": [], "detected": 0, "frames": 0}
 
     # Download the pose landmarker model if not cached
     model_path = Path(tmpdir) / "pose_landmarker.task"
@@ -97,6 +106,7 @@ def extract_pose_landmarks(
     )
 
     landmarks_list = []
+    world_list = []
     timestamps = []
     frame_interval = 1.0 / fps
     idx = 0
@@ -120,14 +130,41 @@ def extract_pose_landmarks(
             # pose_landmarks is a list of NormalizedLandmarkList
             # Each element is a list of 33 landmarks for one detected pose
             landmarks_list.append(result.pose_landmarks[0])
+            if result.pose_world_landmarks:
+                world_list.append(result.pose_world_landmarks[0])
             t = trim_start + (idx * frame_interval) + (frame_interval / 2)
             timestamps.append(round(min(t, trim_end), 3))
 
         idx += 1
 
     pose_landmarker.close()
-    logger.info("Pose landmarks: %d/%d frames", len(landmarks_list), idx)
-    return landmarks_list, timestamps
+    logger.info(
+        "Pose landmarks: %d/%d frames (%d with world landmarks)",
+        len(landmarks_list), idx, len(world_list),
+    )
+    return {
+        "landmarks": landmarks_list,
+        "world": world_list,
+        "timestamps": timestamps,
+        "detected": len(landmarks_list),
+        "frames": idx,
+    }
+
+
+def extract_pose_landmarks(
+    input_path: Path,
+    tmpdir: str,
+    trim_start: float,
+    trim_end: float,
+    fps: float = 10.0,
+) -> tuple[list, list[float]]:
+    """Back-compat wrapper returning ``(landmarks, timestamps)``.
+
+    Prefer ``extract_pose_track`` — the metric 3D world landmarks are what
+    make scale and camera-view reasoning possible.
+    """
+    track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps)
+    return track["landmarks"], track["timestamps"]
 
 
 # ── Utility Functions ─────────────────────────────────────────────────────────
@@ -332,6 +369,70 @@ def classify_exercise(landmarks_per_frame: list,
     return {"exercise": exercise, "confidence": round(confidence, 2), "variation": variation}
 
 
+# ── Camera View Detection ────────────────────────────────────────────────────
+
+VIEW_SIDE_MAX_RATIO = 0.50
+VIEW_FRONTAL_MIN_RATIO = 1.10
+
+
+def detect_camera_view(landmarks_per_frame: list) -> dict:
+    """Estimate the camera's viewing plane relative to the lifter.
+
+    Returns ``{"view": "side"|"three_quarter"|"frontal"|"unknown",
+    "shoulder_ratio": float, "shoulder_width": float, "torso_length": float,
+    "frames": int}``.
+
+    A sagittal (side-on) view projects the lifter's left-right axis into
+    camera depth, so the left/right shoulder (and hip) x-offset collapses
+    toward zero. A frontal or rear view keeps that axis in the image plane,
+    so the offset is a large fraction of the torso. That is the distinction
+    that matters: the sagittal-plane rules (torso lean, hip-vs-knee depth,
+    bar path) are only valid for ``side``; on a ``frontal`` view they must
+    be gated off rather than fired.
+
+    The scale is the shoulder-to-hip Euclidean distance, NOT the vertical
+    difference — when the lifter bends over the vertical gap collapses and
+    the ratio explodes (side-view squats read 0.8+ with vertical scaling,
+    0.1-0.4 with Euclidean). Front and rear are deliberately not separated:
+    monocular 2D pose cannot tell them apart, and both are equally invalid
+    for sagittal rules.
+    """
+    ratios, widths, torsos = [], [], []
+    for lm in landmarks_per_frame:
+        sh_x = (lm[11].x + lm[12].x) / 2
+        sh_y = (lm[11].y + lm[12].y) / 2
+        hip_x = (lm[23].x + lm[24].x) / 2
+        hip_y = (lm[23].y + lm[24].y) / 2
+        torso = float(np.hypot(sh_x - hip_x, sh_y - hip_y))
+        if torso < 1e-3:
+            continue
+        width = max(abs(lm[11].x - lm[12].x), abs(lm[23].x - lm[24].x))
+        ratios.append(width / torso)
+        widths.append(width)
+        torsos.append(torso)
+
+    if len(ratios) < 5:
+        return {
+            "view": "unknown", "shoulder_ratio": None,
+            "shoulder_width": None, "torso_length": None, "frames": len(ratios),
+        }
+
+    ratio = float(np.median(ratios))
+    if ratio < VIEW_SIDE_MAX_RATIO:
+        view = "side"
+    elif ratio < VIEW_FRONTAL_MIN_RATIO:
+        view = "three_quarter"
+    else:
+        view = "frontal"
+    return {
+        "view": view,
+        "shoulder_ratio": round(ratio, 3),
+        "shoulder_width": round(float(np.median(widths)), 4),
+        "torso_length": round(float(np.median(torsos)), 4),
+        "frames": len(ratios),
+    }
+
+
 # ── Rep Boundary Detection ───────────────────────────────────────────────────
 
 
@@ -467,18 +568,27 @@ def detect_reps_from_pose(
 # ── Squat Analysis ───────────────────────────────────────────────────────────
 
 
-def _check_squat_depth(bottom_landmarks, bottom_knee_angle: float) -> bool:
+def _check_squat_depth(
+    bottom_landmarks, bottom_knee_angle: float, view: str = "unknown"
+) -> bool:
     """IPF depth: hip crease below top of knee.
 
-    The image-Y comparison only holds for a side view; phone videos are
-    often shot front/side-on where the hip never drops below the knee in
-    2D. Fall back to knee flexion: a true deep squat bends the knee well
-    under 95° (benchmarked bottoms read 40-65°), while partial squats stay
-    above it.
+    The image-Y comparison only holds for a side-on, perpendicular camera
+    (the view the lifter's hip-vs-knee vertical relationship is visible
+    in). Phone videos are frequently shot from behind or in front, where
+    that comparison is meaningless, so it is only applied when the view is
+    known to be ``side``.
+
+    The knee-flexion fallback (<95°) works from any angle and is always
+    applied: a true deep squat bends the knee well under 95° (benchmarked
+    bottoms read 40-65°), while partial squats stay above it.
     """
-    hip_y = np.mean([bottom_landmarks[23].y, bottom_landmarks[24].y])
-    knee_y = np.mean([bottom_landmarks[25].y, bottom_landmarks[26].y])
-    return bool(hip_y > knee_y or bottom_knee_angle < 95)
+    if view == "side":
+        hip_y = np.mean([bottom_landmarks[23].y, bottom_landmarks[24].y])
+        knee_y = np.mean([bottom_landmarks[25].y, bottom_landmarks[26].y])
+        if hip_y > knee_y:
+            return True
+    return bool(bottom_knee_angle < 95)
 
 
 def _check_knee_valgus(landmarks) -> str:
@@ -498,7 +608,7 @@ def _check_heels_flat(landmarks) -> bool:
     return left_flat and right_flat
 
 
-def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
+def analyze_squat_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
     n = len(all_landmarks)
 
@@ -547,16 +657,22 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     hip_angle_top = _win_med(
         lambda lm: calculate_angle(_mid(lm, 11, 12), _mid(lm, 23, 24), _mid(lm, 25, 26)))
 
-    depth = _check_squat_depth(bottom_lm, bottom_knee)
+    depth = _check_squat_depth(bottom_lm, bottom_knee, view)
     # 160° (not 170°) admits ±10° of pose jitter on true lockouts; soft
     # lockouts still fail. Distinguish knees-locked/hips-soft (counts, cued)
     # from a genuinely bent finish (no-count): live lifters often lock knees
     # but never fully stand erect between reps.
     lockout = knee_angle_top > 160 and hip_angle_top > 160
     soft_lockout = not lockout and knee_angle_top > 160
-    valgus = _check_knee_valgus(bottom_lm)
-    heels = _check_heels_flat(top_lm)
-    back_dev = min(90.0, _win_med(_torso_angle))
+    # View-dependent metrics: only assessed when the camera view makes them
+    # meaningful. A rear/front view collapses the sagittal plane (torso
+    # lean, hip-vs-knee depth, heel lift) and a side view hides knee valgus.
+    # `unknown` is the safe default — report None rather than fire a flag
+    # that is invalid for the camera angle (this is what produced 31 false
+    # "excessive forward lean" flags across the production set).
+    valgus = _check_knee_valgus(bottom_lm) if view in ("frontal", "front", "rear") else None
+    heels = _check_heels_flat(top_lm) if view == "side" else None
+    back_dev = round(min(90.0, _win_med(_torso_angle)), 1) if view == "side" else None
 
     return {
         "depth_achieved": depth,
@@ -566,7 +682,7 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
         "top_knee_angle": round(knee_angle_top, 1),
         "knee_valgus": valgus,
         "heels_flat": heels,
-        "back_angle_deviation": round(back_dev, 1),
+        "back_angle_deviation": back_dev,
         "bottom_knee_angle": round(bottom_knee, 1),
     }
 
@@ -669,7 +785,7 @@ def _detect_hitching(knee_angles: list[float]) -> bool:
     return bool((peak - trough) > 15)
 
 
-def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
+def analyze_deadlift_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
     n = len(all_landmarks)
 
@@ -711,11 +827,14 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
     ]))
     hitching = _detect_hitching(knee_series)
 
-    # Back position: torso change from bottom to top
-    torso_bottom = _torso_angle(bottom_lm)
-    torso_top = _torso_angle(top_lm)
-    change = abs(torso_top - torso_bottom)
-    back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
+    # Back position: torso change from bottom to top. Sagittal-only —
+    # spine rounding is not visible from front/rear, so it is only assessed
+    # on a known side view (None = not assessed).
+    if view == "side":
+        change = abs(_torso_angle(top_lm) - _torso_angle(bottom_lm))
+        back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
+    else:
+        back_pos = None
 
     grip_sym = abs(top_lm[15].y - top_lm[16].y) < 0.03
     shoulders_back = top_lm[11].y < top_lm[23].y
@@ -780,13 +899,14 @@ def score_squat_form(per_rep: list[dict]) -> dict:
         elif r["knee_valgus"] == "minor":
             score -= 5
             deviations.append(f"Rep {rn}: Minor knee cave")
-        if not r["heels_flat"]:
+        if r.get("heels_flat") is False:
             score -= 5
             deviations.append(f"Rep {rn}: Heels lifting")
             cues.append(COACHING_CUES["heels_lifted"])
-        if r["back_angle_deviation"] > 10:
+        back_dev = r.get("back_angle_deviation")
+        if back_dev is not None and back_dev > 10:
             score -= 10
-            deviations.append(f"Rep {rn}: Excessive forward lean ({r['back_angle_deviation']:.0f})")
+            deviations.append(f"Rep {rn}: Excessive forward lean ({back_dev:.0f})")
             cues.append(COACHING_CUES["excessive_forward_lean"])
 
     return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
@@ -878,7 +998,13 @@ def _form_result(score, comp_fail, deviations, cues):
 # ── Setup Analysis ───────────────────────────────────────────────────────────
 
 
-def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float, exercise: str) -> dict:
+def analyze_setup(
+    landmarks_per_frame: list,
+    timestamps: list[float],
+    fps: float,
+    exercise: str,
+    view: str = "unknown",
+) -> dict:
     """Analyze the setup phase from pose landmarks."""
     if len(landmarks_per_frame) < 5:
         return {"setup_score": 50, "setup_duration_seconds": 0, "coaching_cues": ["Insufficient data"]}
@@ -930,9 +1056,11 @@ def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float
         deviations.append(f"Prolonged setup ({setup_duration:.1f}s)")
 
     # Back alignment (skipped for deadlift: gripping the bar off the floor
-    # MEANS a bent-over setup — flagging it is always wrong).
-    if setup_frames and exercise not in ("Deadlift", "Conventional Deadlift",
-                                         "Sumo Deadlift"):
+    # MEANS a bent-over setup — flagging it is always wrong; and skipped
+    # unless the view is side-on, since torso lean is a sagittal measure).
+    if (view == "side" and setup_frames
+            and exercise not in ("Deadlift", "Conventional Deadlift",
+                                 "Sumo Deadlift")):
         torso_angles = [_torso_angle(lm) for lm in setup_frames]
         mean_torso = min(90.0, float(np.mean(torso_angles)))
         if abs(mean_torso) > 20:
@@ -1000,6 +1128,7 @@ def run_pose_analysis(
     exercise_name: str,
     rep_count: int,
     weight_kg: float,
+    view: str = "unknown",
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
@@ -1041,11 +1170,11 @@ def run_pose_analysis(
     per_rep = []
     for rep in reps:
         if exercise in ("Squat", "Front Squat", "Back Squat"):
-            per_rep.append({"rep_number": rep["rep_number"], **analyze_squat_rep(landmarks, rep)})
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_squat_rep(landmarks, rep, view=view)})
         elif exercise == "Bench Press":
             per_rep.append({"rep_number": rep["rep_number"], **analyze_bench_rep(landmarks, rep, fps=10.0)})
         elif exercise in ("Deadlift", "Conventional Deadlift", "Sumo Deadlift"):
-            per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep)})
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep, view=view)})
         else:
             per_rep.append({"rep_number": rep["rep_number"]})
 
@@ -1064,7 +1193,7 @@ def run_pose_analysis(
     result["rep_count_detected"] = len(reps)
 
     # Setup analysis
-    result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise)
+    result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise, view=view)
 
     logger.info("Pose analysis: exercise=%s, %d reps, form_score=%.1f, severity=%s",
                 exercise, len(reps), form["overall_form_score"], form["severity"])

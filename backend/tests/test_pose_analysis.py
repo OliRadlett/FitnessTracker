@@ -53,6 +53,17 @@ def _pose(knee_angle_deg, hip_y=0.40, thigh=0.15):
     return lms
 
 
+def _spread_pose(knee_angle_deg, spread):
+    """Synthetic pose with left/right joints separated horizontally by
+    ``spread`` — simulates a frontal/rear camera instead of side-on."""
+    lms = _pose(knee_angle_deg)
+    for left, right in ((11, 12), (23, 24), (25, 26), (27, 28), (13, 14), (15, 16)):
+        mid = (lms[left].x + lms[right].x) / 2
+        lms[left] = Lm(mid - spread, lms[left].y)
+        lms[right] = Lm(mid + spread, lms[right].y)
+    return lms
+
+
 def _squat_sequence(reps=3, top=170.0, bottom=70.0, frames_per_rep=20):
     total = reps * frames_per_rep
     mid = (top + bottom) / 2
@@ -133,6 +144,23 @@ class TestClassifyExercise:
 
     def test_short_sequence_is_unknown(self):
         assert pa.classify_exercise([_pose(170.0)] * 3)["exercise"] == "Unknown"
+
+
+class TestCameraView:
+    def test_side_view_detected(self):
+        seq = _squat_sequence(reps=2)
+        assert pa.detect_camera_view(seq)["view"] == "side"
+
+    def test_frontal_view_detected(self):
+        seq = [_spread_pose(170.0, 0.12) for _ in range(10)]
+        assert pa.detect_camera_view(seq)["view"] == "frontal"
+
+    def test_three_quarter_view_detected(self):
+        seq = [_spread_pose(170.0, 0.075) for _ in range(10)]
+        assert pa.detect_camera_view(seq)["view"] == "three_quarter"
+
+    def test_too_few_frames_is_unknown(self):
+        assert pa.detect_camera_view([_pose(170.0)])["view"] == "unknown"
 
 
 class TestRouteExercise:

@@ -4,121 +4,121 @@
       "file": "3a1e9822-Messenger_creation_DBB05A75-B3ED-4D90-BECA-77F6208DF07D.mp4",
       "id": "3a1e9822-0f20-4764-8fb4-c4debbd7e02d",
       "exercise": "Log Press",
-      "camera_view": "unknown",
+      "camera_view": "rear",
       "reps": 3,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Overhead log press, filmed from behind."
     },
     {
       "file": "af920f0e-VID_20251213132752.mp4",
       "id": "af920f0e-01e2-4e9a-a550-a7fb4420b114",
       "exercise": "Bench Press",
-      "camera_view": "unknown",
+      "camera_view": "side",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Bench, side-on but busy gym (multiple people in frame)."
     },
     {
       "file": "85c3239f-VID_20260227_124553_1.mp4",
       "id": "85c3239f-629a-4244-8150-c1d29fef6f62",
       "exercise": "Deadlift",
-      "camera_view": "unknown",
+      "camera_view": "three_quarter",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Deadlift, rear-quarter view."
     },
     {
       "file": "77ca64a0-VID20260912154123.mp4",
       "id": "77ca64a0-6ad4-4d5a-9e53-f9162d49c9f3",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "side",
       "reps": 3,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat, side-on. Depth was flagged but looks below parallel."
     },
     {
       "file": "49403afc-VID_20260920_172630.mp4",
       "id": "49403afc-8a64-4706-b9b3-6237a924f27e",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "rear",
       "reps": 8,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat, filmed from directly behind."
     },
     {
       "file": "9457cc12-VID20260912153646.mp4",
       "id": "9457cc12-3595-4af5-8e41-b23cb3a70b10",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "side",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat single, side-on."
     },
     {
       "file": "9d50640a-VID20260920171751.mp4",
       "id": "9d50640a-8397-4da8-adc5-8c6955c67555",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "three_quarter",
       "reps": 8,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat, rear-quarter view."
     },
     {
       "file": "a0bc93ce-Messenger_creation_8BB7F676-CB25-46D0-B5A0-ED78ADD1ED05.mp4",
       "id": "a0bc93ce-abbc-4642-bf8f-44b6ae45cad9",
       "exercise": "Atlas Stone",
-      "camera_view": "unknown",
+      "camera_view": "side",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Atlas stone load, side-on, another person in background."
     },
     {
       "file": "e74d65ca-VID_20260920_173445.mp4",
       "id": "e74d65ca-733d-4968-92aa-ab4552b4b4ff",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "rear",
       "reps": 8,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat, filmed from behind (deep bottom captured)."
     },
     {
       "file": "5446d326-VID_20260216_191900.mp4",
       "id": "5446d326-1efb-463f-b30b-c63168957126",
       "exercise": "Deadlift",
-      "camera_view": "unknown",
+      "camera_view": "rear",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Deadlift, filmed from behind."
     },
     {
       "file": "0df141e8-VID_20251213144529.mp4",
       "id": "0df141e8-bf5c-42d1-b6ba-ff638ea52387",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "side",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat single, side-on, clean."
     },
     {
       "file": "6aa4391a-VID_20260829_143940.mp4",
       "id": "6aa4391a-4d17-4831-a3df-699031d45619",
       "exercise": "Back Squat",
-      "camera_view": "unknown",
+      "camera_view": "rear",
       "reps": 1,
       "set_type": "working",
       "velocity_band": null,
-      "notes": ""
+      "notes": "Squat single, filmed from behind."
     }
   ]
 }
