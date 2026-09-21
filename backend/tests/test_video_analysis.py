@@ -76,14 +76,24 @@ class TestParseGeminiJson:
 
 
 class TestEstimateRpeHeuristic:
-    def test_no_data_falls_back_to_conservative_default(self):
+    def test_single_rep_without_reference_returns_none(self):
         rpe = estimate_rpe_heuristic({}, "Back Squat", 1)
-        assert rpe["estimated_rpe"] == 6.0
-        assert rpe["confidence"] == pytest.approx(0.5)
+        assert rpe["estimated_rpe"] is None
+        assert rpe["confidence"] == 0.0
 
-    def test_velocity_loss_drives_rpe(self):
+    def test_slow_single_rep_does_not_imply_max_effort(self):
+        # A 0.087 m/s single rep has no load/1RM context; the old heuristic
+        # reported 9.5 here, saturating nearly every single-rep video.
+        analysis = {"velocity": {"mean_concentric_velocity": 0.087}}
+        assert estimate_rpe_heuristic(analysis, "Back Squat", 1)["estimated_rpe"] is None
+
+    def test_velocity_loss_drives_rpe_for_working_set(self):
         analysis = {"velocity": {"velocity_loss_pct": 35.0, "mean_concentric_velocity": 0.2}}
-        assert estimate_rpe_heuristic(analysis, "Back Squat", 3)["estimated_rpe"] == 10.0
+        assert estimate_rpe_heuristic(analysis, "Back Squat", 3)["estimated_rpe"] == 8.0
+
+    def test_single_rep_with_velocity_loss_still_needs_two_reps(self):
+        analysis = {"velocity": {"velocity_loss_pct": 30.0, "mean_concentric_velocity": 0.2}}
+        assert estimate_rpe_heuristic(analysis, "Back Squat", 1)["estimated_rpe"] is None
 
     def test_major_form_breakdown_bumps_rpe(self):
         analysis = {
@@ -93,11 +103,3 @@ class TestEstimateRpeHeuristic:
         base = estimate_rpe_heuristic({"velocity": analysis["velocity"]}, "Back Squat", 3)
         bumped = estimate_rpe_heuristic(analysis, "Back Squat", 3)
         assert bumped["estimated_rpe"] > base["estimated_rpe"]
-
-    @pytest.mark.xfail(
-        reason="Phase 2: absolute bar velocity without load cannot imply RPE=max",
-        strict=False,
-    )
-    def test_slow_single_rep_should_not_imply_max_effort(self):
-        analysis = {"velocity": {"mean_concentric_velocity": 0.087}}
-        assert estimate_rpe_heuristic(analysis, "Back Squat", 1)["estimated_rpe"] < 9.5

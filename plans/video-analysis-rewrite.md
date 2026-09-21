@@ -147,10 +147,13 @@ These are the numbers the rewrite must move.
   world signal. Effect: `velocity_loss_out_of_range_rate` **0.67 → 0.0**,
   `rep_count_mismatch_rate` **0.33 → 0.0**; 150 kg max squat reads 0.28 m/s,
   105 kg RPE7 sets 0.18–0.23 m/s with 19–31% loss.
-- ⚠️ **RPE is still saturated** (0.92 → 1.0 after the velocity fix): the
-  heuristic maps any ≥30% velocity loss to 10.0 and single reps to absolute-
-  velocity bins. It ignores load entirely. This is Phase 2 work — the new
-  `load_kg` labels make it possible to validate a load-aware model.
+- ✅ **RPE reworked** to be honest: estimated from velocity loss across a
+  multi-rep set only (recalibrated bands, ~30% loss ≈ 8.0), and returns
+  `None` for single reps / no measurable loss instead of a fabricated
+  9.5–10. Effect: `rpe_saturation_rate` **0.92 → 0.0**. Still approximate —
+  velocity loss is noisy (RPE-7 sets measured 35–88% with the production
+  trim), so a load/1RM reference plus better rep segmentation is needed for
+  absolute accuracy.
 - 📷 **Camera views (owner-confirmed):** 9 of 12 clips are rear-quarter
   (back-left/right), only 2 are true side, 1 front. Sagittal-plane rules are
   therefore invalid for ~75% of real footage — the view gate must default to
