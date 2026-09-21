@@ -42,6 +42,7 @@ from app.integrations.pose_analysis import (
     classify_exercise,
     detect_reps_from_pose,
     extract_pose_track,
+    render_overlay_video,
     run_pose_analysis,
 )
 from app.integrations.video_analysis import (
@@ -267,6 +268,16 @@ def main() -> int:
     full_result["rpe"] = rpe
     print(f"RPE: {rpe.get('estimated_rpe')} "
           f"(confidence {rpe.get('confidence')})")
+
+    # Step 8d: pose overlay (skeleton + bar path) for visual inspection
+    overlay_path = input_path.with_suffix(".overlay.mp4")
+    if render_overlay_video(
+        input_path, landmarks, timestamps, overlay_path,
+        time_offset=0.0, exercise=exercise,
+    ):
+        print(f"Overlay: {overlay_path}")
+    else:
+        print("Overlay render failed")
 
     out_path = input_path.with_suffix(".analysis.json")
     out_path.write_text(json.dumps(full_result, indent=2, default=str))
