@@ -12,6 +12,7 @@ from app.integrations.video_analysis import (
     _get_vbt_zone,
     _parse_gemini_json,
     _velocity_loss_pct,
+    classify_view_from_frame,
     estimate_rpe_heuristic,
 )
 
@@ -73,6 +74,72 @@ class TestParseGeminiJson:
     def test_bare_fence(self):
         raw = '```\n{"a": 1}\n```'
         assert _parse_gemini_json(raw) == {"a": 1}
+
+
+class TestClassifyViewFromFrame:
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    @classmethod
+    def _response(cls, text):
+        import json as _json
+
+        return cls._Resp(_json.dumps(
+            {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+        ).encode())
+
+    def _run(self, monkeypatch, tmp_path, text, key="k"):
+        import urllib.request
+
+        frame = tmp_path / "frame.jpg"
+        frame.write_bytes(b"\xff\xd8\xff")
+        monkeypatch.setattr(
+            urllib.request, "urlopen",
+            lambda req, timeout=None: self._response(text),
+        )
+        return classify_view_from_frame(frame, key)
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("side", "side"),
+            ("Side.", "side"),
+            ("three_quarter", "three_quarter"),
+            ("three-quarter", "three_quarter"),
+            ("front", "front"),
+            ("rear", "rear"),
+            ("banana", "unknown"),
+        ],
+    )
+    def test_parses_label(self, monkeypatch, tmp_path, text, expected):
+        assert self._run(monkeypatch, tmp_path, text) == expected
+
+    def test_missing_key_returns_unknown(self, tmp_path):
+        frame = tmp_path / "frame.jpg"
+        frame.write_bytes(b"x")
+        assert classify_view_from_frame(frame, "") == "unknown"
+
+    def test_network_failure_returns_unknown(self, monkeypatch, tmp_path):
+        import urllib.request
+
+        frame = tmp_path / "frame.jpg"
+        frame.write_bytes(b"x")
+
+        def _boom(req, timeout=None):
+            raise OSError("network down")
+
+        monkeypatch.setattr(urllib.request, "urlopen", _boom)
+        assert classify_view_from_frame(frame, "k") == "unknown"
 
 
 class TestEstimateRpeHeuristic:

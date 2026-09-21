@@ -198,6 +198,14 @@ These are the numbers the rewrite must move.
 - Gemini receives sampled frames + computed metrics + skeleton overlay; strict JSON,
   coaching language only, never numeric values. Cache by content hash; reuse
   `llm_base.ai_generation_guard`.
+- ⚠️ **Quota constraint:** the Gemini free tier is small (~10 req/day per the
+  owner). A per-video VLM call is therefore NOT viable — a 12-video batch
+  exceeds the daily budget and starves the weekly/on-demand analysis. Decision:
+  camera view should be **user-declared at upload** (free, 100% reliable); the
+  VLM view classifier (`classify_view_from_frame`) is built but gated behind
+  `VIDEO_VIEW_VLM_ENABLED` (default false) for diagnostics/backfill only.
+- 📷 **Camera-view finding (again):** owner-confirmed 9/12 clips are rear-quarter,
+  so view-aware gating matters more than any other form feature.
 
 ### Phase 4 — Correction loop & features
 

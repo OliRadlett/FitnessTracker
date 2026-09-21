@@ -1158,6 +1158,102 @@ RPE_VELOCITY_LOSS_BANDS = [
 ]
 
 
+VIEW_LABELS = ("three_quarter", "front", "rear", "side")
+
+_VIEW_PROMPT = (
+    "You are labelling the camera angle of ONE frame from a weightlifting "
+    "video. Choose exactly one label:\n"
+    "- side: camera perpendicular to the lifter (clean side profile, you see "
+    "the body from the side)\n"
+    "- three_quarter: an angled view (front-quarter or rear-quarter)\n"
+    "- front: the lifter faces the camera\n"
+    "- rear: the camera is directly behind the lifter\n"
+    "Reply with the single label only, lowercase, no punctuation."
+)
+
+
+def classify_view_from_frame(
+    frame_path: str | Path,
+    api_key: str,
+    model: str = "gemini-3.6-flash",
+    timeout: float = 30.0,
+) -> str:
+    """Classify the camera view of a single frame via the Gemini REST API.
+
+    Returns one of ``side``/``three_quarter``/``front``/``rear``, or
+    ``"unknown"`` on any failure. Uses only the standard library (urllib) so
+    it runs both inside the Modal container and locally; a failure never
+    raises — the caller then leaves sagittal rules ungated (safe default).
+
+    Why a VLM: monocular pose geometry cannot separate side from rear (both
+    2D shoulder/torso ratios and the metric-3D world shoulder-line fail on
+    the production set). A single-frame VLM call is reliable and cheap.
+    """
+    if not api_key:
+        return "unknown"
+    import base64
+    import time as _time
+    import urllib.error
+    import urllib.request
+
+    data = Path(frame_path).read_bytes()
+    if not data:
+        return "unknown"
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": _VIEW_PROMPT},
+                {"inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": base64.b64encode(data).decode(),
+                }},
+            ],
+        }],
+        # Generous token budget: Gemini 3.x can spend output tokens on
+        # internal reasoning, and a 16-token cap truncated "three_quarter"
+        # to "three" (found 2026-09-21).
+        "generationConfig": {"temperature": 0, "maxOutputTokens": 256},
+    }
+    req = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    body = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < 2:
+                _time.sleep(2.0 * (attempt + 1))
+                continue
+            logger.warning("Gemini view classification failed: %s", e)
+            return "unknown"
+        except Exception as e:
+            # Never fail the analysis for a view-classification problem.
+            logger.warning("Gemini view classification failed: %s", e)
+            return "unknown"
+
+    if not body:
+        return "unknown"
+    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    text = " ".join(p.get("text", "") for p in parts).strip().lower()
+    if not text:
+        logger.warning("Gemini view classification returned no text")
+        return "unknown"
+
+    normalized = text.replace("-", "_").replace(" ", "_")
+    for label in VIEW_LABELS:
+        if label in normalized:
+            return label
+    logger.warning("Gemini view classification returned unexpected text: %r", text)
+    return "unknown"
+
+
 def _rpe_from_velocity_loss(vel_loss: float) -> float:
     for threshold, rpe in RPE_VELOCITY_LOSS_BANDS:
         if vel_loss > threshold:

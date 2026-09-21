@@ -148,6 +148,8 @@ def process_video_on_modal(
         depth: str,
         expected: int | None,
         user_ex: str | None,
+        gemini_key: str = "",
+        gemini_model: str = "gemini-3.6-flash",
     ) -> dict:
         import logging
         import subprocess
@@ -312,6 +314,23 @@ def process_video_on_modal(
 
             _logger.info("Extracted %d key frames", len(frame_paths))
 
+            # ── Step 6b: Camera view via Gemini (one frame) ───────────────
+            # Gating sagittal rules needs the view; pose geometry cannot
+            # determine it (see classify_view_from_frame docstring). Failure
+            # leaves it "unknown" -> sagittal rules stay off (safe default).
+            view = "unknown"
+            if frame_paths and gemini_key:
+                try:
+                    from app.integrations.video_analysis import (
+                        classify_view_from_frame,
+                    )
+
+                    view = classify_view_from_frame(
+                        frame_paths[len(frame_paths) // 2], gemini_key, gemini_model)
+                    _logger.info("Camera view: %s", view)
+                except Exception as e:
+                    _logger.warning("View classification failed: %s", e)
+
             # ── Step 7: Classify via pose landmarks (local) ──────────────
             exercise = ""  # Will be determined by pose classification
             reps = 0  # Will be determined by pose analysis
@@ -379,6 +398,7 @@ def process_video_on_modal(
                         exercise_name=exercise,
                         rep_count=expected or reps,
                         weight_kg=weight,
+                        view=view,
                         track=pose_track,
                     )
                     full_result.update(pose_result)
@@ -499,7 +519,7 @@ def process_video_on_modal(
                                 "returning analysis without trimmed video")
                 uploaded_key = None
 
-            form_data = full_result.get("form", {})
+            form_data = {**full_result.get("form", {}), "view": view}
             vel_data = full_result.get("velocity", {})
             consist_data = full_result.get("consistency", {})
             setup_data = full_result.get("setup", {})
@@ -526,8 +546,11 @@ def process_video_on_modal(
                     return [_to_py(v) for v in obj]
                 return obj
 
+            analysis_text = f"[view={view}] {analysis_text}".strip()
+
             return _to_py({
                 "trimmed_r2_key": uploaded_key,
+                "view": view,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
                 "trim_end_sec": round(trim_end, 2),
@@ -567,6 +590,14 @@ def process_video_on_modal(
                 "rpe_evidence_json": rpe_data.get("evidence"),
             })
 
+    # Gemini key is passed through so the container can classify camera view
+    # (the container image has no google-genai; the call is a raw REST request).
+    # Gated OFF by default — a per-video call competes with the weekly/on-demand
+    # LLM analysis under a low daily Gemini quota. Empty key => "unknown" view.
+    from app.services.llm_base import GEMINI_MODEL
+
+    view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
+
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
         return _process.remote(
@@ -576,4 +607,6 @@ def process_video_on_modal(
             analysis_depth,
             expected_reps,
             user_exercise,
+            view_key,
+            GEMINI_MODEL,
         )
