@@ -217,8 +217,13 @@ def _predict_segment_effort(
 
     total_weight = sum(weights)
 
-    # Weighted average VAM
-    vam_values = [e.get("effort_vam", 1000) for e in similar_efforts]
+    # Weighted average VAM. ``.get(key, default)`` is not enough: the task
+    # payload carries ``effort_vam`` present-but-``None`` when the source effort
+    # has no VAM, so guard the None explicitly (preserving a legitimate 0).
+    vam_values = [
+        e["effort_vam"] if e.get("effort_vam") is not None else 1000
+        for e in similar_efforts
+    ]
     predicted_vam = sum(v * w for v, w in zip(vam_values, weights)) / total_weight
 
     # Weighted average power
