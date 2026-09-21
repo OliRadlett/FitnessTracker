@@ -1,8 +1,9 @@
 # Lift Video Analysis — Rewrite Plan
 
-> **Status**: Phase 0 COMPLETE · Phase 1 largely complete · Phase 2 in progress
-> (2026-09-21). Branch `feat/video-analysis-rewrite`. Baseline + per-increment
-> reports in `reports/` (gitignored).
+> **Status**: Phases 0–2 COMPLETE, Phase 4 features shipped (camera view,
+> overlay, VBT). Phase 3 (VLM coaching) is quota-blocked by design. Branch
+> `feat/video-analysis-rewrite`. Baseline + per-increment reports in `reports/`
+> (gitignored).
 > **Owner decision**: Hybrid architecture (deterministic 3D metrics + grounded VLM coaching)
 > **Scope**: `backend/app/integrations/{modal_client,pose_analysis,video_analysis}.py`,
 > `backend/app/tasks/scheduler.py::process_lift_video`, `backend/app/api/videos.py`,
@@ -248,8 +249,13 @@ These are the numbers the rewrite must move.
 2. **Capture preflight & guidance** at upload ("film side-on, full body, landscape").
 3. **Per-rep breakdown UI** — per-rep thumbnails, depth/lockout/tempo, individual scores,
    override toggles.
-4. **VBT load–velocity profile** across videos (needs load) + velocity-loss autoregulation
-   and readiness advice.
+4. ✅ **VBT load–velocity profile + estimated 1RM** — `app/services/vbt.py`
+   fits `velocity = slope·load + intercept` over the user's analysed sets and
+   reads 1RM off the minimal-velocity-threshold crossing (Squat 0.30, Bench/
+   Deadlift 0.15, Press 0.20 m/s). Load is now captured on upload
+   (`weight_kg`). `GET /videos/vbt/profile?exercise_name=` returns the points +
+   fit + confidence; `VbtPanel` renders the scatter + fit line + est. 1RM.
+   ⏳ Still to do: velocity-loss autoregulation / readiness advice.
 5. **Meaningful form trends + injury flags** (scaffolding exists in `video_analytics.py`)
    feeding `HealthAlert`.
 6. **Set auto-segmentation + rest timing** for long session videos.

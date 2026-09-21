@@ -30,6 +30,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
 
   const [exerciseName, setExerciseName] = useState('');
   const [expectedReps, setExpectedReps] = useState('');
+  const [weightKg, setWeightKg] = useState('');
   const [cameraView, setCameraView] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -43,6 +44,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     if (open) {
       setExerciseName('');
       setExpectedReps('');
+      setWeightKg('');
       setCameraView('');
       setNotes('');
       setSessionId('');
@@ -88,6 +90,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
     const base: Record<string, unknown> = {
       exercise_name: exerciseName || null,
       expected_reps: expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
+      weight_kg: weightKg === '' ? null : Math.max(0, parseFloat(weightKg) || 0),
       camera_view: cameraView || null,
       notes: notes || null,
       lifting_session_id: sessionId || null,
@@ -200,6 +203,21 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             value={expectedReps}
             onChange={(e) => setExpectedReps(e.target.value)}
             placeholder="e.g. 1 for a max attempt"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">
+            Load (kg) <span className="text-muted/70">(unlocks load-velocity / 1RM)</span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            step="0.5"
+            value={weightKg}
+            onChange={(e) => setWeightKg(e.target.value)}
+            placeholder="e.g. 140"
             className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>

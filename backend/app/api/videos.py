@@ -8,6 +8,7 @@ referencing the object key. Requires the `R2_*` env vars + a bucket CORS rule
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ from app.schemas.lifting import (
     LiftVideoCreate,
     LiftVideoListParams,
     LiftVideoRead,
+    VbtProfileResponse,
     VideoProcessStatus,
     VideoStreamUrl,
     VideoUploadRequest,
@@ -113,11 +115,65 @@ async def create_video(
         notes=payload.notes,
         expected_reps=payload.expected_reps,
         camera_view=payload.camera_view,
+        weight_kg=payload.weight_kg,
     )
     db.add(video)
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
     return video
+
+
+@router.get("/vbt/profile", response_model=VbtProfileResponse)
+async def get_vbt_profile(
+    exercise_name: str = Query(..., min_length=1),
+    days: int = Query(365, ge=1, le=1095),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Load-velocity profile + estimated 1RM for one exercise (VBT).
+
+    Uses every analysed video of the exercise that has both a load and a
+    measured velocity. The fitted line's MVT crossing estimates 1RM without a
+    true max attempt. Registered before the ``/{video_id}`` routes.
+    """
+    from app.services.vbt import load_velocity_profile
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    videos = (
+        (
+            await db.execute(
+                select(LiftVideo)
+                .where(
+                    LiftVideo.user_id == current_user.id,
+                    LiftVideo.exercise_name == exercise_name,
+                    LiftVideo.weight_kg.isnot(None),
+                    LiftVideo.mean_concentric_velocity.isnot(None),
+                    LiftVideo.created_at >= cutoff,
+                )
+                .order_by(LiftVideo.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    profile = load_velocity_profile(
+        [(v.weight_kg, v.mean_concentric_velocity) for v in videos],
+        exercise_name,
+    )
+    return VbtProfileResponse(
+        **profile.as_dict(),
+        points=[
+            {
+                "date": v.created_at.date().isoformat(),
+                "load_kg": v.weight_kg,
+                "velocity": v.mean_concentric_velocity,
+                "reps": v.reps_count,
+                "vbt_zone": v.vbt_zone,
+            }
+            for v in videos
+        ],
+    )
 
 
 @router.get("/{video_id}", response_model=LiftVideoRead)
