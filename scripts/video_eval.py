@@ -177,9 +177,12 @@ def _run_one(
         trim_end=trim_end,
         exercise_name=label.get("exercise") or classification["exercise"],
         rep_count=label.get("reps") or len(auto_reps),
-        weight_kg=0.0,
+        weight_kg=float(label.get("load_kg") or 0.0),
         track=track,
     )
+    record["load_kg"] = label.get("load_kg")
+    record["rerack"] = label.get("rerack")
+    record["effort"] = label.get("effort")
     form = pose_result.get("form", {})
     record["form_score"] = form.get("overall_form_score")
     record["score_zero"] = record["form_score"] == 0

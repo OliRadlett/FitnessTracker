@@ -4,11 +4,14 @@
       "file": "3a1e9822-Messenger_creation_DBB05A75-B3ED-4D90-BECA-77F6208DF07D.mp4",
       "id": "3a1e9822-0f20-4764-8fb4-c4debbd7e02d",
       "exercise": "Log Press",
-      "camera_view": "rear",
+      "camera_view": "front",
       "reps": 3,
       "set_type": "working",
+      "load_kg": 70,
+      "rerack": null,
+      "effort": "max",
       "velocity_band": null,
-      "notes": "Overhead log press, filmed from behind."
+      "notes": "Competition setting (judge, crowd). Phone in hand. Front-ish view. 70kg max-effort log press x3."
     },
     {
       "file": "af920f0e-VID_20251213132752.mp4",
@@ -17,6 +20,9 @@
       "camera_view": "side",
       "reps": 1,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Bench, side-on but busy gym (multiple people in frame)."
     },
@@ -27,6 +33,9 @@
       "camera_view": "three_quarter",
       "reps": 1,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Deadlift, rear-quarter view."
     },
@@ -37,6 +46,9 @@
       "camera_view": "side",
       "reps": 3,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Squat, side-on. Depth was flagged but looks below parallel."
     },
@@ -47,6 +59,9 @@
       "camera_view": "rear",
       "reps": 8,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Squat, filmed from directly behind."
     },
@@ -57,6 +72,9 @@
       "camera_view": "side",
       "reps": 1,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Squat single, side-on."
     },
@@ -67,8 +85,11 @@
       "camera_view": "three_quarter",
       "reps": 8,
       "set_type": "working",
+      "load_kg": 105,
+      "rerack": true,
+      "effort": "rpe7",
       "velocity_band": null,
-      "notes": "Squat, rear-quarter view."
+      "notes": "Low-bar squats, back-right view, phone in hand. Unrack, 8 reps, rack. 105kg @ RPE 7."
     },
     {
       "file": "a0bc93ce-Messenger_creation_8BB7F676-CB25-46D0-B5A0-ED78ADD1ED05.mp4",
@@ -77,6 +98,9 @@
       "camera_view": "side",
       "reps": 1,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Atlas stone load, side-on, another person in background."
     },
@@ -87,6 +111,9 @@
       "camera_view": "rear",
       "reps": 8,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Squat, filmed from behind (deep bottom captured)."
     },
@@ -97,6 +124,9 @@
       "camera_view": "rear",
       "reps": 1,
       "set_type": "working",
+      "load_kg": null,
+      "rerack": null,
+      "effort": null,
       "velocity_band": null,
       "notes": "Deadlift, filmed from behind."
     },
@@ -107,18 +137,24 @@
       "camera_view": "side",
       "reps": 1,
       "set_type": "working",
+      "load_kg": 150,
+      "rerack": true,
+      "effort": "max",
       "velocity_band": null,
-      "notes": "Squat single, side-on, clean."
+      "notes": "High-bar squat, side view (left), phone on floor, squatted inside the rack. Unrack, 1 rep, rack. 150kg max effort."
     },
     {
       "file": "6aa4391a-VID_20260829_143940.mp4",
       "id": "6aa4391a-4d17-4831-a3df-699031d45619",
       "exercise": "Back Squat",
-      "camera_view": "rear",
+      "camera_view": "three_quarter",
       "reps": 1,
       "set_type": "working",
+      "load_kg": 140,
+      "rerack": true,
+      "effort": "high",
       "velocity_band": null,
-      "notes": "Squat single, filmed from behind."
+      "notes": "Low-bar squat, back-left view, phone on floor. Unrack, 1 rep, rack. 140kg, high but not max effort."
     }
   ]
 }
