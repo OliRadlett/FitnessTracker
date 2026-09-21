@@ -178,22 +178,27 @@ class TestSyncActivities:
 class TestSyncActivitiesTruncation:
     """sync_activities() pagination + truncation signalling."""
 
-    async def test_reports_truncated_when_backlog_exceeds_limit(
+    async def test_drains_past_limit_when_backlog_exceeds_it(
         self,
         db_session,
         test_user,
         strava_connection,
         strava_responses,
     ):
-        """When the limit is hit on a full page and more items remain, the
-        ``truncated_ref`` flag is set so callers can hold the watermark."""
+        """A backlog larger than ``limit`` drains in one run (SYNC-02): the
+        walk continues past the cap while pages yield unseen activities, and
+        ``truncated_ref`` stays False so the watermark advances."""
         from app.services.strava.sync import sync_activities
 
         acts = strava_responses["activities"][:2]
 
         async def fake_get_activities(**kwargs):
             page = kwargs.get("page", 1)
-            return [acts[0]] if page == 1 else [acts[1]]
+            if page == 1:
+                return [acts[0]]
+            if page == 2:
+                return [acts[1]]
+            return []
 
         with patch("app.services.strava.sync.strava_client") as mock_client:
             mock_client.get_activities = AsyncMock(side_effect=fake_get_activities)
@@ -206,8 +211,46 @@ class TestSyncActivitiesTruncation:
                 db_session, test_user.id, limit=1, truncated_ref=truncated_ref
             )
 
+        assert truncated_ref == [False]
+        assert len(synced) == 2  # both pages drained despite limit=1
+
+    async def test_truncated_only_when_cap_hit_with_more_remaining(
+        self,
+        db_session,
+        test_user,
+        strava_connection,
+        strava_responses,
+    ):
+        """``truncated_ref`` is True only when the per-run page cap stops the
+        walk while unseen activities remain (callers hold the watermark)."""
+        from app.services.strava.sync import sync_activities
+
+        acts = strava_responses["activities"][:2]
+
+        async def fake_get_activities(**kwargs):
+            page = kwargs.get("page", 1)
+            if page <= 2:
+                return [acts[page - 1]]
+            return [acts[1]]  # unseen-looking row past the cap probe
+
+        with patch("app.services.strava.sync.strava_client") as mock_client:
+            mock_client.get_activities = AsyncMock(side_effect=fake_get_activities)
+            mock_client.get_activity_streams = AsyncMock(
+                return_value=strava_responses["activity_streams"],
+            )
+
+            truncated_ref: list[bool] = []
+            # max_pages=1: page 1 drains, cap probe finds an (apparently)
+            # unseen row → hold the watermark.
+            await sync_activities(
+                db_session,
+                test_user.id,
+                limit=1,
+                truncated_ref=truncated_ref,
+                max_pages=1,
+            )
+
         assert truncated_ref == [True]
-        assert len(synced) == 1  # only the capped page was processed this run
 
     async def test_not_truncated_when_backlog_drained(
         self,
