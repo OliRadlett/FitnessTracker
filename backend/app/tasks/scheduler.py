@@ -3617,6 +3617,12 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     "video/mp4",
                     video.size_bytes or 0,
                 )
+                presigned_overlay = await create_presigned_put(
+                    video.user_id,
+                    f"overlay-{video.file_name}",
+                    "video/mp4",
+                    video.size_bytes or 0,
+                )
 
                 # Call Modal for processing
                 result = process_video_on_modal(
@@ -3629,10 +3635,13 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     expected_reps=video.expected_reps,
                     user_exercise=video.exercise_name,
                     camera_view=video.camera_view,
+                    r2_presigned_put_overlay=presigned_overlay["upload_url"],
+                    r2_upload_key_overlay=presigned_overlay["key"],
                 )
 
                 # Update video with results
                 video.trimmed_r2_key = result.get("trimmed_r2_key")
+                video.overlay_r2_key = result.get("overlay_r2_key")
                 video.trim_start_sec = result.get("trim_start_sec")
                 video.trim_end_sec = result.get("trim_end_sec")
                 video.analysis_text = result.get("analysis_text")

@@ -268,6 +268,8 @@ class LiftVideo(Base):
 
     # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
     trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Skeleton + bar-path overlay rendered onto the trimmed video (§3.18)
+    overlay_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analysis_status: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )

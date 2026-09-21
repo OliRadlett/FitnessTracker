@@ -205,6 +205,18 @@ class TestRouteExercise:
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
 
 
+class TestOverlayTrackedPoint:
+    def test_squat_uses_shoulder_midpoint(self):
+        lm = _pose(170.0)
+        expected = ((lm[11].x + lm[12].x) / 2, (lm[11].y + lm[12].y) / 2)
+        assert pa._tracked_bar_point(lm, "Back Squat") == pytest.approx(expected)
+
+    def test_deadlift_uses_wrist_midpoint(self):
+        lm = _pose(170.0)
+        expected = ((lm[15].x + lm[16].x) / 2, (lm[15].y + lm[16].y) / 2)
+        assert pa._tracked_bar_point(lm, "Deadlift") == pytest.approx(expected)
+
+
 class TestSquatLockout:
     def test_side_view_requires_hip_extension(self):
         assert pa._squat_lockout(178.0, 150.0, "side") == (False, True)

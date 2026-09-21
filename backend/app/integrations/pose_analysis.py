@@ -167,6 +167,126 @@ def extract_pose_landmarks(
     return track["landmarks"], track["timestamps"]
 
 
+# ── Pose Overlay Rendering ───────────────────────────────────────────────────
+
+_SKELETON_EDGES = (
+    (11, 12), (11, 23), (12, 24), (23, 24),
+    (11, 13), (13, 15), (12, 14), (14, 16),
+    (23, 25), (25, 27), (27, 29), (29, 31),
+    (24, 26), (26, 28), (28, 30), (30, 32),
+)
+
+_MAX_TRAIL_POINTS = 200
+
+
+def _tracked_bar_point(lm, exercise: str) -> tuple[float, float]:
+    """2D normalised bar-tracking point (matches bar_velocity_from_world)."""
+    if exercise in ("Squat", "Front Squat", "Back Squat"):
+        return ((lm[11].x + lm[12].x) / 2, (lm[11].y + lm[12].y) / 2)
+    return ((lm[15].x + lm[16].x) / 2, (lm[15].y + lm[16].y) / 2)
+
+
+def render_overlay_video(
+    input_path: Path,
+    landmarks: list,
+    timestamps: list[float],
+    out_path: Path,
+    time_offset: float = 0.0,
+    exercise: str = "",
+    fps: float = 30.0,
+) -> bool:
+    """Render a skeleton + bar-path overlay onto a video.
+
+    Draws the MediaPipe skeleton and the bar-tracking point trail so the user
+    can see what the analyzer saw. ``timestamps`` are absolute (source-video)
+    times; ``time_offset`` is the source start time of ``input_path`` (the
+    trim start), so output frame time t maps to source time t + offset.
+
+    Returns True on success; never raises (a failed overlay must not fail the
+    analysis).
+    """
+    import bisect
+    import subprocess
+
+    import cv2
+
+    try:
+        n = min(len(landmarks), len(timestamps))
+        if n == 0:
+            return False
+        cap = cv2.VideoCapture(str(input_path))
+        if not cap.isOpened():
+            return False
+        vid_fps = cap.get(cv2.CAP_PROP_FPS) or fps
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if w <= 0 or h <= 0:
+            cap.release()
+            return False
+
+        ts = list(timestamps[:n])
+        raw_path = Path(str(out_path) + ".raw.mp4")
+        writer = cv2.VideoWriter(
+            str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"), vid_fps, (w, h))
+        if not writer.isOpened():
+            cap.release()
+            return False
+
+        trail: list[tuple[int, int]] = []
+        i = 0
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            t = time_offset + (i / vid_fps)
+            j = bisect.bisect_left(ts, t)
+            if j >= n:
+                j = n - 1
+            elif j > 0 and abs(ts[j - 1] - t) <= abs(ts[j] - t):
+                j -= 1
+            lm = landmarks[j]
+            for a, b in _SKELETON_EDGES:
+                if lm[a].visibility > 0.3 and lm[b].visibility > 0.3:
+                    cv2.line(
+                        frame,
+                        (int(lm[a].x * w), int(lm[a].y * h)),
+                        (int(lm[b].x * w), int(lm[b].y * h)),
+                        (0, 255, 255), 2,
+                    )
+            for k in range(33):
+                if lm[k].visibility > 0.3:
+                    cv2.circle(
+                        frame, (int(lm[k].x * w), int(lm[k].y * h)),
+                        3, (0, 255, 255), -1,
+                    )
+            bx, by = _tracked_bar_point(lm, exercise)
+            point = (int(bx * w), int(by * h))
+            trail.append(point)
+            if len(trail) > _MAX_TRAIL_POINTS:
+                trail.pop(0)
+            for k in range(1, len(trail)):
+                cv2.line(frame, trail[k - 1], trail[k], (255, 0, 255), 2)
+            cv2.circle(frame, point, 6, (255, 0, 255), -1)
+            writer.write(frame)
+            i += 1
+
+        cap.release()
+        writer.release()
+
+        # Re-encode to H.264 so browsers can play it.
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw_path),
+             "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", str(out_path)],
+            capture_output=True, timeout=300, check=False,
+        )
+        raw_path.unlink(missing_ok=True)
+        return result.returncode == 0 and Path(out_path).exists()
+    except Exception as e:
+        logger.warning("Overlay render failed: %s", e)
+        return False
+
+
 # ── Utility Functions ─────────────────────────────────────────────────────────
 
 

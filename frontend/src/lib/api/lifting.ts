@@ -112,8 +112,11 @@ export async function getVideoUploadUrl(
 export async function getVideoStreamUrl(
   authFetch: AuthFetch,
   videoId: string,
+  variant: 'original' | 'trimmed' | 'overlay' = 'original',
 ): Promise<VideoStreamUrl> {
-  return authFetch<VideoStreamUrl>(`/api/v1/lifting/videos/${videoId}/stream-url`);
+  return authFetch<VideoStreamUrl>(
+    `/api/v1/lifting/videos/${videoId}/stream-url?variant=${variant}`,
+  );
 }
 
 export async function deleteLiftVideo(authFetch: AuthFetch, videoId: string): Promise<LiftVideo> {

@@ -22,6 +22,7 @@ export interface LiftVideo {
   updated_at: string;
   // Video processing fields
   trimmed_r2_key?: string | null;
+  overlay_r2_key?: string | null;
   analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;

@@ -239,8 +239,12 @@ These are the numbers the rewrite must move.
 
 ## New features (post-foundation)
 
-1. **Skeleton + bar-path overlay video** — render tracked joints and bar path onto the
-   trimmed clip; users see what the algorithm saw. Also the best debugging tool.
+1. ✅ **Skeleton + bar-path overlay video** — `render_overlay_video()` draws the
+   MediaPipe skeleton + bar-tracking point/trail onto the trimmed clip; Modal
+   uploads it to R2 (`overlay_r2_key`, migration 066). `VideoEmbed` has an
+   opt-in **Original / Trimmed / Pose** toggle (defaults to the plain video).
+   The `stream-url?variant=` param also fixes the previously-broken trimmed
+   toggle (it always returned the original).
 2. **Capture preflight & guidance** at upload ("film side-on, full body, landscape").
 3. **Per-rep breakdown UI** — per-rep thumbnails, depth/lockout/tempo, individual scores,
    override toggles.

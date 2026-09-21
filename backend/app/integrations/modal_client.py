@@ -86,6 +86,8 @@ def process_video_on_modal(
     expected_reps: int | None = None,
     user_exercise: str | None = None,
     camera_view: str | None = None,
+    r2_presigned_put_overlay: str | None = None,
+    r2_upload_key_overlay: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -156,6 +158,8 @@ def process_video_on_modal(
         user_view: str = "",
         gemini_key: str = "",
         gemini_model: str = "gemini-3.6-flash",
+        overlay_put: str = "",
+        overlay_key: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -532,6 +536,40 @@ def process_video_on_modal(
                                 "returning analysis without trimmed video")
                 uploaded_key = None
 
+            # ── Step 9b: Render + upload the pose/bar-path overlay ────────
+            # Best-effort: a failed overlay must not fail the analysis.
+            overlay_uploaded_key: str | None = None
+            if overlay_put and overlay_key and landmarks and pose_timestamps:
+                try:
+                    from app.integrations.pose_analysis import (
+                        render_overlay_video,
+                    )
+
+                    overlay_path = Path(tmpdir) / "overlay.mp4"
+                    if render_overlay_video(
+                        trimmed_path, landmarks, pose_timestamps, overlay_path,
+                        time_offset=trim_start, exercise=exercise,
+                    ):
+                        overlay_bytes = overlay_path.read_bytes()
+                        for _attempt in range(3):
+                            try:
+                                httpx.put(
+                                    overlay_put,
+                                    content=overlay_bytes,
+                                    headers={"Content-Type": "video/mp4"},
+                                    timeout=300,
+                                ).raise_for_status()
+                                overlay_uploaded_key = overlay_key
+                                _logger.info("Uploaded overlay to R2: %s", overlay_key)
+                                break
+                            except Exception as e:
+                                _logger.warning(
+                                    "Overlay upload attempt %d failed: %s",
+                                    _attempt + 1, e)
+                                _time.sleep(5 * (_attempt + 1))
+                except Exception as e:
+                    _logger.warning("Overlay render/upload failed: %s", e)
+
             form_data = {**full_result.get("form", {}), "view": view}
             vel_data = full_result.get("velocity", {})
             consist_data = full_result.get("consistency", {})
@@ -563,6 +601,7 @@ def process_video_on_modal(
 
             return _to_py({
                 "trimmed_r2_key": uploaded_key,
+                "overlay_r2_key": overlay_uploaded_key,
                 "view": view,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
@@ -625,4 +664,6 @@ def process_video_on_modal(
             user_view,
             view_key,
             GEMINI_MODEL,
+            r2_presigned_put_overlay or "",
+            r2_upload_key_overlay or "",
         )

@@ -178,10 +178,15 @@ async def create_upload_url(
 @router.get("/{video_id}/stream-url", response_model=VideoStreamUrl)
 async def get_stream_url(
     video_id: uuid.UUID,
+    variant: str = Query("original", pattern="^(original|trimmed|overlay)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Resolve a presigned GET for playback (R2 must be configured)."""
+    """Resolve a presigned GET for playback (R2 must be configured).
+
+    ``variant`` selects the object: the original upload, the trimmed clip, or
+    the skeleton/bar-path overlay. 404 when that variant hasn't been produced.
+    """
     video = (
         await db.execute(
             select(LiftVideo).where(
@@ -192,15 +197,20 @@ async def get_stream_url(
     if video is None:
         raise HTTPException(404, "Video not found")
 
-    if not video.r2_key:
-        raise HTTPException(404, "No playable source for this video")
+    key = {
+        "original": video.r2_key,
+        "trimmed": video.trimmed_r2_key,
+        "overlay": video.overlay_r2_key,
+    }[variant]
+    if not key:
+        raise HTTPException(404, f"No {variant} video for this recording")
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
     try:
         from app.integrations.r2 import create_presigned_get  # lazy
     except ImportError as exc:  # boto3 optional until R2 configured
         raise HTTPException(501, "R2 storage client is not installed") from exc
-    url = await create_presigned_get(video.r2_key)
+    url = await create_presigned_get(key)
     return VideoStreamUrl(url=url)
 
 
