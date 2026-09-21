@@ -200,12 +200,17 @@ These are the numbers the rewrite must move.
   `llm_base.ai_generation_guard`.
 - ⚠️ **Quota constraint:** the Gemini free tier is small (~10 req/day per the
   owner). A per-video VLM call is therefore NOT viable — a 12-video batch
-  exceeds the daily budget and starves the weekly/on-demand analysis. Decision:
-  camera view should be **user-declared at upload** (free, 100% reliable); the
-  VLM view classifier (`classify_view_from_frame`) is built but gated behind
-  `VIDEO_VIEW_VLM_ENABLED` (default false) for diagnostics/backfill only.
-- 📷 **Camera-view finding (again):** owner-confirmed 9/12 clips are rear-quarter,
-  so view-aware gating matters more than any other form feature.
+  exceeds the daily budget and starves the weekly/on-demand analysis.
+- ✅ **User-declared camera view (done, migration 065):** upload-form selector
+  (side / behind-left / behind-right / front) → `lift_videos.camera_view` →
+  Celery task → Modal → `run_pose_analysis(view=)`. Sagittal rules run only on
+  a side view; back_left/back_right → three_quarter (no sagittal rules);
+  unknown → off. Measured with `video_eval.py --known-view`: sagittal rules
+  fire on only the 2 true side clips (2 lean flags) instead of 31 false flags.
+  The VLM classifier (`classify_view_from_frame`) remains built but gated
+  behind `VIDEO_VIEW_VLM_ENABLED` (default false) for diagnostics/backfill.
+- 📷 **Camera-view finding:** owner-confirmed 9/12 clips are rear-quarter, so
+  view-aware gating matters more than any other form feature.
 
 ### Phase 4 — Correction loop & features
 
