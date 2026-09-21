@@ -475,9 +475,8 @@ async def logout(token_data: TokenPayload = Depends(get_current_token_data)):
     if token_data.jti:
         ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
         if token_data.exp:
-            from datetime import datetime as _dt
-
             from datetime import UTC as _UTC
+            from datetime import datetime as _dt
 
             ttl = max(int(token_data.exp - _dt.now(_UTC).timestamp()), 1)
         await denylist_token(token_data.jti, ttl)

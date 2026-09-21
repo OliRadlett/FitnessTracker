@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lift_video_analysis import LiftVideoAnalysis
-from app.models.lifting import LiftVideo, LiftingSession
+from app.models.lifting import LiftingSession, LiftVideo
 from app.models.rpe_calibration import RpeCalibration
 
 logger = logging.getLogger(__name__)
@@ -86,11 +86,11 @@ async def aggregate_video_analyses(db: AsyncSession, user_id: uuid.UUID) -> int:
         def avg(xs: list[float]) -> float | None:
             return round(sum(xs) / len(xs), 2) if xs else None
 
-        def trend(getter) -> str:
+        def trend(rows: list[LiftVideo], getter) -> str:
             return json.dumps(
                 [
                     {"date": v.created_at.date().isoformat(), "value": getter(v)}
-                    for v in vs
+                    for v in rows
                     if getter(v) is not None
                 ]
             )
@@ -110,9 +110,9 @@ async def aggregate_video_analyses(db: AsyncSession, user_id: uuid.UUID) -> int:
                 avg_consistency=avg(cons),
                 avg_rpe_accuracy=avg(rpe_errs),
                 video_count=len(vs),
-                form_trend=trend(lambda v: v.form_score),
-                velocity_trend=trend(lambda v: v.mean_concentric_velocity),
-                consistency_trend=trend(lambda v: v.rep_consistency_score),
+                form_trend=trend(vs, lambda v: v.form_score),
+                velocity_trend=trend(vs, lambda v: v.mean_concentric_velocity),
+                consistency_trend=trend(vs, lambda v: v.rep_consistency_score),
                 analyzed_at=now,
             )
         )

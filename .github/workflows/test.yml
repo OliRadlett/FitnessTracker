@@ -153,6 +153,8 @@ jobs:
 
       - name: Run Playwright specs (mocked API — no backend needed)
         working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000/fittrack
         run: npm run test:e2e
 
       - uses: actions/upload-artifact@v4

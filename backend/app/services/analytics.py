@@ -414,8 +414,9 @@ def insight_tsb_peak(w: dict, ftp_watts: float | None) -> dict:
 # ── Orchestration ────────────────────────────────────────────────────────────
 
 async def _ftp_watts(db: AsyncSession, user_id: uuid.UUID) -> float | None:
-    from app.models.cycling import CyclingProfile
     from sqlalchemy import select as _select
+
+    from app.models.cycling import CyclingProfile
 
     result = await db.execute(
         _select(CyclingProfile.ftp_watts).where(CyclingProfile.user_id == user_id)
