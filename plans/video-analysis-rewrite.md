@@ -165,10 +165,13 @@ These are the numbers the rewrite must move.
   `extract_pose_track` (2D + world), reuses it for form analysis (`track=`) and
   prefers `bar_velocity_from_world` (2D fallback). `scripts/run_video_local.py`
   matches. Previously all these improvements existed only in the eval harness.
-- ⏳ **Rep segmentation accuracy** — `auto_rep_mae` still 1.33; the 2D angle-based
-  `detect_reps_from_pose` still merges rerack/setup fragments into working reps
-  (e.g. an 8-rep squat's last "rep" is a rerack, giving `velocity_loss = -100%`).
-  This is the next target.
+- ✅ **Rep segmentation:** the auto path now drops partial cycles (unrack/rack/
+  setup) below 75% of the set's max ROM — prominence alone doesn't catch them
+  because it measures against the surrounding tops. Applied to the AUTO path
+  only: the user-declared path already picks top-N and the filter dropped a
+  real rep on 77ca64a0. Effect: `auto_rep_mae` **1.33 → 0.25** with
+  `declared_rep_exact_rate` back to 1.0. Two clips still read 2 vs 1 (a bench
+  and a deadlift whose partial is ≥75% of max ROM).
 - ⏳ Tracked-point quality for squat (some side/rear squats still read 0.10–0.17 m/s)
   and accessory lifts (atlas stone reads 0.0). Consider bar/plate detection or a
   per-lift tracked-point validation.

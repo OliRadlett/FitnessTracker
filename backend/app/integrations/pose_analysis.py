@@ -563,9 +563,24 @@ def detect_reps_from_pose(
     # on depth) but spans half the ROM — verified 2026-09-18 on a0bc93ce,
     # where depth-ranking picked a lockout-less fragment over the full rep.
     # Re-sorted by time afterwards.
-    if expected_reps is not None and expected_reps > 0 and len(reps) > expected_reps:
-        reps = sorted(reps, key=lambda r: (-r["amplitude"], r["bottom_depth"]))[:expected_reps]
-        reps = sorted(reps, key=lambda r: r["start_idx"])
+    if expected_reps is not None and expected_reps > 0:
+        if len(reps) > expected_reps:
+            reps = sorted(reps, key=lambda r: (-r["amplitude"], r["bottom_depth"]))[:expected_reps]
+            reps = sorted(reps, key=lambda r: r["start_idx"])
+            for n, r in enumerate(reps, 1):
+                r["rep_number"] = n
+    elif len(reps) >= 2:
+        # AUTO path only: drop partial cycles (unrack/rack/setup) that clear
+        # the absolute floor but span far less ROM than the working reps.
+        # Prominence alone doesn't catch them (it measures against the
+        # surrounding TOPS, which a shallow bend still clears). Measured on
+        # the production set: real reps span >=0.81 of the set's max ROM,
+        # partials <=0.71 — 0.75 separates them across lifts and distances.
+        # NOT applied when the user declared the count: that path already
+        # picks the top-N cycles, and the filter dropped a real rep on
+        # 77ca64a0 (3 declared reps -> 2).
+        max_amp = max(r["amplitude"] for r in reps)
+        reps = [r for r in reps if r["amplitude"] >= 0.75 * max_amp]
         for n, r in enumerate(reps, 1):
             r["rep_number"] = n
 
@@ -1469,10 +1484,10 @@ def bar_velocity_from_world(
         mean_v = sum(velocities) / len(velocities)
         result["mean_concentric_velocity"] = round(mean_v, 3)
         result["peak_velocity"] = round(max(velocities), 3)
+        result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
         if len(velocities) >= 2:
             result["velocity_loss_pct"] = _velocity_loss_pct(
                 velocities[0], velocities[-1])
-            result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
     else:
         result["tracking_quality"] = "failed"
         result["mean_concentric_velocity"] = 0.0

@@ -64,6 +64,14 @@ def _spread_pose(knee_angle_deg, spread):
     return lms
 
 
+def _cycle_angles(top, bottom, n=20):
+    """One smooth top->bottom->top cycle (starts and ends at the top)."""
+    return [
+        (top + bottom) / 2 + (top - bottom) / 2 * math.cos(2 * math.pi * i / (n - 1))
+        for i in range(n)
+    ]
+
+
 def _squat_sequence(reps=3, top=170.0, bottom=70.0, frames_per_rep=20):
     total = reps * frames_per_rep
     mid = (top + bottom) / 2
@@ -132,6 +140,23 @@ class TestDetectRepsFromPose:
 
     def test_too_few_frames_returns_empty(self):
         assert pa.detect_reps_from_pose([], [], "Squat") == []
+
+    def test_auto_path_drops_shallow_partial_cycle(self):
+        # A shallow cycle (140 deg) then a full rep (70 deg). The shallow one
+        # clears the absolute amplitude floor and prominence, but is <75% of
+        # the full rep's ROM, so the auto path must drop it.
+        angles = _cycle_angles(170, 140) + _cycle_angles(170, 70)
+        seq = [_pose(a) for a in angles]
+        ts = [i * 0.1 for i in range(len(seq))]
+        assert len(pa.detect_reps_from_pose(seq, ts, "Squat")) == 1
+
+    def test_declared_path_keeps_shallow_working_rep(self):
+        # 2 deep reps + 1 shallow (a fatigued last rep). The user declared 3,
+        # so all three must survive (the auto filter must not apply).
+        angles = _cycle_angles(170, 70) * 2 + _cycle_angles(170, 140)
+        seq = [_pose(a) for a in angles]
+        ts = [i * 0.1 for i in range(len(seq))]
+        assert len(pa.detect_reps_from_pose(seq, ts, "Squat", expected_reps=3)) == 3
 
 
 class TestClassifyExercise:
