@@ -107,8 +107,9 @@ test.describe('Settings Page', () => {
 
   // ── Danger Zone ─────────────────────────────────────────────────────────
 
-  test('danger zone section renders', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/danger zone/i).first()).toBeVisible();
+  test('data and account section renders', async ({ authenticatedPage: page }) => {
+    await expect(page.getByText(/data & account/i).first()).toBeVisible();
+    await expect(page.getByText(/delete account/i).first()).toBeVisible();
   });
 
   // ── Loading States ──────────────────────────────────────────────────────

@@ -17,30 +17,30 @@ test.describe('Dashboard Page', () => {
   // ── Tab Navigation ──────────────────────────────────────────────────────
 
   test('renders tab navigation with Today, Weekly, Monthly', async ({ authenticatedPage: page }) => {
-    await expect(page.getByRole('button', { name: /today/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /weekly/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /monthly/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: '📅 Today', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '📊 Weekly', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '📆 Monthly', exact: true })).toBeVisible();
   });
 
   test('Today tab is active by default', async ({ authenticatedPage: page }) => {
-    const todayTab = page.getByRole('button', { name: /today/i });
+    const todayTab = page.getByRole('button', { name: '📅 Today', exact: true });
     await expect(todayTab).toHaveClass(/bg-accent/);
   });
 
   test('clicking Weekly tab switches content', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /📊 Weekly/i }).click();
+    await page.getByRole('button', { name: '📊 Weekly', exact: true }).click();
     await page.waitForTimeout(1000);
 
     // Weekly tab should now be active — use emoji text for unambiguous match
-    const weeklyTab = page.getByRole('button', { name: /📊 Weekly/i });
+    const weeklyTab = page.getByRole('button', { name: '📊 Weekly', exact: true });
     await expect(weeklyTab).toHaveClass(/bg-accent/);
   });
 
   test('clicking Monthly tab switches content', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /monthly/i }).click();
+    await page.getByRole('button', { name: '📆 Monthly', exact: true }).click();
     await page.waitForTimeout(500);
 
-    const monthlyTab = page.getByRole('button', { name: /monthly/i });
+    const monthlyTab = page.getByRole('button', { name: '📆 Monthly', exact: true });
     await expect(monthlyTab).toHaveClass(/bg-accent/);
   });
 
@@ -67,7 +67,7 @@ test.describe('Dashboard Page', () => {
   // ── Weekly Tab ──────────────────────────────────────────────────────────
 
   test('Weekly tab shows summary cards', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /weekly/i }).click();
+    await page.getByRole('button', { name: '📊 Weekly', exact: true }).click();
     await page.waitForTimeout(1000);
 
     // Should show summary-related content
@@ -75,7 +75,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('Weekly tab shows recent activities section', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /weekly/i }).click();
+    await page.getByRole('button', { name: '📊 Weekly', exact: true }).click();
     await page.waitForTimeout(1000);
 
     // Look for activities section
@@ -86,7 +86,7 @@ test.describe('Dashboard Page', () => {
   // ── Monthly Tab ─────────────────────────────────────────────────────────
 
   test('Monthly tab renders', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /monthly/i }).click();
+    await page.getByRole('button', { name: '📆 Monthly', exact: true }).click();
     await page.waitForTimeout(1000);
 
     await expect(page.locator('main h1')).toBeVisible();
@@ -95,7 +95,7 @@ test.describe('Dashboard Page', () => {
   // ── Goal Management ─────────────────────────────────────────────────────
 
   test('goals section renders with existing goals', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /weekly/i }).click();
+    await page.getByRole('button', { name: '📊 Weekly', exact: true }).click();
     await page.waitForTimeout(1000);
 
     // Goals should be visible somewhere on the page

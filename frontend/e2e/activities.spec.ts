@@ -36,7 +36,8 @@ test.describe('Activities Page', () => {
   });
 
   test('activity cards show distance and duration', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/km|distance/i).first()).toBeVisible();
+    await expect(page.getByText(/42\.00 km/i)).toBeVisible();
+    await expect(page.getByText(/1h 30m/i)).toBeVisible();
   });
 
   // ── View Mode Toggle ────────────────────────────────────────────────────
@@ -97,13 +98,14 @@ test.describe('Activities Page', () => {
   // ── Upload Buttons ──────────────────────────────────────────────────────
 
   test('GPX upload button is present', async ({ authenticatedPage: page }) => {
-    // Upload buttons are <label> elements, not <button>
+    // Upload options live inside the Import dropdown menu.
+    await page.getByRole('button', { name: /import/i }).click();
     const gpxLabel = page.locator('label').filter({ hasText: /gpx/i }).first();
     await expect(gpxLabel).toBeVisible();
   });
 
   test('FIT upload button is present', async ({ authenticatedPage: page }) => {
-    // Upload buttons are <label> elements, not <button>
+    await page.getByRole('button', { name: /import/i }).click();
     const fitLabel = page.locator('label').filter({ hasText: /fit/i }).first();
     await expect(fitLabel).toBeVisible();
   });
