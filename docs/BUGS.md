@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24, updated 2026-09-21 | Total: 93 bugs | Fixed: 83 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
+> Generated: 2026-08-24, updated 2026-09-21 | Total: 94 bugs | Fixed: 84 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
 
 ---
 
@@ -631,4 +631,10 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **File:** `backend/app/services/llm_base.py` (`_call_gemini`)
 - **Issue:** `weekly_llm_analysis` (Sunday 05:00) calls Gemini once with no retry. On 2026-09-20 it hit `503 UNAVAILABLE` (model overloaded) and produced no cycling analysis (last was 2026-09-13), while on-demand analyses worked.
 - **Fix:** Bounded retry (3 attempts, exponential backoff) for transient errors (503/429/overload/timeout).
+
+### BUG-096: Segment Intelligence Crashes on Null `SegmentEffort.effort_vam`
+- **Status:** FIXED
+- **File:** `backend/app/integrations/segment_intelligence.py` (`_predict_segment_effort`)
+- **Issue:** `SegmentEffort.effort_vam` is nullable and the weekly task passes it through as present-but-`None`. `_predict_segment_effort` built `vam_values = [e.get("effort_vam", 1000) …]`; a dict-default lookup returns `None` for a present-but-None key, so the weighted average raised `TypeError: unsupported operand type(s) for *: 'NoneType' and 'float'`. Every `analyze_segments_intelligence_weekly` run failed for the user (0 segments analysed).
+- **Fix:** Guard `None` explicitly (`e["effort_vam"] if e.get("effort_vam") is not None else 1000`), preserving a legitimate `0`.
 
