@@ -118,7 +118,7 @@ test.describe('Training Page', () => {
     await page.goto('/fittrack/training');
     await page.waitForTimeout(500);
 
-    await expect(page.getByText(/loading/i).first()).toBeVisible();
+    await expect(page.locator('.animate-pulse').first()).toBeVisible();
 
     await page.waitForLoadState('networkidle');
   });
