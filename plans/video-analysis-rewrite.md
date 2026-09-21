@@ -1,7 +1,8 @@
 # Lift Video Analysis — Rewrite Plan
 
-> **Status**: Phase 0 COMPLETE (2026-09-21) — harness + tests + labeled fixtures
-> + baseline recorded. Phase 1 not started.
+> **Status**: Phase 0 COMPLETE · Phase 1 largely complete · Phase 2 in progress
+> (2026-09-21). Branch `feat/video-analysis-rewrite`. Baseline + per-increment
+> reports in `reports/` (gitignored).
 > **Owner decision**: Hybrid architecture (deterministic 3D metrics + grounded VLM coaching)
 > **Scope**: `backend/app/integrations/{modal_client,pose_analysis,video_analysis}.py`,
 > `backend/app/tasks/scheduler.py::process_lift_video`, `backend/app/api/videos.py`,
