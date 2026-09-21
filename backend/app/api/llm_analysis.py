@@ -44,10 +44,14 @@ async def trigger_analysis(
 ):
     """Trigger an on-demand LLM cycling analysis."""
     from app.services.llm_analysis import run_llm_analysis
+    from app.services.llm_base import ai_generation_guard
 
     try:
-        analysis = await run_llm_analysis(db, current_user.id)
+        async with ai_generation_guard(current_user.id, "cycling"):
+            analysis = await run_llm_analysis(db, current_user.id)
         return LlmAnalysisRead.model_validate(analysis)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

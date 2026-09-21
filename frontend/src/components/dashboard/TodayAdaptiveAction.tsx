@@ -94,8 +94,9 @@ export function TodayAdaptiveAction({
   const selected = React.useMemo(() => {
     const data: AdaptiveSuggestionsResponse | undefined = query.data;
     if (!data) return null;
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
     const candidates: { type: string; action: AdaptiveAction }[] = [];
-    for (const s of data.suggestions) {
+    for (const s of suggestions) {
       if (!ACTIONABLE_TYPES.has(s.type) || s.actions.length === 0) continue;
       for (const action of s.actions) candidates.push({ type: s.type, action });
     }
@@ -134,7 +135,7 @@ export function TodayAdaptiveAction({
 
   const row = (
     <div className="flex items-center justify-between gap-3 pt-2 mt-2 border-t border-white/5">
-      <p className="text-sm text-white truncate">{label}</p>
+      <p className="text-sm text-foreground truncate">{label}</p>
       <button
         type="button"
         onClick={() => applyAction.mutate(selected.action)}

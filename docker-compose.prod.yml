@@ -16,7 +16,12 @@
 # ENTRYPOINT ["node", "server.js"] (see frontend/Dockerfile).
 #
 # Images are built in GitHub Actions and pushed to GHCR.
-# Hardcoded to oliradlett/fitnesstracker to avoid case-sensitivity issues.
+# Parameterised via GHCR_OWNER/GHCR_REPO/IMAGE_TAG (B-32) with the previous
+# hardcoded values as defaults. Keep defaults lowercase — GHCR rejects
+# uppercase repository paths (case-sensitivity issues).
+#
+#   GHCR_OWNER=oliradlett GHCR_REPO=fitnesstracker IMAGE_TAG=latest \
+#     python fittrack.py --prod up
 
 services:
   db:
@@ -26,7 +31,7 @@ services:
     mem_limit: 100m
 
   backend:
-    image: ghcr.io/oliradlett/fitnesstracker/backend:latest
+    image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     mem_limit: 250m
     # Prod must NOT use --reload (base command): the reloader doubles backend RSS
@@ -35,7 +40,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   worker:
-    image: ghcr.io/oliradlett/fitnesstracker/worker:latest
+    image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # Steady ~142 MB + legit weekly peaks ~200 MB; the cap kills 1.6 GB runaways
     # instead of letting them OOM the box. Concurrency pinned: 1-vCPU droplet, and
@@ -44,12 +49,12 @@ services:
     command: celery -A app.tasks.scheduler worker --loglevel=info --concurrency=1
 
   beat:
-    image: ghcr.io/oliradlett/fitnesstracker/worker:latest
+    image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     mem_limit: 120m
 
   frontend:
-    image: ghcr.io/oliradlett/fitnesstracker/frontend:latest
+    image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     mem_limit: 200m
 

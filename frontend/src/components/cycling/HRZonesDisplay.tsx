@@ -27,7 +27,7 @@ export function HRZonesDisplay({ zones, lthr }: { zones: HrZonesResponse['zones'
                   style={{ width: `${Math.min(zone.percentage, 100)}%` }}
                 />
               </div>
-              <div className="w-20 text-right text-xs font-mono text-white">
+              <div className="w-20 text-right text-xs font-mono text-foreground">
                 {zone.percentage.toFixed(1)}%
               </div>
             </div>

@@ -83,7 +83,7 @@ export function NotificationBell() {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close notifications' : `Open notifications${unreadCount ? ` (${unreadCount} unread)` : ''}`}
         aria-expanded={open}
-        className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
+        className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-foreground hover:bg-surface-light transition-colors"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -103,7 +103,7 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-surface-light/50 shadow-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-surface-light/50">
-            <h2 className="text-sm font-semibold text-white">Notifications</h2>
+            <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => router.push('/notifications')}
@@ -142,7 +142,7 @@ export function NotificationBell() {
                   <span aria-hidden="true">{TYPE_ICONS[n.type]}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className={`text-sm text-white ${n.read ? 'font-normal' : 'font-semibold'}`}>
+                      <p className={`text-sm text-foreground ${n.read ? 'font-normal' : 'font-semibold'}`}>
                         {n.title}
                       </p>
                       <span

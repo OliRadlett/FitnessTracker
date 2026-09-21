@@ -23,7 +23,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
 def create_access_token(user_id: uuid.UUID) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": str(user_id), "exp": expire, "iat": datetime.now(UTC)}
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "iat": datetime.now(UTC),
+        "jti": uuid.uuid4().hex,  # SEC-07: unique id so logout can revoke this token
+    }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
@@ -356,6 +361,112 @@ async def exchange_code_for_user(
     return user, is_new
 
 
+# ── OAuth state tokens + JWT denylist (SEC-02 / SEC-07) ────────────────────
+
+OAUTH_STATE_TTL_SECONDS = 5 * 60  # single-use authorize state lives 5 minutes
+
+
+def _oauth_state_key(token: str) -> str:
+    return f"oauth_state:{token}"
+
+
+def _deny_key(jti: str) -> str:
+    return f"jwt:denied:{jti}"
+
+
+async def mint_oauth_state_token(user_id: uuid.UUID, provider: str) -> str:
+    """Mint a single-use opaque OAuth ``state`` bound to (user, provider).
+
+    The frontend fetches this with its Bearer token and navigates to the
+    authorize URL — the 30-day backend JWT itself must never appear in a URL
+    (SEC-02: provider logs / history / Referer would leak a replayable login).
+    """
+    import json
+    import logging
+    import secrets
+
+    logger = logging.getLogger(__name__)
+    from app.services.cache import _get_redis
+
+    token = secrets.token_urlsafe(32)
+    try:
+        await _get_redis().set(
+            _oauth_state_key(token),
+            json.dumps({"user_id": str(user_id), "provider": provider}),
+            ex=OAUTH_STATE_TTL_SECONDS,
+        )
+    except Exception as e:
+        logger.error(f"Failed to store OAuth state token: {e}")
+        from fastapi import HTTPException as _HTTPException
+        from fastapi import status as _status
+
+        raise _HTTPException(
+            status_code=_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth state store unavailable. Try again shortly.",
+        )
+    return token
+
+
+async def consume_oauth_state_token(
+    token: str, provider: str
+) -> uuid.UUID | None:
+    """Consume a state token: returns the bound user id, or None.
+
+    Single-use (atomic GETDEL) and provider-bound; expired, replayed, or
+    cross-provider tokens are rejected.
+    """
+    import json
+    import logging
+
+    logger = logging.getLogger(__name__)
+    from app.services.cache import _get_redis
+
+    try:
+        raw = await _get_redis().getdel(_oauth_state_key(token))
+    except Exception as e:
+        logger.error(f"Failed to read OAuth state token: {e}")
+        return None
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if data.get("provider") != provider:
+        return None
+    try:
+        return uuid.UUID(data["user_id"])
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+async def denylist_token(jti: str, ttl_seconds: int) -> None:
+    """Revoke one JWT by id (logout). Entry expires with the token itself."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    from app.services.cache import _get_redis
+
+    try:
+        await _get_redis().set(_deny_key(jti), "1", ex=max(int(ttl_seconds), 1))
+    except Exception as e:
+        logger.error(f"Failed to denylist JWT {jti}: {e}")
+
+
+async def is_token_denied(jti: str) -> bool:
+    """True when the token id is on the logout denylist (fail-open on outage)."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    from app.services.cache import _get_redis
+
+    try:
+        return await _get_redis().exists(_deny_key(jti)) > 0
+    except Exception as e:
+        logger.warning(f"JWT denylist check failed (fail-open): {e}")
+        return False
+
+
 # ── FastAPI dependency ────────────────────────────────────────────────────────
 
 from fastapi import Depends, HTTPException, status
@@ -364,11 +475,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
+async def get_current_token_data(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """FastAPI dependency that extracts the current user from JWT."""
+) -> TokenPayload:
+    """Validate the Bearer token: signature, expiry, and logout denylist."""
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
@@ -380,6 +490,19 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         )
 
+    if token_data.jti and await is_token_denied(token_data.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked"
+        )
+
+    return token_data
+
+
+async def get_current_user(
+    token_data: TokenPayload = Depends(get_current_token_data),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """FastAPI dependency that extracts the current user from JWT."""
     try:
         user_id = uuid.UUID(token_data.sub)
     except ValueError:

@@ -25,6 +25,8 @@ export interface ChartSeries {
   data: (number | null)[];
   color?: string;
   y_axis?: 'left' | 'right';
+  /** Render as a dashed continuation line (B-14 forecast overlays). */
+  dashed?: boolean;
 }
 
 export interface ReferenceArea {

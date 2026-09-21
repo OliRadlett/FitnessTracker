@@ -14,6 +14,7 @@ import {
   deleteAccount,
   downloadExport,
   exportFullJson,
+  logoutBackend,
 } from '@/lib/api/account';
 
 export function DataPortabilityCard() {
@@ -46,6 +47,11 @@ export function DataPortabilityCard() {
     try {
       await deleteAccount(authFetch, confirmEmail.trim());
       setConfirmOpen(false);
+      try {
+        await logoutBackend(authFetch);
+      } catch {
+        // Best-effort — account is already deleted; don't block sign-out.
+      }
       await signOut({ callbackUrl: '/' });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Delete failed');
@@ -62,7 +68,7 @@ export function DataPortabilityCard() {
         <div className="px-6 pb-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-white">Export all data (JSON)</p>
+              <p className="text-sm font-medium text-foreground">Export all data (JSON)</p>
               <p className="text-xs text-muted mt-0.5">
                 Download every activity, session, metric, route, goal and
                 preference you have stored — a single portable JSON document.
@@ -72,7 +78,7 @@ export function DataPortabilityCard() {
             <button
               onClick={onExport}
               disabled={exporting}
-              className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-surface-light text-muted hover:text-white disabled:opacity-50"
+              className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground disabled:opacity-50"
             >
               {exporting ? 'Preparing…' : 'Download'}
             </button>
@@ -110,12 +116,12 @@ export function DataPortabilityCard() {
           value={confirmEmail}
           onChange={(e) => setConfirmEmail(e.target.value)}
           placeholder="you@example.com"
-          className="mt-3 w-full px-3 py-2 text-sm rounded-lg bg-surface-light border border-surface-light text-white placeholder:text-muted focus:outline-none focus:border-accent"
+          className="mt-3 w-full px-3 py-2 text-sm rounded-lg bg-surface-light border border-surface-light text-foreground placeholder:text-muted focus:outline-none focus:border-accent"
         />
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={() => setConfirmOpen(false)}
-            className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white"
+            className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground"
           >
             Cancel
           </button>

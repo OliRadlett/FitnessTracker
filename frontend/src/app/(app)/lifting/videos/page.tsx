@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { LiftVideoForm } from '@/components/lifting/LiftVideoForm';
+import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -62,6 +63,7 @@ export default function VideosPage() {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'bank' | 'progress'>('bank');
 
   const hasFilters = exerciseFilter || afterFilter || beforeFilter;
 
@@ -69,15 +71,34 @@ export default function VideosPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-white">📹 Videos</h1>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          + Add Video
-        </button>
+        <h1 className="text-3xl font-bold text-foreground">📹 Videos</h1>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30">
+            {(['bank', 'progress'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                  tab === t ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                {t === 'bank' ? 'Bank' : 'Progress'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            + Add Video
+          </button>
+        </div>
       </div>
 
+      {tab === 'progress' ? (
+        <VideoProgressTab initialExercise={exerciseFilter} />
+      ) : (
+      <>
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Exercise filter */}
@@ -86,7 +107,7 @@ export default function VideosPage() {
           value={exerciseFilter}
           onChange={(e) => setExerciseFilter(e.target.value)}
           placeholder="Exercise…"
-          className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent"
+          className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
         {/* Date range */}
@@ -95,14 +116,14 @@ export default function VideosPage() {
             type="date"
             value={afterFilter}
             onChange={(e) => setAfterFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <span className="text-muted">→</span>
           <input
             type="date"
             value={beforeFilter}
             onChange={(e) => setBeforeFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            className="px-3 py-1.5 text-sm bg-surface border border-surface-light rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -113,7 +134,7 @@ export default function VideosPage() {
               setAfterFilter('');
               setBeforeFilter('');
             }}
-            className="text-sm text-muted hover:text-white"
+            className="text-sm text-muted hover:text-foreground"
           >
             Clear
           </button>
@@ -160,7 +181,7 @@ export default function VideosPage() {
               {/* Metadata */}
               <div className="p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-white truncate max-w-[200px]">
+                  <p className="text-sm font-medium text-foreground truncate max-w-[200px]">
                     {video.exercise_name || video.exercise_auto || 'Uncategorized'}
                   </p>
                   <div className="flex items-center gap-1">
@@ -293,7 +314,7 @@ export default function VideosPage() {
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="text-xs text-muted hover:text-white px-2 py-0.5"
+                        className="text-xs text-muted hover:text-foreground px-2 py-0.5"
                       >
                         Cancel
                       </button>
@@ -313,6 +334,7 @@ export default function VideosPage() {
           ))}
         </div>
       )}
+      </>)}
 
       {/* Add Video Form */}
       <LiftVideoForm

@@ -156,7 +156,7 @@ export function WarmupTemplateManager() {
                 placeholder="e.g. Bench Press Warmup"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 required
                 autoFocus
               />
@@ -190,7 +190,7 @@ export function WarmupTemplateManager() {
                     value={step.weight_kg || ''}
                     onChange={(e) => updateStep(index, { weight_kg: parseFloat(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
                 <div className="sm:col-span-3">
@@ -200,7 +200,7 @@ export function WarmupTemplateManager() {
                     value={step.reps || ''}
                     onChange={(e) => updateStep(index, { reps: parseInt(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
                 <div className="sm:col-span-3">
@@ -209,7 +209,7 @@ export function WarmupTemplateManager() {
                     value={step.notes}
                     onChange={(e) => updateStep(index, { notes: e.target.value })}
                     placeholder="—"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1 flex justify-center">
@@ -222,13 +222,13 @@ export function WarmupTemplateManager() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button type="button" onClick={addStep} className="px-3 py-1.5 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light">
+            <button type="button" onClick={addStep} className="px-3 py-1.5 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light">
               + Add Step
             </button>
             <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="px-4 py-1.5 bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
               {editingId ? 'Update Template' : 'Save Template'}
             </button>
-            <button type="button" onClick={resetForm} className="px-3 py-1.5 text-muted hover:text-white text-sm transition-colors">
+            <button type="button" onClick={resetForm} className="px-3 py-1.5 text-muted hover:text-foreground text-sm transition-colors">
               Cancel
             </button>
           </div>
@@ -247,7 +247,7 @@ export function WarmupTemplateManager() {
             <div key={template.id} className="p-3 bg-surface-light/30 rounded-lg border border-surface-light/30">
               <div className="flex items-center justify-between mb-1">
                 <div>
-                  <p className="text-sm font-medium text-white">{template.name}</p>
+                  <p className="text-sm font-medium text-foreground">{template.name}</p>
                   {template.exercise_name && (
                     <p className="text-xs text-accent">{template.exercise_name}</p>
                   )}
@@ -257,7 +257,7 @@ export function WarmupTemplateManager() {
                   {confirmDeleteId === template.id ? (
                     <div className="flex gap-1">
                       <button onClick={() => deleteMutation.mutate(template.id)} disabled={deleteMutation.isPending} className="text-xs text-white bg-warning/80 hover:bg-warning px-2 py-0.5 rounded disabled:opacity-50">Delete</button>
-                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted hover:text-white px-2 py-0.5">Cancel</button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted hover:text-foreground px-2 py-0.5">Cancel</button>
                     </div>
                   ) : (
                     <button onClick={() => setConfirmDeleteId(template.id)} className="text-muted hover:text-warning text-xs transition-colors" title="Delete">🗑️</button>

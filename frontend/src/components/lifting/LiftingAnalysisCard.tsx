@@ -19,7 +19,7 @@ function StatBadge({ label, value, className = '' }: { label: string; value: str
   return (
     <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center">
       <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
-      <p className={`text-lg font-semibold text-white mt-1 ${className}`}>{value}</p>
+      <p className={`text-lg font-semibold text-foreground mt-1 ${className}`}>{value}</p>
     </div>
   );
 }

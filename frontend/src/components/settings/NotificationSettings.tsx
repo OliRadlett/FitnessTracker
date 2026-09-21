@@ -86,7 +86,7 @@ export function NotificationSettings() {
           return (
             <div key={key} className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm text-white font-medium">{label}</p>
+                <p className="text-sm text-foreground font-medium">{label}</p>
                 <p className="text-xs text-muted">{description}</p>
               </div>
               <button

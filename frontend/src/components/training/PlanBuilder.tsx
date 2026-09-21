@@ -147,7 +147,7 @@ function blankDay(dateStr: string, planId: string): TrainingPlanDay {
 }
 
 const inputCls =
-  'w-full px-2 py-1.5 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent';
+  'w-full px-2 py-1.5 bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent';
 const labelCls = 'block text-xs text-muted mb-1';
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ function EmptyState({
   if (mode === 'scratch') {
     return (
       <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">📝 Start From Scratch</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">📝 Start From Scratch</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="md:col-span-3">
             <label className={labelCls}>Plan Name</label>
@@ -314,7 +314,7 @@ function EmptyState({
           </button>
           <button
             onClick={() => setMode('none')}
-            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-white transition-colors"
+            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-foreground transition-colors"
           >
             Cancel
           </button>
@@ -327,7 +327,7 @@ function EmptyState({
     const linkedEvent = events.find((e) => e.id === templateForm.event_id);
     return (
       <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
-        <h3 className="text-lg font-semibold text-white mb-1">⚡ Use Template</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-1">⚡ Use Template</h3>
         <p className="text-sm text-muted mb-4">
           Mixed weeks: Sun rest · Tue strength (squat-focus) · Thu bench/deadlift rotation ·
           Mon/Wed/Fri/Sat rides.
@@ -440,7 +440,7 @@ function EmptyState({
           </button>
           <button
             onClick={() => setMode('none')}
-            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-white transition-colors"
+            className="px-6 py-2.5 bg-surface-light text-muted rounded-lg font-medium hover:text-foreground transition-colors"
           >
             Cancel
           </button>
@@ -452,7 +452,7 @@ function EmptyState({
   return (
     <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
       <p className="text-4xl mb-4">📋</p>
-      <h3 className="text-lg font-semibold text-white mb-2">No Plan Selected</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-2">No Plan Selected</h3>
       <p className="text-muted mb-6">Select a plan on the left, or create a new one.</p>
       <div className="flex flex-col sm:flex-row justify-center gap-3">
         <button
@@ -463,7 +463,7 @@ function EmptyState({
         </button>
         <button
           onClick={() => setMode('template')}
-          className="px-6 py-3 bg-surface-light text-white rounded-lg font-medium hover:bg-surface-light/70 transition-colors"
+          className="px-6 py-3 bg-surface-light text-foreground rounded-lg font-medium hover:bg-surface-light/70 transition-colors"
         >
           ⚡ Use Template
         </button>
@@ -649,7 +649,7 @@ function PlanEditor({
                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
               }}
               title="Click to rename"
-              className="w-full bg-transparent border border-transparent rounded-lg px-2 py-0.5 -ml-2 text-xl font-bold text-white hover:border-surface-light focus:outline-none focus:border-accent"
+                className="w-full bg-transparent border border-transparent rounded-lg px-2 py-0.5 -ml-2 text-xl font-bold text-foreground hover:border-surface-light focus:outline-none focus:border-accent"
             />
             <div className="flex flex-wrap items-center gap-2 mt-1 px-0.5">
               <span className="text-xs px-2 py-0.5 rounded-full border bg-accent/10 border-accent/30 text-accent capitalize">
@@ -669,7 +669,7 @@ function PlanEditor({
                   <button
                     onClick={() => onUpdatePlan(plan.id, { event_id: null })}
                     title="Unlink event"
-                    className="hover:text-white"
+                    className="hover:text-foreground"
                   >
                     ✕
                   </button>
@@ -707,7 +707,7 @@ function PlanEditor({
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'all'
               ? 'bg-accent text-white'
-              : 'bg-surface-light/40 text-muted hover:text-white'
+              : 'bg-surface-light/40 text-muted hover:text-foreground'
           }`}
         >
           All
@@ -719,7 +719,7 @@ function PlanEditor({
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === wi
                 ? 'bg-accent text-white'
-                : 'bg-surface-light/40 text-muted hover:text-white'
+                : 'bg-surface-light/40 text-muted hover:text-foreground'
             }`}
           >
             Week {wi + 1}
@@ -739,7 +739,7 @@ function PlanEditor({
               <p className="text-xs text-muted mb-1 font-semibold uppercase tracking-wider">
                 Week {ws.weekIndex + 1}
               </p>
-              <p className="text-lg font-bold text-white">
+              <p className="text-lg font-bold text-foreground">
                 {ws.totalTss} <span className="text-xs font-normal text-muted">TSS</span>
               </p>
               <p className="text-xs text-muted mt-1">
@@ -885,7 +885,7 @@ function PlanEditor({
               <button
                 onClick={discardChanges}
                 disabled={isSaving}
-                className="px-4 py-2 text-sm text-muted hover:text-white disabled:opacity-50"
+                className="px-4 py-2 text-sm text-muted hover:text-foreground disabled:opacity-50"
               >
                 Discard
               </button>
@@ -1069,7 +1069,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   return (
     <div className="bg-surface rounded-xl border border-accent/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-white">
+        <h4 className="text-sm font-semibold text-foreground">
           Edit {getDayOfWeek(dateStr)} {dateStr}
         </h4>
         <div className="flex items-center gap-1">
@@ -1082,7 +1082,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   setCopyError(null);
                 }}
                 title="Copy exercises from a past session"
-                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
+                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-foreground transition-colors"
               >
                 📋 Copy Session
               </button>
@@ -1093,7 +1093,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   setCopyError(null);
                 }}
                 title="Duplicate this day to another date"
-                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors"
+                className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-foreground transition-colors"
               >
                 📅 Duplicate
               </button>
@@ -1104,7 +1104,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
               Save the plan first to use Copy/Duplicate
             </span>
           )}
-          <button onClick={onClose} className="text-muted hover:text-white text-sm px-1">
+          <button onClick={onClose} className="text-muted hover:text-foreground text-sm px-1">
             ✕
           </button>
         </div>
@@ -1133,7 +1133,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           </button>
           <button
             onClick={() => setShowSessionPicker(false)}
-            className="text-muted hover:text-white text-xs px-1"
+            className="text-muted hover:text-foreground text-xs px-1"
           >
             ✕
           </button>
@@ -1157,7 +1157,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           </button>
           <button
             onClick={() => setShowDuplicatePicker(false)}
-            className="text-muted hover:text-white text-xs px-1"
+            className="text-muted hover:text-foreground text-xs px-1"
           >
             ✕
           </button>
@@ -1169,7 +1169,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
         <button
           onClick={() => setShowSwapPicker((v) => !v)}
           title="Swap this day with another date (no drag needed)"
-          className="min-h-[44px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-white transition-colors text-[10px]"
+          className="min-h-[44px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-foreground transition-colors text-[10px]"
         >
           ⇄ Swap date
         </button>
@@ -1198,7 +1198,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           </button>
           <button
             onClick={() => setShowSwapPicker(false)}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white text-xs"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground text-xs"
             aria-label="Cancel swap"
           >
             ✕
@@ -1270,7 +1270,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
           <div>
             <label className={labelCls}>TSS</label>
             {previewTargets ? (
-              <p className="text-sm text-white font-medium mt-1">
+              <p className="text-sm text-foreground font-medium mt-1">
                 {Math.round(previewTargets.target_tss_low)}–{Math.round(previewTargets.target_tss_high)}
               </p>
             ) : (
@@ -1297,23 +1297,23 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className={labelCls}>Zone</label>
-                <p className="text-sm text-white font-medium">{previewTargets.zone_name}</p>
+                <p className="text-sm text-foreground font-medium">{previewTargets.zone_name}</p>
               </div>
               <div>
                 <label className={labelCls}>Power (W)</label>
-                <p className="text-sm text-white font-medium">
+                <p className="text-sm text-foreground font-medium">
                   {previewTargets.target_power_low}–{previewTargets.target_power_high}
                 </p>
               </div>
               <div>
                 <label className={labelCls}>TSS</label>
-                <p className="text-sm text-white font-medium">
+                <p className="text-sm text-foreground font-medium">
                   {Math.round(previewTargets.target_tss_low)}–{Math.round(previewTargets.target_tss_high)}
                 </p>
               </div>
               <div>
                 <label className={labelCls}>IF</label>
-                <p className="text-sm text-white font-medium">
+                <p className="text-sm text-foreground font-medium">
                   {previewTargets.target_if_low}–{previewTargets.target_if_high}
                 </p>
               </div>
@@ -1347,7 +1347,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             ) : (
               <button
                 onClick={() => setShowRoutePicker(true)}
-                className="w-full px-3 py-2 text-left text-sm bg-background border border-surface-light rounded-lg text-muted hover:text-white hover:border-accent/50 transition-colors"
+                className="w-full px-3 py-2 text-left text-sm bg-background border border-surface-light rounded-lg text-muted hover:text-foreground hover:border-accent/50 transition-colors"
               >
                 🗺️ Pick a route...
               </button>
@@ -1453,7 +1453,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                     value={ex.exercise}
                     onChange={(v) => patchExercise(idx, { exercise: v })}
                     placeholder="Exercise"
-                    className="w-full bg-background border border-surface-light text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent"
+                    className="w-full bg-background border border-surface-light text-foreground text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent"
                   />
                 </div>
                 <input
@@ -1464,7 +1464,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   onChange={(e) =>
                     patchExercise(idx, { sets: parseInt(e.target.value) || 1 })
                   }
-                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-foreground text-xs focus:outline-none focus:border-accent"
                 />
                 <input
                   type="number"
@@ -1474,7 +1474,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   onChange={(e) =>
                     patchExercise(idx, { reps: parseInt(e.target.value) || 1 })
                   }
-                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                  className="col-span-1 sm:col-span-1 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-foreground text-xs focus:outline-none focus:border-accent"
                 />
                 <div className="col-span-2 sm:col-span-2 flex items-center gap-1">
                   <input
@@ -1490,7 +1490,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                         weight_kg: e.target.value === '' ? null : parseFloat(e.target.value),
                       })
                     }
-                    className="flex-1 min-w-0 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                    className="flex-1 min-w-0 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-foreground text-xs focus:outline-none focus:border-accent"
                   />
                   {/* FL3 — %1RM prescription helper */}
                   <button
@@ -1498,7 +1498,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                     disabled={suggestIdx !== null}
                     title={`Suggest weight from current e1RM @ ${Math.round((ex.pct_1rm ?? 0.8) * 100)}% (stores the % basis for weekly refresh)`}
                     aria-label={`Suggest weight from percent of 1RM for ${ex.exercise || 'exercise'}`}
-                    className="shrink-0 px-1.5 py-1.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-white transition-colors disabled:opacity-50"
+                    className="shrink-0 px-1.5 py-1.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-foreground transition-colors disabled:opacity-50"
                   >
                     {suggestIdx === idx ? '…' : '%1RM'}
                   </button>
@@ -1516,7 +1516,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                       rpe: e.target.value === '' ? null : parseFloat(e.target.value),
                     })
                   }
-                  className="col-span-2 sm:col-span-2 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                  className="col-span-2 sm:col-span-2 px-1.5 py-1.5 bg-background border border-surface-light rounded-lg text-foreground text-xs focus:outline-none focus:border-accent"
                 />
                 <button
                   onClick={() => removeExercise(idx)}

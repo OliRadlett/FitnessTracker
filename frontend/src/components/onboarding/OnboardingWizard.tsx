@@ -8,7 +8,7 @@
 // localStorage (`fittrack-onboarding-done`) so no server migration is needed;
 // the wizard never blocks but is soft-suggested until dismissed.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
@@ -37,6 +37,9 @@ export function OnboardingWizard() {
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('prefs');
+  // UX-02: one-shot guard so the auto-open timer never re-fires and yanks
+  // the user back to Welcome after they already started the wizard.
+  const autoOpened = useRef(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connLoaded, setConnLoaded] = useState(false);
 
@@ -76,16 +79,17 @@ export function OnboardingWizard() {
     setStep('prefs');
   }, []);
 
-  // Auto-open on first run (and when no data yet) once we have a token, and
-  // honor an explicit "re-open from Settings" custom event.
+  // Auto-open once on first run after the token resolves. Never resets the
+  // step: if the user already opened the wizard (or tapped through), a
+  // re-firing timer must not yank them back to Welcome (UX-02). Explicit
+  // re-opens from Settings go through openWizard, which intentionally
+  // restarts at prefs.
   useEffect(() => {
-    if (!token) return;
-    const showOnFirstRun = !done;
-    if (showOnFirstRun) {
-      const timer = setTimeout(openWizard, 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [token, done, open, openWizard]);
+    if (!token || done || autoOpened.current) return;
+    autoOpened.current = true;
+    const timer = setTimeout(() => setOpen(true), 1200);
+    return () => clearTimeout(timer);
+  }, [token, done]);
 
   useEffect(() => {
     const onReopen = () => openWizard();
@@ -147,6 +151,7 @@ export function OnboardingWizard() {
         });
       }
       setProfileMsg('Profile saved ✓');
+      next(); // UX-01: profile is reachable — advance to the goal step.
     } catch (err) {
       setProfileMsg(err instanceof Error ? `Save failed: ${err.message}` : 'Save failed');
     } finally {
@@ -169,6 +174,7 @@ export function OnboardingWizard() {
         filter_json: filterJson,
       });
       setGoalMsg('Goal created ✓');
+      next(); // UX-01: goal is reachable — advance to the done step.
     } catch (err) {
       setGoalMsg(err instanceof Error ? `Failed: ${err.message}` : 'Failed to create goal');
     } finally {
@@ -176,9 +182,21 @@ export function OnboardingWizard() {
     }
   };
 
-  const handleConnect = (provider: string) => {
-    const state = session?.backendToken ? `?state=${encodeURIComponent(session.backendToken)}` : '';
-    window.location.href = `/api/v1/auth/oauth/${provider}/authorize${state}`;
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const handleConnect = async (provider: string) => {
+    // SEC-02: single-use opaque state via backend — never the JWT in a URL.
+    setConnectError(null);
+    try {
+      const { authorize_url } = await authFetch<{ authorize_url: string }>(
+        `/api/v1/auth/oauth/${provider}/connect-state`,
+      );
+      window.location.href = authorize_url;
+    } catch (err) {
+      setConnectError(
+        err instanceof Error ? err.message : 'Could not start OAuth flow',
+      );
+    }
   };
 
   const stepTitle: Record<Step, string> = {
@@ -258,7 +276,7 @@ export function OnboardingWizard() {
             </div>
 
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={next} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80">
@@ -273,6 +291,9 @@ export function OnboardingWizard() {
             <p className="text-sm text-muted mb-2">
               Connect providers to sync activities, sleep, and routes. You can do this later.
             </p>
+            {connectError && (
+              <p className="text-xs text-warning mb-2">Connection failed: {connectError}</p>
+            )}
             {PROVIDERS.map((p) => {
               const conn = connections.find((c) => c.provider === p.id);
               const isConnected = !!conn && conn.status === 'active';
@@ -282,7 +303,7 @@ export function OnboardingWizard() {
                     <span className="text-xl" aria-hidden>{p.emoji}</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-white font-medium">{p.name}</span>
+                        <span className="text-sm text-foreground font-medium">{p.name}</span>
                         {isConnected && <Badge variant="positive">Connected</Badge>}
                         {conn?.status === 'needs_reauth' && <Badge variant="warning">Re-auth</Badge>}
                       </div>
@@ -311,7 +332,7 @@ export function OnboardingWizard() {
             })}
             {!connLoaded && <p className="text-xs text-muted">Loading connections…</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={next} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80">
@@ -349,7 +370,7 @@ export function OnboardingWizard() {
             </div>
             {profileMsg && <p className="text-xs text-muted">{profileMsg}</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={onSaveProfile} disabled={savingProfile} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50">
@@ -379,7 +400,7 @@ export function OnboardingWizard() {
             </Field>
             {goalMsg && <p className="text-xs text-muted">{goalMsg}</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={finish} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={finish} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={onCreateGoal} disabled={creatingGoal || !metricKey || target === ''} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50">
@@ -392,7 +413,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <div className="space-y-4 text-center py-4">
             <p className="text-3xl" aria-hidden>🎉</p>
-            <p className="text-white font-medium">You're all set!</p>
+            <p className="text-foreground font-medium">You&apos;re all set!</p>
             <p className="text-sm text-muted">
               You can reopen this anytime from Settings if you'd like to add more.
             </p>
@@ -413,7 +434,7 @@ export function OnboardingToggle() {
   return (
     <button
       onClick={() => window.dispatchEvent(new CustomEvent('fittrack:onboarding'))}
-      className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+      className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
     >
       👋 Re-run onboarding
     </button>
@@ -421,7 +442,7 @@ export function OnboardingToggle() {
 }
 
 const inputCls =
-  'w-full px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent';
+  'w-full px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-accent';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -448,7 +469,7 @@ function PillGroup({
           key={opt.value}
           onClick={() => onChange(opt.value)}
           className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
           }`}
         >
           {opt.label}

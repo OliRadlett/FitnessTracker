@@ -1,4 +1,5 @@
 from app.models.activity import Activity, ActivitySource, ActivityStream
+from app.models.athlete_insight import AthleteInsight
 from app.models.cross_domain import CrossDomainInsight
 from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
@@ -40,6 +41,7 @@ __all__ = [
     "Activity",
     "ActivitySource",
     "ActivityStream",
+    "AthleteInsight",
     "CachedWeather",
     "CrossDomainInsight",
     "CyclingPowerRecord",

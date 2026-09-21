@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { useSession } from 'next-auth/react';
 import { SessionProvider } from 'next-auth/react';
 import { ToastProvider } from '@/components/ui/Toast';
+import { ThemeProvider } from '@/lib/theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,7 +54,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider basePath="/fittrack/api/auth">
       <QueryClientProvider client={queryClient}>
         <BackendTokenWatcher />
-        <ToastProvider>{children}</ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </SessionProvider>
   );

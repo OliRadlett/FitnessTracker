@@ -49,7 +49,7 @@ export function RouteWeatherCard({ route }: { route: RouteData }) {
               {weatherEmoji(weather.current.conditions)}
             </span>
             <div>
-              <p className="text-lg font-medium text-white">
+              <p className="text-lg font-medium text-foreground">
                 {weather.current.temperature != null
                   ? `${Math.round(weather.current.temperature)}°C`
                   : '—'}
@@ -63,7 +63,7 @@ export function RouteWeatherCard({ route }: { route: RouteData }) {
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted">
             {weather.current.wind_speed_kmh != null && (
               <div>
-                <span className="text-white">💨 {Math.round(weather.current.wind_speed_kmh)} km/h</span>
+                <span className="text-foreground">💨 {Math.round(weather.current.wind_speed_kmh)} km/h</span>
                 {weather.current.wind_direction && ` ${weather.current.wind_direction}`}
               </div>
             )}

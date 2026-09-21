@@ -11,6 +11,10 @@ test.describe('Routes Page', () => {
     await page.goto('/fittrack/routes');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
+    // List view holds the cards/filters these specs assert (default is map).
+    await page.getByRole('tab', { name: 'List' }).click();
+    // Fail fast here if the list never loads (rather than 19 timeouts).
+    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 15000 });
   });
 
   // ── Page Rendering ──────────────────────────────────────────────────────
@@ -40,28 +44,27 @@ test.describe('Routes Page', () => {
   // ── Filter Bar ──────────────────────────────────────────────────────────
 
   test('filter bar renders with status filter', async ({ authenticatedPage: page }) => {
-    const statusSelect = page.locator('select').filter({ hasText: /all|ridden|not yet ridden/i }).first();
+    await page.getByRole('button', { name: /more filters/i }).click();
+    const statusSelect = page.locator('select').filter({ hasText: /ridden|not yet ridden/i }).first();
     await expect(statusSelect).toBeVisible();
   });
 
-  test('filter bar renders with sport type filter', async ({ authenticatedPage: page }) => {
-    const sportSelect = page.locator('select').filter({ hasText: /cycling|running/i }).first();
-    await expect(sportSelect).toBeVisible();
-  });
-
-  test('filter bar renders with source filter', async ({ authenticatedPage: page }) => {
-    const sourceSelect = page.locator('select').filter({ hasText: /strava|komoot|wahoo/i }).first();
-    await expect(sourceSelect).toBeVisible();
-  });
-
   test('filter bar renders with route type filter', async ({ authenticatedPage: page }) => {
-    const typeSelect = page.locator('select').filter({ hasText: /loop|point/i }).first();
+    await page.getByRole('button', { name: /more filters/i }).click();
+    const typeSelect = page.locator('select').filter({ hasText: /loop|point to point/i }).first();
     await expect(typeSelect).toBeVisible();
   });
 
-  test('clear filters button is present', async ({ authenticatedPage: page }) => {
-    const clearBtn = page.getByRole('button', { name: /clear/i });
-    await expect(clearBtn).toBeVisible();
+  test('filter bar renders with surface filter', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /more filters/i }).click();
+    const surfaceSelect = page.locator('select').filter({ hasText: /road|gravel/i }).first();
+    await expect(surfaceSelect).toBeVisible();
+  });
+
+  test('clear filters button appears after filtering', async ({ authenticatedPage: page }) => {
+    // Tag filters count toward the active-filter badge (text search does not).
+    await page.getByRole('button', { name: /Hilly/ }).first().click();
+    await expect(page.getByRole('button', { name: /clear all/i })).toBeVisible({ timeout: 8000 });
   });
 
   // ── Route Detail ────────────────────────────────────────────────────────

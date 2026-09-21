@@ -109,7 +109,7 @@ function WeaknessRow({ item }: { item: WeaknessItem }) {
           aria-hidden="true"
           title={style.label}
         />
-        <span className={`text-sm font-medium ${isStrength ? 'text-positive' : 'text-white'}`}>
+        <span className={`text-sm font-medium ${isStrength ? 'text-positive' : 'text-foreground'}`}>
           {humanizeMetric(item.metric)}
         </span>
         {item.level && (
@@ -232,7 +232,7 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
           {minor.length > 0 && (
             <button
               onClick={() => setShowMinor(!showMinor)}
-              className="text-xs font-semibold text-muted hover:text-white uppercase tracking-wider transition-colors flex items-center gap-1"
+              className="text-xs font-semibold text-muted hover:text-foreground uppercase tracking-wider transition-colors flex items-center gap-1"
               aria-expanded={showMinor}
             >
               <span>{showMinor ? '▾' : '▸'}</span>{' '}

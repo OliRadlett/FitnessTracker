@@ -1,5 +1,17 @@
 # Modal Inference Expansion: Lifting Video Intelligence
 
+> **Implementation status (2026-09-20): substantially shipped** (PR #19 — commit
+> `b8772e2 "video analysis UI — form score, velocity, RPE, coaching cues"`; migrations
+> 049/051/052/053). Form scoring, velocity/VBT, setup, consistency, RPE estimation, and the
+> `RpeCalibration` + `LiftVideoAnalysis` models are in the codebase; the frontend ships them
+> consolidated in `VideoAnalysisPanel` (not the per-metric cards §11.1 names). **Still open**:
+> `video_*_trend` charts (§10.4), `aggregate_video_analyses` weekly task (only the table +
+> model docstring exist), RPE auto-calibration computation + weekly recalibration task,
+> injury-flag `HealthAlert`s, and Phase 7 (lifting TSS). Phase checkboxes in §14 updated
+> accordingly — unchecked boxes below are the remaining work, not the whole plan.
+> **Decision 2026-09-20:** all remaining boxes approved into `plans/backlog-2026-09-20.md`
+> (B-26…B-31).
+
 ## Executive Summary
 
 We have Modal serverless compute + Gemini Vision integrated for basic video trimming and exercise classification. This plan expands that pipeline into a full **lifting intelligence platform** — extracting form quality, bar velocity, rest timing, consistency, setup analysis, and estimated RPE from uploaded videos.
@@ -750,71 +762,66 @@ Gemini responses can be cached by content hash. If the same video is re-processe
 
 ## 14. Implementation Phases
 
-### Phase 1: Foundation (Immediate)
-- [ ] Update Modal image: add `google-genai` to pip_install
-- [ ] Bump Modal function: timeout 300→600s, memory 1024→2048MB
-- [ ] Add `analysis_depth` parameter to Modal function (`basic`|`full`)
-- [ ] Create migration 050 with new columns on `lift_videos` (17 fields)
-- [ ] Create migration 051: `rpe_calibrations` table
-- [ ] Create migration 052: `lift_video_analyses` table
-- [ ] Extend `LiftVideo` model with new fields
-- [ ] Create `RpeCalibration` model
-- [ ] Create `LiftVideoAnalysis` model
-- [ ] Extend `VideoProcessStatus` schema
-- [ ] Extend frontend `LiftVideo` type
-- [ ] Register new models in `app/models/__init__.py`
+### Phase 1: Foundation ✅ Done (shipped; deviations noted)
+- [x] ~~Update Modal image: add `google-genai` to pip_install~~ — **superseded**: the container runs local Mediapipe pose estimation (`modal_client.py:40-55`), so no `google-genai` dep was needed.
+- [x] Bump Modal function timeout/memory — shipped beyond plan: `timeout=600, memory=4096` (`modal_client.py:138-139`).
+- [x] Add `analysis_depth` parameter to Modal function (`basic`|`full`) — `modal_client.py:85`, threaded through `scheduler.py:3326` + `api/videos.py:252`.
+- [x] New columns on `lift_videos` — shipped as migration `051_add_video_form_vbt_analysis_columns` (numbering differs from the planned "050").
+- [x] Create migration 051: `rpe_calibrations` table — shipped as `052_create_rpe_calibrations`.
+- [x] Create migration 052: `lift_video_analyses` table — shipped as `053_create_lift_video_analyses`.
+- [x] Extend `LiftVideo` model with new fields — `models/lifting.py:278-308`.
+- [x] Create `RpeCalibration` model — `models/rpe_calibration.py` (table exists; auto-calibration computation itself is still open — Phase 5).
+- [x] Create `LiftVideoAnalysis` model — `models/lift_video_analysis.py` (table + model exist; weekly aggregation task is still open — Phase 6).
+- [x] Extend `VideoProcessStatus` schema — analysis fields returned in `api/videos.py:283-296`.
+- [x] Extend frontend `LiftVideo` type — `lib/api/types/lifting.ts:34-58,99-112`.
+- [x] Register new models in `app/models/__init__.py` — `LiftVideoAnalysis`, `RpeCalibration` + `__all__` entries.
 
-### Phase 2: Form Analysis — IPF Standards (Week 1-2)
-- [ ] Write squat-specific Gemini Vision form prompt (depth, knee tracking, bar path)
-- [ ] Write bench-specific Gemini Vision form prompt (pause, feet, butt, head)
-- [ ] Write deadlift-specific Gemini Vision form prompt (lockout, hitching, bar path)
-- [ ] Write generic accessory exercise form prompt
-- [ ] Implement competition validity check (pass/fail per IPF rules)
-- [ ] Implement quality score (0-100 with deduction table)
-- [ ] Store results in `form_score`, `form_analysis_json`, `competition_valid`, `form_deviations`, `form_coaching_cues`
-- [ ] Add `FormAnalysisCard` component (score gauge + per-set breakdown + coaching cues)
-- [ ] Add `video_form_trend` chart to CHART_REGISTRY
+### Phase 2: Form Analysis — IPF Standards ✅ Done (pose-estimation engine, not per-lift Gemini prompts)
+- [x] Squat/bench/deadlift form prompts + generic accessory prompt — exercise prompt map (`Back Squat`→squat, `Bench Press`→bench, `Deadlift`→deadlift, …) in `video_analysis.py:331-343`, with per-lift scorers `score_squat_form` / `score_bench_form` / `score_deadlift_form` in `pose_analysis.py:753-826`.
+- [x] Implement competition validity check (pass/fail per IPF rules) — `competition_valid` column (`models/lifting.py:279`) + depth/lockout/butt-contact checks in `pose_analysis.py`.
+- [x] Implement quality score (0-100 with deduction table) — `form_score` (`modal_client.py:522`, `pose_analysis.py:870`).
+- [x] Store results in `form_score`, `form_analysis_json`, `competition_valid`, `form_deviations`, `form_coaching_cues` — columns exist (`models/lifting.py:278-280`).
+- [x] Add form-score UI — shipped consolidated in `VideoAnalysisPanel` (`FormScoreRing` + deviations + cues) rather than a standalone `FormAnalysisCard`.
+- [ ] Add `video_form_trend` chart to CHART_REGISTRY — still open (§10.4).
 
-### Phase 3: Velocity Tracking (Week 2-3)
-- [ ] Implement frame-pair velocity estimation in Modal function
-- [ ] Compute per-rep concentric velocity using ROM defaults
-- [ ] Calculate velocity loss % (first→last rep)
-- [ ] Map to powerlifting VBT zones (absolute strength → speed-strength)
-- [ ] Store in `mean_concentric_velocity`, `peak_velocity`, `velocity_loss_pct`, `velocity_profile_json`
-- [ ] Add `VelocityPanel` component (per-rep bar chart + VBT zone indicator)
-- [ ] Add `video_velocity_trend` chart to CHART_REGISTRY
+### Phase 3: Velocity Tracking ✅ Done (engine + storage + consolidated UI)
+- [x] Implement frame-pair velocity estimation in Modal function — `pose_analysis.py:1091-1178` (wrist/hip tracking), `video_analysis.py:679-784`.
+- [x] Compute per-rep concentric velocity using ROM defaults — `mean_concentric_velocity` + §19 ROM table in use.
+- [x] Calculate velocity loss % (first→last rep) — `velocity_loss_pct`.
+- [x] Map to powerlifting VBT zones — `_get_vbt_zone()` (`video_analysis.py:418`, `pose_analysis.py:1178`) + `vbt_zone` column.
+- [x] Store in `mean_concentric_velocity`, `peak_velocity`, `velocity_loss_pct`, `velocity_profile_json` — columns exist (`models/lifting.py:285-289`).
+- [x] Add velocity UI — shipped consolidated in `VideoAnalysisPanel` (per-rep values + VBT zone) rather than a standalone `VelocityPanel`.
+- [ ] Add `video_velocity_trend` chart to CHART_REGISTRY — still open (§10.4).
 
-### Phase 4: Rest Timing + Consistency (Week 3-4)
-- [ ] Implement rest period detection (scene gap classification)
-- [ ] Compute rest CV and adherence to target ranges
-- [ ] Implement rep consistency analysis (depth/path/speed variance)
-- [ ] Store rest data in `rest_periods_json`, `avg_rest_seconds`, `rest_cv`
-- [ ] Store consistency data in `rep_consistency_score`, `tempo_consistency_cv`, `rep_timing_json`
-- [ ] Add `RestTimingPanel` component (timeline + recommended ranges)
-- [ ] Add `ConsistencyPanel` component (waterfall chart + outlier highlighting)
-- [ ] Add `video_consistency_trend` chart to CHART_REGISTRY
+### Phase 4: Rest Timing + Consistency ✅ Done (engine + storage + consolidated UI)
+- [x] Implement rest period detection — `rest_periods_json` plumbed through `modal_client.py:534` + `scheduler.py:3413+`.
+- [x] Compute rest CV and adherence to target ranges — `avg_rest_seconds`, `rest_cv` columns (`models/lifting.py:292-293`).
+- [x] Implement rep consistency analysis — `consistency_score` (`video_analysis.py:288,1001`), `rep_consistency_score` via `modal_client.py:538`.
+- [x] Store rest data in `rest_periods_json`, `avg_rest_seconds`, `rest_cv` — columns exist.
+- [x] Store consistency data in `rep_consistency_score`, `tempo_consistency_cv`, `rep_timing_json` — columns exist (`models/lifting.py:297-298`).
+- [x] Add rest/consistency UI — covered by `VideoAnalysisPanel`; dedicated `RestTimingPanel` timeline + `ConsistencyPanel` waterfall were folded in rather than built standalone.
+- [ ] Add `video_consistency_trend` chart to CHART_REGISTRY — still open (§10.4).
 
-### Phase 5: Setup Analysis + RPE (Week 4-5)
-- [ ] Implement setup phase frame extraction (pre-first-rep frames)
-- [ ] Write setup prompts per exercise (squat walkout, bench points of contact, deadlift setup)
-- [ ] Implement RPE estimation (combines velocity loss + form breakdown + rest + setup)
-- [ ] Create `rpe_calibrations` table + model
-- [ ] Implement RPE auto-calibration (per-user offset calculation)
-- [ ] Store setup data in `setup_score`, `setup_analysis_json`, `setup_duration_seconds`
-- [ ] Store RPE data in `estimated_rpe`, `rpe_confidence`, `rpe_evidence_json`
-- [ ] Add `SetupAnalysisCard` component
-- [ ] Add `VideoRpeEstimate` component (AI RPE vs user RPE + calibration status)
-- [ ] Add weekly Celery task for RPE recalibration
+### Phase 5: Setup Analysis + RPE — mostly done; calibration open
+- [x] Implement setup phase frame extraction — `setup_score` / `setup_duration_seconds` in `pose_analysis.py:884-944`.
+- [x] Write setup prompts per exercise — setup prompt block in `video_analysis.py:251-257` (bar position, walkout, contact points).
+- [x] Implement RPE estimation — `estimated_rpe` via `video_analysis.py:1041-1126` + `modal_client.py:546`, stored per video (`scheduler.py:3461`).
+- [x] Create `rpe_calibrations` table + model — migration `052`, `models/rpe_calibration.py`.
+- [ ] Implement RPE auto-calibration (per-user offset calculation) — table exists but no offset computation reads it yet.
+- [x] Store setup data in `setup_score`, `setup_analysis_json`, `setup_duration_seconds` — columns exist (`models/lifting.py:302`).
+- [x] Store RPE data in `estimated_rpe`, `rpe_confidence`, `rpe_evidence_json` — columns exist (`models/lifting.py:307-308`).
+- [x] Add setup + RPE UI — shipped consolidated in `VideoAnalysisPanel` (RPE badge + RIR derivation) rather than standalone `SetupAnalysisCard` / `VideoRpeEstimate`.
+- [ ] Add weekly Celery task for RPE recalibration — still open.
 
-### Phase 6: Trends + Intelligence (Week 5-6)
-- [ ] Create `lift_video_analyses` aggregation table + model
-- [ ] Weekly aggregation Celery task (avg form/velocity/consistency per exercise)
-- [ ] `VideoProgressTab` with cross-video trend charts
-- [ ] Injury risk flagging from form deviations (knee valgus, back rounding, etc.)
-- [ ] Generate `HealthAlert` entries for high-severity form issues
-- [ ] Exercise variation auto-detection (high/low bar, conventional/sumo, pause/TNG)
+### Phase 6: Trends + Intelligence — mostly open (table + model exist)
+- [x] Create `lift_video_analyses` aggregation table + model — migration `053`, `models/lift_video_analysis.py`.
+- [ ] Weekly aggregation Celery task (`aggregate_video_analyses` — named only in the model docstring; no task registered in `tasks/scheduler.py`).
+- [ ] `VideoProgressTab` with cross-video trend charts.
+- [ ] Injury risk flagging from form deviations (knee valgus, back rounding, etc.).
+- [ ] Generate `HealthAlert` entries for high-severity form issues.
+- [ ] Exercise variation auto-detection — partially: the engine already classifies variation (`exercise_variation`: high/low-bar squat, sumo/conventional deadlift, push/strict press — `pose_analysis.py:305-327,1028`) but it isn't surfaced as a feature.
 
-### Phase 7: Training Load Integration (Week 6-7)
+### Phase 7: Training Load Integration — open (unchanged)
 - [ ] Lifting TSS estimation from video analysis (volume × intensity × fatigue)
 - [ ] Unified training load dashboard (cycling TSS + lifting TSS combined)
 - [ ] Deficiency analysis integration (form-based weakness detection)

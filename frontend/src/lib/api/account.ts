@@ -23,6 +23,11 @@ export async function deleteAccount(
   });
 }
 
+/** Revoke the current backend JWT server-side (SEC-07 real logout). */
+export async function logoutBackend(authFetch: AuthFetch): Promise<void> {
+  await authFetch<{ detail: string }>('/api/v1/auth/logout', { method: 'POST' });
+}
+
 /** Trigger a browser download of the export document as a JSON file. */
 export function downloadExport(payload: FullExportPayload): void {
   const date = new Date().toISOString().slice(0, 10);

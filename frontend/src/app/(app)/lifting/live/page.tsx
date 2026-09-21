@@ -273,7 +273,7 @@ export default function LiveLiftPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
-          <p className="text-white font-semibold">Finishing session…</p>
+          <p className="text-foreground font-semibold">Finishing session…</p>
           <p className="text-muted text-sm">
             {live.isOffline
               ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
@@ -341,7 +341,7 @@ export default function LiveLiftPage() {
             ✓
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white mb-2">Session saved</h1>
+            <h1 className="text-2xl font-bold text-foreground mb-2">Session saved</h1>
             <p className="text-muted text-sm">
               {mins > 0 && <>{mins} min · </>}
               {finishedSummary.workingSets} working
@@ -380,20 +380,20 @@ export default function LiveLiftPage() {
             {finishedSummary.sets.length > 0 && (
               <button
                 onClick={() => downloadSessionCsv(finishedSummary)}
-                className="w-full px-4 py-3 rounded-lg bg-surface-light text-white font-semibold"
+                className="w-full px-4 py-3 rounded-lg bg-surface-light text-foreground font-semibold"
               >
                 Export CSV
               </button>
             )}
             <button
               onClick={() => setFinishedSummary(null)}
-              className="w-full px-4 py-3 rounded-lg bg-surface-light text-white font-semibold"
+              className="w-full px-4 py-3 rounded-lg bg-surface-light text-foreground font-semibold"
             >
               Start another session
             </button>
             <Link
               href="/lifting"
-              className="block w-full text-sm text-muted transition-colors hover:text-white pt-1"
+              className="block w-full text-sm text-muted transition-colors hover:text-foreground pt-1"
             >
               Back to Lifting
             </Link>
@@ -408,11 +408,11 @@ export default function LiveLiftPage() {
     <div className="max-w-md mx-auto px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
       <Link
         href="/lifting"
-        className="inline-flex items-center gap-1 text-sm text-muted hover:text-white transition-colors mb-3"
+        className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-3"
       >
         ← Back to Lifting
       </Link>
-      <h1 className="text-2xl font-bold text-white mb-1">Live Lift</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-1">Live Lift</h1>
       <p className="text-muted text-sm mb-6">
         Track your session as it happens. Sets sync automatically — no signal needed.
       </p>
@@ -453,8 +453,8 @@ export default function LiveLiftPage() {
               onClick={planPreset ? () => { setPlanPreset(null); setFocus(null); } : handleLoadPlan}
               className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
                 planPreset
-                  ? 'bg-accent/15 border-accent/40 text-white'
-                  : 'bg-surface-light/50 border-surface-light/50 text-muted hover:border-accent/40 hover:text-white'
+                  ? 'bg-accent/15 border-accent/40 text-foreground'
+                  : 'bg-surface-light/50 border-surface-light/50 text-muted hover:border-accent/40 hover:text-foreground'
               }`}
             >
               <span className="font-semibold text-sm block">
@@ -485,7 +485,7 @@ export default function LiveLiftPage() {
             value={programName}
             onChange={(e) => setProgramName(e.target.value)}
             placeholder="e.g. 5/3/1 — Week 3"
-            className="w-full bg-surface-light border border-surface-light/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light/50 rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -633,19 +633,19 @@ function FinishSheet({
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" role="dialog" aria-label="Finish session">
       <div className="bg-surface rounded-t-2xl border-t border-surface-light/50 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
-        <h2 className="text-lg font-bold text-white">Session summary</h2>
+        <h2 className="text-lg font-bold text-foreground">Session summary</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
           <div className="bg-surface-light/50 rounded-xl py-3">
-            <p className="text-xl font-bold text-white">{formatDuration(durationSeconds)}</p>
+            <p className="text-xl font-bold text-foreground">{formatDuration(durationSeconds)}</p>
             <p className="text-xs text-muted">Duration</p>
           </div>
           <div className="bg-surface-light/50 rounded-xl py-3">
-            <p className="text-xl font-bold text-white">{Math.round(totalVolume)}kg</p>
+            <p className="text-xl font-bold text-foreground">{Math.round(totalVolume)}kg</p>
             <p className="text-xs text-muted">Volume</p>
           </div>
           <div className="bg-surface-light/50 rounded-xl py-3">
-            <p className="text-xl font-bold text-white">{workingSets}</p>
+            <p className="text-xl font-bold text-foreground">{workingSets}</p>
             <p className="text-xs text-muted">Working sets</p>
           </div>
         </div>
@@ -667,7 +667,7 @@ function FinishSheet({
             onChange={(e) => setRpe(parseFloat(e.target.value))}
             className="w-full accent-[color:var(--accent)]"
           />
-          <p className="text-sm text-white text-center font-semibold">
+          <p className="text-sm text-foreground text-center font-semibold">
             {rpe !== null ? `RPE ${rpe}` : 'Not set'}
           </p>
         </div>
@@ -677,7 +677,7 @@ function FinishSheet({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes (optional)"
           rows={2}
-          className="w-full bg-surface-light border border-surface-light/50 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full bg-surface-light border border-surface-light/50 rounded-xl px-4 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
         {error && (

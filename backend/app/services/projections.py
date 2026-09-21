@@ -379,7 +379,10 @@ async def compute_metric_trend(
     - Activity aggregations: weekly_tss, weekly_sessions, monthly_distance_km
     - Computed: vo2max (via compute_vo2max_history)
 
-    Returns ``{metric, current_value, trend, classification}``.
+    Returns ``{metric, current_value, trend, classification, history,
+    projection_line}``. ``history`` echoes the fitted points;
+    ``projection_line`` extends the regression line 8 weeks out in weekly
+    steps (empty when fewer than 2 points — nothing to project from).
     """
     definition = METRIC_REGISTRY.get(metric_key)
     if definition is None:
@@ -623,6 +626,8 @@ async def compute_metric_trend(
     # Compute trend
     trend = None
     classification = None
+    history = [{"date": d, "value": v} for d, v in points]
+    projection_line: list[dict] = []
 
     if len(points) >= 2:
         slope, intercept, r_squared, n = linear_regression(points)
@@ -649,11 +654,23 @@ async def compute_metric_trend(
         else:
             classification = "stable"
 
+        # Project the fitted line 8 weeks out in weekly steps (B-14: feeds
+        # the dashed forecast overlays on the FTP/VO2max/weight/1RM charts).
+        # NOTE: linear_regression fits on day-offsets from the first point,
+        # so the intercept is the value at points[0][0].
+        origin = points[0][0]
+        for week in range(1, 9):
+            future = points[-1][0] + timedelta(weeks=week)
+            value = slope * (future - origin).days + intercept
+            projection_line.append({"date": future, "value": round(value, 2)})
+
     return {
         "metric": metric_key,
         "current_value": current_value,
         "trend": trend,
         "classification": classification,
+        "history": history,
+        "projection_line": projection_line,
     }
 
 

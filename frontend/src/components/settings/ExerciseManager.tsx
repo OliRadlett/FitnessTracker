@@ -91,7 +91,7 @@ export function ExerciseManager() {
           placeholder="Search exercises..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent"
+          className="w-full px-3 py-2 bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent"
         />
 
         {/* Add form */}
@@ -103,12 +103,12 @@ export function ExerciseManager() {
                 placeholder="Exercise name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                className="px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
               />
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
-                className="px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                className="px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -122,7 +122,7 @@ export function ExerciseManager() {
               placeholder="Aliases (comma-separated, e.g. back ext, hyperextension)"
               value={newAliases}
               onChange={(e) => setNewAliases(e.target.value)}
-              className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+              className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
             />
             <div className="flex gap-2">
               <button
@@ -152,7 +152,7 @@ export function ExerciseManager() {
                 className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-surface-light/30 group"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm text-white truncate">{ex.name}</span>
+                  <span className="text-sm text-foreground truncate">{ex.name}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
                       CATEGORY_COLORS[ex.category] ?? CATEGORY_COLORS.accessory

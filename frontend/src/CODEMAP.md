@@ -20,6 +20,8 @@
 | `/routes/duplicates` | `routes/duplicates/page.tsx` | Duplicate-route review queue — candidate pairs with merge/auto-merge actions, linked from the routes header |
 | `/wiki` | `wiki/page.tsx` | In-app wiki — 11 sections: Overview, Getting Started, Metrics Glossary, Science & Research, Maximizing Impact, Weakness Analysis, Ride Fueling, Weather Integration, Training Plans & Conformity, Goals & Projections, **What's New (changelog)**. Sticky sidebar nav with IntersectionObserver scroll highlighting. Feature mentions hyperlink to the owning page via a shared `WikiLink` helper |
 | `/notifications` | `notifications/page.tsx` | **Notifications page (Phase C §3.5)** — full history of typed notifications (severity/type badges, deep links), unread dot + mark-read/mark-all, tabbed **preferences panel** (per-type toggles persist to `/notifications/preferences`, syncs `NotificationSettings`) |
+| `/analytics` | `analytics/page.tsx` | **Feature 3/B-15 Analytics** — six deterministic athlete-model cards (recovery cost, sleep→performance, load split, power norms, PR conditions, TSB peak) with collecting/low/medium/high confidence badges + sample counts, drill-down tables, on-demand Recompute |
+| `/today` | `today/page.tsx` | **Feature 5/B-16 morning-brief POC** — deterministic verdict (recovery + TSB + sleep debt, visible reasoning), today's plan, weather note, top AthleteInsight. Self-contained; verdict engine in `lib/brief.ts` |
 | `/settings` | `settings/page.tsx` | OAuth connections, cycling profile, **exercise library management** (add/search exercises), **Preferences card (§3.6)** — unit system (kg/km vs lb/mi), date locale (en-GB/en-US), time format (12/24h) pill toggles via `useUnits()` → `/user/preferences` |
 
 ## API Clients (`lib/api/`)
@@ -27,13 +29,15 @@
 > **2026-09 dead-client sweep**: the `activities`, `dashboard`, `nutrition`,
 > `events`, `llmAnalysis`, `workoutPlanner`, `deficiency` and `auth` client modules were
 > deleted (zero importers — those pages call endpoints inline via `authFetch`), and dead
-> functions were pruned from survivors. (A `cycling` client was deleted in the sweep but later recreated — `cycling.ts` is live.) Domain **types** under `types/` are unaffected.
+> functions were pruned from survivors. **B-10 (2026-09-20)**: `cycling.ts` (12 unused fns),
+> `crossDomain.ts`, `preferences.ts` deleted; 3 unused video fns pruned from `lifting.ts`.
+> All remaining module functions are imported somewhere. Domain **types** under `types/` are unaffected.
 
 | File | Backend Prefix | Key Functions |
 |------|---------------|---------------|
 | `fetch.ts` | — | `apiFetch`, `apiFetchWithHeaders`, `apiUpload`, `useAuthFetch` hook |
 | `types.ts` | — | Barrel re-exports from `types/` domain modules |
-| `lifting.ts` | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, `suggestLoad` (`POST /suggest-load` %e1RM prescription, FL3), video AI (`getLiftVideos`, `getLiftVideo`, `createLiftVideo`, `getVideoUploadUrl`, `getVideoStreamUrl`, `deleteLiftVideo`, `processLiftVideo`, `getVideoProcessStatus`) |
+| `lifting.ts` | `/api/v1/lifting/` | `getLiftingSessions`, `getActiveLiftingSession`, `createLiftingSession`, `updateLiftingSession`, `deleteLiftingSession`, `addSetToSession`, `deleteLiftingSet`, `getPersonalRecords`, `getWarmupTemplates`, `suggestLoad` (`POST /suggest-load` %e1RM prescription, FL3), video AI (`createLiftVideo`, `getVideoUploadUrl`, `getVideoStreamUrl`, `deleteLiftVideo`, `processLiftVideo` — read-path fns removed B-10, pages fetch inline) |
 | `routes.ts` | `/api/v1/routes/` | `getRoutes`, `getRoute`, `syncRoutes`, **duplicates** (`getDuplicateRoutes`, `mergeRoutes`, `autoMergeDuplicates`), `downloadRouteGpx`, **merged view** (`getMergedRouteView` — per-source polylines + ridden segments), **heatmap** (`getHomeAreaHeatmap` — activity points near home). Smart collections via typed `createCollectionFromFilters`; remaining tag/quality/effort/bulk operations are called inline by the routes UI |
 | `goals.ts` | `/api/v1/goals/` | `listGoals`, `createGoal`, `updateGoal`, `deleteGoal`, `getGoalMetrics`, `addCheckIn`, `getCheckIns`, `reactivateGoal` |
 | `trainingPlans.ts` | `/api/v1/training-plans/` | `getTrainingPlans`, **week view** (`getPlanWeek` — `GET /{id}/week/{n}?include_weather`; days carry `targets_stale`, FL1), targeted day edits (`updatePlanDay`, `copySessionToPlanDay`, `copyPlanDayToDate`), **target refresh** (`refreshTargets` — `POST /{id}/refresh-targets`, FL1/FL3), **workout preview** (`previewWorkout` + `WorkoutPreviewTargets`/`WorkoutPreviewResponse` types — used by PlanBuilder), **adaptive** (`getAdaptiveSuggestions` — §3.11 weekly advice) |
@@ -44,13 +48,12 @@
 | `notifications.ts` | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` — authFetch-first pattern (`types/notifications.ts`: `AppNotification`, `NotificationPreferences`, `NotificationType`, `NotificationSeverity`) |
 | `weight.ts` | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` — manual weigh-in CRUD with optional body-composition payload (`WeightEntryPayload`: body_fat_% + muscle; types via `types/health.ts` `WeightEntry` incl. composition fields/`WeightHistoryResponse`) |
 | `search.ts` | `/api/v1/search` | `globalSearch` — cross-domain command-palette lookup (activities/routes/lifting sessions/exercises/goals/events) |
-| `preferences.ts` | `/api/v1/user/preferences` | `getPreferences`, `updatePreferences` — unit system / locale / time format (`types/preferences.ts`: `UserPreferences`, `UnitSystem`, `DateLocale`, `TimeFormat`) |
-| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download). Types in `types/export.ts` |
-| `cycling.ts` | `/api/v1/cycling/` | PRs/profile/FTP/power-curve/lifetime-PBs/metrics-summary + Modal `getPowerModel` (CP/W′/VO2max/adaptive taus) and `getWeatherAnalysis` (weather-performance) |
+| `account.ts` | `/api/v1/export`, `/api/v1/account` | **§3.9 data portability** — `exportFullJson` (`GET /export/json`), `deleteAccount` (`DELETE /account/delete` with `confirm_email` body), `downloadExport` (client-side blob download), `logoutBackend` (`POST /auth/logout`, SEC-07). Types in `types/export.ts` |
 | `segments.ts` | `/api/v1/segments`, `/api/v1/routes/{id}/segments` | `getSegments`, `getSegmentDetail`, `recomputeRouteSegments` (§3.13 climb segments) |
 | `healthPrefs.ts` | `/api/v1/metrics/health-preferences` | `getHealthPreferences`, `updateHealthPreferences` (§3.12 tuning) |
-| `crossDomain.ts` | `/api/v1/cross-domain` | `getCrossDomainInsights` (optional `insight_type` filter) |
 | `index.ts` | — | Barrel re-exports the above + `types`/`fetch` |
+
+> B-10 removed `preferences.ts` (fns unused — `units.tsx` calls `/user/preferences` inline; types stay in `types/preferences.ts`) and `crossDomain.ts` (fn unused — WeeklyTab calls inline).
 
 ## Components
 
@@ -274,3 +277,6 @@
 - **Live Lift sync**: `lib/lifting/useLiveSession.ts` — local-first session state (localStorage), lazy idempotent sync (create→set→delete→finish via `live_key`/`client_id`, backend contract in AGENTS pitfall 18), finish-retry backoff, resume-from-server. **§3.7b explicit offline mode**: tracks `navigator.onLine` (`isOffline`), `pendingCount`, 4-state `syncStatus` (`synced`/`pending`/`offline`/`error`); flush scheduling is skipped while browser-offline and the whole backlog replays on the `online` event
 - **Collapsible sidebar**: Desktop sidebar collapses to icon-only (`w-16`) via localStorage-persisted toggle. Lucide icons with Overview/Train/Resources section labels, accent active rail, FitTrack brand mark. Mobile unaffected
 - **Chart zoom**: Recharts `Brush` on line/area charts when >20 data points (dark theme styled)
+- **Themes (B-25)**: tokens are CSS channels (`rgb(var(--surface) / <alpha-value>)`, `tailwind.config.js` + `globals.css` `:root`/`[data-theme='light']`). `text-foreground` for surface text (adapts); `text-white` ONLY on solid colored backgrounds (accent/positive/warning buttons, badges, video overlays). `ThemeProvider` (`lib/theme.tsx`, persisted, dark default) + Appearance pills in Settings. Leaflet legit (`globals.css`, dark tiles)
+- **Forecast overlays (B-14)**: `lib/projection.ts` — `useMetricProjection` (metric history + 8-wk regression line), `withProjection` (merges a `dashed: true` series onto any `ChartData`), `useForecastChart` one-liner. `ChartSeries.dashed` renders `strokeDasharray 6 4`. Live on FTP / VO₂max / weight / 1RM charts
+- **Brief + prescriptions (B-16/B-17)**: `lib/brief.ts` (deterministic verdict engine + insight picker), `lib/prescription.ts` (next-session suggestion, RPE autoregulation, what-if weeks math). Surfaces: `/today` brief, `NextSessionCard` (+`Auto` on cycling), `AutoregulationCard` (lifting) + `→suggested` hints in plan strength tables, What-If Lab on `/analytics`

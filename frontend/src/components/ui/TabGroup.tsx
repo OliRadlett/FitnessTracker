@@ -29,7 +29,7 @@ export function TabGroup({ tabs, active, onChange, className = '' }: TabGroupPro
           className={`px-4 py-2 min-h-[44px] shrink-0 text-sm font-medium rounded-lg transition-colors capitalize ${
             active === tab.key
               ? 'bg-accent text-white'
-              : 'text-muted hover:text-white hover:bg-surface-light/50'
+              : 'text-muted hover:text-foreground hover:bg-surface-light/50'
           }`}
         >
           {tab.label}

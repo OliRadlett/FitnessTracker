@@ -91,7 +91,7 @@ export function CalendarAgendaView({
               {/* Day number */}
               <div className="shrink-0 w-10 text-center">
                 <span className={`text-lg font-bold ${
-                  isTodayDate ? 'text-accent' : isSelected ? 'text-white' : 'text-white/80'
+                  isTodayDate ? 'text-accent' : isSelected ? 'text-foreground' : 'text-foreground/80'
                 }`}>
                   {format(day, 'd')}
                 </span>

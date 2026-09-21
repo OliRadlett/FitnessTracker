@@ -370,6 +370,33 @@ ufw enable
 
 ---
 
+## Monitoring (B-33, optional)
+
+Prometheus scrapes the backend `/metrics` endpoint with three alerts
+(backend down, 5xx rate, p95 latency); Grafana dashboard JSON is provided
+for import.
+
+```bash
+# 1. Expose metrics (backend gates the instrumentator on this flag)
+# Add to the Droplet .env:
+ENABLE_METRICS=true
+
+# 2. Bring up the monitoring overlay (loopback-only UIs)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  -f docker-compose.monitoring.yml up -d prometheus alertmanager
+
+# Prometheus UI: http://localhost:9090 (via SSH tunnel)
+# Alertmanager UI: http://localhost:9093 (via SSH tunnel)
+```
+
+Files: `infra/prometheus/prometheus.yml`, `infra/prometheus/alerts.yml`,
+`infra/alertmanager/alertmanager.yml`, `infra/grafana/fittrack-overview.json`.
+The default alert receiver only logs — wire a Slack webhook or SMTP in
+`alertmanager.yml` before relying on paging. Celery queue depth and per-task
+failure rates have no exporter signals yet (documented in `alerts.yml`).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

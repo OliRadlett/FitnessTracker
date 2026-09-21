@@ -44,7 +44,7 @@ export function RoutesGridView({
           >
             <div className="p-4">
               <div className="flex items-start justify-between mb-3">
-                <h3 className="text-white font-medium text-sm truncate flex-1">
+                <h3 className="text-foreground font-medium text-sm truncate flex-1">
                   {route.name}
                   {route.is_favorite && <span className="text-yellow-400 ml-1">★</span>}
                 </h3>
@@ -63,23 +63,23 @@ export function RoutesGridView({
               <div className="mt-3 space-y-2 text-sm text-muted">
                 <div className="flex justify-between">
                   <span>Distance</span>
-                  <span className="text-white">{formatDistance(route.distance_meters)}</span>
+                  <span className="text-foreground">{formatDistance(route.distance_meters)}</span>
                 </div>
                 {route.elevation_gain_meters && (
                   <div className="flex justify-between">
                     <span>Elevation</span>
-                    <span className="text-white">{fmtElevation(route.elevation_gain_meters)}</span>
+                    <span className="text-foreground">{fmtElevation(route.elevation_gain_meters)}</span>
                   </div>
                 )}
                 {route.estimated_time_seconds && (
                   <div className="flex justify-between">
                     <span>Est. Time</span>
-                    <span className="text-white">{fmtDurationShort(route.estimated_time_seconds)}</span>
+                    <span className="text-foreground">{fmtDurationShort(route.estimated_time_seconds)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span>Rides</span>
-                  <span className="text-white">{route.ride_count > 0 ? `⛽ ${route.ride_count}` : 'New'}</span>
+                  <span className="text-foreground">{route.ride_count > 0 ? `⛽ ${route.ride_count}` : 'New'}</span>
                 </div>
               </div>
 
@@ -95,7 +95,7 @@ export function RoutesGridView({
                 ).map((s) => (
                   <span
                     key={s.provider}
-                    className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full text-white ${
+                    className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full text-foreground ${
                       PROVIDER_COLORS[s.provider] || 'bg-muted'
                     }`}
                     title={s.provider}
@@ -108,7 +108,7 @@ export function RoutesGridView({
               {/* Compare checkbox */}
               <div className="mt-3 pt-2 border-t border-surface-light/30 flex justify-between items-center">
                 <label
-                  className="flex items-center gap-2 min-h-[44px] pr-2 text-xs text-muted cursor-pointer rounded-lg hover:text-white"
+                  className="flex items-center gap-2 min-h-[44px] pr-2 text-xs text-muted cursor-pointer rounded-lg hover:text-foreground"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input

@@ -1,5 +1,7 @@
 # Routes Page Redesign Plan
 
+> **Decision 2026-09-20:** Phase 4 triaged — empty states (B-23), infinite scroll + thumbnails (B-24), and tests (B-36) approved into `plans/backlog-2026-09-20.md`. Drag-drop tagging and keyboard shortcuts dropped.
+
 > **Status**: In Progress
 > **Phases**: 1-4 (see implementation timeline below)
 > **Goal**: Transform routes page from passive list → active route intelligence hub

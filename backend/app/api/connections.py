@@ -159,7 +159,7 @@ async def _dispatch_sync(connection, current_user, db):
             from app.services.komoot import sync_komoot_routes
 
             route_count, merged = await sync_komoot_routes(db, current_user.id)
-            await db.commit()
+            # BUG-015: no explicit commit; get_db commits at return.
             return {
                 "detail": f"Synced {route_count} routes from Komoot",
                 "synced_count": route_count,
@@ -199,7 +199,7 @@ async def _dispatch_sync(connection, current_user, db):
             # Sync both routes and activities
             route_count, merged = await sync_wahoo_routes(db, current_user.id)
             activities = await sync_wahoo_activities(db, current_user.id)
-            await db.commit()
+            # BUG-015: no explicit commit; get_db commits at return.
             return {
                 "detail": f"Synced {len(activities)} activities and {route_count} routes from Wahoo",
                 "synced_count": len(activities),
@@ -258,7 +258,7 @@ async def _dispatch_sync(connection, current_user, db):
             metrics = await sync_whoop_cycles(db, current_user.id, start=start)
             sleep_logs = await sync_whoop_sleep(db, current_user.id, start=start)
             enriched = await sync_whoop_workouts(db, current_user.id, start=start)
-            await db.commit()
+            # BUG-015: no explicit commit; get_db commits at return.
             return {
                 "detail": f"Synced {len(metrics)} metrics, {len(sleep_logs)} sleep records, {len(enriched)} enriched activities from Whoop",
                 "synced_count": len(metrics) + len(sleep_logs) + len(enriched),
@@ -317,7 +317,7 @@ async def _dispatch_sync(connection, current_user, db):
 
             if logs:
                 connection.last_synced_at = _dt.now(_UTC)
-            await db.commit()
+            # BUG-015: no explicit commit; get_db commits at return.
             return {
                 "detail": f"Synced {len(logs)} weigh-ins from Withings",
                 "synced_count": len(logs),

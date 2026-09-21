@@ -9,7 +9,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-ANALYSIS_TYPE_OPTIONS = ("cycling", "activity", "lifting_session", "health", "event")
+ANALYSIS_TYPE_OPTIONS = (
+    "cycling",
+    "activity",
+    "lifting_session",
+    "health",
+    "event",
+    "insight_explanation",  # B-18: per-insight AI interpretation
+    "season_overview",  # B-18: cross-domain big-picture brief
+)
 
 
 class LlmAnalysis(Base):
@@ -56,7 +64,7 @@ class LlmAnalysis(Base):
         nullable=False,
         default="cycling",
         index=True,
-    )  # cycling, activity, lifting_session, health, event
+    )  # cycling, activity, lifting_session, health, event, insight_explanation, season_overview
     analysis_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     stats_json: Mapped[dict] = mapped_column(
         JSONB, nullable=False

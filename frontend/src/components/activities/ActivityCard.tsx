@@ -22,7 +22,7 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
       {unique.map((s) => (
         <span
           key={s.id}
-          className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-white ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
+          className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-foreground ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
           title={`${s.provider}: ${s.provider_name || s.provider_activity_id}`}
         >
           <ProviderIcon provider={s.provider} /> {s.provider}
@@ -85,7 +85,7 @@ export function ActivityCard({
               <Badge variant={getSportBadgeVariant(activity.sport_type)}>
                 {activity.sport_type}
               </Badge>
-              <p className="font-medium text-white truncate">{activity.name}</p>
+              <p className="font-medium text-foreground truncate">{activity.name}</p>
               <SourceBadges sources={activity.sources} />
             </div>
             <p className="text-xs text-muted mt-0.5">
@@ -187,7 +187,7 @@ export function ActivityCard({
         >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">Lifting</span>
-            <span className="text-sm text-white">{activity.linked_lifting_session.focus || 'Lifting Session'}</span>
+            <span className="text-sm text-foreground">{activity.linked_lifting_session.focus || 'Lifting Session'}</span>
           </div>
           <div className="flex gap-4 text-xs text-muted">
             <span>{new Date(activity.linked_lifting_session.session_date).toLocaleDateString()}</span>

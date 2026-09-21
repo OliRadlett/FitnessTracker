@@ -8,17 +8,21 @@ C. Push/pull training-volume balance over the analysis window
 D. VO2max vs FTP mismatch (aerobic profile coherence)
 E. Aerobic decoupling trend
 F. Power zone distribution (last 30 days)
+G. Form quality from video analysis (B-31 — technique as limiter)
 
 Pure math lives in module-level functions (testable without a DB);
 DB access lives in ``analyze_deficiencies()`` which follows the standard
 service signature ``(db: AsyncSession, user_id: UUID, ...)``.
 """
 
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.models.cycling import CyclingProfile
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
@@ -811,6 +815,48 @@ async def analyze_deficiencies(
                 recommendation="Keep balancing push and pull tonnage in programming",
             )
         )
+
+    # ── D. Form quality from video analysis (B-31) ───────────────────────
+    # Exercises whose rolling video form score trails below 75 join the
+    # weakness list so technique gets programmed alongside strength.
+    try:
+        from app.models.lift_video_analysis import LiftVideoAnalysis
+
+        form_rows = (
+            await db.execute(
+                select(LiftVideoAnalysis).where(
+                    LiftVideoAnalysis.user_id == user_id,
+                    LiftVideoAnalysis.avg_form_score.isnot(None),
+                    LiftVideoAnalysis.avg_form_score < 75,
+                )
+            )
+        ).scalars().all()
+        for row in form_rows:
+            score = float(row.avg_form_score or 0)
+            items.append(
+                _item(
+                    category="lifting",
+                    type="form_quality",
+                    metric=f"{row.exercise_name}_form_score",
+                    value=round(score, 1),
+                    unit="%",
+                    bodyweight=None,
+                    level=None,
+                    next_level_target=None,
+                    severity="high" if score < 55 else "medium",
+                    detail=(
+                        f"{row.exercise_name} averages {score:.0f}/100 form "
+                        f"across {row.video_count} analyzed video(s) — "
+                        "technique is the limiter, not strength"
+                    ),
+                    recommendation=(
+                        f"Drill {row.exercise_name} technique with light loads "
+                        "and re-film to confirm"
+                    ),
+                )
+            )
+    except Exception as e:
+        logger.warning(f"Form-quality deficiency section failed (non-fatal): {e}")
 
     # ── Summary + ordering ───────────────────────────────────────────────
     items.sort(key=lambda w: SEVERITY_RANK[w.severity])

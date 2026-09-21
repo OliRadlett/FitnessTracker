@@ -27,7 +27,7 @@ export function PlateCalculator({ open, onClose, weightKg }: PlateCalculatorProp
     <Modal open={open} onClose={onClose} size="sm" aria-label="Plate calculator">
       <ModalHeader title="Plate calculator" onClose={onClose} />
       <p className="text-sm text-muted mb-3">
-        Target <span className="text-white font-semibold">{weightKg}kg</span> ·{' '}
+        Target <span className="text-foreground font-semibold">{weightKg}kg</span> ·{' '}
         {barWeight}kg bar
       </p>
       <div className="flex gap-2 mb-4">
@@ -39,7 +39,7 @@ export function PlateCalculator({ open, onClose, weightKg }: PlateCalculatorProp
             className={`flex-1 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
               barWeight === b
                 ? 'bg-accent text-background'
-                : 'bg-surface-light text-white'
+                : 'bg-surface-light text-foreground'
             }`}
           >
             {b}kg bar
@@ -50,7 +50,7 @@ export function PlateCalculator({ open, onClose, weightKg }: PlateCalculatorProp
       {weightKg < barWeight ? (
         <p className="text-warning text-sm">Target is lighter than the bar.</p>
       ) : counts.length === 0 ? (
-        <p className="text-white text-sm">Just the bar — no plates needed.</p>
+        <p className="text-foreground text-sm">Just the bar — no plates needed.</p>
       ) : (
         <>
           <p className="text-xs uppercase tracking-wider text-muted mb-2">
@@ -60,7 +60,7 @@ export function PlateCalculator({ open, onClose, weightKg }: PlateCalculatorProp
             {counts.map(({ plate, count }) => (
               <span
                 key={plate}
-                className="px-3 py-2 rounded-lg bg-surface-light text-white text-sm font-semibold tabular-nums"
+                className="px-3 py-2 rounded-lg bg-surface-light text-foreground text-sm font-semibold tabular-nums"
               >
                 {plate}kg × {count}
               </span>

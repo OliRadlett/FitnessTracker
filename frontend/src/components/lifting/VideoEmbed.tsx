@@ -95,7 +95,7 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
             className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
               showTrimmed
                 ? 'bg-accent/80 text-white'
-                : 'bg-surface/80 text-muted hover:text-white'
+                : 'bg-surface/80 text-muted hover:text-foreground'
             }`}
           >
             {showTrimmed ? 'Trimmed' : 'Original'}
@@ -108,7 +108,7 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
           <p className="text-sm text-warning">⚠ {streamError}</p>
           <button
             onClick={fetchStreamUrl}
-            className="text-xs px-3 py-1 bg-surface text-muted hover:text-white rounded"
+            className="text-xs px-3 py-1 bg-surface text-muted hover:text-foreground rounded"
           >
             Retry
           </button>

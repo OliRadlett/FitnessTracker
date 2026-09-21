@@ -727,7 +727,7 @@ export default function ActivitiesPage() {
     return (
       <div key={weekKey} className="space-y-3">
         <div className="flex items-center gap-4 py-2 px-1">
-          <h3 className="text-sm font-semibold text-white">{weekKey}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{weekKey}</h3>
           {dateRange && <span className="text-xs text-muted">{dateRange}</span>}
           <div className="flex items-center gap-4 text-xs text-muted ml-auto">
             <span>{weekActivities.length} activities</span>
@@ -769,7 +769,7 @@ export default function ActivitiesPage() {
     <div className="space-y-6 min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Activities</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Activities</h1>
           <p className="text-muted">Browse and analyze your fitness activities</p>
         </div>
         {/* View Toggle */}
@@ -780,7 +780,7 @@ export default function ActivitiesPage() {
             role="tab"
             aria-selected={viewMode === 'list'}
             className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+              viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
             }`}
           >
             List
@@ -790,7 +790,7 @@ export default function ActivitiesPage() {
             role="tab"
             aria-selected={viewMode === 'week'}
             className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+              viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
             }`}
           >
             Week
@@ -800,7 +800,7 @@ export default function ActivitiesPage() {
             role="tab"
             aria-selected={viewMode === 'timeline'}
             className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+              viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
             }`}
           >
             Timeline
@@ -810,7 +810,7 @@ export default function ActivitiesPage() {
             role="tab"
             aria-selected={viewMode === 'patterns'}
             className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-white'
+              viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
             }`}
           >
             Patterns
@@ -821,7 +821,7 @@ export default function ActivitiesPage() {
             className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
               selectMode
                 ? 'bg-accent/20 text-accent border-accent/30'
-                : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
+                : 'text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50'
             }`}
           >
             {selectMode ? 'Cancel' : 'Select'}
@@ -829,18 +829,18 @@ export default function ActivitiesPage() {
           <div className="relative">
             <button
               onClick={() => setShowImportMenu(!showImportMenu)}
-              className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-white border-surface-light hover:bg-surface-light/50 transition-colors"
+              className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50 transition-colors"
             >
               Import
             </button>
             {showImportMenu && (
               <div className="absolute right-0 mt-1 bg-surface border border-surface-light rounded-lg shadow-xl z-30 py-1 min-w-[140px]">
-                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-white hover:bg-surface-light/50 cursor-pointer">
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
                   {'\u{1F4C4}'} Import GPX
                   <input ref={gpxInputRef} type="file" accept=".gpx" className="hidden" disabled={!!importLoading}
                     onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'gpx'); setShowImportMenu(false); }} />
                 </label>
-                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-white hover:bg-surface-light/50 cursor-pointer">
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
                   {'\u231A'} Import FIT
                   <input ref={fitInputRef} type="file" accept=".fit" className="hidden" disabled={!!importLoading}
                     onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'fit'); setShowImportMenu(false); }} />
@@ -872,13 +872,13 @@ export default function ActivitiesPage() {
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search activities..."
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
             />
           </div>
           <select
             value={filters.sport_type || ''}
             onChange={(e) => setFilters({ ...filters, sport_type: e.target.value || undefined })}
-            className="min-h-[44px] bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {SPORT_TYPES.map((type) => (
               <option key={type} value={type}>{type || 'All Sports'}</option>
@@ -887,7 +887,7 @@ export default function ActivitiesPage() {
           <select
             value={sortIndex}
             onChange={(e) => setSortIndex(parseInt(e.target.value, 10))}
-            className="min-h-[44px] bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {SORT_OPTIONS.map((opt, i) => (
               <option key={i} value={i}>{opt.label}</option>
@@ -898,7 +898,7 @@ export default function ActivitiesPage() {
             className={`px-3 py-2 text-sm border rounded-lg transition-colors inline-flex items-center gap-1.5 ${
               showAdvanced
                 ? 'bg-accent/20 text-accent border-accent/30'
-                : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
+                : 'text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50'
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
@@ -937,19 +937,19 @@ export default function ActivitiesPage() {
               <label className="block text-xs text-muted mb-1">Start Date</label>
               <input type="date" value={filters.start_date_after || ''}
                 onChange={(e) => setFilters({ ...filters, start_date_after: e.target.value || undefined })}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">End Date</label>
               <input type="date" value={filters.start_date_before || ''}
                 onChange={(e) => setFilters({ ...filters, start_date_before: e.target.value || undefined })}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Source</label>
               <select value={filters.source || ''}
                 onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined })}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent">
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent">
                 {SOURCES.map((src) => (
                   <option key={src} value={src}>{src || 'All Sources'}</option>
                 ))}
@@ -958,32 +958,32 @@ export default function ActivitiesPage() {
             <div>
               <label className="block text-xs text-muted mb-1">Min Distance (km)</label>
               <input type="number" min="0" step="0.1" value={advMinDist} onChange={(e) => setAdvMinDist(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max Distance (km)</label>
               <input type="number" min="0" step="0.1" value={advMaxDist} onChange={(e) => setAdvMaxDist(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Min Duration (min)</label>
               <input type="number" min="0" step="1" value={advMinDur} onChange={(e) => setAdvMinDur(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max Duration (min)</label>
               <input type="number" min="0" step="1" value={advMaxDur} onChange={(e) => setAdvMaxDur(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Min TSS</label>
               <input type="number" min="0" step="1" value={advMinTss} onChange={(e) => setAdvMinTss(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder="0" />
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Max TSS</label>
               <input type="number" min="0" step="1" value={advMaxTss} onChange={(e) => setAdvMaxTss(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60" placeholder={'\u221E'} />
             </div>
           </div>
         )}
@@ -1120,7 +1120,7 @@ export default function ActivitiesPage() {
           </button>
           <button
             onClick={() => setSelectedForComparison(new Set())}
-            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-foreground transition-colors"
           >
             Clear
           </button>
@@ -1130,16 +1130,16 @@ export default function ActivitiesPage() {
       {/* Bulk actions floating bar */}
       {selectMode && bulkSelected.size > 0 && (
         <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface border border-accent/30 rounded-xl shadow-2xl px-4 sm:px-6 py-3 flex flex-wrap items-center justify-center gap-3 max-w-[calc(100vw-2rem)]">
-          <span className="text-sm font-medium text-white whitespace-nowrap">{bulkSelected.size} selected</span>
+          <span className="text-sm font-medium text-foreground whitespace-nowrap">{bulkSelected.size} selected</span>
           <button
             onClick={selectAllBulk}
-            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-foreground transition-colors"
           >
             Select All
           </button>
           <button
             onClick={() => setBulkSelected(new Set())}
-            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-foreground transition-colors"
           >
             Deselect All
           </button>
@@ -1151,7 +1151,7 @@ export default function ActivitiesPage() {
           </button>
           <button
             onClick={clearBulk}
-            className="min-h-[44px] px-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-2 text-sm text-muted hover:text-foreground transition-colors"
           >
             Cancel
           </button>

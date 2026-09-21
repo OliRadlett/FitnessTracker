@@ -70,7 +70,7 @@ function Stepper({ label, value, onChange, step, min = 0 }: StepperProps) {
             setDraft(null);
             onChange(Math.max(min, +(value - step).toFixed(2)));
           }}
-          className="w-14 min-h-[56px] rounded-xl bg-surface-light text-white text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
+          className="w-14 min-h-[56px] rounded-xl bg-surface-light text-foreground text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
         >
           −
         </button>
@@ -91,7 +91,7 @@ function Stepper({ label, value, onChange, step, min = 0 }: StepperProps) {
               e.currentTarget.blur();
             }
           }}
-          className="flex-1 min-h-[56px] w-full text-center bg-surface-light border border-surface-light/50 rounded-xl text-white text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-accent"
+          className="flex-1 min-h-[56px] w-full text-center bg-surface-light border border-surface-light/50 rounded-xl text-foreground text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           type="button"
@@ -100,7 +100,7 @@ function Stepper({ label, value, onChange, step, min = 0 }: StepperProps) {
             setDraft(null);
             onChange(+(value + step).toFixed(2));
           }}
-          className="w-14 min-h-[56px] rounded-xl bg-surface-light text-white text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
+          className="w-14 min-h-[56px] rounded-xl bg-surface-light text-foreground text-2xl font-semibold active:bg-surface-light/60 active:scale-95 transition-transform"
         >
           +
         </button>
@@ -336,11 +336,11 @@ export function LiveWorkout({
           <div className="min-w-0">
             <Link
               href="/lifting"
-              className="inline-flex items-center gap-1 text-xs text-muted hover:text-white transition-colors mb-1"
+              className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors mb-1"
             >
               ← Lifting
             </Link>
-            <p className="text-3xl font-bold text-white tabular-nums leading-none">
+            <p className="text-3xl font-bold text-foreground tabular-nums leading-none">
               {formatClock(elapsedSeconds)}
             </p>
             <p className="text-xs text-muted mt-1">
@@ -429,7 +429,7 @@ export function LiveWorkout({
             value={exercise}
             onChange={selectExercise}
             placeholder="Exercise name…"
-            className="w-full bg-surface-light border border-surface-light/50 text-white text-lg font-semibold rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light/50 text-foreground text-lg font-semibold rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-accent"
           />
           {(live.exercises.length > 0 || Object.keys(referenceMap).length > 0) && (
             <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
@@ -442,7 +442,7 @@ export function LiveWorkout({
                     className={`shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap transition-colors ${
                       exercise === name
                         ? 'bg-accent text-background font-semibold'
-                        : 'bg-surface-light text-muted hover:text-white'
+                        : 'bg-surface-light text-muted hover:text-foreground'
                     }`}
                   >
                     {name}
@@ -468,7 +468,7 @@ export function LiveWorkout({
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] rounded-lg text-sm transition-colors ${
                     t.complete
                       ? 'bg-positive/10 text-positive'
-                      : 'bg-surface-light/60 text-muted hover:text-white'
+                      : 'bg-surface-light/60 text-muted hover:text-foreground'
                   }`}
                 >
                   <span className="capitalize truncate">
@@ -490,7 +490,7 @@ export function LiveWorkout({
             {reference && (
               <p className="text-muted">
                 Last session ({reference.date}):{' '}
-                <span className="text-white">
+                <span className="text-foreground">
                   {reference.sets.map((s) => `${s.weight_kg}×${s.reps}`).join(', ')}
                 </span>
               </p>
@@ -565,7 +565,7 @@ export function LiveWorkout({
                     className={
                       projectedE1rm > sessionBestE1rm
                         ? 'text-accent font-semibold'
-                        : 'text-white'
+                        : 'text-foreground'
                     }
                   >
                     {projectedE1rm.toFixed(1)}kg
@@ -576,7 +576,7 @@ export function LiveWorkout({
               {sessionBestE1rm > 0 && (
                 <>
                   Session best{' '}
-                  <span className="text-white">{sessionBestE1rm.toFixed(1)}kg</span>
+                  <span className="text-foreground">{sessionBestE1rm.toFixed(1)}kg</span>
                 </>
               )}
             </p>
@@ -590,7 +590,7 @@ export function LiveWorkout({
                   type="button"
                   onClick={() => setRpe(rpe === val ? null : val)}
                   className={`flex-1 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
-                    rpe === val ? 'bg-accent text-background' : 'bg-surface-light text-white'
+                      rpe === val ? 'bg-accent text-background' : 'bg-surface-light text-foreground'
                   }`}
                 >
                   {val}

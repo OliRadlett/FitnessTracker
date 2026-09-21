@@ -66,7 +66,7 @@ export function SyncHealthBanner() {
               await signIn(undefined, { callbackUrl: window.location.href });
               setReconnecting(false);
             }}
-            className="px-3 py-1.5 rounded-lg bg-surface-light text-white text-sm font-semibold disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg bg-surface-light text-foreground text-sm font-semibold disabled:opacity-50"
           >
             {reconnecting ? 'Reconnecting…' : 'Reconnect'}
           </button>

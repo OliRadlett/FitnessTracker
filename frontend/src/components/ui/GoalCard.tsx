@@ -8,7 +8,7 @@ import type { Goal } from '@/lib/api';
 
 /** Icon per metric keyword — best-effort visual hint. */
 function metricIcon(goal: Goal): string {
-  const m = goal.metric;
+  const m = goal.metric ?? '';
   if (m.includes('ftp')) return '⚡';
   if (m === 'body_weight') return '⚖️';
   if (m.includes('1rm')) return '🏋️';
@@ -138,7 +138,7 @@ export function GoalCard({
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-lg" aria-hidden="true">{icon}</span>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">{label}</p>
+            <p className="text-sm font-medium text-foreground truncate">{label}</p>
             {filterLabel && <p className="text-xs text-accent truncate">{filterLabel}</p>}
             {!filterLabel && goal.notes && (
               <p className="text-xs text-muted truncate">{goal.notes}</p>

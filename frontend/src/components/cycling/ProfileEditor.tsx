@@ -63,7 +63,7 @@ export function ProfileEditor({
             value={ftp}
             onChange={(e) => setFtp(e.target.value)}
             placeholder="e.g. 250"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -76,7 +76,7 @@ export function ProfileEditor({
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             placeholder={isImperial ? 'e.g. 166' : 'e.g. 75'}
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -88,7 +88,7 @@ export function ProfileEditor({
             value={lthr}
             onChange={(e) => setLthr(e.target.value)}
             placeholder="e.g. 175"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -101,7 +101,7 @@ export function ProfileEditor({
             value={homeLat}
             onChange={(e) => setHomeLat(e.target.value)}
             placeholder="e.g. 51.5072"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -114,7 +114,7 @@ export function ProfileEditor({
             value={homeLng}
             onChange={(e) => setHomeLng(e.target.value)}
             placeholder="e.g. -0.1276"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <button
@@ -143,7 +143,7 @@ export function ProfileEditor({
       <div className="mt-4 pt-4 border-t border-surface-light/30">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-white">Weekly Auto FTP Estimation</p>
+            <p className="text-sm font-medium text-foreground">Weekly Auto FTP Estimation</p>
             <p className="text-xs text-muted mt-0.5">
               Automatically estimates and updates your FTP every week from power data
             </p>
@@ -191,7 +191,7 @@ export function ProfileEditor({
           }`}>
             <div className="flex items-center justify-between mb-2">
               <div>
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-foreground">
                   Estimated FTP: <span className="text-yellow-400 font-mono text-lg">{ftpEstimate.estimated_ftp} W</span>
                   {ftpEstimate.confidence != null && (
                     <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
@@ -239,7 +239,7 @@ export function ProfileEditor({
                         est.confidence >= 0.8 ? 'bg-green-400' : est.confidence >= 0.5 ? 'bg-yellow-400' : 'bg-red-400'
                       }`} />
                       <span className="text-muted truncate">{est.method}:</span>
-                      <span className="font-mono text-white">{est.ftp}W</span>
+                      <span className="font-mono text-foreground">{est.ftp}W</span>
                       <span className="text-muted/60">({Math.round(est.confidence * 100)}%)</span>
                     </div>
                   ))}
@@ -254,7 +254,7 @@ export function ProfileEditor({
                   power ? (
                     <div key={duration} className="text-xs">
                       <span className="text-muted">{duration}: </span>
-                      <span className="font-mono text-white">{power} W</span>
+                      <span className="font-mono text-foreground">{power} W</span>
                     </div>
                   ) : null
                 ))}

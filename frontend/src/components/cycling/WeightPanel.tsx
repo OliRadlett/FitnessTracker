@@ -158,7 +158,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
             placeholder={isImperial ? 'e.g. 166.5' : 'e.g. 75.5'}
-            className="w-32 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-32 bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -171,7 +171,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
             value={dateInput}
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setDateInput(e.target.value)}
-            className="bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <button
@@ -184,7 +184,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
         <button
           type="button"
           onClick={() => setShowCompInputs((v) => !v)}
-          className="px-3 py-2 min-h-[44px] text-xs text-muted hover:text-white"
+          className="px-3 py-2 min-h-[44px] text-xs text-muted hover:text-foreground"
           aria-expanded={showCompInputs}
         >
           {showCompInputs ? '− Composition' : '+ Composition'}
@@ -206,7 +206,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
               value={bodyFatInput}
               onChange={(e) => setBodyFatInput(e.target.value)}
               placeholder="e.g. 18.5"
-              className="w-28 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-28 bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
           <div>
@@ -222,7 +222,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
               value={muscleInput}
               onChange={(e) => setMuscleInput(e.target.value)}
               placeholder={isImperial ? 'e.g. 70' : 'e.g. 32'}
-              className="w-28 bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-28 bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>
@@ -236,7 +236,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-light/50">
           <div>
             <p className="text-[11px] text-muted">7-day average</p>
-            <p className="text-lg font-semibold text-white">{formatWeight(latestAvg.weight_kg)}</p>
+            <p className="text-lg font-semibold text-foreground">{formatWeight(latestAvg.weight_kg)}</p>
           </div>
           {avgDelta !== null && avgDelta !== 0 && (
             <span className={`text-xs font-medium ${avgDelta > 0 ? 'text-warning' : 'text-positive'}`}>
@@ -275,7 +275,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                 className="px-4 py-2.5 border-b border-surface-light/30 text-sm"
               >
               <div className="flex items-center gap-2">
-                <span className="w-28 shrink-0 text-white">{formatDateDMY(entry.date)}</span>
+                <span className="w-28 shrink-0 text-foreground">{formatDateDMY(entry.date)}</span>
                 {isEditing ? (
                   <>
                     <input
@@ -284,7 +284,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                       step="0.1"
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
-                      className="w-24 bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-24 bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-2 py-1 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
                       autoFocus
                     />
                     <button
@@ -300,14 +300,14 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="min-h-[44px] flex items-center text-xs text-muted hover:text-white"
+                      className="min-h-[44px] flex items-center text-xs text-muted hover:text-foreground"
                     >
                       Cancel
                     </button>
                   </>
                 ) : (
                   <>
-                    <span className="font-medium text-white">
+                    <span className="font-medium text-foreground">
                       {formatWeight(entry.weight_kg)}
                     </span>
                     {entry.source === 'withings' ? (
@@ -326,7 +326,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                     {compRows.length > 0 && (
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                        className="min-h-[44px] flex items-center text-xs text-muted hover:text-white"
+                        className="min-h-[44px] flex items-center text-xs text-muted hover:text-foreground"
                         aria-expanded={isExpanded}
                         aria-label={`${isExpanded ? 'Hide' : 'Show'} body composition for ${entry.date}`}
                       >
@@ -370,7 +370,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
                   {compRows.map(([label, value]) => (
                     <div key={label} className="flex gap-1">
                       <dt className="text-muted">{label}:</dt>
-                      <dd className="text-white font-medium">{value}</dd>
+                      <dd className="text-foreground font-medium">{value}</dd>
                     </div>
                   ))}
                 </dl>

@@ -7,9 +7,11 @@ and the common Gemini API call wrapper used by all domain-specific analyzers.
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from datetime import date as date_type
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,112 @@ logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-3.6-flash"
 GEMINI_TIMEOUT_S = 60
+
+# ── AI spend guards (AI-01 / AI-03) ──────────────────────────────────────────
+
+AI_GENERATIONS_PER_MINUTE = 5
+AI_BUDGET_WINDOW_S = 60
+AI_LOCK_TTL_S = 5 * 60
+
+# Compare-and-delete so a slow generation never releases a successor's lock.
+_AI_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "  return redis.call('del', KEYS[1]) "
+    "else "
+    "  return 0 "
+    "end"
+)
+
+
+def _has_signal(value) -> bool:
+    """True when a compiled-context value carries analyzable signal.
+
+    Zeros, nulls, blanks, dates, and recursively-empty containers carry no
+    signal — a stats payload with none of these is an empty context that
+    Gemini would confidently narrate anyway (AI-03).
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (date, datetime)):
+        return False
+    if isinstance(value, dict):
+        return any(_has_signal(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_has_signal(v) for v in value)
+    return True
+
+
+def ensure_context_sufficient(stats: dict | None, label: str) -> None:
+    """Raise ValueError when a compiled context has no analyzable signal.
+
+    Callers map ValueError → 400, so low-data users get "not enough data"
+    instead of a fabricated narrative stored as real analysis.
+    """
+    if not stats or not _has_signal(stats):
+        raise ValueError(
+            f"Not enough data yet for {label} analysis — "
+            "log some training first, then try again."
+        )
+
+
+@asynccontextmanager
+async def ai_generation_guard(
+    user_id: uuid.UUID, kind: str, target: str = ""
+):
+    """Per-user AI budget + in-flight dedupe around one Gemini generation.
+
+    - Fixed-window cap (``AI_GENERATIONS_PER_MINUTE``/min per user) → 429.
+    - Non-blocking Redis lock per (user, kind, target): a duplicate
+      concurrent request → 429 instead of a second Gemini call + record.
+    - Fail-open on Redis outage (availability first, matching ``redis_lock``).
+    """
+    import secrets
+    import time
+
+    from app.services.cache import _get_redis
+
+    r = _get_redis()
+    window = int(time.time()) // AI_BUDGET_WINDOW_S
+    budget_key = f"ai_budget:{user_id}:{window}"
+    lock_key = f"ai_gen:{user_id}:{kind}:{target or '-'}"
+    try:
+        count = await r.incr(budget_key)
+        if count == 1:
+            await r.expire(budget_key, AI_BUDGET_WINDOW_S)
+        if count > AI_GENERATIONS_PER_MINUTE:
+            raise HTTPException(
+                status_code=429,
+                detail="AI analysis budget exceeded (5/minute). "
+                "Wait a minute and try again.",
+            )
+        lock_token = secrets.token_hex(16)
+        acquired = await r.set(lock_key, lock_token, nx=True, ex=AI_LOCK_TTL_S)
+        if not acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="An analysis of this type is already running. "
+                "Wait for it to finish instead of starting another.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"AI guard Redis unavailable (fail-open): {e}")
+        lock_token = None  # type: ignore[assignment]
+
+    try:
+        yield
+    finally:
+        if lock_token is not None:
+            try:
+                await r.eval(_AI_RELEASE_LUA, 1, lock_key, lock_token)
+            except Exception as e:
+                logger.warning(f"AI guard lock release failed (non-critical): {e}")
 
 
 def _make_json_serializable(obj):

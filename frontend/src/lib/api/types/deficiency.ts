@@ -8,7 +8,8 @@ export type DeficiencyType =
   | 'volume_balance'
   | 'vo2max_ftp_mismatch'
   | 'decoupling'
-  | 'zone_distribution';
+  | 'zone_distribution'
+  | 'form_quality';
 
 /** Severity of a weakness. `strength` marks a positive (balanced) metric. */
 export type DeficiencySeverity = 'critical' | 'high' | 'medium' | 'low' | 'strength';

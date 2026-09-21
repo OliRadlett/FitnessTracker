@@ -190,6 +190,9 @@ jobs:
             echo "▸ Starting services…"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
+            echo "▸ Running database migrations…"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend alembic upgrade head
+
             echo "▸ Cleaning up old images…"
             docker image prune -f
 

@@ -101,6 +101,9 @@ class User(Base):
     cross_domain_insights: Mapped[list["CrossDomainInsight"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
+    athlete_insights: Mapped[list["AthleteInsight"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
 
 
 class OAuthConnection(Base):

@@ -249,7 +249,7 @@ export default function DashboardPage() {
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-4 min-w-0">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">{getGreeting()} 👋</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{getGreeting()} 👋</h1>
           <p className="text-muted mt-1 text-sm sm:text-base">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
@@ -279,7 +279,7 @@ export default function DashboardPage() {
             className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize whitespace-nowrap ${
               activeTab === tab
                 ? 'bg-accent text-white'
-                : 'text-muted hover:text-white hover:bg-surface-light/50'
+                : 'text-muted hover:text-foreground hover:bg-surface-light/50'
             }`}
           >
             {tab === 'today' ? '📅 Today' : tab === 'weekly' ? '📊 Weekly' : '📆 Monthly'}
@@ -322,12 +322,14 @@ export default function DashboardPage() {
           goals={goals}
           deficiency={deficiency}
           deficiencyLoading={deficiencyLoading}
-          monthlySummary={monthlySummary}
-          selectedYear={selectedYear}
-          setSelectedYear={setSelectedYear}
-          currentYear={currentYear}
-          yearlySummary={yearlySummary}
-          yearlyLoading={yearlyLoading}
+          period={{
+            monthlySummary,
+            selectedYear,
+            setSelectedYear,
+            currentYear,
+            yearlySummary,
+            yearlyLoading,
+          }}
           upcomingEvents={upcomingEvents}
           llmAnalysis={llmAnalysis}
           llmLoading={llmLoading}

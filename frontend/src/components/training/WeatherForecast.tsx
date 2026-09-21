@@ -46,7 +46,7 @@ function DayChip({ day }: { day: ForecastDay }) {
       <p className="text-xl my-1" role="img" aria-label={day.conditions}>
         {weatherEmoji(day.conditions)}
       </p>
-      <p className="text-sm text-white">
+      <p className="text-sm text-foreground">
         {Math.round(day.temp_max)}° <span className="text-muted">/ {Math.round(day.temp_min)}°</span>
       </p>
       <p className="text-[10px] text-muted mt-0.5">

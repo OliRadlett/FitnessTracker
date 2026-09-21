@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { ChartData, FtpHistoryEntry, LifetimePBsResponse, CyclingProfile, CyclingPowerRecord, FtpEstimate } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
+import { useForecastChart } from '@/lib/projection';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 
 interface FtpSectionProps {
@@ -41,6 +42,12 @@ export function FtpSection({
   isCheckingPRs,
   onInvalidatePRs,
 }: FtpSectionProps) {
+  // B-14: dashed FTP forecast overlay (regression from FtpHistory points).
+  const { data: ftpChart, caption: ftpCaption } = useForecastChart(
+    chartFtpHistory,
+    'ftp_watts',
+    'FTP forecast',
+  );
   return (
     <>
       {/* PR Celebration Toast */}
@@ -76,10 +83,13 @@ export function FtpSection({
           )}
         </div>
         <ChartBody
-          data={chartFtpHistory}
+          data={ftpChart}
           emptyMessage='No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.'
           height={250}
         />
+        {ftpCaption && (
+          <p className="text-[11px] text-muted mt-1">--- {ftpCaption}</p>
+        )}
         {ftpHistory && ftpHistory.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
@@ -94,7 +104,7 @@ export function FtpSection({
               <tbody>
                 {ftpHistory.map((entry) => (
                   <tr key={entry.id} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-white">{new Date(entry.effective_date).toLocaleDateString()}</td>
+                    <td className="py-2 text-foreground">{new Date(entry.effective_date).toLocaleDateString()}</td>
                     <td className="py-2 text-right text-yellow-400 font-mono">{entry.ftp_watts} W</td>
                     <td className="py-2">
                       <span className={`text-xs px-2 py-0.5 rounded ${
@@ -145,7 +155,7 @@ export function FtpSection({
               <tbody>
                 {lifetimePBs.pbs.filter(p => p.best_power_watts != null).map((pb) => (
                   <tr key={pb.duration_label} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-white font-medium">{pb.duration_label}</td>
+                    <td className="py-2 text-foreground font-medium">{pb.duration_label}</td>
                     <td className="py-2 text-right text-yellow-400 font-mono">
                       {pb.best_power_watts} W
                     </td>
@@ -207,7 +217,7 @@ export function FtpSection({
               <tbody>
                 {cyclingPRs.map((pr) => (
                   <tr key={pr.duration_label} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-white font-medium">{pr.duration_label}</td>
+                    <td className="py-2 text-foreground font-medium">{pr.duration_label}</td>
                     <td className="py-2 text-right text-yellow-400 font-mono">
                       {pr.power_watts.toFixed(0)} W
                     </td>

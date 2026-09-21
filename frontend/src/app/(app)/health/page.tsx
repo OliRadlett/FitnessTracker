@@ -164,7 +164,7 @@ export default function HealthPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white">🩺 Health</h1>
+        <h1 className="text-3xl font-bold text-foreground">🩺 Health</h1>
         <p className="text-muted mt-1">
           Recovery, sleep, trends, and health alerts — powered by Whoop.
         </p>
@@ -312,15 +312,15 @@ export default function HealthPage() {
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Average bedtime</span>
-                <span className="font-medium text-white">{sleepConsistency.avg_bedtime ?? '—'}</span>
+                <span className="font-medium text-foreground">{sleepConsistency.avg_bedtime ?? '—'}</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Bedtime variability</span>
-                <span className="font-medium text-white">±{sleepConsistency.std_minutes.toFixed(0)} min</span>
+                <span className="font-medium text-foreground">±{sleepConsistency.std_minutes.toFixed(0)} min</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Days analyzed</span>
-                <span className="font-medium text-white">{sleepConsistency.days_analyzed}</span>
+                <span className="font-medium text-foreground">{sleepConsistency.days_analyzed}</span>
               </div>
             </div>
           ) : (
@@ -342,11 +342,11 @@ export default function HealthPage() {
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Average sleep</span>
-                <span className="font-medium text-white">{sleepDebt.avg_sleep_hours.toFixed(1)}h</span>
+                <span className="font-medium text-foreground">{sleepDebt.avg_sleep_hours.toFixed(1)}h</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Target</span>
-                <span className="font-medium text-white">{sleepDebt.target_hours.toFixed(0)}h / night</span>
+                <span className="font-medium text-foreground">{sleepDebt.target_hours.toFixed(0)}h / night</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Nights below target</span>
@@ -390,7 +390,7 @@ export default function HealthPage() {
                     {optimalBedtime.best_recovery_bedtimes.slice(0, 3).map((b) => (
                       <div key={b.date} className="flex justify-between text-xs">
                         <span className="text-muted">{formatDateDMY(b.date)}</span>
-                        <span className="text-white">
+                        <span className="text-foreground">
                           {b.bedtime} · <span className="text-positive">{b.recovery_score.toFixed(0)}%</span>
                         </span>
                       </div>
@@ -419,7 +419,7 @@ export default function HealthPage() {
                     key={tab}
                     onClick={() => setAlertTab(tab)}
                     className={`min-h-[44px] px-3 py-1 text-xs font-medium rounded-md capitalize transition-colors ${
-                      alertTab === tab ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+                      alertTab === tab ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
                     }`}
                   >
                     {tab}
@@ -441,14 +441,14 @@ export default function HealthPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-white">{alert.title}</p>
+                      <p className="text-sm font-medium text-foreground">{alert.title}</p>
                       <p className="text-xs text-muted mt-0.5">{alert.description}</p>
                     </div>
                     {alert.status === 'active' && (
                       <button
                         onClick={() => dismissMutation.mutate(alert.id)}
                         disabled={dismissMutation.isPending}
-                        className="shrink-0 min-h-[44px] min-w-[44px] px-2 text-xs text-muted hover:text-white disabled:opacity-50"
+                        className="shrink-0 min-h-[44px] min-w-[44px] px-2 text-xs text-muted hover:text-foreground disabled:opacity-50"
                       >
                         Dismiss
                       </button>

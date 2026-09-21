@@ -70,11 +70,11 @@ export function EffortEstimateCard({ routeId }: {
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div>
           <p className="text-muted">Est. Time</p>
-          <p className="text-white font-medium">{formatDuration(estimate.estimated_time_seconds)}</p>
+          <p className="text-foreground font-medium">{formatDuration(estimate.estimated_time_seconds)}</p>
         </div>
         <div>
           <p className="text-muted">Est. TSS</p>
-          <p className="text-white font-medium">{Math.round(estimate.estimated_tss)}</p>
+          <p className="text-foreground font-medium">{Math.round(estimate.estimated_tss)}</p>
         </div>
         <div>
           <p className="text-muted">Norm. Power</p>

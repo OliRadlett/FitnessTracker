@@ -85,7 +85,7 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-light/30 border border-surface-light/50 hover:border-accent/40 transition-colors text-left min-w-0"
             >
               <div className="min-w-0">
-                <p className="text-xs font-medium text-white truncate max-w-[120px]">
+                <p className="text-xs font-medium text-foreground truncate max-w-[120px]">
                   {filterLabel || label}
                 </p>
                 <p className="text-[10px] text-muted">{dateText}</p>

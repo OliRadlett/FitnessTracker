@@ -152,7 +152,7 @@ export function PwaRegister() {
         <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl bg-surface-light border border-accent/30 px-4 py-3 shadow-xl">
           <span className="text-xl" aria-hidden>🏋️</span>
           <div>
-            <p className="text-sm font-medium text-white">Install FitTrack</p>
+            <p className="text-sm font-medium text-foreground">Install FitTrack</p>
             <p className="text-xs text-muted">Add to your home screen for quick access.</p>
           </div>
           <button

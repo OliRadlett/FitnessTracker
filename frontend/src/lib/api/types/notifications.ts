@@ -12,7 +12,11 @@ export type NotificationType =
   | 'event_countdown'
   | 'taper_start'
   | 'ride_weather'
-  | 'video_processed';
+  | 'video_processed'
+  | 'plan_review'
+  | 'weekly_summary'
+  | 'streak_milestone'
+  | 'deload_started';
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 export interface AppNotification {

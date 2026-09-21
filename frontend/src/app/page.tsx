@@ -35,9 +35,9 @@ export default function LoginPage() {
         <div className="bg-surface rounded-xl border border-surface-light/50 p-8 shadow-2xl">
           <div className="text-center mb-8">
             <span className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-accent mb-4" aria-hidden="true">
-              <Zap size={28} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+              <Zap size={28} strokeWidth={2.5} className="text-foreground" aria-hidden="true" />
             </span>
-            <h1 className="text-3xl font-bold text-white mb-2">FitTrack</h1>
+            <h1 className="text-3xl font-bold text-foreground mb-2">FitTrack</h1>
             <p className="text-muted">
               Track your activities, lifting sessions, and performance metrics
             </p>
@@ -71,7 +71,7 @@ export default function LoginPage() {
 
             <button
               onClick={() => signIn('github')}
-              className="flex items-center justify-center gap-3 w-full bg-gray-800 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors border border-gray-700"
+              className="flex items-center justify-center gap-3 w-full bg-gray-800 hover:bg-gray-700 text-foreground font-medium py-3 px-4 rounded-lg transition-colors border border-gray-700"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path

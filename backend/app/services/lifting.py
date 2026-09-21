@@ -55,6 +55,55 @@ def calculate_session_volume(sets: list[dict]) -> float:
     )
 
 
+# ── Lifting TSS estimate (B-31) ──────────────────────────────────────────────
+# Puts strength work on the same scale as cycling TSS so both can share one
+# load chart. duration_min × avg RPE / 7 ≈ 60 TSS for an hour at RPE 7 —
+# deliberately the same order as an endurance hour. An estimate, labelled so
+# everywhere it surfaces.
+
+
+def estimate_lifting_tss(
+    duration_seconds: int | None,
+    set_rpes: list[float | None],
+    session_rpe: float | None = None,
+) -> float | None:
+    """Duration×RPE training-load estimate, or None without a duration."""
+    if not duration_seconds or duration_seconds <= 0:
+        return None
+    vals = [r for r in set_rpes if r is not None]
+    avg = sum(vals) / len(vals) if vals else (session_rpe if session_rpe else 6.0)
+    return round(duration_seconds / 60 * avg / 7, 1)
+
+
+def refresh_session_tss(session: LiftingSession) -> None:
+    """Recompute ``estimated_tss`` from the session's current sets (in-memory)."""
+    rpes = [s.rpe for s in (session.sets or []) if not s.is_warmup]
+    session.estimated_tss = estimate_lifting_tss(
+        session.duration_seconds, rpes, session.rpe_session
+    )
+
+
+async def backfill_lifting_tss(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Stamp ``estimated_tss`` on historical sessions missing it (B-31).
+
+    Returns the number of sessions updated. Idempotent — skips rows that
+    already have a value and rows without a duration.
+    """
+    result = await db.execute(
+        select(LiftingSession).where(
+            LiftingSession.user_id == user_id,
+            LiftingSession.estimated_tss.is_(None),
+            LiftingSession.duration_seconds.isnot(None),
+        )
+    )
+    sessions = list(result.scalars().all())
+    for session in sessions:
+        await db.refresh(session, ["sets"])
+        refresh_session_tss(session)
+    await db.flush()
+    return len(sessions)
+
+
 # ── Implausible-duration fallback (Strava) ───────────────────────────────────
 
 # A single lifting session this long is implausible — almost always a live
@@ -287,6 +336,7 @@ async def update_session(
         if activity is not None:
             apply_strava_duration_fallback(session, activity)
 
+    refresh_session_tss(session)  # B-31: keep the load estimate current.
     await db.flush()
     # Re-fetch with relationships loaded to avoid MissingGreenlet on sets
     return await get_session(db, session.id, user_id)  # type: ignore[return-value]

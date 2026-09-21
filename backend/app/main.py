@@ -191,6 +191,7 @@ Instrumentator(
 # Import and include routers
 from app.api.account import router as account_router
 from app.api.activities import router as activities_router
+from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
 from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
@@ -220,6 +221,7 @@ from app.api.workout_planner import router as workout_planner_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(account_router, prefix="/api/v1/account", tags=["account"])
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(
     connections_router, prefix="/api/v1/connections", tags=["connections"]
 )

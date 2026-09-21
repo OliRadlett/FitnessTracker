@@ -10,8 +10,6 @@ import type {
   VideoUploadRequest,
   VideoUploadResponse,
   VideoStreamUrl,
-  VideoProcessStatus,
-  LiftVideoListParams,
   SuggestLoadRequest,
   SuggestLoadResponse,
 } from './types';
@@ -88,26 +86,8 @@ export async function getWarmupTemplates(authFetch: AuthFetch, exerciseName?: st
 }
 
 // ─── Strength Videos (§1.1) ─────────────────────────────────────────────────────
-
-export async function getLiftVideos(
-  authFetch: AuthFetch,
-  params?: LiftVideoListParams,
-): Promise<LiftVideo[]> {
-  const query = new URLSearchParams();
-  if (params?.exercise_name) query.set('exercise_name', params.exercise_name);
-  if (params?.lifting_session_id) query.set('lifting_session_id', params.lifting_session_id);
-  if (params?.personal_record_id) query.set('personal_record_id', params.personal_record_id);
-  if (params?.after) query.set('after', params.after);
-  if (params?.before) query.set('before', params.before);
-  if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.offset) query.set('offset', String(params.offset));
-  const qs = query.toString();
-  return authFetch<LiftVideo[]>(`/api/v1/lifting/videos/${qs ? `?${qs}` : ''}`);
-}
-
-export async function getLiftVideo(authFetch: AuthFetch, videoId: string): Promise<LiftVideo> {
-  return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`);
-}
+// NOTE (B-10): list/single/status fns removed — pages fetch inline via
+// authFetch; the write-path fns below are the live seam.
 
 export async function createLiftVideo(
   authFetch: AuthFetch,
@@ -157,12 +137,4 @@ export async function processLiftVideo(
     { method: 'POST' },
   );
 }
-
-export async function getVideoProcessStatus(
-  authFetch: AuthFetch,
-  videoId: string,
-): Promise<VideoProcessStatus> {
-  return authFetch<VideoProcessStatus>(
-    `/api/v1/lifting/videos/${videoId}/process-status`,
-  );
-}
+// NOTE (B-10): getVideoProcessStatus removed — unused (pages poll inline).

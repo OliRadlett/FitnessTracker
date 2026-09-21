@@ -11,13 +11,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.auth import AuthResponse, TokenResponse, UserRead
+from app.schemas.auth import (
+    AuthResponse,
+    TokenPayload,
+    TokenResponse,
+    UserRead,
+)
 from app.services.auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
     OAUTH_PROVIDERS,
+    consume_oauth_state_token,
     create_access_token,
+    denylist_token,
     exchange_code_for_user,
     get_authorize_url,
+    get_current_token_data,
     get_current_user,
+    mint_oauth_state_token,
 )
 
 router = APIRouter()
@@ -112,17 +122,40 @@ async def sync_user(
     )
 
 
-@router.get("/oauth/{provider}/authorize")
-async def oauth_authorize(
+@router.get("/oauth/{provider}/connect-state")
+async def oauth_connect_state(
     provider: str,
-    redirect_uri: str = Query(default=None, description="Callback URL"),
-    state: str = Query(default=None, description="Opaque state token (e.g. JWT) passed through to callback"),
+    current_user: User = Depends(get_current_user),
 ):
+    """Mint a single-use opaque OAuth ``state`` and return the authorize URL.
+
+    The frontend fetches this with its Bearer token and navigates to the
+    returned URL. The backend JWT itself must never be placed in ``state``
+    (SEC-02: provider logs / browser history would leak a replayable login).
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    if provider not in OAUTH_PROVIDERS or provider in ("google", "github"):
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported provider: {provider}"
+        )
+
+    redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+    state = await mint_oauth_state_token(current_user.id, provider)
+    return {"authorize_url": get_authorize_url(provider, redirect_uri, state=state)}
+
+
+@router.get("/oauth/{provider}/authorize")
+async def oauth_authorize(provider: str):
     """Redirect the user to the OAuth provider's authorize page.
 
-    Accepts an optional ``state`` parameter which is passed through to the
-    callback.  The frontend should send a signed JWT here so the callback can
-    identify the authenticated user (BUG-002 / BUG-018).
+    No ``state`` passthrough: the callback only accepts single-use opaque
+    state minted via ``GET /oauth/{provider}/connect-state`` (SEC-02).
+    The ``redirect_uri`` is always derived server-side from ``public_url``
+    (BUG-025) — a client-supplied callback URL would break the token
+    exchange and enable redirect manipulation.
     """
     from app.config import get_settings
 
@@ -131,21 +164,24 @@ async def oauth_authorize(
     if provider not in OAUTH_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
-    # For fitness integrations, use the backend callback URL via public_url
-    if not redirect_uri and provider in ("strava", "whoop", "wahoo", "withings"):
-        redirect_uri = f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+    # Server-owned callback URL: must exactly match the token-exchange call.
+    redirect_uri = (
+        f"{settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+        if provider in ("strava", "whoop", "wahoo", "withings")
+        else None
+    )
 
-    url = get_authorize_url(provider, redirect_uri, state=state)
+    url = get_authorize_url(provider, redirect_uri)
     return RedirectResponse(url=url)
 
 
-@router.api_route("/oauth/{provider}/callback", methods=["GET", "POST"])
+@router.get("/oauth/{provider}/callback", operation_id="oauth_callback_get")
+@router.post("/oauth/{provider}/callback", operation_id="oauth_callback_post")
 async def oauth_callback(
     request: Request,
     provider: str,
     code: str | None = Query(default=None),
-    redirect_uri: str = Query(default=None),
-    state: str = Query(default=None, description="State parameter from authorize step (contains JWT)"),
+    state: str = Query(default=None, description="Single-use opaque state from connect-state"),
     db: AsyncSession = Depends(get_db),
 ):
     """Handle OAuth callback, exchange code for tokens, create/find user.
@@ -154,9 +190,10 @@ async def oauth_callback(
     saves connection to the current user, redirects to frontend.
     For app auth (google, github): exchanges code, creates/finds user, returns JSON.
 
-    The ``state`` parameter should contain a JWT passed from the frontend via
-    the authorize step.  This is used to identify the authenticated user when
-    creating the OAuth connection (BUG-002, BUG-018).
+    The ``state`` parameter must be a single-use opaque token minted via
+    ``GET /oauth/{provider}/connect-state``. It identifies the authenticated
+    user (BUG-002, BUG-018) without ever placing a bearer token in a URL
+    (SEC-02). Missing, expired, replayed, or cross-provider state is rejected.
     """
     import logging as _logging
 
@@ -168,10 +205,10 @@ async def oauth_callback(
     _frontend_url = _settings.frontend_url  # Frontend lives at /fittrack basePath
 
     _logger.info(
-        "OAuth callback for provider=%s, code=%s..., redirect_uri=%s",
+        "OAuth callback for provider=%s, code=%s..., state=%s",
         provider,
         code[:8] if code else None,
-        redirect_uri,
+        "present" if state else None,
     )
 
     if provider not in OAUTH_PROVIDERS:
@@ -193,12 +230,11 @@ async def oauth_callback(
             }
         )
 
-    # For token exchange, we need the same redirect_uri that was used during authorization.
-    token_exchange_redirect_uri = redirect_uri
-    if not token_exchange_redirect_uri:
-        token_exchange_redirect_uri = (
-            f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
-        )
+    # Token exchange must use the exact redirect_uri from the authorize step,
+    # which is always server-derived (BUG-025) — never client-supplied.
+    token_exchange_redirect_uri = (
+        f"{_settings.public_url}/api/v1/auth/oauth/{provider}/callback"
+    )
 
     # For fitness integrations, save connection to existing user instead of creating new one
     if provider in ("strava", "whoop", "wahoo", "withings"):
@@ -337,20 +373,19 @@ async def oauth_callback(
 
             from app.models.user import OAuthConnection, User
 
-            # Resolve the authenticated user from the state parameter (JWT)
+            # Resolve the authenticated user from the single-use opaque state
+            # token (SEC-02). Replays, expiries, and cross-provider reuse fail.
             target_user = None
             if state:
                 try:
-                    from app.services.auth import get_current_user_id
-
-                    target_user_id = get_current_user_id(state)
+                    target_user_id = await consume_oauth_state_token(state, provider)
                     if target_user_id:
                         user_result = await db.execute(
                             _select(User).where(User.id == target_user_id)
                         )
                         target_user = user_result.scalar_one_or_none()
                 except Exception:
-                    pass  # Invalid JWT — fall through to error
+                    pass  # Invalid state — fall through to error
 
             if not target_user:
                 return RedirectResponse(
@@ -390,7 +425,7 @@ async def oauth_callback(
 
             await reset_connection_health(db, connection)
 
-            await db.commit()
+            # BUG-015: no explicit commit; get_db commits at return.
             return RedirectResponse(
                 url=f"{_frontend_url}/settings?connected={provider}"
             )
@@ -431,6 +466,18 @@ async def get_me(
 
 
 @router.post("/logout")
-async def logout():
-    """Logout — client should discard the JWT token."""
-    return {"detail": "Logged out. Discard your access token."}
+async def logout(token_data: TokenPayload = Depends(get_current_token_data)):
+    """Logout — revokes this JWT via the denylist (SEC-07).
+
+    The frontend must still discard the token client-side; denylisting makes
+    any retained copy unusable (verified by ``get_current_user``).
+    """
+    if token_data.jti:
+        ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        if token_data.exp:
+            from datetime import UTC as _UTC
+            from datetime import datetime as _dt
+
+            ttl = max(int(token_data.exp - _dt.now(_UTC).timestamp()), 1)
+        await denylist_token(token_data.jti, ttl)
+    return {"detail": "Logged out."}

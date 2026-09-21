@@ -7,6 +7,7 @@ import type { ChartData, PowerCurveResponse, PowerZonesResponse, HrZonesResponse
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart, ChartBody } from '@/components/charts/Chart';
+import { useForecastChart } from '@/lib/projection';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
 import { PowerZonesDisplay } from '@/components/cycling/PowerZonesDisplay';
 import { HRZonesDisplay } from '@/components/cycling/HRZonesDisplay';
@@ -238,22 +239,12 @@ export function PowerCurveSection({
           )}
         </Card>
 
-        {/* Weight Trend */}
+        {/* Weight Trend (B-14 forecast overlay) */}
         <Card>
           <CardHeader>
             <CardTitle>Body Weight Trend (90 days)</CardTitle>
           </CardHeader>
-          <ChartBody
-            data={chartWeightTrend}
-            emptyMessage={
-              <>
-                No weight data available.{' '}
-                <Link href="/settings" className="text-accent hover:text-accent-hover underline">Log weight in settings</Link>{' '}
-                or sync from Whoop.
-              </>
-            }
-            height={280}
-          />
+          <WeightTrendForecast base={chartWeightTrend} />
         </Card>
 
         {/* Body Composition (Withings) */}
@@ -326,6 +317,48 @@ export function PowerCurveSection({
           />
         </Card>
       </div>
+    </>
+  );
+}
+
+/** Weight trend + B-14 dashed body-weight forecast overlay. */
+function WeightTrendForecast({ base }: { base: ChartData | undefined }) {
+  const { data, caption } = useForecastChart(base, 'body_weight', 'Weight forecast');
+  // B-20: 7-day EMA + day/week deltas from the chart series, client-side.
+  const stats = React.useMemo(() => {
+    const series = data?.series?.[0]?.data ?? [];
+    const vals = series.filter((v): v is number => v != null);
+    if (vals.length < 2) return null;
+    const k = 2 / (7 + 1);
+    let ema = vals[0];
+    for (const v of vals.slice(1)) ema = v * k + ema * (1 - k);
+    const last = vals[vals.length - 1];
+    const prev = vals[vals.length - 2];
+    const weekAgo = vals.length >= 8 ? vals[vals.length - 8] : vals[0];
+    return { ema, dayDelta: last - prev, weekDelta: last - weekAgo };
+  }, [data]);
+  const fmtDelta = (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)} kg`;
+  return (
+    <>
+      {stats && (
+        <div className="flex flex-wrap gap-4 mb-2 text-xs">
+          <span className="text-muted">7-day EMA: <span className="text-foreground font-mono font-bold">{stats.ema.toFixed(1)} kg</span></span>
+          <span className="text-muted">Day: <span className={`font-mono font-bold ${stats.dayDelta > 0 ? 'text-warning' : stats.dayDelta < 0 ? 'text-positive' : 'text-muted'}`}>{fmtDelta(stats.dayDelta)}</span></span>
+          <span className="text-muted">Week: <span className={`font-mono font-bold ${stats.weekDelta > 0 ? 'text-warning' : stats.weekDelta < 0 ? 'text-positive' : 'text-muted'}`}>{fmtDelta(stats.weekDelta)}</span></span>
+        </div>
+      )}
+      <ChartBody
+        data={data}
+        emptyMessage={
+          <>
+            No weight data available.{' '}
+            <Link href="/settings" className="text-accent hover:text-accent-hover underline">Log weight in settings</Link>{' '}
+            or sync from Whoop.
+          </>
+        }
+        height={280}
+      />
+      {caption && <p className="text-[11px] text-muted mt-1">--- {caption}</p>}
     </>
   );
 }

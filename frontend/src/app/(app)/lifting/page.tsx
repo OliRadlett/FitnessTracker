@@ -30,9 +30,11 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
+import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration } from '@/lib/utils';
+import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
@@ -93,7 +95,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
           <span className="text-xs font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Strava</span>
           <Link
             href={`/activities?activity=${activity.id}`}
-            className="text-sm font-medium text-white truncate max-w-[200px] hover:text-accent transition-colors"
+            className="text-sm font-medium text-foreground truncate max-w-[200px] hover:text-accent transition-colors"
             title="View in Activities"
           >
             {activity.name}
@@ -107,7 +109,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
         {activity.duration_seconds && (
           <div>
             <span className="text-muted">Duration</span>
-            <p className="text-white">{formatDuration(activity.duration_seconds)}</p>
+            <p className="text-foreground">{formatDuration(activity.duration_seconds)}</p>
           </div>
         )}
         {activity.average_heartrate && (
@@ -464,14 +466,14 @@ export default function LiftingPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Lifting</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Lifting</h1>
           <p className="text-muted">Track your strength training sessions</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => backfillMutation.mutate()}
             disabled={backfillMutation.isPending}
-            className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
             title="Auto-link Strava strength activities to lifting sessions"
           >
             {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
@@ -488,7 +490,7 @@ export default function LiftingPage() {
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
         <div>
-          <p className="text-white font-semibold">⚡ Track a session live</p>
+          <p className="text-foreground font-semibold">⚡ Track a session live</p>
           <p className="text-sm text-muted">
             Log sets as you lift — one tap per set, works offline, Whoop strain attaches automatically.
           </p>
@@ -500,6 +502,9 @@ export default function LiftingPage() {
           Start Live Session
         </a>
       </div>
+
+      {/* B-17 autoregulation hints from last RPEs */}
+      <AutoregulationCard sessions={sessions} />
 
       {/* Whoop unmatched-session warning (live sessions only) */}
       {(() => {
@@ -573,7 +578,7 @@ export default function LiftingPage() {
                   type="date"
                   value={newSession.session_date}
                   onChange={(e) => setNewSession({ ...newSession, session_date: e.target.value })}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                   required
                 />
               </div>
@@ -584,7 +589,7 @@ export default function LiftingPage() {
                   placeholder="e.g. Upper Body, Legs, Push"
                   value={newSession.focus || ''}
                   onChange={(e) => setNewSession({ ...newSession, focus: e.target.value })}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
               <div>
@@ -594,7 +599,7 @@ export default function LiftingPage() {
                   placeholder="Optional notes"
                   value={newSession.notes || ''}
                   onChange={(e) => setNewSession({ ...newSession, notes: e.target.value })}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             </div>
@@ -614,7 +619,7 @@ export default function LiftingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Session List */}
         <div className="lg:col-span-1 space-y-3">
-          <h2 className="text-lg font-semibold text-white">Sessions</h2>
+          <h2 className="text-lg font-semibold text-foreground">Sessions</h2>
           <div aria-live="polite">
           {sessionsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -630,7 +635,7 @@ export default function LiftingPage() {
                 <div className="flex items-center justify-between">
                   <div>
                  <div className="flex items-center gap-2">
-                       <p className="text-sm font-medium text-white">{session.focus || 'General Session'}</p>
+                       <p className="text-sm font-medium text-foreground">{session.focus || 'General Session'}</p>
                        {session.linked_activity && (
                          <span className="text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded font-medium">Strava</span>
                        )}
@@ -711,7 +716,7 @@ export default function LiftingPage() {
                         >
                           Delete
                         </button>
-                        <button onClick={() => setConfirmDeleteSession(false)} className="text-xs text-muted hover:text-white px-2 py-1">Cancel</button>
+                        <button onClick={() => setConfirmDeleteSession(false)} className="text-xs text-muted hover:text-foreground px-2 py-1">Cancel</button>
                       </div>
                     ) : (
                       <button
@@ -743,7 +748,7 @@ export default function LiftingPage() {
                         type="date"
                         defaultValue={sessionDetail.session_date}
                         onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { session_date: e.target.value } })}
-                        className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                     </div>
                     <div>
@@ -753,7 +758,7 @@ export default function LiftingPage() {
                         defaultValue={sessionDetail.focus || ''}
                         onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { focus: e.target.value || undefined } })}
                         placeholder="e.g. Upper Body"
-                        className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                     </div>
                     <div>
@@ -763,11 +768,11 @@ export default function LiftingPage() {
                         defaultValue={sessionDetail.notes || ''}
                         onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { notes: e.target.value || undefined } })}
                         placeholder="Optional notes"
-                        className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                     </div>
                   </div>
-                  <button onClick={() => setShowEditSession(false)} className="px-3 py-1.5 text-muted hover:text-white text-sm transition-colors">Done</button>
+                  <button onClick={() => setShowEditSession(false)} className="px-3 py-1.5 text-muted hover:text-foreground text-sm transition-colors">Done</button>
                 </div>
               )}
 
@@ -889,7 +894,7 @@ export default function LiftingPage() {
           function PRCard({ pr }: { pr: PersonalRecord }) {
             return (
               <div className="p-4 bg-surface-light/30 rounded-lg">
-                <p className="text-sm font-medium text-white mb-2">{pr.exercise_name}</p>
+                <p className="text-sm font-medium text-foreground mb-2">{pr.exercise_name}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
@@ -948,7 +953,7 @@ export default function LiftingPage() {
                   <div className="flex items-center gap-4 mb-3">
                     <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Big 3</h3>
                     {big3Total > 0 && (
-                      <span className="text-xs font-bold text-white bg-blue-500/20 px-3 py-1 rounded-full">
+                      <span className="text-xs font-bold text-foreground bg-blue-500/20 px-3 py-1 rounded-full">
                         Total: {Math.round(big3Total)} kg
                       </span>
                     )}
@@ -972,7 +977,7 @@ export default function LiftingPage() {
                 <div>
                   <button
                     onClick={() => setShowAccessories(!showAccessories)}
-                    className="text-xs font-semibold text-muted hover:text-white uppercase tracking-wider mb-3 transition-colors flex items-center gap-1"
+                    className="text-xs font-semibold text-muted hover:text-foreground uppercase tracking-wider mb-3 transition-colors flex items-center gap-1"
                   >
                     <span>{showAccessories ? '▾' : '▸'}</span> Accessories ({accessoryPRs.length})
                   </button>
@@ -1035,7 +1040,7 @@ export default function LiftingPage() {
               <select
                 value={effectiveE1rmExercise}
                 onChange={(e) => setSelectedE1rmExercise(e.target.value)}
-                className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 aria-label="Select exercise for 1RM history"
               >
                 {e1rmExerciseList.map((name) => (
@@ -1044,11 +1049,10 @@ export default function LiftingPage() {
               </select>
             </div>
           </CardHeader>
-          <ChartBody
+          <E1rmForecastChart
+            base={e1rmHistoryChart}
             isLoading={e1rmHistoryLoading}
-            data={e1rmHistoryChart}
-            emptyMessage="No 1RM history for this exercise yet"
-            height={280}
+            exercise={effectiveE1rmExercise}
           />
         </Card>
       )}
@@ -1069,5 +1073,34 @@ export default function LiftingPage() {
         onClose={() => setVideoGalleryOpen(false)}
       />
     </div>
+  );
+}
+
+/** Estimated-1RM history + B-14 dashed forecast for the selected exercise. */
+function E1rmForecastChart({
+  base,
+  isLoading,
+  exercise,
+}: {
+  base: ChartData | undefined;
+  isLoading: boolean;
+  exercise: string;
+}) {
+  const { data, caption } = useForecastChart(
+    base,
+    'estimated_1rm',
+    '1RM forecast',
+    JSON.stringify({ exercise }),
+  );
+  return (
+    <>
+      <ChartBody
+        isLoading={isLoading}
+        data={data}
+        emptyMessage="No 1RM history for this exercise yet"
+        height={280}
+      />
+      {caption && <p className="text-[11px] text-muted mt-1">--- {caption}</p>}
+    </>
   );
 }

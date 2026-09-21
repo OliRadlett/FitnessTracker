@@ -157,7 +157,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
               pct={data.conformity_pct}
               classification={data.classification}
             />
-            <span className="text-[11px] text-white font-medium">
+            <span className="text-[11px] text-foreground font-medium">
               {data.classification ??
                 (data.conformity_pct != null ? `${Math.round(data.conformity_pct)}%` : '')}
             </span>
@@ -172,7 +172,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
             <div className="space-y-1">
               <p className="text-[11px] text-muted italic">{emptyMessage(data.status)}</p>
               {day.sport === 'cycle' && (
-                <div className="text-[11px] text-white/80">
+                <div className="text-[11px] text-foreground/80">
                   <span>Planned: {day.planned_duration_min != null ? `${Math.round(day.planned_duration_min)} min` : '—'}</span>
                   {day.planned_tss != null && <span className="text-muted"> · {Math.round(day.planned_tss)} TSS</span>}
                   {day.planned_power_watts != null && (
@@ -181,7 +181,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
                 </div>
               )}
               {day.sport === 'strength' && (
-                <div className="text-[11px] text-white/80">
+                <div className="text-[11px] text-foreground/80">
                   <span>Planned: {day.planned_exercises?.length ?? '—'} exercises</span>
                   {day.planned_volume_kg != null && (
                     <span className="text-muted"> · {Math.round(day.planned_volume_kg)} kg volume</span>
@@ -206,7 +206,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
                 <tbody>
                   {data.components.map((c: ConformityComponent) => (
                     <tr key={c.metric} className="border-t border-surface-light/30">
-                      <td className="py-0.5 text-white/90">{metricLabel(c.metric)}</td>
+                      <td className="py-0.5 text-foreground/90">{metricLabel(c.metric)}</td>
                        <td className="py-0.5">
                         {fmtMetricPair(c.metric, c.planned, c.actual)}
                       </td>

@@ -253,16 +253,16 @@
 - **Fix:** Refactored to `useMutation` (`analyzeMutation`) with `onSuccess`/`onError`/`onSettled`.
 
 ### BUG-040: 30+ Props Drilled into `WeeklyTab`
-- **Status:** DEFERRED (frontend refactor)
+- **Status:** FIXED (2026-09-20, B-13)
 - **File:** `frontend/src/app/(app)/dashboard/page.tsx:263-304`, `frontend/src/components/dashboard/WeeklyTab.tsx:32-73`
 - **Issue:** `WeeklyTab` has a 30+ property interface. Fragile and hard to maintain. Many props could be encapsulated in their own components or React Context.
-- **Fix:** Split into smaller self-contained components or use a DashboardContext.
+- **Fix:** The six period-summary props now travel as one `period: PeriodSummaryProps` object; monthly/yearly rendering moved to shared `PeriodSummaries.tsx` sections. Interface down to 29.
 
 ### BUG-041: 200+ Lines of Duplicated Monthly/Yearly Rendering
-- **Status:** DEFERRED (frontend refactor)
+- **Status:** FIXED (2026-09-20, B-13)
 - **Files:** `frontend/src/components/dashboard/WeeklyTab.tsx`, `frontend/src/components/dashboard/MonthlyTab.tsx`
 - **Issue:** Monthly summary card rendering, yearly summary, year-over-year badges, highlight cards, and PR highlights table are nearly identical between the two components.
-- **Fix:** Extract shared monthly/yearly rendering into reusable components.
+- **Fix:** Extracted into shared `components/dashboard/PeriodSummaries.tsx` (`MonthlySummarySection`, `YearlySummarySection` + sub-sections). WeeklyTab keeps the monthly bar charts via `showBars`; MonthlyTab keeps its EmptyState via `showEmptyState`.
 
 ### BUG-042: `dangerouslySetInnerHTML` Used for Plain Strings
 - **Status:** FIXED

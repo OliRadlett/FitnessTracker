@@ -92,10 +92,10 @@ export function CompareRoutesModal({
   return (
     <Modal open onClose={onClose} size="xl" aria-label="Compare Routes">
       <div className="flex items-center justify-between pb-4 mb-4 border-b border-surface-light/50">
-        <h2 className="text-lg font-semibold text-white">Compare Routes</h2>
+        <h2 className="text-lg font-semibold text-foreground">Compare Routes</h2>
         <button
           onClick={onClose}
-          className="text-muted hover:text-white transition-colors text-xl leading-none min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="text-muted hover:text-foreground transition-colors text-xl leading-none min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Close comparison"
         >
           {'\u2715'}
@@ -109,7 +109,7 @@ export function CompareRoutesModal({
               const diff = computeDifficulty(r.elevation_gain_meters, r.distance_meters);
               return (
                 <div key={r.id} className="bg-surface-light/30 rounded-lg p-4">
-                  <h3 className="text-white font-medium mb-2 truncate">{r.name}</h3>
+                  <h3 className="text-foreground font-medium mb-2 truncate">{r.name}</h3>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {diff && <DifficultyBadge level={diff} />}
                     {r.is_loop && <Badge variant="positive">Loop</Badge>}
@@ -235,16 +235,16 @@ export function CompareRoutesModal({
               <tbody>
                 <tr className="border-b border-surface-light/30">
                   <td className="py-2 text-muted">Distance</td>
-                  <td className="py-2 text-right text-white">{formatDistance(routeA.distance_meters)}</td>
-                  <td className="py-2 text-right text-white">{formatDistance(routeB.distance_meters)}</td>
+                  <td className="py-2 text-right text-foreground">{formatDistance(routeA.distance_meters)}</td>
+                  <td className="py-2 text-right text-foreground">{formatDistance(routeB.distance_meters)}</td>
                   <td className={`py-2 text-right ${distDelta > 0 ? 'text-positive' : distDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {distDelta > 0 ? '+' : ''}{formatDistance(Math.abs(distDelta))}
                   </td>
                 </tr>
                 <tr className="border-b border-surface-light/30">
                   <td className="py-2 text-muted">Elevation</td>
-                  <td className="py-2 text-right text-white">{routeA.elevation_gain_meters != null ? fmtElevation(routeA.elevation_gain_meters) : '\u2014'}</td>
-                  <td className="py-2 text-right text-white">{routeB.elevation_gain_meters != null ? fmtElevation(routeB.elevation_gain_meters) : '\u2014'}</td>
+                  <td className="py-2 text-right text-foreground">{routeA.elevation_gain_meters != null ? fmtElevation(routeA.elevation_gain_meters) : '\u2014'}</td>
+                  <td className="py-2 text-right text-foreground">{routeB.elevation_gain_meters != null ? fmtElevation(routeB.elevation_gain_meters) : '\u2014'}</td>
                   <td className={`py-2 text-right ${elevDelta > 0 ? 'text-positive' : elevDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {elevDelta > 0 ? '+' : ''}{fmtElevation(Math.abs(elevDelta))}
                   </td>
@@ -257,8 +257,8 @@ export function CompareRoutesModal({
                 </tr>
                 <tr>
                   <td className="py-2 text-muted">Est. Time</td>
-                  <td className="py-2 text-right text-white">{routeA.estimated_time_seconds ? fmtDurationShort(routeA.estimated_time_seconds) : '\u2014'}</td>
-                  <td className="py-2 text-right text-white">{routeB.estimated_time_seconds ? fmtDurationShort(routeB.estimated_time_seconds) : '\u2014'}</td>
+                  <td className="py-2 text-right text-foreground">{routeA.estimated_time_seconds ? fmtDurationShort(routeA.estimated_time_seconds) : '\u2014'}</td>
+                  <td className="py-2 text-right text-foreground">{routeB.estimated_time_seconds ? fmtDurationShort(routeB.estimated_time_seconds) : '\u2014'}</td>
                   <td className={`py-2 text-right ${timeDelta > 0 ? 'text-positive' : timeDelta < 0 ? 'text-warning' : 'text-muted'}`}>
                     {timeDelta > 0 ? '+' : ''}{timeDelta !== 0 ? fmtDurationShort(Math.abs(timeDelta)) : '\u2014'}
                   </td>

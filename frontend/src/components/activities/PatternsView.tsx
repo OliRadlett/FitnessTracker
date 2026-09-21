@@ -109,8 +109,8 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
               onClick={() => handlePatternClick(p)}
               className={`p-3 rounded-lg border text-left transition-all ${
                 selectedPattern === p.id
-                  ? 'bg-accent/20 border-accent/50 text-white'
-                  : 'bg-surface border-surface-light hover:border-accent/30 text-muted hover:text-white'
+                  ? 'bg-accent/20 border-accent/50 text-foreground'
+                  : 'bg-surface border-surface-light hover:border-accent/30 text-muted hover:text-foreground'
               }`}
             >
               <div className="font-medium text-sm">{p.label}</div>
@@ -131,7 +131,7 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
               min="0"
               step="1"
               placeholder="0"
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
+              className="w-24 bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
               onChange={(e) => {
                 if (e.target.value) {
                   onPatternSelect({ min_tss: parseFloat(e.target.value) });
@@ -147,7 +147,7 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
               min="0"
               step="1"
               placeholder="∞"
-              className="w-24 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
+              className="w-24 bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-muted/60"
               onChange={(e) => {
                 if (e.target.value) {
                   onPatternSelect({ max_tss: parseFloat(e.target.value) });
@@ -158,7 +158,7 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
           </div>
           <button
             onClick={() => { setSelectedPattern(null); onPatternSelect({}); }}
-            className="text-xs text-muted hover:text-white px-3 py-1 rounded border border-surface-light hover:bg-surface-light/50 transition-colors"
+            className="text-xs text-muted hover:text-foreground px-3 py-1 rounded border border-surface-light hover:bg-surface-light/50 transition-colors"
           >
             Clear
           </button>
@@ -188,7 +188,7 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
                         {a.sport_type}
                       </Badge>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{a.name}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
                         <p className="text-xs text-muted">
                           {formatDate(a.start_date)}
                           {a.route_name && (
@@ -217,23 +217,23 @@ export function PatternsView({ activities, statsActivities, onPatternSelect }: P
       {!selectedPattern && combinedActivities.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div>
-            <p className="text-2xl font-bold text-white">{combinedActivities.length}</p>
+            <p className="text-2xl font-bold text-foreground">{combinedActivities.length}</p>
             <p className="text-xs text-muted">Activities</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-foreground">
               {Math.round(combinedActivities.reduce((s, a) => s + (a.tss ?? 0), 0))}
             </p>
             <p className="text-xs text-muted">Total TSS</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-foreground">
               {combinedActivities.filter((a) => a.sport_type === 'cycling').length}
             </p>
             <p className="text-xs text-muted">Rides</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-foreground">
               {Math.round(
                 combinedActivities.reduce((s, a) => s + (STRENGTH_TYPES.includes(a.sport_type) ? 0 : (a.distance_meters ?? 0)), 0) / 1000,
               )}

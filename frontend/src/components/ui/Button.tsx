@@ -7,9 +7,9 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary: 'bg-accent hover:bg-accent-hover text-white',
-  secondary: 'bg-surface-light text-white hover:bg-surface-light/80',
+  secondary: 'bg-surface-light text-foreground hover:bg-surface-light/80',
   tinted: 'bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30',
-  ghost: 'text-muted hover:text-white hover:bg-surface-light/50',
+  ghost: 'text-muted hover:text-foreground hover:bg-surface-light/50',
   danger: 'bg-warning text-white hover:bg-warning/80',
   success: 'bg-positive text-white hover:bg-positive/80',
 };
@@ -71,7 +71,7 @@ export function IconButton({ label, className = '', children, ...rest }: IconBut
     <button
       type="button"
       aria-label={label}
-      className={`inline-flex items-center justify-center w-11 h-11 rounded-lg text-muted hover:text-white hover:bg-surface-light/50 transition-colors disabled:opacity-50 ${className}`}
+      className={`inline-flex items-center justify-center w-11 h-11 rounded-lg text-muted hover:text-foreground hover:bg-surface-light/50 transition-colors disabled:opacity-50 ${className}`}
       {...rest}
     >
       {children}

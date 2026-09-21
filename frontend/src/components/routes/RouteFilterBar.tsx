@@ -124,7 +124,7 @@ export function RouteFilterBar() {
             placeholder="Search routes..."
             value={localQ}
             onChange={handleSearchChange}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -132,7 +132,7 @@ export function RouteFilterBar() {
         <select
           value={filters.sort_by || ''}
           onChange={handleSortChange}
-          className="bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+          className="bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -143,7 +143,7 @@ export function RouteFilterBar() {
         {filters.sort_by && (
           <button
             onClick={handleSortOrderToggle}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-surface-light border border-surface-light rounded-lg text-muted hover:text-white hover:bg-surface-light/80 transition-colors"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-surface-light border border-surface-light rounded-lg text-muted hover:text-foreground hover:bg-surface-light/80 transition-colors"
             aria-label={filters.sort_order === 'asc' ? 'Ascending' : 'Descending'}
           >
             {filters.sort_order === 'asc' ? (
@@ -160,7 +160,7 @@ export function RouteFilterBar() {
           className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border transition-colors ${
             filters.is_favorite
               ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
-              : 'bg-surface-light border-surface-light text-muted hover:text-white'
+              : 'bg-surface-light border-surface-light text-muted hover:text-foreground'
           }`}
           aria-label="Show favorites only"
         >
@@ -173,7 +173,7 @@ export function RouteFilterBar() {
           className={`px-3 py-2 text-sm border rounded-lg transition-colors inline-flex items-center gap-1.5 ${
             showFilters
               ? 'bg-accent/20 text-accent border-accent/30'
-              : 'text-muted hover:text-white border-surface-light hover:bg-surface-light/50'
+              : 'text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50'
           }`}
         >
           <Filter className="w-4 h-4" />
@@ -195,7 +195,7 @@ export function RouteFilterBar() {
             </button>
             <button
               onClick={() => setShowSaveModal(true)}
-              className="px-3 py-2 text-sm text-muted hover:text-white border border-surface-light hover:bg-surface-light/50 rounded-lg transition-colors inline-flex items-center gap-1.5"
+              className="px-3 py-2 text-sm text-muted hover:text-foreground border border-surface-light hover:bg-surface-light/50 rounded-lg transition-colors inline-flex items-center gap-1.5"
             >
               <Bookmark className="w-3.5 h-3.5" />
               Save as Collection
@@ -215,7 +215,7 @@ export function RouteFilterBar() {
                 const val = e.target.value;
                 setFilters({ ...filters, is_ridden: val === '' ? undefined : val === 'ridden' });
               }}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="">All</option>
               <option value="unridden">Not yet ridden</option>
@@ -231,7 +231,7 @@ export function RouteFilterBar() {
                 const val = e.target.value;
                 setFilters({ ...filters, is_loop: val === '' ? undefined : val === 'loop' });
               }}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="">All</option>
               <option value="loop">Loop</option>
@@ -244,7 +244,7 @@ export function RouteFilterBar() {
             <select
               value={filters.surface_type || ''}
               onChange={(e) => setFilters({ ...filters, surface_type: e.target.value || undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {SURFACE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -261,7 +261,7 @@ export function RouteFilterBar() {
               placeholder="0"
               value={filters.min_distance ? filters.min_distance / 1000 : ''}
               onChange={(e) => setFilters({ ...filters, min_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -274,7 +274,7 @@ export function RouteFilterBar() {
               placeholder="∞"
               value={filters.max_distance ? filters.max_distance / 1000 : ''}
               onChange={(e) => setFilters({ ...filters, max_distance: e.target.value ? parseFloat(e.target.value) * 1000 : undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -287,7 +287,7 @@ export function RouteFilterBar() {
               placeholder="0"
               value={filters.min_elevation ?? ''}
               onChange={(e) => setFilters({ ...filters, min_elevation: e.target.value ? parseFloat(e.target.value) : undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -300,7 +300,7 @@ export function RouteFilterBar() {
               placeholder="∞"
               value={filters.max_elevation ?? ''}
               onChange={(e) => setFilters({ ...filters, max_elevation: e.target.value ? parseFloat(e.target.value) : undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -314,7 +314,7 @@ export function RouteFilterBar() {
               placeholder="0"
               value={filters.min_quality_score ?? ''}
               onChange={(e) => setFilters({ ...filters, min_quality_score: e.target.value ? parseFloat(e.target.value) : undefined })}
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>
@@ -322,7 +322,7 @@ export function RouteFilterBar() {
       {/* Save as Collection modal */}
       {showSaveModal && (
         <Modal open onClose={() => setShowSaveModal(false)} size="sm" aria-label="Save filter as collection">
-          <h3 className="text-lg font-semibold text-white mb-3">Save as Smart Collection</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-3">Save as Smart Collection</h3>
           <p className="text-sm text-muted mb-4">
             This will save your current filters as a smart collection. Routes matching these filters will appear automatically.
           </p>
@@ -333,12 +333,12 @@ export function RouteFilterBar() {
             onChange={(e) => setCollectionName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSaveCollection()}
             autoFocus
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setShowSaveModal(false)}
-              className="px-3 py-2 text-sm text-muted hover:text-white transition-colors"
+              className="px-3 py-2 text-sm text-muted hover:text-foreground transition-colors"
             >
               Cancel
             </button>

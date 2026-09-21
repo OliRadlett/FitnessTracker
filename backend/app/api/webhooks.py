@@ -97,6 +97,5 @@ async def strava_webhook_event(
             status="pending",
         )
         db.add(event)
-        await db.commit()
-
+        await db.flush()  # BUG-015: flush only (PK needed below); get_db commits.
     return {"status": "ok", "queued": str(event.id)}

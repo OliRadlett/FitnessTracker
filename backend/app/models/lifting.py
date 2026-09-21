@@ -54,6 +54,10 @@ class LiftingSession(Base):
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_volume_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_session: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # B-31: duration×RPE training-load estimate (duration_min × avg RPE / 7),
+    # so strength work can join cycling TSS on one load chart. Computed on
+    # session write; backfilled weekly for older rows.
+    estimated_tss: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # Live-session tracking (set only by /lifting/live flow)
     started_at: Mapped[datetime | None] = mapped_column(

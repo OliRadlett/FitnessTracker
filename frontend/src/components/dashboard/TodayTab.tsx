@@ -9,6 +9,9 @@ import type {
   DashboardSummary,
   ReadinessResponse,
   RespiratoryRateResponse,
+  SleepDebtResponse,
+  SleepConsistencyResponse,
+  OptimalBedtimeResponse,
   Event,
   ChartData,
   Goal,
@@ -29,6 +32,9 @@ import { GoalsSection } from './GoalsSection';
 import { TodayAdaptiveAction } from './TodayAdaptiveAction';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { SleepDebtCard } from '@/components/health/SleepDebtCard';
+import { SleepConsistencyCard } from '@/components/health/SleepConsistencyCard';
+import { OptimalBedtimeCard } from '@/components/health/OptimalBedtimeCard';
 import { formatDistance, formatDuration } from '@/lib/utils';
 import { ListSkeleton } from '@/components/dashboard/helpers';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
@@ -85,6 +91,26 @@ export function TodayTab({
     enabled: !!token,
   });
 
+  // ── Sleep intelligence (B-14: existing endpoints, surfaced on Today) ────
+  const { data: sleepDebt } = useQuery<SleepDebtResponse>({
+    queryKey: ['metrics', 'sleep-debt'],
+    queryFn: () => authFetch<SleepDebtResponse>('/api/v1/metrics/sleep-debt?days=7'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: sleepConsistency } = useQuery<SleepConsistencyResponse>({
+    queryKey: ['metrics', 'sleep-consistency'],
+    queryFn: () => authFetch<SleepConsistencyResponse>('/api/v1/metrics/sleep-consistency?days=7'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: optimalBedtime } = useQuery<OptimalBedtimeResponse>({
+    queryKey: ['metrics', 'optimal-bedtime'],
+    queryFn: () => authFetch<OptimalBedtimeResponse>('/api/v1/metrics/optimal-bedtime'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
   // ── Active plan → today's planned workout ───────────────────────────────
   const { data: activePlans } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans', 'active'],
@@ -107,7 +133,7 @@ export function TodayTab({
   });
 
   const todayStr = toDateStr(new Date());
-  const todayPlanDay: TrainingWeekDay | undefined = planWeek?.days.find(
+  const todayPlanDay: TrainingWeekDay | undefined = (planWeek?.days ?? []).find(
     (d) => d.day_date === todayStr,
   );
 
@@ -175,7 +201,7 @@ export function TodayTab({
                       {evt.event_type === 'race' ? '🏁' : evt.event_type === 'ride' ? '🚴' : evt.event_type === 'lift' ? '🏋️' : '📌'}
                     </span>
                     <div>
-                      <p className="text-white font-medium text-sm">{evt.name}</p>
+                      <p className="text-foreground font-medium text-sm">{evt.name}</p>
                       <p className="text-xs text-muted">{evt.event_date}</p>
                     </div>
                   </div>
@@ -183,7 +209,7 @@ export function TodayTab({
                     {evt.days_until === 0 ? (
                       <span className="text-accent font-bold">🎯 Today!</span>
                     ) : (
-                      <span className="text-white">🎯 <strong>{evt.days_until}</strong> days away</span>
+                      <span className="text-foreground">🎯 <strong>{evt.days_until}</strong> days away</span>
                     )}
                   </p>
                   {evt.is_in_taper && (
@@ -254,6 +280,18 @@ export function TodayTab({
           tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies. Check the Weekly tab for details."
         />
       </div>
+
+      {/* ── Sleep Intelligence (B-14) ──────────────────────────────────────── */}
+      {(sleepDebt || sleepConsistency || optimalBedtime) && (
+        <div>
+          <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Sleep Intelligence</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {sleepDebt && <SleepDebtCard data={sleepDebt} />}
+            {sleepConsistency && <SleepConsistencyCard data={sleepConsistency} />}
+            {optimalBedtime && <OptimalBedtimeCard data={optimalBedtime} />}
+          </div>
+        </div>
+      )}
 
       {/* ── Quick Body-Weight Log ─────────────────────────────────────────── */}
       <div className="max-w-2xl">
@@ -415,7 +453,7 @@ export function TodayTab({
                       {a.sport_type}
                     </Badge>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{a.name}</p>
+                      <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
                       <p className="text-xs text-muted">
                         {new Date(a.start_date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -465,7 +503,7 @@ export function TodayTab({
               {todaySummary.today_lifting_sessions.map((s) => (
                 <div key={s.id} className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors">
                   <div>
-                    <p className="text-sm font-medium text-white">{s.focus || 'General'}</p>
+                    <p className="text-sm font-medium text-foreground">{s.focus || 'General'}</p>
                     <p className="text-xs text-muted">{s.sets_count} sets</p>
                   </div>
                   <div className="text-right">
@@ -525,12 +563,12 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
         </div>
 
         {day.workout_description && (
-          <p className="text-sm text-white mt-1">{day.workout_description}</p>
+          <p className="text-sm text-foreground mt-1">{day.workout_description}</p>
         )}
 
         {day.planned_focus && (
           <p className="text-xs text-muted mt-1">
-            Focus: <span className="text-white">{day.planned_focus.replace(/_/g, ' ')}</span>
+            Focus: <span className="text-foreground">{day.planned_focus.replace(/_/g, ' ')}</span>
           </p>
         )}
 
@@ -560,7 +598,7 @@ function TodayPlanDay({ day }: { day: TrainingWeekDay }) {
           <div className="mt-2 space-y-1">
             {day.planned_exercises.map((ex, i) => (
               <p key={i} className="text-xs text-muted">
-                <span className="text-white">{ex.exercise}</span> — {ex.sets}×{ex.reps}
+                <span className="text-foreground">{ex.exercise}</span> — {ex.sets}×{ex.reps}
                 {ex.weight_kg != null ? ` @ ${ex.weight_kg}kg` : ''}
                 {ex.rpe != null ? ` RPE ${ex.rpe}` : ''}
               </p>

@@ -150,7 +150,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                   onClick={() => applyWarmupTemplate(template)}
                   className="w-full text-left p-3 hover:bg-surface-light/40 transition-colors border-b border-surface-light/20 last:border-b-0"
                 >
-                  <p className="text-sm font-medium text-white">{template.name}</p>
+                  <p className="text-sm font-medium text-foreground">{template.name}</p>
                   {template.exercise_name && (
                     <p className="text-xs text-accent">{template.exercise_name}</p>
                   )}
@@ -190,7 +190,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.weight_kg || ''}
                 onChange={(e) => updateSet(index, { weight_kg: parseFloat(e.target.value) || 0 })}
                 placeholder="0"
-                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-2">
@@ -200,7 +200,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.reps || ''}
                 onChange={(e) => updateSet(index, { reps: parseInt(e.target.value) || 0 })}
                 placeholder="0"
-                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-2">
@@ -212,7 +212,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
                 value={set.rpe ?? ''}
                 onChange={(e) => updateSet(index, { rpe: e.target.value ? parseFloat(e.target.value) : undefined })}
                 placeholder="—"
-                className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div className="sm:col-span-3 flex items-center gap-2">
@@ -256,7 +256,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
         <button
           type="button"
           onClick={addSetRow}
-          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light"
+          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light"
         >
           + Add Set
         </button>
@@ -264,7 +264,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
           type="button"
           onClick={copyLastSet}
           disabled={sets.length === 0}
-          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-white text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+          className="px-3 py-1.5 min-h-[44px] bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
         >
           📋 Copy Last Set
         </button>
@@ -277,7 +277,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
         <button
           type="button"
           onClick={onDone}
-          className="px-3 py-1.5 min-h-[44px] text-muted hover:text-white text-sm transition-colors"
+          className="px-3 py-1.5 min-h-[44px] text-muted hover:text-foreground text-sm transition-colors"
         >
           Cancel
         </button>

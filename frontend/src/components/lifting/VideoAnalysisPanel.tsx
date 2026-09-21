@@ -95,7 +95,7 @@ function MiniCard({ label, value, unit }: { label: string; value: number | null 
   return (
     <div className="bg-surface-light/50 rounded-lg px-3 py-2 text-center">
       <p className="text-[11px] text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-white">
+      <p className="text-lg font-semibold text-foreground">
         {typeof value === 'number' ? value.toFixed(1) : value}
         {unit && <span className="text-xs text-muted ml-0.5">{unit}</span>}
       </p>
@@ -117,14 +117,14 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
 
   return (
     <div className="space-y-4 border-t border-surface-light/50 pt-4">
-      <h4 className="text-sm font-semibold text-white">Analysis</h4>
+      <h4 className="text-sm font-semibold text-foreground">Analysis</h4>
 
       {video.form_score != null && (
         <Card className="space-y-3">
           <div className="flex items-center gap-4">
             <FormScoreRing score={video.form_score} />
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">Form Score</p>
+              <p className="text-sm font-medium text-foreground">Form Score</p>
               {video.competition_valid != null && (
                 <Badge variant={video.competition_valid ? 'positive' : 'warning'}>
                   {video.competition_valid ? 'IPF Valid' : 'Would Fail'}
@@ -165,11 +165,11 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
 
       {(video.mean_concentric_velocity != null || video.vbt_zone != null) && (
         <Card className="space-y-2">
-          <p className="text-sm font-medium text-white">Velocity</p>
+          <p className="text-sm font-medium text-foreground">Velocity</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
               <p className="text-[11px] text-muted uppercase">Mean Conc.</p>
-              <p className="text-lg font-semibold text-white">
+              <p className="text-lg font-semibold text-foreground">
                 {video.mean_concentric_velocity?.toFixed(2)}
                 <span className="text-xs text-muted ml-0.5">m/s</span>
               </p>
@@ -179,7 +179,7 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
             </div>
             <div>
               <p className="text-[11px] text-muted uppercase">Peak</p>
-              <p className="text-lg font-semibold text-white">
+              <p className="text-lg font-semibold text-foreground">
                 {video.peak_velocity?.toFixed(2) ?? '—'}
                 <span className="text-xs text-muted ml-0.5">m/s</span>
               </p>
@@ -201,11 +201,11 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
       {video.estimated_rpe != null && (
         <Card className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-white">RPE</p>
+            <p className="text-sm font-medium text-foreground">RPE</p>
             <RpeConfidence confidence={video.rpe_confidence} />
           </div>
           <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-bold text-white">{video.estimated_rpe.toFixed(1)}</span>
+            <span className="text-3xl font-bold text-foreground">{video.estimated_rpe.toFixed(1)}</span>
             {rir != null && (
               <span className="text-sm text-muted">~{rir} RIR</span>
             )}

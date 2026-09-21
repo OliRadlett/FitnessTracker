@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Event, EventResult } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -32,7 +32,7 @@ function ResultBadge({ result }: { result: EventResult }) {
         </span>
       )}
       {bits.map((b) => (
-        <span key={b} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-light/60 text-white/80 font-medium">
+        <span key={b} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-light/60 text-foreground/80 font-medium">
           {b}
         </span>
       ))}
@@ -104,6 +104,7 @@ export function EventResultPanel({ event }: { event: Event }) {
           {hasResult ? (
             <div>
               <ResultBadge result={event.result!} />
+              <Retrospective eventId={event.id} />
               <div className="mt-1.5 flex items-center gap-2">
                 <button
                   onClick={() => {
@@ -143,7 +144,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                     value={form.finishing_time ?? ''}
                     onChange={(e) => setForm((f) => ({ ...f, finishing_time: e.target.value || null }))}
                     placeholder="3:24:10"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
@@ -159,7 +160,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                       }))
                     }
                     placeholder="e.g. 12"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
@@ -175,11 +176,11 @@ export function EventResultPanel({ event }: { event: Event }) {
                       }))
                     }
                     placeholder="e.g. 3"
-                    className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div className="flex items-end gap-2 pb-0.5">
-                  <label className="flex items-center gap-1.5 text-[11px] text-white">
+                  <label className="flex items-center gap-1.5 text-[11px] text-foreground">
                     <input
                       type="checkbox"
                       checked={!!form.personal_best}
@@ -198,7 +199,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value || null }))}
                   placeholder="How did it go?"
                   maxLength={500}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1.5 min-h-[44px] focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
               {actionError && (
@@ -230,5 +231,80 @@ export function EventResultPanel({ event }: { event: Event }) {
         }}
       />
     </>
+  );
+}
+
+interface Retrospective {
+  event_name: string;
+  result: Record<string, unknown> | null;
+  taper_week_tss: number;
+  taper_sessions: number;
+  race_day_activity: {
+    id: string;
+    name: string;
+    tss: number | null;
+    normalized_power: number | null;
+    sport_type: string;
+  } | null;
+  pre_race_tsb: number | null;
+  plan: { plan_name: string; target_tss: number | null } | null;
+}
+
+/** B-21 post-race retrospective — result vs taper load, race-day effort, freshness. */
+function Retrospective({ eventId }: { eventId: string }) {
+  const { authFetch, token } = useAuthFetch();
+  const [open, setOpen] = React.useState(false);
+  const { data, isLoading } = useQuery<Retrospective>({
+    queryKey: ['events', eventId, 'retrospective'],
+    queryFn: () => authFetch<Retrospective>(`/api/v1/events/${eventId}/retrospective`),
+    staleTime: 300_000,
+    enabled: !!token && open,
+  });
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-[11px] text-accent hover:text-accent/80"
+      >
+        {open ? 'Hide retrospective ▴' : '📊 Post-race retrospective ▾'}
+      </button>
+      {open && (
+        <div className="mt-1.5 text-xs text-muted space-y-1">
+          {isLoading || !data ? (
+            <p>Loading…</p>
+          ) : (
+            <>
+              <p>
+                Taper week: <span className="text-foreground">{data.taper_sessions} sessions, {data.taper_week_tss} TSS</span>
+              </p>
+              <p>
+                Freshness: <span className="text-foreground">{data.pre_race_tsb != null ? `TSB ${data.pre_race_tsb > 0 ? '+' : ''}${data.pre_race_tsb}` : '—'}</span>
+              </p>
+              {data.race_day_activity ? (
+                <p>
+                  Race-day effort:{' '}
+                  <a href={`/activities?activity=${data.race_day_activity.id}`} className="text-accent hover:text-accent/80">
+                    {data.race_day_activity.name}
+                  </a>{' '}
+                  <span className="text-foreground">
+                    ({data.race_day_activity.tss != null ? `${data.race_day_activity.tss} TSS` : 'no TSS'}
+                    {data.race_day_activity.normalized_power != null ? `, ${data.race_day_activity.normalized_power}W NP` : ''})
+                  </span>
+                </p>
+              ) : (
+                <p>No race-day activity linked (same-date match).</p>
+              )}
+              {data.plan && (
+                <p>
+                  Plan <span className="text-foreground">{data.plan.plan_name}</span>
+                  {data.plan.target_tss != null && <> targeted {data.plan.target_tss} TSS</>}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

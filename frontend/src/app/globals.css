@@ -91,28 +91,46 @@
 }
 
 :root {
-  --background: #0f172a;
-  --surface: #1e293b;
-  --surface-light: #334155;
-  --accent: #3b82f6;
-  --positive: #22c55e;
-  --warning: #ef4444;
-  --muted: #94a3b8;
-  --info: #38bdf8;
-  --caution: #f59e0b;
-  --foreground: #e2e8f0;
+  color-scheme: dark;
+  --background: 15 23 42;
+  --surface: 30 41 59;
+  --surface-light: 51 65 85;
+  --accent: 59 130 246;
+  --accent-hover: 37 99 235;
+  --positive: 34 197 94;
+  --warning: 239 68 68;
+  --muted: 148 163 184;
+  --info: 56 189 248;
+  --caution: 245 158 11;
+  --foreground: 226 232 240;
+}
+
+/* B-25 light theme (opt-in via Settings → Appearance). */
+[data-theme='light'] {
+  color-scheme: light;
+  --background: 241 245 249;
+  --surface: 255 255 255;
+  --surface-light: 226 232 240;
+  --accent: 37 99 235;
+  --accent-hover: 29 78 216;
+  --positive: 22 163 74;
+  --warning: 220 38 38;
+  --muted: 100 116 139;
+  --info: 2 132 199;
+  --caution: 217 119 6;
+  --foreground: 15 23 42;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
   /* Tabular numerals app-wide so metrics, tables, and timestamps align. */
   font-variant-numeric: tabular-nums;
 }
 
 /* Visible keyboard focus on every interactive element. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
 }
 
@@ -137,14 +155,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: rgb(var(--surface));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--surface-light);
+  background: rgb(var(--surface-light));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: rgb(var(--muted));
 }

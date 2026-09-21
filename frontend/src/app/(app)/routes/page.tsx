@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { useRoutesStore } from '@/lib/stores/routesStore';
@@ -52,6 +52,22 @@ export default function RoutesPage() {
   const compareMode = compareRouteA !== null || compareRouteB !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showOrganize, setShowOrganize] = useState(false);
+  // B-23: first-run discovery tips (dismiss persisted).
+  const [showTips, setShowTips] = useState(() => {
+    try {
+      return localStorage.getItem('fittrack-routes-tips') !== 'done';
+    } catch {
+      return true;
+    }
+  });
+  const dismissTips = () => {
+    try {
+      localStorage.setItem('fittrack-routes-tips', 'done');
+    } catch {
+      /* ignore */
+    }
+    setShowTips(false);
+  };
 
   // Deep-link: select the route referenced by ?route=<id> on load
   useEffect(() => {
@@ -102,19 +118,50 @@ export default function RoutesPage() {
     collection_id: activeCollectionId || undefined,
   };
 
-  // Fetch routes
-  const { data: routesData, isLoading, isError, error: routesError, refetch } = useQuery<{
+  // Fetch routes (B-24: paged infinite scroll, 60/page).
+  const PAGE_SIZE = 60;
+  const {
+    data: routesPages,
+    isLoading,
+    isError,
+    error: routesError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<{
     routes: RouteSummary[];
     totalCount: number;
   }>({
     queryKey: ['routes', queryFilters],
-    queryFn: () => getRoutes(queryFilters, token),
+    queryFn: ({ pageParam = 0 }) =>
+      getRoutes({ ...queryFilters, limit: PAGE_SIZE, offset: pageParam as number }, token),
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.routes.length, 0);
+      return loaded < lastPage.totalCount ? loaded : undefined;
+    },
+    initialPageParam: 0,
     enabled: !!token,
     staleTime: 60_000,
   });
 
-  const routes = routesData?.routes ?? [];
-  const totalCount = routesData?.totalCount ?? 0;
+  const routes = routesPages?.pages.flatMap((p) => p.routes) ?? [];
+  const totalCount = routesPages?.pages[0]?.totalCount ?? 0;
+
+  // B-24: auto-load next page when the sentinel scrolls into view.
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) fetchNextPage();
+      },
+      { rootMargin: '400px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, routes.length]);
 
   // Fetch selected route detail
   const { data: selectedRoute } = useQuery<RouteData>({
@@ -202,11 +249,11 @@ export default function RoutesPage() {
             className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[320px] bg-background border-r border-surface-light/50 lg:hidden flex flex-col"
           >
             <div className="flex items-center justify-between p-4 border-b border-surface-light/50">
-              <h2 className="text-base font-semibold text-white">Organize</h2>
+              <h2 className="text-base font-semibold text-foreground">Organize</h2>
               <button
                 onClick={() => setShowOrganize(false)}
                 aria-label="Close organize panel"
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted hover:text-white hover:bg-surface-light/50"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-surface-light/50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -228,7 +275,7 @@ export default function RoutesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-white">Saved Routes</h1>
+                <h1 className="text-2xl font-bold text-foreground">Saved Routes</h1>
                 {routes && totalCount > 0 && (
                   <span className="inline-flex items-center px-3 py-1 text-sm font-semibold bg-accent/20 text-accent rounded-full">
                     {totalCount} {totalCount === 1 ? 'route' : 'routes'}
@@ -248,7 +295,7 @@ export default function RoutesPage() {
               <button
                 onClick={() => setShowOrganize(true)}
                 aria-label="Open organize panel"
-                className="lg:hidden min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="lg:hidden min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
               >
                 <Folder className="w-4 h-4" />
                 Organize
@@ -268,7 +315,7 @@ export default function RoutesPage() {
                     className={`min-h-[44px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
                       viewMode === key
                         ? 'bg-accent text-white'
-                        : 'text-muted hover:text-white'
+                        : 'text-muted hover:text-foreground'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -280,7 +327,7 @@ export default function RoutesPage() {
               <button
                 onClick={() => setShowImportModal(true)}
                 aria-label="Upload GPX file"
-                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
               >
                 <Upload className="w-4 h-4" />
                 Upload GPX
@@ -288,7 +335,7 @@ export default function RoutesPage() {
 
               <Link
                 href="/routes/duplicates"
-                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
               >
                 <Copy className="w-4 h-4" />
                 Duplicates
@@ -311,7 +358,7 @@ export default function RoutesPage() {
                     className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
                       showHeatmap
                         ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        : 'bg-surface-light hover:bg-surface-light/80 text-white'
+                        : 'bg-surface-light hover:bg-surface-light/80 text-foreground'
                     }`}
                   >
                     <MapPin className="w-4 h-4" />
@@ -337,6 +384,24 @@ export default function RoutesPage() {
         <div className="flex-shrink-0 px-4 py-3 border-b border-surface-light/30">
           <RouteFilterBar />
         </div>
+
+        {/* B-23 discovery tips (first run) */}
+        {showTips && (
+          <div className="flex-shrink-0 px-4 py-2 border-b border-surface-light/30">
+            <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 text-xs text-muted">
+              <span>
+                💡 Tag routes to group them, build <strong className="text-foreground">collections</strong> (smart ones auto-fill), and tick two routes to <strong className="text-foreground">compare</strong> them.
+              </span>
+              <button
+                onClick={dismissTips}
+                className="shrink-0 text-muted hover:text-foreground"
+                aria-label="Dismiss routes tips"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sync status banner */}
         {syncMutation.isSuccess && syncMutation.data && (
@@ -399,6 +464,20 @@ export default function RoutesPage() {
                         routes={routes}
                         onSelect={handleSelectRouteFromList}
                       />
+                  </div>
+                )}
+                {/* B-24 infinite-scroll sentinel (list + grid views) */}
+                {(viewMode === 'list' || viewMode === 'grid') && hasNextPage && (
+                  <div className="p-4 pt-0" ref={loadMoreRef}>
+                    <button
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      className="w-full py-2 text-sm text-muted hover:text-foreground border border-surface-light/50 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isFetchingNextPage
+                        ? 'Loading…'
+                        : `Show more (${routes.length} of ${totalCount})`}
+                    </button>
                   </div>
                 )}
               </>
@@ -476,10 +555,10 @@ export default function RoutesPage() {
           className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-surface border border-accent/30 rounded-xl px-4 py-3 shadow-2xl"
           role="status"
         >
-          <p className="text-sm text-white whitespace-nowrap">Select a second route to compare</p>
+          <p className="text-sm text-foreground whitespace-nowrap">Select a second route to compare</p>
           <button
             onClick={() => clearCompareRoutes()}
-            className="min-h-[44px] px-3 text-sm font-medium text-accent hover:text-white rounded-lg transition-colors"
+            className="min-h-[44px] px-3 text-sm font-medium text-accent hover:text-foreground rounded-lg transition-colors"
           >
             Exit Compare
           </button>

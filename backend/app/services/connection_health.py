@@ -219,3 +219,35 @@ async def _record_transient(
         f"{connection.provider} transient refresh failure "
         f"({connection.consecutive_failures}x) for user {connection.user_id}: {message}"
     )
+
+
+def http_status_code(exc: BaseException) -> int | None:
+    """Extract the HTTP status from an httpx error, else None."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        return exc.response.status_code
+    return None
+
+
+async def handle_sync_http_error(
+    db: AsyncSession, connection: OAuthConnection, exc: BaseException
+) -> None:
+    """Classify a raw HTTP error escaping a provider sync loop (SYNC-03).
+
+    A mid-sync 401/403 means the token was revoked after the refresh check
+    (or refresh was skipped) — mark ``needs_reauth`` with the deduped
+    notification so the scheduler stops hammering and the banner appears.
+    Anything else is recorded as a transient failure. Both commit
+    immediately so a later per-user rollback can't discard them.
+    """
+    status = http_status_code(exc)
+    if status in (401, 403):
+        await _mark_reauth(
+            db,
+            connection,
+            f"{connection.provider} rejected credentials mid-sync "
+            f"(HTTP {status}); token revoked or expired.",
+        )
+    else:
+        await _record_transient(
+            db, connection, f"{connection.provider} HTTP {status or '?'}: {exc}"
+        )

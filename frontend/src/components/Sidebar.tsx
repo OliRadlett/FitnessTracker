@@ -10,6 +10,7 @@ import {
   Bike,
   BookOpen,
   CalendarDays,
+  ChartColumn,
   ChevronsLeft,
   ClipboardList,
   Dumbbell,
@@ -21,6 +22,7 @@ import {
   Route,
   Search,
   Settings,
+  Sunrise,
   Target,
   Video,
   X,
@@ -28,6 +30,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { useAuthFetch } from '@/lib/api';
+import { logoutBackend } from '@/lib/api/account';
 
 interface NavItem {
   href: string;
@@ -38,6 +42,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
+  { href: '/today', label: 'Today Brief', icon: Sunrise, section: 'Overview' },
   { href: '/calendar', label: 'Calendar', icon: CalendarDays, section: 'Overview' },
   { href: '/notifications', label: 'Notifications', icon: Bell, section: 'Overview' },
   { href: '/training', label: 'Training', icon: ClipboardList, section: 'Train' },
@@ -49,6 +54,7 @@ const navItems: NavItem[] = [
   { href: '/cycling', label: 'Cycling', icon: Bike, section: 'Train' },
   { href: '/health', label: 'Health', icon: HeartPulse, section: 'Train' },
   { href: '/routes', label: 'Routes', icon: Route, section: 'Train' },
+  { href: '/analytics', label: 'Analytics', icon: ChartColumn, section: 'Train' },
   { href: '/wiki', label: 'Wiki', icon: BookOpen, section: 'Resources' },
   { href: '/settings', label: 'Settings', icon: Settings, section: 'Resources' },
 ];
@@ -160,7 +166,7 @@ export function MobileMenuButton() {
       aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
       aria-expanded={isOpen}
       aria-controls="sidebar-navigation"
-      className="md:hidden fixed top-4 left-4 z-50 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-white hover:bg-surface-light transition-colors"
+      className="md:hidden fixed top-4 left-4 z-50 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface border border-surface-light/50 text-foreground hover:bg-surface-light transition-colors"
     >
       {isOpen ? <AppIcon icon={X} size={24} /> : <AppIcon icon={Menu} size={24} />}
     </button>
@@ -202,7 +208,7 @@ export function MobileBottomNav() {
               className={`flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium transition-colors ${
                 isActive
                   ? 'text-accent bg-accent/15'
-                  : 'text-muted hover:text-white active:bg-surface-light/50'
+                  : 'text-muted hover:text-foreground active:bg-surface-light/50'
               }`}
             >
               <AppIcon icon={item.icon} size={20} />
@@ -215,7 +221,7 @@ export function MobileBottomNav() {
         <button
           onClick={open}
           aria-label="Open full navigation menu"
-          className="flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium text-muted hover:text-white active:bg-surface-light/50 transition-colors"
+          className="flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium text-muted hover:text-foreground active:bg-surface-light/50 transition-colors"
         >
           <span className="text-xl leading-none" aria-hidden="true">☰</span>
           <span className="leading-tight">More</span>
@@ -230,6 +236,7 @@ export function MobileBottomNav() {
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { authFetch } = useAuthFetch();
   const { isOpen, close, isCollapsed, toggleCollapse, menuButtonRef } = useSidebar();
   const asideRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -309,15 +316,15 @@ export function Sidebar() {
         `}
       >
         <div className={`border-b border-surface-light/50 ${isCollapsed ? 'md:px-2 md:py-4 md:flex md:justify-center p-6' : 'p-6'}`}>
-          <h1 className={`text-xl font-bold text-white flex items-center gap-2.5 ${isCollapsed ? 'md:hidden' : ''}`}>
+          <h1 className={`text-xl font-bold text-foreground flex items-center gap-2.5 ${isCollapsed ? 'md:hidden' : ''}`}>
             <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent" aria-hidden="true">
-              <Zap size={18} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+              <Zap size={18} strokeWidth={2.5} className="text-foreground" aria-hidden="true" />
             </span>
             FitTrack
           </h1>
           {isCollapsed && (
             <span className="hidden md:inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent" aria-hidden="true">
-              <Zap size={18} strokeWidth={2.5} className="text-white" aria-hidden="true" />
+              <Zap size={18} strokeWidth={2.5} className="text-foreground" aria-hidden="true" />
             </span>
           )}
         </div>
@@ -328,7 +335,7 @@ export function Sidebar() {
             title={isCollapsed ? 'Search (Ctrl+P)' : undefined}
             className={`flex items-center rounded-lg text-sm font-medium transition-colors w-full text-left ${
               isCollapsed ? 'md:justify-center md:px-0 md:py-3 gap-3 px-4 py-3' : 'gap-3 px-4 py-3'
-            } text-muted hover:text-white hover:bg-surface-light/50 border border-surface-light/30 mb-1`}
+            } text-muted hover:text-foreground hover:bg-surface-light/50 border border-surface-light/30 mb-1`}
           >
             <AppIcon icon={Search} size={18} className="shrink-0" />
             <span className={`flex-1 ${isCollapsed ? 'md:hidden' : ''}`}>Search</span>
@@ -370,7 +377,7 @@ export function Sidebar() {
                     } ${
                       isActive
                         ? 'bg-accent/20 text-accent border border-accent/30'
-                        : 'text-muted hover:text-white hover:bg-surface-light/50'
+                        : 'text-muted hover:text-foreground hover:bg-surface-light/50'
                     }`}
                   >
                     {isActive && (
@@ -392,7 +399,7 @@ export function Sidebar() {
         <button
           onClick={toggleCollapse}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="hidden md:flex items-center justify-center mx-2 mb-2 p-2 rounded-lg text-muted hover:text-white hover:bg-surface-light/50 transition-colors"
+          className="hidden md:flex items-center justify-center mx-2 mb-2 p-2 rounded-lg text-muted hover:text-foreground hover:bg-surface-light/50 transition-colors"
         >
           <span className={`inline-flex transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}>
             <AppIcon icon={ChevronsLeft} size={20} />
@@ -410,12 +417,20 @@ export function Sidebar() {
                 />
               )}
               <div className={`flex-1 min-w-0 ${isCollapsed ? 'md:hidden' : ''}`}>
-                <p className="text-sm font-medium text-white truncate">{session.user.name}</p>
+                <p className="text-sm font-medium text-foreground truncate">{session.user.name}</p>
                 <p className="text-xs text-muted truncate">{session.user.email}</p>
               </div>
             </div>
             <button
-              onClick={() => signOut()}
+              onClick={async () => {
+                // SEC-07: revoke the backend JWT first; sign out regardless.
+                try {
+                  await logoutBackend(authFetch);
+                } catch {
+                  // Best-effort — a failed revocation must not trap the user.
+                }
+                await signOut();
+              }}
               aria-label="Sign out of your account"
               className={`w-full text-left text-sm text-muted hover:text-warning rounded-lg hover:bg-surface-light/50 transition-colors ${
                 isCollapsed ? 'md:flex md:justify-center md:py-2 px-3 py-2' : 'px-3 py-2'

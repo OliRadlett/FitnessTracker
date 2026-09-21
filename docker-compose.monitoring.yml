@@ -1,0 +1,42 @@
+# Monitoring overlay (B-33) — Prometheus + Alertmanager for the backend
+# /metrics endpoint. Opt-in, NOT part of the default dev stack:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f docker-compose.monitoring.yml up -d prometheus alertmanager
+#
+# In dev, point Prometheus at localhost:8000 instead (edit
+# infra/prometheus/prometheus.yml target to host.docker.internal:8000).
+#
+# Prerequisite: backend must expose metrics — set ENABLE_METRICS=true
+# (Droplet .env; app/main.py gates the instrumentator on it).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    mem_limit: 200m
+    ports:
+      # SEC-01: loopback-only like the app ports.
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ../infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    mem_limit: 80m
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ../infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+
+volumes:
+  prometheus_data:

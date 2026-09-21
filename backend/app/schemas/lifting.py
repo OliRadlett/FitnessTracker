@@ -101,6 +101,7 @@ class LiftingSessionRead(LiftingSessionBase):
     user_id: uuid.UUID
     activity_id: uuid.UUID | None = None
     total_volume_kg: float | None = None
+    estimated_tss: float | None = None  # B-31 duration×RPE load estimate
     sets: list[LiftingSetRead] = []
     linked_activity: LinkedActivityRead | None = None
     started_at: datetime | None = None
@@ -423,3 +424,6 @@ class VideoProcessStatus(BaseModel):
     estimated_rpe: float | None = None
     rpe_confidence: float | None = None
     rpe_evidence_json: str | None = None
+    # B-30: AI estimate adjusted by the user's RPE calibration (None when
+    # uncalibrated — equals estimated_rpe then).
+    calibrated_rpe: float | None = None

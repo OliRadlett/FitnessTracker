@@ -21,7 +21,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
   return (
     <div className="bg-surface rounded-xl border border-surface-light/50 p-12 text-center" role="status" aria-live="polite">
       <p className="text-4xl mb-3" aria-hidden="true">{icon}</p>
-      <p className="text-white font-medium mb-1">{title}</p>
+      <p className="text-foreground font-medium mb-1">{title}</p>
       <p className="text-muted text-sm max-w-md mx-auto">{description}</p>
       {action && (
         <div className="mt-4">

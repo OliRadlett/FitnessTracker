@@ -19,7 +19,7 @@ export function PageHeader({ title, subtitle, actions, status }: PageHeaderProps
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white">{title}</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{title}</h1>
         {subtitle ? <p className="text-muted text-sm mt-1">{subtitle}</p> : null}
         {status}
       </div>

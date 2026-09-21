@@ -28,8 +28,8 @@ const RouteRow = ({
       <div className="p-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-white font-medium truncate">{route.name}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-foreground font-medium truncate flex-1 min-w-0">{route.name}</h3>
               {route.is_favorite && (
                 <span className="text-yellow-400 text-xs">★</span>
               )}
@@ -62,7 +62,7 @@ const RouteRow = ({
               ).map((s) => (
                 <span
                   key={s.provider}
-                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-foreground ${
                     PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >
@@ -98,7 +98,7 @@ const RouteRow = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-sm text-muted flex-wrap ml-4">
+          <div className="flex items-center gap-4 text-sm text-muted flex-wrap ml-4 min-w-0 max-w-[62%]">
             <span>📏 {formatDistance(route.distance_meters)}</span>
             {route.elevation_gain_meters && (
               <span>⛰️ {fmtElevation(route.elevation_gain_meters)}</span>

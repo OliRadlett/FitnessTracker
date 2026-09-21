@@ -1,0 +1,51 @@
+{
+  "title": "FitTrack Overview",
+  "uid": "fittrack-overview",
+  "timezone": "utc",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"fittrack-backend\"}[5m]))",
+          "legendFormat": "req/s"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "5xx ratio",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"fittrack-backend\", status=\"5xx\"}[5m])) / sum(rate(http_requests_total{job=\"fittrack-backend\"}[5m]))",
+          "legendFormat": "5xx share"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "p95 latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"fittrack-backend\"}[5m])) by (le))",
+          "legendFormat": "p95 s"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Backend up",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job=\"fittrack-backend\"}",
+          "legendFormat": "up"
+        }
+      ]
+    }
+  ]
+}

@@ -140,6 +140,28 @@ async def _find_activity_source(
     return result.scalar_one_or_none()
 
 
+async def _find_legacy_strava_activity(
+    db: AsyncSession, provider_activity_id: str
+) -> Activity | None:
+    """Backward-compat lookup: Activity row without an ActivitySource record."""
+    legacy = await db.execute(
+        select(Activity).where(
+            Activity.source == "strava",
+            Activity.provider_activity_id == provider_activity_id,
+        )
+    )
+    return legacy.scalar_one_or_none()
+
+
+async def _is_strava_activity_unseen(
+    db: AsyncSession, provider_activity_id: str
+) -> bool:
+    """True when neither an ActivitySource nor a legacy Activity row exists."""
+    if await _find_activity_source(db, provider_activity_id) is not None:
+        return False
+    return await _find_legacy_strava_activity(db, provider_activity_id) is None
+
+
 # ── Sync logic ──────────────────────────────────────────────────────────────
 
 
@@ -157,9 +179,13 @@ async def sync_activities(
     for all synced activities.
 
     Paginates through the sync window (newest first) so a backlog larger
-    than ``limit`` is not silently truncated. When the run stops because
-    the cap was hit on a full page, ``truncated_ref`` (if supplied) is
-    appended with ``True`` so callers know not to advance the watermark.
+    than ``limit`` drains instead of stalling: pages are walked while they
+    yield unseen activities, up to a hard ``MAX_PAGES`` safety cap per run.
+    The walk stops at the first fully-seen page (plus a one-page probe for
+    unseen rows deeper in the window) or at the end of the window.
+    ``truncated_ref`` (if supplied) is appended with ``True`` only when the
+    run stopped while unseen in-window activities remain, so callers hold
+    the watermark exactly while there is more to drain.
     """
     from app.services.merge_service import (
         find_duplicate_activity,
@@ -176,11 +202,14 @@ async def sync_activities(
 
     synced: list[Activity] = []
     per_page = min(limit, 100)
+    # Hard per-run page cap (SYNC-02): bounds API quota while still draining
+    # genuine backlogs past ``limit``. The watermark only holds while unseen
+    # in-window activities remain.
+    MAX_PAGES = 10
     page = 1
-    fetched_total = 0
     truncated = False
 
-    while True:
+    while page <= MAX_PAGES:
         strava_activities = await strava_client.get_activities(
             access_token=connection.access_token,
             after=after,
@@ -191,6 +220,7 @@ async def sync_activities(
         if not strava_activities:
             break
 
+        page_new = 0
         for sa in strava_activities:
             provider_id = str(sa["id"])
 
@@ -198,15 +228,10 @@ async def sync_activities(
             existing_source = await _find_activity_source(db, provider_id)
             if existing_source:
                 continue
+            page_new += 1
 
             # Also check legacy source/provider_activity_id on Activity for backward compat
-            legacy = await db.execute(
-                select(Activity).where(
-                    Activity.source == "strava",
-                    Activity.provider_activity_id == provider_id,
-                )
-            )
-            existing_activity = legacy.scalar_one_or_none()
+            existing_activity = await _find_legacy_strava_activity(db, provider_id)
             if existing_activity:
                 # Backfill the ActivitySource record
                 source = ActivitySource(
@@ -271,25 +296,41 @@ async def sync_activities(
                 )
                 synced.append(activity)
 
-        fetched_total += len(strava_activities)
-
         # A partial page means we've reached the oldest activity in the window.
         if len(strava_activities) < per_page:
             break
 
-        # A full page at the total cap: probe the next page to learn whether
-        # more in-scope activities remain, so callers can hold the watermark.
-        if fetched_total >= limit:
-            next_page = await strava_client.get_activities(
+        # A fully-seen page means the newest window is drained; probe one
+        # page deeper for unseen rows before letting the caller advance the
+        # watermark. Without this the watermark stalls forever on backlogs
+        # larger than one page (SYNC-02).
+        if page_new == 0:
+            probe = await strava_client.get_activities(
                 access_token=connection.access_token,
                 after=after,
                 page=page + 1,
-                per_page=1,
+                per_page=5,
             )
-            truncated = bool(next_page)
+            for psa in probe:
+                if await _is_strava_activity_unseen(db, str(psa["id"])):
+                    truncated = True
+                    break
             break
 
         page += 1
+    else:
+        # Hit the per-run page cap while still finding new activities —
+        # probe once before holding the watermark.
+        probe = await strava_client.get_activities(
+            access_token=connection.access_token,
+            after=after,
+            page=MAX_PAGES + 1,
+            per_page=1,
+        )
+        for psa in probe:
+            if await _is_strava_activity_unseen(db, str(psa["id"])):
+                truncated = True
+                break
 
     if truncated_ref is not None:
         truncated_ref.append(truncated)
@@ -810,7 +851,7 @@ async def backfill_streams_for_all_activities(
         activities_by_user[uid].append((activity_id, provider_activity_id))
 
     backfilled = 0
-    total = len(activities)
+    total = len(rows)
 
     for uid, user_activities in activities_by_user.items():
         connection = await get_strava_connection(db, uid)

@@ -1,0 +1,12 @@
+# Alertmanager config (B-33). Default receiver only logs — wire a real
+# receiver (Slack webhook / email / PagerDuty) before relying on paging.
+# TODO: add Slack `api_url` (or SMTP) + route critical alerts there.
+
+route:
+  receiver: 'log-only'
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: 'log-only'
