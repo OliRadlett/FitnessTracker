@@ -17,6 +17,7 @@ WeaknessType = Literal[
     "vo2max_ftp_mismatch",
     "decoupling",
     "zone_distribution",
+    "form_quality",
 ]
 WeaknessSeverity = Literal["critical", "high", "medium", "low", "strength"]
 StrengthLevel = Literal["beginner", "intermediate", "advanced", "elite"]

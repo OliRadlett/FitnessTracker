@@ -8,7 +8,7 @@ import type { Goal } from '@/lib/api';
 
 /** Icon per metric keyword — best-effort visual hint. */
 function metricIcon(goal: Goal): string {
-  const m = goal.metric;
+  const m = goal.metric ?? '';
   if (m.includes('ftp')) return '⚡';
   if (m === 'body_weight') return '⚖️';
   if (m.includes('1rm')) return '🏋️';

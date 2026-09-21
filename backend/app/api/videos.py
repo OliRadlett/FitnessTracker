@@ -271,6 +271,8 @@ async def get_process_status(
     if video is None:
         raise HTTPException(404, "Video not found")
 
+    from app.services.video_analytics import calibrated_rpe_for
+
     return VideoProcessStatus(
         video_id=video.id,
         analysis_status=video.analysis_status,
@@ -296,6 +298,9 @@ async def get_process_status(
         estimated_rpe=video.estimated_rpe,
         rpe_confidence=video.rpe_confidence,
         rpe_evidence_json=video.rpe_evidence_json,
+        calibrated_rpe=await calibrated_rpe_for(
+            db, current_user.id, video.exercise_name, video.estimated_rpe
+        ),
     )
 
 

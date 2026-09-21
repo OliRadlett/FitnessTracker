@@ -97,7 +97,7 @@ export default function TodayBriefPage() {
     staleTime: 60_000,
     enabled: !!token && !!activePlan,
   });
-  const todayPlanDay: TrainingWeekDay | undefined = planWeek?.days.find(
+  const todayPlanDay: TrainingWeekDay | undefined = (planWeek?.days ?? []).find(
     (d) => d.day_date === toDateStr(new Date()),
   );
 

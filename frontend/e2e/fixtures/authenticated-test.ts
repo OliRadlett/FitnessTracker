@@ -76,6 +76,18 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarData) });
   }],
 
+  // Activities — analysis MUST come before the general handler, otherwise
+  // /{id}/analysis returns an activity object and crashes RideAnalysisCard.
+  // 404 hides the card (same UX as "no analysis computed yet").
+  ['/analysis', (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/activities\/[^/]+\/analysis/.test(url)) {
+      route.fulfill({ status: 404, body: JSON.stringify({ detail: 'No analysis' }) });
+      return;
+    }
+    route.continue();
+  }],
+
   // Activities
   ['api/v1/activities', (route) => {
     const url = route.request().url();
@@ -159,6 +171,18 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockLlmAnalysis) });
   }],
 
+  // Routes — tags/collections BEFORE the general routes handler.
+  ['api/v1/routes/tags', (route) => {
+    if (route.request().method() === 'POST') {
+      route.fulfill({ status: 201, body: JSON.stringify(mockData.mockRouteTags[0]) });
+    } else {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteTags) });
+    }
+  }],
+  ['api/v1/routes/collections', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteCollections) });
+  }],
+
   // Routes
   ['api/v1/routes/', (route) => {
     const url = route.request().url();
@@ -166,7 +190,12 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     if (routeMatch && routeMatch[1] !== 'sync' && routeMatch[1] !== 'upload-gpx') {
       route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteDetail) });
     } else {
-      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRoutes) });
+      // B-36: X-Total-Count header drives the count badge + infinite scroll.
+      route.fulfill({
+        status: 200,
+        headers: { 'X-Total-Count': String(mockData.mockRoutes.length) },
+        body: JSON.stringify(mockData.mockRoutes),
+      });
     }
   }],
 
@@ -188,9 +217,13 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     }
   }],
 
-  // Training Plans — generate MUST come before general to avoid substring collision
+  // Training Plans — suggestions MUST come before the detail matcher,
+  // otherwise /{id}/suggestions returns a plan object and crashes callers.
   ['api/v1/training-plans/generate', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockTrainingPlan) });
+  }],
+  ['/suggestions', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockAdaptiveSuggestions) });
   }],
   ['api/v1/training-plans', (route) => {
     const url = route.request().url();
@@ -214,6 +247,22 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   }],
   ['api/v1/metrics/health-alerts/analyze', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify({ analysis_results: [] }) });
+  }],
+
+  // Sleep intelligence (B-14)
+  ['api/v1/metrics/sleep-debt', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockSleepDebt) });
+  }],
+  ['api/v1/metrics/sleep-consistency', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockSleepConsistency) });
+  }],
+  ['api/v1/metrics/optimal-bedtime', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockOptimalBedtime) });
+  }],
+
+  // Analytics insights (B-15/B-16 brief)
+  ['api/v1/analytics/insights', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockAthleteInsights) });
   }],
 
   // Connections

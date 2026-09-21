@@ -94,8 +94,9 @@ export function TodayAdaptiveAction({
   const selected = React.useMemo(() => {
     const data: AdaptiveSuggestionsResponse | undefined = query.data;
     if (!data) return null;
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
     const candidates: { type: string; action: AdaptiveAction }[] = [];
-    for (const s of data.suggestions) {
+    for (const s of suggestions) {
       if (!ACTIONABLE_TYPES.has(s.type) || s.actions.length === 0) continue;
       for (const action of s.actions) candidates.push({ type: s.type, action });
     }

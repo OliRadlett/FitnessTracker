@@ -133,7 +133,7 @@ export function TodayTab({
   });
 
   const todayStr = toDateStr(new Date());
-  const todayPlanDay: TrainingWeekDay | undefined = planWeek?.days.find(
+  const todayPlanDay: TrainingWeekDay | undefined = (planWeek?.days ?? []).find(
     (d) => d.day_date === todayStr,
   );
 

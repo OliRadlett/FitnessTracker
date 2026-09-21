@@ -1,0 +1,41 @@
+# FitTrack alert rules (B-33). Metric names follow
+# prometheus-fastapi-instrumentator v8 defaults with status grouping on
+# (should_group_status_codes=True in app/main.py → status="5xx").
+#
+# Deliberately NOT covered (no exporter signals exist for them): Celery queue
+# depth, per-task failure rates, Redis memory. If those get exporters, add:
+#   - CeleryTaskFailures (celery_task_failed_total rate by task)
+#   - RedisQueueBacklog (redis_stream_length / celery queue length)
+
+groups:
+  - name: fittrack
+    rules:
+      - alert: BackendDown
+        expr: up{job="fittrack-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FitTrack backend is down (no /metrics scrape for 2m)"
+
+      - alert: High5xxRate
+        expr: |
+          sum(rate(http_requests_total{job="fittrack-backend", status="5xx"}[5m]))
+          /
+          sum(rate(http_requests_total{job="fittrack-backend"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "5xx rate above 5% for 5 minutes"
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="fittrack-backend"}[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 2s for 10 minutes"

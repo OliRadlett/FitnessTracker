@@ -670,6 +670,7 @@ export const mockGoals = [
     id: 'goal-1',
     user_id: 'user-1',
     goal_type: 'ftp',
+    metric: 'ftp_watts',
     target_value: 280,
     current_value: 260,
     target_date: '2026-12-31',
@@ -682,6 +683,8 @@ export const mockGoals = [
     id: 'goal-2',
     user_id: 'user-1',
     goal_type: 'squat_1rm',
+    metric: 'estimated_1rm',
+    filter_json: { exercise: 'Back Squat' },
     target_value: 200,
     current_value: 180,
     target_date: '2026-12-31',
@@ -694,6 +697,7 @@ export const mockGoals = [
     id: 'goal-3',
     user_id: 'user-1',
     goal_type: 'weekly_sessions',
+    metric: 'weekly_sessions',
     target_value: 6,
     current_value: 5,
     status: 'active' as const,
@@ -859,6 +863,79 @@ export const mockRespiratoryRate = {
   trend: 'stable' as const,
   date: new Date().toISOString().split('T')[0],
 };
+
+// B-14 sleep intelligence + B-15 insights for the Today brief / Analytics specs.
+export const mockSleepDebt = {
+  debt_hours: 1.5,
+  avg_sleep_hours: 7.2,
+  days_below_target: 2,
+  target_hours: 8,
+  window_days: 7,
+};
+
+export const mockSleepConsistency = {
+  consistency_score: 82,
+  avg_bedtime: '22:45',
+  std_minutes: 25,
+  days_analyzed: 7,
+  window_days: 7,
+};
+
+export const mockOptimalBedtime = {
+  suggested_bedtime: '22:30',
+  confidence: 'high' as const,
+  message: 'Your best recovery follows 22:15–22:45 bedtimes.',
+  best_recovery_bedtimes: [],
+};
+
+// B-35: adaptive suggestions mock (prevents fall-through to
+// the plan-detail mock, which returns the wrong shape and crashes callers).
+export const mockAdaptiveSuggestions = {
+  generated_at: '2026-09-20T06:00:00Z',
+  plan_id: 'plan-1',
+  plan_name: 'Base Building Block',
+  fatigue: 'moderate',
+  summary: 'On track — hold volume.',
+  axes: [],
+  suggestions: [],
+};
+
+export const mockRouteTags = [
+  { id: 'tag-1', user_id: 'user-1', name: 'Hilly', color: '#ef4444', created_at: '2026-01-01T00:00:00Z' },
+  { id: 'tag-2', user_id: 'user-1', name: 'Gravel', color: '#22c55e', created_at: '2026-01-01T00:00:00Z' },
+];
+
+export const mockRouteCollections = [
+  {
+    id: 'col-1',
+    user_id: 'user-1',
+    name: 'Weekend Rides',
+    is_smart: false,
+    rules: null,
+    route_count: 3,
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'col-2',
+    user_id: 'user-1',
+    name: 'Long Climbs',
+    is_smart: true,
+    rules: { min_elevation: 500 },
+    route_count: 2,
+    created_at: '2026-01-01T00:00:00Z',
+  },
+];
+
+export const mockAthleteInsights = [
+  {
+    id: 'insight-1',
+    insight_type: 'sleep_performance',
+    period: '90d',
+    data: { bands: [{ band: '7h+', n: 9, avg_np_ftp: 0.912, avg_rpe: 6.8 }] },
+    sample_size: 18,
+    confidence: 'medium',
+  },
+];
 
 export const mockWhoopWeekly = {
   week_start: '2026-08-17',

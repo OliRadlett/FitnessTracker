@@ -8,6 +8,8 @@ import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ChartBody } from '@/components/charts/Chart';
+import type { ChartData } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -275,6 +277,9 @@ export default function AnalyticsPage() {
       {/* B-18 season overview — big-picture AI brief over all domains */}
       <SeasonOverview />
 
+      {/* B-31 unified load — cycling TSS + lifting estimates on one axis */}
+      <CombinedLoad />
+
       {/* B-17 What-If Lab — target timelines at current/half/double slope */}
       <WhatIfLab />
     </div>
@@ -374,6 +379,34 @@ function WhatIfLab() {
           Enter a target above — needs an established trend in the right direction.
         </p>
       )}
+    </Card>
+  );
+}
+
+/* ── B-31: unified training-load chart ──────────────────────────────────── */
+
+function CombinedLoad() {
+  const { authFetch, token } = useAuthFetch();
+  const { data, isLoading } = useQuery<ChartData>({
+    queryKey: ['chart-combined-load', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/combined_training_load?days=90'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>⚡ Combined Training Load</CardTitle>
+      </CardHeader>
+      <p className="text-xs text-muted mb-2">
+        Cycling TSS + lifting estimates (duration×RPE) — one axis for total stress.
+      </p>
+      <ChartBody
+        isLoading={isLoading}
+        data={data}
+        emptyMessage="Log rides or lifts to see combined load"
+        height={260}
+      />
     </Card>
   );
 }

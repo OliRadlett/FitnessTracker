@@ -2286,3 +2286,181 @@ class ChartService:
             y_label="TSS",
             insights=insights,
         )
+
+    # ── Lifting-video trends (B-26) ─────────────────────────────────────────
+
+    async def _video_metric_series(
+        self,
+        user_id: uuid.UUID,
+        column: str,
+        days: int = 90,
+        exercise_name: str | None = None,
+    ) -> list:
+        """Analyzed videos with a non-null metric column, oldest first."""
+        from app.models.lifting import LiftVideo
+
+        cutoff = date.today() - timedelta(days=days)
+        query = select(LiftVideo).where(
+            LiftVideo.user_id == user_id,
+            LiftVideo.created_at >= cutoff,
+            getattr(LiftVideo, column).isnot(None),
+        )
+        if exercise_name:
+            query = query.where(LiftVideo.exercise_name == exercise_name)
+        result = await self.db.execute(query.order_by(LiftVideo.created_at))
+        return list(result.scalars().all())
+
+    async def video_form_trend(
+        self, user_id: uuid.UUID, days: int = 90, exercise_name: str | None = None
+    ) -> ChartData:
+        """Form score (0–100) per analyzed video over time."""
+        videos = await self._video_metric_series(
+            user_id, "form_score", days, exercise_name
+        )
+        if not videos:
+            return ChartData(
+                chart_type="line",
+                title="Video Form Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Form score",
+            )
+        return ChartData(
+            chart_type="line",
+            title="Video Form Trend",
+            labels=[v.created_at.date().isoformat() for v in videos],
+            series=[
+                ChartSeries(
+                    name="Form score",
+                    data=[v.form_score for v in videos],
+                    color="#22c55e",
+                )
+            ],
+            x_label="Date",
+            y_label="Form score (0–100)",
+        )
+
+    async def video_velocity_trend(
+        self, user_id: uuid.UUID, days: int = 90, exercise_name: str | None = None
+    ) -> ChartData:
+        """Mean concentric velocity per analyzed video over time."""
+        videos = await self._video_metric_series(
+            user_id, "mean_concentric_velocity", days, exercise_name
+        )
+        if not videos:
+            return ChartData(
+                chart_type="line",
+                title="Video Velocity Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Velocity (m/s)",
+            )
+        return ChartData(
+            chart_type="line",
+            title="Video Velocity Trend",
+            labels=[v.created_at.date().isoformat() for v in videos],
+            series=[
+                ChartSeries(
+                    name="Mean concentric velocity",
+                    data=[v.mean_concentric_velocity for v in videos],
+                    color="#3b82f6",
+                )
+            ],
+            x_label="Date",
+            y_label="Velocity (m/s)",
+        )
+
+    async def video_consistency_trend(
+        self, user_id: uuid.UUID, days: int = 90, exercise_name: str | None = None
+    ) -> ChartData:
+        """Rep-consistency score per analyzed video over time."""
+        videos = await self._video_metric_series(
+            user_id, "rep_consistency_score", days, exercise_name
+        )
+        if not videos:
+            return ChartData(
+                chart_type="line",
+                title="Video Consistency Trend",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Consistency",
+            )
+        return ChartData(
+            chart_type="line",
+            title="Video Consistency Trend",
+            labels=[v.created_at.date().isoformat() for v in videos],
+            series=[
+                ChartSeries(
+                    name="Rep consistency",
+                    data=[v.rep_consistency_score for v in videos],
+                    color="#a855f7",
+                )
+            ],
+            x_label="Date",
+            y_label="Consistency (0–100)",
+        )
+
+    # ── Combined training load (B-31) ───────────────────────────────────────
+
+    async def combined_training_load(
+        self, user_id: uuid.UUID, days: int = 90
+    ) -> ChartData:
+        """Daily cycling TSS + lifting estimated TSS + combined total (B-31).
+
+        The two disciplines stay separate series so the mix is visible; the
+        combined series is what a unified CTL/ATL would integrate.
+        """
+        from app.models.lifting import LiftingSession
+        from app.services.cycling.tss import get_daily_tss
+
+        end = date.today()
+        start = end - timedelta(days=days)
+        cycling = await get_daily_tss(self.db, user_id, start, end)
+
+        lift_rows = (
+            await self.db.execute(
+                select(
+                    LiftingSession.session_date,
+                    func.coalesce(func.sum(LiftingSession.estimated_tss), 0.0),
+                ).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date >= start,
+                    LiftingSession.session_date <= end,
+                    LiftingSession.estimated_tss.isnot(None),
+                )
+                .group_by(LiftingSession.session_date)
+            )
+        ).all()
+        lifting = {day: float(total) for day, total in lift_rows}
+
+        labels, cyc, lift, combined = [], [], [], []
+        day = start
+        while day <= end:
+            labels.append(day.isoformat())
+            c = round(cycling.get(day, 0.0), 1)
+            li = round(lifting.get(day, 0.0), 1)
+            cyc.append(c)
+            lift.append(li)
+            combined.append(round(c + li, 1))
+            day += timedelta(days=1)
+
+        return ChartData(
+            chart_type="line",
+            title="Combined Training Load",
+            labels=labels,
+            series=[
+                ChartSeries(name="Cycling TSS", data=cyc, color="#3b82f6"),
+                ChartSeries(name="Lifting TSS (est.)", data=lift, color="#a855f7"),
+                ChartSeries(name="Combined", data=combined, color="#22c55e"),
+            ],
+            x_label="Date",
+            y_label="TSS",
+            insights=[
+                "Lifting TSS is a duration×RPE estimate — same order as cycling TSS by design."
+            ]
+            if any(lift)
+            else [],
+        )

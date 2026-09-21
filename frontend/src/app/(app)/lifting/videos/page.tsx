@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { LiftVideoForm } from '@/components/lifting/LiftVideoForm';
+import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -62,6 +63,7 @@ export default function VideosPage() {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'bank' | 'progress'>('bank');
 
   const hasFilters = exerciseFilter || afterFilter || beforeFilter;
 
@@ -70,14 +72,33 @@ export default function VideosPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-3xl font-bold text-foreground">📹 Videos</h1>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          + Add Video
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30">
+            {(['bank', 'progress'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                  tab === t ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                {t === 'bank' ? 'Bank' : 'Progress'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            + Add Video
+          </button>
+        </div>
       </div>
 
+      {tab === 'progress' ? (
+        <VideoProgressTab initialExercise={exerciseFilter} />
+      ) : (
+      <>
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Exercise filter */}
@@ -313,6 +334,7 @@ export default function VideosPage() {
           ))}
         </div>
       )}
+      </>)}
 
       {/* Add Video Form */}
       <LiftVideoForm
