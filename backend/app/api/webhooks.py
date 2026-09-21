@@ -97,5 +97,10 @@ async def strava_webhook_event(
             status="pending",
         )
         db.add(event)
-        await db.flush()  # BUG-015: flush only (PK needed below); get_db commits.
+        # BUG-015 carve-out: this endpoint's sole job is durably queueing one
+        # row before returning 200 (the Celery task drains it async). An
+        # explicit commit here is the contract — get_db's end-of-request
+        # commit would also persist it in prod, but receipt must never depend
+        # on post-response behavior.
+        await db.commit()
     return {"status": "ok", "queued": str(event.id)}

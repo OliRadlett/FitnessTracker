@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:bug-report": "playwright test e2e/bug-report.spec.ts",
+    "test:e2e:ci": "playwright test e2e/routes.spec.ts e2e/routes-organize.spec.ts e2e/mutations.spec.ts",
     "codegen": "openapi-typescript http://localhost:8000/openapi.json -o src/lib/api/types/generated.ts"
   },
   "dependencies": {
