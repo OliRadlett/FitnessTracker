@@ -172,6 +172,13 @@ These are the numbers the rewrite must move.
   real rep on 77ca64a0. Effect: `auto_rep_mae` **1.33 → 0.25** with
   `declared_rep_exact_rate` back to 1.0. Two clips still read 2 vs 1 (a bench
   and a deadlift whose partial is ≥75% of max ROM).
+- ✅ **Lockout is view-gated:** the hip-extension test is sagittal and false-
+  flagged low-bar squats. Verified: low-bar singles 140/130 kg read top_hip
+  147-148° while genuinely standing (falsely "soft lockout"), high-bar 150 kg
+  reads 170°. On non-side views lockout now uses the knee only (reliable from
+  any angle); hip extension is only assessed on a side view. Effect:
+  `Soft lockout` flags **24 → 0**; low-bar singles + the 8-rep set now score
+  100. Remaining `Incomplete lockout` (4) are reps with genuinely bent knees.
 - ✅ **Trim fallback + deadlift lockout:** with no scene changes the trim now
   keeps the WHOLE video (was middle-80%). The old fallback cut the last 10% —
   exactly where a short single-rep deadlift locks out — so the top frame read

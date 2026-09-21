@@ -205,6 +205,19 @@ class TestRouteExercise:
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
 
 
+class TestSquatLockout:
+    def test_side_view_requires_hip_extension(self):
+        assert pa._squat_lockout(178.0, 150.0, "side") == (False, True)
+        assert pa._squat_lockout(178.0, 172.0, "side") == (True, False)
+        assert pa._squat_lockout(150.0, 172.0, "side") == (False, False)
+
+    def test_non_side_only_checks_knees(self):
+        # Low-bar 140kg single, 3/4 view: knees locked, hip reads 148 standing.
+        # Must NOT be flagged soft (hip angle is sagittal / view-distorted).
+        assert pa._squat_lockout(180.0, 148.0, "three_quarter") == (True, False)
+        assert pa._squat_lockout(150.0, 148.0, "three_quarter") == (False, False)
+
+
 class TestSquatFormScoring:
     def test_clean_single_rep_scores_100(self):
         rep = {

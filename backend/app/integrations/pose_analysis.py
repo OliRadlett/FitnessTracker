@@ -638,6 +638,24 @@ def _check_heels_flat(landmarks) -> bool:
     return left_flat and right_flat
 
 
+def _squat_lockout(
+    knee_angle_top: float, hip_angle_top: float, view: str
+) -> tuple[bool, bool]:
+    """Return (lockout_complete, lockout_soft).
+
+    The hip-extension test is sagittal: a low-bar squat's forward torso lean
+    (and any non-side camera, which foreshortens the hip angle) reads ~147°
+    while genuinely standing, below the 160° threshold. Verified: low-bar
+    singles 140/130 kg read top_hip 147-148 standing (falsely "soft
+    lockout"), high-bar 150 kg reads 170. So only assess hip extension on a
+    side view; otherwise lockout = knees locked (reliable from any angle).
+    """
+    if view == "side":
+        lockout = knee_angle_top > 160 and hip_angle_top > 160
+        return lockout, (not lockout and knee_angle_top > 160)
+    return knee_angle_top > 160, False
+
+
 def analyze_squat_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
     n = len(all_landmarks)
@@ -692,8 +710,7 @@ def analyze_squat_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> 
     # lockouts still fail. Distinguish knees-locked/hips-soft (counts, cued)
     # from a genuinely bent finish (no-count): live lifters often lock knees
     # but never fully stand erect between reps.
-    lockout = knee_angle_top > 160 and hip_angle_top > 160
-    soft_lockout = not lockout and knee_angle_top > 160
+    lockout, soft_lockout = _squat_lockout(knee_angle_top, hip_angle_top, view)
     # View-dependent metrics: only assessed when the camera view makes them
     # meaningful. A rear/front view collapses the sagittal plane (torso
     # lean, hip-vs-knee depth, heel lift) and a side view hides knee valgus.
@@ -786,13 +803,16 @@ def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
 # ── Deadlift Analysis ────────────────────────────────────────────────────────
 
 
-def _deadlift_lockout(landmarks) -> bool:
+def _deadlift_lockout(landmarks, view: str = "unknown") -> bool:
     hip_angle = calculate_angle(_mid(landmarks, 11, 12), _mid(landmarks, 23, 24), _mid(landmarks, 25, 26))
     knee_angle = calculate_angle(_mid(landmarks, 23, 24), _mid(landmarks, 25, 26), _mid(landmarks, 27, 28))
     shoulder_y = np.mean([landmarks[11].y, landmarks[12].y])
     hip_y = np.mean([landmarks[23].y, landmarks[24].y])
     # 160° admits pose jitter on true lockouts (see squat lockout note).
-    return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
+    # The hip-angle test is sagittal — only applied on a side view.
+    if view == "side":
+        return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
+    return knee_angle > 160 and shoulder_y < hip_y
 
 
 def _detect_hitching(knee_angles: list[float]) -> bool:
@@ -842,13 +862,14 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict, view: str = "unknown") 
         all_landmarks, didx, np.minimum(dvals, hvals), (11, 12, 23, 24),
         want_max=True)]
 
-    lockout = _deadlift_lockout(top_lm)
+    lockout = _deadlift_lockout(top_lm, view)
     top_hip_angle = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
     top_knee_angle = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
     # Soft tier mirrors squat: knees locked but finish soft (common on
     # touch-and-go sets that never stand tall between reps). Counts with
-    # a cue instead of failing the rep.
-    soft_lockout = (not lockout and top_knee_angle > 160
+    # a cue instead of failing the rep. Hip extension is sagittal — only
+    # assessed on a side view.
+    soft_lockout = (view == "side" and not lockout and top_knee_angle > 160
                     and top_hip_angle > 150)
 
     knee_series = list(_median_filter([
