@@ -20,6 +20,45 @@ function parseJsonArray(value: string | null | undefined): string[] {
   }
 }
 
+function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+interface RepTiming {
+  rep_number: number;
+  amplitude_m?: number | null;
+  concentric_time?: number | null;
+  concentric_velocity_ms?: number | null;
+}
+
+function parseRepTimings(value: string | null | undefined): RepTiming[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((r): r is RepTiming => r && typeof r.rep_number === 'number');
+  } catch {
+    return [];
+  }
+}
+
+const VIEW_LABELS: Record<string, string> = {
+  side: 'Side view',
+  three_quarter: 'Angled view',
+  front: 'Front view',
+  rear: 'Rear view',
+  frontal: 'Front/rear view',
+  unknown: 'Angle unknown',
+};
+
 function FormScoreRing({ score }: { score: number }) {
   const radius = 40;
   const stroke = 6;
@@ -114,10 +153,22 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   const cues = parseJsonArray(video.form_coaching_cues);
   const evidence = parseJsonArray(video.rpe_evidence_json);
   const rir = video.estimated_rpe != null ? Math.max(0, Math.round((video.estimated_rpe - 6) * 1.5)) : null;
+  const formMeta = parseJsonObject(video.form_analysis_json);
+  const view = typeof formMeta?.view === 'string' ? formMeta.view : null;
+  const repTimings = parseRepTimings(video.rep_timing_json);
 
   return (
     <div className="space-y-4 border-t border-surface-light/50 pt-4">
-      <h4 className="text-sm font-semibold text-foreground">Analysis</h4>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h4 className="text-sm font-semibold text-foreground">Analysis</h4>
+        {view && view !== 'unknown' ? (
+          <Badge variant="default">{VIEW_LABELS[view] ?? view}</Badge>
+        ) : (
+          <span className="text-[11px] text-muted">
+            Film side-on to unlock torso-lean &amp; depth checks
+          </span>
+        )}
+      </div>
 
       {video.form_score != null && (
         <Card className="space-y-3">
@@ -195,6 +246,40 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
               </p>
             </div>
           </div>
+        </Card>
+      )}
+
+      {repTimings.length > 0 && (
+        <Card className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Per-rep</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-muted text-left">
+                <th className="font-medium py-1">Rep</th>
+                <th className="font-medium py-1">ROM</th>
+                <th className="font-medium py-1">Time</th>
+                <th className="font-medium py-1">Velocity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {repTimings.map((r) => (
+                <tr key={r.rep_number} className="border-t border-surface-light/40">
+                  <td className="py-1 text-foreground">{r.rep_number}</td>
+                  <td className="py-1 text-muted">
+                    {r.amplitude_m != null ? `${r.amplitude_m.toFixed(2)} m` : '—'}
+                  </td>
+                  <td className="py-1 text-muted">
+                    {r.concentric_time != null ? `${r.concentric_time.toFixed(1)} s` : '—'}
+                  </td>
+                  <td className="py-1 text-muted">
+                    {r.concentric_velocity_ms != null
+                      ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       )}
 
