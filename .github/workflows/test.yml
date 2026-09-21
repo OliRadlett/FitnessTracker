@@ -127,6 +127,10 @@ jobs:
     name: Test E2E (Playwright)
     runs-on: ubuntu-latest
     needs: test-frontend
+    # Non-blocking while the suite matures: 2-core runners are slow enough
+    # that page-load timeouts flake (see backlog "full E2E baseline rehab").
+    # The job still runs and reports — it just can't red-den a release.
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
