@@ -104,7 +104,7 @@ export function TimelineView({ startDate, endDate, calendarData }: TimelineViewP
               <div className="flex items-center gap-4">
                 {/* Date column */}
                 <div className="w-24 text-right">
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-sm font-medium text-foreground">
                     {day.date.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })}
                   </div>
                   <div className="text-xs text-muted">{day.dayName}</div>
@@ -182,7 +182,7 @@ export function TimelineView({ startDate, endDate, calendarData }: TimelineViewP
           return (
             <Card key={day.dateStr} className="p-3">
               <div className="flex items-center gap-2 mb-2">
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-foreground">
                   {day.date.toLocaleDateString(getActiveLocale(), { day: 'numeric', month: 'short' })}
                 </div>
                 <div className="text-xs text-muted">{day.dayName}</div>

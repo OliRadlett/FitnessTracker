@@ -30,7 +30,7 @@ export function WeatherWidget() {
       </div>
 
       {!weather ? (
-        <Link href="/settings" className="text-xs text-muted flex items-center gap-1.5 py-1 hover:text-white transition-colors">
+        <Link href="/settings" className="text-xs text-muted flex items-center gap-1.5 py-1 hover:text-foreground transition-colors">
           <span aria-hidden="true">📍</span> Set your home location in Settings
         </Link>
       ) : (
@@ -39,7 +39,7 @@ export function WeatherWidget() {
             <span className="text-3xl leading-none" role="img" aria-label={weather.conditions}>
               {weatherEmoji(weather.conditions)}
             </span>
-            <p className="text-2xl font-bold text-white leading-none">
+            <p className="text-2xl font-bold text-foreground leading-none">
               {Math.round(weather.temperature)}°C
             </p>
             <p className="text-sm text-muted">{weather.conditions}</p>

@@ -73,7 +73,7 @@ export function RoutesSidebar({
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors ${
                   col.isActive
                     ? 'bg-accent/20 text-accent'
-                    : 'text-muted hover:text-white hover:bg-surface-light/50'
+                    : 'text-muted hover:text-foreground hover:bg-surface-light/50'
                 }`}
               >
                 {col.is_smart ? (
@@ -145,7 +145,7 @@ export function RoutesSidebar({
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors ${
                     isActive
                       ? 'bg-accent/20 text-accent'
-                      : 'text-muted hover:text-white hover:bg-surface-light/50'
+                      : 'text-muted hover:text-foreground hover:bg-surface-light/50'
                   }`}
                 >
                   <Tag

@@ -55,7 +55,7 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-white">{activity.name}</p>
+                    <p className="text-sm font-medium text-foreground">{activity.name}</p>
                     <p className="text-xs text-muted">
                       {new Date(activity.start_date).toLocaleString()} · {activity.sport_type}
                     </p>

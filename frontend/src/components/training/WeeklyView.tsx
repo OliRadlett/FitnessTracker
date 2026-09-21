@@ -28,6 +28,7 @@ import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
+import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
@@ -364,7 +365,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="text-lg font-semibold text-white">
+        <h3 className="text-lg font-semibold text-foreground">
           Week {currentWeek} of {totalWeeks}
           <span className="text-sm font-normal text-muted ml-2">
             {weekStart} → {addDays(weekStart, 6)}
@@ -383,7 +384,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             className={`px-3 py-1 text-xs rounded-lg transition-colors disabled:opacity-40 ${
               staleDays.length > 0
                 ? 'bg-warning/20 text-warning border border-warning/30 hover:bg-warning/30'
-                : 'bg-surface-light/50 text-muted hover:text-white hover:bg-surface-light'
+                : 'bg-surface-light/50 text-muted hover:text-foreground hover:bg-surface-light'
             }`}
           >
             {refreshTargetsMutation.isPending
@@ -395,7 +396,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           {currentWeek !== realCurrentWeek && (
             <button
               onClick={() => setCurrentWeek(realCurrentWeek)}
-              className="px-3 py-1 text-xs rounded-lg bg-surface-light/50 text-white hover:bg-surface-light"
+              className="px-3 py-1 text-xs rounded-lg bg-surface-light/50 text-foreground hover:bg-surface-light"
             >
               Current
             </button>
@@ -404,7 +405,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             onClick={() => setCurrentWeek((w) => Math.max(1, w - 1))}
             disabled={currentWeek <= 1}
             aria-label="Previous week"
-            className="px-3 py-1 rounded-lg bg-surface-light/50 text-white hover:bg-surface-light disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1 rounded-lg bg-surface-light/50 text-foreground hover:bg-surface-light disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ‹
           </button>
@@ -412,7 +413,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             onClick={() => setCurrentWeek((w) => Math.min(totalWeeks, w + 1))}
             disabled={currentWeek >= totalWeeks}
             aria-label="Next week"
-            className="px-3 py-1 rounded-lg bg-surface-light/50 text-white hover:bg-surface-light disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1 rounded-lg bg-surface-light/50 text-foreground hover:bg-surface-light disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ›
           </button>
@@ -451,10 +452,10 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
       {readiness && (
         <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-surface-light/30 border border-surface-light/50">
           <span className="text-xs font-medium text-muted uppercase tracking-wide">Readiness</span>
-          <span className="text-xs text-white">
+          <span className="text-xs text-foreground">
             CTL <span className="font-semibold">{readiness.ctl.toFixed(0)}</span>
           </span>
-          <span className="text-xs text-white">
+          <span className="text-xs text-foreground">
             ATL <span className="font-semibold">{readiness.atl.toFixed(0)}</span>
           </span>
           <span className={`text-xs ${tsbColor(readiness.tsb)}`}>
@@ -507,7 +508,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             {sportChips.map(([sport, pct]) => (
               <span
                 key={sport}
-                className="inline-flex items-center gap-1 text-xs text-white bg-surface-light/60 rounded-full px-2 py-0.5"
+                className="inline-flex items-center gap-1 text-xs text-foreground bg-surface-light/60 rounded-full px-2 py-0.5"
                 title={`${sport} adherence`}
               >
                 <span>{SPORT_EMOJI[sport] ?? '📌'}</span>
@@ -518,7 +519,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
               onClick={() => linkActivities.mutate()}
               disabled={linkActivities.isPending}
               title="Auto-link synced activities/lifting sessions to plan days"
-              className="ml-auto px-2 py-0.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-white hover:bg-surface-light transition-colors disabled:opacity-40"
+              className="ml-auto px-2 py-0.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-foreground hover:bg-surface-light transition-colors disabled:opacity-40"
             >
               {linkActivities.isPending ? 'Linking…' : '🔗 Link activities'}
             </button>
@@ -551,7 +552,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         const assessmentColor = assessment === 'Optimal freshness'
           ? 'text-positive'
           : assessment === 'Neutral'
-            ? 'text-white'
+            ? 'text-foreground'
             : assessment === 'Slightly fatigued'
               ? 'text-warning'
               : 'text-warning';
@@ -650,7 +651,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
       {expandedDay && (
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-white">
+            <h4 className="text-sm font-semibold text-foreground">
               {expandedDay.sport === 'cycle'
                 ? '🚴'
                 : expandedDay.sport === 'strength'
@@ -660,7 +661,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             </h4>
             <button
               onClick={() => setExpandedDayId(null)}
-              className="text-xs text-muted hover:text-white px-2 py-0.5 rounded hover:bg-surface-light/50 transition-colors"
+              className="text-xs text-muted hover:text-foreground px-2 py-0.5 rounded hover:bg-surface-light/50 transition-colors"
             >
               ✕ Close
             </button>
@@ -773,7 +774,7 @@ function DayCard({
       {/* Header */}
       <div className="flex items-center justify-between gap-1">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-white">
+          <p className="text-sm font-semibold text-foreground">
             {dowLabel}{' '}
             <span className="text-xs font-normal text-muted">{dayLabel}</span>
             {isToday && <span className="text-[10px] text-accent ml-1">•</span>}
@@ -804,7 +805,7 @@ function DayCard({
             disabled={!day || busy}
             aria-label={day?.completed ? 'Mark not completed' : 'Mark completed'}
             className={`text-xs px-1 rounded disabled:opacity-30 ${
-              day?.completed ? 'text-positive' : 'text-muted hover:text-white'
+              day?.completed ? 'text-positive' : 'text-muted hover:text-foreground'
             }`}
           >
             ✓
@@ -857,7 +858,7 @@ function DayCard({
           )}
           {day.sport === 'rest' && <p className="text-xs text-muted">Rest day</p>}
           {day.workout_description && !expanded && (
-            <p className="text-xs text-white/70 truncate" title={day.workout_description}>
+            <p className="text-xs text-foreground/70 truncate" title={day.workout_description}>
               {day.workout_description}
             </p>
           )}
@@ -963,6 +964,8 @@ function ExpandedPanel({
   const [duration, setDuration] = useState(day.planned_duration_min?.toString() ?? '');
   const [tss, setTss] = useState(day.planned_tss?.toString() ?? '');
   const [notes, setNotes] = useState(day.notes ?? '');
+  // B-17: autoregulated suggestions for planned strength exercises.
+  const autoMap = useAutoregulationMap();
 
   const handleSave = () => {
     const payload: UpdateTrainingPlanDayPayload = {};
@@ -978,7 +981,7 @@ function ExpandedPanel({
       onClick={(e) => e.stopPropagation()}
     >
       {day.workout_description && (
-        <p className="text-[11px] text-white/80 whitespace-pre-wrap">{day.workout_description}</p>
+        <p className="text-[11px] text-foreground/80 whitespace-pre-wrap">{day.workout_description}</p>
       )}
 
       {/* Strength exercise table */}
@@ -996,13 +999,24 @@ function ExpandedPanel({
           <tbody>
             {day.planned_exercises.map((ex, i) => (
               <tr key={`${ex.exercise}-${i}`} className="border-t border-surface-light/30">
-                <td className="py-0.5 text-white/90 truncate max-w-[80px]" title={ex.exercise}>
+                <td className="py-0.5 text-foreground/90 truncate max-w-[80px]" title={ex.exercise}>
                   {ex.exercise}
                 </td>
                 <td className="py-0.5">
                   {ex.sets}×{ex.reps}
                 </td>
-                <td className="py-0.5">{ex.weight_kg != null ? ex.weight_kg : '—'}</td>
+                <td className="py-0.5">
+                  {ex.weight_kg != null ? ex.weight_kg : '—'}
+                  {(() => {
+                    const hint = autoMap.get((ex.exercise ?? '').toLowerCase());
+                    if (!hint || hint.suggestedWeightKg == null || hint.deltaKg === 0) return null;
+                    return (
+                      <span className="text-accent" title={hint.reason}>
+                        {' '}→{hint.suggestedWeightKg}
+                      </span>
+                    );
+                  })()}
+                </td>
                 <td className="py-0.5">{ex.rpe != null ? ex.rpe : '—'}</td>
               </tr>
             ))}
@@ -1078,7 +1092,7 @@ function ExpandedPanel({
               type="number"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
+              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
             />
           </label>
           <label className="block flex-1">
@@ -1087,7 +1101,7 @@ function ExpandedPanel({
               type="number"
               value={tss}
               onChange={(e) => setTss(e.target.value)}
-              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
+              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
             />
           </label>
         </div>
@@ -1098,7 +1112,7 @@ function ExpandedPanel({
         placeholder="Notes"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-white text-[10px] focus:outline-none focus:border-accent"
+        className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
       />
       <button
         onClick={handleSave}

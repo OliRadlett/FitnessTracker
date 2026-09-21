@@ -41,7 +41,7 @@ function ChangelogRelease({
         ) : (
           <ChevronRight className="w-4 h-4 text-muted shrink-0" />
         )}
-        <span className="text-sm font-semibold text-white">{entry.title}</span>
+        <span className="text-sm font-semibold text-foreground">{entry.title}</span>
         <span className="text-xs text-muted ml-auto shrink-0">{entry.date}</span>
       </button>
       {isExpanded && (

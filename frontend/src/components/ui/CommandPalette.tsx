@@ -233,7 +233,7 @@ export function CommandPalette() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Type to search…"
-            className="flex-1 bg-transparent text-white text-base placeholder:text-muted focus:outline-none min-h-[44px]"
+            className="flex-1 bg-transparent text-foreground text-base placeholder:text-muted focus:outline-none min-h-[44px]"
             aria-activedescendant={selected in hits ? `hit-${selected}` : undefined}
           />
           <kbd className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[10px] text-muted">
@@ -272,7 +272,7 @@ export function CommandPalette() {
                         >
                           <span className="text-base shrink-0">{hit.emoji}</span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-white truncate">{hit.title}</span>
+                            <span className="block text-foreground truncate">{hit.title}</span>
                             {hit.subtitle && (
                               <span className="block text-xs text-muted truncate">
                                 {hit.subtitle}

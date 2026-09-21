@@ -156,6 +156,22 @@ async def delete_event(
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
 
 
+@router.get("/{event_id}/retrospective")
+async def get_event_retrospective(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Post-race retrospective (B-21): result, taper load, race-day activity,
+    pre-race TSB, and linked plan target — linked by date proximity."""
+    from app.services.events import compute_retrospective
+
+    event = await get_event_for_user(db, current_user.id, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return await compute_retrospective(db, current_user.id, event)
+
+
 # ── Event AI Analysis ───────────────────────────────────────────────────────
 
 

@@ -202,7 +202,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <span aria-hidden="true">🎯</span>
             <span className="truncate">{goal.metric_label || goal.metric}</span>
           </h3>
@@ -210,7 +210,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             <p className="text-xs text-accent">{goal.filter_json.exercise || goal.filter_json.sport}</p>
           )}
         </div>
-        <button onClick={onClose} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white text-xl shrink-0" aria-label="Close">
+        <button onClick={onClose} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground text-xl shrink-0" aria-label="Close">
           ×
         </button>
       </div>
@@ -335,7 +335,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 onChange={(e) => setCheckValue(e.target.value)}
                 required
                 placeholder={`Current${unit ? ` (${unit})` : ''}`}
-                className="w-full sm:w-32 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full sm:w-32 bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <textarea
                 value={checkNote}
@@ -343,7 +343,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 rows={1}
                 maxLength={500}
                 placeholder="Note (optional)"
-                className="flex-1 bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent resize-y"
+                className="flex-1 bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent resize-y"
               />
               <button
                 type="submit"
@@ -374,7 +374,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                   value={editTarget}
                   onChange={(e) => setEditTarget(e.target.value)}
                   required
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
               <div>
@@ -383,7 +383,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                   type="date"
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             </div>
@@ -395,7 +395,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                   value={editExercise}
                   onChange={(e) => setEditExercise(e.target.value)}
                   placeholder="e.g. Back Squat"
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             )}
@@ -405,7 +405,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 <select
                   value={editSport}
                   onChange={(e) => setEditSport(e.target.value)}
-                  className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 >
                   {SPORT_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -420,7 +420,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                 onChange={(e) => setEditNotes(e.target.value)}
                 rows={2}
                 maxLength={500}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
               />
             </div>
             {updateMutation.isError && (
@@ -439,7 +439,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="px-4 py-2 text-muted hover:text-white text-sm transition-colors"
+                className="px-4 py-2 text-muted hover:text-foreground text-sm transition-colors"
               >
                 Cancel
               </button>
@@ -456,7 +456,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 text-sm text-muted hover:text-white bg-surface-light/40 hover:bg-surface-light/60 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-sm text-muted hover:text-foreground bg-surface-light/40 hover:bg-surface-light/60 rounded-lg transition-colors"
             >
               ✏️ Edit
             </button>
@@ -483,7 +483,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               </button>
               <button
                 onClick={() => setConfirmingDelete(false)}
-                className="px-3 py-1.5 text-sm text-muted hover:text-white transition-colors"
+                className="px-3 py-1.5 text-sm text-muted hover:text-foreground transition-colors"
               >
                 Keep
               </button>
@@ -545,7 +545,7 @@ function ProjectionSection({ projection }: { projection: GoalProjectionResponse 
           ) : (
             <span className="text-xs text-muted">
               Projected to reach target:{' '}
-              <span className="text-white font-medium">
+              <span className="text-foreground font-medium">
                 {new Date(proj.projected_date).toLocaleDateString()}
               </span>{' '}
               ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)

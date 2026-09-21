@@ -14,7 +14,7 @@ export function renderInline(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
+      return <strong key={i} className="text-foreground font-semibold">{part.slice(2, -2)}</strong>;
     }
     return part;
   });
@@ -64,7 +64,7 @@ export function renderAnalysisText(text: string): React.ReactNode[] {
     if (line.startsWith('### ')) {
       flushList();
       elements.push(
-        <h3 key={`h3-${i}`} className="text-base font-semibold text-white mt-4 mb-2">
+        <h3 key={`h3-${i}`} className="text-base font-semibold text-foreground mt-4 mb-2">
           {renderInline(line.slice(4))}
         </h3>,
       );
@@ -74,7 +74,7 @@ export function renderAnalysisText(text: string): React.ReactNode[] {
     if (line.startsWith('## ')) {
       flushList();
       elements.push(
-        <h2 key={`h2-${i}`} className="text-lg font-bold text-white mt-5 mb-2">
+        <h2 key={`h2-${i}`} className="text-lg font-bold text-foreground mt-5 mb-2">
           {renderInline(line.slice(3))}
         </h2>,
       );

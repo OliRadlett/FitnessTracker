@@ -2456,3 +2456,116 @@ async def run_event_ai_analysis(
     return await _store_analysis(
         db, user_id, "event", stats, analysis_text, event_id=event_id
     )
+
+
+# ── Insight Explanations + Season Overview (Feature 7 / B-18) ────────────────
+
+
+async def explain_insight_with_gemini(insight: dict) -> str:
+    """Interpret one AthleteInsight row in plain language.
+
+    The LLM reads the deterministic coefficients + sample sizes and explains
+    what they plausibly mean — including confounders and deload-pattern
+    matches. It interprets only; it never scores or prescribes.
+    """
+    prompt = f"""You are an expert endurance + strength coach interpreting a deterministic training-data insight. Explain the numbers below in plain language for the athlete.
+
+## Observed insight (associations from their own history, not causation)
+```json
+{json.dumps(insight, indent=2, default=str)}
+```
+
+## Instructions
+- Explain what the pattern most plausibly means in 3–6 sentences.
+- Call out likely confounders explicitly (e.g. "hard sessions cluster on weekends when you also sleep less").
+- Say whether this matches a known pattern (deload response, heat adaptation, freshness effect) or looks like noise.
+- Do NOT restate every number; do NOT prescribe training changes; do NOT diagnose health.
+- If sample sizes are small, say the pattern is preliminary.
+"""
+    return await _call_gemini(prompt, "insight explanation")
+
+
+async def run_insight_explanation(
+    db: AsyncSession, user_id: uuid.UUID, insight_type: str
+) -> LlmAnalysis:
+    """Generate (or refresh) the AI explanation for one insight type.
+
+    Reads the latest AthleteInsight row; refuses when its data carries no
+    analyzable signal (same guard as every other analysis path).
+    """
+    from app.models.athlete_insight import AthleteInsight
+
+    result = await db.execute(
+        select(AthleteInsight)
+        .where(
+            AthleteInsight.user_id == user_id,
+            AthleteInsight.insight_type == insight_type,
+        )
+        .order_by(AthleteInsight.computed_at.desc())
+        .limit(1)
+    )
+    insight = result.scalar_one_or_none()
+    if insight is None:
+        raise LookupError(f"No computed insight of type {insight_type!r} yet")
+    payload = {
+        "insight_type": insight.insight_type,
+        "period": insight.period,
+        "sample_size": insight.sample_size,
+        "confidence": insight.confidence,
+        "data": insight.data,
+    }
+    ensure_context_sufficient(payload, "insight explanation")
+    analysis_text = await explain_insight_with_gemini(payload)
+    return await _store_analysis(db, user_id, "insight_explanation", payload, analysis_text)
+
+
+async def analyze_season_with_gemini(context: dict) -> str:
+    """Big-picture cross-domain season brief over compiled contexts."""
+    prompt = f"""You are an expert coach writing a season overview from training data across cycling, strength, recovery, sleep, and planning. Summarise the big picture — what is working, what is limiting progress, and what patterns deserve attention.
+
+## Season context (all domains)
+```json
+{json.dumps(context, indent=2, default=str)}
+```
+
+## Instructions
+- Lead with the 2–3 most important observations, grounded in the numbers.
+- Cover each domain briefly (endurance, strength, recovery/sleep, planning adherence).
+- Flag contradictions in the data (e.g. rising load with falling recovery).
+- Do NOT prescribe specific workouts; do NOT diagnose health. Keep it under 400 words.
+"""
+    return await _call_gemini(prompt, "season overview")
+
+
+async def run_season_overview_analysis(
+    db: AsyncSession, user_id: uuid.UUID
+) -> LlmAnalysis:
+    """Compile every domain context + the insight table into one season brief."""
+    from app.models.athlete_insight import AthleteInsight
+
+    cycling = await compile_cycling_stats(db, user_id)
+    health = await compile_health_stats(db, user_id)
+    result = await db.execute(
+        select(AthleteInsight)
+        .where(AthleteInsight.user_id == user_id)
+        .order_by(AthleteInsight.insight_type, AthleteInsight.computed_at.desc())
+    )
+    seen: set[str] = set()
+    insights = []
+    for row in result.scalars().all():
+        if row.insight_type not in seen:
+            seen.add(row.insight_type)
+            insights.append(
+                {
+                    "insight_type": row.insight_type,
+                    "sample_size": row.sample_size,
+                    "confidence": row.confidence,
+                    "data": row.data,
+                }
+            )
+    context = {"cycling": cycling, "health": health, "insights": insights}
+    ensure_context_sufficient(context, "season overview")
+    analysis_text = await analyze_season_with_gemini(context)
+    return await _store_analysis(
+        db, user_id, "season_overview", context, analysis_text
+    )

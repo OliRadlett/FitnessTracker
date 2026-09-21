@@ -61,7 +61,7 @@ export function ExerciseGroup({
       {/* Exercise header */}
       <div className="flex items-center justify-between px-4 py-3 bg-surface-light/20">
         <div>
-          <p className="text-sm font-semibold text-white">{exerciseName}</p>
+          <p className="text-sm font-semibold text-foreground">{exerciseName}</p>
           <p className="text-xs text-muted">
             {workingSets.length} working set{workingSets.length !== 1 ? 's' : ''}
             {warmupSets.length > 0 && ` · ${warmupSets.length} warmup`}
@@ -100,7 +100,7 @@ export function ExerciseGroup({
                           min="0"
                           value={editValues.weight_kg || ''}
                           onChange={(e) => setEditValues({ ...editValues, weight_kg: parseFloat(e.target.value) || 0 })}
-                          className="w-20 bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
+                          className="w-20 bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
                           autoFocus
                         />
                       </td>
@@ -110,7 +110,7 @@ export function ExerciseGroup({
                           min="0"
                           value={editValues.reps || ''}
                           onChange={(e) => setEditValues({ ...editValues, reps: parseInt(e.target.value) || 0 })}
-                          className="w-16 bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
+                          className="w-16 bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                       </td>
                       <td className="py-1 px-2 text-right">
@@ -122,7 +122,7 @@ export function ExerciseGroup({
                           value={editValues.rpe}
                           onChange={(e) => setEditValues({ ...editValues, rpe: e.target.value })}
                           placeholder="—"
-                          className="w-16 bg-surface-light border border-surface-light text-white text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
+                          className="w-16 bg-surface-light border border-surface-light text-foreground text-sm rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                       </td>
                       <td className="py-1 px-2 text-center">
@@ -158,7 +158,7 @@ export function ExerciseGroup({
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="text-muted hover:text-white text-xs px-3 min-h-[44px]"
+                            className="text-muted hover:text-foreground text-xs px-3 min-h-[44px]"
                           >
                             Cancel
                           </button>
@@ -188,7 +188,7 @@ export function ExerciseGroup({
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(null)}
-                              className="text-xs text-muted hover:text-white px-3 min-h-[44px]"
+                              className="text-xs text-muted hover:text-foreground px-3 min-h-[44px]"
                             >
                               Cancel
                             </button>

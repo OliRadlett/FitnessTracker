@@ -63,7 +63,7 @@ export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
 
             {pr.type === 'lifting' ? (
               <>
-                <p className="text-lg font-bold text-white truncate">{pr.exercise_name}</p>
+                <p className="text-lg font-bold text-foreground truncate">{pr.exercise_name}</p>
 
                 <div className="mt-2 flex items-center gap-3">
                   <div className="text-center">
@@ -97,7 +97,7 @@ export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
               </>
             ) : (
               <>
-                <p className="text-lg font-bold text-white truncate">{pr.duration_label} Power</p>
+                <p className="text-lg font-bold text-foreground truncate">{pr.duration_label} Power</p>
 
                 <div className="mt-2 flex items-center gap-3">
                   <div className="text-center">
@@ -146,7 +146,7 @@ export function PRCelebration({ pr, onDismiss }: PRCelebrationProps) {
               setVisible(false);
               setTimeout(onDismiss, 300);
             }}
-            className="text-muted hover:text-white transition-colors text-lg leading-none shrink-0"
+            className="text-muted hover:text-foreground transition-colors text-lg leading-none shrink-0"
             aria-label="Dismiss"
           >
             ✕

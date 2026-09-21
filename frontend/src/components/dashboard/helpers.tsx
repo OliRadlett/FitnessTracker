@@ -21,7 +21,7 @@ export function ActivityRow({ activity }: { activity: Activity }) {
           {activity.sport_type}
         </Badge>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white truncate">{activity.name}</p>
+          <p className="text-sm font-medium text-foreground truncate">{activity.name}</p>
           <p className="text-xs text-muted">
             {new Date(activity.start_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
           </p>
@@ -46,7 +46,7 @@ export function SessionRow({ session }: { session: LiftingSession }) {
       className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors"
     >
       <div>
-        <p className="text-sm font-medium text-white">{session.focus || 'General'}</p>
+        <p className="text-sm font-medium text-foreground">{session.focus || 'General'}</p>
         <p className="text-xs text-muted">
           {new Date(session.session_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
         </p>

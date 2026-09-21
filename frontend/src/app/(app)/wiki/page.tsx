@@ -199,7 +199,7 @@ export default function WikiPage() {
               className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                 activeSection === s.id
                   ? 'bg-accent/20 text-accent border border-accent/30 font-medium'
-                  : 'text-muted hover:text-white hover:bg-surface-light/50'
+                  : 'text-muted hover:text-foreground hover:bg-surface-light/50'
               }`}
             >
               <span aria-hidden="true">{s.icon}</span>
@@ -213,7 +213,7 @@ export default function WikiPage() {
       <div className="flex-1 min-w-0 space-y-10 pb-20">
         {/* Page heading */}
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">FitTrack Wiki</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">FitTrack Wiki</h1>
           <p className="text-muted">
             Everything you need to know about your fitness tracker — from getting started to the science behind the numbers.
           </p>
@@ -225,18 +225,18 @@ export default function WikiPage() {
             <CardTitle>🔍 Overview</CardTitle>
             <div className="space-y-4 text-sm text-muted leading-relaxed">
               <p>
-                <strong className="text-white">FitTrack</strong> is a personal fitness tracker designed for{' '}
-                <strong className="text-white">powerlifting and cycling</strong> athletes. It aggregates data from
+                <strong className="text-foreground">FitTrack</strong> is a personal fitness tracker designed for{' '}
+                <strong className="text-foreground">powerlifting and cycling</strong> athletes. It aggregates data from
                 multiple sources into a single, unified dashboard with deep analytics.
               </p>
               <p>
-                Connected integrations: <strong className="text-white">Strava</strong> (rides & activities),{' '}
-                <strong className="text-white">Whoop</strong> (recovery, sleep, HRV),{' '}
-                <strong className="text-white">Wahoo</strong> (indoor training), and{' '}
-                <strong className="text-white">Komoot</strong> (routes & navigation).
+                Connected integrations: <strong className="text-foreground">Strava</strong> (rides & activities),{' '}
+                <strong className="text-foreground">Whoop</strong> (recovery, sleep, HRV),{' '}
+                <strong className="text-foreground">Wahoo</strong> (indoor training), and{' '}
+                <strong className="text-foreground">Komoot</strong> (routes & navigation).
               </p>
               <div>
-                <h3 className="text-white font-semibold mb-2">Key Features</h3>
+                <h3 className="text-foreground font-semibold mb-2">Key Features</h3>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {[
                     'Dashboard with Today / Weekly / Monthly views',
@@ -267,60 +267,60 @@ export default function WikiPage() {
             <CardTitle>🚀 Getting Started</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <div>
-                <h3 className="text-white font-semibold mb-2">Connect Your Integrations</h3>
+                <h3 className="text-foreground font-semibold mb-2">Connect Your Integrations</h3>
                 <ol className="list-decimal list-inside space-y-2">
                   <li>
-                    <strong className="text-white">Strava</strong> — Go to <WikiLink href="/settings">Settings → Connections</WikiLink> and
+                    <strong className="text-foreground">Strava</strong> — Go to <WikiLink href="/settings">Settings → Connections</WikiLink> and
                     click "Connect Strava". Authorise FitTrack to read your activities. All rides and runs
                     will sync automatically.
                   </li>
                   <li>
-                    <strong className="text-white">Whoop</strong> — Connect via OAuth in <WikiLink href="/settings">Settings</WikiLink>. FitTrack imports
+                    <strong className="text-foreground">Whoop</strong> — Connect via OAuth in <WikiLink href="/settings">Settings</WikiLink>. FitTrack imports
                     recovery scores, HRV, sleep data, and strain metrics.
                   </li>
                   <li>
-                    <strong className="text-white">Wahoo</strong> — Link your Wahoo account for indoor trainer
+                    <strong className="text-foreground">Wahoo</strong> — Link your Wahoo account for indoor trainer
                     rides and structured workout data.
                   </li>
                   <li>
-                    <strong className="text-white">Komoot</strong> — Connect for route planning data and
+                    <strong className="text-foreground">Komoot</strong> — Connect for route planning data and
                     turn-by-turn navigation imports.
                   </li>
                 </ol>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">First Sync & Backfill</h3>
+                <h3 className="text-foreground font-semibold mb-2">First Sync & Backfill</h3>
                 <p>
                   After connecting an integration, FitTrack performs an initial sync of recent activities. For a
-                  complete history, use the <strong className="text-white">Backfill</strong> feature in Settings
+                  complete history, use the <strong className="text-foreground">Backfill</strong> feature in Settings
                   to import all historical data. This may take a few minutes depending on your account history.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Set Up Your Cycling Profile</h3>
+                <h3 className="text-foreground font-semibold mb-2">Set Up Your Cycling Profile</h3>
                 <p>
                   Navigate to <em><WikiLink href="/cycling">Cycling page → Profile</WikiLink></em> and enter:
                 </p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li><strong className="text-white">FTP</strong> — Your Functional Threshold Power in watts (from a 20-min test or ramp test).</li>
-                  <li><strong className="text-white">Weight</strong> — Your body weight in kg (used for W/kg calculations).</li>
-                  <li><strong className="text-white">LTHR</strong> — Lactate Threshold Heart Rate (used for heart rate zones).</li>
+                  <li><strong className="text-foreground">FTP</strong> — Your Functional Threshold Power in watts (from a 20-min test or ramp test).</li>
+                  <li><strong className="text-foreground">Weight</strong> — Your body weight in kg (used for W/kg calculations).</li>
+                  <li><strong className="text-foreground">LTHR</strong> — Lactate Threshold Heart Rate (used for heart rate zones).</li>
                 </ul>
                 <p className="mt-2">
-                  Optionally enable <strong className="text-white">auto-FTP estimation</strong> to let FitTrack
+                  Optionally enable <strong className="text-foreground">auto-FTP estimation</strong> to let FitTrack
                   calculate your FTP from recent hard efforts.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Understanding the Dashboard</h3>
+                <h3 className="text-foreground font-semibold mb-2">Understanding the Dashboard</h3>
                 <p>
                   The <WikiLink href="/dashboard">dashboard</WikiLink> has three time-range tabs:{' '}
-                  <strong className="text-white">Today</strong> for a quick
-                  snapshot (recovery, strain, recent activities), <strong className="text-white">Weekly</strong> for
-                  aggregated metrics and trends, and <strong className="text-white">Monthly</strong> for long-term
+                  <strong className="text-foreground">Today</strong> for a quick
+                  snapshot (recovery, strain, recent activities), <strong className="text-foreground">Weekly</strong> for
+                  aggregated metrics and trends, and <strong className="text-foreground">Monthly</strong> for long-term
                   progress overview.
                 </p>
               </div>
@@ -341,7 +341,7 @@ export default function WikiPage() {
                   key={entry.name}
                   className="border border-surface-light/50 rounded-lg p-4"
                 >
-                  <h3 className="text-white font-semibold text-sm mb-1">{entry.name}</h3>
+                  <h3 className="text-foreground font-semibold text-sm mb-1">{entry.name}</h3>
                   <FormulaBlock>{entry.formula}</FormulaBlock>
                   <p className="text-sm text-muted mt-2">{entry.description}</p>
                 </div>
@@ -357,12 +357,12 @@ export default function WikiPage() {
             <div className="space-y-8 text-sm text-muted leading-relaxed">
               {/* Training Load Model */}
               <div>
-                <h3 className="text-white font-semibold mb-2">Training Load Model (CTL / ATL / TSB)</h3>
+                <h3 className="text-foreground font-semibold mb-2">Training Load Model (CTL / ATL / TSB)</h3>
                 <p>
-                  Based on the <strong className="text-white">Banister impulse-response model</strong>, FitTrack uses
+                  Based on the <strong className="text-foreground">Banister impulse-response model</strong>, FitTrack uses
                   exponentially weighted moving averages (EWMA) with time constants of{' '}
-                  <strong className="text-white">42 days</strong> for chronic/fitness (CTL) and{' '}
-                  <strong className="text-white">7 days</strong> for acute/fatigue (ATL). TSB = CTL − ATL represents
+                  <strong className="text-foreground">42 days</strong> for chronic/fitness (CTL) and{' '}
+                  <strong className="text-foreground">7 days</strong> for acute/fatigue (ATL). TSB = CTL − ATL represents
                   the balance between fitness and fatigue. Research shows CTL correlates strongly with
                   performance capacity — athletes with higher CTL can sustain higher workloads.
                 </p>
@@ -373,9 +373,9 @@ export default function WikiPage() {
 
               {/* Normalized Power */}
               <div>
-                <h3 className="text-white font-semibold mb-2">Normalized Power Algorithm</h3>
+                <h3 className="text-foreground font-semibold mb-2">Normalized Power Algorithm</h3>
                 <p>
-                  Developed by <strong className="text-white">Andrew Coggan</strong>. The algorithm:
+                  Developed by <strong className="text-foreground">Andrew Coggan</strong>. The algorithm:
                 </p>
                 <ol className="list-decimal list-inside mt-2 space-y-1">
                   <li>Calculate the 30-second rolling average of power.</li>
@@ -395,14 +395,14 @@ export default function WikiPage() {
 
               {/* FTP Estimation */}
               <div>
-                <h3 className="text-white font-semibold mb-2">FTP Estimation</h3>
+                <h3 className="text-foreground font-semibold mb-2">FTP Estimation</h3>
                 <p>FitTrack uses multiple methods with confidence weighting:</p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li><strong className="text-white">20-min power × 0.95</strong> — Gold standard field test.</li>
-                  <li><strong className="text-white">8-min power × 0.90 × 0.95</strong> — Two-trial average method.</li>
-                  <li><strong className="text-white">5-min power × 0.95</strong> — Shorter test variant.</li>
-                  <li><strong className="text-white">60-min power</strong> — Direct measurement (rare in practice).</li>
-                  <li><strong className="text-white">Riegel extrapolation</strong> — Uses shorter efforts to estimate longer power output.</li>
+                  <li><strong className="text-foreground">20-min power × 0.95</strong> — Gold standard field test.</li>
+                  <li><strong className="text-foreground">8-min power × 0.90 × 0.95</strong> — Two-trial average method.</li>
+                  <li><strong className="text-foreground">5-min power × 0.95</strong> — Shorter test variant.</li>
+                  <li><strong className="text-foreground">60-min power</strong> — Direct measurement (rare in practice).</li>
+                  <li><strong className="text-foreground">Riegel extrapolation</strong> — Uses shorter efforts to estimate longer power output.</li>
                 </ul>
                 <div className="mt-3">
                   <FormulaBlock>P₂ = P₁ × (D₁ / D₂)^0.06</FormulaBlock>
@@ -411,7 +411,7 @@ export default function WikiPage() {
 
               {/* Brzycki 1RM */}
               <div>
-                <h3 className="text-white font-semibold mb-2">Brzycki 1RM Formula</h3>
+                <h3 className="text-foreground font-semibold mb-2">Brzycki 1RM Formula</h3>
                 <p>
                   One of the most validated rep-max formulas in strength training research. Accurate for sets of
                   1–10 reps. Used throughout FitTrack for PR tracking and progress monitoring.
@@ -423,10 +423,10 @@ export default function WikiPage() {
 
               {/* TSS Calculation */}
               <div>
-                <h3 className="text-white font-semibold mb-2">TSS Calculation</h3>
+                <h3 className="text-foreground font-semibold mb-2">TSS Calculation</h3>
                 <p>
                   Power-based TSS combines duration and intensity into a single metric. A score of{' '}
-                  <strong className="text-white">100 TSS</strong> corresponds to approximately one hour at FTP
+                  <strong className="text-foreground">100 TSS</strong> corresponds to approximately one hour at FTP
                   intensity. Heart-rate-based TSS uses percentage of HR reserve when power data is unavailable.
                 </p>
                 <div className="mt-3">
@@ -436,11 +436,11 @@ export default function WikiPage() {
 
               {/* Cardiac Drift */}
               <div>
-                <h3 className="text-white font-semibold mb-2">Cardiac Drift / Decoupling</h3>
+                <h3 className="text-foreground font-semibold mb-2">Cardiac Drift / Decoupling</h3>
                 <p>
                   During prolonged exercise, heart rate gradually increases at constant power due to{' '}
-                  <strong className="text-white">dehydration</strong>, <strong className="text-white">glycogen depletion</strong>,
-                  and <strong className="text-white">rising core temperature</strong>. Decoupling measures the %
+                  <strong className="text-foreground">dehydration</strong>, <strong className="text-foreground">glycogen depletion</strong>,
+                  and <strong className="text-foreground">rising core temperature</strong>. Decoupling measures the %
                   difference between first-half and second-half Efficiency Factor, indicating aerobic fitness
                   and endurance base robustness.
                 </p>
@@ -448,7 +448,7 @@ export default function WikiPage() {
 
               {/* Power Zones */}
               <div>
-                <h3 className="text-white font-semibold mb-2">Power Zones (Coggan 7-Zone Model)</h3>
+                <h3 className="text-foreground font-semibold mb-2">Power Zones (Coggan 7-Zone Model)</h3>
                 <p>
                   Based on FTP as the anchor point. Each zone represents a distinct physiological adaptation:
                 </p>
@@ -456,44 +456,44 @@ export default function WikiPage() {
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-surface-light/50">
-                        <th className="text-left py-2 pr-4 text-white font-medium">Zone</th>
-                        <th className="text-left py-2 pr-4 text-white font-medium">% FTP</th>
-                        <th className="text-left py-2 text-white font-medium">Adaptation</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">Zone</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">% FTP</th>
+                        <th className="text-left py-2 text-foreground font-medium">Adaptation</th>
                       </tr>
                     </thead>
                     <tbody className="text-muted">
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z1 Active Recovery</td>
+                        <td className="py-2 pr-4 text-foreground">Z1 Active Recovery</td>
                         <td className="py-2 pr-4">{"< 55%"}</td>
                         <td className="py-2">Active recovery, blood flow</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z2 Endurance</td>
+                        <td className="py-2 pr-4 text-foreground">Z2 Endurance</td>
                         <td className="py-2 pr-4">55–75%</td>
                         <td className="py-2">Fat oxidation, aerobic base</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z3 Tempo</td>
+                        <td className="py-2 pr-4 text-foreground">Z3 Tempo</td>
                         <td className="py-2 pr-4">75–90%</td>
                         <td className="py-2">Lactate clearance, muscular endurance</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z4 Threshold</td>
+                        <td className="py-2 pr-4 text-foreground">Z4 Threshold</td>
                         <td className="py-2 pr-4">90–105%</td>
                         <td className="py-2">Lactate threshold improvement</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z5 VO2max</td>
+                        <td className="py-2 pr-4 text-foreground">Z5 VO2max</td>
                         <td className="py-2 pr-4">105–120%</td>
                         <td className="py-2">Maximal aerobic capacity</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Z6 Anaerobic</td>
+                        <td className="py-2 pr-4 text-foreground">Z6 Anaerobic</td>
                         <td className="py-2 pr-4">120–150%</td>
                         <td className="py-2">Anaerobic capacity, lactate tolerance</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-white">Z7 Neuromuscular</td>
+                        <td className="py-2 pr-4 text-foreground">Z7 Neuromuscular</td>
                         <td className="py-2 pr-4">{"> 150%"}</td>
                         <td className="py-2">Neuromuscular power, sprinting</td>
                       </tr>
@@ -572,7 +572,7 @@ export default function WikiPage() {
                 <div key={tip.title} className="flex items-start gap-3">
                   <span className="text-positive text-lg mt-0.5 shrink-0" aria-hidden="true">▸</span>
                   <div>
-                    <h3 className="text-white font-semibold">{tip.title}</h3>
+                    <h3 className="text-foreground font-semibold">{tip.title}</h3>
                     <p>{tip.text}</p>
                   </div>
                 </div>
@@ -588,59 +588,59 @@ export default function WikiPage() {
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 Weakness Analysis cross-examines your lifting and cycling data to identify{' '}
-                <strong className="text-white">imbalances, gaps, and areas for improvement</strong>. It compares
+                <strong className="text-foreground">imbalances, gaps, and areas for improvement</strong>. It compares
                 your performance across exercises, metrics, and time periods to surface actionable deficiencies.
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Lifting Weakness Detection</h3>
+                <h3 className="text-foreground font-semibold mb-2">Lifting Weakness Detection</h3>
                 <ul className="list-disc list-inside space-y-2">
                   <li>
-                    <strong className="text-white">Big-3 Bodyweight Standards</strong> — Your squat, bench, and
+                    <strong className="text-foreground">Big-3 Bodyweight Standards</strong> — Your squat, bench, and
                     deadlift 1RM compared to published strength levels for your body weight. Classified as
                     Untrained / Novice / Intermediate / Advanced / Elite.
                   </li>
                   <li>
-                    <strong className="text-white">Inter-Exercise Ratios</strong> — Ideal bench-to-squat ratio is{' '}
-                    <strong className="text-white">0.65–0.75</strong>. A ratio below 0.60 suggests upper-body
+                    <strong className="text-foreground">Inter-Exercise Ratios</strong> — Ideal bench-to-squat ratio is{' '}
+                    <strong className="text-foreground">0.65–0.75</strong>. A ratio below 0.60 suggests upper-body
                     weakness; above 0.80 may indicate limited squat development.
                   </li>
                   <li>
-                    <strong className="text-white">Push/Pull Volume Balance</strong> — Ideal ratio is{' '}
-                    <strong className="text-white">1.0–1.3</strong> (pull slightly exceeding push). Values above
+                    <strong className="text-foreground">Push/Pull Volume Balance</strong> — Ideal ratio is{' '}
+                    <strong className="text-foreground">1.0–1.3</strong> (pull slightly exceeding push). Values above
                     1.5 or below 0.8 flag muscular imbalance and potential injury risk.
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Cycling Weakness Detection</h3>
+                <h3 className="text-foreground font-semibold mb-2">Cycling Weakness Detection</h3>
                 <ul className="list-disc list-inside space-y-2">
                   <li>
-                    <strong className="text-white">VO2max vs FTP Mismatch</strong> — If VO2max is high but FTP is
+                    <strong className="text-foreground">VO2max vs FTP Mismatch</strong> — If VO2max is high but FTP is
                     low relative to it, you have untapped aerobic potential that structured threshold work can unlock.
                   </li>
                   <li>
-                    <strong className="text-white">Decoupling Classification</strong> —{' '}
+                    <strong className="text-foreground">Decoupling Classification</strong> —{' '}
                     {'<'}5% = excellent aerobic base, 5–8% = acceptable, {'>'}8% = aerobic deficiency requiring
                     longer endurance rides.
                   </li>
                   <li>
-                    <strong className="text-white">Power Zone Distribution</strong> — Analyses time-in-zone across
+                    <strong className="text-foreground">Power Zone Distribution</strong> — Analyses time-in-zone across
                     recent rides. Excessive Z1 with minimal Z3+ suggests insufficient training intensity.
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">How to Use</h3>
+                <h3 className="text-foreground font-semibold mb-2">How to Use</h3>
                 <p>
-                  Check the <strong className="text-white">DeficiencyCard</strong> on the{' '}
+                  Check the <strong className="text-foreground">DeficiencyCard</strong> on the{' '}
                   <WikiLink href="/dashboard">dashboard</WikiLink> (Weekly tab) and the{' '}
                   <WikiLink href="/lifting">lifting page</WikiLink>. Items are ranked by severity:{' '}
-                  <strong className="text-white">Critical</strong>{' '}
-                  {'>'} <strong className="text-white">High</strong> {'>'} <strong className="text-white">Medium</strong> {'>'}{' '}
-                  <strong className="text-white">Low</strong>. Address critical and high items first. Thresholds are
+                  <strong className="text-foreground">Critical</strong>{' '}
+                  {'>'} <strong className="text-foreground">High</strong> {'>'} <strong className="text-foreground">Medium</strong> {'>'}{' '}
+                  <strong className="text-foreground">Low</strong>. Address critical and high items first. Thresholds are
                   adjustable over time as your training evolves.
                 </p>
               </div>
@@ -659,39 +659,39 @@ export default function WikiPage() {
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Carbohydrate Targets by Duration & Intensity</h3>
+                <h3 className="text-foreground font-semibold mb-2">Carbohydrate Targets by Duration & Intensity</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-surface-light/50">
-                        <th className="text-left py-2 pr-4 text-white font-medium">Duration</th>
-                        <th className="text-left py-2 pr-4 text-white font-medium">Carb Target</th>
-                        <th className="text-left py-2 text-white font-medium">Notes</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">Duration</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">Carb Target</th>
+                        <th className="text-left py-2 text-foreground font-medium">Notes</th>
                       </tr>
                     </thead>
                     <tbody className="text-muted">
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">{'<'} 60 min</td>
+                        <td className="py-2 pr-4 text-foreground">{'<'} 60 min</td>
                         <td className="py-2 pr-4">None required</td>
                         <td className="py-2">Glycogen stores sufficient</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">60–120 min</td>
+                        <td className="py-2 pr-4 text-foreground">60–120 min</td>
                         <td className="py-2 pr-4">30–50 g/hr</td>
                         <td className="py-2">Single source (glucose or fructose)</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">120–180 min</td>
+                        <td className="py-2 pr-4 text-foreground">120–180 min</td>
                         <td className="py-2 pr-4">50–70 g/hr</td>
                         <td className="py-2">Mixed transport for better absorption</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">180–300 min</td>
+                        <td className="py-2 pr-4 text-foreground">180–300 min</td>
                         <td className="py-2 pr-4">60–90 g/hr</td>
                         <td className="py-2">Train gut to tolerate higher intake</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-white">{">"} 300 min</td>
+                        <td className="py-2 pr-4 text-foreground">{">"} 300 min</td>
                         <td className="py-2 pr-4">80–100 g/hr</td>
                         <td className="py-2">Dual-source (2:1 glucose:fructose)</td>
                       </tr>
@@ -701,32 +701,32 @@ export default function WikiPage() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Hydration</h3>
+                <h3 className="text-foreground font-semibold mb-2">Hydration</h3>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong className="text-white">Fluid:</strong> 500–800 ml/hr, adjusted for intensity and temperature.</li>
-                  <li><strong className="text-white">Sodium:</strong> 300–900 mg/hr depending on sweat rate and conditions.</li>
+                  <li><strong className="text-foreground">Fluid:</strong> 500–800 ml/hr, adjusted for intensity and temperature.</li>
+                  <li><strong className="text-foreground">Sodium:</strong> 300–900 mg/hr depending on sweat rate and conditions.</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Pre- & Post-Ride Nutrition</h3>
+                <h3 className="text-foreground font-semibold mb-2">Pre- & Post-Ride Nutrition</h3>
                 <ul className="list-disc list-inside space-y-1">
                   <li>
-                    <strong className="text-white">Pre-ride (2 hr before):</strong> 1.5 g carbs per kg body weight.
+                    <strong className="text-foreground">Pre-ride (2 hr before):</strong> 1.5 g carbs per kg body weight.
                     Low fibre, familiar foods.
                   </li>
                   <li>
-                    <strong className="text-white">Post-ride (within 30 min):</strong> 1.2 g carbs/kg + 0.3 g
+                    <strong className="text-foreground">Post-ride (within 30 min):</strong> 1.2 g carbs/kg + 0.3 g
                     protein/kg to kickstart recovery and glycogen replenishment.
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">How to Use</h3>
+                <h3 className="text-foreground font-semibold mb-2">How to Use</h3>
                 <p>
                   Generate a fuel plan from any cycling <WikiLink href="/activities">activity's detail page</WikiLink>{' '}
-                  via the <strong className="text-white">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
+                  via the <strong className="text-foreground">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
                   during, post-ride) with specific products and quantities. Follow the schedule during your ride,
                   then log your actual intake post-ride for tracking and plan refinement.
                 </p>
@@ -741,26 +741,26 @@ export default function WikiPage() {
             <CardTitle>🌦️ Weather Integration</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
-                FitTrack integrates with <strong className="text-white">Open-Meteo</strong>, a free weather API
+                FitTrack integrates with <strong className="text-foreground">Open-Meteo</strong>, a free weather API
                 that requires no API key. Weather data is used for ride planning, activity tagging, and
                 bad-weather training adjustments.
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Features</h3>
+                <h3 className="text-foreground font-semibold mb-2">Features</h3>
                 <ul className="list-disc list-inside space-y-1">
                   <li>
-                    <strong className="text-white">Current Conditions Widget</strong> — Shown at the top of the{' '}
+                    <strong className="text-foreground">Current Conditions Widget</strong> — Shown at the top of the{' '}
                     <WikiLink href="/dashboard">dashboard</WikiLink> with temperature, wind, and conditions for
                     your home location.
                   </li>
                   <li>
-                    <strong className="text-white">7-Day Forecast</strong> — Displayed on the{' '}
+                    <strong className="text-foreground">7-Day Forecast</strong> — Displayed on the{' '}
                     <WikiLink href="/training">training page</WikiLink> with bad-weather warning indicators for
                     upcoming planned sessions.
                   </li>
                   <li>
-                    <strong className="text-white">Activity Weather Tags</strong> — Past activities are
+                    <strong className="text-foreground">Activity Weather Tags</strong> — Past activities are
                     automatically tagged with historical weather data (temperature, wind, conditions) after Strava
                     sync.
                   </li>
@@ -768,16 +768,16 @@ export default function WikiPage() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Setup</h3>
+                <h3 className="text-foreground font-semibold mb-2">Setup</h3>
                 <p>
-                  Set your <strong className="text-white">home latitude and longitude</strong> in the Cycling
+                  Set your <strong className="text-foreground">home latitude and longitude</strong> in the Cycling
                   Profile editor (<WikiLink href="/cycling">Cycling page → Profile</WikiLink>). This is the location
                   used for current conditions and forecasts. Without a home location, weather features are disabled.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Bad-Weather Thresholds</h3>
+                <h3 className="text-foreground font-semibold mb-2">Bad-Weather Thresholds</h3>
                 <p>Activities and forecast days are flagged when any of these conditions are met:</p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
                   <li>Temperature {'<'}5°C or {'>'}32°C</li>
@@ -800,26 +800,26 @@ export default function WikiPage() {
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Plan Builder</h3>
+                <h3 className="text-foreground font-semibold mb-2">Plan Builder</h3>
                 <ul className="list-disc list-inside space-y-1">
                   <li>Create plans from scratch or from a template.</li>
                   <li>
-                    <strong className="text-white">Week tabs</strong> with per-week summaries and an "All" overview.
+                    <strong className="text-foreground">Week tabs</strong> with per-week summaries and an "All" overview.
                   </li>
                   <li>
-                    <strong className="text-white">Sport-aware day editors:</strong> cycling days have power/zone
+                    <strong className="text-foreground">Sport-aware day editors:</strong> cycling days have power/zone
                     targets; strength days have focus area and exercise lists.
                   </li>
-                  <li><strong className="text-white">Drag-to-swap</strong> days within a week for easy rescheduling.</li>
+                  <li><strong className="text-foreground">Drag-to-swap</strong> days within a week for easy rescheduling.</li>
                   <li>
-                    <strong className="text-white">Event linkage</strong> — connect a plan to an event for
+                    <strong className="text-foreground">Event linkage</strong> — connect a plan to an event for
                     automatic taper calculation.
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Weekly View</h3>
+                <h3 className="text-foreground font-semibold mb-2">Weekly View</h3>
                 <p>
                   A 7-day grid showing weather forecasts, route matches, actual activity summaries, and a readiness
                   strip (CTL / ATL / TSB) for the selected week. Synced activities are automatically matched to
@@ -828,7 +828,7 @@ export default function WikiPage() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Conformity Scoring</h3>
+                <h3 className="text-foreground font-semibold mb-2">Conformity Scoring</h3>
                 <p>
                   Each completed day is scored against its plan. Weights differ by sport:
                 </p>
@@ -836,34 +836,34 @@ export default function WikiPage() {
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-surface-light/50">
-                        <th className="text-left py-2 pr-4 text-white font-medium">Component</th>
-                        <th className="text-left py-2 pr-4 text-white font-medium">Cycling Weight</th>
-                        <th className="text-left py-2 text-white font-medium">Strength Weight</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">Component</th>
+                        <th className="text-left py-2 pr-4 text-foreground font-medium">Cycling Weight</th>
+                        <th className="text-left py-2 text-foreground font-medium">Strength Weight</th>
                       </tr>
                     </thead>
                     <tbody className="text-muted">
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Duration</td>
+                        <td className="py-2 pr-4 text-foreground">Duration</td>
                         <td className="py-2 pr-4">25%</td>
                         <td className="py-2">15%</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Power / Volume</td>
+                        <td className="py-2 pr-4 text-foreground">Power / Volume</td>
                         <td className="py-2 pr-4">30%</td>
                         <td className="py-2">35%</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">TSS / Exercises</td>
+                        <td className="py-2 pr-4 text-foreground">TSS / Exercises</td>
                         <td className="py-2 pr-4">20%</td>
                         <td className="py-2">30%</td>
                       </tr>
                       <tr className="border-b border-surface-light/30">
-                        <td className="py-2 pr-4 text-white">Route / RPE</td>
+                        <td className="py-2 pr-4 text-foreground">Route / RPE</td>
                         <td className="py-2 pr-4">10%</td>
                         <td className="py-2">10%</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-white">— / Focus</td>
+                        <td className="py-2 pr-4 text-foreground">— / Focus</td>
                         <td className="py-2 pr-4">—</td>
                         <td className="py-2">10%</td>
                       </tr>
@@ -871,12 +871,12 @@ export default function WikiPage() {
                   </table>
                 </div>
                 <p className="mt-3">
-                  <strong className="text-white">Classification:</strong> ≥90% Excellent · ≥70% Good · ≥50% Partial · {'<'}50% Significant deviation
+                  <strong className="text-foreground">Classification:</strong> ≥90% Excellent · ≥70% Good · ≥50% Partial · {'<'}50% Significant deviation
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Auto-Linking</h3>
+                <h3 className="text-foreground font-semibold mb-2">Auto-Linking</h3>
                 <p>
                   Synced activities are automatically matched to planned days by date. Use the "Link activities"
                   button in the <WikiLink href="/training">weekly view</WikiLink> to force a re-match after manual
@@ -898,7 +898,7 @@ export default function WikiPage() {
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Supported Goal Metrics</h3>
+                <h3 className="text-foreground font-semibold mb-2">Supported Goal Metrics</h3>
                 <p>
                   FTP, body weight, 1RM (any exercise), session count, distance, TSS, VO2max, big-3 ratios
                   (bench/squat, deadlift/squat), resting heart rate, HRV, and more. Each metric has its own
@@ -907,19 +907,19 @@ export default function WikiPage() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Direction & Alignment</h3>
+                <h3 className="text-foreground font-semibold mb-2">Direction & Alignment</h3>
                 <p>
-                  Goal direction (increase or decrease) is <strong className="text-white">automatically derived</strong>{' '}
+                  Goal direction (increase or decrease) is <strong className="text-foreground">automatically derived</strong>{' '}
                   from your starting value versus your target — no manual setting required. The{' '}
-                  <strong className="text-white">alignment score</strong> is an on-track percentage calculated by
+                  <strong className="text-foreground">alignment score</strong> is an on-track percentage calculated by
                   comparing your actual progress against the expected progress based on elapsed time.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Projections</h3>
+                <h3 className="text-foreground font-semibold mb-2">Projections</h3>
                 <p>
-                  FitTrack runs <strong className="text-white">linear regression</strong> on your 12-week check-in
+                  FitTrack runs <strong className="text-foreground">linear regression</strong> on your 12-week check-in
                   history to project when you'll reach your target. Each goal receives a status badge:
                 </p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
@@ -930,10 +930,10 @@ export default function WikiPage() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">TSB Projection</h3>
+                <h3 className="text-foreground font-semibold mb-2">TSB Projection</h3>
                 <p>
                   For event-linked training plans, FitTrack projects your{' '}
-                  <strong className="text-white">Training Stress Balance on race day</strong>. This helps you
+                  <strong className="text-foreground">Training Stress Balance on race day</strong>. This helps you
                   plan taper timing so you arrive at your event fresh (positive TSB) without losing too much
                   fitness. Shown in the Weekly View's TSB projection strip.
                 </p>

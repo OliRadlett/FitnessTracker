@@ -29,6 +29,7 @@ import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
+import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
 import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { PowerModelSection } from '@/components/cycling/PowerModelSection';
 import { WeatherAnalysisSection } from '@/components/cycling/WeatherAnalysisSection';
@@ -475,7 +476,7 @@ export default function CyclingPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Cycling</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
           <p className="text-muted">Power analysis, training load, and cycling metrics</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -497,7 +498,7 @@ export default function CyclingPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Cycling</h1>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
 
@@ -612,6 +613,7 @@ export default function CyclingPage() {
       </div>
 
       {/* Training Load Section */}
+      <NextSessionCardAuto />
       <TrainingLoadSection
         trainingLoad={trainingLoad}
         chartTrainingLoad={chartTrainingLoad}
@@ -625,7 +627,7 @@ export default function CyclingPage() {
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-foreground">
                 {(metrics?.recent_tss ?? 0) === 0 ? 'No TSS data found' : 'Recalculate TSS'}
               </p>
               <p className="text-xs text-muted mt-1">
@@ -655,7 +657,7 @@ export default function CyclingPage() {
       <Card className="border-blue-500/30 bg-blue-500/5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-foreground">
               {powerCurve?.data?.some(p => p.best_power_watts != null)
                 ? 'Fetch stream data for all cycling activities'
                 : 'No power stream data found'}

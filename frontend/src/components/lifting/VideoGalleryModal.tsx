@@ -31,7 +31,7 @@ export function VideoGalleryModal({
             <div key={video.id} className="space-y-2">
               <VideoEmbed video={video} />
               <div className="flex flex-wrap gap-2 text-xs text-muted">
-                <span className="font-medium text-white">
+                <span className="font-medium text-foreground">
                   {video.exercise_name ?? 'Uncategorized'}
                 </span>
                 {video.duration_seconds && (

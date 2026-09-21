@@ -150,7 +150,7 @@ export function WeeklyTab({
               <div className="flex items-center gap-2">
                 <span className="text-xl">{evt.event_type === 'race' ? '🏁' : evt.event_type === 'ride' ? '🚴' : evt.event_type === 'lift' ? '🏋️' : '📌'}</span>
                 <div>
-                  <p className="text-white font-medium text-sm">{evt.name}</p>
+                  <p className="text-foreground font-medium text-sm">{evt.name}</p>
                   <p className="text-xs text-muted">{evt.event_date}</p>
                 </div>
               </div>
@@ -158,7 +158,7 @@ export function WeeklyTab({
                 {evt.days_until === 0 ? (
                   <span className="text-accent font-bold">🎯 Today!</span>
                 ) : (
-                  <span className="text-white">🎯 <strong>{evt.days_until}</strong> days away</span>
+                  <span className="text-foreground">🎯 <strong>{evt.days_until}</strong> days away</span>
                 )}
               </p>
               {evt.is_in_taper && (
@@ -514,7 +514,7 @@ export function WeeklyTab({
               `/api/v1/export/weekly-report/${getCurrentMonday()}`,
               `fittrack_weekly_${getCurrentMonday()}.pdf`,
             )}
-            className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+            className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
           >
             📄 Weekly Report (PDF)
           </button>
@@ -526,7 +526,7 @@ export function WeeklyTab({
                 `fittrack_monthly_${m}.pdf`,
               );
             }}
-            className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+            className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
           >
             📄 Monthly Report (PDF)
           </button>

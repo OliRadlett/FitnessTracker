@@ -73,7 +73,7 @@ function MonthCard({ month, prevMonth }: { month: MonthlySummaryItem; prevMonth:
         </div>
         <div>
           <p className="text-xs text-muted">Sessions</p>
-          <p className="text-sm font-bold text-white">
+          <p className="text-sm font-bold text-foreground">
             {month.lifting_sessions + month.cardio_sessions}
             <span className="text-xs text-muted ml-1">
               ({month.lifting_sessions}🏋️ {month.cardio_sessions}🚴)
@@ -257,7 +257,7 @@ export function YearHighlights({ yearlySummary }: { yearlySummary: YearlySummary
             {yearlySummary.highlights.pr_highlights.map((pr, i) => (
               <div key={i} className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg">
                 <div>
-                  <p className="text-sm font-medium text-white">{pr.exercise_name}</p>
+                  <p className="text-sm font-medium text-foreground">{pr.exercise_name}</p>
                   <p className="text-xs text-muted">
                     {pr.record_type} — {pr.weight_kg}kg × {pr.reps}
                     {pr.estimated_1rm && ` (1RM: ${pr.estimated_1rm.toFixed(1)}kg)`}

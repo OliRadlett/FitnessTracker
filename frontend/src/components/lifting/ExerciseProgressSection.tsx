@@ -46,7 +46,7 @@ export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSessio
             <select
               value={effectiveExercise}
               onChange={(e) => setSelectedExercise(e.target.value)}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {exerciseList.map((name) => (
                 <option key={name} value={name}>{name}</option>
@@ -55,7 +55,7 @@ export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSessio
             <select
               value={weeks}
               onChange={(e) => setWeeks(parseInt(e.target.value))}
-              className="bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value={4}>4 weeks</option>
               <option value={8}>8 weeks</option>

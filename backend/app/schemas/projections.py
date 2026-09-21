@@ -53,6 +53,8 @@ class MetricTrendResponse(BaseModel):
     current_value: float | None
     trend: TrendInfo | None
     classification: str | None
+    history: list[ProjectionPoint] = []  # fitted points (B-14 chart overlays)
+    projection_line: list[ProjectionPoint] = []  # 8 weekly steps ahead
 
 
 class TsbProjectionPoint(BaseModel):

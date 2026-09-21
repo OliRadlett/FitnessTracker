@@ -104,7 +104,7 @@ export default function NotificationsPage() {
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                     readFilter === f.value
                       ? 'bg-accent/20 text-accent'
-                      : 'text-muted hover:text-white'
+                      : 'text-muted hover:text-foreground'
                   }`}
                 >
                   {f.label}
@@ -116,7 +116,7 @@ export default function NotificationsPage() {
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
               aria-label="Filter by type"
-              className="bg-surface border border-surface-light/50 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-accent"
+              className="bg-surface border border-surface-light/50 rounded-lg px-2.5 py-1 text-xs text-foreground focus:outline-none focus:border-accent"
             >
               <option value="all">All types</option>
               {typeOptions.map((t) => (
@@ -161,7 +161,7 @@ export default function NotificationsPage() {
                 <span className="text-xl mt-0.5" aria-hidden="true">{TYPE_ICONS[n.type]}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`text-sm text-white ${n.read ? 'font-normal' : 'font-semibold'}`}>
+                    <p className={`text-sm text-foreground ${n.read ? 'font-normal' : 'font-semibold'}`}>
                       {n.title}
                     </p>
                     <span

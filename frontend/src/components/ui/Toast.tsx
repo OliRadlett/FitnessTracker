@@ -49,12 +49,12 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       className={`pointer-events-auto w-full flex items-center gap-2.5 bg-surface border ${style.ring} rounded-xl px-4 py-3 shadow-2xl`}
     >
       {style.icon}
-      <p className="flex-1 text-sm text-white min-w-0">{item.message}</p>
+      <p className="flex-1 text-sm text-foreground min-w-0">{item.message}</p>
       <button
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss notification"
-        className="shrink-0 inline-flex items-center justify-center w-11 h-11 -mr-2 rounded-lg text-muted hover:text-white hover:bg-surface-light/50 transition-colors"
+        className="shrink-0 inline-flex items-center justify-center w-11 h-11 -mr-2 rounded-lg text-muted hover:text-foreground hover:bg-surface-light/50 transition-colors"
       >
         <X size={18} aria-hidden="true" />
       </button>

@@ -29,7 +29,7 @@ const RouteRow = ({
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-medium truncate">{route.name}</h3>
+              <h3 className="text-foreground font-medium truncate">{route.name}</h3>
               {route.is_favorite && (
                 <span className="text-yellow-400 text-xs">★</span>
               )}
@@ -62,7 +62,7 @@ const RouteRow = ({
               ).map((s) => (
                 <span
                   key={s.provider}
-                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white ${
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-foreground ${
                     PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >

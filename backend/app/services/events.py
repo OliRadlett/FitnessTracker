@@ -5,6 +5,7 @@ here is plain domain logic + DB work so schedulers and future callers can
 reuse it. Service signature convention: ``(db, user_id, ...)``.
 """
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.event import Event
 from app.schemas.event import EventWithCountdown
+
+logger = logging.getLogger(__name__)
 
 VALID_EVENT_TYPES = {"race", "ride", "lift", "other"}
 
@@ -91,3 +94,88 @@ async def record_event_result(
         link="/training?tab=races",
         dedup_key=f"event_result:{event.id}",
     )
+
+
+async def compute_retrospective(
+    db: AsyncSession, user_id, event: Event
+) -> dict:
+    """Post-race retrospective (B-21): result vs projection + conformity.
+
+    Links by date proximity (no new tables): race-day activity (same date),
+    taper-week load (7d before), pre-race TSB, and the linked training plan's
+    target. Everything is observed data — the interpretation is left to the
+    reader (and the B-18 explain layer if wired later).
+    """
+    from app.models.activity import Activity
+    from app.models.training_plan import TrainingPlan
+
+    day = event.event_date
+    week_ago = day - timedelta(days=7)
+
+    acts = (
+        await db.execute(
+            select(Activity).where(
+                Activity.user_id == user_id,
+                Activity.start_date >= week_ago,
+                Activity.start_date < day + timedelta(days=1),
+            )
+        )
+    ).scalars().all()
+
+    race_day = [a for a in acts if a.start_date.date() == day]
+    taper = [a for a in acts if a.start_date.date() < day]
+    taper_tss = round(sum(a.tss or 0 for a in taper), 1)
+
+    pre_tsb: float | None = None
+    try:
+        from app.services.cycling.training_load import training_load_for_user
+
+        series = await training_load_for_user(db, user_id, day, lookback_days=30)
+        for row in series:
+            d = row.get("date")
+            dd = d.date() if isinstance(d, datetime) else d
+            if isinstance(dd, str):
+                dd = date.fromisoformat(dd[:10])
+            if dd == day - timedelta(days=1) and row.get("tsb") is not None:
+                pre_tsb = round(float(row["tsb"]), 1)
+                break
+    except Exception as e:
+        logger.warning(f"Retrospective TSB unavailable (non-fatal): {e}")
+
+    plan_target = None
+    plan = (
+        await db.execute(
+            select(TrainingPlan).where(
+                TrainingPlan.user_id == user_id,
+                TrainingPlan.event_id == event.id,
+            )
+        )
+    ).scalars().first()
+    if plan is not None:
+        plan_target = {
+            "plan_name": plan.name,
+            "target_tss": event.target_tss,
+        }
+
+    best = None
+    if race_day:
+        a = max(race_day, key=lambda x: x.tss or 0)
+        best = {
+            "id": str(a.id),
+            "name": a.name,
+            "tss": a.tss,
+            "normalized_power": a.normalized_power,
+            "sport_type": a.sport_type,
+        }
+
+    return {
+        "event_id": str(event.id),
+        "event_name": event.name,
+        "event_date": day.isoformat(),
+        "result": event.result,
+        "taper_week_tss": taper_tss,
+        "taper_sessions": len(taper),
+        "race_day_activity": best,
+        "pre_race_tsb": pre_tsb,
+        "plan": plan_target,
+    }

@@ -179,11 +179,11 @@ interface ModalHeaderProps {
 export function ModalHeader({ title, onClose, icon }: ModalHeaderProps) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+      <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
         {icon && <span aria-hidden="true">{icon}</span>}
         {title}
       </h3>
-      <button type="button" onClick={onClose} className="text-muted hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Close">
+      <button type="button" onClick={onClose} className="text-muted hover:text-foreground min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Close">
         <X size={20} aria-hidden="true" />
       </button>
     </div>

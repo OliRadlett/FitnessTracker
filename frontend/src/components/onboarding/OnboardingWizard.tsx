@@ -276,7 +276,7 @@ export function OnboardingWizard() {
             </div>
 
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={next} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80">
@@ -303,7 +303,7 @@ export function OnboardingWizard() {
                     <span className="text-xl" aria-hidden>{p.emoji}</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-white font-medium">{p.name}</span>
+                        <span className="text-sm text-foreground font-medium">{p.name}</span>
                         {isConnected && <Badge variant="positive">Connected</Badge>}
                         {conn?.status === 'needs_reauth' && <Badge variant="warning">Re-auth</Badge>}
                       </div>
@@ -332,7 +332,7 @@ export function OnboardingWizard() {
             })}
             {!connLoaded && <p className="text-xs text-muted">Loading connections…</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={next} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80">
@@ -370,7 +370,7 @@ export function OnboardingWizard() {
             </div>
             {profileMsg && <p className="text-xs text-muted">{profileMsg}</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={skip} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={onSaveProfile} disabled={savingProfile} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50">
@@ -400,7 +400,7 @@ export function OnboardingWizard() {
             </Field>
             {goalMsg && <p className="text-xs text-muted">{goalMsg}</p>}
             <div className="pt-3 flex justify-end gap-2">
-              <button onClick={finish} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-white">
+              <button onClick={finish} className="px-3 py-2 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground">
                 Skip
               </button>
               <button onClick={onCreateGoal} disabled={creatingGoal || !metricKey || target === ''} className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50">
@@ -413,7 +413,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <div className="space-y-4 text-center py-4">
             <p className="text-3xl" aria-hidden>🎉</p>
-            <p className="text-white font-medium">You're all set!</p>
+            <p className="text-foreground font-medium">You&apos;re all set!</p>
             <p className="text-sm text-muted">
               You can reopen this anytime from Settings if you'd like to add more.
             </p>
@@ -434,7 +434,7 @@ export function OnboardingToggle() {
   return (
     <button
       onClick={() => window.dispatchEvent(new CustomEvent('fittrack:onboarding'))}
-      className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+      className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
     >
       👋 Re-run onboarding
     </button>
@@ -442,7 +442,7 @@ export function OnboardingToggle() {
 }
 
 const inputCls =
-  'w-full px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent';
+  'w-full px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-accent';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -469,7 +469,7 @@ function PillGroup({
           key={opt.value}
           onClick={() => onChange(opt.value)}
           className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
           }`}
         >
           {opt.label}

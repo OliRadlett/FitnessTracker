@@ -141,7 +141,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       {uploadComplete ? (
         <div className="flex flex-col items-center justify-center py-8 gap-3">
           <Spinner size={32} label="Video uploaded, processing" />
-          <p className="text-sm text-white font-medium">Video uploaded!</p>
+          <p className="text-sm text-foreground font-medium">Video uploaded!</p>
           <p className="text-xs text-muted text-center">
             Processing will happen in the background —<br />
             you&apos;ll get a notification when it&apos;s done.
@@ -161,7 +161,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             type="file"
             accept={ALLOWED_TYPES.join(',')}
             onChange={handleFileChange}
-            className="w-full text-sm text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-surface-light file:text-white hover:file:bg-surface-light/70"
+            className="w-full text-sm text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-surface-light file:text-foreground hover:file:bg-surface-light/70"
           />
           {file && (
             <p className="text-xs text-muted mt-1">
@@ -197,7 +197,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             value={expectedReps}
             onChange={(e) => setExpectedReps(e.target.value)}
             placeholder="e.g. 1 for a max attempt"
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -206,7 +206,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           <select
             value={sessionId}
             onChange={(e) => setSessionId(e.target.value)}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">None</option>
             {sessions.map((s) => (
@@ -222,7 +222,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           <select
             value={prId}
             onChange={(e) => setPrId(e.target.value)}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">None</option>
             {prs.map((pr) => (
@@ -240,7 +240,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional notes"
             rows={3}
-            className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -248,7 +248,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[44px] px-4 py-2 text-sm text-muted hover:text-white transition-colors"
+            className="min-h-[44px] px-4 py-2 text-sm text-muted hover:text-foreground transition-colors"
           >
             Cancel
           </button>

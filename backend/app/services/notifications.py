@@ -27,6 +27,9 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "ride_weather": True,
     "video_processed": True,
     "plan_review": True,
+    "weekly_summary": True,
+    "streak_milestone": True,
+    "deload_started": True,
 }
 
 

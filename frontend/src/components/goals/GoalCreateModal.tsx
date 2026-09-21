@@ -85,7 +85,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
               value={metricKey}
               onChange={(e) => setMetricKey(e.target.value)}
               required
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="" disabled>Select a metric…</option>
               {(metrics ?? []).map((m) => (
@@ -119,7 +119,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
               <select
                 value={sport}
                 onChange={(e) => setSport(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {SPORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -146,7 +146,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
                     ? 'lower is better'
                     : 'higher is better'
                 }
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <div>
@@ -155,7 +155,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
@@ -169,7 +169,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
               rows={2}
               maxLength={500}
               placeholder="Why this goal?"
-              className="w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent resize-y"
             />
           </div>
 
@@ -190,7 +190,7 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-muted hover:text-white text-sm transition-colors"
+              className="px-4 py-2 text-muted hover:text-foreground text-sm transition-colors"
             >
               Cancel
             </button>

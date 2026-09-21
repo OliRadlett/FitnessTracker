@@ -160,7 +160,7 @@ export function ExerciseAutocomplete({
         placeholder={placeholder}
         required={required}
         autoFocus={autoFocus}
-        className={className || 'w-full bg-surface-light border border-surface-light text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent'}
+        className={className || 'w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent'}
         autoComplete="off"
       />
       {isOpen && suggestions && suggestions.length > 0 && (
@@ -186,8 +186,8 @@ export function ExerciseAutocomplete({
                       onClick={() => handleSelect(item.name)}
                       className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                         idx === highlightIndex
-                          ? 'bg-accent/20 text-white'
-                          : 'text-white hover:bg-surface-light/40'
+                          ? 'bg-accent/20 text-foreground'
+                          : 'text-foreground hover:bg-surface-light/40'
                       }`}
                     >
                       <span>{item.name}</span>

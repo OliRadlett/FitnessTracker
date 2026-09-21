@@ -82,7 +82,7 @@ export function DashboardRefresh() {
         className={`shrink-0 w-7 h-7 rounded-full border border-surface-light flex items-center justify-center transition-colors ${
           isFetching
             ? 'text-muted cursor-not-allowed'
-            : 'text-muted hover:text-white hover:border-accent'
+            : 'text-muted hover:text-foreground hover:border-accent'
         }`}
       >
         <svg

@@ -77,14 +77,14 @@ export function RoutePickerModal({
           placeholder="Search routes..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent"
+          className="flex-1 min-w-[200px] px-3 py-2 bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent"
         />
         <input
           type="number"
           placeholder="Min km"
           value={minDist}
           onChange={(e) => setMinDist(e.target.value)}
-          className="w-24 px-3 py-2 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent"
+          className="w-24 px-3 py-2 bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent"
           step="0.5"
           min="0"
         />
@@ -93,7 +93,7 @@ export function RoutePickerModal({
           placeholder="Max km"
           value={maxDist}
           onChange={(e) => setMaxDist(e.target.value)}
-          className="w-24 px-3 py-2 bg-background border border-surface-light rounded-lg text-white text-sm focus:outline-none focus:border-accent"
+          className="w-24 px-3 py-2 bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent"
           step="0.5"
           min="0"
         />
@@ -127,7 +127,7 @@ export function RoutePickerModal({
               }`}
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate">{route.name}</p>
+                <p className="text-sm text-foreground truncate">{route.name}</p>
                 <div className="flex items-center gap-3 text-xs text-muted mt-0.5">
                   <span>{formatDistance(route.distance_meters)}</span>
                   <span>↗ {formatElevation(route.elevation_gain_meters)}</span>

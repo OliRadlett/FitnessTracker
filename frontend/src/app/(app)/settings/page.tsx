@@ -17,6 +17,7 @@ import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useUnits } from '@/lib/units';
+import { useTheme } from '@/lib/theme';
 import { formatRelativeTime } from '@/lib/utils';
 
 const BASE_PATH = '/fittrack';
@@ -46,7 +47,7 @@ function PreferencePills({
           key={opt.value}
           onClick={() => onChange(opt.value)}
           className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+            value === opt.value ? 'bg-accent/20 text-accent' : 'text-muted hover:text-foreground'
           }`}
         >
           {opt.label}
@@ -110,6 +111,7 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const { authFetch, token } = useAuthFetch();
   const units = useUnits();
+  const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -321,7 +323,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white">Settings</h1>
+        <h1 className="text-3xl font-bold text-foreground">Settings</h1>
         <p className="text-muted mt-1">Manage your account and integrations</p>
       </div>
 
@@ -340,7 +342,7 @@ export default function SettingsPage() {
               />
             )}
             <div>
-              <p className="text-white font-medium text-lg">{session?.user?.name}</p>
+              <p className="text-foreground font-medium text-lg">{session?.user?.name}</p>
               <p className="text-muted">{session?.user?.email}</p>
             </div>
           </div>
@@ -389,6 +391,17 @@ export default function SettingsPage() {
               onChange={(v) => units.setPreference({ time_format: v as '24h' | '12h' })}
             />
           </PreferenceRow>
+
+          <PreferenceRow label="Appearance (beta)">
+            <PreferencePills
+              value={theme}
+              options={[
+                { value: 'dark', label: '🌙 Dark' },
+                { value: 'light', label: '☀️ Light' },
+              ]}
+              onChange={(v) => setTheme(v as 'dark' | 'light')}
+            />
+          </PreferenceRow>
         </div>
       </Card>
 
@@ -409,7 +422,7 @@ export default function SettingsPage() {
               value={homeLat}
               onChange={(e) => setHomeLat(e.target.value)}
               placeholder="Latitude"
-              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent"
+              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-accent"
             />
             <input
               type="text"
@@ -417,7 +430,7 @@ export default function SettingsPage() {
               value={homeLng}
               onChange={(e) => setHomeLng(e.target.value)}
               placeholder="Longitude"
-              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-white placeholder-muted focus:outline-none focus:border-accent"
+              className="w-40 px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-accent"
             />
             <button
               onClick={handleSaveLocation}
@@ -454,7 +467,7 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-white font-medium">{integration.name}</p>
+                      <p className="text-foreground font-medium">{integration.name}</p>
                       {isConnected && connection && (
                         connection.status === 'needs_reauth' ? (
                           <Badge variant="warning">Needs re-auth</Badge>
@@ -569,19 +582,19 @@ export default function SettingsPage() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => handleExport('/api/v1/export/lifting/csv', 'fittrack_lifting.csv')}
-              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
               📊 Lifting CSV
             </button>
             <button
               onClick={() => handleExport('/api/v1/export/activities/csv', 'fittrack_activities.csv')}
-              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
               🏃 Activities CSV
             </button>
             <button
               onClick={() => handleExport('/api/v1/export/prs/csv', 'fittrack_prs.csv')}
-              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-white rounded-lg transition-colors border border-surface-light"
+              className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
               🏆 Personal Records CSV
             </button>

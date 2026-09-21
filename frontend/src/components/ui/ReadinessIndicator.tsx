@@ -89,13 +89,13 @@ export function ReadinessIndicator({
           {hrvMs != null && (
             <div>
               <p className="text-xs text-muted">HRV</p>
-              <p className="text-sm text-white">{hrvMs.toFixed(0)} ms</p>
+              <p className="text-sm text-foreground">{hrvMs.toFixed(0)} ms</p>
             </div>
           )}
           {restingHr != null && (
             <div>
               <p className="text-xs text-muted">Resting HR</p>
-              <p className="text-sm text-white">{restingHr.toFixed(0)} bpm</p>
+              <p className="text-sm text-foreground">{restingHr.toFixed(0)} bpm</p>
             </div>
           )}
         </div>

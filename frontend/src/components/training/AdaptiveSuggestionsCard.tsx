@@ -62,7 +62,7 @@ export function AdaptiveSuggestionsCard({ planId }: AdaptiveSuggestionsCardProps
   return (
     <div className="rounded-xl border border-surface-light bg-surface p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-        <h4 className="text-sm font-semibold text-white">Adaptive suggestions</h4>
+        <h4 className="text-sm font-semibold text-foreground">Adaptive suggestions</h4>
         {data.fatigue && (
           <span className="text-xs uppercase tracking-wide text-muted">
             {data.fatigue}
@@ -99,7 +99,7 @@ export function AdaptiveSuggestionsCard({ planId }: AdaptiveSuggestionsCardProps
               key={`${s.type}-${i}`}
               className="rounded-lg bg-surface-light/40 border border-surface-light/60 p-3"
             >
-              <p className="text-xs font-semibold text-white">{s.title}</p>
+              <p className="text-xs font-semibold text-foreground">{s.title}</p>
               {s.detail && <p className="text-xs text-muted mt-1">{s.detail}</p>}
               {s.actions.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">

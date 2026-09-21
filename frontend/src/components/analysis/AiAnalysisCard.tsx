@@ -200,7 +200,7 @@ function StatsGrounding({ stats }: { stats: Record<string, unknown> | null | und
 
   return (
     <details className="mt-3 text-xs text-muted">
-      <summary className="cursor-pointer hover:text-white transition-colors">
+      <summary className="cursor-pointer hover:text-foreground transition-colors">
         Based on {shown.length} fact{shown.length === 1 ? '' : 's'}
       </summary>
       <ul className="mt-1.5 space-y-0.5 list-disc list-inside">

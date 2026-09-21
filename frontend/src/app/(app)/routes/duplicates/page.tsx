@@ -101,7 +101,7 @@ export default function DuplicatesPage() {
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
-        <h1 className="text-2xl font-bold text-white">Duplicate Routes</h1>
+        <h1 className="text-2xl font-bold text-foreground">Duplicate Routes</h1>
         <p className="text-muted">Scanning for potential duplicates...</p>
       </div>
     );
@@ -111,11 +111,11 @@ export default function DuplicatesPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-white">Duplicate Routes</h1>
+          <h1 className="text-2xl font-bold text-foreground">Duplicate Routes</h1>
           <div className="flex gap-2">
             <button
               onClick={() => refetch()}
-              className="px-3 py-2 text-sm bg-surface-light hover:bg-surface-light/80 text-white rounded-lg transition-colors flex items-center gap-1"
+              className="px-3 py-2 text-sm bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
@@ -249,7 +249,7 @@ function DuplicatePairCard({
           <div className="flex gap-2">
             <button
               onClick={() => onDismiss(pair.route_a.id, pair.route_b.id)}
-              className="p-1 text-muted hover:text-white bg-surface-light/50 rounded transition-colors"
+              className="p-1 text-muted hover:text-foreground bg-surface-light/50 rounded transition-colors"
               aria-label="Dismiss pair"
             >
               <X className="w-4 h-4" />
@@ -259,7 +259,7 @@ function DuplicatePairCard({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-white flex items-center gap-1">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-1">
               <span className="text-accent">A</span>
               {pair.route_a.name}
             </h3>
@@ -267,7 +267,7 @@ function DuplicatePairCard({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-white flex items-center gap-1">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-1">
               <span className="text-accent">B</span>
               {pair.route_b.name}
             </h3>

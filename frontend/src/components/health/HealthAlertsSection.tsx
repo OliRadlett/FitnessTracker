@@ -45,7 +45,7 @@ export function HealthAlertsSection({ analysisResults, isAnalyzing, onAnalyze }:
             return (
               <div key={i} className={`p-3 rounded-lg border ${borderClass}`}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-white">{item.label}</span>
+                  <span className="text-sm font-medium text-foreground">{item.label}</span>
                   <span className={`text-xs px-2 py-0.5 rounded ${badgeClass}`}>{badgeText}</span>
                 </div>
                 {item.result?.description && (

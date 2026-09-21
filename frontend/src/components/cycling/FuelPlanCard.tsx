@@ -16,7 +16,7 @@ function StatBadge({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center">
       <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-white mt-1">{value}</p>
+      <p className="text-lg font-semibold text-foreground mt-1">{value}</p>
     </div>
   );
 }
@@ -85,7 +85,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={waterMl}
             onChange={(e) => setWaterMl(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -96,7 +96,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={carbsG}
             onChange={(e) => setCarbsG(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div>
@@ -107,7 +107,7 @@ function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: 
             value={electrolyteTablets}
             onChange={(e) => setElectrolyteTablets(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-light border border-surface-light text-white text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
           {electrolyteTablets !== '' && (
             <p className="text-xs text-muted mt-1">{calculatedElectrolytesMg}mg electrolytes</p>

@@ -35,7 +35,7 @@ export function SummaryStatsBar({ activities, summary }: SummaryStatsBarProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
-        <p className="text-lg font-bold text-white">{stats.count}</p>
+        <p className="text-lg font-bold text-foreground">{stats.count}</p>
         <p className="text-xs text-muted">Activities</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">

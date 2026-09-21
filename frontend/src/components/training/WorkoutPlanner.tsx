@@ -101,11 +101,11 @@ function ExpandableRouteMatch({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Distance</div>
-              <div className="text-sm font-semibold text-white">{formatDistance(match.distance_meters)}</div>
+              <div className="text-sm font-semibold text-foreground">{formatDistance(match.distance_meters)}</div>
             </div>
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Elevation</div>
-              <div className="text-sm font-semibold text-white">{formatElevation(match.elevation_gain_meters)}</div>
+              <div className="text-sm font-semibold text-foreground">{formatElevation(match.elevation_gain_meters)}</div>
             </div>
             {match.avg_tss != null && (
               <div className="bg-surface/60 rounded-lg p-2 text-center">
@@ -128,23 +128,23 @@ function ExpandableRouteMatch({
             {match.avg_duration_min != null && (
               <div className="bg-surface/60 rounded-lg p-2 text-center">
                 <div className="text-[10px] text-muted">Avg Duration</div>
-                <div className="text-sm font-semibold text-white">{Math.round(match.avg_duration_min)} min</div>
+                <div className="text-sm font-semibold text-foreground">{Math.round(match.avg_duration_min)} min</div>
               </div>
             )}
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Type</div>
-              <div className="text-sm font-semibold text-white">{match.is_loop ? '🔄 Loop' : '➡️ Point-to-point'}</div>
+              <div className="text-sm font-semibold text-foreground">{match.is_loop ? '🔄 Loop' : '➡️ Point-to-point'}</div>
             </div>
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Confidence</div>
-              <div className="text-sm font-semibold text-white">{Math.round(match.confidence * 100)}%</div>
+              <div className="text-sm font-semibold text-foreground">{Math.round(match.confidence * 100)}%</div>
             </div>
           </div>
 
           {/* Workout fit analysis */}
           {plan && (
             <div className="bg-surface/40 rounded-lg p-3 border border-surface-light/30">
-              <p className="text-xs font-medium text-white/80 mb-2">Workout Fit Analysis</p>
+              <p className="text-xs font-medium text-foreground/80 mb-2">Workout Fit Analysis</p>
               <div className="space-y-1.5">
                 {match.avg_tss != null && (
                   <FitBar
@@ -229,7 +229,7 @@ function FitBar({
           style={{ width: `${actualPct}%` }}
         />
       </div>
-      <span className="text-white font-medium w-16 text-right shrink-0">
+      <span className="text-foreground font-medium w-16 text-right shrink-0">
         {Math.round(actual)}{unit}
       </span>
       <span className="text-muted w-20 text-right shrink-0">
@@ -385,7 +385,7 @@ export function WorkoutPlanner({
     <div className="space-y-6">
       {/* Zone Reference + Readiness */}
       <Card>
-        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
           <span>🎯</span> Workout Zones
           <span className="text-sm font-normal text-muted">(FTP: {Math.round(zonesData.ftp_watts)}W)</span>
         </h3>
@@ -401,7 +401,7 @@ export function WorkoutPlanner({
           }`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-white">{readiness.readiness_note}</p>
+                <p className="text-sm font-medium text-foreground">{readiness.readiness_note}</p>
                 <p className="text-xs text-muted mt-1">
                   CTL: {readiness.current_ctl} · ATL: {readiness.current_atl} · TSB: {readiness.current_tsb > 0 ? '+' : ''}{readiness.current_tsb}
                 </p>
@@ -447,13 +447,13 @@ export function WorkoutPlanner({
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: z.color }} />
-                        <span className="font-medium text-white">{z.name}</span>
+                        <span className="font-medium text-foreground">{z.name}</span>
                       </div>
                     </td>
                     <td className="text-center py-2 px-2 text-muted">
                       {z.if_low.toFixed(2)}–{z.if_high.toFixed(2)}
                     </td>
-                    <td className="text-center py-2 px-2 text-white font-medium">
+                    <td className="text-center py-2 px-2 text-foreground font-medium">
                       {z.power_low}–{z.power_high}W
                     </td>
                     <td className="text-center py-2 px-2 text-muted">
@@ -472,7 +472,7 @@ export function WorkoutPlanner({
 
       {/* Workout Planner Form */}
       <Card>
-        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
           <span>📋</span> Plan a Workout
         </h3>
 
@@ -494,7 +494,7 @@ export function WorkoutPlanner({
                     disabled={!isRecommended}
                     className={`py-2 px-1 rounded-lg text-xs font-medium text-center transition-all border ${
                       selectedZone === z.zone
-                        ? 'border-accent bg-accent/20 text-white ring-1 ring-accent/30'
+                        ? 'border-accent bg-accent/20 text-foreground ring-1 ring-accent/30'
                         : isRecommended
                           ? 'border-surface-light bg-surface-light/30 text-muted hover:bg-surface-light/50'
                           : 'border-surface-light/30 bg-surface/30 text-muted/40 cursor-not-allowed'
@@ -520,7 +520,7 @@ export function WorkoutPlanner({
                   onClick={() => setDuration(opt.value)}
                   className={`py-2 px-2 rounded-lg text-xs font-medium text-center transition-all border ${
                     duration === opt.value
-                      ? 'border-accent bg-accent/20 text-white ring-1 ring-accent/30'
+                      ? 'border-accent bg-accent/20 text-foreground ring-1 ring-accent/30'
                       : 'border-surface-light bg-surface-light/30 text-muted hover:bg-surface-light/50'
                   }`}
                 >
@@ -556,7 +556,7 @@ export function WorkoutPlanner({
       {/* Workout Targets */}
       {plan && (
         <Card className="border-accent/30 bg-accent/5">
-          <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
             <span>🎯</span> Workout Targets
             <span className="text-sm font-normal text-muted">
               {plan.zone_name} · {plan.duration_minutes} min
@@ -566,7 +566,7 @@ export function WorkoutPlanner({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-surface/60 rounded-lg p-3 text-center">
               <div className="text-xs text-muted mb-1">Power</div>
-              <div className="text-lg font-bold text-white">
+              <div className="text-lg font-bold text-foreground">
                 {plan.target_power_low}–{plan.target_power_high}W
               </div>
             </div>
@@ -601,7 +601,7 @@ export function WorkoutPlanner({
                 value={targetDayId}
                 onChange={(e) => { setTargetDayId(e.target.value); setApplyMsg(null); }}
                 aria-label="Plan day to apply workout to"
-                className="flex-1 min-w-[180px] px-2 py-2 bg-background border border-surface-light rounded-lg text-white text-xs focus:outline-none focus:border-accent"
+                className="flex-1 min-w-[180px] px-2 py-2 bg-background border border-surface-light rounded-lg text-foreground text-xs focus:outline-none focus:border-accent"
               >
                 <option value="">Add to plan day…</option>
                 {(planDays ?? []).map((d) => (
@@ -630,7 +630,7 @@ export function WorkoutPlanner({
       {/* Route Matches */}
       {showRoutes && routeMatches && (
         <Card>
-          <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
             <span>🗺️</span> Matching Routes
           </h3>
 

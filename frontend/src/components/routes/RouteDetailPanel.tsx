@@ -99,10 +99,10 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
     return (
       <div className="w-full max-w-sm lg:max-w-md bg-surface border-l border-surface-light flex flex-col">
         <div className="p-6 border-b border-surface-light flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-white">Route Details</h2>
+          <h2 className="text-lg font-semibold text-foreground">Route Details</h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            className="text-muted hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -120,12 +120,12 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
   return (
     <div className={`w-full max-w-sm lg:max-w-md bg-surface border-l border-surface-light flex flex-col ${scrollable ? 'overflow-y-auto' : 'overflow-visible'}`}>
       <div className="sticky top-0 z-10 bg-surface border-b border-surface-light p-4 flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-white truncate pr-2">
+        <h2 className="text-lg font-semibold text-foreground truncate pr-2">
           Route Details
         </h2>
         <button
           onClick={onClose}
-          className="text-muted hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="text-muted hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Close details"
         >
           <X className="w-5 h-5" />
@@ -154,7 +154,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     autoFocus
-                    className="flex-1 min-w-0 px-2 py-1 bg-background border border-accent rounded text-white text-lg font-bold focus:outline-none"
+                    className="flex-1 min-w-0 px-2 py-1 bg-background border border-accent rounded text-foreground text-lg font-bold focus:outline-none"
                   />
                   <button type="submit" className="text-xs text-accent hover:text-accent/80">
                     Save
@@ -162,7 +162,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                   <button
                     type="button"
                     onClick={() => setIsRenaming(false)}
-                    className="text-xs text-muted hover:text-white"
+                    className="text-xs text-muted hover:text-foreground"
                   >
                     Cancel
                   </button>
@@ -191,7 +191,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
                 className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded transition-colors ${
                   route.is_favorite
                     ? 'text-yellow-400 hover:text-yellow-300 bg-surface-light/50'
-                    : 'text-muted hover:text-white bg-surface-light/50'
+                    : 'text-muted hover:text-foreground bg-surface-light/50'
                 }`}
                 aria-label={route.is_favorite ? 'Unfavorite' : 'Favorite'}
               >
@@ -200,7 +200,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
               <button
                 onClick={() => downloadRouteGpx(route.id, route.name, token)}
                 aria-label="Download GPX"
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-white bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground bg-surface-light/50 hover:bg-surface-light rounded transition-colors"
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -248,12 +248,12 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
               {route.sources.map((s) => (
                 <span
                   key={s.id}
-                  className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white ${
+                  className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-foreground ${
                     PROVIDER_COLORS[s.provider] || 'bg-muted'
                   }`}
                 >
                   <ProviderIcon provider={s.provider} size={14} /> {s.provider_name}
-                  <span className="text-white/60 text-[10px]">({s.provider})</span>
+                  <span className="text-foreground/60 text-[10px]">({s.provider})</span>
                 </span>
               ))}
             </div>

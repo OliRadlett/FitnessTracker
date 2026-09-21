@@ -15,6 +15,10 @@ export const TYPE_ICONS: Record<NotificationType, string> = {
   taper_start: '🧘',
   ride_weather: '🌧️',
   video_processed: '📹',
+  plan_review: '📝',
+  weekly_summary: '📊',
+  streak_milestone: '🔥',
+  deload_started: '🧘',
 };
 
 export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
@@ -37,4 +41,8 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   taper_start: 'Taper',
   ride_weather: 'Ride weather',
   video_processed: 'Videos',
+  plan_review: 'Plan reviews',
+  weekly_summary: 'Weekly digest',
+  streak_milestone: 'Streaks',
+  deload_started: 'Recovery',
 };

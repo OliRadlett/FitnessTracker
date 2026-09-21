@@ -374,7 +374,7 @@ export function CompareActivitiesModal({
 
             {/* Stats delta table */}
             <div className="mt-4">
-              <h3 className="text-sm font-semibold text-white mb-3">Stats Comparison</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-3">Stats Comparison</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -388,7 +388,7 @@ export function CompareActivitiesModal({
                   <tbody>
                     {deltas.map((row) => (
                       <tr key={row.label} className="border-b border-surface-light/20">
-                        <td className="py-2 pr-4 text-white">{row.label}</td>
+                        <td className="py-2 pr-4 text-foreground">{row.label}</td>
                         <td className="text-right text-muted py-2 px-4">{row.a}</td>
                         <td className="text-right text-muted py-2 px-4">{row.b}</td>
                         <td className={`text-right py-2 pl-4 font-medium ${

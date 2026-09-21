@@ -228,6 +228,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.weekly_llm_analysis",
         "schedule": crontab(hour=5, minute=0, day_of_week=0),
     },
+    # Nightly athlete-insight compute (Feature 3/B-15, daily 3 AM UTC)
+    "compute-athlete-insights-nightly": {
+        "task": "app.tasks.scheduler.compute_athlete_insights_nightly",
+        "schedule": crontab(hour=3, minute=0),
+        "options": {"expires": 3600},
+    },
     # Refresh weather forecast caches daily at 5 AM UTC
     "refresh-weather-forecasts": {
         "task": "app.tasks.scheduler.refresh_weather_forecasts",
@@ -244,6 +250,13 @@ celery_app.conf.beat_schedule = {
     "weekly-plan-review": {
         "task": "app.tasks.scheduler.weekly_plan_review",
         "schedule": crontab(hour=6, minute=15, day_of_week=1),
+    },
+    # Weekly digest (B-22, Monday 8 AM UTC): weekly summary + streak
+    # milestones + deload detection.
+    "send-weekly-digest": {
+        "task": "app.tasks.scheduler.send_weekly_digest",
+        "schedule": crontab(hour=8, minute=0, day_of_week=1),
+        "options": {"expires": 3600},
     },
     # Daily training-plan reminder (7 AM UTC)
     "send-plan-reminders": {
@@ -2844,6 +2857,50 @@ def weekly_llm_analysis() -> dict:
     return asyncio.run(_run())
 
 
+@celery_app.task(name="app.tasks.scheduler.compute_athlete_insights_nightly")
+def compute_athlete_insights_nightly() -> dict:
+    """Nightly deterministic athlete-model compute (Feature 3 / B-15).
+
+    Runs the six insight functions per user and upserts AthleteInsight rows.
+    Pure local computation — no Modal, no Gemini.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+
+    async def _run():
+        async with task_session() as db:
+            from app.services.analytics import compute_all_insights
+
+            result = await db.execute(select(User))
+            users = list(result.scalars().all())
+            computed = 0
+            failed = 0
+            for user in users:
+                try:
+                    await compute_all_insights(db, user.id)
+                    computed += 1
+                except Exception as e:
+                    failed += 1
+                    logger.error(
+                        f"Athlete insights failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+                else:
+                    await db.commit()
+            return {
+                "users_computed": computed,
+                "users_failed": failed,
+                "users_total": len(users),
+            }
+
+    return asyncio.run(_run_task_guarded("compute_athlete_insights_nightly", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.backfill_streams_for_all_activities")
 def backfill_streams_for_all_activities() -> dict:
     """Backfill streams for all cycling activities missing them.
@@ -3808,3 +3865,193 @@ def weekly_plan_review() -> dict:
             }
 
     return asyncio.run(_run())
+
+
+STREAK_MILESTONES = (7, 14, 21, 30, 60, 90, 180, 365)
+
+
+async def _current_streak_days(db, user_id) -> int:
+    """Consecutive training days ending today/yesterday (mirrors /streaks)."""
+    from datetime import date as _date
+    from datetime import timedelta as _td
+
+    from sqlalchemy import func as _func
+    from sqlalchemy import select as _select
+
+    from app.models.activity import Activity
+    from app.models.lifting import LiftingSession
+
+    today = _date.today()
+    dates: set = set(
+        (
+            await db.execute(
+                _select(LiftingSession.session_date).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date >= today - _td(days=365),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in (
+        await db.execute(
+            _select(_func.date(Activity.start_date)).where(
+                Activity.user_id == user_id,
+                Activity.source != "wahoo",
+                Activity.start_date >= today - _td(days=365),
+            )
+        )
+    ).all():
+        dates.add(row[0])
+    if not dates:
+        return 0
+    ordered = sorted(dates, reverse=True)
+    if ordered[0] < today - _td(days=1):
+        return 0
+    streak, check = 0, ordered[0]
+    for d in ordered:
+        if d == check:
+            streak += 1
+            check -= _td(days=1)
+        elif d < check:
+            break
+    return streak
+
+
+@celery_app.task(name="app.tasks.scheduler.send_weekly_digest")
+def send_weekly_digest() -> dict:
+    """Weekly digest (B-22, Monday 8 AM UTC).
+
+    Per user: last-week totals (``weekly_summary``), streak milestones
+    (``streak_milestone`` on 7/14/21/30/60/90/180/365-day streaks), and
+    deload detection (``deload_started`` when TSB crossed above +10 in the
+    last 7 days). All dedup-keyed per ISO week — re-runs notify nobody twice.
+    """
+    import asyncio
+    from datetime import date as _date
+    from datetime import timedelta as _td
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+
+    async def _run():
+        async with task_session() as db:
+            from app.models.activity import Activity
+            from app.models.lifting import LiftingSession
+            from app.services.notifications import notify
+
+            users = list((await db.execute(select(User))).scalars().all())
+            today = _date.today()
+            iso_year, iso_week, _ = today.isocalendar()
+            week_key = f"{iso_year}-W{iso_week:02d}"
+            week_start = today - _td(days=today.weekday())
+            last_start = week_start - _td(days=7)
+            last_end = week_start - _td(days=1)
+
+            sent = {"weekly_summary": 0, "streak_milestone": 0, "deload_started": 0}
+            for user in users:
+                try:
+                    # Last-week totals.
+                    acts = (
+                        await db.execute(
+                            select(Activity).where(
+                                Activity.user_id == user.id,
+                                Activity.start_date >= last_start,
+                                Activity.start_date < week_start,
+                            )
+                        )
+                    ).scalars().all()
+                    lifts = (
+                        await db.execute(
+                            select(LiftingSession).where(
+                                LiftingSession.user_id == user.id,
+                                LiftingSession.session_date >= last_start,
+                                LiftingSession.session_date <= last_end,
+                            )
+                        )
+                    ).scalars().all()
+                    if acts or lifts:
+                        tss = round(sum(a.tss or 0 for a in acts), 1)
+                        vol = round(sum(s.total_volume_kg or 0 for s in lifts), 1)
+                        if await notify(
+                            db,
+                            user.id,
+                            "weekly_summary",
+                            title=f"Week in review: {len(acts)} rides, {len(lifts)} lifts",
+                            body=f"{tss} TSS · {vol:,.0f} kg lifted. Open the dashboard for the full breakdown.",
+                            link="/dashboard",
+                            dedup_key=f"weekly:{week_key}",
+                        ):
+                            sent["weekly_summary"] += 1
+
+                    # Streak milestones.
+                    streak = await _current_streak_days(db, user.id)
+                    if streak in STREAK_MILESTONES:
+                        if await notify(
+                            db,
+                            user.id,
+                            "streak_milestone",
+                            title=f"🔥 {streak}-day training streak",
+                            body="Consistency compounds — keep the chain going, even an easy day counts.",
+                            link="/dashboard",
+                            dedup_key=f"streak:{streak}",
+                        ):
+                            sent["streak_milestone"] += 1
+
+                    # Deload detection: TSB crossed above +10 in the last 7d.
+                    try:
+                        from app.services.cycling.training_load import (
+                            training_load_for_user,
+                        )
+
+                        series = await training_load_for_user(
+                            db, user.id, today, lookback_days=14
+                        )
+                        by_date = {}
+                        for row in series:
+                            d = row.get("date")
+                            dd = (
+                                d.date()
+                                if isinstance(d, datetime)
+                                else d
+                                if not isinstance(d, str)
+                                else _date.fromisoformat(d[:10])
+                            )
+                            if row.get("tsb") is not None:
+                                by_date[dd] = float(row["tsb"])
+                        now_tsb = by_date.get(today)
+                        week_ago_tsb = by_date.get(today - _td(days=7))
+                        if (
+                            now_tsb is not None
+                            and week_ago_tsb is not None
+                            and now_tsb >= 10
+                            and week_ago_tsb < 10
+                        ):
+                            if await notify(
+                                db,
+                                user.id,
+                                "deload_started",
+                                title="Recovery bounce — deload absorbed",
+                                body=f"TSB climbed from {week_ago_tsb:.0f} to +{now_tsb:.0f}. Freshness is back; good week for quality work.",
+                                link="/cycling",
+                                dedup_key=f"deload:{week_key}",
+                            ):
+                                sent["deload_started"] += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Deload check failed for user {user.id}: {e}"
+                        )
+
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Weekly digest failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+            return {"users_total": len(users), **sent}
+
+    return asyncio.run(_run_task_guarded("send_weekly_digest", _run))

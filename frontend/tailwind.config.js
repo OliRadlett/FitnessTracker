@@ -6,19 +6,21 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: '#0f172a',
-        surface: '#1e293b',
-        'surface-light': '#334155',
-        accent: '#3b82f6',
-        'accent-hover': '#2563eb',
-        positive: '#22c55e',
-        warning: '#ef4444',
-        muted: '#94a3b8',
+        // B-25: theme-aware via CSS channels (see globals.css :root /
+        // [data-theme='light']). Opacity modifiers (bg-accent/20) keep working.
+        background: 'rgb(var(--background) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        'surface-light': 'rgb(var(--surface-light) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        'accent-hover': 'rgb(var(--accent-hover) / <alpha-value>)',
+        positive: 'rgb(var(--positive) / <alpha-value>)',
+        warning: 'rgb(var(--warning) / <alpha-value>)',
+        muted: 'rgb(var(--muted) / <alpha-value>)',
         // Semantic status tokens — bands desaturate upward:
         // neutral → info → caution → danger (see CODEMAP > ui/).
-        info: '#38bdf8',
-        caution: '#f59e0b',
-        foreground: '#e2e8f0',
+        info: 'rgb(var(--info) / <alpha-value>)',
+        caution: 'rgb(var(--caution) / <alpha-value>)',
+        foreground: 'rgb(var(--foreground) / <alpha-value>)',
       },
       fontFamily: {
         // Inter is loaded via next/font in src/app/layout.tsx (`--font-inter`).

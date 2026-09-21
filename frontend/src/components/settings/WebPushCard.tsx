@@ -68,7 +68,7 @@ export function WebPushCard() {
           <div className="flex items-start gap-3">
             <span className="text-xl" aria-hidden>🔔</span>
             <div>
-              <p className="text-sm font-medium text-white">Browser notifications</p>
+              <p className="text-sm font-medium text-foreground">Browser notifications</p>
               <p className="text-xs text-muted mt-0.5">
                 Deliver notifications to this device even when the app isn’t open.
                 Delivery respects the per-type toggles above.
@@ -91,7 +91,7 @@ export function WebPushCard() {
               <button
                 onClick={onDisable}
                 disabled={busy}
-                className="px-3 py-1.5 text-xs rounded-lg border border-surface-light text-muted hover:text-white disabled:opacity-50"
+                className="px-3 py-1.5 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground disabled:opacity-50"
               >
                 {busy ? 'Disabling…' : 'Disable'}
               </button>

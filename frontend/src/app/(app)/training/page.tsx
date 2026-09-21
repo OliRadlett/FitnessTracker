@@ -256,7 +256,7 @@ export default function TrainingPage() {
     <div className="space-y-8">
       {/* Page Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white">📋 Training Plans</h1>
+        <h1 className="text-3xl font-bold text-foreground">📋 Training Plans</h1>
         <p className="text-muted mt-1">Plan your training blocks, manage events, and track periodization.</p>
       </div>
 
@@ -302,7 +302,7 @@ export default function TrainingPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-white font-medium text-sm">{p.name}</span>
+                    <span className="text-foreground font-medium text-sm">{p.name}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[p.status]}`}>
                       {p.status}
                     </span>
@@ -346,19 +346,19 @@ export default function TrainingPage() {
                   placeholder="Event name"
                   value={eventForm.name}
                   onChange={e => setEventForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                  className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
                 />
                 <input
                   type="date"
                   value={eventForm.event_date}
                   onChange={e => setEventForm(f => ({ ...f, event_date: e.target.value }))}
-                  className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                  className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <select
                     value={eventForm.event_type}
                     onChange={e => setEventForm(f => ({ ...f, event_type: e.target.value }))}
-                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
                   >
                     <option value="race">🏁 Race</option>
                     <option value="ride">🚴 Ride</option>
@@ -370,7 +370,7 @@ export default function TrainingPage() {
                     placeholder="Taper days"
                     value={eventForm.taper_days}
                     onChange={e => setEventForm(f => ({ ...f, taper_days: parseInt(e.target.value) || 14 }))}
-                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-white text-sm focus:outline-none focus:border-accent"
+                    className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -383,7 +383,7 @@ export default function TrainingPage() {
                   </button>
                   <button
                     onClick={() => setShowEventForm(false)}
-                    className="px-3 py-1.5 min-h-[44px] text-muted text-xs hover:text-white"
+                    className="px-3 py-1.5 min-h-[44px] text-muted text-xs hover:text-foreground"
                   >
                     Cancel
                   </button>
@@ -401,7 +401,7 @@ export default function TrainingPage() {
                   className="p-3 bg-surface-light/30 rounded-lg border border-surface-light/50"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-white font-medium text-sm">
+                    <span className="text-foreground font-medium text-sm">
                       {EVENT_TYPE_EMOJI[evt.event_type] || '📌'} {evt.name}
                     </span>
                     {confirmingDeleteId === evt.id ? (
@@ -418,7 +418,7 @@ export default function TrainingPage() {
                         </button>
                         <button
                           onClick={() => setConfirmingDeleteId(null)}
-                          className="text-xs text-muted hover:text-white"
+                          className="text-xs text-muted hover:text-foreground"
                         >
                           No
                         </button>
@@ -475,7 +475,7 @@ export default function TrainingPage() {
                   key={key}
                   onClick={() => setView(key)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    view === key ? 'bg-accent text-white' : 'text-muted hover:text-white'
+                    view === key ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
                   }`}
                 >
                   {label}

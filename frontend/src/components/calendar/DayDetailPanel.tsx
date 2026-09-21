@@ -52,7 +52,7 @@ function LiftingSessionDetail({
         Notes
       </div>
       <textarea
-        className="w-full bg-surface/80 border border-surface-light rounded-lg p-3 text-sm text-white placeholder-muted resize-none focus:outline-none focus:border-accent/50 transition-colors"
+        className="w-full bg-surface/80 border border-surface-light rounded-lg p-3 text-sm text-foreground placeholder-muted resize-none focus:outline-none focus:border-accent/50 transition-colors"
         rows={3}
         placeholder="Add session notes..."
         value={currentNotes}
@@ -186,7 +186,7 @@ export function DayDetailPanel({
             <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">{'\u2764\uFE0F'}</span>
-                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Recovery</h3>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Recovery</h3>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {dayMetric?.recovery_score != null && (
@@ -234,7 +234,7 @@ export function DayDetailPanel({
             <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">{'\U0001F634'}</span>
-                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Sleep</h3>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Sleep</h3>
               </div>
               {daySleepLog ? (
                 <>
@@ -261,25 +261,25 @@ export function DayDetailPanel({
                     {daySleepLog.deep_sleep_seconds != null && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-indigo-300">Deep</span>
-                        <span className="text-white">{formatSleepHrs(daySleepLog.deep_sleep_seconds)}</span>
+                        <span className="text-foreground">{formatSleepHrs(daySleepLog.deep_sleep_seconds)}</span>
                       </div>
                     )}
                     {daySleepLog.rem_sleep_seconds != null && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-purple-300">REM</span>
-                        <span className="text-white">{formatSleepHrs(daySleepLog.rem_sleep_seconds)}</span>
+                        <span className="text-foreground">{formatSleepHrs(daySleepLog.rem_sleep_seconds)}</span>
                       </div>
                     )}
                     {daySleepLog.light_sleep_seconds != null && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-sky-300">Light</span>
-                        <span className="text-white">{formatSleepHrs(daySleepLog.light_sleep_seconds)}</span>
+                        <span className="text-foreground">{formatSleepHrs(daySleepLog.light_sleep_seconds)}</span>
                       </div>
                     )}
                     {daySleepLog.awake_seconds != null && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted">Awake</span>
-                        <span className="text-white">{formatSleepHrs(daySleepLog.awake_seconds)}</span>
+                        <span className="text-foreground">{formatSleepHrs(daySleepLog.awake_seconds)}</span>
                       </div>
                     )}
                   </div>
@@ -336,7 +336,7 @@ export function DayDetailPanel({
                     className="hover:text-accent transition-colors"
                     title="View this activity in Activities"
                   >
-                    <h3 className="text-white font-semibold text-lg truncate">
+                    <h3 className="text-foreground font-semibold text-lg truncate">
                       {activity.name}
                     </h3>
                   </Link>
@@ -354,7 +354,7 @@ export function DayDetailPanel({
                   {activity.distance_meters != null && (
                     <div className="bg-surface/60 rounded-lg p-3 text-center">
                       <div className="text-xs text-muted mb-1">Distance</div>
-                      <div className="text-white font-semibold">
+                      <div className="text-foreground font-semibold">
                         {formatDistance(activity.distance_meters)}
                       </div>
                     </div>
@@ -362,7 +362,7 @@ export function DayDetailPanel({
                   {activity.duration_seconds != null && (
                     <div className="bg-surface/60 rounded-lg p-3 text-center">
                       <div className="text-xs text-muted mb-1">Duration</div>
-                      <div className="text-white font-semibold">
+                      <div className="text-foreground font-semibold">
                         {formatDuration(activity.duration_seconds)}
                       </div>
                     </div>
@@ -370,7 +370,7 @@ export function DayDetailPanel({
                   {activity.average_power != null && (
                     <div className="bg-surface/60 rounded-lg p-3 text-center">
                       <div className="text-xs text-muted mb-1">Avg Power</div>
-                      <div className="text-white font-semibold">
+                      <div className="text-foreground font-semibold">
                         {Math.round(activity.average_power)} W
                       </div>
                     </div>
@@ -378,7 +378,7 @@ export function DayDetailPanel({
                   {activity.tss != null && (
                     <div className="bg-surface/60 rounded-lg p-3 text-center">
                       <div className="text-xs text-muted mb-1">TSS</div>
-                      <div className="text-white font-semibold">
+                      <div className="text-foreground font-semibold">
                         {Math.round(activity.tss)}
                       </div>
                     </div>
@@ -432,7 +432,7 @@ export function DayDetailPanel({
                 {getSportEmoji(entry.sport_type)}
               </span>
               <div className="flex-1 min-w-0">
-                <h3 className="text-white font-semibold truncate">
+                <h3 className="text-foreground font-semibold truncate">
                   {entry.name}
                 </h3>
                 <span
@@ -478,7 +478,7 @@ export function DayDetailPanel({
                   className="hover:text-accent transition-colors"
                   title="View this session in Lifting"
                 >
-                  <h3 className="text-white font-semibold text-lg truncate">
+                  <h3 className="text-foreground font-semibold text-lg truncate">
                     {session.focus || session.program_name || 'Lifting Session'}
                   </h3>
                 </Link>
@@ -487,7 +487,7 @@ export function DayDetailPanel({
               {session.total_volume_kg != null && (
                 <div className="text-right">
                   <div className="text-xs text-muted">Volume</div>
-                  <div className="text-white font-semibold">
+                  <div className="text-foreground font-semibold">
                     {Math.round(session.total_volume_kg).toLocaleString()} kg
                   </div>
                 </div>
@@ -515,7 +515,7 @@ export function DayDetailPanel({
                       key={exercise}
                       className="bg-surface/60 rounded-lg p-3"
                     >
-                      <div className="text-white font-medium text-sm mb-1">
+                      <div className="text-foreground font-medium text-sm mb-1">
                         {exercise}
                       </div>
                       <div className="flex flex-wrap gap-2">

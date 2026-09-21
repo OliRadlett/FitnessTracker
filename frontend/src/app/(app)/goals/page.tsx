@@ -56,7 +56,7 @@ export default function GoalsPage() {
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-white">🎯 Goals</h1>
+        <h1 className="text-3xl font-bold text-foreground">🎯 Goals</h1>
         <button
           onClick={() => setShowCreate(true)}
           className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
@@ -74,7 +74,7 @@ export default function GoalsPage() {
             className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
               tab === key
                 ? 'bg-accent text-white'
-                : 'text-muted hover:text-white hover:bg-surface-light/50'
+                : 'text-muted hover:text-foreground hover:bg-surface-light/50'
             }`}
           >
             {label}

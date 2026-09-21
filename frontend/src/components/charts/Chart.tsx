@@ -352,7 +352,8 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
                 dataKey={s.name}
                 stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
                 strokeWidth={2}
-                dot={showDots ? { r: 3 } : false}
+                strokeDasharray={(s as { dashed?: boolean }).dashed ? '6 4' : undefined}
+                dot={(s as { dashed?: boolean }).dashed ? false : showDots ? { r: 3 } : false}
                 activeDot={{ r: 5 }}
               />
             ))}

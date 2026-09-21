@@ -30,7 +30,7 @@ export function Stat({ label, value, unit, delta, deltaTone = 'neutral', hint }:
   return (
     <div className="min-w-0">
       <p className="text-xs text-muted mb-1 truncate">{label}</p>
-      <p className="text-2xl font-bold text-white tabular-nums leading-none">
+      <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
         {value}
         {unit ? <span className="text-sm font-medium text-muted ml-1">{unit}</span> : null}
       </p>

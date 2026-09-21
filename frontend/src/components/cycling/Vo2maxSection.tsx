@@ -4,6 +4,7 @@ import React from 'react';
 import type { Vo2maxResponse, Vo2maxHistoryResponse, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
+import { useForecastChart } from '@/lib/projection';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 
 interface Vo2maxSectionProps {
@@ -14,6 +15,12 @@ interface Vo2maxSectionProps {
 }
 
 export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading }: Vo2maxSectionProps) {
+  // B-14: dashed VO2max forecast overlay.
+  const { data: vo2Chart, caption: vo2Caption } = useForecastChart(
+    chartVo2maxTrend,
+    'vo2max',
+    'VO₂max forecast',
+  );
   return (
     <>
       {/* VO2max Card */}
@@ -45,8 +52,8 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading
                 </div>
               </div>
               <div className="text-sm text-muted">
-                <p>Method: <span className="text-white">{vo2max.method}</span></p>
-                <p>Confidence: <span className="text-white">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
+                <p>Method: <span className="text-foreground">{vo2max.method}</span></p>
+                <p>Confidence: <span className="text-foreground">{(vo2max.confidence * 100).toFixed(0)}%</span></p>
                 {vo2max.all_estimates.length > 1 && (
                   <p className="mt-1 text-xs">
                     {vo2max.all_estimates.length} estimates available — showing most reliable.
@@ -74,8 +81,13 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading
         <CardHeader>
           <CardTitle>📈 VO2max Trend</CardTitle>
         </CardHeader>
-        {chartVo2maxTrend && chartVo2maxTrend.labels.length > 0 ? (
-          <Chart data={chartVo2maxTrend} height={280} />
+        {vo2Chart && vo2Chart.labels.length > 0 ? (
+          <>
+            <Chart data={vo2Chart} height={280} />
+            {vo2Caption && (
+              <p className="text-[11px] text-muted mt-1 px-1">--- {vo2Caption}</p>
+            )}
+          </>
         ) : (
           <div className="h-40 flex flex-col items-center justify-center gap-2">
             <p className="text-3xl">📈</p>

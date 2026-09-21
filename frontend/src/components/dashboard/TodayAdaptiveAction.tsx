@@ -134,7 +134,7 @@ export function TodayAdaptiveAction({
 
   const row = (
     <div className="flex items-center justify-between gap-3 pt-2 mt-2 border-t border-white/5">
-      <p className="text-sm text-white truncate">{label}</p>
+      <p className="text-sm text-foreground truncate">{label}</p>
       <button
         type="button"
         onClick={() => applyAction.mutate(selected.action)}

@@ -23,7 +23,7 @@ export function PowerCurveTable({ data, ftpWatts, wkgByLabel }: { data: PowerCur
             const wkg = wkgByLabel?.get(point.duration_label) ?? null;
             return (
               <tr key={point.duration_label} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                <td className="py-2 text-white font-medium">{point.duration_label}</td>
+                <td className="py-2 text-foreground font-medium">{point.duration_label}</td>
                 <td className="py-2 text-right text-yellow-400 font-mono">
                   {power ? `${power} W` : '—'}
                 </td>

@@ -153,7 +153,7 @@ export function HealthAlertSettings() {
             <div key={type} className="py-1 border-b border-surface-light/40 last:border-0">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex-1">
-                  <p className="text-sm text-white font-medium">{meta.label}</p>
+                  <p className="text-sm text-foreground font-medium">{meta.label}</p>
                   <p className="text-xs text-muted">{meta.description}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
@@ -162,7 +162,7 @@ export function HealthAlertSettings() {
                     onChange={e => snooze(type, e.target.value)}
                     disabled={!enabled || pending}
                     aria-label={`Snooze ${meta.label}`}
-                    className="px-2 py-1 text-xs bg-background border border-surface-light rounded text-white focus:outline-none focus:border-accent disabled:opacity-50"
+                    className="px-2 py-1 text-xs bg-background border border-surface-light rounded text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
                   >
                     {SNOOZE_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>
@@ -200,7 +200,7 @@ export function HealthAlertSettings() {
                         min={0}
                         value={current.thresholds[type]?.[f.key] ?? 0}
                         disabled
-                        className="w-20 px-2 py-1 bg-surface-light/30 border border-surface-light rounded text-white text-xs focus:outline-none disabled:opacity-40"
+                        className="w-20 px-2 py-1 bg-surface-light/30 border border-surface-light rounded text-foreground text-xs focus:outline-none disabled:opacity-40"
                       />
                       <span>{f.suffix}</span>
                     </label>
@@ -225,7 +225,7 @@ export function HealthAlertSettings() {
                           value={current.thresholds[type]?.[f.key] ?? 0}
                           onChange={e => setThreshold(type, f.key, e.target.value)}
                           disabled={pending}
-                          className="w-20 px-2 py-1 bg-background border border-surface-light rounded text-white text-xs focus:outline-none focus:border-accent disabled:opacity-50"
+                          className="w-20 px-2 py-1 bg-background border border-surface-light rounded text-foreground text-xs focus:outline-none focus:border-accent disabled:opacity-50"
                         />
                         <span>{f.suffix}</span>
                       </label>

@@ -100,7 +100,7 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
       <div>
         <h4 className="text-xs text-muted mb-3 uppercase tracking-wider">Climb Segments</h4>
         <div className="rounded-lg bg-surface-light/40 border border-surface-light/60 p-4 text-sm text-muted">
-          <p className="text-white font-medium mb-1">No climb segments on this route yet.</p>
+          <p className="text-foreground font-medium mb-1">No climb segments on this route yet.</p>
           <p className="text-xs">
             Segments are detected from the route's elevation profile (sustained
             climbs ≥ ~150 m gaining ≥ ~30 m at ≥ 3% average) and populated from
@@ -127,7 +127,7 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
           type="button"
           onClick={() => recompute.mutate()}
           disabled={recompute.isPending}
-          className="px-2.5 py-1 text-xs rounded-lg bg-surface-light/60 text-muted hover:text-white hover:bg-surface-light transition-colors disabled:opacity-40"
+          className="px-2.5 py-1 text-xs rounded-lg bg-surface-light/60 text-muted hover:text-foreground hover:bg-surface-light transition-colors disabled:opacity-40"
         >
           {recompute.isPending ? 'Recomputing…' : '↻ Recompute'}
         </button>
@@ -150,7 +150,7 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-white truncate">
+                    <span className="text-xs font-semibold text-foreground truncate">
                       {seg.name}
                     </span>
                     {cat && catStyle && (
@@ -201,7 +201,7 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
                           className="flex items-center gap-3 py-1.5 text-xs border-b border-surface-light/40 last:border-0"
                         >
                           <span className="w-5 text-muted">{i + 1}</span>
-                          <span className="flex-1 truncate text-white">
+                          <span className="flex-1 truncate text-foreground">
                             {e.activity_name ?? '—'}
                           </span>
                           {e.is_pr && (

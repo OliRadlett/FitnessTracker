@@ -18,7 +18,7 @@
 | `training_plan.py` | `TrainingPlan`, `TrainingPlanDay` | Plan has many Days; Day: `sport` (cycle/strength/rest), `planned_focus` (squat/bench/deadlift/overhead_press/accessories/full_body/push/pull/legs/upper/lower), planned exercises/volume/RPE/power/zone/route targets, optionally links Activity + LiftingSession; Plan optionally links Event (`event_id`) for auto-taper |
 | `exercise.py` | `Exercise` | User-editable exercise library. Global seed rows (`user_id=NULL`) + per-user additions. Unique `(user_id, name)`. Fields: name, category (big3/compound/accessory), aliases (JSONB), is_active |
 | `event.py` | `Event` | Race/ride/lift events with taper config, optional JSONB `result` block (finish time, position, PB, notes) + `result_updated_at` |
-| `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event). Optionally links to Activity, LiftingSession, or Event |
+| `llm_analysis.py` | `LlmAnalysis` | User has many LlmAnalysis; stores Gemini-powered analysis (cycling, activity, lifting_session, health, event + B-18 `insight_explanation` (insight_type in stats_json) and `season_overview`). Optionally links to Activity, LiftingSession, or Event |
 | `weather.py` | `CachedWeather` | Per-user Open-Meteo response cache keyed by weather_type + rounded coords (expires_at NULL = never expires) |
 | `webhook_event.py` | `StravaWebhookEvent` | Async Strava webhook queue: raw payload, received_at, processed_at, attempts, status (pending/processed/failed), error. Drained by `process_strava_webhook_events` Celery task |
 | `notification.py` | `Notification` | In-app notifications: type (11 types: health_alert/pr/goal_milestone/plan_reminder/connection_reauth/ftp_stale/event_result/race_day/event_countdown/taper_start/ride_weather), title/body, severity, link, read/read_at, dedup_key (partial unique (user_id, dedup_key)), `payload` Python attr → DB column `metadata` (SQLAlchemy reserves the attr name). Per-user toggles live in `User.notification_preferences` (JSONB) |
@@ -28,3 +28,4 @@
 | `rpe_calibration.py` | `RpeCalibration` | Personal RPE calibration (lifting-video intelligence: predicted vs reported RPE) |
 | `lift_video_analysis.py` | `LiftVideoAnalysis` | Lifting-video intelligence results (form/VBT/rest/consistency, analysis_depth) per `LiftVideo` |
 | `cross_domain.py` | `CrossDomainInsight` | Modal cross-domain insights (sleep-performance, cross-sport fatigue, race retrospective), stored weekly |
+| `athlete_insight.py` | `AthleteInsight` | Feature 3/B-15 deterministic insights (recovery_cost, sleep_performance, load_readiness, power_norms, pr_clustering, tsb_peak): per-user/type/period upsert, sample_size + collecting/low/medium/high confidence |
