@@ -99,16 +99,27 @@ VIEW_TO_PLANE = {
 }
 
 
-def run_one(label: dict, videos_dir: Path, fps: float, views_only: bool = False) -> dict:
+def run_one(
+    label: dict,
+    videos_dir: Path,
+    fps: float,
+    views_only: bool = False,
+    known_view: bool = False,
+) -> dict:
     tmpdir = Path(tempfile.mkdtemp(prefix="videoeval_"))
     try:
-        return _run_one(label, videos_dir, fps, views_only, tmpdir)
+        return _run_one(label, videos_dir, fps, views_only, known_view, tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def _run_one(
-    label: dict, videos_dir: Path, fps: float, views_only: bool, tmpdir: Path
+    label: dict,
+    videos_dir: Path,
+    fps: float,
+    views_only: bool,
+    known_view: bool,
+    tmpdir: Path,
 ) -> dict:
     video_path = videos_dir / label["file"]
     record: dict = {
@@ -170,6 +181,8 @@ def _run_one(
     )
     record["declared_reps"] = len(declared_reps)
 
+    view_used = (label.get("camera_view") or "unknown") if known_view else "unknown"
+    record["view_used"] = view_used
     pose_result = run_pose_analysis(
         input_path=video_path,
         tmpdir=str(tmpdir),
@@ -178,6 +191,7 @@ def _run_one(
         exercise_name=label.get("exercise") or classification["exercise"],
         rep_count=label.get("reps") or len(auto_reps),
         weight_kg=float(label.get("load_kg") or 0.0),
+        view=view_used,
         track=track,
     )
     record["load_kg"] = label.get("load_kg")
@@ -334,6 +348,10 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--fps", type=float, default=10.0)
     ap.add_argument("--views-only", action="store_true", help="landmarks + view only (fast)")
+    ap.add_argument(
+        "--known-view", action="store_true",
+        help="pass each label's camera_view to the analyzer (simulates user-declared view)",
+    )
     args = ap.parse_args()
 
     if not args.labels.exists():
@@ -347,7 +365,10 @@ def main() -> int:
 
     records = []
     for label in labels:
-        rec = run_one(label, args.videos_dir, args.fps, views_only=args.views_only)
+        rec = run_one(
+            label, args.videos_dir, args.fps,
+            views_only=args.views_only, known_view=args.known_view,
+        )
         status = "skip" if not rec.get("present") else "ok"
         print(f"  [{status}] {label['file']}")
         records.append(rec)
