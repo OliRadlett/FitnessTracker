@@ -217,7 +217,17 @@ class TestSquatFormScoring:
 class TestWorldVelocity:
     @staticmethod
     def _frames(profile):
-        return [[Lm(0.5, y) for _ in range(33)] for y in profile]
+        # Leg-lift mode measures hip->ankle distance, so the profile is the
+        # ankle y with the hip fixed at the origin (0).
+        frames = []
+        for y in profile:
+            lms = [Lm(0.5, 0.0) for _ in range(33)]
+            for i in (23, 24):
+                lms[i] = Lm(0.5, 0.0)
+            for i in (27, 28):
+                lms[i] = Lm(0.5, y)
+            frames.append(lms)
+        return frames
 
     @staticmethod
     def _reps(n_frames):

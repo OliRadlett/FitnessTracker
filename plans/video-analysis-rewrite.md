@@ -135,11 +135,26 @@ These are the numbers the rewrite must move.
   knee valgus, deadlift back rounding, setup lean) behind an explicit `view` argument
   that defaults to `unknown` = *not assessed*. Effect: **`Excessive forward lean`
   flags 31 → 0** and `form_score_zero_rate` **0.44 → 0.22** on the production set.
-- ✅ Metric bar velocity from world landmarks (`bar_velocity_from_world`) — no
-  pixels-per-metre guessing or hardcoded ROM. Squat tracks shoulders (hip is the
-  world origin, so hip y never moves), bench/deadlift/press track wrists. Effect:
-  `rep_count_mismatch_rate` **0.33 → 0.0**, `rpe_saturation_rate` **0.92 → 0.67**,
-  mean velocity 0.21 → 0.23 m/s and now 0.29–0.36 m/s for bench/deadlift.
+- ✅ Metric bar velocity from world landmarks (`bar_velocity_from_world`).
+  **Important finding:** MediaPipe world landmarks are *hip-centred* — the hip
+  sits at the origin (measured world hip-y range 0.003 m across a deep squat),
+  so global body translation is removed and shoulder y cannot measure bar
+  travel. The fix: for squat/deadlift the hip's vertical travel equals the
+  change in **hip→ankle distance** (leg extension against the planted foot),
+  which *is* measurable (ankle-y range 0.49 m); presses/bench/stone track wrist
+  y (bar moves relative to the torso). Velocity now uses the joint-angle
+  detector's bottom/top frames rather than re-finding extrema on the noisy
+  world signal. Effect: `velocity_loss_out_of_range_rate` **0.67 → 0.0**,
+  `rep_count_mismatch_rate` **0.33 → 0.0**; 150 kg max squat reads 0.28 m/s,
+  105 kg RPE7 sets 0.18–0.23 m/s with 19–31% loss.
+- ⚠️ **RPE is still saturated** (0.92 → 1.0 after the velocity fix): the
+  heuristic maps any ≥30% velocity loss to 10.0 and single reps to absolute-
+  velocity bins. It ignores load entirely. This is Phase 2 work — the new
+  `load_kg` labels make it possible to validate a load-aware model.
+- 📷 **Camera views (owner-confirmed):** 9 of 12 clips are rear-quarter
+  (back-left/right), only 2 are true side, 1 front. Sagittal-plane rules are
+  therefore invalid for ~75% of real footage — the view gate must default to
+  "not assessed" and view guidance is a high-value feature.
 - ✅ One canonical rep list: `bar_velocity_from_world` emits one `rep_timings` entry
   per pose rep (velocity may be `None`) so form and velocity counts always agree.
 - ⏳ **Rep segmentation accuracy** — `auto_rep_mae` still 1.33; the 2D angle-based

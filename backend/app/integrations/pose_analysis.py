@@ -506,7 +506,7 @@ def detect_reps_from_pose(
     # Each kept bottom gets the nearest kept top on each side as bounds
     # (falling back to the signal ends for videos starting/ending mid-rep).
     # Slices sharing identical bounds are deduped, keeping the deeper one.
-    candidates: dict[tuple[int, int], float] = {}
+    candidates: dict[tuple[int, int], tuple[float, int]] = {}
     for mi in kept_min:
         left = [m for m in kept_max if m < mi]
         right = [m for m in kept_max if m > mi]
@@ -516,8 +516,8 @@ def detect_reps_from_pose(
             continue
         key = (start, end)
         depth = float(signal[mi])
-        if key not in candidates or depth < candidates[key]:
-            candidates[key] = depth
+        if key not in candidates or depth < candidates[key][0]:
+            candidates[key] = (depth, mi)
     #
     # Each slice must also have enough JOINT RANGE to be a real rep:
     # standing-weight-shifts and setup steps create genuine minima but only
@@ -525,6 +525,7 @@ def detect_reps_from_pose(
     min_amp = 20.0 if exercise in ("Bench Press",) else 25.0
     reps = []
     for start, end in sorted(candidates):
+        _depth, bottom_idx = candidates[(start, end)]
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
         if duration < 0.8 or duration > 10.0:
@@ -543,6 +544,12 @@ def detect_reps_from_pose(
             "rep_number": len(reps) + 1,
             "start_idx": start,
             "end_idx": end,
+            # Frames of the bottom and the following top, from the robust
+            # (median-filtered, prominence-gated) joint-angle signal. Bar
+            # velocity uses these directly instead of re-finding extrema on
+            # the noisier world-landmark signal.
+            "bottom_idx": bottom_idx,
+            "top_idx": end,
             "bottom_depth": round(seg_min, 1),
             "amplitude": round(amplitude, 1),
             "start_time": round(timestamps[min(start, len(timestamps) - 1)], 2),
@@ -1321,16 +1328,37 @@ def bar_velocity_from_pose(
     return result
 
 
-def _velocity_tracked_indices(exercise: str) -> tuple[int, int]:
-    """Landmark pair whose vertical motion best tracks the bar for the lift.
+def _is_leg_lift(exercise: str) -> bool:
+    return exercise in (
+        "Squat", "Front Squat", "Back Squat",
+        "Deadlift", "Conventional Deadlift", "Sumo Deadlift",
+    )
 
-    Squat: shoulders (bar sits on the upper back). Bench/deadlift/press:
-    wrists (bar is in the hands). Hips are deliberately not used for squat —
-    in world coordinates the hip centre is the origin (y≈0) and never moves.
+
+def _velocity_tracked_indices(exercise: str) -> tuple[int, int]:
+    """Landmark pair whose vertical motion best tracks the bar for lifts
+    where the bar moves relative to the torso (presses, bench, stone)."""
+    return 15, 16  # wrists
+
+
+def _midpoint(w, a: int, b: int) -> np.ndarray:
+    return np.array([(w[a].x + w[b].x) / 2, (w[a].y + w[b].y) / 2,
+                     (w[a].z + w[b].z) / 2])
+
+
+def _hip_ankle_distance(w) -> float:
+    """Hip-centre to ankle-centre distance (metres).
+
+    MediaPipe world landmarks are hip-centred, so global body translation
+    (the thing bar velocity needs) is removed — the hip sits at the origin
+    and never moves. But for squat/deadlift the hip's vertical travel equals
+    the change in hip-to-ankle distance (the legs extend/compress against
+    the planted foot), which IS measurable. Verified: world hip-y range
+    0.003 m vs ankle-y range 0.49 m over a deep squat.
     """
-    if exercise in ("Squat", "Front Squat", "Back Squat"):
-        return 11, 12
-    return 15, 16
+    hip = _midpoint(w, 23, 24)
+    ankle = _midpoint(w, 27, 28)
+    return float(np.linalg.norm(hip - ankle))
 
 
 def bar_velocity_from_world(
@@ -1362,10 +1390,15 @@ def bar_velocity_from_world(
     if n < 5 or not pose_reps:
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
 
-    li, ri = _velocity_tracked_indices(exercise)
-    y = np.array([(w[li].y + w[ri].y) / 2 for w in world_frames[:n]])
+    if _is_leg_lift(exercise):
+        # Leg extension recovers the hip's vertical travel (bar travels with
+        # the hips in squat/deadlift); hip y itself is the world origin.
+        sig = np.array([_hip_ankle_distance(w) for w in world_frames[:n]])
+    else:
+        li, ri = _velocity_tracked_indices(exercise)
+        sig = np.array([(w[li].y + w[ri].y) / 2 for w in world_frames[:n]])
     ts = np.array(timestamps[:n])
-    pos = _smooth_signal(y, window=3)
+    pos = _smooth_signal(sig, window=3)
 
     velocities: list[float] = []
     rep_data: list[dict] = []
@@ -1380,24 +1413,31 @@ def bar_velocity_from_world(
             "amplitude_m": None,
             "concentric_velocity_ms": None,
         }
-        if ei - si >= 3:
-            seg = pos[si:ei + 1]
-            bi = int(np.argmax(seg))  # bottom = largest world y (y grows down)
-            top_seg = seg[bi:]
-            ti = bi + int(np.argmin(top_seg))  # first top after the bottom
-            if ti > bi:
-                amp_m = float(seg[bi] - seg[ti])
-                dt = float(ts[si + ti] - ts[si + bi])
-                if dt > 0 and amp_m >= min_amplitude_m:
-                    v = amp_m / dt
-                    velocities.append(round(v, 3))
-                    entry.update({
-                        "start_time": round(float(ts[si + bi]), 2),
-                        "end_time": round(float(ts[si + ti]), 2),
-                        "concentric_time": round(dt, 2),
-                        "amplitude_m": round(amp_m, 3),
-                        "concentric_velocity_ms": round(v, 3),
-                    })
+        # Prefer the joint-angle detector's bottom/top frames (robust);
+        # only fall back to re-finding extrema on the world signal.
+        bi = rep.get("bottom_idx")
+        ti = rep.get("top_idx")
+        if bi is None or ti is None:
+            if ei - si >= 3:
+                seg = pos[si:ei + 1]
+                bi = si + int(np.argmax(seg))
+                ti = bi + int(np.argmin(pos[bi:ei + 1]))
+            else:
+                bi = ti = None
+        if bi is not None and ti is not None and 0 <= bi < ti < n:
+            # leg mode: distance is max at the top; wrist mode: y grows down
+            amp_m = abs(float(pos[bi] - pos[ti]))
+            dt = float(ts[ti] - ts[bi])
+            if dt > 0 and amp_m >= min_amplitude_m:
+                v = amp_m / dt
+                velocities.append(round(v, 3))
+                entry.update({
+                    "start_time": round(float(ts[bi]), 2),
+                    "end_time": round(float(ts[ti]), 2),
+                    "concentric_time": round(dt, 2),
+                    "amplitude_m": round(amp_m, 3),
+                    "concentric_velocity_ms": round(v, 3),
+                })
         rep_data.append(entry)
 
     result: dict = {
