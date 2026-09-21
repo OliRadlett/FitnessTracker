@@ -170,10 +170,15 @@ These are the numbers the rewrite must move.
   per-lift tracked-point validation.
 - ⏳ Require load before emitting RPE/VBT.
 
-### Phase 2 — Honest scoring, gating, cleanup
+### Phase 2 — Honest scoring, gating, cleanup (in progress)
 
-- Average per-rep components (not summed); real 0–100 scale; split `competition_valid`
-  from `form_score`.
+- ✅ **Per-rep averaging:** deductions are applied per rep and averaged, not
+  summed across the set. Effect: `form_score_zero_rate` **0.22 → 0.0**; scores
+  now spread sensibly (clean 150 kg max squat = 100, 105 kg RPE7 sets 86–90,
+  flagged deadlifts 50).
+- ⚠️ **Remaining scoring risk:** deadlift `Incomplete lockout` / `Hitching`
+  flags are not view-gated and may be false on ¾ views (both deadlift clips
+  scored 50). Review alongside view classification.
 - Calibrate thresholds against the labeled set; fix `_check_knee_valgus`,
   `_check_heels_flat`, setup detection.
 - Compute consistency + rest in the pose path (or remove the columns/UI).

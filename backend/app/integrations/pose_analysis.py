@@ -876,112 +876,131 @@ COACHING_CUES = {
 }
 
 
+def _average_rep_scores(rep_scores: list[float]) -> float:
+    """Mean per-rep score.
+
+    Deductions are applied per rep and averaged, NOT summed across the set:
+    summing meant an 8-rep set with a single recurring fault (e.g. a lean
+    flag) clamped to 0, so every multi-rep set scored 0 and every single
+    scored 75-100 — the score measured rep count, not form.
+    """
+    if not rep_scores:
+        return 0.0
+    return max(0.0, min(100.0, sum(rep_scores) / len(rep_scores)))
+
+
 def score_squat_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["depth_achieved"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Depth not achieved")
             cues.append(COACHING_CUES["depth_not_achieved"])
         if not r["lockout_complete"]:
             if r.get("lockout_soft"):
-                score -= 10
+                penalty += 10
                 deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
                 cues.append(COACHING_CUES["soft_lockout"])
             else:
-                score -= 25
+                penalty += 25
                 comp_fail = True
                 deviations.append(f"Rep {rn}: Incomplete lockout")
                 cues.append(COACHING_CUES["incomplete_lockout"])
         if r["knee_valgus"] == "significant":
-            score -= 15
+            penalty += 15
             deviations.append(f"Rep {rn}: Significant knee cave")
             cues.append(COACHING_CUES["knee_valgus"])
         elif r["knee_valgus"] == "minor":
-            score -= 5
+            penalty += 5
             deviations.append(f"Rep {rn}: Minor knee cave")
         if r.get("heels_flat") is False:
-            score -= 5
+            penalty += 5
             deviations.append(f"Rep {rn}: Heels lifting")
             cues.append(COACHING_CUES["heels_lifted"])
         back_dev = r.get("back_angle_deviation")
         if back_dev is not None and back_dev > 10:
-            score -= 10
+            penalty += 10
             deviations.append(f"Rep {rn}: Excessive forward lean ({back_dev:.0f})")
             cues.append(COACHING_CUES["excessive_forward_lean"])
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def score_bench_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["chest_contact"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: No chest contact")
             cues.append(COACHING_CUES["no_chest_contact"])
         if not r["pause_achieved"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: No pause on chest")
             cues.append(COACHING_CUES["no_pause"])
         if r["butt_lift"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Butt lifted off bench")
             cues.append(COACHING_CUES["butt_lift"])
         if not r["lockout_symmetrical"]:
-            score -= 10
+            penalty += 10
             deviations.append(f"Rep {rn}: Asymmetrical lockout")
             cues.append(COACHING_CUES["asymmetrical_lockout"])
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def score_deadlift_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["lockout_complete"]:
             if r.get("lockout_soft"):
-                score -= 10
+                penalty += 10
                 deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
                 cues.append(COACHING_CUES["soft_lockout"])
             else:
-                score -= 25
+                penalty += 25
                 comp_fail = True
                 deviations.append(f"Rep {rn}: Incomplete lockout")
                 cues.append(COACHING_CUES["incomplete_lockout"])
         if r["hitching_detected"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Hitching detected")
             cues.append(COACHING_CUES["hitching"])
         if r["back_position"] == "significant_rounding":
-            score -= 15
+            penalty += 15
             deviations.append(f"Rep {rn}: Significant back rounding")
             cues.append(COACHING_CUES["back_rounding"])
         elif r["back_position"] == "mild_rounding":
-            score -= 10
+            penalty += 10
             deviations.append(f"Rep {rn}: Mild thoracic rounding")
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def _form_result(score, comp_fail, deviations, cues):

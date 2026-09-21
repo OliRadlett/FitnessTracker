@@ -196,11 +196,9 @@ class TestSquatFormScoring:
         assert result["competition_valid"] is True
         assert result["deviations"] == []
 
-    @pytest.mark.xfail(
-        reason="Phase 2: deductions are summed, so any multi-rep set clamps to 0",
-        strict=False,
-    )
-    def test_multi_rep_bad_set_does_not_collapse_to_zero(self):
+    def test_multi_rep_set_averages_per_rep_scores(self):
+        # 3 reps each losing 25 (depth) + 25 (lockout) = 50 each -> 50 overall.
+        # The old summed-deduction code returned 0 for any multi-rep set.
         rep = {
             "rep_number": 1,
             "depth_achieved": False,
@@ -211,7 +209,23 @@ class TestSquatFormScoring:
             "back_angle_deviation": 4.0,
         }
         reps = [{**rep, "rep_number": n} for n in (1, 2, 3)]
-        assert pa.score_squat_form(reps)["overall_form_score"] > 0
+        result = pa.score_squat_form(reps)
+        assert result["overall_form_score"] == pytest.approx(50.0)
+        assert result["competition_valid"] is False
+
+    def test_one_bad_rep_does_not_tank_a_good_set(self):
+        good = {
+            "rep_number": 1,
+            "depth_achieved": True,
+            "lockout_complete": True,
+            "lockout_soft": False,
+            "knee_valgus": "good",
+            "heels_flat": True,
+            "back_angle_deviation": 4.0,
+        }
+        bad = {**good, "depth_achieved": False}
+        reps = [good, good, good, good, {**bad, "rep_number": 5}]
+        assert pa.score_squat_form(reps)["overall_form_score"] >= 90.0
 
 
 class TestWorldVelocity:
