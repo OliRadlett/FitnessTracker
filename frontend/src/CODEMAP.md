@@ -132,7 +132,8 @@
 | `VideoEmbed` | **§1.1** — R2 `<video>` player; resolves a presigned GET via `getVideoStreamUrl`, retries failed loads |
 | `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count. Split from `VideoEmbed` |
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
-| `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage. Validation/upload errors render in an inline `role="alert"` banner (no native `alert()`) |
+| `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage, expected-reps and **camera-angle** selectors (side unlocks sagittal form checks). Validation/upload errors render in an inline `role="alert"` banner (no native `alert()`) |
+| `VideoAnalysisPanel` | **§3.18** — Post-analysis card: form-score ring + IPF badge, deviations/cues, velocity (mean/peak/loss + VBT zone), per-rep table (ROM/time/velocity), RPE. Shows a camera-view badge, or a "film side-on" hint when the angle is unknown |
 
 ### `health/` — Health-specific
 | Component | Purpose |

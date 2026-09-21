@@ -219,6 +219,10 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             <option value="back_right">Behind, right</option>
             <option value="front">Front-facing</option>
           </select>
+          <p className="text-[11px] text-muted mt-1">
+            Side-on is best: it unlocks torso-lean and squat-depth checks. Other
+            angles still get rep, tempo and velocity analysis.
+          </p>
         </div>
 
         <div>
