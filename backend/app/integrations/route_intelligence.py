@@ -12,14 +12,17 @@ Requires ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` env vars.
 import logging
 import math
 
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 _EARTH_RADIUS_M = 6_371_000
 
 
 def _modal_configured() -> bool:
+    # Imported lazily so the Modal remote container can import this module
+    # without app.config's dependencies (the worker decorates a module-global
+    # function, so the whole module is imported inside the bare image).
+    from app.config import get_settings
+
     settings = get_settings()
     return bool(settings.modal_token_id and settings.modal_token_secret)
 

@@ -1,5 +1,7 @@
 """Tests for Withings body-composition sync — pure helpers (no DB)."""
 
+import pytest
+
 from app.integrations.withings_client import withings_client
 from app.services.withings import (
     INITIAL_SYNC_DAYS,
@@ -218,3 +220,43 @@ class TestResolveStartdate:
         now = 1726444800
         start = resolve_startdate(None, None, now=now)
         assert start == now - INITIAL_SYNC_DAYS * 86400
+
+
+class TestRefreshAccessToken:
+    """Withings reports errors as HTTP 200 with a non-zero ``status``.
+
+    A refresh returning an error status must raise ``PermanentAuthError`` (so
+    the connection is marked needs_reauth) rather than yielding a bare
+    ``KeyError: 'access_token'`` in the shared refresh path.
+    """
+
+    async def test_error_status_raises_permanent_auth(self, monkeypatch):
+        from app.integrations import withings_client as mod
+        from app.integrations.errors import PermanentAuthError
+
+        async def _fake_retry(_fetch):
+            return {"status": 342, "error": "invalid grant"}
+
+        monkeypatch.setattr(mod, "retry_request", _fake_retry)
+
+        with pytest.raises(PermanentAuthError):
+            await mod.withings_client.refresh_access_token("refresh-xyz")
+
+    async def test_success_flattens_nested_body(self, monkeypatch):
+        from app.integrations import withings_client as mod
+
+        async def _fake_retry(_fetch):
+            return {
+                "status": 0,
+                "body": {
+                    "access_token": "tok",
+                    "refresh_token": "ref",
+                    "expires_in": 100,
+                },
+            }
+
+        monkeypatch.setattr(mod, "retry_request", _fake_retry)
+
+        data = await mod.withings_client.refresh_access_token("refresh-xyz")
+        assert data["access_token"] == "tok"
+        assert data["refresh_token"] == "ref"

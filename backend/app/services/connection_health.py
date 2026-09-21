@@ -130,7 +130,20 @@ async def refresh_connection(
             f"{connection.provider} token refresh failed: {e}"
         ) from e
 
-    connection.access_token = token_data["access_token"]
+    access_token = token_data.get("access_token")
+    if not access_token:
+        # Some providers return HTTP 200 with an error body (Withings uses
+        # ``{"status": <non-zero>, "error": ...}`` at 200). Record a typed
+        # transient failure instead of surfacing an opaque KeyError that skips
+        # all connection-health bookkeeping.
+        message = (
+            f"{connection.provider} refresh returned no access_token "
+            f"(keys={sorted(token_data)})"
+        )
+        await _record_transient(db, connection, message)
+        raise TransientSyncError(message)
+
+    connection.access_token = access_token
     connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
     set_expiry(connection, token_data)
     connection.last_refreshed_at = datetime.now(UTC)

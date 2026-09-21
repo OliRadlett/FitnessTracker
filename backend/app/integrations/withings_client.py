@@ -164,7 +164,22 @@ class WithingsClient:
                 return resp.json()
 
         data = await retry_request(_fetch)
-        return self.normalize_token_response(data)
+        normalized = self.normalize_token_response(data)
+
+        # Withings reports errors as HTTP 200 with a non-zero ``status`` and no
+        # access token. During a refresh that means the refresh token is no
+        # longer valid — surface it as a permanent auth failure so the
+        # connection is marked needs_reauth instead of raising a bare KeyError.
+        if "access_token" not in normalized and normalized.get("status") not in (
+            None,
+            0,
+        ):
+            raise PermanentAuthError(
+                f"Withings token refresh failed "
+                f"(status {normalized.get('status')}): "
+                f"{normalized.get('error', 'unknown error')}"
+            )
+        return normalized
 
 
 # Singleton
