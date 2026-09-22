@@ -38,6 +38,7 @@ import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { formatTSB } from '@/lib/utils';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
@@ -545,7 +546,7 @@ export default function CyclingPage() {
         />
         <MetricCard
           label="TSB (Form)"
-          value={currentLoad?.tsb?.toFixed(0)}
+          value={formatTSB(currentLoad?.tsb)}
           color={
             (currentLoad?.tsb ?? 0) > 25
               ? 'text-positive'

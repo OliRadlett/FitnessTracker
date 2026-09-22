@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   formatDistance,
   formatWeight,
+  formatTSB,
   displayWeightToKg,
   kgToDisplayWeight,
   formatTime,
@@ -103,6 +104,20 @@ describe('unit & locale formatting (§3.6)', () => {
       expect(formatUpdatedAt(0)).toBe('—');
       expect(formatUpdatedAt(-5)).toBe('—');
       expect(formatUpdatedAt(NaN)).toBe('—');
+    });
+  });
+
+  describe('formatTSB (0.5)', () => {
+    it('is always signed with 1 decimal', () => {
+      expect(formatTSB(11.74)).toBe('+11.7');
+      expect(formatTSB(-5.25)).toBe('-5.3');
+      expect(formatTSB(0)).toBe('+0.0');
+    });
+
+    it('returns em-dash for null/NaN', () => {
+      expect(formatTSB(null)).toBe('—');
+      expect(formatTSB(undefined)).toBe('—');
+      expect(formatTSB(NaN)).toBe('—');
     });
   });
 

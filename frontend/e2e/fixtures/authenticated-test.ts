@@ -199,7 +199,33 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     }
   }],
 
-  // Goals
+  // Goals — projection MUST come before the general handler, otherwise
+  // /{id}/projection returns the goals array and the hook misreads it.
+  // Goal projections (Phase 7) — cards fetch these per active goal; a stable
+  // mock keeps new network off the critical path.
+  ['/projection', (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/goals\/[^/]+\/projection/.test(url)) {
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          goal_id: 'goal-1',
+          metric: 'ftp_watts',
+          current_value: 250,
+          target_value: 300,
+          target_date: '2026-12-31',
+          direction: 'increase',
+          trend: null,
+          projection: null,
+          badge: 'Not enough data',
+          history: [],
+          projection_line: [],
+        }),
+      });
+      return;
+    }
+    route.continue();
+  }],
   ['api/v1/goals', (route) => {
     if (route.request().method() === 'POST') {
       route.fulfill({ status: 201, body: JSON.stringify(mockData.mockGoals[0]) });
@@ -331,6 +357,11 @@ type TestFixtures = {
 
 export const test = base.extend<TestFixtures>({
   authenticatedPage: async ({ page }, use) => {
+    // External map tiles must never hit the real network in E2E (0.10):
+    // third-party tile hosts stall `networkidle` on CI runners and hang
+    // every map spec. Aborting settles the page deterministically.
+    await page.route('**/tile.openstreetmap.org/**', (route) => route.abort());
+    await page.route('**/basemaps.cartocdn.com/**', (route) => route.abort());
     // Register all default API mocks
     // IMPORTANT: Only intercept /api/** requests — NOT a catch-all '**/*'.
     // A catch-all intercepts Next.js RSC (React Server Components) requests,

@@ -4,6 +4,8 @@ import Link from 'next/link';
 import type { SleepDebtResponse } from '@/lib/api/types';
 
 export function SleepDebtCard({ data }: { data: SleepDebtResponse }) {
+  // Convention (0.4): debt_hours >= 0 means hours owed. Displayed with a
+  // minus sign ("-2.6h" = 2.6h short) — Health page uses the same sign.
   const color = data.debt_hours <= 0
     ? 'text-positive'
     : data.debt_hours < 3

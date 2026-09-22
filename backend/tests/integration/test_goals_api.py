@@ -155,7 +155,11 @@ class TestCreateGoal:
         assert data["direction"] == "increase"
         assert data["metric_label"] == "FTP"
         assert data["metric_unit"] == "W"
-        assert data["progress_pct"] == 0.0
+        # Fresh goal: starting_value backfills to current (250 from the
+        # fixture), so the trajectory is degenerate — the API reports absolute
+        # attainment instead (250/300 = 83.3). See 0.2 in
+        # plans/ui-screenshot-audit-2026-09-22.md.
+        assert data["progress_pct"] == 83.3
         # Day zero → elapsed 0 → alignment undefined
         assert data["alignment_pct"] is None
 

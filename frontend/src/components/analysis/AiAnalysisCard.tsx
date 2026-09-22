@@ -4,6 +4,7 @@ import React from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import type { LlmAnalysis } from '@/lib/api';
+import { formatTSB } from '@/lib/utils';
 import { renderAnalysisText, relativeTime } from '@/lib/analysisRenderer';
 
 export interface AiAnalysisCardProps {
@@ -176,7 +177,7 @@ function StatsGrounding({ stats }: { stats: Record<string, unknown> | null | und
   const tsb = num(load?.tsb ?? stats.current_tsb ?? stats.tsb);
   if (ctl !== null || atl !== null || tsb !== null) {
     facts.push(
-      `CTL ${ctl?.toFixed(0) ?? '—'} · ATL ${atl?.toFixed(0) ?? '—'} · TSB ${tsb?.toFixed(1) ?? '—'}`,
+      `CTL ${ctl?.toFixed(0) ?? '—'} · ATL ${atl?.toFixed(0) ?? '—'} · TSB ${formatTSB(tsb)}`,
     );
   }
   const ftp = num(stats.ftp_watts ?? stats.ftp);

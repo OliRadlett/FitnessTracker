@@ -203,7 +203,7 @@ export default function HealthPage() {
             <MetricCard
               label="Sleep (last night)"
               value={todaySummary?.latest_sleep_hours != null ? `${todaySummary.latest_sleep_hours.toFixed(1)}h` : '—'}
-              subtitle={sleepDebt ? `${sleepDebt.debt_hours > 0 ? '+' : ''}${sleepDebt.debt_hours.toFixed(1)}h vs target` : 'Last night'}
+              subtitle={sleepDebt ? (sleepDebt.debt_hours > 0 ? `-${sleepDebt.debt_hours.toFixed(1)}h debt (7d)` : 'Caught up') : 'Last night'}
               color={(todaySummary?.latest_sleep_hours ?? 0) >= 7 ? 'text-positive' : (todaySummary?.latest_sleep_hours ?? 0) >= 6 ? 'text-yellow-400' : 'text-warning'}
               icon="😴"
             />
@@ -337,7 +337,7 @@ export default function HealthPage() {
               <div className="flex items-end justify-between">
                 <span className="text-muted">Debt (rolling 7d)</span>
                 <span className={`text-lg font-bold ${sleepDebt.debt_hours > 0 ? 'text-warning' : 'text-positive'}`}>
-                  {sleepDebt.debt_hours > 0 ? '+' : ''}{sleepDebt.debt_hours.toFixed(1)}h
+                  {sleepDebt.debt_hours > 0 ? '-' : ''}{sleepDebt.debt_hours.toFixed(1)}h
                 </span>
               </div>
               <div className="flex items-end justify-between">

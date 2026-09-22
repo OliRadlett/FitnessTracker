@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import type { Goal } from '@/lib/api';
+import type { Goal, GoalProjectionResponse } from '@/lib/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -64,7 +64,14 @@ export function goalProgressPct(goal: Goal): number {
   const span = goal.target_value - start;
   if (span === 0) return 0;
   const raw = ((current - start) / span) * 100;
-  return Math.max(0, Math.min(100, raw));
+  const clamped = Math.max(0, Math.min(100, raw));
+  // Degenerate trajectory (start == current after lazy backfill) on an
+  // increase goal → fall back to absolute attainment so the bar matches the
+  // "current / target" text (mirrors backend _enrich, 0.2).
+  if (clamped === 0 && span > 0 && goal.target_value > 0) {
+    return Math.max(0, Math.min(100, (current / goal.target_value) * 100));
+  }
+  return clamped;
 }
 
 export interface AlignmentBadgeInfo {
@@ -95,20 +102,52 @@ const STATUS_BADGES: Record<string, { label: string; className: string }> = {
   abandoned: { label: 'Abandoned', className: 'bg-muted/30 text-muted' },
 };
 
+/**
+ * Projection badge styles — shared with `GoalDetailModal` so card and modal
+ * show the identical pill (0.3). Precedence over the alignment badge: the
+ * check-in regression answers "will I hit it", alignment answers
+ * "am I ahead of schedule" — showing both side by side read as contradiction.
+ */
+export const PROJECTION_BADGE_STYLES: Record<string, string> = {
+  'On Track': 'bg-green-500/20 text-positive border-green-500/30',
+  'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  'Unlikely': 'bg-warning/20 text-warning border-warning/30',
+  'Not enough data': 'bg-muted/20 text-muted border-muted/30',
+};
+
+export function goalDisplayBadge(
+  goal: Goal,
+  projection?: GoalProjectionResponse | null,
+): AlignmentBadgeInfo | null {
+  const badge = projection?.badge;
+  if (badge && badge !== 'Not enough data') {
+    return {
+      label: badge,
+      className: `${PROJECTION_BADGE_STYLES[badge] ?? 'bg-muted/20 text-muted border-muted/30'} border`,
+    };
+  }
+  return goalAlignmentBadge(goal);
+}
+
 // ── Goal Card ────────────────────────────────────────────────────────────
 
 export function GoalCard({
   goal,
   onClick,
+  projection,
 }: {
   goal: Goal;
   onClick?: () => void;
+  /** Check-in regression for this goal — when present, its badge takes
+   *  precedence over the alignment badge (0.3). */
+  projection?: GoalProjectionResponse | null;
 }) {
   const progress = goalProgressPct(goal);
   const isAchieved = goal.status === 'achieved';
   const isExpired = goal.status === 'expired';
   const statusBadge = STATUS_BADGES[goal.status] ?? STATUS_BADGES.active;
-  const alignmentBadge = goalAlignmentBadge(goal);
+  const displayBadge = goalDisplayBadge(goal, projection);
+  const fromProjection = !!projection?.badge && projection.badge !== 'Not enough data';
   const icon = metricIcon(goal);
   const label = goal.metric_label || goal.metric;
   const filterLabel = goalFilterLabel(goal);
@@ -146,9 +185,9 @@ export function GoalCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {alignmentBadge && (
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${alignmentBadge.className}`}>
-              {alignmentBadge.label}
+          {displayBadge && (
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${displayBadge.className}`}>
+              {displayBadge.label}
             </span>
           )}
           <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusBadge.className}`}>
@@ -180,11 +219,25 @@ export function GoalCard({
         <p className="text-xs text-muted">
           {isExpired ? 'Expired' : 'Due'}:{' '}
           {new Date(goal.target_date).toLocaleDateString()}
-          {alignmentBadge && goal.alignment_pct !== null && goal.alignment_pct !== undefined && (
-            <span className="ml-1">· {Math.round(goal.alignment_pct)}% aligned</span>
-          )}
-          {!alignmentBadge && (
-            <span className="ml-1">· {progress.toFixed(0)}%</span>
+          {fromProjection ? (
+            projection?.projection?.projected_date ? (
+              <span className="ml-1">
+                · Projected{' '}
+                {new Date(projection.projection.projected_date).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </span>
+            ) : null
+          ) : (
+            <>
+              {displayBadge && goal.alignment_pct !== null && goal.alignment_pct !== undefined && (
+                <span className="ml-1">· {Math.round(goal.alignment_pct)}% aligned</span>
+              )}
+              {!displayBadge && (
+                <span className="ml-1">· {progress.toFixed(0)}%</span>
+              )}
+            </>
           )}
         </p>
       )}

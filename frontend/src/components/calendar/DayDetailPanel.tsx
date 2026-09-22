@@ -233,7 +233,7 @@ export function DayDetailPanel({
           {hasSleep && (
             <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{'\U0001F634'}</span>
+                <span className="text-lg">{'😴'}</span>
                 <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Sleep</h3>
               </div>
               {daySleepLog ? (
@@ -286,7 +286,7 @@ export function DayDetailPanel({
                   {/* Bedtime / Wake */}
                   {(daySleepLog.sleep_start || daySleepLog.sleep_end) && (
                     <div className="mt-2 pt-2 border-t border-surface-light flex justify-between text-xs text-muted">
-                      <span>{'\U0001F6CF\uFE0F'} {formatTime(daySleepLog.sleep_start)}</span>
+                      <span>{'🛏️'} {formatTime(daySleepLog.sleep_start)}</span>
                       <span>{'\u23F0'} {formatTime(daySleepLog.sleep_end)}</span>
                     </div>
                   )}
@@ -398,7 +398,7 @@ export function DayDetailPanel({
                   <span>{'\u2764\uFE0F'} {Math.round(activity.average_heartrate)} bpm</span>
                 )}
                 {activity.calories != null && (
-                  <span>{'\U0001F525'} {Math.round(activity.calories)} cal</span>
+                  <span>{'🔥'} {Math.round(activity.calories)} cal</span>
                 )}
                 {activity.elevation_gain_meters != null && (
                   <span>
@@ -447,7 +447,7 @@ export function DayDetailPanel({
                 <span>{'\u23F1'} {formatDuration(entry.duration_seconds)}</span>
               )}
               {entry.distance_meters != null && (
-                <span>{'\U0001F4CF'} {formatDistance(entry.distance_meters)}</span>
+                <span>{'📏'} {formatDistance(entry.distance_meters)}</span>
               )}
               {entry.tss != null && (
                 <span>{'\u26A1'} {Math.round(entry.tss)} TSS</span>
@@ -471,7 +471,7 @@ export function DayDetailPanel({
             className="bg-surface-light/50 rounded-xl border border-purple-500/20 p-5"
           >
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-2xl">{'\U0001F3CB\uFE0F'}</span>
+              <span className="text-2xl">{'🏋️'}</span>
               <div className="flex-1 min-w-0">
                 <Link
                   href={`/lifting?session=${session.id}`}
