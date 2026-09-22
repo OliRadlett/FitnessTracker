@@ -308,29 +308,33 @@ export default function VideosPage() {
                       ⇄
                     </button>
                   )}
-                  {video.r2_key &&
-                    (!video.analysis_status ||
-                      video.analysis_status === 'pending' ||
-                      video.analysis_status === 'failed' ||
-                      video.analysis_status === 'processing') && (
-                      <button
-                        onClick={() =>
-                          processMutation.mutate({
-                            videoId: video.id,
-                            force: video.analysis_status === 'processing',
-                          })
-                        }
-                        disabled={processMutation.isPending}
-                        className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
-                        title="Process video (trim + classify)"
-                      >
-                        {processMutation.isPending
-                          ? 'Queuing…'
+                  {video.r2_key && (
+                    <button
+                      onClick={() =>
+                        processMutation.mutate({
+                          videoId: video.id,
+                          force:
+                            video.analysis_status === 'completed' ||
+                            video.analysis_status === 'processing',
+                        })
+                      }
+                      disabled={processMutation.isPending}
+                      className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
+                      title={
+                        video.analysis_status === 'completed'
+                          ? 'Re-run analysis with the latest pipeline'
+                          : 'Process video (trim + classify)'
+                      }
+                    >
+                      {processMutation.isPending
+                        ? 'Queuing…'
+                        : video.analysis_status === 'completed'
+                          ? '↻ Reprocess'
                           : video.analysis_status === 'processing'
                             ? '🔄 Retry'
                             : '⚡ Process'}
-                      </button>
-                    )}
+                    </button>
+                  )}
                   {confirmDeleteId === video.id ? (
                     <>
                       <button
