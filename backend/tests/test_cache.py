@@ -1,10 +1,11 @@
 """Tests for the Redis cache module — locks and caching."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.cache import redis_lock
+from app.services.cache import LockHeldError, redis_lock
 
 
 @pytest.mark.asyncio
@@ -82,3 +83,69 @@ class TestRedisLock:
                 pass
         call_kwargs = r.set.call_args
         assert call_kwargs[1].get("ex") == 900 or (len(call_kwargs[0]) > 3 and call_kwargs[0][3] == 900)
+
+
+class TestGetRedisIsLoopScoped:
+    """Regression for BUG-097: the Redis client must not span event loops.
+
+    Celery tasks each call ``asyncio.run()`` (a fresh loop per task). A single
+    globally-cached client was reused across loops and raised ``RuntimeError:
+    ... attached to a different loop`` on the next task, which
+    ``_run_task_guarded`` misread as "lock held" and skipped every sync.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_client(self):
+        from app.services import cache
+
+        cache._redis = None
+        cache._redis_loop = None
+        yield
+        cache._redis = None
+        cache._redis_loop = None
+
+    def test_recreated_per_event_loop(self):
+        from app.services import cache
+
+        created: list[object] = []
+
+        def _fake_from_url(*_args, **_kwargs):
+            client = object()
+            created.append(client)
+            return client
+
+        with patch("app.services.cache.aioredis.from_url", _fake_from_url):
+
+            async def get():
+                return cache._get_redis()
+
+            first = asyncio.run(get())
+            second = asyncio.run(get())
+
+        assert first is not second
+        assert len(created) == 2
+
+    def test_cached_within_same_loop(self):
+        from app.services import cache
+
+        with patch("app.services.cache.aioredis.from_url", lambda *a, **k: object()):
+
+            async def get_twice():
+                return cache._get_redis(), cache._get_redis()
+
+            first, second = asyncio.run(get_twice())
+
+        assert first is second
+
+    async def test_lock_held_raises_typed_error(self):
+        """LockHeldError (a RuntimeError subclass) is raised when NX fails."""
+        r = AsyncMock()
+        r.set = AsyncMock(return_value=None)
+        r.eval = AsyncMock(return_value=1)
+
+        with patch("app.services.cache._get_redis", return_value=r), \
+             pytest.raises(LockHeldError, match="already held"):
+            async with redis_lock("test"):
+                pass
+
+        assert issubclass(LockHeldError, RuntimeError)
