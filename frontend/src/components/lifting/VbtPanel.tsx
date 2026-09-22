@@ -4,7 +4,7 @@
 // velocity), fits the lifter's load-velocity line and reads an estimated 1RM
 // off the minimal-velocity-threshold crossing.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CartesianGrid,
@@ -31,9 +31,12 @@ const CONFIDENCE_VARIANT: Record<string, 'positive' | 'muted' | 'warning'> = {
 
 export function VbtPanel({ exercise }: { exercise: string }) {
   const { authFetch, token } = useAuthFetch();
+  const [targetVelocity, setTargetVelocity] = useState('');
+  const tv = parseFloat(targetVelocity);
+  const target = Number.isFinite(tv) && tv > 0 ? tv : undefined;
   const { data, isLoading } = useQuery<VbtProfile>({
-    queryKey: ['vbt-profile', exercise],
-    queryFn: () => getVbtProfile(authFetch, exercise),
+    queryKey: ['vbt-profile', exercise, target],
+    queryFn: () => getVbtProfile(authFetch, exercise, 365, target),
     enabled: !!token && exercise.trim().length > 0,
     staleTime: 300_000,
   });
@@ -104,6 +107,27 @@ export function VbtPanel({ exercise }: { exercise: string }) {
                 {data?.mvt != null ? `${data.mvt} m/s` : '—'}
               </p>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            <label htmlFor="vbt-target-vel" className="text-muted">
+              Target velocity
+            </label>
+            <input
+              id="vbt-target-vel"
+              type="number"
+              step="0.05"
+              min="0.1"
+              max="2"
+              value={targetVelocity}
+              onChange={(e) => setTargetVelocity(e.target.value)}
+              placeholder="e.g. 0.5"
+              className="w-24 bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <span className="text-muted">m/s</span>
+            {target && data?.recommended_load_kg != null && (
+              <Badge variant="positive">≈ {data.recommended_load_kg} kg</Badge>
+            )}
           </div>
 
           <div className="h-56">

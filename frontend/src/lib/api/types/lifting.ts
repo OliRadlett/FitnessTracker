@@ -98,6 +98,7 @@ export interface VbtProfile {
   load_min_kg?: number | null;
   load_max_kg?: number | null;
   confidence: string;
+  recommended_load_kg?: number | null;
   points: VbtProfilePoint[];
 }
 

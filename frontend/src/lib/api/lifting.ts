@@ -124,8 +124,12 @@ export async function getVbtProfile(
   authFetch: AuthFetch,
   exerciseName: string,
   days = 365,
+  targetVelocity?: number,
 ): Promise<VbtProfile> {
   const params = new URLSearchParams({ exercise_name: exerciseName, days: String(days) });
+  if (targetVelocity && targetVelocity > 0) {
+    params.set('target_velocity', String(targetVelocity));
+  }
   return authFetch<VbtProfile>(`/api/v1/lifting/videos/vbt/profile?${params}`);
 }
 

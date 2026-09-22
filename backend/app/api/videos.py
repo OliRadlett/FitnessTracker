@@ -127,6 +127,7 @@ async def create_video(
 async def get_vbt_profile(
     exercise_name: str = Query(..., min_length=1),
     days: int = Query(365, ge=1, le=1095),
+    target_velocity: float | None = Query(None, gt=0, le=3),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -136,7 +137,7 @@ async def get_vbt_profile(
     measured velocity. The fitted line's MVT crossing estimates 1RM without a
     true max attempt. Registered before the ``/{video_id}`` routes.
     """
-    from app.services.vbt import load_velocity_profile
+    from app.services.vbt import load_for_velocity, load_velocity_profile
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
     videos = (
@@ -163,6 +164,11 @@ async def get_vbt_profile(
     )
     return VbtProfileResponse(
         **profile.as_dict(),
+        recommended_load_kg=(
+            load_for_velocity(profile, target_velocity)
+            if target_velocity
+            else None
+        ),
         points=[
             {
                 "date": v.created_at.date().isoformat(),

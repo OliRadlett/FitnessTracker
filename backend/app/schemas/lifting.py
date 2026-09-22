@@ -332,6 +332,7 @@ class VbtProfileResponse(BaseModel):
     load_min_kg: float | None = None
     load_max_kg: float | None = None
     confidence: str
+    recommended_load_kg: float | None = None
     points: list[VbtProfilePoint]
 
 
