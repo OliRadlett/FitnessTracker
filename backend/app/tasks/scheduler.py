@@ -53,12 +53,12 @@ async def _run_task_guarded(task_name: str, _run) -> dict:
     problem never silently halts all syncing.
     """
     from app.metrics import SYNC_RUNS
-    from app.services.cache import redis_lock
+    from app.services.cache import LockHeldError, redis_lock
 
     lock = redis_lock(f"celery-task:{task_name}", ttl=3600)
     try:
         await lock.__aenter__()
-    except RuntimeError:
+    except LockHeldError:
         logger.warning(f"{task_name} skipped — another instance is running")
         SYNC_RUNS.labels(task=task_name, outcome="skipped_lock").inc()
         return {"status": "skipped_lock"}
@@ -94,13 +94,13 @@ async def _try_acquire_user_lock(user_id, provider: str, ttl: int = 1800):
     another run (scheduled task or manual sync), or a no-op lock if Redis
     is unavailable (fail open — a Redis outage must not stop syncing).
     """
-    from app.services.cache import redis_lock
+    from app.services.cache import LockHeldError, redis_lock
 
     try:
         cm = redis_lock(f"sync:{user_id}:{provider}", ttl=ttl)
         await cm.__aenter__()
         return cm
-    except RuntimeError:
+    except LockHeldError:
         return None
     except Exception as e:
         logger.warning(

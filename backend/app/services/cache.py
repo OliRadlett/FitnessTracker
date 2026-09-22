@@ -8,6 +8,7 @@ Usage:
         ...
 """
 
+import asyncio
 import functools
 import hashlib
 import json
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 _redis: aioredis.Redis | None = None
+_redis_loop: asyncio.AbstractEventLoop | None = None
 
 # Lua script: delete the key only if the stored value matches our token.
 _RELEASE_LUA = (
@@ -37,10 +39,34 @@ _RELEASE_LUA = (
 )
 
 
+class LockHeldError(RuntimeError):
+    """Raised by :func:`redis_lock` when the lock is already held elsewhere.
+
+    A distinct subclass (not a bare ``RuntimeError``) so callers can tell
+    "lock held" apart from an unrelated runtime error. Otherwise a flaky Redis
+    connection gets silently misreported as "another instance is running" and
+    the task is skipped (BUG-097).
+    """
+
+
 def _get_redis() -> aioredis.Redis:
-    global _redis
-    if _redis is None:
+    """Return an async Redis client bound to the current event loop.
+
+    The client is cached **per running loop**. Celery tasks each call
+    ``asyncio.run()`` (a fresh loop per task); reusing a client whose
+    connections were opened on a now-closed loop raises ``RuntimeError: ...
+    attached to a different loop`` on the next task. That error was caught as
+    "lock held" and every scheduled sync/webhook lock silently returned
+    ``skipped_lock`` (BUG-097).
+    """
+    global _redis, _redis_loop
+    try:
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if _redis is None or _redis_loop is not loop:
         _redis = aioredis.from_url(settings.redis_url)
+        _redis_loop = loop
     return _redis
 
 
@@ -57,14 +83,14 @@ async def redis_lock(name: str, ttl: int = 600):
             # only one caller runs this block at a time
             ...
 
-    Raises RuntimeError if the lock is already held.
+    Raises :class:`LockHeldError` if the lock is already held.
     """
     r = _get_redis()
     key = f"lock:{name}"
     token = secrets.token_hex(16)
     acquired = await r.set(key, token, nx=True, ex=ttl)
     if not acquired:
-        raise RuntimeError(f"Lock '{name}' is already held")
+        raise LockHeldError(f"Lock '{name}' is already held")
     try:
         yield
     finally:
