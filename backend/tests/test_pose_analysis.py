@@ -198,11 +198,99 @@ class TestRouteExercise:
     def test_low_confidence_auto_is_ignored(self):
         assert pa.route_exercise(None, "Deadlift", 0.4) == ("", "none", "")
 
-    def test_stone_routes_to_squat_analyzer(self):
-        assert pa.route_exercise("Atlas Stone", "Squat", 0.9)[0] == "Squat"
+    def test_stone_routes_to_its_own_family(self):
+        # Not Squat: squat form rules (depth/heels/lean) are meaningless for a
+        # stone and produced bogus flags.
+        assert pa.route_exercise("Atlas Stone", "Squat", 0.9)[0] == "Stone"
 
     def test_log_press_routes_to_press(self):
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
+
+
+class TestAnalysisQuality:
+    def _run(self, tmp_path, seq, exercise="Back Squat", reps=0):
+        ts = [i * 0.1 for i in range(len(seq))]
+        track = {
+            "landmarks": seq, "world": [], "timestamps": ts,
+            "detected": len(seq), "frames": len(seq),
+        }
+        return pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            exercise, reps, 0.0, track=track,
+        )
+
+    def test_no_reps_is_unusable(self, tmp_path):
+        seq = [_pose(170.0) for _ in range(20)]  # standing, no reps
+        assert self._run(tmp_path, seq)["quality"]["level"] == "unusable"
+
+    def test_full_detection_with_reps_is_good(self, tmp_path):
+        seq = _squat_sequence(reps=3)
+        out = self._run(tmp_path, seq, reps=3)
+        assert out["quality"]["level"] == "good"
+        assert out["quality"]["detection_rate"] == 1.0
+
+    def test_low_detection_rate_is_fair(self, tmp_path):
+        # 6 detected of 20 frames = 0.3 rate -> unusable; 0.5 -> fair.
+        seq = _squat_sequence(reps=2)
+        track = {
+            "landmarks": seq, "world": [], "timestamps": [i * 0.1 for i in range(len(seq))],
+            "detected": len(seq), "frames": len(seq) * 2,
+        }
+        out = pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            "Back Squat", 2, 0.0, track=track,
+        )
+        assert out["quality"]["level"] == "fair"
+
+
+class TestRepSprite:
+    def test_empty_inputs_return_false(self, tmp_path):
+        assert pa.render_rep_sprite(
+            tmp_path / "x.mp4", [], [], [], tmp_path / "out.jpg") is False
+
+
+class TestPullFamily:
+    def test_is_pull(self):
+        assert pa._is_pull("Pull-up")
+        assert pa._is_pull("Chin-up")
+        assert pa._is_pull("Barbell Row")
+        assert not pa._is_pull("Bench Press")
+        assert not pa._is_pull("Back Squat")
+
+
+class TestPullFormScoring:
+    def test_full_rom_scores_100(self):
+        result = pa.score_pull_form([{"rep_number": 1, "full_rom": True}])
+        assert result["overall_form_score"] == 100.0
+
+    def test_partial_range_flagged(self):
+        result = pa.score_pull_form([{"rep_number": 1, "full_rom": False}])
+        assert result["overall_form_score"] == 75.0
+        assert any("Partial range" in d for d in result["deviations"])
+
+
+class TestPressFamily:
+    def test_is_press_excludes_bench(self):
+        assert pa._is_press("Overhead Press")
+        assert pa._is_press("Log Press")
+        assert pa._is_press("Strict Press")
+        assert not pa._is_press("Bench Press")
+        assert not pa._is_press("Back Squat")
+
+
+class TestPressFormScoring:
+    def test_clean_lockout_scores_100(self):
+        reps = [{"rep_number": 1, "lockout_complete": True}]
+        result = pa.score_press_form(reps)
+        assert result["overall_form_score"] == 100.0
+        assert result["competition_valid"] is True
+
+    def test_missing_lockout_fails(self):
+        reps = [{"rep_number": 1, "lockout_complete": False}]
+        result = pa.score_press_form(reps)
+        assert result["overall_form_score"] == 75.0
+        assert result["competition_valid"] is False
+        assert any("locked out" in d for d in result["deviations"])
 
 
 class TestOverlayTrackedPoint:

@@ -134,7 +134,8 @@
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
 | `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage, expected-reps and **camera-angle** selectors (side unlocks sagittal form checks). Validation/upload errors render in an inline `role="alert"` banner (no native `alert()`) |
 | `VideoAnalysisPanel` | **§3.18** — Post-analysis card: form-score ring + IPF badge, deviations/cues, velocity (mean/peak/loss + VBT zone), per-rep table (ROM/time/velocity), RPE. Shows a camera-view badge, or a "film side-on" hint when the angle is unknown |
-| `VbtPanel` | **§3.18 VBT** — Load–velocity profile for an exercise: scatter of analysed sets (load vs velocity) + fitted line + MVT reference, est. 1RM, R², confidence badge. Mounted in `VideoProgressTab` |
+| `VbtPanel` | **§3.18 VBT** — Load–velocity profile for an exercise: scatter of analysed sets (load vs velocity) + fitted line + MVT reference, est. 1RM, R², confidence badge, target-velocity → recommended load. Mounted in `VideoProgressTab` |
+| `VideoCompareModal` | **§3.18** — side-by-side comparison of two analysed videos (embeds + form/validity/velocity/RPE/deviations). Opened from the videos page compare toggle |
 
 ### `health/` — Health-specific
 | Component | Purpose |

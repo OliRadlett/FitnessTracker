@@ -8,6 +8,7 @@ import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
+import { VideoCompareModal } from '@/components/lifting/VideoCompareModal';
 import { LiftVideoForm } from '@/components/lifting/LiftVideoForm';
 import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -64,8 +65,17 @@ export default function VideosPage() {
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [tab, setTab] = useState<'bank' | 'progress'>('bank');
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [showCompare, setShowCompare] = useState(false);
 
   const hasFilters = exerciseFilter || afterFilter || beforeFilter;
+
+  const toggleCompare = (id: string) => {
+    setCompareIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= 2 ? [prev[1], id] : [...prev, id],
+    );
+  };
+  const compareVideos = videos.filter((v) => compareIds.includes(v.id));
 
   return (
     <div className="space-y-6">
@@ -86,6 +96,14 @@ export default function VideosPage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowCompare(true)}
+            disabled={compareIds.length !== 2}
+            className="px-3 py-2 bg-surface-light/40 text-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+            title="Select two videos (⇄) to compare"
+          >
+            ⇄ Compare{compareIds.length ? ` (${compareIds.length})` : ''}
+          </button>
           <button
             onClick={() => setShowAddForm(true)}
             className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
@@ -277,29 +295,46 @@ export default function VideosPage() {
                     </a>
                   )}
                   <div className="flex-1" />
-                  {video.r2_key &&
-                    (!video.analysis_status ||
-                      video.analysis_status === 'pending' ||
-                      video.analysis_status === 'failed' ||
-                      video.analysis_status === 'processing') && (
-                      <button
-                        onClick={() =>
-                          processMutation.mutate({
-                            videoId: video.id,
-                            force: video.analysis_status === 'processing',
-                          })
-                        }
-                        disabled={processMutation.isPending}
-                        className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
-                        title="Process video (trim + classify)"
-                      >
-                        {processMutation.isPending
-                          ? 'Queuing…'
+                  {video.analysis_status === 'completed' && (
+                    <button
+                      onClick={() => toggleCompare(video.id)}
+                      className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                        compareIds.includes(video.id)
+                          ? 'bg-accent/20 text-accent'
+                          : 'text-muted hover:text-foreground'
+                      }`}
+                      title="Add to compare"
+                    >
+                      ⇄
+                    </button>
+                  )}
+                  {video.r2_key && (
+                    <button
+                      onClick={() =>
+                        processMutation.mutate({
+                          videoId: video.id,
+                          force:
+                            video.analysis_status === 'completed' ||
+                            video.analysis_status === 'processing',
+                        })
+                      }
+                      disabled={processMutation.isPending}
+                      className="text-xs text-accent/70 hover:text-accent disabled:opacity-50"
+                      title={
+                        video.analysis_status === 'completed'
+                          ? 'Re-run analysis with the latest pipeline'
+                          : 'Process video (trim + classify)'
+                      }
+                    >
+                      {processMutation.isPending
+                        ? 'Queuing…'
+                        : video.analysis_status === 'completed'
+                          ? '↻ Reprocess'
                           : video.analysis_status === 'processing'
                             ? '🔄 Retry'
                             : '⚡ Process'}
-                      </button>
-                    )}
+                    </button>
+                  )}
                   {confirmDeleteId === video.id ? (
                     <>
                       <button
@@ -343,6 +378,15 @@ export default function VideosPage() {
         sessions={sessions}
         prs={prs}
       />
+
+      {/* Compare modal */}
+      {compareVideos.length === 2 && (
+        <VideoCompareModal
+          videos={compareVideos}
+          open={showCompare}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
 
       {/* Full preview modal */}
       {previewVideo && (

@@ -113,7 +113,7 @@ export async function getVideoUploadUrl(
 export async function getVideoStreamUrl(
   authFetch: AuthFetch,
   videoId: string,
-  variant: 'original' | 'trimmed' | 'overlay' = 'original',
+  variant: 'original' | 'trimmed' | 'overlay' | 'thumbnails' = 'original',
 ): Promise<VideoStreamUrl> {
   return authFetch<VideoStreamUrl>(
     `/api/v1/lifting/videos/${videoId}/stream-url?variant=${variant}`,
@@ -124,8 +124,12 @@ export async function getVbtProfile(
   authFetch: AuthFetch,
   exerciseName: string,
   days = 365,
+  targetVelocity?: number,
 ): Promise<VbtProfile> {
   const params = new URLSearchParams({ exercise_name: exerciseName, days: String(days) });
+  if (targetVelocity && targetVelocity > 0) {
+    params.set('target_velocity', String(targetVelocity));
+  }
   return authFetch<VbtProfile>(`/api/v1/lifting/videos/vbt/profile?${params}`);
 }
 

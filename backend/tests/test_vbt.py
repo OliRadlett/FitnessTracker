@@ -4,9 +4,37 @@ import pytest
 
 from app.services.vbt import (
     DEFAULT_MVT,
+    load_for_velocity,
     load_velocity_profile,
     mvt_for,
 )
+
+
+class TestLoadForVelocity:
+    def _profile(self):
+        # v = 1.0 - 0.002*load, loads 100-200
+        return load_velocity_profile(
+            [(100.0, 0.8), (150.0, 0.7), (200.0, 0.6)], "Back Squat")
+
+    def test_recommends_load_for_target(self):
+        # 0.5 m/s -> (0.5 - 1.0) / -0.002 = 250 kg
+        assert load_for_velocity(self._profile(), 0.5) == pytest.approx(250.0, abs=0.1)
+
+    def test_mvt_target_equals_1rm(self):
+        profile = self._profile()
+        assert load_for_velocity(profile, profile.mvt) == pytest.approx(
+            profile.est_1rm_kg, abs=0.1)
+
+    def test_invalid_targets_return_none(self):
+        profile = self._profile()
+        assert load_for_velocity(profile, 0) is None
+        assert load_for_velocity(profile, -1) is None
+        # 2.0 m/s would need a negative load
+        assert load_for_velocity(profile, 2.0) is None
+
+    def test_profile_without_slope_returns_none(self):
+        profile = load_velocity_profile([(100.0, 0.5)], "Back Squat")
+        assert load_for_velocity(profile, 0.5) is None
 
 
 class TestMvt:

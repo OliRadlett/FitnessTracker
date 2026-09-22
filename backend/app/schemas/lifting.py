@@ -332,6 +332,7 @@ class VbtProfileResponse(BaseModel):
     load_min_kg: float | None = None
     load_max_kg: float | None = None
     confidence: str
+    recommended_load_kg: float | None = None
     points: list[VbtProfilePoint]
 
 
@@ -377,6 +378,7 @@ class LiftVideoRead(LiftVideoBase):
     # Video processing fields
     trimmed_r2_key: str | None = None
     overlay_r2_key: str | None = None
+    rep_thumbnails_r2_key: str | None = None
     analysis_status: str | None = None
     analysis_text: str | None = None
     exercise_auto: str | None = None

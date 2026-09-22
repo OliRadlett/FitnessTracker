@@ -13,9 +13,37 @@ from app.integrations.video_analysis import (
     _parse_gemini_json,
     _velocity_loss_pct,
     classify_view_from_frame,
+    compute_consistency,
     estimate_rpe_heuristic,
     normalize_user_view,
 )
+
+
+class TestComputeConsistency:
+    def test_fewer_than_two_measurable_reps_is_none(self):
+        assert compute_consistency([]) is None
+        assert compute_consistency(
+            [{"concentric_time": 1.0, "amplitude_m": 0.5}]) is None
+
+    def test_identical_reps_score_100(self):
+        reps = [{"concentric_time": 1.0, "amplitude_m": 0.5} for _ in range(3)]
+        out = compute_consistency(reps)
+        assert out["consistency_score"] == 100.0
+        assert out["tempo_consistency_cv"] == 0.0
+        assert out["rep_count"] == 3
+
+    def test_varying_tempo_lowers_score(self):
+        reps = [{"concentric_time": t, "amplitude_m": 0.5} for t in (0.5, 1.0, 1.5)]
+        out = compute_consistency(reps)
+        assert out["tempo_consistency_cv"] > 0
+        assert out["consistency_score"] < 100
+
+    def test_none_concentric_time_ignored(self):
+        reps = [
+            {"concentric_time": 1.0, "amplitude_m": 0.5},
+            {"concentric_time": None, "amplitude_m": 0.5},
+        ]
+        assert compute_consistency(reps) is None
 
 
 class TestNormalizeUserView:

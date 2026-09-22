@@ -3623,6 +3623,24 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     "video/mp4",
                     video.size_bytes or 0,
                 )
+                presigned_thumbs = await create_presigned_put(
+                    video.user_id,
+                    f"reps-{video.file_name}.jpg",
+                    "image/jpeg",
+                    2 * 1024 * 1024,
+                )
+
+                # Auto-fill the load from the linked session's sets (best-effort)
+                try:
+                    from app.services.video_analytics import infer_video_load
+
+                    if video.weight_kg is None:
+                        inferred = await infer_video_load(db, video)
+                        if inferred is not None:
+                            video.weight_kg = inferred
+                            logger.info("Inferred video load: %.1f kg", inferred)
+                except Exception as e:
+                    logger.warning("Video load inference failed: %s", e)
 
                 # Call Modal for processing
                 result = process_video_on_modal(
@@ -3637,11 +3655,15 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     camera_view=video.camera_view,
                     r2_presigned_put_overlay=presigned_overlay["upload_url"],
                     r2_upload_key_overlay=presigned_overlay["key"],
+                    weight_kg=video.weight_kg or 0.0,
+                    r2_presigned_put_thumbs=presigned_thumbs["upload_url"],
+                    r2_upload_key_thumbs=presigned_thumbs["key"],
                 )
 
                 # Update video with results
                 video.trimmed_r2_key = result.get("trimmed_r2_key")
                 video.overlay_r2_key = result.get("overlay_r2_key")
+                video.rep_thumbnails_r2_key = result.get("rep_thumbnails_r2_key")
                 video.trim_start_sec = result.get("trim_start_sec")
                 video.trim_end_sec = result.get("trim_end_sec")
                 video.analysis_text = result.get("analysis_text")

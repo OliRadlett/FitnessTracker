@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lift_video_analysis import LiftVideoAnalysis
-from app.models.lifting import LiftingSession, LiftVideo
+from app.models.lifting import LiftingSession, LiftingSet, LiftVideo
 from app.models.rpe_calibration import RpeCalibration
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,56 @@ HIGH_RISK_PATTERNS = {
     "form_hitching": ("hitching detected",),
     "form_butt_lift": ("butt lifted off bench",),
 }
+
+
+def match_set_load(
+    sets: list[LiftingSet], exercise_name: str | None, expected_reps: int | None
+) -> float | None:
+    """Weight of the uniquely-matching set, else None.
+
+    Matches on normalised exercise name (skipping warm-ups), preferring the
+    declared rep count. Only returns a value when exactly ONE candidate
+    remains — a session with three squat sets must not have an arbitrary one's
+    weight attached to the video.
+    """
+    from app.services.exercise_db import normalise_exercise_name
+
+    target = normalise_exercise_name(exercise_name or "")
+    candidates = [
+        s for s in sets
+        if not s.is_warmup and normalise_exercise_name(s.exercise_name) == target
+    ]
+    if expected_reps:
+        by_reps = [s for s in candidates if s.reps == expected_reps]
+        if by_reps:
+            candidates = by_reps
+    if len(candidates) != 1:
+        return None
+    return candidates[0].weight_kg
+
+
+async def infer_video_load(
+    db: AsyncSession, video: LiftVideo
+) -> float | None:
+    """Best-effort load for an unloaded video from its linked session's sets.
+
+    Returns None (no change) when the video already has a load, isn't linked
+    to a session, or the session's sets are ambiguous.
+    """
+    if video.weight_kg or not video.lifting_session_id:
+        return None
+    sets = list(
+        (
+            await db.execute(
+                select(LiftingSet).where(
+                    LiftingSet.session_id == video.lifting_session_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return match_set_load(sets, video.exercise_name, video.expected_reps)
 
 
 async def aggregate_video_analyses(db: AsyncSession, user_id: uuid.UUID) -> int:
