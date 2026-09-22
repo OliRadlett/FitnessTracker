@@ -9,6 +9,41 @@ import { QualityBadge } from '@/components/routes/QualityBadge';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { formatDistance } from '@/lib/utils';
 
+// Surface colors for the terrain mini-bar (3.3) — fractions from surface_profile.
+const SURFACE_COLORS: Record<string, string> = {
+  paved: 'bg-slate-400',
+  asphalt: 'bg-slate-400',
+  gravel: 'bg-amber-500',
+  trail: 'bg-green-500',
+  dirt: 'bg-yellow-700',
+  grass: 'bg-green-700',
+  sand: 'bg-yellow-400',
+  cobbles: 'bg-slate-600',
+  singletrack: 'bg-emerald-500',
+};
+
+function SurfaceBar({ profile }: { profile?: Record<string, number> | null }) {
+  if (!profile) return null;
+  const entries = Object.entries(profile).filter(([, v]) => v > 0);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (entries.length === 0 || total <= 0) return null;
+  return (
+    <div
+      className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-light/40"
+      title={entries.map(([k, v]) => `${k}: ${Math.round((v / total) * 100)}%`).join(' · ')}
+      aria-label="Surface mix"
+    >
+      {entries.map(([k, v]) => (
+        <div
+          key={k}
+          className={SURFACE_COLORS[k.toLowerCase()] ?? 'bg-muted'}
+          style={{ width: `${(v / total) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function RoutesGridView({
   routes,
   onSelect,
@@ -88,6 +123,8 @@ export function RoutesGridView({
                   <DifficultyBadge level={diff} />
                 </div>
               )}
+
+              <SurfaceBar profile={route.surface_profile} />
 
               <div className="mt-3 flex flex-wrap gap-1">
                 {Array.from(

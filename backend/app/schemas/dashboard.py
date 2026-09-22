@@ -34,6 +34,16 @@ class TodayLiftingSummary(BaseModel):
     sets_count: int = 0
 
 
+class RestDaySuggestion(BaseModel):
+    """Auto-suggested rest day based on TSB, recovery, and training history."""
+
+    should_rest: bool = False
+    reasons: list[str] = []
+    current_tsb: float | None = None
+    latest_recovery: float | None = None
+    consecutive_training_days: int = 0
+
+
 class TodaySummary(BaseModel):
     """Aggregated today data for the dashboard today view."""
 
@@ -51,16 +61,8 @@ class TodaySummary(BaseModel):
     current_atl: float = 0.0
     current_tsb: float = 0.0
     active_alerts: int = 0
-
-
-class RestDaySuggestion(BaseModel):
-    """Auto-suggested rest day based on TSB, recovery, and training history."""
-
-    should_rest: bool = False
-    reasons: list[str] = []
-    current_tsb: float | None = None
-    latest_recovery: float | None = None
-    consecutive_training_days: int = 0
+    # Shared verdict input (3.1) — Today Brief renders RestDayBanner from this.
+    rest_day_suggestion: RestDaySuggestion | None = None
 
 
 class DashboardSummary(BaseModel):

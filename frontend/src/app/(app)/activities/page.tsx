@@ -144,6 +144,8 @@ function ActivityExpanded({
   const { authFetch, token } = useAuthFetch();
   const streamTypes = activityDetail?.streams?.map((s) => s.stream_type) ?? [];
   const [selectedStream, setSelectedStream] = useState<string>('');
+  // Detail tabs (3.2) — Replay unmounts three.js when hidden.
+  const [detailTab, setDetailTab] = useState<'overview' | 'replay' | 'analysis'>('overview');
 
   const isCycling = activity.sport_type === 'cycling';
 
@@ -269,6 +271,21 @@ function ActivityExpanded({
         </div>
       )}
 
+      <div className="mb-3">
+        <SegmentedControl
+          ariaLabel="Activity detail sections"
+          value={detailTab}
+          onChange={setDetailTab}
+          options={[
+            { value: 'overview', label: 'Overview' },
+            { value: 'replay', label: 'Replay' },
+            { value: 'analysis', label: 'Analysis' },
+          ]}
+        />
+      </div>
+
+      {detailTab === 'overview' && (
+      <>
       {/* Analytical context badges (IF/VI/decoupling/speed/climbing/EF/load) */}
       {badgesContextFrom(activity, context) && (
         <div className="mb-3">
@@ -302,7 +319,11 @@ function ActivityExpanded({
           <RouteMap encodedPolyline={activity.encoded_polyline} className="h-[250px]" />
         </div>
       )}
+      </>
+      )}
 
+      {detailTab === 'replay' && (
+      <>
       {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 && (
         <div className="mb-4">
@@ -356,7 +377,11 @@ function ActivityExpanded({
           <p className="text-muted text-sm">No streams stored for this ride — run a backfill from the Cycling page to fetch them.</p>
         ) : null
       )}
+      </>
+      )}
 
+      {detailTab === 'analysis' && (
+      <>
       {/* Ride Analysis Card — cycling activities only */}
       {isCycling && rideAnalysis && (
         <div className="mt-4">
@@ -376,6 +401,11 @@ function ActivityExpanded({
         <div className="mt-4">
           <FuelPlanCard activity={activity} />
         </div>
+      )}
+      {!isCycling && (
+        <p className="text-sm text-muted">Ride analysis, AI insights, and fuel plans are available for cycling activities.</p>
+      )}
+      </>
       )}
     </div>
   );

@@ -163,4 +163,6 @@ export interface TodaySummary {
   current_atl: number;
   current_tsb: number;
   active_alerts: number;
+  // Shared verdict input (3.1) — Today Brief renders RestDayBanner from this.
+  rest_day_suggestion?: RestDaySuggestion;
 }

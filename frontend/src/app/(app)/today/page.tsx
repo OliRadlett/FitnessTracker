@@ -19,6 +19,7 @@ import type {
 import { getForecast } from '@/lib/api/weather';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DomainIcon } from '@/components/ui/DomainIcon';
+import { RestDayBanner } from '@/components/dashboard/RestDayBanner';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -133,7 +134,15 @@ export default function TodayBriefPage() {
         </p>
       </div>
 
-      {/* 1 — Verdict (full width) */}
+      {/* 1 — Verdict: one shared component with the Dashboard (3.1).
+          Falls back to the local verdict card until the backend ships
+          rest_day_suggestion. */}
+      {todaySummary?.rest_day_suggestion ? (
+        <RestDayBanner
+          suggestion={todaySummary.rest_day_suggestion}
+          sleepDebtHours={sleepDebt?.debt_hours ?? null}
+        />
+      ) : (
       <Card className={`border ${style.ring}`}>
         <div className="flex items-center gap-3">
           <span className={`h-3 w-3 rounded-full ${style.dot}`} aria-hidden />
@@ -154,6 +163,7 @@ export default function TodayBriefPage() {
           </div>
         )}
       </Card>
+      )}
 
       {/* 2-col on desktop (2.2): action left, context right */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">

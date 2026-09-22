@@ -130,10 +130,21 @@ Single source of truth + remove contradictions. Each item: fix, verify visually,
 
 ## Phase 3 — Redesign bets (P3, design doc + prototype, one at a time)
 
-1. **Readiness strip** — one verdict component used in Dashboard/Brief/Lifting/Health.
-2. **Activity detail tabs** — lazy-load replay (heavy three.js) only on Replay tab; Zones/Power get insight headers (`80% Z2, VI 1.31 = surgy`).
-3. **Routes discovery polish** — keep Map Browse default per routes IA; add elevation sparkline + best-effort overlay to grid cards only.
-4. **Mobile pass** — bottom nav, 1-col grids, tables → cards, charts hide brush, Live Lift thumb-reach CTA. Needs mobile screenshots first.
+> **Status 2026-09-22: built on `feature/ui-phases-1-3`** (tsc clean,
+> vitest 179/179, ruff clean, backend parse-checked). 3.4 deferred for
+> device testing.
+
+1. [x] **Readiness strip** — DONE: `TodaySummary.rest_day_suggestion`
+  (schema + endpoint reuse `_suggest_rest_days`, cycle-safe local import);
+  Today Brief renders the same `RestDayBanner` as Dashboard (local verdict
+  card kept as fallback). Backend test extended.
+2. [x] **Activity detail tabs** — DONE: `Overview|Replay|Analysis`
+  SegmentedControl in `ActivityExpanded`; Replay3D unmounts off-tab.
+3. [x] **Routes discovery polish** — DONE (slice): surface-mix mini-bar on
+  grid cards from existing `surface_profile` fractions. True elevation
+  sparklines need per-point profiles in `RouteSummary` (backend scope).
+4. [ ] **Mobile pass** — DEFERRED: needs mobile screenshots + device
+  testing; no blind responsive rewrites.
 
 ## Verification per phase
 
