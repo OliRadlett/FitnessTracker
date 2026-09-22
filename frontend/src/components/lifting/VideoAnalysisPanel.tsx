@@ -309,8 +309,8 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <MiniCard label="Setup" value={video.setup_score} unit="/10" />
-        <MiniCard label="Consistency" value={video.rep_consistency_score} unit="/10" />
+        <MiniCard label="Setup" value={video.setup_score} unit="/100" />
+        <MiniCard label="Consistency" value={video.rep_consistency_score} unit="/100" />
         <MiniCard label="Rest" value={video.avg_rest_seconds} unit="s" />
       </div>
     </div>

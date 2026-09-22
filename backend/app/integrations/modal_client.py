@@ -500,6 +500,22 @@ def process_video_on_modal(
                     }
                     full_result["rep_timing"] = vel_result.get("rep_timings", [])
 
+            # 8b-ii: rep-to-rep consistency (pure, from the rep timings)
+            try:
+                from app.integrations.video_analysis import compute_consistency
+
+                consistency = compute_consistency(
+                    full_result.get("rep_timing", []))
+                if consistency:
+                    full_result["consistency"] = consistency
+                    _logger.info(
+                        "Consistency: score=%.1f tempo_cv=%.1f%% (%d reps)",
+                        consistency["consistency_score"],
+                        consistency["tempo_consistency_cv"],
+                        consistency["rep_count"])
+            except Exception as e:
+                _logger.warning("Consistency computation failed: %s", e)
+
             # 8c: RPE estimation (heuristic, no API calls)
             try:
                 from app.integrations.video_analysis import estimate_rpe_heuristic
