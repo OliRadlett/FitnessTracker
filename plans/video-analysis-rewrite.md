@@ -280,7 +280,9 @@ These are the numbers the rewrite must move.
    by side (form/validity/velocity/RPE/deviations); the videos page has a
    per-card ⇄ toggle + a Compare button.
 8. **Multi-person / not-a-lift detection** with clear messaging.
-9. **View-aware analyzers for more lifts** — overhead press, front squat, rows, pull-ups.
+9. ✅ **(partial) More lifts** — Overhead Press (elbow lockout) and pull-up/
+   chin-up/row (full ROM) analyzers added; front squat already routes to the
+   squat analyzer. Still generic-50: other accessories.
 
 ## Risks
 
