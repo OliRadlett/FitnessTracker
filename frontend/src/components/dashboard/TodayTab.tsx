@@ -38,7 +38,6 @@ import { SleepConsistencyCard } from '@/components/health/SleepConsistencyCard';
 import { OptimalBedtimeCard } from '@/components/health/OptimalBedtimeCard';
 import { formatDistance, formatDuration, formatTSB } from '@/lib/utils';
 import { ListSkeleton } from '@/components/dashboard/helpers';
-import { WeightPanel } from '@/components/cycling/WeightPanel';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
 
@@ -295,11 +294,6 @@ export function TodayTab({
         </div>
       )}
 
-      {/* ── Quick Body-Weight Log ─────────────────────────────────────────── */}
-      <div className="max-w-2xl">
-        <WeightPanel compact />
-      </div>
-
       {/* ── Today's Plan ────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
@@ -338,7 +332,7 @@ export function TodayTab({
           <MetricCard
             label="TSS Today"
             value={todaySummary.today_tss > 0 ? todaySummary.today_tss.toFixed(0) : '—'}
-            subtitle="Training Stress Score"
+            subtitle={todaySummary.today_tss > 0 ? 'Training Stress Score' : 'Nothing logged yet'}
             color="text-blue-400"
             icon="⚡"
             tooltip="Training Stress Score — composite measure of workout difficulty based on intensity and duration. 100 TSS = 1 hour at FTP. Higher means harder."
@@ -346,7 +340,7 @@ export function TodayTab({
           <MetricCard
             label="Volume Today"
             value={todaySummary.today_volume_kg > 0 ? `${todaySummary.today_volume_kg.toLocaleString()} kg` : '—'}
-            subtitle="Lifting volume"
+            subtitle={todaySummary.today_volume_kg > 0 ? 'Lifting volume' : 'Nothing logged yet'}
             color="text-purple-400"
             icon="🏋️"
             tooltip="Total lifting volume (sets × reps × weight) for today. Track progressive overload by comparing week-to-week."
@@ -354,7 +348,7 @@ export function TodayTab({
           <MetricCard
             label="Distance"
             value={todaySummary.today_distance_meters > 0 ? formatDistance(todaySummary.today_distance_meters) : '—'}
-            subtitle="Cardio distance"
+            subtitle={todaySummary.today_distance_meters > 0 ? 'Cardio distance' : 'Nothing logged yet'}
             color="text-positive"
             icon="🚴"
             tooltip="Total distance from all cardio activities today (cycling, running, etc.)."
@@ -362,7 +356,7 @@ export function TodayTab({
           <MetricCard
             label="Duration"
             value={todaySummary.today_duration_seconds > 0 ? formatDuration(todaySummary.today_duration_seconds) : '—'}
-            subtitle="Training time"
+            subtitle={todaySummary.today_duration_seconds > 0 ? 'Training time' : 'Nothing logged yet'}
             color="text-muted"
             icon="⏱️"
             tooltip="Total elapsed time across all activities and lifting sessions today."

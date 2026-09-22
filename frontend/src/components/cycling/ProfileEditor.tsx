@@ -103,6 +103,7 @@ export function ProfileEditor({
             placeholder="e.g. 51.5072"
             className="w-full bg-surface-light border border-surface-light text-foreground text-base rounded-lg px-3 py-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent"
           />
+          <p className="text-[11px] text-muted mt-1">Only you can see this — used for weather + heatmaps.</p>
         </div>
         <div>
           <label htmlFor="profile-lng" className="block text-xs text-muted mb-1">Home Longitude</label>
@@ -178,7 +179,7 @@ export function ProfileEditor({
             {isEstimating ? 'Calculating...' : '⚡ Auto-Estimate & Save FTP'}
           </button>
           <span className="text-xs text-muted">
-            Estimates from best 20-min power (×0.95) and saves automatically
+            One-off estimate from best 20-min power (×0.95) — the weekly toggle above handles this automatically.
           </span>
         </div>
 

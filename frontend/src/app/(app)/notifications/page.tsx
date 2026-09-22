@@ -31,6 +31,7 @@ export default function NotificationsPage() {
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const queryKey = ['notifications'] as const;
   const { data: notifications = [], isLoading } = useQuery<AppNotification[]>({
@@ -53,6 +54,41 @@ export default function NotificationsPage() {
 
   const shown = filtered.slice(0, visibleLimit);
   const hasMore = filtered.length > visibleLimit;
+
+  // Group consecutive identical notifications (2.4) — e.g. five "Video
+  // processed" rows collapse into one expandable group.
+  type Row = { kind: 'single'; n: AppNotification } | { kind: 'group'; key: string; items: AppNotification[] };
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    for (const n of shown) {
+      const last = out[out.length - 1];
+      if (
+        last?.kind === 'group' &&
+        last.items[0].type === n.type &&
+        last.items[0].title === n.title
+      ) {
+        last.items.push(n);
+      } else if (
+        last?.kind === 'single' &&
+        last.n.type === n.type &&
+        last.n.title === n.title
+      ) {
+        out[out.length - 1] = { kind: 'group', key: `${n.type}:${n.title}`, items: [last.n, n] };
+      } else {
+        out.push({ kind: 'single', n });
+      }
+    }
+    return out;
+  }, [shown]);
+
+  function toggleGroup(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const markRead = useMutation({
     mutationFn: (id: string) => markNotificationRead(authFetch, id),
@@ -87,6 +123,46 @@ export default function NotificationsPage() {
   function handleOpen(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id);
     if (n.link) router.push(n.link);
+  }
+
+  function renderItem(n: AppNotification) {
+    return (
+      <button
+        key={n.id}
+        onClick={() => handleOpen(n)}
+        className={`w-full text-left px-4 py-3.5 border-b border-surface-light/30 hover:bg-surface-light/40 transition-colors ${
+          n.read ? 'opacity-60' : ''
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <span className="text-xl mt-0.5" aria-hidden="true">{TYPE_ICONS[n.type]}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className={`text-sm text-foreground ${n.read ? 'font-normal' : 'font-semibold'}`}>
+                {n.title}
+              </p>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${SEVERITY_BADGE[n.severity] ?? SEVERITY_BADGE.info}`}
+              >
+                {n.severity}
+              </span>
+              {TYPE_LABELS[n.type] && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-light/50 text-muted uppercase">
+                  {TYPE_LABELS[n.type]}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted mt-1">{n.body}</p>
+            <p className="text-[11px] text-muted/70 mt-1.5">
+              {n.created_at ? relativeTime(n.created_at) : ''}
+            </p>
+          </div>
+          {!n.read && (
+            <span className="mt-2 w-2 h-2 rounded-full bg-accent shrink-0" aria-hidden="true" />
+          )}
+        </div>
+      </button>
+    );
   }
 
   return (
@@ -149,43 +225,37 @@ export default function NotificationsPage() {
               </p>
             </div>
           )}
-          {shown.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => handleOpen(n)}
-              className={`w-full text-left px-4 py-3.5 border-b border-surface-light/30 hover:bg-surface-light/40 transition-colors ${
-                n.read ? 'opacity-60' : ''
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-xl mt-0.5" aria-hidden="true">{TYPE_ICONS[n.type]}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`text-sm text-foreground ${n.read ? 'font-normal' : 'font-semibold'}`}>
-                      {n.title}
+          {rows.map((row) =>
+            row.kind === 'single' ? (
+              renderItem(row.n)
+            ) : (
+              <div key={row.key} className="border-b border-surface-light/30">
+                <button
+                  onClick={() => toggleGroup(row.key)}
+                  aria-expanded={expandedGroups.has(row.key)}
+                  className="w-full text-left px-4 py-3.5 hover:bg-surface-light/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl mt-0.5" aria-hidden="true">{TYPE_ICONS[row.items[0].type]}</span>
+                    <p className="text-sm text-foreground font-medium flex-1 min-w-0 truncate">
+                      {row.items[0].title} · {row.items.length}
                     </p>
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${SEVERITY_BADGE[n.severity] ?? SEVERITY_BADGE.info}`}
-                    >
-                      {n.severity}
+                    <span className="text-xs text-accent shrink-0" aria-hidden>
+                      {expandedGroups.has(row.key) ? '▾' : '▸'}
                     </span>
-                    {TYPE_LABELS[n.type] && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-light/50 text-muted uppercase">
-                        {TYPE_LABELS[n.type]}
-                      </span>
+                    {row.items.some((i) => !i.read) && (
+                      <span className="w-2 h-2 rounded-full bg-accent shrink-0" aria-hidden="true" />
                     )}
                   </div>
-                  <p className="text-sm text-muted mt-1">{n.body}</p>
-                  <p className="text-[11px] text-muted/70 mt-1.5">
-                    {n.created_at ? relativeTime(n.created_at) : ''}
-                  </p>
-                </div>
-                {!n.read && (
-                  <span className="mt-2 w-2 h-2 rounded-full bg-accent shrink-0" aria-hidden="true" />
+                </button>
+                {expandedGroups.has(row.key) && (
+                  <div className="border-t border-surface-light/20">
+                    {row.items.map((n) => renderItem(n))}
+                  </div>
                 )}
               </div>
-            </button>
-          ))}
+            ),
+          )}
           {hasMore && (
             <div className="p-3 text-center">
               <button

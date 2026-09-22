@@ -15,7 +15,6 @@ import type {
   CreatePRPayload,
   ChartData,
   LinkedActivity,
-  ReadinessResponse,
   LiftingAnalysis,
   DeficiencyResponse,
   LiftVideo,
@@ -38,7 +37,6 @@ import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
-import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 
@@ -331,14 +329,26 @@ export default function LiftingPage() {
   });
   const volumeData = volumeResponse?.data;
 
-  // Phase 5.2 — Readiness indicator
-  const { data: readiness } = useQuery<ReadinessResponse>({
-    queryKey: ['readiness'],
-    queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
-    staleTime: 300_000,
-  });
-
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Whoop-mismatch banner snooze (2.7) — 7 days, localStorage.
+  const WHOOP_BANNER_KEY = 'fittrack-whoop-mismatch-snoozed';
+  const [whoopBannerSnoozed, setWhoopBannerSnoozed] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(WHOOP_BANNER_KEY);
+      return raw != null && Date.now() - Number(raw) < 7 * 24 * 60 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  });
+  function snoozeWhoopBanner() {
+    try {
+      localStorage.setItem(WHOOP_BANNER_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    setWhoopBannerSnoozed(true);
+  }
 
   // ── Mutations ────────────────────────────────────────────────────────────
 
@@ -516,7 +526,7 @@ export default function LiftingPage() {
             !s.whoop_strain &&
             Date.now() - new Date(s.ended_at).getTime() > THREE_H
         );
-        if (unmatched.length === 0) return null;
+        if (unmatched.length === 0 || whoopBannerSnoozed) return null;
         const latest = unmatched[0];
         const start = new Date(latest.started_at!).toLocaleTimeString([], {
           hour: '2-digit',
@@ -528,10 +538,20 @@ export default function LiftingPage() {
         });
         return (
           <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl text-sm">
-            <p className="text-warning font-semibold">
-              ⚠ No Whoop workout matched{' '}
-              {unmatched.length > 1 ? `${unmatched.length} recent live sessions` : 'a recent live session'}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-warning font-semibold">
+                ⚠ No Whoop workout matched{' '}
+                {unmatched.length > 1 ? `${unmatched.length} recent live sessions` : 'a recent live session'}
+              </p>
+              <button
+                onClick={snoozeWhoopBanner}
+                className="shrink-0 min-h-[44px] min-w-[44px] px-2 text-xs text-muted hover:text-foreground"
+                aria-label="Dismiss for 7 days"
+                title="Dismiss for 7 days"
+              >
+                ✕
+              </button>
+            </div>
             <p className="text-muted mt-1">
               If you wore your Whoop, add the activity in the Whoop app with the exact
               time range ({start}–{end}) and it will attach after the next sync.
@@ -540,16 +560,13 @@ export default function LiftingPage() {
         );
       })()}
 
-      {/* Readiness Indicator */}
-      {readiness && readiness.readiness !== 'unknown' && (
-        <ReadinessIndicator
-          recoveryScore={readiness.recovery_score ?? undefined}
-          readiness={readiness.readiness}
-          hrvMs={readiness.hrv_ms ?? undefined}
-          restingHr={readiness.resting_hr ?? undefined}
-          message={readiness.message}
-        />
-      )}
+      {/* Readiness lives on the Dashboard — not duplicated here (2.7). */}
+      <Link
+        href="/"
+        className="text-xs text-muted hover:text-foreground transition-colors"
+      >
+        Check training readiness on the Dashboard →
+      </Link>
 
       {/* Backfill result */}
       {backfillMutation.isSuccess && backfillMutation.data && (

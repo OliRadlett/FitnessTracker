@@ -349,13 +349,12 @@ function ActivityExpanded({
           {streamChartEl}
         </>
       ) : (
+        // Strength/other sports never have streams — render nothing (2.6).
         activity.source === 'wahoo' ? (
           <p className="text-muted text-sm">Wahoo sync doesn’t include per-second streams — summary metrics above still work.</p>
         ) : isCycling ? (
           <p className="text-muted text-sm">No streams stored for this ride — run a backfill from the Cycling page to fetch them.</p>
-        ) : (
-          <p className="text-muted text-sm">No stream data available</p>
-        )
+        ) : null
       )}
 
       {/* Ride Analysis Card — cycling activities only */}

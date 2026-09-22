@@ -87,7 +87,7 @@ export function ActivityCard({
                 type="checkbox"
                 checked={showBulkCheckbox ? isBulkSelected : isCompareSelected}
                 onChange={showBulkCheckbox ? onToggleBulk : onToggleCompare}
-                className="w-4 h-4 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
+                className="w-5 h-5 rounded border-surface-light bg-surface-light text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer"
               />
             </label>
           )}
@@ -154,10 +154,10 @@ export function ActivityCard({
             <span className="text-muted">{Math.round(activity.average_cadence)} rpm</span>
           ) : null}
           {!isStrength && activity.max_heartrate ? (
-            <span className="text-warning">{Math.round(activity.max_heartrate)} bpm</span>
+            <span className="text-warning" title="Max heart rate — red marks peak effort">{Math.round(activity.max_heartrate)} bpm</span>
           ) : null}
           {!isStrength && activity.average_heartrate ? (
-            <span className="text-warning/70">{Math.round(activity.average_heartrate)} bpm avg</span>
+            <span className="text-warning/70" title="Average heart rate">{Math.round(activity.average_heartrate)} bpm avg</span>
           ) : null}
           {activity.tss != null && activity.tss > 0 ? (
             <span className="text-blue-400 inline-flex items-center gap-1">
@@ -189,18 +189,19 @@ export function ActivityCard({
         )}
       </div>
 
-      {/* Linked Lifting Session indicator */}
+      {/* Linked Lifting Session — flat row with left border, not a nested
+          card (2.6). Title pairs session focus with the activity name. */}
       {activity.linked_lifting_session && (
         <Link
           href={`/lifting?session=${activity.linked_lifting_session.id}`}
           onClick={(e) => e.stopPropagation()}
-          className="mt-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg block transition-colors hover:border-purple-400/40"
+          className="mt-2 pl-3 border-l-2 border-purple-500/40 block transition-colors hover:border-purple-400"
         >
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">Lifting</span>
-            <span className="text-sm text-foreground">{activity.linked_lifting_session.focus || 'Lifting Session'}</span>
-          </div>
-          <div className="flex gap-4 text-xs text-muted">
+          <p className="text-sm text-foreground">
+            {activity.linked_lifting_session.focus || 'Lifting Session'}
+            <span className="text-muted"> · {activity.name}</span>
+          </p>
+          <div className="flex gap-4 text-xs text-muted mt-0.5">
             <span>{new Date(activity.linked_lifting_session.session_date).toLocaleDateString()}</span>
             <span>{activity.linked_lifting_session.set_count} sets</span>
             {activity.linked_lifting_session.total_volume_kg && (
