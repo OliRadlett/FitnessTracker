@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import time
 from pathlib import Path
 
@@ -1310,6 +1311,88 @@ def compute_consistency(rep_timings: list[dict]) -> dict | None:
         "tempo_consistency_cv": round(tempo_cv, 1),
         "amplitude_consistency_cv": round(amp_cv, 1),
     }
+
+
+def _group_deviations(deviations: list) -> list[tuple[str, str, int]]:
+    """Group 'Rep N: Fault' strings into (fault, "3 reps: 1, 2, 5", count).
+
+    Sorted by frequency, so the coaching summary leads with the biggest issue.
+    """
+    groups: dict[str, list[int]] = {}
+    for d in deviations:
+        m = re.match(r"Rep (\d+):\s*(.*)", str(d))
+        if m:
+            number, label = int(m.group(1)), m.group(2).strip()
+        else:
+            number, label = None, str(d).strip()
+        groups.setdefault(label, [])
+        if number is not None:
+            groups[label].append(number)
+
+    out: list[tuple[str, str, int]] = []
+    for label, numbers in groups.items():
+        numbers = sorted(set(numbers))
+        if numbers:
+            plural = "reps" if len(numbers) > 1 else "rep"
+            reps_txt = f"{len(numbers)} {plural}: {', '.join(map(str, numbers))}"
+        else:
+            reps_txt = "whole set"
+        out.append((label, reps_txt, len(numbers)))
+    out.sort(key=lambda t: -t[2])
+    return out
+
+
+def build_coaching_summary(analysis: dict) -> str:
+    """Deterministic, grounded coaching text from the measured analysis.
+
+    No LLM: renders the computed faults, IPF validity, velocity loss and RPE
+    into plain language so the user gets a prioritised read at zero quota
+    cost. Every claim traces to a measured value — it can't hallucinate.
+    """
+    form = analysis.get("form") or {}
+    vel = analysis.get("velocity") or {}
+    quality = (analysis.get("quality") or {}).get("level")
+    view = analysis.get("view") or (analysis.get("quality") or {}).get("view") or "unknown"
+    reps = analysis.get("reps") or 0
+
+    if quality == "unusable":
+        return (
+            "Couldn't analyse this clip reliably — refilm with the whole body "
+            "in frame, steady lighting, and (for form checks) from the side."
+        )
+
+    parts: list[str] = []
+
+    faults = _group_deviations(form.get("deviations") or [])
+    if faults:
+        lead = "; ".join(f"{label} ({reps_txt})" for label, reps_txt, _ in faults[:3])
+        parts.append(f"Main issues: {lead}.")
+    else:
+        parts.append("No form faults detected — clean set.")
+
+    if form.get("competition_valid") is False:
+        parts.append("Would not pass IPF criteria as filmed.")
+    elif form.get("competition_valid") is True:
+        parts.append("Would pass in competition.")
+
+    loss = vel.get("velocity_loss_pct")
+    mean_v = vel.get("mean_concentric_velocity")
+    if loss and loss > 0:
+        band = "high" if loss >= 30 else "moderate" if loss >= 15 else "low"
+        parts.append(f"Velocity loss {loss:.0f}% across the set ({band} fatigue).")
+    elif mean_v:
+        parts.append(f"Mean bar velocity {mean_v:.2f} m/s.")
+
+    rpe = analysis.get("estimated_rpe")
+    if rpe is not None:
+        parts.append(f"Estimated RPE ~{rpe:.1f}.")
+
+    if reps and view != "side":
+        parts.append(
+            "Film side-on next time to also get torso-lean and squat-depth checks."
+        )
+
+    return " ".join(parts)
 
 
 def _rpe_from_velocity_loss(vel_loss: float) -> float:
