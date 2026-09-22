@@ -1115,6 +1115,42 @@ def _is_press(exercise: str) -> bool:
     return "bench" not in n and any(w in n for w in ("press", "ohp", "strict"))
 
 
+def _is_pull(exercise: str) -> bool:
+    """Pull-up / chin-up / row family."""
+    n = (exercise or "").lower()
+    return any(w in n for w in ("pull", "chin", "row"))
+
+
+def analyze_pull_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
+    """Vertical pull (pull-up/chin-up/row): judged on full range of motion.
+
+    Bottom = arms extended (elbow ~180°), top = arms flexed (elbow small).
+    """
+    si, ei = rep["start_idx"], rep["end_idx"]
+    n = len(all_landmarks)
+    idxs = list(range(si, min(ei, n)))
+    if not idxs:
+        return {"full_rom": False, "bottom_elbow": None, "top_elbow": None}
+    evals = _median_filter([
+        calculate_angle(_mid(all_landmarks[i], 11, 12),
+                        _mid(all_landmarks[i], 13, 14),
+                        _mid(all_landmarks[i], 15, 16))
+        for i in idxs
+    ])
+    vis = (11, 12, 13, 14, 15, 16)
+    bot_lm = all_landmarks[_best_extremum(all_landmarks, idxs, evals, vis, want_max=True)]
+    top_lm = all_landmarks[_best_extremum(all_landmarks, idxs, evals, vis, want_max=False)]
+    bottom_elbow = calculate_angle(
+        _mid(bot_lm, 11, 12), _mid(bot_lm, 13, 14), _mid(bot_lm, 15, 16))
+    top_elbow = calculate_angle(
+        _mid(top_lm, 11, 12), _mid(top_lm, 13, 14), _mid(top_lm, 15, 16))
+    return {
+        "full_rom": bool(bottom_elbow > 160 and top_elbow < 70),
+        "bottom_elbow": round(float(bottom_elbow), 1),
+        "top_elbow": round(float(top_elbow), 1),
+    }
+
+
 def analyze_press_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     """Overhead press: the judged criterion is a locked-out elbow at the top.
 
@@ -1286,6 +1322,24 @@ def score_press_form(per_rep: list[dict]) -> dict:
         rep_scores.append(100.0 - penalty)
 
     return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+
+
+def score_pull_form(per_rep: list[dict]) -> dict:
+    deviations = []
+    cues = []
+    rep_scores = []
+
+    for r in per_rep:
+        rn = r["rep_number"]
+        penalty = 0.0
+        if not r.get("full_rom", True):
+            penalty += 25
+            deviations.append(f"Rep {rn}: Partial range")
+            cues.append("Full range: dead hang to chin over bar")
+        rep_scores.append(100.0 - penalty)
+
+    # Not a competition lift — no IPF validity.
+    return _form_result(_average_rep_scores(rep_scores), False, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def _form_result(score, comp_fail, deviations, cues):
@@ -1498,6 +1552,8 @@ def run_pose_analysis(
             per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep, view=view)})
         elif _is_press(exercise):
             per_rep.append({"rep_number": rep["rep_number"], **analyze_press_rep(landmarks, rep, view=view)})
+        elif _is_pull(exercise):
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_pull_rep(landmarks, rep, view=view)})
         else:
             per_rep.append({"rep_number": rep["rep_number"]})
 
@@ -1510,6 +1566,8 @@ def run_pose_analysis(
         form = score_deadlift_form(per_rep)
     elif _is_press(exercise):
         form = score_press_form(per_rep)
+    elif _is_pull(exercise):
+        form = score_pull_form(per_rep)
     else:
         form = {"overall_form_score": 50, "competition_valid": None, "deviations": [], "severity": "unknown", "coaching_cues": []}
 

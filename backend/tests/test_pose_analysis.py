@@ -249,6 +249,26 @@ class TestRepSprite:
             tmp_path / "x.mp4", [], [], [], tmp_path / "out.jpg") is False
 
 
+class TestPullFamily:
+    def test_is_pull(self):
+        assert pa._is_pull("Pull-up")
+        assert pa._is_pull("Chin-up")
+        assert pa._is_pull("Barbell Row")
+        assert not pa._is_pull("Bench Press")
+        assert not pa._is_pull("Back Squat")
+
+
+class TestPullFormScoring:
+    def test_full_rom_scores_100(self):
+        result = pa.score_pull_form([{"rep_number": 1, "full_rom": True}])
+        assert result["overall_form_score"] == 100.0
+
+    def test_partial_range_flagged(self):
+        result = pa.score_pull_form([{"rep_number": 1, "full_rom": False}])
+        assert result["overall_form_score"] == 75.0
+        assert any("Partial range" in d for d in result["deviations"])
+
+
 class TestPressFamily:
     def test_is_press_excludes_bench(self):
         assert pa._is_press("Overhead Press")
