@@ -309,6 +309,32 @@ class VideoStreamUrl(BaseModel):
     url: str
 
 
+class VbtProfilePoint(BaseModel):
+    """One analysed set on the load-velocity plane."""
+
+    date: str
+    load_kg: float
+    velocity: float
+    reps: int | None = None
+    vbt_zone: str | None = None
+
+
+class VbtProfileResponse(BaseModel):
+    """Load-velocity profile + estimated 1RM for one exercise."""
+
+    exercise: str
+    n: int
+    mvt: float
+    slope: float | None = None
+    intercept: float | None = None
+    r2: float | None = None
+    est_1rm_kg: float | None = None
+    load_min_kg: float | None = None
+    load_max_kg: float | None = None
+    confidence: str
+    points: list[VbtProfilePoint]
+
+
 class LiftVideoListParams(BaseModel):
     """Query params for listing a user's strength videos."""
 
@@ -334,6 +360,8 @@ class LiftVideoBase(BaseModel):
     personal_record_id: uuid.UUID | None = None
     notes: str | None = None
     expected_reps: int | None = None
+    camera_view: str | None = None
+    weight_kg: float | None = None
 
 
 class LiftVideoCreate(LiftVideoBase):
@@ -348,6 +376,7 @@ class LiftVideoRead(LiftVideoBase):
 
     # Video processing fields
     trimmed_r2_key: str | None = None
+    overlay_r2_key: str | None = None
     analysis_status: str | None = None
     analysis_text: str | None = None
     exercise_auto: str | None = None

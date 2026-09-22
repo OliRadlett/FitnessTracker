@@ -8,6 +8,7 @@ referencing the object key. Requires the `R2_*` env vars + a bucket CORS rule
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ from app.schemas.lifting import (
     LiftVideoCreate,
     LiftVideoListParams,
     LiftVideoRead,
+    VbtProfileResponse,
     VideoProcessStatus,
     VideoStreamUrl,
     VideoUploadRequest,
@@ -112,11 +114,66 @@ async def create_video(
         personal_record_id=payload.personal_record_id,
         notes=payload.notes,
         expected_reps=payload.expected_reps,
+        camera_view=payload.camera_view,
+        weight_kg=payload.weight_kg,
     )
     db.add(video)
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
     return video
+
+
+@router.get("/vbt/profile", response_model=VbtProfileResponse)
+async def get_vbt_profile(
+    exercise_name: str = Query(..., min_length=1),
+    days: int = Query(365, ge=1, le=1095),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Load-velocity profile + estimated 1RM for one exercise (VBT).
+
+    Uses every analysed video of the exercise that has both a load and a
+    measured velocity. The fitted line's MVT crossing estimates 1RM without a
+    true max attempt. Registered before the ``/{video_id}`` routes.
+    """
+    from app.services.vbt import load_velocity_profile
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    videos = (
+        (
+            await db.execute(
+                select(LiftVideo)
+                .where(
+                    LiftVideo.user_id == current_user.id,
+                    LiftVideo.exercise_name == exercise_name,
+                    LiftVideo.weight_kg.isnot(None),
+                    LiftVideo.mean_concentric_velocity.isnot(None),
+                    LiftVideo.created_at >= cutoff,
+                )
+                .order_by(LiftVideo.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    profile = load_velocity_profile(
+        [(v.weight_kg, v.mean_concentric_velocity) for v in videos],
+        exercise_name,
+    )
+    return VbtProfileResponse(
+        **profile.as_dict(),
+        points=[
+            {
+                "date": v.created_at.date().isoformat(),
+                "load_kg": v.weight_kg,
+                "velocity": v.mean_concentric_velocity,
+                "reps": v.reps_count,
+                "vbt_zone": v.vbt_zone,
+            }
+            for v in videos
+        ],
+    )
 
 
 @router.get("/{video_id}", response_model=LiftVideoRead)
@@ -177,10 +234,15 @@ async def create_upload_url(
 @router.get("/{video_id}/stream-url", response_model=VideoStreamUrl)
 async def get_stream_url(
     video_id: uuid.UUID,
+    variant: str = Query("original", pattern="^(original|trimmed|overlay)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Resolve a presigned GET for playback (R2 must be configured)."""
+    """Resolve a presigned GET for playback (R2 must be configured).
+
+    ``variant`` selects the object: the original upload, the trimmed clip, or
+    the skeleton/bar-path overlay. 404 when that variant hasn't been produced.
+    """
     video = (
         await db.execute(
             select(LiftVideo).where(
@@ -191,15 +253,20 @@ async def get_stream_url(
     if video is None:
         raise HTTPException(404, "Video not found")
 
-    if not video.r2_key:
-        raise HTTPException(404, "No playable source for this video")
+    key = {
+        "original": video.r2_key,
+        "trimmed": video.trimmed_r2_key,
+        "overlay": video.overlay_r2_key,
+    }[variant]
+    if not key:
+        raise HTTPException(404, f"No {variant} video for this recording")
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
     try:
         from app.integrations.r2 import create_presigned_get  # lazy
     except ImportError as exc:  # boto3 optional until R2 configured
         raise HTTPException(501, "R2 storage client is not installed") from exc
-    url = await create_presigned_get(video.r2_key)
+    url = await create_presigned_get(key)
     return VideoStreamUrl(url=url)
 
 

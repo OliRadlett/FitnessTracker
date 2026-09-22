@@ -1142,74 +1142,188 @@ def run_full_analysis(
 # ── Standalone RPE Heuristic ─────────────────────────────────────────────────
 
 
+# % velocity loss within a set -> RPE band. Velocity loss is the best
+# video-only proxy for proximity to failure (autoregulation), but it needs a
+# multi-rep set and is noisy; the bands are deliberately conservative.
+# Recalibrated against the labelled production set: RPE-7 working sets
+# measured 19-42% loss (mean ~30%), so ~30% maps to ~8.0, not 10.
+RPE_VELOCITY_LOSS_BANDS = [
+    (50.0, 9.0),
+    (38.0, 8.5),
+    (28.0, 8.0),
+    (20.0, 7.5),
+    (12.0, 7.0),
+    (5.0, 6.5),
+    (0.0, 6.0),
+]
+
+
+# User-declared camera angle -> the analyzer's view taxonomy. Sagittal rules
+# only run for "side"; valgus only for frontal/rear. Rear-quarter (back_left/
+# back_right) maps to "three_quarter" (conservative: no sagittal rules).
+USER_VIEW_MAP = {
+    "side": "side",
+    "front": "front",
+    "back_left": "three_quarter",
+    "back_right": "three_quarter",
+}
+
+
+def normalize_user_view(camera_view: str | None) -> str:
+    """Map a user-declared angle to the analyzer view taxonomy.
+
+    Unknown/absent input -> ``"unknown"`` (sagittal rules stay off).
+    """
+    return USER_VIEW_MAP.get((camera_view or "").strip().lower(), "unknown")
+
+
+VIEW_LABELS = ("three_quarter", "front", "rear", "side")
+
+_VIEW_PROMPT = (
+    "You are labelling the camera angle of ONE frame from a weightlifting "
+    "video. Choose exactly one label:\n"
+    "- side: camera perpendicular to the lifter (clean side profile, you see "
+    "the body from the side)\n"
+    "- three_quarter: an angled view (front-quarter or rear-quarter)\n"
+    "- front: the lifter faces the camera\n"
+    "- rear: the camera is directly behind the lifter\n"
+    "Reply with the single label only, lowercase, no punctuation."
+)
+
+
+def classify_view_from_frame(
+    frame_path: str | Path,
+    api_key: str,
+    model: str = "gemini-3.6-flash",
+    timeout: float = 30.0,
+) -> str:
+    """Classify the camera view of a single frame via the Gemini REST API.
+
+    Returns one of ``side``/``three_quarter``/``front``/``rear``, or
+    ``"unknown"`` on any failure. Uses only the standard library (urllib) so
+    it runs both inside the Modal container and locally; a failure never
+    raises — the caller then leaves sagittal rules ungated (safe default).
+
+    Why a VLM: monocular pose geometry cannot separate side from rear (both
+    2D shoulder/torso ratios and the metric-3D world shoulder-line fail on
+    the production set). A single-frame VLM call is reliable and cheap.
+    """
+    if not api_key:
+        return "unknown"
+    import base64
+    import time as _time
+    import urllib.error
+    import urllib.request
+
+    data = Path(frame_path).read_bytes()
+    if not data:
+        return "unknown"
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": _VIEW_PROMPT},
+                {"inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": base64.b64encode(data).decode(),
+                }},
+            ],
+        }],
+        # Generous token budget: Gemini 3.x can spend output tokens on
+        # internal reasoning, and a 16-token cap truncated "three_quarter"
+        # to "three" (found 2026-09-21).
+        "generationConfig": {"temperature": 0, "maxOutputTokens": 256},
+    }
+    req = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    body = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < 2:
+                _time.sleep(2.0 * (attempt + 1))
+                continue
+            logger.warning("Gemini view classification failed: %s", e)
+            return "unknown"
+        except Exception as e:
+            # Never fail the analysis for a view-classification problem.
+            logger.warning("Gemini view classification failed: %s", e)
+            return "unknown"
+
+    if not body:
+        return "unknown"
+    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    text = " ".join(p.get("text", "") for p in parts).strip().lower()
+    if not text:
+        logger.warning("Gemini view classification returned no text")
+        return "unknown"
+
+    normalized = text.replace("-", "_").replace(" ", "_")
+    for label in VIEW_LABELS:
+        if label in normalized:
+            return label
+    logger.warning("Gemini view classification returned unexpected text: %r", text)
+    return "unknown"
+
+
+def _rpe_from_velocity_loss(vel_loss: float) -> float:
+    for threshold, rpe in RPE_VELOCITY_LOSS_BANDS:
+        if vel_loss > threshold:
+            return rpe
+    return 6.0
+
+
 def estimate_rpe_heuristic(analysis_result: dict, exercise_name: str, rep_count: int) -> dict:
-    """Estimate RPE from analysis results. Called from modal_client.py after
-    pose analysis + optical flow are complete."""
+    """Estimate RPE from velocity loss within a working set.
+
+    Called from modal_client.py after pose analysis + velocity are complete.
+
+    RPE is only estimated from **velocity loss across a multi-rep set** — the
+    one video-only signal that tracks proximity to failure. A single rep (or
+    a set with no measurable loss) carries no such signal, and absolute bar
+    velocity cannot be interpreted without a load / 1RM reference (which the
+    Modal container does not have). In that case this returns
+    ``estimated_rpe: None`` rather than a fabricated value — the previous
+    version reported 9.5-10 for nearly every single-rep video because it read
+    tiny absolute velocities as maximal effort.
+    """
     vel_data = analysis_result.get("velocity", {})
     form_data = analysis_result.get("form", {})
 
-    mean_vel = vel_data.get("mean_concentric_velocity", 0.5)
-    # NOTE: .get default only applies to MISSING keys — the optical-flow
-    # result includes velocity_loss_pct=None when <2 reps are tracked, and
-    # None > 0 raises TypeError. `or 0` normalizes both cases (2026-09-17 —
-    # this crash nulled every RPE estimate).
-    vel_loss = vel_data.get("velocity_loss_pct") or 0
-    form_score = form_data.get("overall_form_score", 70)
+    mean_vel = vel_data.get("mean_concentric_velocity")
+    # .get default only applies to MISSING keys — velocity_loss_pct is
+    # explicitly None for <2 tracked reps, and None > 0 raises TypeError.
+    vel_loss = vel_data.get("velocity_loss_pct")
     form_severity = form_data.get("severity", "unknown")
-    consistency_score = analysis_result.get("consistency", {}).get("consistency_score", 70)
 
-    has_vel_data = vel_loss > 0 or mean_vel != 0.5
+    if not vel_loss or vel_loss <= 0 or rep_count < 2:
+        return {
+            "estimated_rpe": None,
+            "rir_estimate": None,
+            "confidence": 0.0,
+            "evidence": [
+                f"velocity_loss={vel_loss}",
+                f"rep_count={rep_count}",
+                "no load/1RM reference",
+            ],
+            "reasoning": (
+                "RPE needs a multi-rep velocity-loss signal or a load/1RM "
+                "reference; not enough data to estimate."
+            ),
+        }
 
-    if vel_loss > 30:
-        base_rpe = 10.0
-    elif vel_loss > 20:
-        base_rpe = 9.5
-    elif vel_loss > 15:
-        base_rpe = 9.0
-    elif vel_loss > 10:
-        base_rpe = 8.5
-    elif vel_loss > 8:
-        base_rpe = 8.0
-    elif vel_loss > 5:
-        base_rpe = 7.5
-    elif vel_loss > 3:
-        base_rpe = 7.0
-    elif vel_loss > 1:
-        base_rpe = 6.0
-    elif has_vel_data:
-        if mean_vel < 0.30:
-            base_rpe = 9.5
-        elif mean_vel < 0.40:
-            base_rpe = 8.5
-        elif mean_vel < 0.50:
-            base_rpe = 7.5
-        elif mean_vel < 0.60:
-            base_rpe = 6.5
-        elif mean_vel < 0.75:
-            base_rpe = 5.5
-        else:
-            base_rpe = 5.0
-    else:
-        base_rpe = 6.0
-
+    base_rpe = _rpe_from_velocity_loss(vel_loss)
     if form_severity == "major":
-        base_rpe = min(10.0, base_rpe + 1.0)
-    elif form_severity == "moderate":
         base_rpe = min(10.0, base_rpe + 0.5)
 
-    if rep_count >= 5:
-        base_rpe = min(10.0, base_rpe + 0.5)
-
-    confidence = 0.4
-    if vel_loss > 0:
-        confidence += 0.25
-    elif has_vel_data:
-        confidence += 0.15
-    if form_score > 0 and form_severity != "unknown":
-        confidence += 0.15
-    if consistency_score > 0:
-        confidence += 0.1
-    confidence = min(1.0, confidence)
+    confidence = 0.5 if rep_count >= 3 else 0.4
 
     return {
         "estimated_rpe": round(base_rpe, 1),
@@ -1217,15 +1331,12 @@ def estimate_rpe_heuristic(analysis_result: dict, exercise_name: str, rep_count:
         "confidence": round(confidence, 2),
         "evidence": [
             f"velocity_loss={vel_loss:.1f}%",
-            f"mean_velocity={mean_vel:.3f} m/s",
-            f"form_score={form_score}",
+            f"mean_velocity={mean_vel if mean_vel is not None else 'n/a'} m/s",
+            f"rep_count={rep_count}",
             f"form_severity={form_severity}",
-            f"consistency={consistency_score}",
-            f"has_vel_data={has_vel_data}",
         ],
         "reasoning": (
-            f"Based on {vel_loss:.1f}% velocity loss"
-            + (f" (mean velocity {mean_vel:.3f} m/s)" if has_vel_data else " (no velocity data)")
-            + f", {form_severity} form breakdown (score {form_score}/100)"
+            f"{vel_loss:.1f}% velocity loss across {rep_count} reps "
+            f"(multi-rep autoregulation signal)"
         ),
     }

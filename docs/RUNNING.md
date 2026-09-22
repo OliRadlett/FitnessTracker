@@ -147,6 +147,28 @@ Mirrors `modal_client._process` steps 1–8 using the repo's own
 Always iterate here first — only ship to prod (PR → CI → merge → Deploy)
 once the local run is green on a real video.
 
+### Video analysis eval harness
+
+Measure pipeline changes against the labelled production set (see
+[`plans/video-analysis-rewrite.md`](plans/video-analysis-rewrite.md)):
+
+```powershell
+# Download the 12 prod videos + seed labels (SSHes to fittrack-prod; gitignored)
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe scripts/fetch_prod_videos.py
+
+# Run the eval (rep-count MAE, classification accuracy, velocity sanity, …)
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe scripts/video_eval.py
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe scripts/video_eval.py --baseline reports/video-eval-baseline.json
+```
+
+Unit tests for the analysis modules:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path backend).Path
+C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe -m pytest --noconftest `
+    backend/tests/test_pose_analysis.py backend/tests/test_video_analysis.py -q
+```
+
 ## OpenCode Permissions
 
 Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.

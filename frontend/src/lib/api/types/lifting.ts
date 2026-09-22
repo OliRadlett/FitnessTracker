@@ -17,10 +17,12 @@ export interface LiftVideo {
   personal_record_id?: string | null;
   notes?: string | null;
   expected_reps?: number | null;
+  camera_view?: 'side' | 'back_left' | 'back_right' | 'front' | null;
   created_at: string;
   updated_at: string;
   // Video processing fields
   trimmed_r2_key?: string | null;
+  overlay_r2_key?: string | null;
   analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;
@@ -74,6 +76,28 @@ export interface VideoUploadResponse {
 
 export interface VideoStreamUrl {
   url: string;
+}
+
+export interface VbtProfilePoint {
+  date: string;
+  load_kg: number;
+  velocity: number;
+  reps?: number | null;
+  vbt_zone?: string | null;
+}
+
+export interface VbtProfile {
+  exercise: string;
+  n: number;
+  mvt: number;
+  slope?: number | null;
+  intercept?: number | null;
+  r2?: number | null;
+  est_1rm_kg?: number | null;
+  load_min_kg?: number | null;
+  load_max_kg?: number | null;
+  confidence: string;
+  points: VbtProfilePoint[];
 }
 
 export interface LiftVideoListParams {
