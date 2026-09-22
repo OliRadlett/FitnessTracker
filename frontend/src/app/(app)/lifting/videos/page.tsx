@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { VideoCompareModal } from '@/components/lifting/VideoCompareModal';
+import { VideoEditModal } from '@/components/lifting/VideoEditModal';
 import { LiftVideoForm } from '@/components/lifting/LiftVideoForm';
 import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -67,6 +68,7 @@ export default function VideosPage() {
   const [tab, setTab] = useState<'bank' | 'progress'>('bank');
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
+  const [editVideo, setEditVideo] = useState<LiftVideo | null>(null);
 
   const hasFilters = exerciseFilter || afterFilter || beforeFilter;
 
@@ -308,6 +310,13 @@ export default function VideosPage() {
                       ⇄
                     </button>
                   )}
+                  <button
+                    onClick={() => setEditVideo(video)}
+                    className="text-xs text-muted hover:text-foreground px-1.5 py-0.5"
+                    title="Edit details"
+                  >
+                    ✎
+                  </button>
                   {video.r2_key && (
                     <button
                       onClick={() =>
@@ -385,6 +394,16 @@ export default function VideosPage() {
           videos={compareVideos}
           open={showCompare}
           onClose={() => setShowCompare(false)}
+        />
+      )}
+
+      {/* Edit details modal (correction loop) */}
+      {editVideo && (
+        <VideoEditModal
+          key={editVideo.id}
+          video={editVideo}
+          open={!!editVideo}
+          onClose={() => setEditVideo(null)}
         />
       )}
 

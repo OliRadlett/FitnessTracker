@@ -36,6 +36,26 @@ export async function updateLiftingSession(
   });
 }
 
+export interface UpdateLiftVideoPayload {
+  exercise_name?: string | null;
+  expected_reps?: number | null;
+  notes?: string | null;
+  camera_view?: string | null;
+  weight_kg?: number | null;
+  reps_count?: number | null;
+}
+
+export async function updateLiftVideo(
+  authFetch: AuthFetch,
+  videoId: string,
+  payload: UpdateLiftVideoPayload,
+): Promise<LiftVideo> {
+  return authFetch<LiftVideo>(`/api/v1/lifting/videos/${videoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createLiftingSession(authFetch: AuthFetch, payload: CreateSessionPayload): Promise<LiftingSession> {
   return authFetch<LiftingSession>('/api/v1/lifting/sessions', {
     method: 'POST',
