@@ -579,8 +579,9 @@ def detect_reps_from_pose(
     # Build a "depth signal" — knee angle for squat/deadlift, elbow angle for bench
     signal = _median_filter([
         calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
-        if exercise in ("Squat", "Front Squat", "Back Squat", "Deadlift",
-                        "Conventional Deadlift", "Sumo Deadlift") else
+        if (exercise in ("Squat", "Front Squat", "Back Squat", "Deadlift",
+                         "Conventional Deadlift", "Sumo Deadlift", "Stone")
+            or "stone" in exercise.lower() or "sandbag" in exercise.lower()) else
         calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
         for lm in landmarks_per_frame
     ], window=7)
@@ -1040,6 +1041,38 @@ COACHING_CUES = {
 }
 
 
+def _is_press(exercise: str) -> bool:
+    """Overhead/standing press family (never bench, which is its own lift)."""
+    n = (exercise or "").lower()
+    return "bench" not in n and any(w in n for w in ("press", "ohp", "strict"))
+
+
+def analyze_press_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
+    """Overhead press: the judged criterion is a locked-out elbow at the top.
+
+    (Layback/bar-path are sagittal and need a side view; not assessed yet.)
+    """
+    si, ei = rep["start_idx"], rep["end_idx"]
+    n = len(all_landmarks)
+    idxs = list(range(si, min(ei, n)))
+    if not idxs:
+        return {"lockout_complete": False, "top_elbow_angle": None}
+    evals = _median_filter([
+        calculate_angle(_mid(all_landmarks[i], 11, 12),
+                        _mid(all_landmarks[i], 13, 14),
+                        _mid(all_landmarks[i], 15, 16))
+        for i in idxs
+    ])
+    top_lm = all_landmarks[_best_extremum(
+        all_landmarks, idxs, evals, (11, 12, 13, 14, 15, 16), want_max=True)]
+    top_elbow = calculate_angle(
+        _mid(top_lm, 11, 12), _mid(top_lm, 13, 14), _mid(top_lm, 15, 16))
+    return {
+        "lockout_complete": bool(top_elbow > 160),
+        "top_elbow_angle": round(float(top_elbow), 1),
+    }
+
+
 def _average_rep_scores(rep_scores: list[float]) -> float:
     """Mean per-rep score.
 
@@ -1162,6 +1195,26 @@ def score_deadlift_form(per_rep: list[dict]) -> dict:
         elif r["back_position"] == "mild_rounding":
             penalty += 10
             deviations.append(f"Rep {rn}: Mild thoracic rounding")
+        rep_scores.append(100.0 - penalty)
+
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+
+
+def score_press_form(per_rep: list[dict]) -> dict:
+    deviations = []
+    comp_fail = False
+    cues = []
+    rep_scores = []
+
+    for r in per_rep:
+        rn = r["rep_number"]
+        penalty = 0.0
+        if not r.get("lockout_complete", True):
+            penalty += 25
+            comp_fail = True
+            deviations.append(f"Rep {rn}: Press not locked out")
+            cues.append(COACHING_CUES.get(
+                "incomplete_lockout", "Lock the elbows out overhead"))
         rep_scores.append(100.0 - penalty)
 
     return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
@@ -1295,7 +1348,10 @@ def route_exercise(user_name: str | None, auto_exercise: str,
         if any(w in n for w in ("press", "overhead", "ohp", "log", "strict")):
             return "Overhead Press"
         if "stone" in n or "sandbag" in n:
-            return "Squat"  # closest judged pattern (pick from crouch + stand)
+            # Crouch+stand like a squat, but squat FORM rules (depth, heels,
+            # lean) are meaningless for a stone — route to its own family so
+            # it gets rep/velocity analysis without bogus flags.
+            return "Stone"
         return ""
 
     user_family = family(key)
@@ -1372,6 +1428,8 @@ def run_pose_analysis(
             per_rep.append({"rep_number": rep["rep_number"], **analyze_bench_rep(landmarks, rep, fps=10.0)})
         elif exercise in ("Deadlift", "Conventional Deadlift", "Sumo Deadlift"):
             per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep, view=view)})
+        elif _is_press(exercise):
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_press_rep(landmarks, rep, view=view)})
         else:
             per_rep.append({"rep_number": rep["rep_number"]})
 
@@ -1382,6 +1440,8 @@ def run_pose_analysis(
         form = score_bench_form(per_rep)
     elif exercise in ("Deadlift", "Conventional Deadlift", "Sumo Deadlift"):
         form = score_deadlift_form(per_rep)
+    elif _is_press(exercise):
+        form = score_press_form(per_rep)
     else:
         form = {"overall_form_score": 50, "competition_valid": None, "deviations": [], "severity": "unknown", "coaching_cues": []}
 

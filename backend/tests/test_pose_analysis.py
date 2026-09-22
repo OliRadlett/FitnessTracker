@@ -198,11 +198,37 @@ class TestRouteExercise:
     def test_low_confidence_auto_is_ignored(self):
         assert pa.route_exercise(None, "Deadlift", 0.4) == ("", "none", "")
 
-    def test_stone_routes_to_squat_analyzer(self):
-        assert pa.route_exercise("Atlas Stone", "Squat", 0.9)[0] == "Squat"
+    def test_stone_routes_to_its_own_family(self):
+        # Not Squat: squat form rules (depth/heels/lean) are meaningless for a
+        # stone and produced bogus flags.
+        assert pa.route_exercise("Atlas Stone", "Squat", 0.9)[0] == "Stone"
 
     def test_log_press_routes_to_press(self):
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
+
+
+class TestPressFamily:
+    def test_is_press_excludes_bench(self):
+        assert pa._is_press("Overhead Press")
+        assert pa._is_press("Log Press")
+        assert pa._is_press("Strict Press")
+        assert not pa._is_press("Bench Press")
+        assert not pa._is_press("Back Squat")
+
+
+class TestPressFormScoring:
+    def test_clean_lockout_scores_100(self):
+        reps = [{"rep_number": 1, "lockout_complete": True}]
+        result = pa.score_press_form(reps)
+        assert result["overall_form_score"] == 100.0
+        assert result["competition_valid"] is True
+
+    def test_missing_lockout_fails(self):
+        reps = [{"rep_number": 1, "lockout_complete": False}]
+        result = pa.score_press_form(reps)
+        assert result["overall_form_score"] == 75.0
+        assert result["competition_valid"] is False
+        assert any("locked out" in d for d in result["deviations"])
 
 
 class TestOverlayTrackedPoint:
