@@ -309,7 +309,10 @@ async def process_video(
     if video.analysis_status == "processing" and not force:
         raise HTTPException(409, "Video is already being processed")
 
-    if force and video.analysis_status == "processing":
+    if force:
+        # Reprocess: clear the terminal/stuck status so the task actually runs
+        # (previously only "processing" was reset, so "completed" videos were
+        # re-queued and then short-circuited by the task's completed guard).
         video.analysis_status = None
         await db.flush()  # BUG-015: flush only; get_db commits at return.
 
@@ -325,7 +328,7 @@ async def process_video(
     # Enqueue Celery task
     from app.tasks.scheduler import process_lift_video
 
-    process_lift_video.delay(str(video_id), analysis_depth=depth)
+    process_lift_video.delay(str(video_id), analysis_depth=depth, force=force)
 
     return {"status": "queued", "video_id": str(video_id), "analysis_depth": depth}
 
