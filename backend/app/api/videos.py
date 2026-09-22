@@ -426,6 +426,10 @@ class VideoPatchRequest(BaseModel):
     exercise_name: str | None = None
     expected_reps: int | None = None
     notes: str | None = None
+    # User corrections to auto-detected fields (Phase 4 correction loop):
+    camera_view: str | None = None
+    weight_kg: float | None = None
+    reps_count: int | None = None
 
 
 @router.patch("/{video_id}", response_model=LiftVideoRead)
@@ -459,6 +463,17 @@ async def update_video(
         video.expected_reps = payload.expected_reps
     if payload.notes is not None:
         video.notes = payload.notes
+    if payload.camera_view is not None:
+        # "" (Not sure) normalises to None -> sagittal rules stay off.
+        video.camera_view = payload.camera_view or None
+    if payload.weight_kg is not None:
+        if payload.weight_kg < 0:
+            raise HTTPException(400, "weight_kg must be >= 0")
+        video.weight_kg = payload.weight_kg
+    if payload.reps_count is not None:
+        if payload.reps_count < 0:
+            raise HTTPException(400, "reps_count must be >= 0")
+        video.reps_count = payload.reps_count
 
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
