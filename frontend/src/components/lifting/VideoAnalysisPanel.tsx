@@ -52,6 +52,18 @@ function parseRepTimings(value: string | null | undefined): RepTiming[] {
   }
 }
 
+function repFlagMap(deviations: string[]): Record<number, string[]> {
+  const map: Record<number, string[]> = {};
+  for (const d of deviations) {
+    const m = d.match(/Rep (\d+):\s*(.*)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      (map[n] ||= []).push(m[2]);
+    }
+  }
+  return map;
+}
+
 const VIEW_LABELS: Record<string, string> = {
   side: 'Side view',
   three_quarter: 'Angled view',
@@ -152,6 +164,7 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   if (!hasAnalysis) return null;
 
   const deviations = parseJsonArray(video.form_deviations);
+  const flagsByRep = repFlagMap(deviations);
   const cues = parseJsonArray(video.form_coaching_cues);
   const evidence = parseJsonArray(video.rpe_evidence_json);
   const rir = video.estimated_rpe != null ? Math.max(0, Math.round((video.estimated_rpe - 6) * 1.5)) : null;
@@ -280,25 +293,38 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                 <th className="font-medium py-1">ROM</th>
                 <th className="font-medium py-1">Time</th>
                 <th className="font-medium py-1">Velocity</th>
+                <th className="font-medium py-1">Flags</th>
               </tr>
             </thead>
             <tbody>
-              {repTimings.map((r) => (
-                <tr key={r.rep_number} className="border-t border-surface-light/40">
-                  <td className="py-1 text-foreground">{r.rep_number}</td>
-                  <td className="py-1 text-muted">
-                    {r.amplitude_m != null ? `${r.amplitude_m.toFixed(2)} m` : '—'}
-                  </td>
-                  <td className="py-1 text-muted">
-                    {r.concentric_time != null ? `${r.concentric_time.toFixed(1)} s` : '—'}
-                  </td>
-                  <td className="py-1 text-muted">
-                    {r.concentric_velocity_ms != null
-                      ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
+              {repTimings.map((r) => {
+                const flags = flagsByRep[r.rep_number] ?? [];
+                return (
+                  <tr key={r.rep_number} className="border-t border-surface-light/40">
+                    <td className="py-1 text-foreground">{r.rep_number}</td>
+                    <td className="py-1 text-muted">
+                      {r.amplitude_m != null ? `${r.amplitude_m.toFixed(2)} m` : '—'}
+                    </td>
+                    <td className="py-1 text-muted">
+                      {r.concentric_time != null ? `${r.concentric_time.toFixed(1)} s` : '—'}
+                    </td>
+                    <td className="py-1 text-muted">
+                      {r.concentric_velocity_ms != null
+                        ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
+                        : '—'}
+                    </td>
+                    <td className="py-1">
+                      {flags.length ? (
+                        <span className="text-warning" title={flags.join('; ')}>
+                          ⚠ {flags.length}
+                        </span>
+                      ) : (
+                        <span className="text-positive">✓</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>
