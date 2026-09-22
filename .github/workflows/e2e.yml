@@ -1,0 +1,66 @@
+# E2E — Playwright suite in its own workflow so it runs IN PARALLEL with CI
+# and never gates the CI conclusion → Deploy.
+#
+# Background: the suite takes ~25 min on 2-core runners and is red on main
+# for pre-existing first-run-overlay reasons (OnboardingWizard auto-open +
+# PWA update banner intercept pointer events; see PR #63 CI analysis).
+# test.yml carries `continue-on-error` for the same reason — but a separate
+# workflow also stops the 25-min job from delaying every Deploy by ~30 min.
+# Results still report per-PR/run; failures just don't block releases.
+#
+# Full-suite rehab (hermetic fixture: seed fittrack-onboarding-done, block
+# service workers, abort external tiles) is tracked separately.
+
+name: E2E
+
+on:
+  push:
+    branches: [main, prod]
+  pull_request:
+    branches: [main, prod]
+
+jobs:
+  test-e2e:
+    name: Test E2E (Playwright)
+    runs-on: ubuntu-latest
+    # Informational only — must never redden the run.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install --no-audit
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright specs (mocked API — no backend needed)
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000/fittrack
+        # Scoped to the verified-green specs (B-34). The remaining spec files
+        # have pre-existing mock drift and run locally via `npm run test:e2e`
+        # until the full-suite rehab lands.
+        run: npm run test:e2e:ci
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

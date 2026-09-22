@@ -123,50 +123,5 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-  test-e2e:
-    name: Test E2E (Playwright)
-    runs-on: ubuntu-latest
-    needs: test-frontend
-    # Non-blocking while the suite matures: 2-core runners are slow enough
-    # that page-load timeouts flake (see backlog "full E2E baseline rehab").
-    # The job still runs and reports — it just can't red-den a release.
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm install --no-audit
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Run Playwright specs (mocked API — no backend needed)
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BASE_URL: http://localhost:3000/fittrack
-        # Scoped to the verified-green specs (B-34). The remaining spec files
-        # have pre-existing mock drift and run locally via `npm run test:e2e`
-        # until the full-suite rehab lands.
-        run: npm run test:e2e:ci
-
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: frontend/playwright-report/
-          retention-days: 7
+  # NOTE: E2E lives in e2e.yml (own workflow) so the 25-min Playwright suite
+  # runs in parallel and never gates CI conclusion → Deploy.
