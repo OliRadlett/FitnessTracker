@@ -132,6 +132,9 @@ class TestDashboardToday:
         assert "current_ctl" in data
         assert "current_atl" in data
         assert "current_tsb" in data
+        # Shared verdict input (3.1) — Brief renders RestDayBanner from this.
+        assert "rest_day_suggestion" in data
+        assert isinstance(data["rest_day_suggestion"]["should_rest"], bool)
 
     async def test_empty_when_no_data_today(self, client):
         """Today returns zeroed values when no data exists for today."""

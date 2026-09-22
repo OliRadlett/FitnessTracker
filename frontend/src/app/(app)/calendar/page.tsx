@@ -24,6 +24,8 @@ import {
   addMonths,
   subMonths,
   isToday,
+  isAfter,
+  startOfToday,
 } from 'date-fns';
 import {
   getSportColor,
@@ -103,6 +105,8 @@ export default function CalendarPage() {
   const { authFetch } = useAuthFetch();
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
+  // Sport filter (2.3) — dims non-matching pills so one sport stands out.
+  const [sportFilter, setSportFilter] = useState<string>('all');
 
   // Calculate the fetch range covering all visible calendar cells
   const { fetchStart, fetchEnd } = useMemo(() => {
@@ -143,6 +147,14 @@ export default function CalendarPage() {
     }
     return map;
   }, [activities]);
+
+  const SPORT_FILTERS = ['all', 'cycling', 'running', 'strength', 'swimming', 'walking'] as const;
+
+  function matchesSportFilter(sportType: string): boolean {
+    if (sportFilter === 'all') return true;
+    if (sportFilter === 'strength') return isStrengthType(sportType);
+    return sportType.toLowerCase().includes(sportFilter);
+  }
 
   // Group daily metrics by date
   const metricsByDate = useMemo(() => {
@@ -217,6 +229,18 @@ export default function CalendarPage() {
           </h2>
 
           <div className="flex items-center gap-2">
+            <select
+              value={sportFilter}
+              onChange={(e) => setSportFilter(e.target.value)}
+              aria-label="Filter calendar by sport"
+              className="min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              {SPORT_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  {s === 'all' ? 'All sports' : s[0].toUpperCase() + s.slice(1)}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => setCurrentMonth(new Date())}
               className="min-h-[44px] px-4 py-1.5 text-sm text-muted hover:text-foreground bg-surface-light hover:bg-accent/20 rounded-lg border border-surface-light transition-colors"
@@ -280,6 +304,8 @@ export default function CalendarPage() {
                 const inCurrentMonth = isSameMonth(day, currentMonth);
                 const isSelected = isSameDay(day, selectedDay);
                 const isTodayDate = isToday(day);
+                // Future days dim (2.3) — nothing logged yet, de-emphasize.
+                const isFutureDay = isAfter(day, startOfToday());
 
                 return (
                   <button
@@ -290,6 +316,7 @@ export default function CalendarPage() {
                       relative h-[120px] rounded-lg p-2 text-left transition-all
                       flex flex-col overflow-hidden
                       ${!inCurrentMonth ? 'opacity-30' : ''}
+                      ${isFutureDay && !isSelected ? 'opacity-50' : ''}
                       ${isSelected
                         ? 'bg-accent/15 border-2 border-accent ring-1 ring-accent/30'
                         : isTodayDate
@@ -329,7 +356,8 @@ export default function CalendarPage() {
                         {dayActivities.slice(0, 2).map((activity) => (
                           <div
                             key={activity.id}
-                            className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border ${getSportBorderColor(activity.sport_type)} ${getSportColor(activity.sport_type)}/10`}
+                            title={`${format(day, 'MMM d')}: ${formatStat(activity)}`}
+                            className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border ${getSportBorderColor(activity.sport_type)} ${getSportColor(activity.sport_type)}/10 ${matchesSportFilter(activity.sport_type) ? '' : 'opacity-30'}`}
                           >
                             <span className={getSportTextColor(activity.sport_type)}>
                               {getSportEmoji(activity.sport_type)}{' '}
@@ -337,9 +365,9 @@ export default function CalendarPage() {
                             </span>
                           </div>
                         ))}
-                        {dayActivities.length > 3 && (
+                        {dayActivities.length > 2 && (
                           <div className="text-[10px] text-muted px-1.5">
-                            +{dayActivities.length - 3} more
+                            +{dayActivities.length - 2} more
                           </div>
                         )}
                       </div>

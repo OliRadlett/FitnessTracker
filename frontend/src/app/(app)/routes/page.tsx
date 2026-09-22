@@ -9,6 +9,7 @@ import type { RouteSummary, RouteData, RouteFilters } from '@/lib/api/types';
 import { getRoutes, syncRoutes, getRoute } from '@/lib/api/routes';
 import { apiUpload } from '@/lib/api/fetch';
 import { Card } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SkeletonRouteCard } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
@@ -215,10 +216,10 @@ export default function RoutesPage() {
 
   // View mode buttons
   const viewModes = [
-    { key: 'map', label: 'Map', icon: MapPin },
-    { key: 'list', label: 'List', icon: List },
-    { key: 'grid', label: 'Grid', icon: Grid3x3 },
-  ];
+    { value: 'map', label: 'Map', icon: MapPin },
+    { value: 'list', label: 'List', icon: List },
+    { value: 'grid', label: 'Grid', icon: Grid3x3 },
+  ] as const;
 
   // Active filters count
   const activeFilterCount = Object.entries(queryFilters).filter(
@@ -301,28 +302,12 @@ export default function RoutesPage() {
                 Organize
               </button>
               {/* View mode toggle */}
-              <div
-                className="flex items-center bg-surface rounded-lg border border-surface-light overflow-hidden"
-                role="tablist"
-                aria-label="Route view mode"
-              >
-                {viewModes.map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => setViewMode(key as typeof viewMode)}
-                    role="tab"
-                    aria-selected={viewMode === key}
-                    className={`min-h-[44px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
-                      viewMode === key
-                        ? 'bg-accent text-white'
-                        : 'text-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                ariaLabel="Route view mode"
+                value={viewMode}
+                onChange={setViewMode}
+                options={[...viewModes]}
+              />
 
               <button
                 onClick={() => setShowImportModal(true)}

@@ -32,6 +32,9 @@ export function SummaryStatsBar({ activities, summary }: SummaryStatsBarProps) {
 
   if (stats.count === 0) return null;
 
+  // Totals read cleaner whole (2.6): 5731 km, not 5730.88 km.
+  const distancePrecision = stats.totalDistance >= 100000 ? 0 : 1;
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
@@ -39,7 +42,7 @@ export function SummaryStatsBar({ activities, summary }: SummaryStatsBarProps) {
         <p className="text-xs text-muted">Activities</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">
-        <p className="text-lg font-bold text-positive">{formatDistance(stats.totalDistance)}</p>
+        <p className="text-lg font-bold text-positive">{formatDistance(stats.totalDistance, distancePrecision)}</p>
         <p className="text-xs text-muted">Total Distance</p>
       </div>
       <div className="bg-surface rounded-lg p-3 border border-surface-light/30">

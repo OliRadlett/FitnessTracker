@@ -8,6 +8,8 @@ import { ChartBody } from './Chart';
 interface ChartCardProps {
   title: React.ReactNode;
   actions?: React.ReactNode;
+  /** One-line takeaway under the header (1.3) — standard 💡 pattern. */
+  insight?: React.ReactNode;
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -24,6 +26,7 @@ interface ChartCardProps {
 export function ChartCard({
   title,
   actions,
+  insight,
   isLoading,
   isError,
   onRetry,
@@ -39,6 +42,12 @@ export function ChartCard({
           <CardTitle>{title}</CardTitle>
           {actions ? <div className="flex gap-2">{actions}</div> : null}
         </div>
+        {insight && (
+          <p className="text-sm text-muted mt-1.5">
+            <span aria-hidden>💡 </span>
+            {insight}
+          </p>
+        )}
       </CardHeader>
       <ChartBody
         isLoading={isLoading}

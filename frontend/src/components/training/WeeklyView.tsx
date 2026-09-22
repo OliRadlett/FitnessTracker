@@ -383,7 +383,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             }
             className={`px-3 py-1 text-xs rounded-lg transition-colors disabled:opacity-40 ${
               staleDays.length > 0
-                ? 'bg-warning/20 text-warning border border-warning/30 hover:bg-warning/30'
+                ? 'bg-accent text-white hover:bg-accent/80 font-medium'
                 : 'bg-surface-light/50 text-muted hover:text-foreground hover:bg-surface-light'
             }`}
           >
@@ -409,6 +409,19 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           >
             ‹
           </button>
+          {/* Week jump (2.5) — dropdown instead of a 20-pill wrap */}
+          <select
+            value={currentWeek}
+            onChange={(e) => setCurrentWeek(Number(e.target.value))}
+            aria-label="Jump to week"
+            className="px-2 py-1 text-xs rounded-lg bg-surface-light/50 text-foreground hover:bg-surface-light focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((w) => (
+              <option key={w} value={w}>
+                Week {w}{w === realCurrentWeek ? ' •' : ''}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => setCurrentWeek((w) => Math.min(totalWeeks, w + 1))}
             disabled={currentWeek >= totalWeeks}

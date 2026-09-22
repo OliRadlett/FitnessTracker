@@ -3,6 +3,7 @@
 import React from 'react';
 import type { RestDaySuggestion } from '@/lib/api';
 import { formatTSB } from '@/lib/utils';
+import { DomainIcon } from '@/components/ui/DomainIcon';
 
 interface RestDayBannerProps {
   suggestion: RestDaySuggestion;
@@ -31,7 +32,7 @@ export function RestDayBanner({ suggestion, action, sleepDebtHours }: RestDayBan
         ? 'bg-amber-900/30 border-amber-500/30'
         : 'bg-surface border-surface-light/50'
     }`}>
-      <span className="text-2xl">{isWarning || isCaution ? '💡' : '✅'}</span>
+      <span className="leading-none"><DomainIcon domain="readiness" className={`w-6 h-6 ${isWarning || isCaution ? 'text-amber-300' : 'text-green-300'}`} /></span>
       <div className="flex-1">
         <p className={`font-medium ${isWarning || isCaution ? 'text-amber-200' : 'text-green-300'}`}>
           {title}

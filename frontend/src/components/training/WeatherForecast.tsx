@@ -25,22 +25,31 @@ function weekdayShort(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
 }
 
-function DayChip({ day }: { day: ForecastDay }) {
+function DayChip({ day, best }: { day: ForecastDay; best: boolean }) {
   const poor = isPoorCyclingWeather(day);
   const precipPct = day.precipitation_probability;
 
   return (
     <div
       className={`relative flex-1 min-w-[110px] p-3 rounded-lg border text-center ${
-        poor ? 'bg-warning/5 border-warning/30' : 'bg-surface-light/30 border-surface-light/50'
+        best
+          ? 'bg-positive/5 border-positive/40'
+          : poor
+            ? 'bg-warning/5 border-warning/30'
+            : 'bg-surface-light/30 border-surface-light/50'
       }`}
     >
-      {poor && (
+      {poor && !best && (
         <span
           className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-orange-500"
           title="Poor cycling conditions"
           aria-label="Poor cycling conditions"
         />
+      )}
+      {best && (
+        <span className="absolute top-1.5 right-1.5 text-[10px] font-medium text-positive" title="Best riding day this week">
+          Best
+        </span>
       )}
       <p className="text-xs font-medium text-muted">{weekdayShort(day.date)}</p>
       <p className="text-xl my-1" role="img" aria-label={day.conditions}>
@@ -52,8 +61,10 @@ function DayChip({ day }: { day: ForecastDay }) {
       <p className="text-[10px] text-muted mt-0.5">
         💨 {Math.round(day.wind_speed_max)} km/h
       </p>
-      {precipPct != null && precipPct >= 50 && (
-        <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300">
+      {precipPct != null && (
+        <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+          precipPct >= 50 ? 'bg-blue-500/20 text-blue-300' : 'text-muted'
+        }`}>
           💧 {precipPct}%
         </span>
       )}
@@ -93,6 +104,13 @@ export function WeatherForecast() {
   // No location set (404 → null) or request failed — stay quiet.
   if (!data || isError || data.days.length === 0) return null;
 
+  // Best day (2.5): first non-poor day, calmest wind wins.
+  const goodDays = data.days.filter((d) => !isPoorCyclingWeather(d));
+  const bestDate =
+    goodDays.length > 0
+      ? goodDays.reduce((a, b) => (a.wind_speed_max <= b.wind_speed_max ? a : b)).date
+      : null;
+
   return (
     <Card>
       <CardHeader>
@@ -100,9 +118,14 @@ export function WeatherForecast() {
       </CardHeader>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {data.days.map((day) => (
-          <DayChip key={day.date} day={day} />
+          <DayChip key={day.date} day={day} best={day.date === bestDate} />
         ))}
       </div>
+      <p className="text-[11px] text-muted mt-2">
+        <span className="inline-block h-2 w-2 rounded-full bg-orange-500 mr-1 align-middle" aria-hidden />
+        Poor cycling conditions (heat, cold, wind, or rain).
+        {bestDate && <> Green ring marks the best riding day.</>}
+      </p>
     </Card>
   );
 }

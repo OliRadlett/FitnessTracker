@@ -8,6 +8,7 @@ import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ChartBody } from '@/components/charts/Chart';
 import type { ChartData } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
@@ -207,6 +208,9 @@ export default function AnalyticsPage() {
     onSuccess: (rows) => queryClient.setQueryData(queryKey, rows),
   });
 
+  // Long-page split (1.8) — tabs lazy-mount heavy sections.
+  const [tab, setTab] = React.useState<'insights' | 'season' | 'load'>('insights');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -232,7 +236,19 @@ export default function AnalyticsPage() {
         </p>
       )}
 
-      {isLoading ? (
+      <SegmentedControl
+        ariaLabel="Analytics sections"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'insights', label: 'Insights' },
+          { value: 'season', label: 'Season' },
+          { value: 'load', label: 'Load & Lab' },
+        ]}
+      />
+
+      {tab === 'insights' && (
+      isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonMetric key={i} />)}
         </div>
@@ -276,16 +292,16 @@ export default function AnalyticsPage() {
             );
           })}
         </div>
-      )}
+      ))}
 
       {/* B-18 season overview — big-picture AI brief over all domains */}
-      <SeasonOverview />
+      {tab === 'season' && <SeasonOverview />}
 
       {/* B-31 unified load — cycling TSS + lifting estimates on one axis */}
-      <CombinedLoad />
+      {tab === 'load' && <CombinedLoad />}
 
       {/* B-17 What-If Lab — target timelines at current/half/double slope */}
-      <WhatIfLab />
+      {tab === 'load' && <WhatIfLab />}
     </div>
   );
 }

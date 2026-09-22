@@ -31,7 +31,14 @@ function TrendIndicator({ trend }: { trend?: MetricTrend | 'up' | 'down' | 'stab
   if (trend.direction === 'stable') return null;
   const arrow = trend.direction === 'up' ? '↑' : '↓';
   const color = trend.direction === 'up' ? 'text-positive' : 'text-warning';
-  const label = trend.baseline_value != null ? `vs ${trend.baseline_value}` : 'vs 4wk avg';
+  // Baselines like 1.75 rides read cleaner rounded (2.9).
+  const baseline =
+    trend.baseline_value != null
+      ? Number.isInteger(trend.baseline_value)
+        ? `${trend.baseline_value}`
+        : `${Number(trend.baseline_value.toFixed(1))}`
+      : null;
+  const label = baseline != null ? `vs ${baseline}` : 'vs 4wk avg';
 
   return (
     <span
@@ -39,7 +46,7 @@ function TrendIndicator({ trend }: { trend?: MetricTrend | 'up' | 'down' | 'stab
       title={trend.baseline_value != null ? `4wk avg: ${trend.baseline_value}` : undefined}
     >
       {arrow}
-      <span className="text-muted/50 text-[10px]">{label}</span>
+      <span className="text-xs text-muted/70">{label}</span>
     </span>
   );
 }
