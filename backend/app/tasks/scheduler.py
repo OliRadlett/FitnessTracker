@@ -3563,7 +3563,9 @@ def record_goal_checkins() -> dict:
 
 
 @celery_app.task(name="app.tasks.scheduler.process_lift_video")
-def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
+def process_lift_video(
+    video_id: str, analysis_depth: str = "full", force: bool = False
+) -> dict:
     """Process an uploaded lift video: trim dead time and classify via Gemini Vision.
 
     Dispatches to Modal for the heavy lifting (ffmpeg + Gemini Vision API).
@@ -3593,7 +3595,7 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                 logger.error("process_lift_video: video %s not found", video_id)
                 return {"status": "not_found"}
 
-            if video.analysis_status == "completed":
+            if video.analysis_status == "completed" and not force:
                 logger.info("process_lift_video: video %s already processed", video_id)
                 return {"status": "already_processed"}
 
