@@ -58,6 +58,16 @@ def _enrich(goal: Goal, state: dict | None, today: date) -> GoalEnriched:
             progress_pct = round(
                 max(0.0, min(100.0, (current - goal.starting_value) / span * 100)), 1
             )
+        # Degenerate trajectory (goal just created or starting_value lazily
+        # backfilled to current → progress 0% next to "465 / 500" text looks
+        # broken). For increase goals fall back to absolute attainment so the
+        # bar matches the displayed current/target numbers (0.2).
+        if (
+            (progress_pct is None or progress_pct == 0)
+            and span > 0
+            and goal.target_value > 0
+        ):
+            progress_pct = round(min(100.0, current / goal.target_value * 100), 1)
 
     definition = METRIC_REGISTRY.get(goal.metric)
     enriched = GoalEnriched.model_validate(goal)

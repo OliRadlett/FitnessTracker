@@ -3,6 +3,7 @@
 import React from 'react';
 import type { LoadContext, RideMetrics } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
+import { formatTSB } from '@/lib/utils';
 
 interface ActivityContextBadgesProps {
   context: {
@@ -78,9 +79,9 @@ export function ActivityContextBadges({ context }: ActivityContextBadgesProps) {
       <span
         key="load"
         className={`text-xs text-muted whitespace-nowrap inline-flex items-center gap-1 ${tsbColor}`}
-        title={`ATL ${atl?.toFixed(0) ?? '—'} · CTL ${ctl?.toFixed(0) ?? '—'} · TSB ${tsb?.toFixed(0) ?? '—'}`}
+        title={`ATL ${atl?.toFixed(0) ?? '—'} · CTL ${ctl?.toFixed(0) ?? '—'} · TSB ${formatTSB(tsb)}`}
       >
-        <span aria-hidden>📊</span> ATL {atl?.toFixed(0) ?? '—'} · CTL {ctl?.toFixed(0) ?? '—'} · TSB {tsb?.toFixed(0) ?? '—'}
+        <span aria-hidden>📊</span> ATL {atl?.toFixed(0) ?? '—'} · CTL {ctl?.toFixed(0) ?? '—'} · TSB {formatTSB(tsb)}
       </span>
     );
   }

@@ -55,3 +55,29 @@ export function presentStreamTypes(streams: ActivityStream[] | undefined): strin
 export function hasStream(streams: ActivityStream[] | undefined, ...types: string[]): boolean {
   return streamInput(streams, ...types) !== undefined;
 }
+
+// Human labels for raw provider spellings (0.7) — pills, chart titles and
+// "needs X stream" messages must never show `velocity_smooth`/`heartrate`.
+const STREAM_LABELS: Record<string, string> = {
+  time: 'Time',
+  heartrate: 'Heart rate',
+  hr: 'Heart rate',
+  heart_rate: 'Heart rate',
+  watts: 'Power',
+  power: 'Power',
+  cadence: 'Cadence',
+  altitude: 'Altitude',
+  velocity: 'Speed',
+  velocity_smooth: 'Speed',
+  enhanced_speed: 'Speed',
+  distance: 'Distance',
+};
+
+/** Display label for a raw stream_type, e.g. `velocity_smooth` → "Speed". */
+export function streamLabel(streamType: string): string {
+  const known = STREAM_LABELS[streamType];
+  if (known) return known;
+  return streamType
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}

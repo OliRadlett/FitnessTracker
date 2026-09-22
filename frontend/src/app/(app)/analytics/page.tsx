@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { AiAnalysisCard } from '@/components/analysis/AiAnalysisCard';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
 import type { LlmAnalysis } from '@/lib/api';
@@ -194,7 +195,7 @@ export default function AnalyticsPage() {
   const queryClient = useQueryClient();
   const queryKey = ['analytics', 'insights'] as const;
 
-  const { data: insights, isLoading } = useQuery<AthleteInsight[]>({
+  const { data: insights, isLoading, dataUpdatedAt } = useQuery<AthleteInsight[]>({
     queryKey,
     queryFn: () => authFetch<AthleteInsight[]>('/api/v1/analytics/insights'),
     staleTime: 60_000,
@@ -213,6 +214,7 @@ export default function AnalyticsPage() {
           <h1 className="text-xl font-bold text-foreground">Analytics</h1>
           <p className="text-xs text-muted mt-0.5">
             Observed patterns in your own data — associations, not advice. Recomputed nightly.
+            {dataUpdatedAt > 0 && ` · Fetched ${relativeTime(new Date(dataUpdatedAt).toISOString())}`}
           </p>
         </div>
         <button
@@ -225,7 +227,9 @@ export default function AnalyticsPage() {
       </div>
 
       {recompute.isError && (
-        <p className="text-xs text-warning">Recompute failed — try again shortly.</p>
+        <p className="text-xs text-warning">
+          Recompute failed — {(recompute.error as Error)?.message || 'try again shortly.'}
+        </p>
       )}
 
       {isLoading ? (

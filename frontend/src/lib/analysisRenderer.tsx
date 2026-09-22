@@ -22,7 +22,7 @@ export function renderInline(text: string): React.ReactNode {
 
 /**
  * Render analysis text with basic markdown support (## headings, ### subheadings,
- * - list items, **bold** inline).
+ * - / * / • list items, **bold** inline).
  *
  * Handles edge cases: empty text, whitespace-only text.
  */
@@ -82,6 +82,13 @@ export function renderAnalysisText(text: string): React.ReactNode[] {
     }
 
     if (line.startsWith('- ')) {
+      listItems.push(line.slice(2));
+      continue;
+    }
+
+    // Gemini also emits `* ` and `• ` bullets (0.9) — render them as lists
+    // instead of literal text.
+    if (line.startsWith('* ') || line.startsWith('• ')) {
       listItems.push(line.slice(2));
       continue;
     }

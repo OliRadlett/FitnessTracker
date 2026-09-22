@@ -46,6 +46,7 @@ import {
   hasStream,
   presentStreamTypes,
   streamInput,
+  streamLabel,
 } from '@/lib/streams';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
@@ -161,12 +162,12 @@ function ActivityExpanded({
     const values = (streamData?.data as number[]) ?? [];
     return {
       chart_type: 'line' as const,
-      title: `${stream.stream_type} over time`,
+      title: `${streamLabel(stream.stream_type)} over time`,
       labels: values.map((_, i) => String(i)),
       x_label: 'Sample',
-      y_label: stream.stream_type,
+      y_label: streamLabel(stream.stream_type),
       series: [{
-        name: stream.stream_type,
+        name: streamLabel(stream.stream_type),
         data: values,
       }],
     };
@@ -198,7 +199,7 @@ function ActivityExpanded({
     if (!activity.encoded_polyline) return 'No route attached — 3D replay needs GPS.';
     if (!hasStream(streams, ...VELOCITY_STREAM_TYPES)) {
       const present = presentStreamTypes(streams);
-      return `3D replay needs a speed stream — this ride has ${present.length ? present.join(', ') : 'no readable streams'} but no velocity.`;
+      return `3D replay needs a speed stream — this ride has ${present.length ? present.map(streamLabel).join(', ') : 'no readable streams'} but no velocity.`;
     }
     return null;
   }, [activity, activityDetail, detailError, detailLoading, isCycling]);
@@ -335,7 +336,7 @@ function ActivityExpanded({
                     : 'text-muted border-surface-light hover:border-accent/30'
                 }`}
               >
-                {st}
+                {streamLabel(st)}
               </button>
             ))}
             {replayElapsed != null && replayBuild && (

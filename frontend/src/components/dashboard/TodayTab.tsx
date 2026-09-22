@@ -35,7 +35,7 @@ import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { SleepDebtCard } from '@/components/health/SleepDebtCard';
 import { SleepConsistencyCard } from '@/components/health/SleepConsistencyCard';
 import { OptimalBedtimeCard } from '@/components/health/OptimalBedtimeCard';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDistance, formatDuration, formatTSB } from '@/lib/utils';
 import { ListSkeleton } from '@/components/dashboard/helpers';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 
@@ -171,6 +171,7 @@ export function TodayTab({
           {summary?.rest_day_suggestion && (
             <RestDayBanner
               suggestion={summary.rest_day_suggestion}
+              sleepDebtHours={sleepDebt?.debt_hours ?? null}
               action={
                 activePlan ? (
                   <TodayAdaptiveAction
@@ -406,7 +407,7 @@ export function TodayTab({
             <Link href="/cycling" className="block group">
               <MetricCard
                 label="TSB (Form)"
-                value={todaySummary.current_tsb.toFixed(1)}
+                value={formatTSB(todaySummary.current_tsb)}
                 subtitle={
                   todaySummary.current_tsb < -30 ? 'Overreaching'
                   : todaySummary.current_tsb < -10 ? 'Productive'

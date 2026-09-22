@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Event, EventResult } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { formatTSB } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 
 // Formats like "3:24:10" / "3h 24m". Returns the raw string if unparseable.
@@ -279,7 +280,7 @@ function Retrospective({ eventId }: { eventId: string }) {
                 Taper week: <span className="text-foreground">{data.taper_sessions} sessions, {data.taper_week_tss} TSS</span>
               </p>
               <p>
-                Freshness: <span className="text-foreground">{data.pre_race_tsb != null ? `TSB ${data.pre_race_tsb > 0 ? '+' : ''}${data.pre_race_tsb}` : '—'}</span>
+                Freshness: <span className="text-foreground">{data.pre_race_tsb != null ? `TSB ${formatTSB(data.pre_race_tsb)}` : '—'}</span>
               </p>
               {data.race_day_activity ? (
                 <p>

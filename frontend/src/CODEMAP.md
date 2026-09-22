@@ -150,13 +150,13 @@
 |-----------|---------|
 | `RoutesSidebar` | Collapsible tag/collection tree with smart collections, tag chips, drag-drop support |
 | `RouteFilterBar` | Unified filter bar with search, sort, advanced filters (distance, elevation, surface, quality, favorite), keyboard shortcuts, **"Save as Collection" button** (serializes active filters → smart collection via `POST /collections/from-filters`, including `is_ridden`). Debounced search only writes when the query changed |
-| `RoutesMapView` | Map-first browse with custom markers showing quality scores, popups with route info. Heatmap toggle shows activity density around home area. CARTO dark basemap to match the theme |
+| `RoutesMapView` | Map-first browse with custom markers showing quality scores, popups with route info. Heatmap toggle shows activity density around home area. Basemap via `lib/mapTiles` (keyless OSM default, `NEXT_PUBLIC_MAP_TILES` override) |
 | `RoutesListView` | Card-based list with route stats, difficulty badges, provider icons. Rows are keyboard-operable (`Card onClick`); compare checkbox is a 44px labelled control |
 | `RoutesGridView` | Grid of route cards for visual/mobile browsing, touch-friendly. Cards keyboard-operable; single compare checkbox per card (no double-toggle) |
 | `RouteDetailPanel` | Slide-over detail panel with tabs (Overview, Map & Profile, History, Merged View, Weather, Effort), edit/favorite/delete actions. Map & Profile tab has a 2D/3D toggle — 3D lazy-loads `Route3D`. `scrollable={false}` disables the panel's own scrollers when embedded in the mobile sheet (single-scroller) |
 | `MobileRouteDetailSheet` | Mobile (<lg) bottom-sheet wrapper around `RouteDetailPanel` — slides up from bottom with backdrop, velocity-aware swipe-down to dismiss, 44px grab handle, Escape close, dialog semantics; passes `scrollable={false}` |
 | `Route3D` | **§3.16 3D terrain** — three.js drapes the route polyline (fat `Line2` drape) over an Open-Meteo Copernicus DEM heightmap (≤200-point grid via `computeGrid`, no API key, attribution shown); vertex-coloured by elevation or diverging slope ramp (blue descent → green flat → red climb via `slopeColor`/`DESCENT_COLOR`, legend spans `minSlopePct…GRADE_SCALE`), start/end/summit markers, **§3.13 climb-segment overlays** (orange spans + name labels via `segments` prop), in-scene **north arrow + world-unit scale bar**, 2D-profile **hover marker** (`highlightDistKm`), **relief slider** (auto or 1–15×) + **frame top-climb/steepest-km** button, orbit/zoom/pan via `OrbitControls` (camera pose preserved across rebuilds), WebGL fallback + graceful flat-drape when the DEM fetch fails. Lazily imported `next/dynamic ssr:false` so `three` stays out of the `/routes` first-load bundle; side-by-side instances in `CompareRoutesModal`. Pure math in `lib/route3d.ts` (unit-tested `src/__tests__/route3d.test.ts`); DEM fetch in `lib/terrain.ts`. Roadmap: `plans/archive/3d-ride-view-enhancements.md` |
-| `MergedRouteMapView` | Merged route view — draws each contributing source's polyline with distinct colors + highlights ridden activity segments in green. CARTO dark basemap |
+| `MergedRouteMapView` | Merged route view — draws each contributing source's polyline with distinct colors + highlights ridden activity segments in green. Basemap via `lib/mapTiles` |
 | `QualityBadge` | Circular quality score indicator with color tiers (Excellent/Good/Average/Fair/Poor) |
 | `EffortEstimateCard` | Power-based effort estimation (Martin model) using user FTP, weight, distance, elevation |
 | `RouteWeatherCard` | Current conditions + 7-day forecast for route location with "best day to ride" highlight |
@@ -168,7 +168,7 @@
 ### `maps/` — Map components
 | Component | Purpose |
 |-----------|---------|
-| `RouteMap` | Leaflet map with route polyline, start/end markers, isLoop indicator. CARTO dark basemap |
+| `RouteMap` | Leaflet map with route polyline, start/end markers, isLoop indicator. Basemap via `lib/mapTiles` |
 | `ElevationProfile` | Elevation chart for route |
 | `SurfaceBreakdown` | Surface type stacked bar |
 

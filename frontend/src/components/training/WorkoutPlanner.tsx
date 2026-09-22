@@ -7,7 +7,7 @@ import { useAuthFetch, updatePlanDay } from '@/lib/api';
 import type { TrainingPlanDay } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { RouteMap } from '@/components/maps/RouteMap';
-import { formatDistance } from '@/lib/utils';
+import { formatDistance, formatTSB } from '@/lib/utils';
 import type {
   WorkoutZonesResponse,
   WorkoutPlanResponse,
@@ -403,7 +403,7 @@ export function WorkoutPlanner({
               <div>
                 <p className="text-sm font-medium text-foreground">{readiness.readiness_note}</p>
                 <p className="text-xs text-muted mt-1">
-                  CTL: {readiness.current_ctl} · ATL: {readiness.current_atl} · TSB: {readiness.current_tsb > 0 ? '+' : ''}{readiness.current_tsb}
+                  CTL: {readiness.current_ctl} · ATL: {readiness.current_atl} · TSB: {formatTSB(readiness.current_tsb)}
                 </p>
               </div>
               <span className={`text-xs font-medium px-2 py-1 rounded ${
