@@ -9,6 +9,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
+import { VbtPanel } from '@/components/lifting/VbtPanel';
 
 const TRENDS = [
   { key: 'video_form_trend', title: 'Form Score Trend' },
@@ -53,6 +54,7 @@ export function VideoProgressTab({ initialExercise = '' }: { initialExercise?: s
           aria-label="Exercise filter for progress trends"
         />
       </div>
+      <VbtPanel exercise={exercise} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {TRENDS.map((t) => (
           <TrendChart key={t.key} chartKey={t.key} title={t.title} exercise={exercise} />

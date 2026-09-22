@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     modal_token_id: str = ""
     modal_token_secret: str = ""
 
+    # Lift-video camera-view classification via Gemini Vision. OFF by default:
+    # a per-video call competes with the weekly/on-demand LLM analysis under a
+    # low daily Gemini quota. Prefer the user-declared view; enable this only
+    # for diagnostics/backfill.
+    video_view_vlm_enabled: bool = False
+
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:
     #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"

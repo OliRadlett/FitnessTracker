@@ -97,3 +97,9 @@ bike_model_stock/bike_model_noflip.glb
 bike_model_stock/bike_model_noflip.obj
 bike_model_stock/bike_noflip.obj
 bike_model_stock/bike_model_final.glb
+
+# Lift-video eval fixtures — large downloads + generated reports stay local.
+# Fetched with scripts/fetch_prod_videos.py; labels.json is committed.
+backend/tests/fixtures/videos/
+backend/tests/fixtures/video_manifest.json
+reports/

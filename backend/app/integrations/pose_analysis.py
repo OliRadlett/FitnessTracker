@@ -20,20 +20,29 @@ logger = logging.getLogger(__name__)
 # ── MediaPipe Pose Extraction ────────────────────────────────────────────────
 
 
-def extract_pose_landmarks(
+def extract_pose_track(
     input_path: Path,
     tmpdir: str,
     trim_start: float,
     trim_end: float,
     fps: float = 10.0,
-) -> tuple[list, list[float]]:
-    """Extract MediaPipe Pose landmarks from a video segment.
+) -> dict:
+    """Extract MediaPipe Pose landmarks (2D + metric 3D) from a video segment.
 
     Uses the mediapipe.tasks API (PoseLandmarker) — the solutions API
     was removed in mediapipe >= 0.10.30.
 
-    Returns (landmarks_per_frame, timestamps).
-    Each landmarks_per_frame[i] is a list of 33 NormalizedLandmark objects.
+    Returns a dict:
+        landmarks:  list per detected frame of 33 normalised 2D landmarks
+        world:      parallel list of 33 metric 3D world landmarks (metres,
+                    hip-origin) where the model produced them
+        timestamps: per-frame timestamps in seconds (aligned to ``landmarks``)
+        detected:   number of frames with a pose
+        frames:     number of frames sampled
+
+    ``world`` is shorter than ``landmarks`` when the model omitted it; callers
+    must pair them by index only up to ``len(world)`` (the model emits world
+    landmarks for the same frames it emits 2D ones, in order).
     """
     import cv2
     import mediapipe as mp
@@ -41,7 +50,7 @@ def extract_pose_landmarks(
 
     segment_duration = trim_end - trim_start
     if segment_duration <= 0:
-        return [], []
+        return {"landmarks": [], "world": [], "timestamps": [], "detected": 0, "frames": 0}
 
     # Download the pose landmarker model if not cached
     model_path = Path(tmpdir) / "pose_landmarker.task"
@@ -97,6 +106,7 @@ def extract_pose_landmarks(
     )
 
     landmarks_list = []
+    world_list = []
     timestamps = []
     frame_interval = 1.0 / fps
     idx = 0
@@ -120,14 +130,161 @@ def extract_pose_landmarks(
             # pose_landmarks is a list of NormalizedLandmarkList
             # Each element is a list of 33 landmarks for one detected pose
             landmarks_list.append(result.pose_landmarks[0])
+            if result.pose_world_landmarks:
+                world_list.append(result.pose_world_landmarks[0])
             t = trim_start + (idx * frame_interval) + (frame_interval / 2)
             timestamps.append(round(min(t, trim_end), 3))
 
         idx += 1
 
     pose_landmarker.close()
-    logger.info("Pose landmarks: %d/%d frames", len(landmarks_list), idx)
-    return landmarks_list, timestamps
+    logger.info(
+        "Pose landmarks: %d/%d frames (%d with world landmarks)",
+        len(landmarks_list), idx, len(world_list),
+    )
+    return {
+        "landmarks": landmarks_list,
+        "world": world_list,
+        "timestamps": timestamps,
+        "detected": len(landmarks_list),
+        "frames": idx,
+    }
+
+
+def extract_pose_landmarks(
+    input_path: Path,
+    tmpdir: str,
+    trim_start: float,
+    trim_end: float,
+    fps: float = 10.0,
+) -> tuple[list, list[float]]:
+    """Back-compat wrapper returning ``(landmarks, timestamps)``.
+
+    Prefer ``extract_pose_track`` — the metric 3D world landmarks are what
+    make scale and camera-view reasoning possible.
+    """
+    track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps)
+    return track["landmarks"], track["timestamps"]
+
+
+# ── Pose Overlay Rendering ───────────────────────────────────────────────────
+
+_SKELETON_EDGES = (
+    (11, 12), (11, 23), (12, 24), (23, 24),
+    (11, 13), (13, 15), (12, 14), (14, 16),
+    (23, 25), (25, 27), (27, 29), (29, 31),
+    (24, 26), (26, 28), (28, 30), (30, 32),
+)
+
+_MAX_TRAIL_POINTS = 200
+
+
+def _tracked_bar_point(lm, exercise: str) -> tuple[float, float]:
+    """2D normalised bar-tracking point (matches bar_velocity_from_world)."""
+    if exercise in ("Squat", "Front Squat", "Back Squat"):
+        return ((lm[11].x + lm[12].x) / 2, (lm[11].y + lm[12].y) / 2)
+    return ((lm[15].x + lm[16].x) / 2, (lm[15].y + lm[16].y) / 2)
+
+
+def render_overlay_video(
+    input_path: Path,
+    landmarks: list,
+    timestamps: list[float],
+    out_path: Path,
+    time_offset: float = 0.0,
+    exercise: str = "",
+    fps: float = 30.0,
+) -> bool:
+    """Render a skeleton + bar-path overlay onto a video.
+
+    Draws the MediaPipe skeleton and the bar-tracking point trail so the user
+    can see what the analyzer saw. ``timestamps`` are absolute (source-video)
+    times; ``time_offset`` is the source start time of ``input_path`` (the
+    trim start), so output frame time t maps to source time t + offset.
+
+    Returns True on success; never raises (a failed overlay must not fail the
+    analysis).
+    """
+    import bisect
+    import subprocess
+
+    import cv2
+
+    try:
+        n = min(len(landmarks), len(timestamps))
+        if n == 0:
+            return False
+        cap = cv2.VideoCapture(str(input_path))
+        if not cap.isOpened():
+            return False
+        vid_fps = cap.get(cv2.CAP_PROP_FPS) or fps
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if w <= 0 or h <= 0:
+            cap.release()
+            return False
+
+        ts = list(timestamps[:n])
+        raw_path = Path(str(out_path) + ".raw.mp4")
+        writer = cv2.VideoWriter(
+            str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"), vid_fps, (w, h))
+        if not writer.isOpened():
+            cap.release()
+            return False
+
+        trail: list[tuple[int, int]] = []
+        i = 0
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            t = time_offset + (i / vid_fps)
+            j = bisect.bisect_left(ts, t)
+            if j >= n:
+                j = n - 1
+            elif j > 0 and abs(ts[j - 1] - t) <= abs(ts[j] - t):
+                j -= 1
+            lm = landmarks[j]
+            for a, b in _SKELETON_EDGES:
+                if lm[a].visibility > 0.3 and lm[b].visibility > 0.3:
+                    cv2.line(
+                        frame,
+                        (int(lm[a].x * w), int(lm[a].y * h)),
+                        (int(lm[b].x * w), int(lm[b].y * h)),
+                        (0, 255, 255), 2,
+                    )
+            for k in range(33):
+                if lm[k].visibility > 0.3:
+                    cv2.circle(
+                        frame, (int(lm[k].x * w), int(lm[k].y * h)),
+                        3, (0, 255, 255), -1,
+                    )
+            bx, by = _tracked_bar_point(lm, exercise)
+            point = (int(bx * w), int(by * h))
+            trail.append(point)
+            if len(trail) > _MAX_TRAIL_POINTS:
+                trail.pop(0)
+            for k in range(1, len(trail)):
+                cv2.line(frame, trail[k - 1], trail[k], (255, 0, 255), 2)
+            cv2.circle(frame, point, 6, (255, 0, 255), -1)
+            writer.write(frame)
+            i += 1
+
+        cap.release()
+        writer.release()
+
+        # Re-encode to H.264 so browsers can play it.
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw_path),
+             "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", str(out_path)],
+            capture_output=True, timeout=300, check=False,
+        )
+        raw_path.unlink(missing_ok=True)
+        return result.returncode == 0 and Path(out_path).exists()
+    except Exception as e:
+        logger.warning("Overlay render failed: %s", e)
+        return False
 
 
 # ── Utility Functions ─────────────────────────────────────────────────────────
@@ -332,6 +489,70 @@ def classify_exercise(landmarks_per_frame: list,
     return {"exercise": exercise, "confidence": round(confidence, 2), "variation": variation}
 
 
+# ── Camera View Detection ────────────────────────────────────────────────────
+
+VIEW_SIDE_MAX_RATIO = 0.50
+VIEW_FRONTAL_MIN_RATIO = 1.10
+
+
+def detect_camera_view(landmarks_per_frame: list) -> dict:
+    """Estimate the camera's viewing plane relative to the lifter.
+
+    Returns ``{"view": "side"|"three_quarter"|"frontal"|"unknown",
+    "shoulder_ratio": float, "shoulder_width": float, "torso_length": float,
+    "frames": int}``.
+
+    A sagittal (side-on) view projects the lifter's left-right axis into
+    camera depth, so the left/right shoulder (and hip) x-offset collapses
+    toward zero. A frontal or rear view keeps that axis in the image plane,
+    so the offset is a large fraction of the torso. That is the distinction
+    that matters: the sagittal-plane rules (torso lean, hip-vs-knee depth,
+    bar path) are only valid for ``side``; on a ``frontal`` view they must
+    be gated off rather than fired.
+
+    The scale is the shoulder-to-hip Euclidean distance, NOT the vertical
+    difference — when the lifter bends over the vertical gap collapses and
+    the ratio explodes (side-view squats read 0.8+ with vertical scaling,
+    0.1-0.4 with Euclidean). Front and rear are deliberately not separated:
+    monocular 2D pose cannot tell them apart, and both are equally invalid
+    for sagittal rules.
+    """
+    ratios, widths, torsos = [], [], []
+    for lm in landmarks_per_frame:
+        sh_x = (lm[11].x + lm[12].x) / 2
+        sh_y = (lm[11].y + lm[12].y) / 2
+        hip_x = (lm[23].x + lm[24].x) / 2
+        hip_y = (lm[23].y + lm[24].y) / 2
+        torso = float(np.hypot(sh_x - hip_x, sh_y - hip_y))
+        if torso < 1e-3:
+            continue
+        width = max(abs(lm[11].x - lm[12].x), abs(lm[23].x - lm[24].x))
+        ratios.append(width / torso)
+        widths.append(width)
+        torsos.append(torso)
+
+    if len(ratios) < 5:
+        return {
+            "view": "unknown", "shoulder_ratio": None,
+            "shoulder_width": None, "torso_length": None, "frames": len(ratios),
+        }
+
+    ratio = float(np.median(ratios))
+    if ratio < VIEW_SIDE_MAX_RATIO:
+        view = "side"
+    elif ratio < VIEW_FRONTAL_MIN_RATIO:
+        view = "three_quarter"
+    else:
+        view = "frontal"
+    return {
+        "view": view,
+        "shoulder_ratio": round(ratio, 3),
+        "shoulder_width": round(float(np.median(widths)), 4),
+        "torso_length": round(float(np.median(torsos)), 4),
+        "frames": len(ratios),
+    }
+
+
 # ── Rep Boundary Detection ───────────────────────────────────────────────────
 
 
@@ -405,7 +626,7 @@ def detect_reps_from_pose(
     # Each kept bottom gets the nearest kept top on each side as bounds
     # (falling back to the signal ends for videos starting/ending mid-rep).
     # Slices sharing identical bounds are deduped, keeping the deeper one.
-    candidates: dict[tuple[int, int], float] = {}
+    candidates: dict[tuple[int, int], tuple[float, int]] = {}
     for mi in kept_min:
         left = [m for m in kept_max if m < mi]
         right = [m for m in kept_max if m > mi]
@@ -415,8 +636,8 @@ def detect_reps_from_pose(
             continue
         key = (start, end)
         depth = float(signal[mi])
-        if key not in candidates or depth < candidates[key]:
-            candidates[key] = depth
+        if key not in candidates or depth < candidates[key][0]:
+            candidates[key] = (depth, mi)
     #
     # Each slice must also have enough JOINT RANGE to be a real rep:
     # standing-weight-shifts and setup steps create genuine minima but only
@@ -424,6 +645,7 @@ def detect_reps_from_pose(
     min_amp = 20.0 if exercise in ("Bench Press",) else 25.0
     reps = []
     for start, end in sorted(candidates):
+        _depth, bottom_idx = candidates[(start, end)]
 
         duration = timestamps[min(end, len(timestamps) - 1)] - timestamps[min(start, len(timestamps) - 1)]
         if duration < 0.8 or duration > 10.0:
@@ -442,6 +664,12 @@ def detect_reps_from_pose(
             "rep_number": len(reps) + 1,
             "start_idx": start,
             "end_idx": end,
+            # Frames of the bottom and the following top, from the robust
+            # (median-filtered, prominence-gated) joint-angle signal. Bar
+            # velocity uses these directly instead of re-finding extrema on
+            # the noisier world-landmark signal.
+            "bottom_idx": bottom_idx,
+            "top_idx": end,
             "bottom_depth": round(seg_min, 1),
             "amplitude": round(amplitude, 1),
             "start_time": round(timestamps[min(start, len(timestamps) - 1)], 2),
@@ -455,9 +683,32 @@ def detect_reps_from_pose(
     # on depth) but spans half the ROM — verified 2026-09-18 on a0bc93ce,
     # where depth-ranking picked a lockout-less fragment over the full rep.
     # Re-sorted by time afterwards.
-    if expected_reps is not None and expected_reps > 0 and len(reps) > expected_reps:
-        reps = sorted(reps, key=lambda r: (-r["amplitude"], r["bottom_depth"]))[:expected_reps]
-        reps = sorted(reps, key=lambda r: r["start_idx"])
+    if expected_reps is not None and expected_reps > 0:
+        if len(reps) > expected_reps:
+            # Pick the best CONSECUTIVE run of the declared length, not the
+            # globally largest cycles. A working set is contiguous; picking
+            # by amplitude globally could grab a setup/walk-in cycle from
+            # elsewhere in the video (which the untrimmed fallback exposes).
+            best_i, best_score = 0, -1.0
+            for i in range(len(reps) - expected_reps + 1):
+                score = sum(r["amplitude"] for r in reps[i:i + expected_reps])
+                if score > best_score:
+                    best_score, best_i = score, i
+            reps = reps[best_i:best_i + expected_reps]
+            for n, r in enumerate(reps, 1):
+                r["rep_number"] = n
+    elif len(reps) >= 2:
+        # AUTO path only: drop partial cycles (unrack/rack/setup) that clear
+        # the absolute floor but span far less ROM than the working reps.
+        # Prominence alone doesn't catch them (it measures against the
+        # surrounding TOPS, which a shallow bend still clears). Measured on
+        # the production set: real reps span >=0.81 of the set's max ROM,
+        # partials <=0.71 — 0.75 separates them across lifts and distances.
+        # NOT applied when the user declared the count: that path already
+        # picks the top-N cycles, and the filter dropped a real rep on
+        # 77ca64a0 (3 declared reps -> 2).
+        max_amp = max(r["amplitude"] for r in reps)
+        reps = [r for r in reps if r["amplitude"] >= 0.75 * max_amp]
         for n, r in enumerate(reps, 1):
             r["rep_number"] = n
 
@@ -467,18 +718,27 @@ def detect_reps_from_pose(
 # ── Squat Analysis ───────────────────────────────────────────────────────────
 
 
-def _check_squat_depth(bottom_landmarks, bottom_knee_angle: float) -> bool:
+def _check_squat_depth(
+    bottom_landmarks, bottom_knee_angle: float, view: str = "unknown"
+) -> bool:
     """IPF depth: hip crease below top of knee.
 
-    The image-Y comparison only holds for a side view; phone videos are
-    often shot front/side-on where the hip never drops below the knee in
-    2D. Fall back to knee flexion: a true deep squat bends the knee well
-    under 95° (benchmarked bottoms read 40-65°), while partial squats stay
-    above it.
+    The image-Y comparison only holds for a side-on, perpendicular camera
+    (the view the lifter's hip-vs-knee vertical relationship is visible
+    in). Phone videos are frequently shot from behind or in front, where
+    that comparison is meaningless, so it is only applied when the view is
+    known to be ``side``.
+
+    The knee-flexion fallback (<95°) works from any angle and is always
+    applied: a true deep squat bends the knee well under 95° (benchmarked
+    bottoms read 40-65°), while partial squats stay above it.
     """
-    hip_y = np.mean([bottom_landmarks[23].y, bottom_landmarks[24].y])
-    knee_y = np.mean([bottom_landmarks[25].y, bottom_landmarks[26].y])
-    return bool(hip_y > knee_y or bottom_knee_angle < 95)
+    if view == "side":
+        hip_y = np.mean([bottom_landmarks[23].y, bottom_landmarks[24].y])
+        knee_y = np.mean([bottom_landmarks[25].y, bottom_landmarks[26].y])
+        if hip_y > knee_y:
+            return True
+    return bool(bottom_knee_angle < 95)
 
 
 def _check_knee_valgus(landmarks) -> str:
@@ -498,7 +758,25 @@ def _check_heels_flat(landmarks) -> bool:
     return left_flat and right_flat
 
 
-def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
+def _squat_lockout(
+    knee_angle_top: float, hip_angle_top: float, view: str
+) -> tuple[bool, bool]:
+    """Return (lockout_complete, lockout_soft).
+
+    The hip-extension test is sagittal: a low-bar squat's forward torso lean
+    (and any non-side camera, which foreshortens the hip angle) reads ~147°
+    while genuinely standing, below the 160° threshold. Verified: low-bar
+    singles 140/130 kg read top_hip 147-148 standing (falsely "soft
+    lockout"), high-bar 150 kg reads 170. So only assess hip extension on a
+    side view; otherwise lockout = knees locked (reliable from any angle).
+    """
+    if view == "side":
+        lockout = knee_angle_top > 160 and hip_angle_top > 160
+        return lockout, (not lockout and knee_angle_top > 160)
+    return knee_angle_top > 160, False
+
+
+def analyze_squat_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
     n = len(all_landmarks)
 
@@ -547,16 +825,21 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
     hip_angle_top = _win_med(
         lambda lm: calculate_angle(_mid(lm, 11, 12), _mid(lm, 23, 24), _mid(lm, 25, 26)))
 
-    depth = _check_squat_depth(bottom_lm, bottom_knee)
+    depth = _check_squat_depth(bottom_lm, bottom_knee, view)
     # 160° (not 170°) admits ±10° of pose jitter on true lockouts; soft
     # lockouts still fail. Distinguish knees-locked/hips-soft (counts, cued)
     # from a genuinely bent finish (no-count): live lifters often lock knees
     # but never fully stand erect between reps.
-    lockout = knee_angle_top > 160 and hip_angle_top > 160
-    soft_lockout = not lockout and knee_angle_top > 160
-    valgus = _check_knee_valgus(bottom_lm)
-    heels = _check_heels_flat(top_lm)
-    back_dev = min(90.0, _win_med(_torso_angle))
+    lockout, soft_lockout = _squat_lockout(knee_angle_top, hip_angle_top, view)
+    # View-dependent metrics: only assessed when the camera view makes them
+    # meaningful. A rear/front view collapses the sagittal plane (torso
+    # lean, hip-vs-knee depth, heel lift) and a side view hides knee valgus.
+    # `unknown` is the safe default — report None rather than fire a flag
+    # that is invalid for the camera angle (this is what produced 31 false
+    # "excessive forward lean" flags across the production set).
+    valgus = _check_knee_valgus(bottom_lm) if view in ("frontal", "front", "rear") else None
+    heels = _check_heels_flat(top_lm) if view == "side" else None
+    back_dev = round(min(90.0, _win_med(_torso_angle)), 1) if view == "side" else None
 
     return {
         "depth_achieved": depth,
@@ -566,7 +849,7 @@ def analyze_squat_rep(all_landmarks: list, rep: dict) -> dict:
         "top_knee_angle": round(knee_angle_top, 1),
         "knee_valgus": valgus,
         "heels_flat": heels,
-        "back_angle_deviation": round(back_dev, 1),
+        "back_angle_deviation": back_dev,
         "bottom_knee_angle": round(bottom_knee, 1),
     }
 
@@ -640,13 +923,16 @@ def analyze_bench_rep(all_landmarks: list, rep: dict, fps: float) -> dict:
 # ── Deadlift Analysis ────────────────────────────────────────────────────────
 
 
-def _deadlift_lockout(landmarks) -> bool:
+def _deadlift_lockout(landmarks, view: str = "unknown") -> bool:
     hip_angle = calculate_angle(_mid(landmarks, 11, 12), _mid(landmarks, 23, 24), _mid(landmarks, 25, 26))
     knee_angle = calculate_angle(_mid(landmarks, 23, 24), _mid(landmarks, 25, 26), _mid(landmarks, 27, 28))
     shoulder_y = np.mean([landmarks[11].y, landmarks[12].y])
     hip_y = np.mean([landmarks[23].y, landmarks[24].y])
     # 160° admits pose jitter on true lockouts (see squat lockout note).
-    return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
+    # The hip-angle test is sagittal — only applied on a side view.
+    if view == "side":
+        return hip_angle > 160 and knee_angle > 160 and shoulder_y < hip_y
+    return knee_angle > 160 and shoulder_y < hip_y
 
 
 def _detect_hitching(knee_angles: list[float]) -> bool:
@@ -669,7 +955,7 @@ def _detect_hitching(knee_angles: list[float]) -> bool:
     return bool((peak - trough) > 15)
 
 
-def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
+def analyze_deadlift_rep(all_landmarks: list, rep: dict, view: str = "unknown") -> dict:
     si, ei = rep["start_idx"], rep["end_idx"]
     n = len(all_landmarks)
 
@@ -696,13 +982,14 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
         all_landmarks, didx, np.minimum(dvals, hvals), (11, 12, 23, 24),
         want_max=True)]
 
-    lockout = _deadlift_lockout(top_lm)
+    lockout = _deadlift_lockout(top_lm, view)
     top_hip_angle = calculate_angle(_mid(top_lm, 11, 12), _mid(top_lm, 23, 24), _mid(top_lm, 25, 26))
     top_knee_angle = calculate_angle(_mid(top_lm, 23, 24), _mid(top_lm, 25, 26), _mid(top_lm, 27, 28))
     # Soft tier mirrors squat: knees locked but finish soft (common on
     # touch-and-go sets that never stand tall between reps). Counts with
-    # a cue instead of failing the rep.
-    soft_lockout = (not lockout and top_knee_angle > 160
+    # a cue instead of failing the rep. Hip extension is sagittal — only
+    # assessed on a side view.
+    soft_lockout = (view == "side" and not lockout and top_knee_angle > 160
                     and top_hip_angle > 150)
 
     knee_series = list(_median_filter([
@@ -711,11 +998,14 @@ def analyze_deadlift_rep(all_landmarks: list, rep: dict) -> dict:
     ]))
     hitching = _detect_hitching(knee_series)
 
-    # Back position: torso change from bottom to top
-    torso_bottom = _torso_angle(bottom_lm)
-    torso_top = _torso_angle(top_lm)
-    change = abs(torso_top - torso_bottom)
-    back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
+    # Back position: torso change from bottom to top. Sagittal-only —
+    # spine rounding is not visible from front/rear, so it is only assessed
+    # on a known side view (None = not assessed).
+    if view == "side":
+        change = abs(_torso_angle(top_lm) - _torso_angle(bottom_lm))
+        back_pos = "significant_rounding" if change > 20 else "mild_rounding" if change > 10 else "neutral"
+    else:
+        back_pos = None
 
     grip_sym = abs(top_lm[15].y - top_lm[16].y) < 0.03
     shoulders_back = top_lm[11].y < top_lm[23].y
@@ -750,111 +1040,131 @@ COACHING_CUES = {
 }
 
 
+def _average_rep_scores(rep_scores: list[float]) -> float:
+    """Mean per-rep score.
+
+    Deductions are applied per rep and averaged, NOT summed across the set:
+    summing meant an 8-rep set with a single recurring fault (e.g. a lean
+    flag) clamped to 0, so every multi-rep set scored 0 and every single
+    scored 75-100 — the score measured rep count, not form.
+    """
+    if not rep_scores:
+        return 0.0
+    return max(0.0, min(100.0, sum(rep_scores) / len(rep_scores)))
+
+
 def score_squat_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["depth_achieved"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Depth not achieved")
             cues.append(COACHING_CUES["depth_not_achieved"])
         if not r["lockout_complete"]:
             if r.get("lockout_soft"):
-                score -= 10
+                penalty += 10
                 deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
                 cues.append(COACHING_CUES["soft_lockout"])
             else:
-                score -= 25
+                penalty += 25
                 comp_fail = True
                 deviations.append(f"Rep {rn}: Incomplete lockout")
                 cues.append(COACHING_CUES["incomplete_lockout"])
         if r["knee_valgus"] == "significant":
-            score -= 15
+            penalty += 15
             deviations.append(f"Rep {rn}: Significant knee cave")
             cues.append(COACHING_CUES["knee_valgus"])
         elif r["knee_valgus"] == "minor":
-            score -= 5
+            penalty += 5
             deviations.append(f"Rep {rn}: Minor knee cave")
-        if not r["heels_flat"]:
-            score -= 5
+        if r.get("heels_flat") is False:
+            penalty += 5
             deviations.append(f"Rep {rn}: Heels lifting")
             cues.append(COACHING_CUES["heels_lifted"])
-        if r["back_angle_deviation"] > 10:
-            score -= 10
-            deviations.append(f"Rep {rn}: Excessive forward lean ({r['back_angle_deviation']:.0f})")
+        back_dev = r.get("back_angle_deviation")
+        if back_dev is not None and back_dev > 10:
+            penalty += 10
+            deviations.append(f"Rep {rn}: Excessive forward lean ({back_dev:.0f})")
             cues.append(COACHING_CUES["excessive_forward_lean"])
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def score_bench_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["chest_contact"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: No chest contact")
             cues.append(COACHING_CUES["no_chest_contact"])
         if not r["pause_achieved"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: No pause on chest")
             cues.append(COACHING_CUES["no_pause"])
         if r["butt_lift"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Butt lifted off bench")
             cues.append(COACHING_CUES["butt_lift"])
         if not r["lockout_symmetrical"]:
-            score -= 10
+            penalty += 10
             deviations.append(f"Rep {rn}: Asymmetrical lockout")
             cues.append(COACHING_CUES["asymmetrical_lockout"])
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def score_deadlift_form(per_rep: list[dict]) -> dict:
-    score = 100.0
     deviations = []
     comp_fail = False
     cues = []
+    rep_scores = []
 
     for r in per_rep:
         rn = r["rep_number"]
+        penalty = 0.0
         if not r["lockout_complete"]:
             if r.get("lockout_soft"):
-                score -= 10
+                penalty += 10
                 deviations.append(f"Rep {rn}: Soft lockout (stand tall)")
                 cues.append(COACHING_CUES["soft_lockout"])
             else:
-                score -= 25
+                penalty += 25
                 comp_fail = True
                 deviations.append(f"Rep {rn}: Incomplete lockout")
                 cues.append(COACHING_CUES["incomplete_lockout"])
         if r["hitching_detected"]:
-            score -= 25
+            penalty += 25
             comp_fail = True
             deviations.append(f"Rep {rn}: Hitching detected")
             cues.append(COACHING_CUES["hitching"])
         if r["back_position"] == "significant_rounding":
-            score -= 15
+            penalty += 15
             deviations.append(f"Rep {rn}: Significant back rounding")
             cues.append(COACHING_CUES["back_rounding"])
         elif r["back_position"] == "mild_rounding":
-            score -= 10
+            penalty += 10
             deviations.append(f"Rep {rn}: Mild thoracic rounding")
+        rep_scores.append(100.0 - penalty)
 
-    return _form_result(max(0, min(100, score)), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
+    return _form_result(_average_rep_scores(rep_scores), comp_fail, deviations, list(dict.fromkeys(cues))[:5])
 
 
 def _form_result(score, comp_fail, deviations, cues):
@@ -878,7 +1188,13 @@ def _form_result(score, comp_fail, deviations, cues):
 # ── Setup Analysis ───────────────────────────────────────────────────────────
 
 
-def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float, exercise: str) -> dict:
+def analyze_setup(
+    landmarks_per_frame: list,
+    timestamps: list[float],
+    fps: float,
+    exercise: str,
+    view: str = "unknown",
+) -> dict:
     """Analyze the setup phase from pose landmarks."""
     if len(landmarks_per_frame) < 5:
         return {"setup_score": 50, "setup_duration_seconds": 0, "coaching_cues": ["Insufficient data"]}
@@ -930,9 +1246,11 @@ def analyze_setup(landmarks_per_frame: list, timestamps: list[float], fps: float
         deviations.append(f"Prolonged setup ({setup_duration:.1f}s)")
 
     # Back alignment (skipped for deadlift: gripping the bar off the floor
-    # MEANS a bent-over setup — flagging it is always wrong).
-    if setup_frames and exercise not in ("Deadlift", "Conventional Deadlift",
-                                         "Sumo Deadlift"):
+    # MEANS a bent-over setup — flagging it is always wrong; and skipped
+    # unless the view is side-on, since torso lean is a sagittal measure).
+    if (view == "side" and setup_frames
+            and exercise not in ("Deadlift", "Conventional Deadlift",
+                                 "Sumo Deadlift")):
         torso_angles = [_torso_angle(lm) for lm in setup_frames]
         mean_torso = min(90.0, float(np.mean(torso_angles)))
         if abs(mean_torso) > 20:
@@ -1000,17 +1318,25 @@ def run_pose_analysis(
     exercise_name: str,
     rep_count: int,
     weight_kg: float,
+    view: str = "unknown",
+    track: dict | None = None,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
 
     rep_count doubles as the user-declared expected rep count (0/None =
     auto-detect): when positive, the deepest valid cycles are selected.
+
+    ``track`` optionally supplies an already-extracted ``extract_pose_track``
+    result (2D + world landmarks), avoiding a second pose-extraction pass.
     """
     result = {}
 
-    # Extract pose landmarks
-    landmarks, timestamps = extract_pose_landmarks(input_path, tmpdir, trim_start, trim_end, fps=10.0)
+    # Extract pose landmarks (unless a pre-extracted track was supplied).
+    if track is None:
+        track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps=10.0)
+    landmarks = track["landmarks"]
+    timestamps = track["timestamps"]
     if not landmarks:
         logger.warning("No pose landmarks extracted")
         return result
@@ -1041,11 +1367,11 @@ def run_pose_analysis(
     per_rep = []
     for rep in reps:
         if exercise in ("Squat", "Front Squat", "Back Squat"):
-            per_rep.append({"rep_number": rep["rep_number"], **analyze_squat_rep(landmarks, rep)})
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_squat_rep(landmarks, rep, view=view)})
         elif exercise == "Bench Press":
             per_rep.append({"rep_number": rep["rep_number"], **analyze_bench_rep(landmarks, rep, fps=10.0)})
         elif exercise in ("Deadlift", "Conventional Deadlift", "Sumo Deadlift"):
-            per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep)})
+            per_rep.append({"rep_number": rep["rep_number"], **analyze_deadlift_rep(landmarks, rep, view=view)})
         else:
             per_rep.append({"rep_number": rep["rep_number"]})
 
@@ -1064,7 +1390,7 @@ def run_pose_analysis(
     result["rep_count_detected"] = len(reps)
 
     # Setup analysis
-    result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise)
+    result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise, view=view)
 
     logger.info("Pose analysis: exercise=%s, %d reps, form_score=%.1f, severity=%s",
                 exercise, len(reps), form["overall_form_score"], form["severity"])
@@ -1179,6 +1505,143 @@ def bar_velocity_from_pose(
     else:
         # No measurable reps (slices below amplitude floor): report failure
         # so callers fall back to optical flow instead of storing 0.0.
+        result["tracking_quality"] = "failed"
+        result["mean_concentric_velocity"] = 0.0
+        result["peak_velocity"] = 0.0
+    return result
+
+
+def _is_leg_lift(exercise: str) -> bool:
+    return exercise in (
+        "Squat", "Front Squat", "Back Squat",
+        "Deadlift", "Conventional Deadlift", "Sumo Deadlift",
+    )
+
+
+def _velocity_tracked_indices(exercise: str) -> tuple[int, int]:
+    """Landmark pair whose vertical motion best tracks the bar for lifts
+    where the bar moves relative to the torso (presses, bench, stone)."""
+    return 15, 16  # wrists
+
+
+def _midpoint(w, a: int, b: int) -> np.ndarray:
+    return np.array([(w[a].x + w[b].x) / 2, (w[a].y + w[b].y) / 2,
+                     (w[a].z + w[b].z) / 2])
+
+
+def _hip_ankle_distance(w) -> float:
+    """Hip-centre to ankle-centre distance (metres).
+
+    MediaPipe world landmarks are hip-centred, so global body translation
+    (the thing bar velocity needs) is removed — the hip sits at the origin
+    and never moves. But for squat/deadlift the hip's vertical travel equals
+    the change in hip-to-ankle distance (the legs extend/compress against
+    the planted foot), which IS measurable. Verified: world hip-y range
+    0.003 m vs ankle-y range 0.49 m over a deep squat.
+    """
+    hip = _midpoint(w, 23, 24)
+    ankle = _midpoint(w, 27, 28)
+    return float(np.linalg.norm(hip - ankle))
+
+
+def bar_velocity_from_world(
+    world_frames: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    exercise: str,
+    min_amplitude_m: float = 0.10,
+) -> dict:
+    """Metric bar velocity from MediaPipe world landmarks (metres).
+
+    World landmarks are already in metres (hip-origin), so no
+    pixels-per-metre guessing or hardcoded ROM is needed — the failure mode
+    that made single-rep squats read 0.087-0.098 m/s (real ≈0.2-0.5) and
+    produced negative velocity loss.
+
+    Returns one ``rep_timings`` entry per input pose rep (velocity possibly
+    ``None`` for a slice with no measurable concentric phase) so form and
+    velocity rep counts always agree — the old function silently dropped
+    reps, so 1/3 of production videos had mismatched counts.
+    """
+    from app.integrations.video_analysis import (
+        _get_vbt_zone,
+        _smooth_signal,
+        _velocity_loss_pct,
+    )
+
+    n = min(len(world_frames), len(timestamps))
+    if n < 5 or not pose_reps:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
+
+    if _is_leg_lift(exercise):
+        # Leg extension recovers the hip's vertical travel (bar travels with
+        # the hips in squat/deadlift); hip y itself is the world origin.
+        sig = np.array([_hip_ankle_distance(w) for w in world_frames[:n]])
+    else:
+        li, ri = _velocity_tracked_indices(exercise)
+        sig = np.array([(w[li].y + w[ri].y) / 2 for w in world_frames[:n]])
+    ts = np.array(timestamps[:n])
+    pos = _smooth_signal(sig, window=3)
+
+    velocities: list[float] = []
+    rep_data: list[dict] = []
+    for rep in pose_reps:
+        si = max(0, rep["start_idx"])
+        ei = min(n - 1, rep["end_idx"])
+        entry = {
+            "rep_number": rep["rep_number"],
+            "start_time": None,
+            "end_time": None,
+            "concentric_time": None,
+            "amplitude_m": None,
+            "concentric_velocity_ms": None,
+        }
+        # Prefer the joint-angle detector's bottom/top frames (robust);
+        # only fall back to re-finding extrema on the world signal.
+        bi = rep.get("bottom_idx")
+        ti = rep.get("top_idx")
+        if bi is None or ti is None:
+            if ei - si >= 3:
+                seg = pos[si:ei + 1]
+                bi = si + int(np.argmax(seg))
+                ti = bi + int(np.argmin(pos[bi:ei + 1]))
+            else:
+                bi = ti = None
+        if bi is not None and ti is not None and 0 <= bi < ti < n:
+            # leg mode: distance is max at the top; wrist mode: y grows down
+            amp_m = abs(float(pos[bi] - pos[ti]))
+            dt = float(ts[ti] - ts[bi])
+            if dt > 0 and amp_m >= min_amplitude_m:
+                v = amp_m / dt
+                velocities.append(round(v, 3))
+                entry.update({
+                    "start_time": round(float(ts[bi]), 2),
+                    "end_time": round(float(ts[ti]), 2),
+                    "concentric_time": round(dt, 2),
+                    "amplitude_m": round(amp_m, 3),
+                    "concentric_velocity_ms": round(v, 3),
+                })
+        rep_data.append(entry)
+
+    result: dict = {
+        "tracking_quality": "pose",
+        "frame_count": n,
+        "rep_timings": rep_data,
+        "velocities": velocities,
+    }
+    if velocities:
+        mean_v = sum(velocities) / len(velocities)
+        result["mean_concentric_velocity"] = round(mean_v, 3)
+        result["peak_velocity"] = round(max(velocities), 3)
+        result["vbt_zone"] = _get_vbt_zone(exercise, mean_v)
+        if len(velocities) >= 2:
+            # Velocity loss is a fatigue measure and is non-negative by
+            # definition; a "negative" value means the last rep was measured
+            # faster (a segmentation/mistrack artifact). Clamp to 0 = "no
+            # measurable loss" rather than surfacing e.g. -100%.
+            result["velocity_loss_pct"] = max(
+                0.0, _velocity_loss_pct(velocities[0], velocities[-1]))
+    else:
         result["tracking_quality"] = "failed"
         result["mean_concentric_velocity"] = 0.0
         result["peak_velocity"] = 0.0

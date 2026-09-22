@@ -85,6 +85,9 @@ def process_video_on_modal(
     analysis_depth: str = "full",
     expected_reps: int | None = None,
     user_exercise: str | None = None,
+    camera_view: str | None = None,
+    r2_presigned_put_overlay: str | None = None,
+    r2_upload_key_overlay: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -111,6 +114,10 @@ def process_video_on_modal(
         User-declared exercise name (DB). Selects the analyzer — pose
         auto-classification only validates (bench is unclassifiable from
         pose statistics alone: identical medians to a deadlift).
+    camera_view:
+        User-declared camera angle (``side``/``back_left``/``back_right``/
+        ``front``). Gates the sagittal-plane form rules; absent/unknown
+        leaves them off.
 
     Returns
     -------
@@ -148,6 +155,11 @@ def process_video_on_modal(
         depth: str,
         expected: int | None,
         user_ex: str | None,
+        user_view: str = "",
+        gemini_key: str = "",
+        gemini_model: str = "gemini-3.6-flash",
+        overlay_put: str = "",
+        overlay_key: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -244,13 +256,17 @@ def process_video_on_modal(
                         best_start = boundaries[i]
                         best_end = boundaries[i + 1]
 
-                # Add 0.5s padding, clamped to video bounds
-                trim_start = max(0.0, best_start - 0.5)
-                trim_end = min(duration, best_end + 0.5)
+                # Generous padding (start -1s, end +2s): a tight +0.5s end cut
+                # the lockout off short single-rep pulls, so the top frame read
+                # mid-pull and flagged "Incomplete lockout" (deadlift 85c3239f).
+                trim_start = max(0.0, best_start - 1.0)
+                trim_end = min(duration, best_end + 2.0)
             else:
-                # No clear scenes detected — keep the middle 80%
-                trim_start = duration * 0.1
-                trim_end = duration * 0.9
+                # No clear scenes detected — keep the WHOLE video. The old
+                # middle-80% fallback trimmed the last 10%, cutting the lockout
+                # off short single-rep pulls (deadlift 85c3239f).
+                trim_start = 0.0
+                trim_end = duration
 
             _logger.info("Trim points: %.2f -> %.2f", trim_start, trim_end)
 
@@ -312,6 +328,26 @@ def process_video_on_modal(
 
             _logger.info("Extracted %d key frames", len(frame_paths))
 
+            # ── Step 6b: Camera view ──────────────────────────────────────
+            # Prefer the user-declared angle (free, reliable). Only if it's
+            # absent do we fall back to a VLM call — gated off by default
+            # because the Gemini daily quota is tiny. Pose geometry cannot
+            # determine the view (see classify_view_from_frame docstring).
+            # "unknown" leaves sagittal rules off (safe default).
+            view = user_view or "unknown"
+            if view == "unknown" and frame_paths and gemini_key:
+                try:
+                    from app.integrations.video_analysis import (
+                        classify_view_from_frame,
+                    )
+
+                    view = classify_view_from_frame(
+                        frame_paths[len(frame_paths) // 2], gemini_key, gemini_model)
+                    _logger.info("Camera view (VLM): %s", view)
+                except Exception as e:
+                    _logger.warning("View classification failed: %s", e)
+            _logger.info("Camera view: %s", view)
+
             # ── Step 7: Classify via pose landmarks (local) ──────────────
             exercise = ""  # Will be determined by pose classification
             reps = 0  # Will be determined by pose analysis
@@ -320,19 +356,24 @@ def process_video_on_modal(
             analysis_text = ""
             landmarks: list = []
             pose_timestamps: list = []
+            pose_world: list = []
+            pose_track: dict = {}
 
             try:
                 import sys
                 sys.path.insert(0, "/root")
                 from app.integrations.pose_analysis import (
                     classify_exercise,
-                    extract_pose_landmarks,
+                    extract_pose_track,
                     route_exercise,
                 )
 
-                landmarks, pose_timestamps = extract_pose_landmarks(
+                pose_track = extract_pose_track(
                     input_path, tmpdir, trim_start, trim_end, fps=10.0,
                 )
+                landmarks = pose_track["landmarks"]
+                pose_timestamps = pose_track["timestamps"]
+                pose_world = pose_track["world"]
                 if landmarks:
                     classification = classify_exercise(landmarks, pose_timestamps)
                     auto_ex = classification["exercise"]
@@ -374,6 +415,8 @@ def process_video_on_modal(
                         exercise_name=exercise,
                         rep_count=expected or reps,
                         weight_kg=weight,
+                        view=view,
+                        track=pose_track,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -391,28 +434,41 @@ def process_video_on_modal(
                 # in memory from step 7, so this costs nothing extra.
                 vel_result: dict = {"tracking_quality": "failed"}
                 try:
-                    import cv2
-
                     from app.integrations.pose_analysis import (
                         bar_velocity_from_pose,
+                        bar_velocity_from_world,
                         detect_reps_from_pose,
                     )
-                    from app.integrations.video_analysis import _get_rom
 
-                    _cap = cv2.VideoCapture(str(input_path))
-                    _fh = float(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    _cap.release()
-                    if landmarks and pose_timestamps and _fh > 0:
+                    if landmarks and pose_timestamps:
                         _pose_reps = detect_reps_from_pose(
                             landmarks, pose_timestamps, exercise,
                             expected_reps=expected)
-                        vel_result = bar_velocity_from_pose(
-                            landmarks, pose_timestamps, _pose_reps,
-                            exercise, _fh, _get_rom(exercise))
-                        _logger.info(
-                            "Velocity (pose): mean=%.3f m/s, %d reps",
-                            vel_result.get("mean_concentric_velocity", 0.0),
-                            len(vel_result.get("rep_timings", [])))
+                        # World landmarks give metric bar travel; fall back to
+                        # the 2D pixels-per-metre path only if they're absent.
+                        if pose_world:
+                            vel_result = bar_velocity_from_world(
+                                pose_world, pose_timestamps, _pose_reps, exercise)
+                            _logger.info(
+                                "Velocity (world): mean=%.3f m/s, %d reps",
+                                vel_result.get("mean_concentric_velocity", 0.0),
+                                len(vel_result.get("rep_timings", [])))
+                        if vel_result.get("tracking_quality") == "failed":
+                            import cv2
+
+                            from app.integrations.video_analysis import _get_rom
+
+                            _cap = cv2.VideoCapture(str(input_path))
+                            _fh = float(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            _cap.release()
+                            if _fh > 0:
+                                vel_result = bar_velocity_from_pose(
+                                    landmarks, pose_timestamps, _pose_reps,
+                                    exercise, _fh, _get_rom(exercise))
+                                _logger.info(
+                                    "Velocity (2d): mean=%.3f m/s, %d reps",
+                                    vel_result.get("mean_concentric_velocity", 0.0),
+                                    len(vel_result.get("rep_timings", [])))
                 except Exception as e:
                     _logger.warning("Pose velocity failed: %s", e)
 
@@ -480,7 +536,41 @@ def process_video_on_modal(
                                 "returning analysis without trimmed video")
                 uploaded_key = None
 
-            form_data = full_result.get("form", {})
+            # ── Step 9b: Render + upload the pose/bar-path overlay ────────
+            # Best-effort: a failed overlay must not fail the analysis.
+            overlay_uploaded_key: str | None = None
+            if overlay_put and overlay_key and landmarks and pose_timestamps:
+                try:
+                    from app.integrations.pose_analysis import (
+                        render_overlay_video,
+                    )
+
+                    overlay_path = Path(tmpdir) / "overlay.mp4"
+                    if render_overlay_video(
+                        trimmed_path, landmarks, pose_timestamps, overlay_path,
+                        time_offset=trim_start, exercise=exercise,
+                    ):
+                        overlay_bytes = overlay_path.read_bytes()
+                        for _attempt in range(3):
+                            try:
+                                httpx.put(
+                                    overlay_put,
+                                    content=overlay_bytes,
+                                    headers={"Content-Type": "video/mp4"},
+                                    timeout=300,
+                                ).raise_for_status()
+                                overlay_uploaded_key = overlay_key
+                                _logger.info("Uploaded overlay to R2: %s", overlay_key)
+                                break
+                            except Exception as e:
+                                _logger.warning(
+                                    "Overlay upload attempt %d failed: %s",
+                                    _attempt + 1, e)
+                                _time.sleep(5 * (_attempt + 1))
+                except Exception as e:
+                    _logger.warning("Overlay render/upload failed: %s", e)
+
+            form_data = {**full_result.get("form", {}), "view": view}
             vel_data = full_result.get("velocity", {})
             consist_data = full_result.get("consistency", {})
             setup_data = full_result.get("setup", {})
@@ -507,8 +597,12 @@ def process_video_on_modal(
                     return [_to_py(v) for v in obj]
                 return obj
 
+            analysis_text = f"[view={view}] {analysis_text}".strip()
+
             return _to_py({
                 "trimmed_r2_key": uploaded_key,
+                "overlay_r2_key": overlay_uploaded_key,
+                "view": view,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
                 "trim_end_sec": round(trim_end, 2),
@@ -548,6 +642,16 @@ def process_video_on_modal(
                 "rpe_evidence_json": rpe_data.get("evidence"),
             })
 
+    # Gemini key is passed through so the container can classify camera view
+    # (the container image has no google-genai; the call is a raw REST request).
+    # Gated OFF by default — a per-video call competes with the weekly/on-demand
+    # LLM analysis under a low daily Gemini quota. Empty key => "unknown" view.
+    from app.integrations.video_analysis import normalize_user_view
+    from app.services.llm_base import GEMINI_MODEL
+
+    view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
+    user_view = normalize_user_view(camera_view)
+
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
         return _process.remote(
@@ -557,4 +661,9 @@ def process_video_on_modal(
             analysis_depth,
             expected_reps,
             user_exercise,
+            user_view,
+            view_key,
+            GEMINI_MODEL,
+            r2_presigned_put_overlay or "",
+            r2_upload_key_overlay or "",
         )

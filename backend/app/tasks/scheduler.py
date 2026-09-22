@@ -53,12 +53,12 @@ async def _run_task_guarded(task_name: str, _run) -> dict:
     problem never silently halts all syncing.
     """
     from app.metrics import SYNC_RUNS
-    from app.services.cache import redis_lock
+    from app.services.cache import LockHeldError, redis_lock
 
     lock = redis_lock(f"celery-task:{task_name}", ttl=3600)
     try:
         await lock.__aenter__()
-    except RuntimeError:
+    except LockHeldError:
         logger.warning(f"{task_name} skipped — another instance is running")
         SYNC_RUNS.labels(task=task_name, outcome="skipped_lock").inc()
         return {"status": "skipped_lock"}
@@ -94,13 +94,13 @@ async def _try_acquire_user_lock(user_id, provider: str, ttl: int = 1800):
     another run (scheduled task or manual sync), or a no-op lock if Redis
     is unavailable (fail open — a Redis outage must not stop syncing).
     """
-    from app.services.cache import redis_lock
+    from app.services.cache import LockHeldError, redis_lock
 
     try:
         cm = redis_lock(f"sync:{user_id}:{provider}", ttl=ttl)
         await cm.__aenter__()
         return cm
-    except RuntimeError:
+    except LockHeldError:
         return None
     except Exception as e:
         logger.warning(
@@ -3617,6 +3617,12 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     "video/mp4",
                     video.size_bytes or 0,
                 )
+                presigned_overlay = await create_presigned_put(
+                    video.user_id,
+                    f"overlay-{video.file_name}",
+                    "video/mp4",
+                    video.size_bytes or 0,
+                )
 
                 # Call Modal for processing
                 result = process_video_on_modal(
@@ -3628,10 +3634,14 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     analysis_depth=analysis_depth,
                     expected_reps=video.expected_reps,
                     user_exercise=video.exercise_name,
+                    camera_view=video.camera_view,
+                    r2_presigned_put_overlay=presigned_overlay["upload_url"],
+                    r2_upload_key_overlay=presigned_overlay["key"],
                 )
 
                 # Update video with results
                 video.trimmed_r2_key = result.get("trimmed_r2_key")
+                video.overlay_r2_key = result.get("overlay_r2_key")
                 video.trim_start_sec = result.get("trim_start_sec")
                 video.trim_end_sec = result.get("trim_end_sec")
                 video.analysis_text = result.get("analysis_text")

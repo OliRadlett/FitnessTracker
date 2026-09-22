@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24, updated 2026-09-21 | Total: 94 bugs | Fixed: 84 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
+> Generated: 2026-08-24, updated 2026-09-22 | Total: 95 bugs | Fixed: 85 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
 
 ---
 
@@ -637,4 +637,10 @@ Full audit of every sync path (Celery scheduler, four provider clients, sync ser
 - **File:** `backend/app/integrations/segment_intelligence.py` (`_predict_segment_effort`)
 - **Issue:** `SegmentEffort.effort_vam` is nullable and the weekly task passes it through as present-but-`None`. `_predict_segment_effort` built `vam_values = [e.get("effort_vam", 1000) …]`; a dict-default lookup returns `None` for a present-but-None key, so the weighted average raised `TypeError: unsupported operand type(s) for *: 'NoneType' and 'float'`. Every `analyze_segments_intelligence_weekly` run failed for the user (0 segments analysed).
 - **Fix:** Guard `None` explicitly (`e["effort_vam"] if e.get("effort_vam") is not None else 1000`), preserving a legitimate `0`.
+
+### BUG-097: Redis Client Cached Across Event Loops → All Scheduled Syncs Silently Skipped
+- **Status:** FIXED
+- **Files:** `backend/app/services/cache.py`, `backend/app/tasks/scheduler.py`
+- **Issue:** `_get_redis()` cached one `redis.asyncio` client globally, but every Celery task calls `asyncio.run()` (a fresh event loop). Reusing the client on the next task raised `RuntimeError: ... attached to a different loop` / `Event loop is closed` at `SET NX`. Because `_run_task_guarded`/`_try_acquire_user_lock` caught bare `RuntimeError` for the "lock held" case, this was misread as "another instance is running": every scheduled `sync_all_strava/whoop/withings` and `process_strava_webhook_events` returned `skipped_lock`, and some acquired locks were orphaned for their full 3600s TTL — so all syncs/webhooks silently stopped doing real work.
+- **Fix:** Cache the client per running event loop in `_get_redis()` (mirrors the fresh-engine pattern in `task_session()`), and raise a distinct `LockHeldError(RuntimeError)` from `redis_lock` so `_run_task_guarded`/`_try_acquire_user_lock` only treat a genuinely-held lock as a skip and fail open on any other Redis error. Regression tests: `tests/test_cache.py::TestGetRedisIsLoopScoped`.
 
