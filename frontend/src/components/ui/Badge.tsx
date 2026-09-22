@@ -8,6 +8,8 @@ interface BadgeProps {
   children: React.ReactNode;
   variant?: BadgeVariant;
   className?: string;
+  /** Native tooltip — used for cryptic pills like the warm-up `W` flag (1.6). */
+  title?: string;
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
@@ -30,10 +32,11 @@ export function getSportBadgeVariant(sportType: string): BadgeVariant {
   return 'default';
 }
 
-export function Badge({ children, variant = 'default', className = '' }: BadgeProps) {
+export function Badge({ children, variant = 'default', className = '', title }: BadgeProps) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${variantStyles[variant]} ${className}`}
+      title={title}
     >
       {children}
     </span>

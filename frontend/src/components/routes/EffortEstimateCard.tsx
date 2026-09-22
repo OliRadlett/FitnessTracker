@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { EffortEstimateResponse } from '@/lib/api/types';
 import { formatDuration } from '@/lib/utils';
-import { Badge } from '@/components/ui/Badge';
 
 const INTENSITY_OPTIONS = [
   { value: 'endurance', label: 'Endurance (Z2)' },
@@ -56,14 +55,14 @@ export function EffortEstimateCard({ routeId }: {
             value={intensity}
             onChange={(e) => setIntensity(e.target.value)}
             className="text-xs bg-surface-light border border-surface rounded px-2 py-1 text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+            aria-label="Effort intensity"
           >
             {INTENSITY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <Badge variant="default" className="text-xs">
-            {estimate.zone_name || 'Tempo'}
-          </Badge>
+          {/* Badge budget (1.2): the select already names the zone — the
+              duplicate zone pill was showing "Tempo (Z3)" twice. */}
         </div>
       </div>
 

@@ -95,24 +95,10 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
     },
   });
 
+  // No placeholder drawer — the map/list takes the space until a route is
+  // selected (1.4). Callers render this panel only when it has content.
   if (!route) {
-    return (
-      <div className="w-full max-w-sm lg:max-w-md bg-surface border-l border-surface-light flex flex-col">
-        <div className="p-6 border-b border-surface-light flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-foreground">Route Details</h2>
-          <button
-            onClick={onClose}
-            className="text-muted hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-muted">
-          <p>Select a route to view details</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const diff = computeDifficulty(route.elevation_gain_meters, route.distance_meters);

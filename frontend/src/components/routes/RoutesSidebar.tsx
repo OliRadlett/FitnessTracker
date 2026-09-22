@@ -133,7 +133,7 @@ export function RoutesSidebar({
           )}
 
           {tags.length === 0 ? (
-            <p className="text-xs text-muted px-2 py-1">No tags yet.</p>
+            <p className="text-xs text-muted px-2 py-1">Tag routes from the list to group them here.</p>
           ) : (
             tags.map((tag) => {
               const tagColor = tag.color || '#64748b';

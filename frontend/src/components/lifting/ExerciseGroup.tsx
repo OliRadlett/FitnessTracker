@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import type { LiftingSet } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
+import { glossary } from '@/lib/metricGlossary';
 
 export function ExerciseGroup({
   exerciseName,
@@ -172,7 +173,7 @@ export function ExerciseGroup({
                       <td className="py-2 px-3 text-right text-yellow-400">{set.rpe ?? '—'}</td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex justify-center gap-1">
-                          {set.is_warmup && <Badge variant="muted">W</Badge>}
+                          {set.is_warmup && <Badge variant="muted" title={glossary('warmup_flag')}>W</Badge>}
                           {set.is_amrap && <Badge variant="warning">AMRAP</Badge>}
                         </div>
                       </td>

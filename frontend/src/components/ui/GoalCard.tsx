@@ -190,9 +190,13 @@ export function GoalCard({
               {displayBadge.label}
             </span>
           )}
-          <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusBadge.className}`}>
-            {statusBadge.label}
-          </span>
+          {/* Badge budget (1.2): the status pill is redundant next to a
+              trajectory/projection badge — show it only for terminal states. */}
+          {(goal.status !== 'active' || !displayBadge) && (
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusBadge.className}`}>
+              {statusBadge.label}
+            </span>
+          )}
         </div>
       </div>
 

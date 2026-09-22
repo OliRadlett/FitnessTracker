@@ -17,9 +17,12 @@ import { ActivityHealthOverlay } from '@/components/activities/ActivityHealthOve
 function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
   if (!sources || sources.length === 0) return null;
   const unique = Array.from(new Map(sources.map(s => [s.provider, s])).values());
+  // Badge budget (1.2): max 2 provider pills, overflow collapses to +n.
+  const shown = unique.slice(0, 2);
+  const overflow = unique.length - shown.length;
   return (
     <div className="flex items-center gap-1">
-      {unique.map((s) => (
+      {shown.map((s) => (
         <span
           key={s.id}
           className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-foreground ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
@@ -28,6 +31,14 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
           <ProviderIcon provider={s.provider} /> {s.provider}
         </span>
       ))}
+      {overflow > 0 && (
+        <span
+          className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full text-muted bg-muted/20"
+          title={unique.slice(2).map((s) => `${s.provider}: ${s.provider_name || s.provider_activity_id}`).join('\n')}
+        >
+          +{overflow}
+        </span>
+      )}
     </div>
   );
 }

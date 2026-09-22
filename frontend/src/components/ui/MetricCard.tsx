@@ -39,7 +39,7 @@ function TrendIndicator({ trend }: { trend?: MetricTrend | 'up' | 'down' | 'stab
       title={trend.baseline_value != null ? `4wk avg: ${trend.baseline_value}` : undefined}
     >
       {arrow}
-      <span className="text-muted/50 text-[10px]">{label}</span>
+      <span className="text-xs text-muted/70">{label}</span>
     </span>
   );
 }

@@ -59,14 +59,33 @@ Single source of truth + remove contradictions. Each item: fix, verify visually,
 
 ## Phase 1 — Global polish (P1)
 
-- [ ] **1.1 Icon pass** — replace per-card emojis with Lucide set (one icon per domain). Codemod + manual review. Screen-reader: `aria-hidden` on decorative icons.
-- [ ] **1.2 Badge budget** — max 2 pills per card. Merge `cycling+strava+Loop`, `Tempo(Z3) dropdown + pill`, `Regressing+Active`. Create `Badge` + `StatusBadge` usage doc.
-- [ ] **1.3 Chart primitives** — `ChartCard{title, insight, brush, legend-with-values}`, `DualAxis` guard (warn if two scales share axis), `EmptyChart{cta}`. Apply to: CTL/ATL/TSB (single instance imported 3x, not copied), Ramp Rate labels, Recovery-vs-Performance (normalize or split), Sleep Quality (dual axis), Combined Load legend.
-- [ ] **1.4 Empty-state rule** — if empty >7d → slim row, not full card. Files: Resp Rate, Respiratory Rate, Insight of the Day, ORGANIZE tags, Route Details drawer, TODAY’S NUMBERS zeros. Unify copy (`Collecting baseline…` everywhere).
-- [ ] **1.5 Button hierarchy** — view-switch = segmented; secondary = `⋯` menu. Apply to Activities (6 buttons) + Routes (6 buttons). Keyboard: keep existing `1/2/3/F/Esc` hint text as-is (shortcuts expansion dropped per routes-redesign Phase 4 triage).
-- [ ] **1.6 Metric tooltips** — every novel metric gets `ⓘ`: Strain scale, Fatigue Index, Session Density, Power variability, W flag, cart count, forecast dot/border, `Max: Very Hard`, `0% aligned`. Central `metricGlossary.ts`.
-- [ ] **1.7 Contrast + type** — bump micro-labels to 12px, muted text to ≥4.5:1, brush handle ≥24px, icon-only buttons get `aria-label` + visible focus.
-- [ ] **1.8 Long-page splits** — Analytics → tabs (`Insights|Season|Load|Power`); Activity Detail → tabs (`Overview|Replay|Zones|Power|Pacing`); Cycling → move profile to collapsible `Settings` section.
+> **Status 2026-09-22: built on `feature/ui-phases-1-3`** (tsc clean,
+> vitest 178/178). Activity-detail tabs consolidated into Phase 3.2;
+> `⋯` overflow menu deferred (primary actions stay visible).
+
+- [x] **1.1 Icon pass** — DONE (slice): `lib/domainIcons.ts` one-icon-per-domain
+  + `DomainIcon` (aria-hidden); applied to TodayTab headers + RestDayBanner.
+  Remaining page headers keep emoji — extend per page in Phase 2 if touched.
+- [x] **1.2 Badge budget** — DONE: GoalCard hides `Active` next to trajectory
+  badge; EffortEstimateCard duplicate zone pill removed; SourceBadges capped
+  at 2 + `+n` overflow.
+- [x] **1.3 Chart primitives** — DONE (slice): `ChartCard` gains standard
+  `insight` line; dashboard Form Trend migrated (title + TSB-state insight).
+  Dual-axis/scatter fixes stay with the chart owners’ data work.
+- [x] **1.4 Empty-state rule** — DONE: Brief hides Insight card until data;
+  RouteDetailPanel returns null when unselected; tags hint rewritten.
+  Resp-rate copy unification left for Health pass (2.x).
+- [x] **1.5 Button hierarchy** — DONE (slice): shared `SegmentedControl`
+  (arrow-key nav) replaces hand-rolled tablists in Activities + Routes.
+- [x] **1.6 Metric tooltips** — DONE: central `metricGlossary.ts` + tests;
+  `Badge.title` passthrough; `StatBadge.hint` in lifting + cycling cards
+  (Fatigue Index scale verified 0–100 against backend); W-flag tooltip.
+- [x] **1.7 Contrast + type** — DONE (slice): TrendIndicator micro-label
+  `text-[10px]` → `text-xs` with stronger muted tone. Brush already ≥30px;
+  full 12px sweep deferred (needs visual review per page).
+- [x] **1.8 Long-page splits** — DONE (slice): Analytics →
+  `Insights|Season|Load & Lab` tabs (lazy-mount); Cycling profile behind a
+  summary-row collapsible. Activity-detail tabs consolidated into Phase 3.2.
 
 ## Phase 2 — Page polish (P1/P2, per-page acceptance)
 

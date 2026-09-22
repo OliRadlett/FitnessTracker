@@ -348,6 +348,8 @@ export default function CyclingPage() {
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
   const [recalcResult, setRecalcResult] = useState<string | null>(null);
   const [backfillFtpResult, setBackfillFtpResult] = useState<string | null>(null);
+  // Profile editor collapsible (1.8) — settings live behind a summary row.
+  const [showProfile, setShowProfile] = useState(false);
 
   // ── Mutations ───────────────────────────────────────────────────────────
   const updateProfileMutation = useMutation({
@@ -473,8 +475,7 @@ export default function CyclingPage() {
   });
 
   // ── Loading state ───────────────────────────────────────────────────────
-  if (profileLoading) {
-    return (
+  if (profileLoading) {    return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
@@ -503,17 +504,37 @@ export default function CyclingPage() {
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
 
-      {/* Profile Editor */}
-      <ProfileEditor
-        profile={profile}
-        onSave={(data) => updateProfileMutation.mutate(data)}
-        isSaving={updateProfileMutation.isPending}
-        onEstimateFtp={() => estimateFtpMutation.mutate()}
-        ftpEstimate={ftpEstimate}
-        isEstimating={estimateFtpMutation.isPending}
-        onAcceptEstimate={() => acceptEstimateMutation.mutate()}
-        saveMessage={saveMessage}
-      />
+      {/* Profile Editor (collapsible — summary row, 1.8) */}
+      <Card>
+        <button
+          onClick={() => setShowProfile((v) => !v)}
+          aria-expanded={showProfile}
+          className="w-full flex items-center justify-between gap-3 text-left min-h-[44px]"
+        >
+          <span className="text-sm font-medium text-foreground">
+            Profile Settings
+            <span className="text-muted font-normal">
+              {' '}· FTP {profile?.ftp_watts != null ? `${Math.round(profile.ftp_watts)}W` : '—'}
+              {' '}· {profile?.weight_kg != null ? `${profile.weight_kg.toFixed(1)}kg` : '—'}
+            </span>
+          </span>
+          <span className="text-muted" aria-hidden>{showProfile ? '▾' : '▸'}</span>
+        </button>
+        {showProfile && (
+          <div className="mt-4">
+            <ProfileEditor
+              profile={profile}
+              onSave={(data) => updateProfileMutation.mutate(data)}
+              isSaving={updateProfileMutation.isPending}
+              onEstimateFtp={() => estimateFtpMutation.mutate()}
+              ftpEstimate={ftpEstimate}
+              isEstimating={estimateFtpMutation.isPending}
+              onAcceptEstimate={() => acceptEstimateMutation.mutate()}
+              saveMessage={saveMessage}
+            />
+          </div>
+        )}
+      </Card>
 
       {/* Metrics Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">

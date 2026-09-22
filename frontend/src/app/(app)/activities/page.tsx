@@ -32,6 +32,7 @@ const Replay3D = dynamic(
   { ssr: false, loading: () => <div className="h-[400px] bg-surface-light/20 rounded-lg animate-pulse" /> },
 );
 import { Card } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -775,48 +776,17 @@ export default function ActivitiesPage() {
         </div>
         {/* View Toggle */}
         <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-x-auto max-w-full" role="tablist" aria-label="Activity view mode">
-          <button
-            onClick={() => setViewMode('list')}
-            role="tab"
-            aria-selected={viewMode === 'list'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            List
-          </button>
-          <button
-            onClick={() => setViewMode('week')}
-            role="tab"
-            aria-selected={viewMode === 'week'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Week
-          </button>
-          <button
-            onClick={() => setViewMode('timeline')}
-            role="tab"
-            aria-selected={viewMode === 'timeline'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Timeline
-          </button>
-          <button
-            onClick={() => setViewMode('patterns')}
-            role="tab"
-            aria-selected={viewMode === 'patterns'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Patterns
-          </button>
-        </div>
+          <SegmentedControl
+            ariaLabel="Activity view mode"
+            value={viewMode}
+            onChange={setViewMode}
+            options={[
+              { value: 'list', label: 'List' },
+              { value: 'week', label: 'Week' },
+              { value: 'timeline', label: 'Timeline' },
+              { value: 'patterns', label: 'Patterns' },
+            ]}
+          />
           <button
             onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
             className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${

@@ -21,7 +21,8 @@ import type {
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ChartBody } from '@/components/charts/Chart';
+import { DomainIcon } from '@/components/ui/DomainIcon';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -302,7 +303,7 @@ export function TodayTab({
       {/* ── Today's Plan ────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>📋 Today&apos;s Plan</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="training" /> Today&apos;s Plan</span></CardTitle>
         </CardHeader>
         {planWeekLoading ? (
           <div className="flex items-center gap-3 py-4">
@@ -371,17 +372,25 @@ export function TodayTab({
 
       {/* ── Training Load (CTL / ATL / TSB) ─────────────────────────────────── */}
       <div>
-        <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Form Trend</h2>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="lg:col-span-3">
-            <Card>
-              <ChartBody
-                isLoading={trainingLoadLoading}
-                data={trainingLoadChart}
-                emptyMessage="No training load data available"
-                height={260}
-              />
-            </Card>
+            <ChartCard
+              title="Form Trend"
+              insight={
+                todaySummary
+                  ? `TSB ${formatTSB(todaySummary.current_tsb)} — ${
+                      todaySummary.current_tsb < -30 ? 'overreaching, prioritize recovery'
+                      : todaySummary.current_tsb < -10 ? 'productive training zone'
+                      : todaySummary.current_tsb > 10 ? 'fresh — good window for hard efforts'
+                      : 'neutral — train as planned'
+                    }.`
+                  : undefined
+              }
+              isLoading={trainingLoadLoading}
+              data={trainingLoadChart}
+              emptyMessage="No training load data available"
+              height={260}
+            />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4">
             <Link href="/cycling" className="block group">
@@ -437,7 +446,7 @@ export function TodayTab({
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between w-full">
-              <CardTitle>🚴 Today&apos;s Activities</CardTitle>
+              <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="cycling" /> Today&apos;s Activities</span></CardTitle>
               <span className="text-xs text-muted">{todaySummary.today_activities.length}</span>
             </div>
           </CardHeader>
@@ -495,7 +504,7 @@ export function TodayTab({
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between w-full">
-              <CardTitle>🏋️ Today&apos;s Lifting</CardTitle>
+              <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="strength" /> Today&apos;s Lifting</span></CardTitle>
               <span className="text-xs text-muted">{todaySummary.today_lifting_sessions.length}</span>
             </div>
           </CardHeader>

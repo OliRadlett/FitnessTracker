@@ -203,12 +203,12 @@ export default function TodayBriefPage() {
         )}
       </Card>
 
-      {/* 5 — Top insight */}
+      {/* 5 — Top insight (hidden until data exists, 1.4) */}
+      {topInsight && (
       <Card>
         <CardHeader>
           <CardTitle>💡 Insight of the Day</CardTitle>
         </CardHeader>
-        {topInsight ? (
           <div>
             <p className="text-sm text-foreground">{insightOneLiner(topInsight)}</p>
             <p className="text-xs text-muted mt-1">
@@ -218,10 +218,8 @@ export default function TodayBriefPage() {
               All insights →
             </Link>
           </div>
-        ) : (
-          <p className="text-xs text-muted">Insights appear after a few weeks of training data.</p>
-        )}
       </Card>
+      )}
     </div>
   );
 }
