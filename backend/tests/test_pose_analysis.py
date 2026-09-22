@@ -243,6 +243,12 @@ class TestAnalysisQuality:
         assert out["quality"]["level"] == "fair"
 
 
+class TestRepSprite:
+    def test_empty_inputs_return_false(self, tmp_path):
+        assert pa.render_rep_sprite(
+            tmp_path / "x.mp4", [], [], [], tmp_path / "out.jpg") is False
+
+
 class TestPressFamily:
     def test_is_press_excludes_bench(self):
         assert pa._is_press("Overhead Press")

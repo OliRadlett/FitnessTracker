@@ -186,6 +186,87 @@ def _tracked_bar_point(lm, exercise: str) -> tuple[float, float]:
     return ((lm[15].x + lm[16].x) / 2, (lm[15].y + lm[16].y) / 2)
 
 
+def _draw_skeleton(frame, lm, w: int, h: int) -> None:
+    """Draw the 33-landmark skeleton onto ``frame`` in place (yellow)."""
+    import cv2
+
+    for a, b in _SKELETON_EDGES:
+        if lm[a].visibility > 0.3 and lm[b].visibility > 0.3:
+            cv2.line(
+                frame,
+                (int(lm[a].x * w), int(lm[a].y * h)),
+                (int(lm[b].x * w), int(lm[b].y * h)),
+                (0, 255, 255), 2,
+            )
+    for k in range(33):
+        if lm[k].visibility > 0.3:
+            cv2.circle(
+                frame, (int(lm[k].x * w), int(lm[k].y * h)),
+                3, (0, 255, 255), -1,
+            )
+
+
+def render_rep_sprite(
+    input_path: Path,
+    landmarks: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    out_path: Path,
+    time_offset: float = 0.0,
+    tile_w: int = 220,
+) -> bool:
+    """Tile each rep's bottom frame (skeleton drawn) into one JPEG.
+
+    A single image (one presigned PUT) gives an at-a-glance view of every
+    rep's depth/position without scrubbing the overlay video. Returns True on
+    success; never raises.
+    """
+    import cv2
+
+    try:
+        n = min(len(landmarks), len(timestamps))
+        if n == 0 or not pose_reps:
+            return False
+        cap = cv2.VideoCapture(str(input_path))
+        if not cap.isOpened():
+            return False
+        vid_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if w <= 0 or h <= 0:
+            cap.release()
+            return False
+
+        ts = list(timestamps[:n])
+        tiles = []
+        for rep in pose_reps:
+            bi = rep.get("bottom_idx")
+            if bi is None or bi >= n:
+                continue
+            frame_i = int(round((ts[bi] - time_offset) * vid_fps))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_i))
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            _draw_skeleton(frame, landmarks[bi], w, h)
+            cv2.putText(frame, f"R{rep['rep_number']}", (10, 42),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3)
+            scale = tile_w / w
+            tiles.append(cv2.resize(frame, (tile_w, int(h * scale))))
+        cap.release()
+        if not tiles:
+            return False
+
+        tile_h = tiles[0].shape[0]
+        sprite = np.zeros((tile_h, tile_w * len(tiles), 3), dtype=np.uint8)
+        for k, tile in enumerate(tiles):
+            sprite[:, k * tile_w:(k + 1) * tile_w] = tile
+        return bool(cv2.imwrite(str(out_path), sprite))
+    except Exception as e:
+        logger.warning("Rep sprite render failed: %s", e)
+        return False
+
+
 def render_overlay_video(
     input_path: Path,
     landmarks: list,
@@ -245,20 +326,7 @@ def render_overlay_video(
             elif j > 0 and abs(ts[j - 1] - t) <= abs(ts[j] - t):
                 j -= 1
             lm = landmarks[j]
-            for a, b in _SKELETON_EDGES:
-                if lm[a].visibility > 0.3 and lm[b].visibility > 0.3:
-                    cv2.line(
-                        frame,
-                        (int(lm[a].x * w), int(lm[a].y * h)),
-                        (int(lm[b].x * w), int(lm[b].y * h)),
-                        (0, 255, 255), 2,
-                    )
-            for k in range(33):
-                if lm[k].visibility > 0.3:
-                    cv2.circle(
-                        frame, (int(lm[k].x * w), int(lm[k].y * h)),
-                        3, (0, 255, 255), -1,
-                    )
+            _draw_skeleton(frame, lm, w, h)
             bx, by = _tracked_bar_point(lm, exercise)
             point = (int(bx * w), int(by * h))
             trail.append(point)

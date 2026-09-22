@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { LiftVideo } from '@/lib/api';
+import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 
@@ -161,6 +163,13 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
       : undefined;
   const quality = typeof qualityRaw === 'string' ? qualityRaw : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
+  const { authFetch, token } = useAuthFetch();
+  const { data: thumbsUrl } = useQuery({
+    queryKey: ['video-thumbnails', video.id],
+    queryFn: () => getVideoStreamUrl(authFetch, video.id, 'thumbnails'),
+    enabled: !!token && !!video.rep_thumbnails_r2_key,
+    staleTime: 300_000,
+  });
 
   return (
     <div className="space-y-4 border-t border-surface-light/50 pt-4">
@@ -292,6 +301,17 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
               ))}
             </tbody>
           </table>
+        </Card>
+      )}
+
+      {thumbsUrl?.url && (
+        <Card className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Rep positions</p>
+          <img
+            src={thumbsUrl.url}
+            alt="Each rep's bottom position with the tracked skeleton"
+            className="w-full rounded-lg"
+          />
         </Card>
       )}
 

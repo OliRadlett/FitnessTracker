@@ -377,6 +377,7 @@ class LiftVideoRead(LiftVideoBase):
     # Video processing fields
     trimmed_r2_key: str | None = None
     overlay_r2_key: str | None = None
+    rep_thumbnails_r2_key: str | None = None
     analysis_status: str | None = None
     analysis_text: str | None = None
     exercise_auto: str | None = None

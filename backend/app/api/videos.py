@@ -234,7 +234,9 @@ async def create_upload_url(
 @router.get("/{video_id}/stream-url", response_model=VideoStreamUrl)
 async def get_stream_url(
     video_id: uuid.UUID,
-    variant: str = Query("original", pattern="^(original|trimmed|overlay)$"),
+    variant: str = Query(
+        "original", pattern="^(original|trimmed|overlay|thumbnails)$"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -257,6 +259,7 @@ async def get_stream_url(
         "original": video.r2_key,
         "trimmed": video.trimmed_r2_key,
         "overlay": video.overlay_r2_key,
+        "thumbnails": video.rep_thumbnails_r2_key,
     }[variant]
     if not key:
         raise HTTPException(404, f"No {variant} video for this recording")
