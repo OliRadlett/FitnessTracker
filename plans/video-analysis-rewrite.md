@@ -1,9 +1,11 @@
 # Lift Video Analysis — Rewrite Plan
 
-> **Status**: Phases 0–2 COMPLETE, Phase 4 features shipped (camera view,
-> overlay, VBT). Phase 3 (VLM coaching) is quota-blocked by design. Branch
-> `feat/video-analysis-rewrite`. Baseline + per-increment reports in `reports/`
-> (gitignored).
+> **Status**: Phases 0–2 COMPLETE; Phase 4 features shipped (camera view,
+> overlay, VBT, consistency, quality gate, auto-link load, sprite sheet, OHP
+> analyzer). Phase 3 (VLM coaching) is quota-blocked by design. Branch
+> `feat/video-analysis-rewrite`. Migrations `065` (camera_view), `066`
+> (overlay), `067` (rep thumbnails). Baseline + per-increment reports in
+> `reports/` (gitignored).
 > **Owner decision**: Hybrid architecture (deterministic 3D metrics + grounded VLM coaching)
 > **Scope**: `backend/app/integrations/{modal_client,pose_analysis,video_analysis}.py`,
 > `backend/app/tasks/scheduler.py::process_lift_video`, `backend/app/api/videos.py`,
@@ -173,6 +175,19 @@ These are the numbers the rewrite must move.
   real rep on 77ca64a0. Effect: `auto_rep_mae` **1.33 → 0.25** with
   `declared_rep_exact_rate` back to 1.0. Two clips still read 2 vs 1 (a bench
   and a deadlift whose partial is ≥75% of max ROM).
+- ✅ **Consistency + quality:** `compute_consistency()` fills the previously-dead
+  `rep_consistency_score` / `tempo_consistency_cv` (0–100, from per-rep timing
+  and amplitude); `run_pose_analysis` reports an `analysis_quality`
+  (good/fair/unusable) from pose detection rate + rep count, surfaced in the UI
+  as a "refilm" warning. (Fixed the Setup/Consistency MiniCard units: 0–100,
+  were labelled /10.)
+- ✅ **Auto-link load:** `infer_video_load()` fills `weight_kg` from the linked
+  session's sets (normalised exercise + declared reps; only when exactly one
+  set matches) so VBT/RPE work without manual entry.
+- ✅ **More lifts / routing:** Atlas Stone no longer uses the squat analyzer
+  (its depth/heels/lean flags were meaningless) — routed to its own `Stone`
+  family (knee rep detection + velocity, no form rules). Added an Overhead
+  Press analyzer (elbow lockout at the top).
 - ✅ **Lockout is view-gated:** the hip-extension test is sagittal and false-
   flagged low-bar squats. Verified: low-bar singles 140/130 kg read top_hip
   147-148° while genuinely standing (falsely "soft lockout"), high-bar 150 kg
@@ -247,21 +262,27 @@ These are the numbers the rewrite must move.
    The `stream-url?variant=` param also fixes the previously-broken trimmed
    toggle (it always returned the original).
 2. **Capture preflight & guidance** at upload ("film side-on, full body, landscape").
-3. **Per-rep breakdown UI** — per-rep thumbnails, depth/lockout/tempo, individual scores,
-   override toggles.
+3. ✅ **(partial) Per-rep breakdown** — the analysis panel shows a per-rep table
+   (ROM / concentric time / velocity) plus a **Rep positions** sprite sheet
+   (`render_rep_sprite`, one JPEG tiling each rep's bottom frame with the
+   skeleton). ⏳ Still to do: per-rep scores and override toggles.
 4. ✅ **VBT load–velocity profile + estimated 1RM** — `app/services/vbt.py`
    fits `velocity = slope·load + intercept` over the user's analysed sets and
    reads 1RM off the minimal-velocity-threshold crossing (Squat 0.30, Bench/
    Deadlift 0.15, Press 0.20 m/s). Load is now captured on upload
    (`weight_kg`). `GET /videos/vbt/profile?exercise_name=` returns the points +
-   fit + confidence; `VbtPanel` renders the scatter + fit line + est. 1RM.
-   ⏳ Still to do: velocity-loss autoregulation / readiness advice.
+   fit + confidence;    `VbtPanel` renders the scatter + fit line + est. 1RM, and a target-velocity
+   input → recommended load (`load_for_velocity`).
 5. **Meaningful form trends + injury flags** (scaffolding exists in `video_analytics.py`)
    feeding `HealthAlert`.
 6. **Set auto-segmentation + rest timing** for long session videos.
-7. **Compare mode** — current vs previous attempt of the same lift.
+7. ✅ **Compare mode** — `VideoCompareModal` compares two analysed videos side
+   by side (form/validity/velocity/RPE/deviations); the videos page has a
+   per-card ⇄ toggle + a Compare button.
 8. **Multi-person / not-a-lift detection** with clear messaging.
-9. **View-aware analyzers for more lifts** — overhead press, front squat, rows, pull-ups.
+9. ✅ **(partial) More lifts** — Overhead Press (elbow lockout) and pull-up/
+   chin-up/row (full ROM) analyzers added; front squat already routes to the
+   squat analyzer. Still generic-50: other accessories.
 
 ## Risks
 

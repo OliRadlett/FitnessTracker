@@ -88,6 +88,9 @@ def process_video_on_modal(
     camera_view: str | None = None,
     r2_presigned_put_overlay: str | None = None,
     r2_upload_key_overlay: str | None = None,
+    weight_kg: float = 0.0,
+    r2_presigned_put_thumbs: str | None = None,
+    r2_upload_key_thumbs: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -160,6 +163,9 @@ def process_video_on_modal(
         gemini_model: str = "gemini-3.6-flash",
         overlay_put: str = "",
         overlay_key: str = "",
+        weight_in: float = 0.0,
+        thumbs_put: str = "",
+        thumbs_key: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -351,7 +357,7 @@ def process_video_on_modal(
             # ── Step 7: Classify via pose landmarks (local) ──────────────
             exercise = ""  # Will be determined by pose classification
             reps = 0  # Will be determined by pose analysis
-            weight = 0.0
+            weight = float(weight_in or 0.0)
             confidence = 0.0
             analysis_text = ""
             landmarks: list = []
@@ -433,6 +439,7 @@ def process_video_on_modal(
                 # (see bar_velocity_from_pose docstring). Landmarks are already
                 # in memory from step 7, so this costs nothing extra.
                 vel_result: dict = {"tracking_quality": "failed"}
+                sprite_reps: list = []
                 try:
                     from app.integrations.pose_analysis import (
                         bar_velocity_from_pose,
@@ -444,6 +451,7 @@ def process_video_on_modal(
                         _pose_reps = detect_reps_from_pose(
                             landmarks, pose_timestamps, exercise,
                             expected_reps=expected)
+                        sprite_reps = _pose_reps
                         # World landmarks give metric bar travel; fall back to
                         # the 2D pixels-per-metre path only if they're absent.
                         if pose_world:
@@ -499,6 +507,22 @@ def process_video_on_modal(
                         "vbt_zone": vel_result.get("vbt_zone"),
                     }
                     full_result["rep_timing"] = vel_result.get("rep_timings", [])
+
+            # 8b-ii: rep-to-rep consistency (pure, from the rep timings)
+            try:
+                from app.integrations.video_analysis import compute_consistency
+
+                consistency = compute_consistency(
+                    full_result.get("rep_timing", []))
+                if consistency:
+                    full_result["consistency"] = consistency
+                    _logger.info(
+                        "Consistency: score=%.1f tempo_cv=%.1f%% (%d reps)",
+                        consistency["consistency_score"],
+                        consistency["tempo_consistency_cv"],
+                        consistency["rep_count"])
+            except Exception as e:
+                _logger.warning("Consistency computation failed: %s", e)
 
             # 8c: RPE estimation (heuristic, no API calls)
             try:
@@ -570,7 +594,42 @@ def process_video_on_modal(
                 except Exception as e:
                     _logger.warning("Overlay render/upload failed: %s", e)
 
-            form_data = {**full_result.get("form", {}), "view": view}
+            # ── Step 9c: Render + upload the per-rep sprite sheet ─────────
+            thumbs_uploaded_key: str | None = None
+            if thumbs_put and thumbs_key and landmarks and sprite_reps:
+                try:
+                    from app.integrations.pose_analysis import render_rep_sprite
+
+                    sprite_path = Path(tmpdir) / "reps.jpg"
+                    if render_rep_sprite(
+                        trimmed_path, landmarks, pose_timestamps, sprite_reps,
+                        sprite_path, time_offset=trim_start,
+                    ):
+                        sprite_bytes = sprite_path.read_bytes()
+                        for _attempt in range(3):
+                            try:
+                                httpx.put(
+                                    thumbs_put,
+                                    content=sprite_bytes,
+                                    headers={"Content-Type": "image/jpeg"},
+                                    timeout=120,
+                                ).raise_for_status()
+                                thumbs_uploaded_key = thumbs_key
+                                _logger.info("Uploaded rep sprite to R2: %s", thumbs_key)
+                                break
+                            except Exception as e:
+                                _logger.warning(
+                                    "Rep sprite upload attempt %d failed: %s",
+                                    _attempt + 1, e)
+                                _time.sleep(5 * (_attempt + 1))
+                except Exception as e:
+                    _logger.warning("Rep sprite render/upload failed: %s", e)
+
+            form_data = {
+                **full_result.get("form", {}),
+                "view": view,
+                "quality": full_result.get("quality"),
+            }
             vel_data = full_result.get("velocity", {})
             consist_data = full_result.get("consistency", {})
             setup_data = full_result.get("setup", {})
@@ -602,6 +661,7 @@ def process_video_on_modal(
             return _to_py({
                 "trimmed_r2_key": uploaded_key,
                 "overlay_r2_key": overlay_uploaded_key,
+                "rep_thumbnails_r2_key": thumbs_uploaded_key,
                 "view": view,
                 "duration_seconds": round(duration, 1),
                 "trim_start_sec": round(trim_start, 2),
@@ -666,4 +726,7 @@ def process_video_on_modal(
             GEMINI_MODEL,
             r2_presigned_put_overlay or "",
             r2_upload_key_overlay or "",
+            weight_kg or 0.0,
+            r2_presigned_put_thumbs or "",
+            r2_upload_key_thumbs or "",
         )

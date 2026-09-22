@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { LiftVideo } from '@/lib/api';
+import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 
@@ -48,6 +50,18 @@ function parseRepTimings(value: string | null | undefined): RepTiming[] {
   } catch {
     return [];
   }
+}
+
+function repFlagMap(deviations: string[]): Record<number, string[]> {
+  const map: Record<number, string[]> = {};
+  for (const d of deviations) {
+    const m = d.match(/Rep (\d+):\s*(.*)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      (map[n] ||= []).push(m[2]);
+    }
+  }
+  return map;
 }
 
 const VIEW_LABELS: Record<string, string> = {
@@ -150,12 +164,25 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   if (!hasAnalysis) return null;
 
   const deviations = parseJsonArray(video.form_deviations);
+  const flagsByRep = repFlagMap(deviations);
   const cues = parseJsonArray(video.form_coaching_cues);
   const evidence = parseJsonArray(video.rpe_evidence_json);
   const rir = video.estimated_rpe != null ? Math.max(0, Math.round((video.estimated_rpe - 6) * 1.5)) : null;
   const formMeta = parseJsonObject(video.form_analysis_json);
   const view = typeof formMeta?.view === 'string' ? formMeta.view : null;
+  const qualityRaw =
+    formMeta && typeof formMeta.quality === 'object' && formMeta.quality !== null
+      ? (formMeta.quality as { level?: unknown }).level
+      : undefined;
+  const quality = typeof qualityRaw === 'string' ? qualityRaw : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
+  const { authFetch, token } = useAuthFetch();
+  const { data: thumbsUrl } = useQuery({
+    queryKey: ['video-thumbnails', video.id],
+    queryFn: () => getVideoStreamUrl(authFetch, video.id, 'thumbnails'),
+    enabled: !!token && !!video.rep_thumbnails_r2_key,
+    staleTime: 300_000,
+  });
 
   return (
     <div className="space-y-4 border-t border-surface-light/50 pt-4">
@@ -169,6 +196,13 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
           </span>
         )}
       </div>
+
+      {quality === 'unusable' && (
+        <p className="text-xs text-warning">
+          ⚠ Couldn&apos;t analyze this clip reliably — refilm with the full body in
+          frame and steady lighting.
+        </p>
+      )}
 
       {video.form_score != null && (
         <Card className="space-y-3">
@@ -259,27 +293,51 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                 <th className="font-medium py-1">ROM</th>
                 <th className="font-medium py-1">Time</th>
                 <th className="font-medium py-1">Velocity</th>
+                <th className="font-medium py-1">Flags</th>
               </tr>
             </thead>
             <tbody>
-              {repTimings.map((r) => (
-                <tr key={r.rep_number} className="border-t border-surface-light/40">
-                  <td className="py-1 text-foreground">{r.rep_number}</td>
-                  <td className="py-1 text-muted">
-                    {r.amplitude_m != null ? `${r.amplitude_m.toFixed(2)} m` : '—'}
-                  </td>
-                  <td className="py-1 text-muted">
-                    {r.concentric_time != null ? `${r.concentric_time.toFixed(1)} s` : '—'}
-                  </td>
-                  <td className="py-1 text-muted">
-                    {r.concentric_velocity_ms != null
-                      ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
+              {repTimings.map((r) => {
+                const flags = flagsByRep[r.rep_number] ?? [];
+                return (
+                  <tr key={r.rep_number} className="border-t border-surface-light/40">
+                    <td className="py-1 text-foreground">{r.rep_number}</td>
+                    <td className="py-1 text-muted">
+                      {r.amplitude_m != null ? `${r.amplitude_m.toFixed(2)} m` : '—'}
+                    </td>
+                    <td className="py-1 text-muted">
+                      {r.concentric_time != null ? `${r.concentric_time.toFixed(1)} s` : '—'}
+                    </td>
+                    <td className="py-1 text-muted">
+                      {r.concentric_velocity_ms != null
+                        ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
+                        : '—'}
+                    </td>
+                    <td className="py-1">
+                      {flags.length ? (
+                        <span className="text-warning" title={flags.join('; ')}>
+                          ⚠ {flags.length}
+                        </span>
+                      ) : (
+                        <span className="text-positive">✓</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </Card>
+      )}
+
+      {thumbsUrl?.url && (
+        <Card className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Rep positions</p>
+          <img
+            src={thumbsUrl.url}
+            alt="Each rep's bottom position with the tracked skeleton"
+            className="w-full rounded-lg"
+          />
         </Card>
       )}
 
@@ -309,8 +367,8 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <MiniCard label="Setup" value={video.setup_score} unit="/10" />
-        <MiniCard label="Consistency" value={video.rep_consistency_score} unit="/10" />
+        <MiniCard label="Setup" value={video.setup_score} unit="/100" />
+        <MiniCard label="Consistency" value={video.rep_consistency_score} unit="/100" />
         <MiniCard label="Rest" value={video.avg_rest_seconds} unit="s" />
       </div>
     </div>

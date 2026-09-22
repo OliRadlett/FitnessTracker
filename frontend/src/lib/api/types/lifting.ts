@@ -23,6 +23,7 @@ export interface LiftVideo {
   // Video processing fields
   trimmed_r2_key?: string | null;
   overlay_r2_key?: string | null;
+  rep_thumbnails_r2_key?: string | null;
   analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;
@@ -97,6 +98,7 @@ export interface VbtProfile {
   load_min_kg?: number | null;
   load_max_kg?: number | null;
   confidence: string;
+  recommended_load_kg?: number | null;
   points: VbtProfilePoint[];
 }
 

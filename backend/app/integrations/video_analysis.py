@@ -1273,6 +1273,45 @@ def classify_view_from_frame(
     return "unknown"
 
 
+def compute_consistency(rep_timings: list[dict]) -> dict | None:
+    """Rep-to-rep consistency from per-rep concentric time + amplitude.
+
+    ``rep_timings`` are the world-velocity rep entries (``concentric_time`` in
+    seconds, ``amplitude_m`` in metres, either may be None). Returns a 0-100
+    score (100 = every rep identical) plus the tempo/amplitude coefficients of
+    variation, or None with fewer than two measurable reps.
+
+    Definition mirrors the old Gemini path: ``100 - tempo_cv - 0.5·amp_cv``,
+    so a set with wildly varying rep durations/ROM scores low.
+    """
+    times = [
+        r["concentric_time"] for r in rep_timings
+        if r.get("concentric_time") and r["concentric_time"] > 0
+    ]
+    if len(times) < 2:
+        return None
+
+    def cv(xs: list[float]) -> float:
+        mean = sum(xs) / len(xs)
+        if mean <= 0:
+            return 0.0
+        var = sum((x - mean) ** 2 for x in xs) / len(xs)
+        return (var ** 0.5) / mean * 100.0
+
+    tempo_cv = cv(times)
+    amps = [
+        r["amplitude_m"] for r in rep_timings
+        if r.get("amplitude_m") and r["amplitude_m"] > 0
+    ]
+    amp_cv = cv(amps) if len(amps) >= 2 else 0.0
+    return {
+        "consistency_score": round(max(0.0, 100.0 - tempo_cv - amp_cv * 0.5), 1),
+        "rep_count": len(times),
+        "tempo_consistency_cv": round(tempo_cv, 1),
+        "amplitude_consistency_cv": round(amp_cv, 1),
+    }
+
+
 def _rpe_from_velocity_loss(vel_loss: float) -> float:
     for threshold, rpe in RPE_VELOCITY_LOSS_BANDS:
         if vel_loss > threshold:

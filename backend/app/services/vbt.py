@@ -123,3 +123,24 @@ def load_velocity_profile(
     elif len(pts) >= 3:
         profile.confidence = "low"
     return profile
+
+
+def load_for_velocity(
+    profile: LoadVelocityProfile, target_velocity: float
+) -> float | None:
+    """Load predicted to move at ``target_velocity`` m/s on the L-V line.
+
+    This is the autoregulation read: pick the velocity you want for the day
+    (e.g. a fast/explosive 0.7 m/s or a grind 0.4 m/s) and the line says what
+    to load. None when the profile has no usable negative slope or the result
+    falls absurdly outside the observed load range.
+    """
+    if profile.slope is None or profile.intercept is None or profile.slope >= 0:
+        return None
+    if not target_velocity or target_velocity <= 0:
+        return None
+    load = (target_velocity - profile.intercept) / profile.slope
+    ceiling = (profile.load_max_kg or 0) * 2.5
+    if load <= 0 or load > ceiling:
+        return None
+    return round(load, 1)
