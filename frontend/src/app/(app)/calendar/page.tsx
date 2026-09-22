@@ -372,11 +372,11 @@ export default function CalendarPage() {
           )}
           <div className="flex flex-wrap gap-4">
             {[
-              { label: 'Cycling', emoji: '\U0001F6B4', color: 'text-blue-400' },
-              { label: 'Running', emoji: '\U0001F3C3', color: 'text-green-400' },
-              { label: 'Strength', emoji: '\U0001F3CB\uFE0F', color: 'text-purple-400' },
-              { label: 'Swimming', emoji: '\U0001F3CA', color: 'text-cyan-400' },
-              { label: 'Walking / Hiking', emoji: '\U0001F97E', color: 'text-amber-400' },
+              { label: 'Cycling', emoji: '🚴', color: 'text-blue-400' },
+              { label: 'Running', emoji: '🏃', color: 'text-green-400' },
+              { label: 'Strength', emoji: '🏋️', color: 'text-purple-400' },
+              { label: 'Swimming', emoji: '🏊', color: 'text-cyan-400' },
+              { label: 'Walking / Hiking', emoji: '🥾', color: 'text-amber-400' },
             ].map(({ label, emoji, color }) => (
               <div key={label} className="flex items-center gap-1.5 text-xs">
                 <span>{emoji}</span>

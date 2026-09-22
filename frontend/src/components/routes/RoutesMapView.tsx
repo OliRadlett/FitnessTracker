@@ -7,6 +7,7 @@ import { useAuthFetch } from '@/lib/api';
 import { getHomeAreaHeatmap } from '@/lib/api/routes';
 import { formatDistance } from '@/lib/utils';
 import { computeDifficulty, fmtElevation } from '@/lib/routeUtils';
+import { MAP_ATTRIBUTION, MAP_MAX_ZOOM, MAP_TILE_URL } from '@/lib/mapTiles';
 import { useRoutesStore } from '@/lib/stores/routesStore';
 
 export function RoutesMapView({
@@ -56,10 +57,10 @@ export function RoutesMapView({
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
 
-      // Dark basemap to match the app theme (CARTO dark_all, © OSM © CARTO)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
+      // Keyless OSM basemap (see lib/mapTiles — override via env for dark tiles)
+      L.tileLayer(MAP_TILE_URL, {
+        attribution: MAP_ATTRIBUTION,
+        maxZoom: MAP_MAX_ZOOM,
       }).addTo(map);
 
       // Heatmap layer: activity density — compressed so frequent routes don't drown out rare ones

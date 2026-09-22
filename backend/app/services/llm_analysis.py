@@ -2019,7 +2019,10 @@ Provide a narrative health interpretation (not just threshold alerts) in the fol
 - Top 3 health priorities to address
 - Lifestyle modifications for improved recovery
 
-Be specific, reference actual numbers from the data. Keep the total response under 800 words."""
+Be specific, reference actual numbers from the data. Keep the total response under 800 words.
+Formatting: use `- ` (dash) for bullet lists, never `*`. If a section has no
+entries in the JSON, say so in one line and move on — never claim data is
+missing when the JSON contains entries for it."""
 
     return await _call_gemini(prompt, "health")
 

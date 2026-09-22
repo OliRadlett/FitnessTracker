@@ -9,6 +9,7 @@ import {
   hasStream,
   presentStreamTypes,
   streamInput,
+  streamLabel,
 } from '@/lib/streams';
 import type { ActivityStream } from '@/lib/api';
 
@@ -64,5 +65,13 @@ describe('stream spelling matrix (Strava vs FIT)', () => {
     expect(hasStream([stream('cadence', [9])], ...CADENCE_STREAM_TYPES)).toBe(true);
     expect(hasStream([stream('cadence', [])], ...CADENCE_STREAM_TYPES)).toBe(false);
     expect(hasStream(undefined, ...ALTITUDE_STREAM_TYPES)).toBe(false);
+  });
+
+  it('labels raw provider spellings for display (0.7)', () => {
+    expect(streamLabel('velocity_smooth')).toBe('Speed');
+    expect(streamLabel('heartrate')).toBe('Heart rate');
+    expect(streamLabel('watts')).toBe('Power');
+    expect(streamLabel('time')).toBe('Time');
+    expect(streamLabel('mystery_metric')).toBe('Mystery Metric');
   });
 });

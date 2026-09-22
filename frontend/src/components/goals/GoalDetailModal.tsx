@@ -15,7 +15,7 @@ import {
 import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
-import { goalProgressPct, goalAlignmentBadge } from '@/components/ui/GoalCard';
+import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES } from '@/components/ui/GoalCard';
 import { Modal } from '@/components/ui/Modal';
 
 const SPORT_OPTIONS = [
@@ -176,7 +176,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   }, [checkIns, projection]);
 
   const progress = goalProgressPct(goal);
-  const alignmentBadge = goalAlignmentBadge(goal);
+  // Same precedence as the card: projection badge wins when the regression
+  // has enough data, so modal and card never contradict (0.3).
+  const displayBadge = goalDisplayBadge(goal, projection ?? null);
 
   const handleEditSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,9 +219,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 
         {/* Summary strip */}
         <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
-          {alignmentBadge && (
-            <span className={`px-2 py-0.5 rounded font-medium ${alignmentBadge.className}`}>
-              {alignmentBadge.label} · {Math.round(goal.alignment_pct ?? 0)}%
+          {displayBadge && (
+            <span className={`px-2 py-0.5 rounded font-medium ${displayBadge.className}`}>
+              {displayBadge.label}
             </span>
           )}
           <span className={`px-2 py-0.5 rounded font-medium ${goal.status === 'achieved' ? 'bg-green-500/20 text-positive' : 'bg-accent/20 text-accent'}`}>
@@ -509,12 +511,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 
 // ── Projection section (Phase 7) ──────────────────────────────────────────
 
-const BADGE_STYLES: Record<string, string> = {
-  'On Track': 'bg-green-500/20 text-positive border-green-500/30',
-  'At Risk': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Unlikely': 'bg-warning/20 text-warning border-warning/30',
-  'Not enough data': 'bg-muted/20 text-muted border-muted/30',
-};
+const BADGE_STYLES = PROJECTION_BADGE_STYLES;
 
 function ProjectionSection({ projection }: { projection: GoalProjectionResponse }) {
   const { badge, projection: proj, target_date } = projection;

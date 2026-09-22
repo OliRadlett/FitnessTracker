@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { Goal } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { GoalCard } from '@/components/ui/GoalCard';
+import { useGoalProjections } from '@/components/goals/useGoalProjections';
 
 /**
  * Compact dashboard goals section — top-3 active goals with progress bars,
@@ -15,6 +16,9 @@ export function GoalsSection({ goals }: { goals: Goal[] | undefined }) {
     .filter((g) => g.status === 'active')
     .sort((a, b) => (b.progress_pct ?? 0) - (a.progress_pct ?? 0))
     .slice(0, 3);
+
+  // Same projection badges as /goals (0.3) — shared query-key cache
+  const projections = useGoalProjections(activeGoals);
 
   return (
     <Card>
@@ -33,7 +37,7 @@ export function GoalsSection({ goals }: { goals: Goal[] | undefined }) {
       {activeGoals.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {activeGoals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} />
+            <GoalCard key={goal.id} goal={goal} projection={projections.get(goal.id) ?? null} />
           ))}
         </div>
       ) : (

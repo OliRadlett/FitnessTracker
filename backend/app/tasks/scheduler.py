@@ -3905,8 +3905,20 @@ async def build_weekly_plan_review(db, user_id: uuid.UUID) -> dict | None:
 
     week_key = _plan_review_week_key(today)
     conf_str = f"{conformity_pct:.0f}%" if conformity_pct is not None else "n/a"
+    # Human metric names (0.7) — never leak `estimated_1rm` snake_case into
+    # notification bodies.
+    from app.services.goal_metrics import METRIC_REGISTRY
+
+    def _goal_display_name(metric: str) -> str:
+        definition = METRIC_REGISTRY.get(metric)
+        if definition is not None:
+            return definition.label
+        return metric.replace("_", " ")
+
     goal_str = (
-        ", ".join(f"{g['metric']} ({g['badge']})" for g in off_pace[:3])
+        ", ".join(
+            f"{_goal_display_name(g['metric'])} ({g['badge']})" for g in off_pace[:3]
+        )
         if off_pace
         else "none"
     )

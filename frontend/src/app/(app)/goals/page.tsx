@@ -8,6 +8,7 @@ import { GoalCard } from '@/components/ui/GoalCard';
 import { GoalCreateModal } from '@/components/goals/GoalCreateModal';
 import { GoalDetailModal } from '@/components/goals/GoalDetailModal';
 import { ProjectionCard } from '@/components/goals/ProjectionCard';
+import { useGoalProjections } from '@/components/goals/useGoalProjections';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
@@ -51,6 +52,9 @@ export default function GoalsPage() {
     // Most-progressed first within the tab
     return [...goals].sort((a, b) => (b.progress_pct ?? 0) - (a.progress_pct ?? 0));
   }, [goals]);
+
+  // Projection badges share cache with the detail modal (0.3)
+  const projections = useGoalProjections(tab === 'active' ? sortedGoals : undefined);
 
   return (
     <div className="space-y-6">
@@ -96,7 +100,7 @@ export default function GoalsPage() {
       ) : sortedGoals.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedGoals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} onClick={() => setSelectedGoal(goal)} />
+            <GoalCard key={goal.id} goal={goal} onClick={() => setSelectedGoal(goal)} projection={projections.get(goal.id) ?? null} />
           ))}
         </div>
       ) : (

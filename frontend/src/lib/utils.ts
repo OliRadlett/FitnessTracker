@@ -105,6 +105,16 @@ export function formatWeight(kg: number | null | undefined, unitSystem: UnitSyst
   return `${kg.toFixed(1)} kg`;
 }
 
+/**
+ * Single TSB (Form) formatter (0.5) — always signed, 1 decimal ("+11.7").
+ * Every TSB display must use this; the audit found "12" vs "11.7" vs "+11.7"
+ * across Dashboard / Brief / Cycling / banners.
+ */
+export function formatTSB(tsb: number | null | undefined): string {
+  if (tsb == null || !Number.isFinite(tsb)) return '—';
+  return `${tsb >= 0 ? '+' : ''}${tsb.toFixed(1)}`;
+}
+
 /** Convert a display-side weight value (lb or kg) into kilograms. */
 export function displayWeightToKg(value: number, unitSystem: UnitSystem = activeUnitSystem): number {
   if (unitSystem === 'imperial') return value / 2.2046226218;

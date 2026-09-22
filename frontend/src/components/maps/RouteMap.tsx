@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { decodePolyline } from '@/lib/polyline';
+import { MAP_ATTRIBUTION, MAP_MAX_ZOOM, MAP_TILE_URL } from '@/lib/mapTiles';
 
 interface RouteMapProps {
   encodedPolyline: string;
@@ -51,10 +52,10 @@ export function RouteMap({
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
 
-      // Dark basemap to match the app theme (CARTO dark_all, © OSM © CARTO)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
+      // Keyless OSM basemap (see lib/mapTiles — override via env for dark tiles)
+      L.tileLayer(MAP_TILE_URL, {
+        attribution: MAP_ATTRIBUTION,
+        maxZoom: MAP_MAX_ZOOM,
       }).addTo(map);
 
       // Convert points to Leaflet format [lat, lng]
