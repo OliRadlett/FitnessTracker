@@ -88,6 +88,7 @@ def process_video_on_modal(
     camera_view: str | None = None,
     r2_presigned_put_overlay: str | None = None,
     r2_upload_key_overlay: str | None = None,
+    weight_kg: float = 0.0,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -160,6 +161,7 @@ def process_video_on_modal(
         gemini_model: str = "gemini-3.6-flash",
         overlay_put: str = "",
         overlay_key: str = "",
+        weight_in: float = 0.0,
     ) -> dict:
         import logging
         import subprocess
@@ -351,7 +353,7 @@ def process_video_on_modal(
             # ── Step 7: Classify via pose landmarks (local) ──────────────
             exercise = ""  # Will be determined by pose classification
             reps = 0  # Will be determined by pose analysis
-            weight = 0.0
+            weight = float(weight_in or 0.0)
             confidence = 0.0
             analysis_text = ""
             landmarks: list = []
@@ -682,4 +684,5 @@ def process_video_on_modal(
             GEMINI_MODEL,
             r2_presigned_put_overlay or "",
             r2_upload_key_overlay or "",
+            weight_kg or 0.0,
         )

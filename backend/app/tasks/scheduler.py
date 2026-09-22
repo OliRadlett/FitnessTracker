@@ -3624,6 +3624,18 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     video.size_bytes or 0,
                 )
 
+                # Auto-fill the load from the linked session's sets (best-effort)
+                try:
+                    from app.services.video_analytics import infer_video_load
+
+                    if video.weight_kg is None:
+                        inferred = await infer_video_load(db, video)
+                        if inferred is not None:
+                            video.weight_kg = inferred
+                            logger.info("Inferred video load: %.1f kg", inferred)
+                except Exception as e:
+                    logger.warning("Video load inference failed: %s", e)
+
                 # Call Modal for processing
                 result = process_video_on_modal(
                     video_id=video_id,
@@ -3637,6 +3649,7 @@ def process_lift_video(video_id: str, analysis_depth: str = "full") -> dict:
                     camera_view=video.camera_view,
                     r2_presigned_put_overlay=presigned_overlay["upload_url"],
                     r2_upload_key_overlay=presigned_overlay["key"],
+                    weight_kg=video.weight_kg or 0.0,
                 )
 
                 # Update video with results
