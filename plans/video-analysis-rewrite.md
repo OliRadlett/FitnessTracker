@@ -271,12 +271,14 @@ These are the numbers the rewrite must move.
    reads 1RM off the minimal-velocity-threshold crossing (Squat 0.30, Bench/
    Deadlift 0.15, Press 0.20 m/s). Load is now captured on upload
    (`weight_kg`). `GET /videos/vbt/profile?exercise_name=` returns the points +
-   fit + confidence; `VbtPanel` renders the scatter + fit line + est. 1RM.
-   ⏳ Still to do: velocity-loss autoregulation / readiness advice.
+   fit + confidence;    `VbtPanel` renders the scatter + fit line + est. 1RM, and a target-velocity
+   input → recommended load (`load_for_velocity`).
 5. **Meaningful form trends + injury flags** (scaffolding exists in `video_analytics.py`)
    feeding `HealthAlert`.
 6. **Set auto-segmentation + rest timing** for long session videos.
-7. **Compare mode** — current vs previous attempt of the same lift.
+7. ✅ **Compare mode** — `VideoCompareModal` compares two analysed videos side
+   by side (form/validity/velocity/RPE/deviations); the videos page has a
+   per-card ⇄ toggle + a Compare button.
 8. **Multi-person / not-a-lift detection** with clear messaging.
 9. **View-aware analyzers for more lifts** — overhead press, front squat, rows, pull-ups.
 
