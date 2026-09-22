@@ -60,6 +60,19 @@ export function getSportEmoji(sportType: string): string {
   return '⚡';
 }
 
+/** Human label for raw plan/sport codes (`cycle` → "Cycling"). */
+export function sportLabel(sport: string | null | undefined): string {
+  if (sport == null || sport === '') return '—';
+  const n = sport.toLowerCase();
+  if (n === 'cycle' || matches(n, CYCLING_KEYWORDS)) return 'Cycling';
+  if (n === 'strength' || matches(n, STRENGTH_KEYWORDS) || STRENGTH_TYPES.includes(n)) return 'Strength';
+  if (matches(n, RUNNING_KEYWORDS)) return 'Running';
+  if (matches(n, SWIMMING_KEYWORDS)) return 'Swimming';
+  if (matches(n, WALKING_KEYWORDS)) return 'Walking';
+  if (n === 'rest') return 'Rest';
+  return n.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function getRecoveryColor(score: number): string {
   if (score >= 70) return 'text-positive';
   if (score >= 40) return 'text-yellow-400';

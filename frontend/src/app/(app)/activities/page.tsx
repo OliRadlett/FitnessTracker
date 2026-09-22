@@ -32,6 +32,7 @@ const Replay3D = dynamic(
   { ssr: false, loading: () => <div className="h-[400px] bg-surface-light/20 rounded-lg animate-pulse" /> },
 );
 import { Card } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -143,6 +144,8 @@ function ActivityExpanded({
   const { authFetch, token } = useAuthFetch();
   const streamTypes = activityDetail?.streams?.map((s) => s.stream_type) ?? [];
   const [selectedStream, setSelectedStream] = useState<string>('');
+  // Detail tabs (3.2) — Replay unmounts three.js when hidden.
+  const [detailTab, setDetailTab] = useState<'overview' | 'replay' | 'analysis'>('overview');
 
   const isCycling = activity.sport_type === 'cycling';
 
@@ -268,6 +271,21 @@ function ActivityExpanded({
         </div>
       )}
 
+      <div className="mb-3">
+        <SegmentedControl
+          ariaLabel="Activity detail sections"
+          value={detailTab}
+          onChange={setDetailTab}
+          options={[
+            { value: 'overview', label: 'Overview' },
+            { value: 'replay', label: 'Replay' },
+            { value: 'analysis', label: 'Analysis' },
+          ]}
+        />
+      </div>
+
+      {detailTab === 'overview' && (
+      <>
       {/* Analytical context badges (IF/VI/decoupling/speed/climbing/EF/load) */}
       {badgesContextFrom(activity, context) && (
         <div className="mb-3">
@@ -301,7 +319,11 @@ function ActivityExpanded({
           <RouteMap encodedPolyline={activity.encoded_polyline} className="h-[250px]" />
         </div>
       )}
+      </>
+      )}
 
+      {detailTab === 'replay' && (
+      <>
       {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 && (
         <div className="mb-4">
@@ -348,15 +370,18 @@ function ActivityExpanded({
           {streamChartEl}
         </>
       ) : (
+        // Strength/other sports never have streams — render nothing (2.6).
         activity.source === 'wahoo' ? (
           <p className="text-muted text-sm">Wahoo sync doesn’t include per-second streams — summary metrics above still work.</p>
         ) : isCycling ? (
           <p className="text-muted text-sm">No streams stored for this ride — run a backfill from the Cycling page to fetch them.</p>
-        ) : (
-          <p className="text-muted text-sm">No stream data available</p>
-        )
+        ) : null
+      )}
+      </>
       )}
 
+      {detailTab === 'analysis' && (
+      <>
       {/* Ride Analysis Card — cycling activities only */}
       {isCycling && rideAnalysis && (
         <div className="mt-4">
@@ -376,6 +401,11 @@ function ActivityExpanded({
         <div className="mt-4">
           <FuelPlanCard activity={activity} />
         </div>
+      )}
+      {!isCycling && (
+        <p className="text-sm text-muted">Ride analysis, AI insights, and fuel plans are available for cycling activities.</p>
+      )}
+      </>
       )}
     </div>
   );
@@ -775,48 +805,17 @@ export default function ActivitiesPage() {
         </div>
         {/* View Toggle */}
         <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="flex items-center bg-surface rounded-lg border border-surface-light overflow-x-auto max-w-full" role="tablist" aria-label="Activity view mode">
-          <button
-            onClick={() => setViewMode('list')}
-            role="tab"
-            aria-selected={viewMode === 'list'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'list' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            List
-          </button>
-          <button
-            onClick={() => setViewMode('week')}
-            role="tab"
-            aria-selected={viewMode === 'week'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'week' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Week
-          </button>
-          <button
-            onClick={() => setViewMode('timeline')}
-            role="tab"
-            aria-selected={viewMode === 'timeline'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'timeline' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Timeline
-          </button>
-          <button
-            onClick={() => setViewMode('patterns')}
-            role="tab"
-            aria-selected={viewMode === 'patterns'}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              viewMode === 'patterns' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            Patterns
-          </button>
-        </div>
+          <SegmentedControl
+            ariaLabel="Activity view mode"
+            value={viewMode}
+            onChange={setViewMode}
+            options={[
+              { value: 'list', label: 'List' },
+              { value: 'week', label: 'Week' },
+              { value: 'timeline', label: 'Timeline' },
+              { value: 'patterns', label: 'Patterns' },
+            ]}
+          />
           <button
             onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
             className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${

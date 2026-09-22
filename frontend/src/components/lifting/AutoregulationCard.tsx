@@ -4,7 +4,7 @@
 // set per exercise → RPE-ruled load suggestion. Read-only; Live Lift stays
 // pure logging.
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftingSession } from '@/lib/api';
@@ -56,12 +56,36 @@ export function AutoregulationCard({ sessions }: { sessions: LiftingSession[] | 
     () => (sessions ? lastWorkingSets(sessions).map(autoregulate) : []),
     [sessions],
   );
+  const [copied, setCopied] = useState(false);
   if (hints.length === 0) return null;
+
+  // Copy-all (2.7) — paste the programmed loads into Live Lift notes.
+  async function copyAll() {
+    const lines = hints.map((h) =>
+      h.suggestedWeightKg != null ? `${h.name}: ${h.suggestedWeightKg} kg` : `${h.name}: —`,
+    );
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — no-op */
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🎛️ Suggested Working Weights</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>🎛️ Suggested Working Weights</CardTitle>
+          <button
+            onClick={copyAll}
+            className="min-h-[44px] px-3 py-1 text-xs font-medium rounded-lg border border-surface-light text-muted hover:text-foreground hover:bg-surface-light/50 transition-colors"
+            title="Copy all suggested loads for Live Lift notes"
+          >
+            {copied ? 'Copied ✓' : 'Copy all'}
+          </button>
+        </div>
       </CardHeader>
       <p className="text-xs text-muted mb-3">
         From your last logged RPE per exercise — easy (≤7) adds 2.5 kg, grinders (≥9) drop 2.5 kg.

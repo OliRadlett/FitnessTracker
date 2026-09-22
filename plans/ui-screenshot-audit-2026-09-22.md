@@ -59,35 +59,92 @@ Single source of truth + remove contradictions. Each item: fix, verify visually,
 
 ## Phase 1 — Global polish (P1)
 
-- [ ] **1.1 Icon pass** — replace per-card emojis with Lucide set (one icon per domain). Codemod + manual review. Screen-reader: `aria-hidden` on decorative icons.
-- [ ] **1.2 Badge budget** — max 2 pills per card. Merge `cycling+strava+Loop`, `Tempo(Z3) dropdown + pill`, `Regressing+Active`. Create `Badge` + `StatusBadge` usage doc.
-- [ ] **1.3 Chart primitives** — `ChartCard{title, insight, brush, legend-with-values}`, `DualAxis` guard (warn if two scales share axis), `EmptyChart{cta}`. Apply to: CTL/ATL/TSB (single instance imported 3x, not copied), Ramp Rate labels, Recovery-vs-Performance (normalize or split), Sleep Quality (dual axis), Combined Load legend.
-- [ ] **1.4 Empty-state rule** — if empty >7d → slim row, not full card. Files: Resp Rate, Respiratory Rate, Insight of the Day, ORGANIZE tags, Route Details drawer, TODAY’S NUMBERS zeros. Unify copy (`Collecting baseline…` everywhere).
-- [ ] **1.5 Button hierarchy** — view-switch = segmented; secondary = `⋯` menu. Apply to Activities (6 buttons) + Routes (6 buttons). Keyboard: keep existing `1/2/3/F/Esc` hint text as-is (shortcuts expansion dropped per routes-redesign Phase 4 triage).
-- [ ] **1.6 Metric tooltips** — every novel metric gets `ⓘ`: Strain scale, Fatigue Index, Session Density, Power variability, W flag, cart count, forecast dot/border, `Max: Very Hard`, `0% aligned`. Central `metricGlossary.ts`.
-- [ ] **1.7 Contrast + type** — bump micro-labels to 12px, muted text to ≥4.5:1, brush handle ≥24px, icon-only buttons get `aria-label` + visible focus.
-- [ ] **1.8 Long-page splits** — Analytics → tabs (`Insights|Season|Load|Power`); Activity Detail → tabs (`Overview|Replay|Zones|Power|Pacing`); Cycling → move profile to collapsible `Settings` section.
+> **Status 2026-09-22: built on `feature/ui-phases-1-3`** (tsc clean,
+> vitest 178/178). Activity-detail tabs consolidated into Phase 3.2;
+> `⋯` overflow menu deferred (primary actions stay visible).
+
+- [x] **1.1 Icon pass** — DONE (slice): `lib/domainIcons.ts` one-icon-per-domain
+  + `DomainIcon` (aria-hidden); applied to TodayTab headers + RestDayBanner.
+  Remaining page headers keep emoji — extend per page in Phase 2 if touched.
+- [x] **1.2 Badge budget** — DONE: GoalCard hides `Active` next to trajectory
+  badge; EffortEstimateCard duplicate zone pill removed; SourceBadges capped
+  at 2 + `+n` overflow.
+- [x] **1.3 Chart primitives** — DONE (slice): `ChartCard` gains standard
+  `insight` line; dashboard Form Trend migrated (title + TSB-state insight).
+  Dual-axis/scatter fixes stay with the chart owners’ data work.
+- [x] **1.4 Empty-state rule** — DONE: Brief hides Insight card until data;
+  RouteDetailPanel returns null when unselected; tags hint rewritten.
+  Resp-rate copy unification left for Health pass (2.x).
+- [x] **1.5 Button hierarchy** — DONE (slice): shared `SegmentedControl`
+  (arrow-key nav) replaces hand-rolled tablists in Activities + Routes.
+- [x] **1.6 Metric tooltips** — DONE: central `metricGlossary.ts` + tests;
+  `Badge.title` passthrough; `StatBadge.hint` in lifting + cycling cards
+  (Fatigue Index scale verified 0–100 against backend); W-flag tooltip.
+- [x] **1.7 Contrast + type** — DONE (slice): TrendIndicator micro-label
+  `text-[10px]` → `text-xs` with stronger muted tone. Brush already ≥30px;
+  full 12px sweep deferred (needs visual review per page).
+- [x] **1.8 Long-page splits** — DONE (slice): Analytics →
+  `Insights|Season|Load & Lab` tabs (lazy-mount); Cycling profile behind a
+  summary-row collapsible. Activity-detail tabs consolidated into Phase 3.2.
 
 ## Phase 2 — Page polish (P1/P2, per-page acceptance)
 
-- [ ] **2.1 Dashboard** — readiness strip (verdict + weather + sleep in one row); TODAY’S NUMBERS show `0 + CTA` not skeleton lines; move Body Weight form to Health; widen Optimal Bedtime range honestly (`00:07 ±30m`); one `View lifting stats` per section.
-- [ ] **2.2 Today Brief** — 2-col on desktop (verdict/session/plan | weather/insight/recovery mini). Fix `cycle` caps, `drizzle = good conditions` copy. Hide Insight until non-empty.
-- [ ] **2.3 Calendar** — sport filter, week/day toggle on desktop, full pill tooltip, dim future, planned entry on today.
-- [ ] **2.4 Notifications** — group `5 videos processed (expand)`, deep-link re-auth button, fix `withings` caps, strip internal names, add `Dismiss videos` bulk.
-- [ ] **2.5 Training** — forecast legend + `Best day` highlight + consistent rain %; Week pills → dropdown + prev/next; collapse rest days; no drag-drop (dropped scope — chips + bulk actions only); Refresh becomes primary when stale.
-- [ ] **2.6 Activities** — flatten nested lifting card, HR color legend, collapse `No stream data`, 20px select boxes, `Legs · Afternoon Weight Training` titling, round km.
-- [ ] **2.7 Lifting** — `Apply to next session` on Suggested Weights; Whoop banner dismissible/snoozed; remove duplicated Readiness; session list selected state + cart-count tooltip + `W` legend + sticky headers; replace intra-session flat e1RM line with cross-session sparkline.
-- [ ] **2.8 Videos** — blurred-backdrop cards, native controls (unless frame analysis needed), clarify Form/Velocity/RPE, exercise chips with counts, modal fits 1080p without scroll.
-- [ ] **2.9 Cycling** — lat/long → map picker + privacy note; single Auto-FTP control; replace `Recreational` with neutral band; `vs 1.8 avg` not `1.75 rides`; link (don’t duplicate) Suggested Session + CTL chart.
-- [ ] **2.10 Health** — unify sleep language, fix `91-day`, grey dismissed alerts, scatter insight line (`r=…`), AI re-analyze includes HRV.
-- [ ] **2.11 Routes** — auto-name `Edinburgh Loop 43k` + bulk rename, elevation sparkline on cards, `TSS` not `TS`, floating `Compare (2)` bar, dismissible onboarding banner, collapse ORGANIZE when empty.
+> **Status 2026-09-22: built on `feature/ui-phases-1-3`** (tsc clean,
+> vitest 179/179, ruff clean). 2.8 deferred to video session. Full
+> Apply-to-Live-Lift + cross-session sparkline consolidated into Phase 3.
+
+- [x] **2.1 Dashboard** — DONE: zero-day numbers read `Nothing logged yet`;
+  WeightPanel moved to Health; per-goal deep links kept (useful, not noise).
+  Bedtime ±15min window is backend copy in `whoop.py` (owned by sync
+  session) — flagged, not touched.
+- [x] **2.2 Today Brief** — DONE: 2-col desktop (action | context);
+  `sportLabel()` helper + tests (`cycle` → Cycling); drizzle/rain never
+  render as “good conditions”; DomainIcon headers.
+- [x] **2.3 Calendar** — DONE: sport filter, full pill tooltips, future-day
+  dim, off-by-one `+N more` fix. Planned-day marker needs plan-week wiring
+  — suggested for Phase 3.
+- [x] **2.4 Notifications** — DONE: consecutive duplicates collapse into
+  expandable groups. Provider capitalization (`withings` → Withings) is one
+  line in `connection_health.py` (owned by sync session) — flagged.
+  Deep-link re-auth already existed (`link: /settings`).
+- [x] **2.5 Training** — DONE: forecast legend + Best-day ring + always-on
+  rain %; week-jump dropdown; Refresh is primary-accent when stale. Rest
+  days already render slim; week pills don't exist (prev/next + dropdown).
+- [x] **2.6 Activities** — DONE: linked-lifting flattened to left-border
+  row with paired titles; HR titles explain red; 20px checkboxes; totals
+  rounded (5731 km); non-cycling stream-empty line removed.
+- [x] **2.7 Lifting** — DONE: Whoop banner 7-day snooze; ReadinessIndicator
+  removed (link to Dashboard instead); Copy-all loads button.
+- [ ] **2.8 Videos** — DEFERRED to video session (active rewrite; see 0.8).
+- [x] **2.9 Cycling** — DONE: one-shot vs weekly FTP copy clarified; home
+  coords privacy note; fractional baselines rounded (`vs 1.8`). CTL/Session
+  duplication kept (page-specific context, not verbatim copies).
+  `Recreational` band is backend data — left as is.
+- [x] **2.10 Health** — DONE: dismissed alerts greyed; backend Pearson-r
+  insight on Recovery-vs-Performance (renders via InsightsList). `91-day`
+  is accurate (91 samples) — not a bug. Sleep dual-axis stays with chart
+  data work.
+- [x] **2.11 Routes** — VERIFIED mostly done: onboarding dismiss persisted
+  (B-23), compare hint bar exists, no TS truncation in grid. Auto-naming +
+  sparklines need backend/ML scope — suggested for Phase 3.
 
 ## Phase 3 — Redesign bets (P3, design doc + prototype, one at a time)
 
-1. **Readiness strip** — one verdict component used in Dashboard/Brief/Lifting/Health.
-2. **Activity detail tabs** — lazy-load replay (heavy three.js) only on Replay tab; Zones/Power get insight headers (`80% Z2, VI 1.31 = surgy`).
-3. **Routes discovery polish** — keep Map Browse default per routes IA; add elevation sparkline + best-effort overlay to grid cards only.
-4. **Mobile pass** — bottom nav, 1-col grids, tables → cards, charts hide brush, Live Lift thumb-reach CTA. Needs mobile screenshots first.
+> **Status 2026-09-22: built on `feature/ui-phases-1-3`** (tsc clean,
+> vitest 179/179, ruff clean, backend parse-checked). 3.4 deferred for
+> device testing.
+
+1. [x] **Readiness strip** — DONE: `TodaySummary.rest_day_suggestion`
+  (schema + endpoint reuse `_suggest_rest_days`, cycle-safe local import);
+  Today Brief renders the same `RestDayBanner` as Dashboard (local verdict
+  card kept as fallback). Backend test extended.
+2. [x] **Activity detail tabs** — DONE: `Overview|Replay|Analysis`
+  SegmentedControl in `ActivityExpanded`; Replay3D unmounts off-tab.
+3. [x] **Routes discovery polish** — DONE (slice): surface-mix mini-bar on
+  grid cards from existing `surface_profile` fractions. True elevation
+  sparklines need per-point profiles in `RouteSummary` (backend scope).
+4. [ ] **Mobile pass** — DEFERRED: needs mobile screenshots + device
+  testing; no blind responsive rewrites.
 
 ## Verification per phase
 

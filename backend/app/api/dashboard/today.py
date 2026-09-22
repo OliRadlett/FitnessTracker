@@ -211,6 +211,12 @@ async def dashboard_today(
     )
     active_alerts = int(result.scalar() or 0)
 
+    # Shared verdict input (3.1) — function-local import avoids a cycle with
+    # app.api.dashboard (__init__ imports this module at its bottom).
+    from app.api.dashboard import _suggest_rest_days
+
+    rest_suggestion = await _suggest_rest_days(db, uid, latest_recovery)
+
     return TodaySummary(
         today_activities=today_activities,
         today_lifting_sessions=today_lifting_sessions,
@@ -226,4 +232,5 @@ async def dashboard_today(
         current_atl=current_atl,
         current_tsb=current_tsb,
         active_alerts=active_alerts,
+        rest_day_suggestion=rest_suggestion,
     )

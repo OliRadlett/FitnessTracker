@@ -18,12 +18,15 @@ import type {
 } from '@/lib/api';
 import { getForecast } from '@/lib/api/weather';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { DomainIcon } from '@/components/ui/DomainIcon';
+import { RestDayBanner } from '@/components/dashboard/RestDayBanner';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
+import { sportLabel } from '@/lib/sportUtils';
 import {
   computeVerdict,
   insightOneLiner,
@@ -42,8 +45,12 @@ function weatherNote(day: { temp_max: number; precipitation_probability: number 
   const notes: string[] = [];
   if (day.temp_max >= 30) notes.push('hot — hydrate aggressively');
   else if (day.temp_max <= 3) notes.push('near-freezing — layer up');
+  const cond = day.conditions.toLowerCase();
   if ((day.precipitation_probability ?? 0) >= 50) notes.push('rain likely — fenders/form check');
+  else if (cond.includes('drizzle')) notes.push('drizzle — damp roads, lights on');
+  else if (cond.includes('rain')) notes.push('rain in the forecast — plan shelter or indoor');
   if (day.wind_speed_max >= 30) notes.push('windy — expect a hard return leg');
+  // Drizzle/rain is never "good conditions for quality work" (2.2).
   if (notes.length === 0) notes.push('good conditions for quality work');
   return notes.join(' · ');
 }
@@ -119,7 +126,7 @@ export default function TodayBriefPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-5xl">
       <div>
         <h1 className="text-xl font-bold text-foreground">Today&apos;s Brief</h1>
         <p className="text-xs text-muted mt-0.5">
@@ -127,7 +134,15 @@ export default function TodayBriefPage() {
         </p>
       </div>
 
-      {/* 1 — Verdict */}
+      {/* 1 — Verdict: one shared component with the Dashboard (3.1).
+          Falls back to the local verdict card until the backend ships
+          rest_day_suggestion. */}
+      {todaySummary?.rest_day_suggestion ? (
+        <RestDayBanner
+          suggestion={todaySummary.rest_day_suggestion}
+          sleepDebtHours={sleepDebt?.debt_hours ?? null}
+        />
+      ) : (
       <Card className={`border ${style.ring}`}>
         <div className="flex items-center gap-3">
           <span className={`h-3 w-3 rounded-full ${style.dot}`} aria-hidden />
@@ -148,7 +163,11 @@ export default function TodayBriefPage() {
           </div>
         )}
       </Card>
+      )}
 
+      {/* 2-col on desktop (2.2): action left, context right */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+        <div className="lg:col-span-3 space-y-6">
       {/* 2 — Suggested session (B-17, from the verdict above) */}
       <NextSessionCard
         inputs={{
@@ -165,16 +184,16 @@ export default function TodayBriefPage() {
       {/* 3 — Today's plan */}
       <Card>
         <CardHeader>
-          <CardTitle>📋 Today&apos;s Plan</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="training" /> Today&apos;s Plan</span></CardTitle>
         </CardHeader>
         {!activePlan ? (
           <EmptyState icon="📅" title="No active plan" description="Create one under Training." />
         ) : !todayPlanDay ? (
-          <p className="text-sm text-muted">😴 Nothing planned — rest day.</p>
+          <p className="text-sm text-muted">Nothing planned — rest day.</p>
         ) : (
           <div>
             <p className="text-sm text-foreground font-medium">
-              {todayPlanDay.sport === 'rest' ? '😴 Rest' : todayPlanDay.workout_description || todayPlanDay.sport}
+              {todayPlanDay.sport === 'rest' ? 'Rest' : todayPlanDay.workout_description || sportLabel(todayPlanDay.sport)}
             </p>
             {todayPlanDay.planned_tss != null && (
               <p className="text-xs text-muted mt-1">Target ~{todayPlanDay.planned_tss} TSS</p>
@@ -185,11 +204,12 @@ export default function TodayBriefPage() {
           </div>
         )}
       </Card>
-
+        </div>
+        <div className="lg:col-span-2 space-y-6">
       {/* 4 — Weather */}
       <Card>
         <CardHeader>
-          <CardTitle>🌤️ Today&apos;s Weather</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="health" /> Today&apos;s Weather</span></CardTitle>
         </CardHeader>
         {todayWx ? (
           <div>
@@ -203,12 +223,12 @@ export default function TodayBriefPage() {
         )}
       </Card>
 
-      {/* 5 — Top insight */}
+      {/* 5 — Top insight (hidden until data exists, 1.4) */}
+      {topInsight && (
       <Card>
         <CardHeader>
-          <CardTitle>💡 Insight of the Day</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="analytics" /> Insight of the Day</span></CardTitle>
         </CardHeader>
-        {topInsight ? (
           <div>
             <p className="text-sm text-foreground">{insightOneLiner(topInsight)}</p>
             <p className="text-xs text-muted mt-1">
@@ -218,10 +238,10 @@ export default function TodayBriefPage() {
               All insights →
             </Link>
           </div>
-        ) : (
-          <p className="text-xs text-muted">Insights appear after a few weeks of training data.</p>
-        )}
       </Card>
+      )}
+        </div>
+      </div>
     </div>
   );
 }

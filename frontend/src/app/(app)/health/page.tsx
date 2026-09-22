@@ -20,6 +20,7 @@ import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
+import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
 
@@ -211,6 +212,11 @@ export default function HealthPage() {
         ) : (
           Array.from({ length: 4 }).map((_, i) => <SkeletonMetric key={i} />)
         )}
+      </div>
+
+      {/* ── Body weight (moved from Dashboard — it lives with health, 2.1) ── */}
+      <div className="max-w-2xl">
+        <WeightPanel compact />
       </div>
 
       {/* ── Trend Charts ──────────────────────────────────────────────────── */}
@@ -432,11 +438,17 @@ export default function HealthPage() {
             <p className="px-4 py-6 text-sm text-muted text-center">Loading…</p>
           ) : alerts && alerts.length > 0 ? (
             <div className="max-h-96 overflow-y-auto space-y-2 px-4 pb-4">
-              {alerts.map((alert) => (
+              {alerts.map((alert) => {
+                // Dismissed alerts render greyed (2.10) — a yellow "warning"
+                // card for something already handled reads as a live problem.
+                const dismissed = alert.status === 'dismissed';
+                return (
                 <div
                   key={alert.id}
                   className={`rounded-lg border p-3 ${
-                    SEVERITY_BADGE[alert.severity] ?? 'border-surface-light bg-surface-light/20'
+                    dismissed
+                      ? 'border-surface-light/50 bg-surface-light/10 opacity-60'
+                      : SEVERITY_BADGE[alert.severity] ?? 'border-surface-light bg-surface-light/20'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -462,7 +474,8 @@ export default function HealthPage() {
                     <span>{alert.status}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-6">

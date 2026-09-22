@@ -1,8 +1,10 @@
 """Chart service — ChartData/ChartSeries dataclasses, ChartService with chart methods."""
 
+import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from statistics import mean
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +86,19 @@ def _respiration_insight(values: list[float]) -> str:
             f"range — worth monitoring."
         )
     return f"Respiratory rate averaged {avg:.1f}/min over the period, within the normal range."
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    """Pearson r, or None when undefined (<2 points or zero variance)."""
+    n = len(xs)
+    if n != len(ys) or n < 2:
+        return None
+    mx, my = mean(xs), mean(ys)
+    num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    den = math.sqrt(sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys))
+    if den == 0:
+        return None
+    return num / den
 
 
 def _recovery_insight(values: list[float]) -> str:
@@ -1028,6 +1043,28 @@ class ChartService:
         else:
             labels = [str(p[0]) for p in sorted(tss_points, key=lambda p: p[0])]
 
+        # Plain-English correlation per series (2.10) — rendered by InsightsList.
+        insights: list[str] = []
+        for pts, noun in (
+            (lifting_points, "lifting volume"),
+            (tss_points, "cycling TSS"),
+        ):
+            if len(pts) < 3:
+                continue
+            r = _pearson([p[0] for p in pts], [p[1] for p in pts])
+            if r is None:
+                continue
+            direction = (
+                "higher" if r >= 0.1 else "lower" if r <= -0.1 else "about the same"
+            )
+            strength = (
+                "strong" if abs(r) >= 0.5 else "moderate" if abs(r) >= 0.3 else "weak"
+            )
+            insights.append(
+                f"Better recovery → {direction} next-day {noun} "
+                f"({strength} link, r={r:.2f}, n={len(pts)})."
+            )
+
         return ChartData(
             chart_type="scatter",
             title="Recovery vs Next-Day Performance",
@@ -1035,6 +1072,7 @@ class ChartService:
             series=series_list,
             x_label="Recovery Score %",
             y_label="Performance",
+            insights=insights,
         )
 
     # ── HRV trend with rolling averages ─────────────────────────────────────

@@ -4,6 +4,7 @@ import React from 'react';
 import type { RideAnalysis, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
+import { glossary } from '@/lib/metricGlossary';
 
 interface RideAnalysisCardProps {
   analysis: RideAnalysis;
@@ -16,11 +17,14 @@ function decouplingColor(pct: number): string {
   return 'text-warning';
 }
 
-function StatBadge({ label, value, className = '' }: { label: string; value: string | number | undefined; className?: string }) {
+function StatBadge({ label, value, className = '', hint }: { label: string; value: string | number | undefined; className?: string; hint?: string }) {
   if (value == null) return null;
   return (
-    <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center">
-      <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
+    <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center" title={hint}>
+      <p className="text-xs text-muted uppercase tracking-wide">
+        {label}
+        {hint && <span className="text-muted text-[10px] cursor-help ml-1" aria-hidden>ⓘ</span>}
+      </p>
       <p className={`text-lg font-semibold text-foreground mt-1 ${className}`}>{value}</p>
     </div>
   );
@@ -142,8 +146,8 @@ export function RideAnalysisCard({ analysis }: RideAnalysisCardProps) {
         <div className="mb-6">
           <Chart data={pacingChartData} height={280} />
           {analysis.pacing_analysis.power_variability != null && (
-            <p className="text-xs text-muted mt-2">
-              Power variability: {analysis.pacing_analysis.power_variability.toFixed(2)}
+            <p className="text-xs text-muted mt-2" title={glossary('power_variability')}>
+              Power variability: {analysis.pacing_analysis.power_variability.toFixed(2)} <span className="cursor-help" aria-hidden>ⓘ</span>
             </p>
           )}
         </div>
@@ -158,6 +162,7 @@ export function RideAnalysisCard({ analysis }: RideAnalysisCardProps) {
               label="Decoupling"
               value={`${analysis.decoupling.decoupling_pct.toFixed(1)}%`}
               className={decouplingColor(analysis.decoupling.decoupling_pct)}
+              hint={glossary('decoupling')}
             />
             {analysis.decoupling.first_half_ratio != null && (
               <StatBadge
