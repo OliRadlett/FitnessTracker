@@ -20,6 +20,73 @@ logger = logging.getLogger(__name__)
 # ── MediaPipe Pose Extraction ────────────────────────────────────────────────
 
 
+class _Lm:
+    """Minimal landmark shim (x, y, z, visibility) for anchored feet.
+
+    MediaPipe's NormalizedLandmark protos aren't safely mutable, so anchored
+    foot landmarks are rebuilt as shims. Downstream code only reads
+    .x/.y/.z/.visibility, so they are drop-in replacements.
+    """
+
+    __slots__ = ("visibility", "x", "y", "z")
+
+    def __init__(self, x, y, z=0.0, visibility=1.0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.visibility = visibility
+
+
+# Ankles, heels and foot indices — planted during the squat/bench/deadlift.
+_PLANTED_FOOT_IDX = (27, 28, 29, 30, 31, 32)
+
+
+def stabilize_planted_feet(
+    landmarks_per_frame: list,
+    window: int = 7,
+    min_frames: int = 5,
+) -> list:
+    """Smooth the foot landmarks with a rolling median (overlay rendering).
+
+    During the squat/bench/deadlift the feet are planted, so high-frequency
+    wander in the foot landmarks is tracking noise. A rolling median removes
+    that jitter while preserving genuine low-frequency motion (walkout,
+    stepping): a planted foot collapses to its (constant) median, and a moving
+    foot is followed smoothly rather than pinned.
+
+    Applied to the overlay/sprite renderers only — NOT to the analysis path:
+    the knee-angle signal is already median-filtered, and snapping the ankle
+    measurably perturbed rep detection (verified via the eval harness), so the
+    analysis keeps the raw landmarks.
+
+    Returns a new frame list; the input is not mutated.
+    """
+    n = len(landmarks_per_frame)
+    if n < min_frames:
+        return landmarks_per_frame
+
+    smoothed = {
+        idx: (
+            _median_filter([lm[idx].x for lm in landmarks_per_frame], window),
+            _median_filter([lm[idx].y for lm in landmarks_per_frame], window),
+        )
+        for idx in _PLANTED_FOOT_IDX
+    }
+
+    out = []
+    for i, lm in enumerate(landmarks_per_frame):
+        frame = list(lm)
+        for idx, (xs, ys) in smoothed.items():
+            src = lm[idx]
+            frame[idx] = _Lm(
+                float(xs[i]), float(ys[i]),
+                getattr(src, "z", 0.0),
+                getattr(src, "visibility", 1.0),
+            )
+        out.append(frame)
+    return out
+
+
 def extract_pose_track(
     input_path: Path,
     tmpdir: str,
@@ -227,6 +294,7 @@ def render_rep_sprite(
         n = min(len(landmarks), len(timestamps))
         if n == 0 or not pose_reps:
             return False
+        landmarks = stabilize_planted_feet(landmarks[:n])
         cap = cv2.VideoCapture(str(input_path))
         if not cap.isOpened():
             return False
@@ -295,6 +363,7 @@ def render_overlay_video(
         n = min(len(landmarks), len(timestamps))
         if n == 0:
             return False
+        landmarks = stabilize_planted_feet(landmarks[:n])
         cap = cv2.VideoCapture(str(input_path))
         if not cap.isOpened():
             return False
