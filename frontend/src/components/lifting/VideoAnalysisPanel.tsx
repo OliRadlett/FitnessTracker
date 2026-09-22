@@ -175,6 +175,8 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
       ? (formMeta.quality as { level?: unknown }).level
       : undefined;
   const quality = typeof qualityRaw === 'string' ? qualityRaw : null;
+  const coaching =
+    typeof formMeta?.coaching_summary === 'string' ? formMeta.coaching_summary : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
   const { authFetch, token } = useAuthFetch();
   const { data: thumbsUrl } = useQuery({
@@ -202,6 +204,13 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
           ⚠ Couldn&apos;t analyze this clip reliably — refilm with the full body in
           frame and steady lighting.
         </p>
+      )}
+
+      {coaching && (
+        <Card className="space-y-1 border-l-2 border-accent/50">
+          <p className="text-sm font-medium text-foreground">Coaching</p>
+          <p className="text-sm text-muted leading-relaxed">{coaching}</p>
+        </Card>
       )}
 
       {video.form_score != null && (

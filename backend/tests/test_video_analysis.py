@@ -12,11 +12,68 @@ from app.integrations.video_analysis import (
     _get_vbt_zone,
     _parse_gemini_json,
     _velocity_loss_pct,
+    build_coaching_summary,
     classify_view_from_frame,
     compute_consistency,
     estimate_rpe_heuristic,
     normalize_user_view,
 )
+
+
+class TestCoachingSummary:
+    def test_unusable_returns_refilm(self):
+        out = build_coaching_summary({"quality": {"level": "unusable"}})
+        assert "refilm" in out.lower()
+
+    def test_clean_set(self):
+        out = build_coaching_summary({
+            "form": {"deviations": [], "competition_valid": True},
+            "quality": {"level": "good"},
+            "view": "side",
+            "reps": 3,
+        })
+        assert "No form faults detected" in out
+        assert "Would pass in competition" in out
+
+    def test_groups_and_counts_faults(self):
+        out = build_coaching_summary({
+            "form": {"deviations": [
+                "Rep 1: Depth not achieved",
+                "Rep 3: Depth not achieved",
+                "Rep 2: Soft lockout",
+            ]},
+            "quality": {"level": "good"},
+            "view": "side",
+            "reps": 3,
+        })
+        assert "Depth not achieved (2 reps: 1, 3)" in out
+        assert "Soft lockout (1 rep: 2)" in out
+
+    def test_velocity_loss_band_and_rpe(self):
+        out = build_coaching_summary({
+            "form": {"deviations": []},
+            "velocity": {"velocity_loss_pct": 32.0, "mean_concentric_velocity": 0.2},
+            "estimated_rpe": 8.0,
+            "quality": {"level": "good"},
+            "view": "side",
+            "reps": 5,
+        })
+        assert "Velocity loss 32% across the set (high fatigue)" in out
+        assert "Estimated RPE ~8.0" in out
+
+    def test_failed_validity_note(self):
+        out = build_coaching_summary({
+            "form": {"deviations": [], "competition_valid": False},
+            "quality": {"level": "good"},
+            "view": "side",
+            "reps": 1,
+        })
+        assert "Would not pass IPF criteria" in out
+
+    def test_view_caveat_only_when_not_side(self):
+        common = {"form": {"deviations": []}, "quality": {"level": "good"}, "reps": 5}
+        assert "Film side-on" in build_coaching_summary({**common, "view": "three_quarter"})
+        assert "Film side-on" not in build_coaching_summary({**common, "view": "side"})
 
 
 class TestComputeConsistency:

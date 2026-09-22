@@ -635,6 +635,23 @@ def process_video_on_modal(
             setup_data = full_result.get("setup", {})
             rpe_data = full_result.get("rpe", {})
 
+            # Deterministic coaching text (no LLM) — stored in form_analysis_json.
+            try:
+                from app.integrations.video_analysis import build_coaching_summary
+
+                form_data["coaching_summary"] = build_coaching_summary({
+                    "exercise": exercise,
+                    "reps": reps,
+                    "weight_kg": weight,
+                    "form": form_data,
+                    "velocity": vel_data,
+                    "estimated_rpe": rpe_data.get("estimated_rpe"),
+                    "quality": full_result.get("quality"),
+                    "view": view,
+                })
+            except Exception as e:
+                _logger.warning("Coaching summary failed: %s", e)
+
             def _to_py(obj):
                 """Recursively convert numpy scalars/arrays to plain Python.
 
@@ -678,6 +695,7 @@ def process_video_on_modal(
                 "form_analysis_json": form_data,
                 "form_deviations": form_data.get("deviations", []),
                 "form_coaching_cues": form_data.get("coaching_cues", []),
+                "coaching_summary": form_data.get("coaching_summary"),
                 # Velocity (§3.18)
                 "mean_concentric_velocity": vel_data.get("mean_concentric_velocity"),
                 "peak_velocity": vel_data.get("peak_velocity"),
