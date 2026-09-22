@@ -1449,6 +1449,25 @@ def run_pose_analysis(
     result["per_rep"] = per_rep
     result["rep_count_detected"] = len(reps)
 
+    # Analysis quality gate: the pipeline used to always emit a confident-
+    # looking score even when pose detection was degraded or no reps were
+    # found. Surface an explicit quality so the UI can say "refilm" instead
+    # of presenting a meaningless number.
+    frames = int(track.get("frames") or len(landmarks) or 0)
+    detection_rate = (len(landmarks) / frames) if frames else 0.0
+    if frames < 5 or detection_rate < 0.4 or not reps:
+        level = "unusable"
+    elif detection_rate < 0.7:
+        level = "fair"
+    else:
+        level = "good"
+    result["quality"] = {
+        "level": level,
+        "detection_rate": round(detection_rate, 2),
+        "reps": len(reps),
+        "view": view,
+    }
+
     # Setup analysis
     result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise, view=view)
 

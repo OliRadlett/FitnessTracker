@@ -155,6 +155,11 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   const rir = video.estimated_rpe != null ? Math.max(0, Math.round((video.estimated_rpe - 6) * 1.5)) : null;
   const formMeta = parseJsonObject(video.form_analysis_json);
   const view = typeof formMeta?.view === 'string' ? formMeta.view : null;
+  const qualityRaw =
+    formMeta && typeof formMeta.quality === 'object' && formMeta.quality !== null
+      ? (formMeta.quality as { level?: unknown }).level
+      : undefined;
+  const quality = typeof qualityRaw === 'string' ? qualityRaw : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
 
   return (
@@ -169,6 +174,13 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
           </span>
         )}
       </div>
+
+      {quality === 'unusable' && (
+        <p className="text-xs text-warning">
+          ⚠ Couldn&apos;t analyze this clip reliably — refilm with the full body in
+          frame and steady lighting.
+        </p>
+      )}
 
       {video.form_score != null && (
         <Card className="space-y-3">

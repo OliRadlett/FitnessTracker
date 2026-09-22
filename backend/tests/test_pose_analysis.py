@@ -207,6 +207,42 @@ class TestRouteExercise:
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
 
 
+class TestAnalysisQuality:
+    def _run(self, tmp_path, seq, exercise="Back Squat", reps=0):
+        ts = [i * 0.1 for i in range(len(seq))]
+        track = {
+            "landmarks": seq, "world": [], "timestamps": ts,
+            "detected": len(seq), "frames": len(seq),
+        }
+        return pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            exercise, reps, 0.0, track=track,
+        )
+
+    def test_no_reps_is_unusable(self, tmp_path):
+        seq = [_pose(170.0) for _ in range(20)]  # standing, no reps
+        assert self._run(tmp_path, seq)["quality"]["level"] == "unusable"
+
+    def test_full_detection_with_reps_is_good(self, tmp_path):
+        seq = _squat_sequence(reps=3)
+        out = self._run(tmp_path, seq, reps=3)
+        assert out["quality"]["level"] == "good"
+        assert out["quality"]["detection_rate"] == 1.0
+
+    def test_low_detection_rate_is_fair(self, tmp_path):
+        # 6 detected of 20 frames = 0.3 rate -> unusable; 0.5 -> fair.
+        seq = _squat_sequence(reps=2)
+        track = {
+            "landmarks": seq, "world": [], "timestamps": [i * 0.1 for i in range(len(seq))],
+            "detected": len(seq), "frames": len(seq) * 2,
+        }
+        out = pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            "Back Squat", 2, 0.0, track=track,
+        )
+        assert out["quality"]["level"] == "fair"
+
+
 class TestPressFamily:
     def test_is_press_excludes_bench(self):
         assert pa._is_press("Overhead Press")

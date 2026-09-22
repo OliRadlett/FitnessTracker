@@ -588,7 +588,11 @@ def process_video_on_modal(
                 except Exception as e:
                     _logger.warning("Overlay render/upload failed: %s", e)
 
-            form_data = {**full_result.get("form", {}), "view": view}
+            form_data = {
+                **full_result.get("form", {}),
+                "view": view,
+                "quality": full_result.get("quality"),
+            }
             vel_data = full_result.get("velocity", {})
             consist_data = full_result.get("consistency", {})
             setup_data = full_result.get("setup", {})
