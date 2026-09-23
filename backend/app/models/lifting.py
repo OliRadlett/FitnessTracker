@@ -257,6 +257,13 @@ class LiftVideo(Base):
         ForeignKey("personal_records.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Optional link to the exact set this video captures; exercise/load/reps
+    # are autofilled from it at creation.
+    lifting_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("lifting_sets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     expected_reps: Mapped[int | None] = mapped_column(
         Integer, nullable=True

@@ -15,6 +15,7 @@ export interface LiftVideo {
   exercise_name?: string | null;
   lifting_session_id?: string | null;
   personal_record_id?: string | null;
+  lifting_set_id?: string | null;
   notes?: string | null;
   expected_reps?: number | null;
   camera_view?: 'side' | 'back_left' | 'back_right' | 'front' | null;

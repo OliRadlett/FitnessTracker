@@ -359,6 +359,7 @@ class LiftVideoBase(BaseModel):
     exercise_name: str | None = None
     lifting_session_id: uuid.UUID | None = None
     personal_record_id: uuid.UUID | None = None
+    lifting_set_id: uuid.UUID | None = None
     notes: str | None = None
     expected_reps: int | None = None
     camera_view: str | None = None
