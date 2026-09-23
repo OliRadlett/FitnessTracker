@@ -240,8 +240,19 @@ and person-selection accuracy; baseline recorded.
 **Acceptance**: joint-angle MAE < 5°; velocity MAE < 0.03 m/s; view-invariant
 depth accuracy ≥ 0.9 on ¾ clips.
 
-### T3 · Bar tracking (true bar path)
+### T3 · Bar tracking (true bar path) — 🟡 SPIKE DONE
 
+- ✅ **`backend/app/integrations/bar_detection.py`** (T3 v1 spike, tested):
+  pose-seeded Hough-circle plate detection. Validated on the real side-view
+  150 kg squat — **the loaded (black) plate is locked correctly** (darkness +
+  edge support dominate; a mid-tone background plate near the body must not
+  win), with a previous-detection seed, a per-frame jump gate and gap
+  interpolation. Raw detection **~67%** of frames → ~99% after interpolation.
+  Not wired into the pipeline: the plan keeps classical CV as an **auto-labelling
+  assistant**, not primary (heterogeneous plates + occasional rack false locks),
+  and it needs tuning across more clips before it feeds the metrics.
+- **Next**: use this to auto-label real frames, fine-tune a small ONNX detector,
+  then fuse with optical flow.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.
