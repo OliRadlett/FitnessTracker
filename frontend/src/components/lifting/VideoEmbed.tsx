@@ -8,6 +8,7 @@ import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
 import { parsePoseTrack } from '@/lib/pose/track';
 import { PoseCanvas } from '@/components/lifting/PoseCanvas';
 import { PoseTimeline } from '@/components/lifting/PoseTimeline';
+import { VelocitySparkline } from '@/components/lifting/VelocitySparkline';
 
 // three.js stays out of the first-load bundle (§3.18 / F2).
 const Pose3D = dynamic(() => import('@/components/lifting/Pose3D'), {
@@ -170,7 +171,8 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
             </div>
           )}
           {(variant === 'live' || variant === '3d') && track && (
-            <div className="absolute bottom-12 left-2 right-2 z-10 rounded bg-black/50 px-2 py-1 backdrop-blur-sm">
+            <div className="absolute bottom-12 left-2 right-2 z-10 rounded bg-black/50 px-2 py-1 backdrop-blur-sm space-y-1">
+              <VelocitySparkline videoRef={videoRef} track={track} />
               <PoseTimeline videoRef={videoRef} track={track} />
             </div>
           )}

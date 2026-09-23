@@ -682,7 +682,7 @@ class TestSegmentRest:
         assert rest["periods"][0]["after_rep"] == 1
         assert rest["avg_seconds"] >= 1.5
 
-    def test_continuous_set_has_no_rest(self):
+    def test_continuous_set_has_no_rest_but_reports_one_set(self):
         profile = [0.3 + 0.3 * abs((i % 20) - 10) / 10 for i in range(40)]
         world = self._world(profile)
         ts = [i * 0.1 for i in range(len(profile))]
@@ -690,7 +690,29 @@ class TestSegmentRest:
             {"rep_number": 1, "start_idx": 0, "end_idx": 9},
             {"rep_number": 2, "start_idx": 20, "end_idx": 29},
         ]
-        assert pa.segment_rest(world, ts, reps, "Back Squat") is None
+        rest = pa.segment_rest(world, ts, reps, "Back Squat")
+        assert rest is not None
+        assert rest["periods"] == []
+        assert rest["avg_seconds"] is None
+        assert rest["n_sets"] == 1
+        assert rest["reps_per_set"] == [2]
+
+    def test_groups_reps_into_sets_by_a_long_gap(self):
+        # A long-session video: two reps, a ~93s rest, two more reps.
+        ramp = [0.3 + 0.3 * (i / 9) for i in range(10)]
+        profile = ramp + ramp + [0.6] * 931 + ramp + ramp
+        world = self._world(profile)
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 9},
+            {"rep_number": 2, "start_idx": 10, "end_idx": 19},
+            {"rep_number": 3, "start_idx": 951, "end_idx": 960},
+            {"rep_number": 4, "start_idx": 961, "end_idx": 970},
+        ]
+        rest = pa.segment_rest(world, ts, reps, "Back Squat")
+        assert rest["n_sets"] == 2
+        assert rest["reps_per_set"] == [2, 2]
+        assert rest["periods"][0]["after_rep"] == 2
 
     def test_single_rep_returns_none(self):
         world = self._world([0.3, 0.4, 0.5])

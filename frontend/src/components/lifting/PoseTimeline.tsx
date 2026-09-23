@@ -103,8 +103,16 @@ export function PoseTimeline({ videoRef, track }: PoseTimelineProps) {
             type="button"
             onClick={() => seek(stickTime(reps[active]))}
             className="hover:text-foreground"
+            title={
+              reps[active].sticking_joint_angle != null
+                ? `joint ${Math.round(reps[active].sticking_joint_angle!)}°`
+                : undefined
+            }
           >
             ◆ Apex
+            {reps[active].sticking_joint_angle != null
+              ? ` ${Math.round(reps[active].sticking_joint_angle!)}°`
+              : ''}
           </button>
           <button
             type="button"

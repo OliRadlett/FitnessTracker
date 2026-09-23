@@ -333,6 +333,10 @@ class VbtProfileResponse(BaseModel):
     load_max_kg: float | None = None
     confidence: str
     recommended_load_kg: float | None = None
+    # The stored PR's estimated 1RM for the exercise (Brzycki) and how the
+    # velocity-derived estimate compares to it (F11).
+    pr_1rm_kg: float | None = None
+    vbt_vs_pr_pct: float | None = None
     points: list[VbtProfilePoint]
 
 

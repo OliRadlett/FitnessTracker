@@ -3738,7 +3738,7 @@ def process_lift_video(
                 # ── Rest between reps (T6) ─────────────────────────────────
                 rest = result.get("rest")
                 if rest:
-                    video.rest_periods_json = json.dumps(rest.get("periods"))
+                    video.rest_periods_json = json.dumps(rest)
                     video.avg_rest_seconds = rest.get("avg_seconds")
                     video.rest_cv = rest.get("cv")
 

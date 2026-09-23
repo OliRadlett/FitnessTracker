@@ -38,7 +38,15 @@ class TestJointMoments:
         assert out["knee_moment_nm"] == pytest.approx(98.1, abs=0.5)
         assert out["knee_moment_arm_m"] == pytest.approx(0.10, abs=1e-6)
         assert out["hip_moment_arm_m"] == pytest.approx(0.08, abs=1e-6)
+        assert out["hip_share_pct"] == pytest.approx(44.4, abs=0.5)
         assert out["confidence"] == pytest.approx(1.0)
+
+    def test_hip_share_none_when_no_moment(self):
+        out = bm.joint_moments(
+            _world(shoulder_x=0.0, hip_x=0.0, knee_x=0.0), 100.0, "Back Squat"
+        )
+        assert out is not None
+        assert out["hip_share_pct"] is None
 
     def test_press_uses_wrist_as_the_load_point(self):
         w = _world(shoulder_x=0.10)
