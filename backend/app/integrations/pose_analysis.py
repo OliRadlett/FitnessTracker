@@ -100,7 +100,7 @@ def extract_pose_track(
             "landmarks": [], "world": [], "timestamps": [], "presence": [],
             "records": [], "detected": 0, "frames": 0, "persons": [],
             "tracks": [], "lifter": {"source": "none", "n_tracks": 0, "candidates": []},
-            "frame_times": {}, "num_poses": num_poses,
+            "frame_times": {}, "num_poses": num_poses, "pose_frames": 0,
         }
 
     # Download the pose landmarker model if not cached
@@ -245,9 +245,9 @@ def extract_pose_track(
             return {
                 "landmarks": [], "world": [], "timestamps": [], "presence": [],
                 "records": [], "detected": 0, "frames": idx, "persons": [],
-                "tracks": [], "lifter": selection, "frame_times": frame_times,
-                "num_poses": num_poses,
-            }
+            "tracks": [], "lifter": selection, "frame_times": frame_times,
+            "num_poses": num_poses, "pose_frames": 0,
+        }
         landmarks, world, timestamps, presence = dense_series(lifter, frame_times)
         det_frame_idxs = sorted(lifter["detections"].keys())
         persons_summary = [
@@ -285,6 +285,11 @@ def extract_pose_track(
         "lifter": selection,
         "frame_times": frame_times,
         "num_poses": num_poses,
+        # Frames where *any* pose was detected (not just the selected lifter) —
+        # the pose-detection quality signal. For bench-with-spotter the lifter
+        # is only present for part of the clip, so using the lifter's frame
+        # count as "detection rate" would wrongly report "unusable".
+        "pose_frames": len(persons_by_frame),
     }
 
 
@@ -1774,7 +1779,12 @@ def run_pose_analysis(
     # found. Surface an explicit quality so the UI can say "refilm" instead
     # of presenting a meaningless number.
     frames = int(track.get("frames") or len(landmarks) or 0)
-    detection_rate = (len(landmarks) / frames) if frames else 0.0
+    # Detection quality = frames with *any* pose / sampled frames. Using the
+    # selected lifter's count here would penalise bench-with-spotter clips
+    # (the lifter is absent while the spotter is tracked) and report them
+    # "unusable" even when the lift was analysed fine.
+    detected_frames = int(track.get("pose_frames") or len(landmarks) or 0)
+    detection_rate = (detected_frames / frames) if frames else 0.0
     if frames < 5 or detection_rate < 0.4 or not reps:
         level = "unusable"
     elif detection_rate < 0.7:

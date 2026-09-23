@@ -88,11 +88,12 @@ class Settings(BaseSettings):
     video_view_vlm_enabled: bool = False
 
     # Lift-video multi-person pose (T1): detect up to `video_num_poses` people
-    # per frame and select the lifter over a spotter/bystander. OFF by default
-    # until validated on the labelled fixture set (bench spotters). When on,
-    # modal_client extracts with num_poses=2 and re-selects the lifter after the
-    # exercise is classified (the bench posture prior needs the exercise).
-    video_multi_pose_enabled: bool = False
+    # per frame and select the lifter over a spotter/bystander. Applies to the
+    # BENCH PRESS only — verified on real footage that num_poses=1 tracks the
+    # upright spotter (0/375 horizontal frames) on a bench, while other lifts
+    # regress when multi-pose fragments the track. Enabled by default; set
+    # VIDEO_MULTI_POSE_ENABLED=false to revert to single-person tracking.
+    video_multi_pose_enabled: bool = True
     video_num_poses: int = 2
 
     # Lift-video pose extraction (T2). 10 fps is the proven default; raise to

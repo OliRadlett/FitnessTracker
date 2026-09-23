@@ -169,11 +169,15 @@ def main() -> int:
 
     ensure_model(tmpdir)
 
-    # Step 7: pose extract + classify (same settings as Modal)
+    # Step 7: pose extract + classify (same settings as Modal).
+    # Multi-pose (lifter vs spotter) applies to the bench press only — see
+    # modal_client._process; other lifts keep the dense single-person track.
+    is_bench = bool(args.exercise) and "bench" in args.exercise.lower()
+    effective_poses = args.num_poses if is_bench else 1
     track = extract_pose_track(
         input_path, str(tmpdir), trim_start, trim_end, fps=args.fps,
-        num_poses=args.num_poses, gpu_delegate=args.gpu)
-    if args.num_poses > 1 and track.get("tracks"):
+        num_poses=effective_poses, gpu_delegate=args.gpu)
+    if effective_poses > 1 and track.get("tracks"):
         from app.integrations.pose_analysis import reselect_lifter
 
         track = reselect_lifter(track, exercise=args.exercise)

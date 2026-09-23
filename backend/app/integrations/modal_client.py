@@ -394,21 +394,25 @@ def process_video_on_modal(
                 )
 
                 forced = forced_lifter if forced_lifter >= 0 else None
+                # Multi-person selection is used for the bench press only:
+                # there a spotter dominates the single-pose detector (verified
+                # on real footage — num_poses=1 tracked the upright spotter for
+                # 375/375 frames, 0 horizontal). For every other lift
+                # num_poses>1 fragments the track and regresses the analysis
+                # (verified: a clean 150 kg squat scored 100 at num_poses=1 vs
+                # 75 with the fragmented multi-pose track), so keep the dense
+                # single-person track.
+                prelim = route_exercise(user_ex, "", 0.0)[0] if user_ex else None
+                effective_poses = num_poses if prelim == "Bench Press" else 1
                 pose_track = extract_pose_track(
                     input_path, tmpdir, trim_start, trim_end, fps=pose_fps,
-                    num_poses=num_poses,
+                    num_poses=effective_poses,
                     forced_track_id=forced,
                     gpu_delegate=gpu_delegate,
                 )
-                # Multi-person (T1): pick the lifter over a spotter/bystander
-                # before classification. Prefer the user-declared exercise for
-                # the posture prior (bench lifter is horizontal, spotter
-                # upright); else the default track is used and re-selected
-                # after auto-classification below.
-                if num_poses > 1 and pose_track.get("tracks"):
+                if effective_poses > 1 and pose_track.get("tracks"):
                     from app.integrations.pose_analysis import reselect_lifter
 
-                    prelim = route_exercise(user_ex, "", 0.0)[0] if user_ex else None
                     pose_track = reselect_lifter(
                         pose_track, exercise=prelim, forced_track_id=forced)
                 landmarks = pose_track["landmarks"]
@@ -742,6 +746,11 @@ def process_video_on_modal(
                 "velocity_loss_pct": vel_data.get("velocity_loss_pct"),
                 "velocity_profile_json": vel_data.get("velocities"),
                 "vbt_zone": vel_data.get("vbt_zone"),
+                # Bar path (F1) + multi-person lifter selection (T1). These must
+                # be surfaced here or the scheduler silently persists nothing.
+                "bar_path": full_result.get("bar_path"),
+                "lifter_selection": full_result.get("lifter_selection"),
+                "n_person_tracks": full_result.get("n_person_tracks"),
                 # Rest timing
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
@@ -770,8 +779,8 @@ def process_video_on_modal(
     view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
     user_view = normalize_user_view(camera_view)
 
-    # Multi-person lifter selection (T1) — OFF until validated on the labelled
-    # fixture set (bench spotters). 1 = current single-person behaviour.
+    # Multi-person lifter selection (T1) — applies to the bench press only
+    # (see _process). 1 = single-person behaviour.
     num_poses = (
         max(1, settings.video_num_poses) if settings.video_multi_pose_enabled else 1
     )

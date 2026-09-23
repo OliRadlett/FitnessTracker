@@ -82,6 +82,20 @@ class TestGreedyMatch:
         assert matches == []
         assert up == [0] and uc == [0]
 
+    def test_proximity_matches_when_iou_low(self):
+        # Low overlap (bbox jitter/occlusion) but centres are close.
+        prev = [(0.0, 0.0, 0.1, 0.1)]
+        curr = [(0.05, 0.05, 0.15, 0.15)]
+        assert pt.iou(prev[0], curr[0]) < 0.3
+        matches, up, uc = pt.greedy_match(prev, curr, 0.3, max_center_dist=0.12)
+        assert matches == [(0, 0)] and up == [] and uc == []
+
+    def test_far_boxes_do_not_match(self):
+        matches, up, uc = pt.greedy_match(
+            [(0, 0, 0.1, 0.1)], [(0.5, 0.5, 0.6, 0.6)], 0.3, max_center_dist=0.12
+        )
+        assert matches == []
+
 
 class TestBuildPersonTracks:
     def test_stable_ids_across_order_swaps(self):
@@ -114,6 +128,15 @@ class TestBuildPersonTracks:
         idxs = list(range(10))
         tracks = pt.build_person_tracks(frames, frame_indices=idxs, max_missing=5)
         assert len(tracks) == 2
+
+    def test_gap_within_default_bridges_same_person(self):
+        # A ~1.2s detection dropout must not split one person into two tracks.
+        a = _person(bbox=(0.0, 0.0, 0.2, 0.5))
+        frames = [[a]] + [[] for _ in range(12)] + [[a]]
+        idxs = list(range(14))
+        tracks = pt.build_person_tracks(frames, frame_indices=idxs)
+        assert len(tracks) == 1
+        assert tracks[0]["n"] == 2
 
     def test_bbox_computed_from_landmarks_when_absent(self):
         lm = _lms()

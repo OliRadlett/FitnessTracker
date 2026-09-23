@@ -154,12 +154,15 @@ def _run_one(
     record["duration_s"] = round(duration, 2)
     record["trim"] = [round(trim_start, 2), round(trim_end, 2)]
 
+    # Multi-pose (lifter vs spotter) applies to the bench press only.
+    label_exercise = label.get("exercise") or ""
+    effective_poses = num_poses if "bench" in label_exercise.lower() else 1
     track = extract_pose_track(
         video_path, str(tmpdir), trim_start, trim_end, fps=fps,
-        num_poses=num_poses, gpu_delegate=gpu_delegate,
+        num_poses=effective_poses, gpu_delegate=gpu_delegate,
     )
-    if num_poses > 1 and track.get("tracks"):
-        track = reselect_lifter(track, exercise=label.get("exercise"))
+    if effective_poses > 1 and track.get("tracks"):
+        track = reselect_lifter(track, exercise=label_exercise)
     landmarks = track["landmarks"]
     timestamps = track["timestamps"]
     world = track["world"]
