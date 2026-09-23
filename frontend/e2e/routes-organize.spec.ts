@@ -8,7 +8,7 @@ import { test, expect } from './fixtures/authenticated-test';
 test.describe('Routes organize sidebar', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/routes');
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('main h1')).toContainText(/saved routes|routes/i);
   });
 
   test('sidebar shows tags and collections', async ({ authenticatedPage: page }) => {

@@ -10,7 +10,7 @@ import * as mockData from './fixtures/mock-data';
 test.describe('Lifting session creation', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('button', { name: /\+ New Session/i })).toBeVisible();
   });
 
   test('new session form opens and submits', async ({ authenticatedPage: page }) => {
@@ -42,7 +42,7 @@ test.describe('Lifting session creation', () => {
 test.describe('Goal creation', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/goals');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('button', { name: /\+ New Goal/i })).toBeVisible();
   });
 
   test('create-goal modal opens with metric picker', async ({ authenticatedPage: page }) => {
@@ -55,7 +55,7 @@ test.describe('Goal creation', () => {
 test.describe('Deep links', () => {
   test('activity deep-link selects the record', async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/activities?activity=act-1');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/Surrey Hills/i).first()).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(/Surrey Hills/i).first()).toBeVisible({ timeout: 8000 });
   });
 });
@@ -63,7 +63,7 @@ test.describe('Deep links', () => {
 test.describe('Today brief (B-16)', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/today');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/Today's Brief/i)).toBeVisible();
   });
 
   test('renders verdict with visible reasoning', async ({ authenticatedPage: page }) => {
