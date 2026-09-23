@@ -1,24 +1,21 @@
 # Lift Video Tracking v2 — Tracking Accuracy & Feature Plan
 
-> **Status**: IN PROGRESS (2026-09-22). Baseline = `plans/video-analysis-rewrite.md`
-> (Phases 0–2 complete, Phase 4 features shipped). This plan supersedes the
-> remaining ⏳ items in that rewrite and takes the tracking much further.
-> **Done so far**: T0 (per-frame records + `world`/`landmarks` alignment fix +
-> tests); T1 (multi-person tracker + lifter selection + manual override:
-> `lifter_selected`/`lifter_selection_json` columns, migration 068, PATCH
-> `lifter_track_id`, forced-track reprocess, "who's lifting?" UI); T2 plumbing
-> (`VIDEO_POSE_FPS`/`VIDEO_GPU_DELEGATE_ENABLED`, `--fps`/`--gpu`); F1 core
-> (bar-path metrics `bar_tracking.py` + `bar_path_json`, migration 069, UI card)
-> from the pose proxy; F3 core (sticking-point detection in `bar_velocity_from_world`
-> → `rep_timing_json` + per-rep "Stick" column); T2 benchmarked (GPU not
-> adopted — CPU-bound pipeline + non-reproducible GPU-delegate velocity; fps
-> made fps-robust); T5 (persisted pose track `pose_track.py` + migration 070 +
-> `stream-url?variant=track`, validated via Modal); F2 core (interactive
-> `PoseCanvas` skeleton + bar-path overlay on the persisted track, "Live pose"
-> toggle). **T1 + T5 validated via the real Modal path.** Squat lean threshold
-> calibrated (10→30°).
-> **Next**: F2 remainder (velocity graph, per-rep chapters, 3D view), then T3
-> (real bar detector).
+> **Status**: PHASES 1–4 SUBSTANTIVELY DONE (2026-09-23). Baseline =
+> `plans/video-analysis-rewrite.md`.
+> **Shipped**: T0 (records/alignment); T1 (lifter vs spotter, validated);
+> T2 (fps-robust, GPU benchmarked — not adopted; GPU knob + fps config);
+> T3 v1 (plate detection wired behind `VIDEO_BAR_DETECTION_ENABLED`, off);
+> T5 (persisted pose track, validated); T6 (rest + set grouping);
+> F1 (bar-path metrics), F2 (`PoseCanvas`/`Pose3D`/`PoseTimeline`/
+> `VelocitySparkline` + ghost overlay), F3 (sticking point + joint angle),
+> F4 (autoregulation), F5 (SPC control charts), F9 (joint moments + hip share),
+> F11 (VBT 1RM vs PR). Owner's four workflow notes done (set link, process
+> polling, quick menu, edit counts). Deep-dive fixes: view threshold, bench
+> bar-height rep signal, lifter-coverage quality gate, squat/deadlift classifier.
+> **Blocked / deferred**: T3 learned detector (needs training data); T4 trained
+> classifier; T2 gravity alignment + anthropometric scale (needs a stature
+> input) + vidstab; F6 grounded coaching (Gemini quota); F10 multi-view 3D
+> (needs two camera angles).
 > **Owner decision**: Hybrid architecture continues — deterministic 3D
 > measurement produces all numbers; a VLM/LLM produces grounded qualitative
 > coaching only, on demand.
@@ -300,7 +297,17 @@ clips" limitation without a per-video Gemini call.
 **Acceptance**: ✅ a persisted track round-trips and drives the frontend viewer
 without re-running MediaPipe.
 
-### T6 · Sessions & robustness
+### T6 · Sessions & robustness — ✅ sets + rest done
+
+- ✅ **Rest-between-reps** (`segment_rest`, populates `rest_periods_json` /
+  `avg_rest_seconds` / `rest_cv`) and **set grouping** (`n_sets` /
+  `reps_per_set`; a >60 s rep gap starts a new set) — the analysis panel shows
+  "N sets detected" for long session videos.
+- ⏳ **Auto-segment long videos at upload** (split into per-set clips) and
+  pick-up/floor detection via the barbell state; not-a-lift gate beyond the
+  quality gate's "unusable".
+
+### T6 original detail
 
 - **Set/rest segmentation** from barbell state (floor/rack vs motion) + motion
   energy + person tracks → populate the currently-dead `rest_periods_json`,
@@ -320,11 +327,11 @@ without re-running MediaPipe.
 | F2 | **Interactive pose/3D viewer** — ✅ core shipped: `PoseCanvas` (2D skeleton + bar-path trail on the clean video, rAF-synced) via a "Live pose" toggle, **plus `Pose3D`** (three.js 3D skeleton from the metric world landmarks, orbit/zoom, PiP over the video) via a "3D" toggle; `PoseTimeline` adds per-rep chapters + a velocity bar per rep (click to seek) and a Start/Apex(joint angle)/Stop key-moments row; `lib/pose/track.ts` parses the persisted track. ✅ ghost overlay in the compare modal | T5 | Makes the system feel alive; foundation for all compare UI | M |
 | F3 | **Sticking-point / weak-point detection** — ✅ core shipped: min-velocity position within the concentric phase (`_sticking_point` → `rep_timing_json` + per-rep "Stick" column). ⏳ joint-angle at the stick + accessory prescription via `services/deficiency.py` | T3 | Novel, high-signal coaching | M |
 | F4 | **VBT autoregulation loop** — per-set velocity loss + RPE → readiness / `services/adaptive.py` / Whoop recovery; next-set load; "end the set" cues | T2 | Closes training↔video loop | M |
-| F5 | **Longitudinal form analytics + SPC** — control charts per metric, flag genuine regression vs noise, correlate with load/volume blocks; fuse Jev note tags + health signals into injury risk | T3 | Turns scores into a program tool | M |
+| F5 | **Longitudinal form analytics + SPC** — ✅ control charts (`services/spc.py`, `GET /charts/control`, Process-control card) flag a real shift vs noise. ⏳ correlate with load/volume blocks; injury-risk fusion with Jev notes + health signals | T3 | Turns scores into a program tool | M |
 | F6 | **On-demand grounded coaching** — deterministic summary exists; add cached Gemini narrative grounded in metrics + overlay, behind `llm_base.ai_generation_guard` | T5 | Fixes quota-blocked v1 Phase 3 without per-video calls | S |
 | F7 | **Ghost/compare overlay** — phase-align two lifts; overlay skeletons + bar paths across dates/loads; progress deltas | F2 | Direct progress visual | M |
-| F9 | **Reliability-gated biomechanics** — ✅ external joint moments (`biomechanics.joint_moments`, gated on visibility) + `hip_share_pct` (quad-vs-hip readout) at the stick, in the rep tooltip. ⏳ bar COM (needs T3), spinal-load proxy | T3 | Sports-science depth; feeds F3/F5 | L |
-| F11 | **Program analytics** — per-exercise velocity-profile progression; VBT-driven 1RM/projection into PRs/goals | F1 | Ties video to PR/projection surfaces | M |
+| F9 | **Reliability-gated biomechanics** — ✅ external joint moments (`biomechanics.joint_moments`, gated on visibility) + `hip_share_pct` (quad-vs-hip readout) at the stick, in the rep tooltip (the hip moment doubles as a spinal-load proxy). ⏳ bar COM needs the real bar (T3) | T3 | Sports-science depth; feeds F3/F5 | L |
+| F11 | **Program analytics** — ✅ VBT-estimated 1RM contextualised against the stored PR (`pr_1rm_kg` / `vbt_vs_pr_pct`, "vs PR" stat in VbtPanel); velocity-profile progression covered by the trend charts. ⏳ explicit projection into goal pace | F1 | Ties video to PR/projection surfaces | M |
 | F10 | **Multi-view true 3D** — two angles → triangulated 3D bar path/joints | T3, calibration | Endgame fidelity | XL |
 
 *(F8/F12 live/on-device tracking are explicitly out of scope — never live.)*
