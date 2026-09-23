@@ -2,7 +2,10 @@
 
 > **Status**: Phases 0–2 COMPLETE; Phase 4 features shipped (camera view,
 > overlay, VBT, consistency, quality gate, auto-link load, sprite sheet, OHP
-> analyzer). Phase 3 (VLM coaching) is quota-blocked by design. Branch
+> analyzer). Phase 3 (VLM coaching) is quota-blocked by design.
+> **⏳ Remaining work is superseded by [`plans/lift-video-tracking-v2.md`](lift-video-tracking-v2.md)**
+> (tracking accuracy: multi-person/lifter selection, learned bar tracking,
+> persisted track, GPU compute, higher-fps 3D). Branch
 > `feat/video-analysis-rewrite`. Migrations `065` (camera_view), `066`
 > (overlay), `067` (rep thumbnails). Baseline + per-increment reports in
 > `reports/` (gitignored).

@@ -45,6 +45,7 @@ export interface LiftVideo {
   velocity_loss_pct?: number | null;
   velocity_profile_json?: string | null;
   vbt_zone?: string | null;
+  bar_path_json?: string | null;
   // Rest timing (§3.18)
   rest_periods_json?: string | null;
   avg_rest_seconds?: number | null;
@@ -61,6 +62,9 @@ export interface LiftVideo {
   estimated_rpe?: number | null;
   rpe_confidence?: number | null;
   rpe_evidence_json?: string | null;
+  // Multi-person lifter selection (T1)
+  lifter_selected?: number | null;
+  lifter_selection_json?: string | null;
 }
 
 export interface VideoUploadRequest {
@@ -130,6 +134,7 @@ export interface VideoProcessStatus {
   peak_velocity?: number | null;
   velocity_loss_pct?: number | null;
   vbt_zone?: string | null;
+  bar_path_json?: string | null;
   avg_rest_seconds?: number | null;
   rest_cv?: number | null;
   rep_consistency_score?: number | null;
@@ -138,6 +143,9 @@ export interface VideoProcessStatus {
   estimated_rpe?: number | null;
   rpe_confidence?: number | null;
   rpe_evidence_json?: string | null;
+  // Multi-person lifter selection (T1)
+  lifter_selected?: number | null;
+  lifter_selection_json?: string | null;
 }
 
 export interface LiftingSession {

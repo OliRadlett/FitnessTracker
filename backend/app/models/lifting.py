@@ -299,6 +299,9 @@ class LiftVideo(Base):
     velocity_loss_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     velocity_profile_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     vbt_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Bar-path technique metrics (§3.18 / F1): efficiency, drift, consistency.
+    # Pose-proxy today; the learned bar detector (T3) fills the same shape.
+    bar_path_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Rest timing (§3.18) ────────────────────────────────────────────────
     rest_periods_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -319,6 +322,13 @@ class LiftVideo(Base):
     estimated_rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Multi-person lifter selection (T1) ─────────────────────────────────
+    # Track id of the chosen lifter (when >1 person was detected), or NULL for
+    # single-person clips. A user override forces this track on reprocess.
+    lifter_selected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # JSON: {source, chosen_track_id, n_tracks, candidates:[...]} for the UI.
+    lifter_selection_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True

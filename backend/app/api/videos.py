@@ -369,6 +369,7 @@ async def get_process_status(
         peak_velocity=video.peak_velocity,
         velocity_loss_pct=video.velocity_loss_pct,
         vbt_zone=video.vbt_zone,
+        bar_path_json=video.bar_path_json,
         avg_rest_seconds=video.avg_rest_seconds,
         rest_cv=video.rest_cv,
         rep_consistency_score=video.rep_consistency_score,
@@ -380,6 +381,8 @@ async def get_process_status(
         calibrated_rpe=await calibrated_rpe_for(
             db, current_user.id, video.exercise_name, video.estimated_rpe
         ),
+        lifter_selected=video.lifter_selected,
+        lifter_selection_json=video.lifter_selection_json,
     )
 
 
@@ -430,6 +433,9 @@ class VideoPatchRequest(BaseModel):
     camera_view: str | None = None
     weight_kg: float | None = None
     reps_count: int | None = None
+    # Manual lifter override (T1): track id from the last run's
+    # `lifter_selection_json`. Applied on the next reprocess.
+    lifter_track_id: int | None = None
 
 
 @router.patch("/{video_id}", response_model=LiftVideoRead)
@@ -474,6 +480,11 @@ async def update_video(
         if payload.reps_count < 0:
             raise HTTPException(400, "reps_count must be >= 0")
         video.reps_count = payload.reps_count
+    if payload.lifter_track_id is not None:
+        if payload.lifter_track_id < 0:
+            raise HTTPException(400, "lifter_track_id must be >= 0")
+        # Persist the override; the next reprocess forces this track.
+        video.lifter_selected = payload.lifter_track_id
 
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)

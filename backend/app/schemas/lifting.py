@@ -402,6 +402,7 @@ class LiftVideoRead(LiftVideoBase):
     velocity_loss_pct: float | None = None
     velocity_profile_json: str | None = None
     vbt_zone: str | None = None
+    bar_path_json: str | None = None
 
     # Rest timing (§3.18)
     rest_periods_json: str | None = None
@@ -422,6 +423,10 @@ class LiftVideoRead(LiftVideoBase):
     estimated_rpe: float | None = None
     rpe_confidence: float | None = None
     rpe_evidence_json: str | None = None
+
+    # Multi-person lifter selection (T1)
+    lifter_selected: int | None = None
+    lifter_selection_json: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -447,6 +452,7 @@ class VideoProcessStatus(BaseModel):
     peak_velocity: float | None = None
     velocity_loss_pct: float | None = None
     vbt_zone: str | None = None
+    bar_path_json: str | None = None
     avg_rest_seconds: float | None = None
     rest_cv: float | None = None
     rep_consistency_score: float | None = None
@@ -458,3 +464,7 @@ class VideoProcessStatus(BaseModel):
     # B-30: AI estimate adjusted by the user's RPE calibration (None when
     # uncalibrated — equals estimated_rpe then).
     calibrated_rpe: float | None = None
+    # Multi-person lifter selection (T1): chosen track id + candidate list
+    # (JSON) so the UI can offer a manual "who's lifting?" override.
+    lifter_selected: int | None = None
+    lifter_selection_json: str | None = None
