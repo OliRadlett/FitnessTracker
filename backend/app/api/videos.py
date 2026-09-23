@@ -310,12 +310,12 @@ async def process_video(
     if video.analysis_status == "processing" and not force:
         raise HTTPException(409, "Video is already being processed")
 
-    if force:
-        # Reprocess: clear the terminal/stuck status so the task actually runs
-        # (previously only "processing" was reset, so "completed" videos were
-        # re-queued and then short-circuited by the task's completed guard).
-        video.analysis_status = None
-        await db.flush()  # BUG-015: flush only; get_db commits at return.
+    # Mark queued so the UI can poll until the task flips it to
+    # processing/completed/failed. The task only short-circuits on
+    # "completed" (and only when not forced), so this is safe for both a
+    # first run and a forced reprocess.
+    video.analysis_status = "queued"
+    await db.flush()  # BUG-015: flush only; get_db commits at return.
 
     settings = get_settings()
     if not settings.modal_token_id or not settings.modal_token_secret:

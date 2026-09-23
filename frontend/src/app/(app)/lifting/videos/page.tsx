@@ -37,6 +37,17 @@ export default function VideosPage() {
     queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     staleTime: 30_000,
+    // Poll while any video is queued/processing so the badge flips to
+    // Processed automatically (Modal runs take ~1-2 min).
+    refetchInterval: (query) => {
+      const data = query.state.data as LiftVideo[] | undefined;
+      const active = data?.some(
+        (v) =>
+          v.analysis_status === 'queued' ||
+          v.analysis_status === 'processing',
+      );
+      return active ? 5000 : false;
+    },
   });
 
   const { data: sessions = [] } = useQuery<LiftingSession[]>({
@@ -207,6 +218,9 @@ export default function VideosPage() {
                   <div className="flex items-center gap-1">
                     {video.analysis_status === 'completed' && (
                       <Badge variant="lifting">Processed</Badge>
+                    )}
+                    {video.analysis_status === 'queued' && (
+                      <Badge variant="cycling">Queued…</Badge>
                     )}
                     {video.analysis_status === 'processing' && (
                       <Badge variant="cycling">Processing…</Badge>

@@ -24,7 +24,13 @@ export interface LiftVideo {
   trimmed_r2_key?: string | null;
   overlay_r2_key?: string | null;
   rep_thumbnails_r2_key?: string | null;
-  analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  analysis_status?:
+    | 'pending'
+    | 'queued'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;
   reps_count?: number | null;
