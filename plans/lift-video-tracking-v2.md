@@ -13,10 +13,12 @@
 > → `rep_timing_json` + per-rep "Stick" column); T2 benchmarked (GPU not
 > adopted — CPU-bound pipeline + non-reproducible GPU-delegate velocity; fps
 > made fps-robust); T5 (persisted pose track `pose_track.py` + migration 070 +
-> `stream-url?variant=track`, validated via Modal). **T1 + T5 validated via the
-> real Modal path.** Squat lean threshold calibrated (10→30°).
-> **Next**: F2 (interactive viewer on the persisted track), then T3 (real bar
-> detector).
+> `stream-url?variant=track`, validated via Modal); F2 core (interactive
+> `PoseCanvas` skeleton + bar-path overlay on the persisted track, "Live pose"
+> toggle). **T1 + T5 validated via the real Modal path.** Squat lean threshold
+> calibrated (10→30°).
+> **Next**: F2 remainder (velocity graph, per-rep chapters, 3D view), then T3
+> (real bar detector).
 > **Owner decision**: Hybrid architecture continues — deterministic 3D
 > measurement produces all numbers; a VLM/LLM produces grounded qualitative
 > coaching only, on demand.
@@ -301,7 +303,7 @@ without re-running MediaPipe.
 | # | Feature | Depends | Value | Effort |
 |---|---|---|---|---|
 | F1 | **Bar-path technique metrics** — ✅ core shipped (`bar_tracking.py`: efficiency, drift ratio, rep-to-rep consistency; `bar_path_json` + UI card) from the pose-proxy track. ⏳ tilt / bar-over-midfoot / J-curve need the real bar (T3) | T3 | Coaching core; nothing else in the app does this | M |
-| F2 | **Interactive pose/3D viewer** — canvas skeleton + bar trail + velocity synced to the `<video>` playhead, per-rep chapters; three.js 3D view from world landmarks (reuse `Replay3D`/`Route3D` patterns) | T5 | Makes the system feel alive; foundation for all compare UI | M |
+| F2 | **Interactive pose/3D viewer** — ✅ core shipped: `PoseCanvas` draws the client-side skeleton + fading bar-path trail on the clean video, synced to the playhead (rAF), via a "Live pose" toggle in `VideoEmbed`; `lib/pose/track.ts` parses the persisted track. ⏳ velocity graph synced to playback, per-rep chapters, three.js 3D view from world landmarks | T5 | Makes the system feel alive; foundation for all compare UI | M |
 | F3 | **Sticking-point / weak-point detection** — ✅ core shipped: min-velocity position within the concentric phase (`_sticking_point` → `rep_timing_json` + per-rep "Stick" column). ⏳ joint-angle at the stick + accessory prescription via `services/deficiency.py` | T3 | Novel, high-signal coaching | M |
 | F4 | **VBT autoregulation loop** — per-set velocity loss + RPE → readiness / `services/adaptive.py` / Whoop recovery; next-set load; "end the set" cues | T2 | Closes training↔video loop | M |
 | F5 | **Longitudinal form analytics + SPC** — control charts per metric, flag genuine regression vs noise, correlate with load/volume blocks; fuse Jev note tags + health signals into injury risk | T3 | Turns scores into a program tool | M |
