@@ -16,6 +16,7 @@ export interface TrackRep {
   concentric_time?: number | null;
   concentric_velocity_ms?: number | null;
   sticking_position_pct?: number | null;
+  sticking_joint_angle?: number | null;
 }
 
 export interface PoseTrack {
