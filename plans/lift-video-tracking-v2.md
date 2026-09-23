@@ -218,9 +218,13 @@ and person-selection accuracy; baseline recorded.
   frame-based windows (`window=7`, gap `<3`), so a 30 fps track smoothed ~3× less
   and dropped reps (8→7). Now scaled by `fps` (`_win≈0.7·fps`, `_min_gap≈0.3·fps`);
   10 fps behaviour is byte-identical.
-- ⏳ Remaining: pin `mediapipe>=0.10.32`, Modal Volume model cache, one-euro/Kalman
-  smoothing, gravity alignment, anthropometric scale, `vidstab` stabilization,
-  and an eval run (rep MAE + velocity) before any fps change.
+- ✅ **One-euro smoothing evaluated and rejected**: on the real 150 kg squat it
+  under-read the rep amplitude (0.244 m/s vs 0.277 for the validated median
+  window) — the filter's lag shrinks the peak-to-trough, and raising the cutoff
+  only partly recovers it. Median smoothing retained.
+- ⏳ Remaining: pin `mediapipe>=0.10.32`, Modal Volume model cache, gravity
+  alignment, anthropometric scale, `vidstab` stabilization, and an eval run
+  (rep MAE + velocity) before any fps change.
 - **Original detail**:
 - **GPU delegate**: flip `modal_client._get_modal_image` from the forced CPU
   delegate to GPU; pin `mediapipe>=0.10.32` (0.10.31 had a broken GPU delegate);

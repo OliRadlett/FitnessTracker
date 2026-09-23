@@ -2226,6 +2226,9 @@ def bar_velocity_from_world(
     if sig is None:
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
     ts = np.array(timestamps[:n])
+    # Median smoothing (validated). A one-euro filter was evaluated (T2) but
+    # its lag shrinks the rep's peak-to-trough amplitude — measured 0.244 m/s
+    # vs 0.277 for a clean 150 kg squat — so it is not used here.
     pos = _smooth_signal(sig, window=3)
 
     velocities: list[float] = []
