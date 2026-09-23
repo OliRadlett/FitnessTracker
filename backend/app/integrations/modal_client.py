@@ -503,6 +503,7 @@ def process_video_on_modal(
                         bar_velocity_from_pose,
                         bar_velocity_from_world,
                         detect_reps_from_pose,
+                        sticking_joint_angle,
                     )
 
                     if landmarks and pose_timestamps:
@@ -521,6 +522,15 @@ def process_video_on_modal(
                                 "Velocity (world): mean=%.3f m/s, %d reps",
                                 vel_result.get("mean_concentric_velocity", 0.0),
                                 len(vel_result.get("rep_timings", [])))
+                            # F3: knee/elbow angle at the sticking frame.
+                            for _e in vel_result.get("rep_timings", []):
+                                _ang = sticking_joint_angle(
+                                    landmarks,
+                                    _e.get("sticking_frame_idx"),
+                                    exercise,
+                                )
+                                if _ang is not None:
+                                    _e["sticking_joint_angle"] = _ang
                         if vel_result.get("tracking_quality") == "failed":
                             import cv2
 

@@ -591,6 +591,20 @@ class TestStickingPoint:
     def test_none_indices_returns_none(self):
         assert pa._sticking_point([0.0] * 10, [i * 0.1 for i in range(10)], None, None) is None
 
+    def test_returns_absolute_frame_index(self):
+        pos = [0.0, 0.2, 0.4, 0.6, 0.8, 0.81, 0.82, 0.83, 1.0, 1.4, 1.8, 2.0]
+        ts = [i * 0.1 for i in range(len(pos))]
+        sp = pa._sticking_point(pos, ts, 0, len(pos) - 1)
+        assert 0 <= sp["sticking_frame_idx"] <= len(pos) - 1
+
+    def test_joint_angle_knee_for_squat(self):
+        seq = [_pose(90.0)]
+        assert pa.sticking_joint_angle(seq, 0, "Back Squat") == pytest.approx(90.0, abs=1.0)
+
+    def test_joint_angle_none_for_out_of_range(self):
+        assert pa.sticking_joint_angle([_pose(90.0)], 5, "Back Squat") is None
+        assert pa.sticking_joint_angle([_pose(90.0)], None, "Back Squat") is None
+
     def test_rep_timing_entry_carries_sticking_fields(self):
         n = 12
         frames = TestWorldVelocity._frames([0.0] * 3 + [0.5] * 6 + [1.0] * 3)

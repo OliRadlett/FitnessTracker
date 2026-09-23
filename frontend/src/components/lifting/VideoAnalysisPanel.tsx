@@ -42,6 +42,7 @@ interface RepTiming {
   concentric_velocity_ms?: number | null;
   sticking_position_pct?: number | null;
   sticking_min_velocity_ms?: number | null;
+  sticking_joint_angle?: number | null;
 }
 
 function parseRepTimings(value: string | null | undefined): RepTiming[] {
@@ -492,9 +493,16 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                     <td
                       className="py-1 text-muted"
                       title={
-                        r.sticking_min_velocity_ms != null
-                          ? `min ${r.sticking_min_velocity_ms.toFixed(2)} m/s`
-                          : undefined
+                        [
+                          r.sticking_min_velocity_ms != null
+                            ? `min ${r.sticking_min_velocity_ms.toFixed(2)} m/s`
+                            : null,
+                          r.sticking_joint_angle != null
+                            ? `joint ${Math.round(r.sticking_joint_angle)}°`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || undefined
                       }
                     >
                       {r.sticking_position_pct != null

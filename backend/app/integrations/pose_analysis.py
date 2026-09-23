@@ -2110,7 +2110,26 @@ def _sticking_point(pos, ts, bi: int, ti: int) -> dict | None:
     return {
         "sticking_position_pct": round(float((k + 0.5) / speed.size) * 100, 1),
         "sticking_min_velocity_ms": round(float(speed[k]), 3),
+        # Absolute index into the aligned landmark list — lets callers read the
+        # joint angle at the sticking point.
+        "sticking_frame_idx": int(bi) + k,
     }
+
+
+def sticking_joint_angle(landmarks: list, frame_idx, exercise: str) -> float | None:
+    """Knee (leg lifts) or elbow (presses) angle at the sticking frame (F3)."""
+    if frame_idx is None or not (0 <= int(frame_idx) < len(landmarks)):
+        return None
+    lm = landmarks[int(frame_idx)]
+    if lm is None:
+        return None
+    if _is_leg_lift(exercise):
+        return round(
+            calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28)), 1
+        )
+    return round(
+        calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16)), 1
+    )
 
 
 def bar_velocity_from_world(
