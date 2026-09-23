@@ -225,19 +225,26 @@ def _run_one(
     record["form_rep_count"] = pose_result.get("rep_count_detected")
 
     exercise = label.get("exercise") or classification["exercise"]
-    if any(w is not None for w in world):
+    used_world = any(w is not None for w in world)
+    if used_world:
         vel = bar_velocity_from_world(world, timestamps, declared_reps, exercise)
         record["velocity_source"] = "world"
     else:
+        vel = {}
+    # Mirror production: fall back to the 2D pixels-per-metre path when the
+    # world path is absent OR fails (e.g. bench wrist landmarks are unreliable).
+    if not used_world or vel.get("tracking_quality") == "failed":
         import cv2
 
         cap = cv2.VideoCapture(str(video_path))
         frame_h = float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
-        vel = bar_velocity_from_pose(
+        vel_2d = bar_velocity_from_pose(
             landmarks, timestamps, declared_reps, exercise, frame_h, _get_rom(exercise)
         )
-        record["velocity_source"] = "2d"
+        if not used_world or vel_2d.get("tracking_quality") != "failed":
+            vel = vel_2d
+            record["velocity_source"] = "2d" + ("_fallback" if used_world else "")
     record["velocity_quality"] = vel.get("tracking_quality")
     record["mean_velocity"] = vel.get("mean_concentric_velocity")
     record["velocity_loss_pct"] = vel.get("velocity_loss_pct")

@@ -830,7 +830,10 @@ def classify_exercise(landmarks_per_frame: list,
 
 # ── Camera View Detection ────────────────────────────────────────────────────
 
-VIEW_SIDE_MAX_RATIO = 0.50
+# Calibrated against the labelled fixtures (2026-09-23): the true side-on squat
+# reads shoulder/torso ratio 0.30, while ¾ clips read 0.35–0.96. 0.32 separates
+# them (0.50 called the 0.35 ¾ squat "side", enabling sagittal rules wrongly).
+VIEW_SIDE_MAX_RATIO = 0.32
 VIEW_FRONTAL_MIN_RATIO = 1.10
 
 

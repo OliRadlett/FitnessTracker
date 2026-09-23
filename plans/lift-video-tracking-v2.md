@@ -358,13 +358,49 @@ deliberately avoided as low-ROI.
 | Joint-angle MAE vs synthetic GT | n/a | < 5° |
 | Bar-position MAE (calibrated) | n/a | < 10 mm |
 | Velocity MAE | ~0.21 m/s mean, high spread | < 0.03 m/s |
-| Rep-count MAE | 0.25–0.33 | < 0.25 |
+| Rep-count MAE | 0.30 (10-clip eval) | < 0.25 |
 | View-invariant depth accuracy (¾ clips) | not assessed | ≥ 0.9 |
-| Rest timing error | columns dead | ±5 s |
-| View classification accuracy | unreliable | ≥ 0.9 |
+| Rest timing error | columns dead → populated | ±5 s |
+| View classification accuracy | **0.90** (10-clip eval, was 0.80) | ≥ 0.9 |
 
 Carry forward the v1 targets that are still met (velocity-loss-in-range,
 form-score-zero-rate) so v2 cannot regress them.
+
+---
+
+## Diagnostics — full-labelled-set run (2026-09-23)
+
+Ran `scripts/video_eval.py --num-poses 2 --skip-exercise "log press"
+--skip-exercise stone` over the 10 remaining fixtures (Log Press / Atlas Stone
+excluded per owner) — the whole pipeline, not one clip. Measured:
+declared-rep **exact 1.00**, auto-rep MAE 0.30, form-zero 0.00, velocity-loss
+out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy 0.50.
+
+**Fixed from the findings**
+- **View threshold** `VIEW_SIDE_MAX_RATIO` 0.50 → **0.32**: the true side-on
+  squat reads ratio 0.30, ¾ clips 0.35–0.96; 0.50 wrongly called a ¾ squat
+  "side" (enabling sagittal rules). Accuracy 0.80 → 0.90.
+- **Eval harness parity**: `_run_one` now falls back to the 2D velocity path
+  when the world path fails, mirroring `_process`.
+
+**Known limitations surfaced (not yet fixed)**
+- **Bench (multi-pose) is the weak clip**: the spotter forces `num_poses=2`, but
+  MediaPipe returns the lifter for only ~31% of frames, so the elbow-angle
+  signal is fragmented and rep detection latches onto a spurious 2-frame cycle
+  (`bottom=90, top=92`) → no measurable velocity. Squat/deadlift are unaffected
+  (single-person, ~100% coverage). Needs a bench-specific rep signal (e.g.
+  wrist-y) or a better multi-person tracker.
+- **Auto exercise classifier confuses squat↔deadlift** (5/7 squats → "Deadlift",
+  conf 0.95). Low impact — the user declares the exercise — but it feeds
+  `auto_exercise`.
+- **Auto rep detection is looser than declared**: with `expected_reps` (always
+  provided in production) reps are exact; without it a 3-rep squat read 1.
+- **Bar-path proxy drift is high** (drift_ratio 0.28–0.94): the shoulder/wrist
+  midpoint moves horizontally during a lift — expected for a proxy; the real
+  bar detector (T3) is what fixes this.
+- **"Incomplete lockout" fires on some reps** of otherwise clean 8-rep squats
+  (threshold `tan`/top-frame sensitive) — same class of over-eager threshold as
+  the squat-lean one; needs label calibration before adjusting.
 
 ---
 
