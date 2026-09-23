@@ -46,6 +46,15 @@ export function PoseTimeline({ videoRef, track }: PoseTimelineProps) {
     if (v && t != null) v.currentTime = t;
   };
 
+  // Time of the sticking point (apex of difficulty) within a rep's concentric.
+  const stickTime = (r: (typeof reps)[number]): number | null => {
+    if (r.start_time == null) return null;
+    const dur =
+      r.concentric_time ?? (r.end_time ?? r.start_time) - r.start_time;
+    if (r.sticking_position_pct == null || !dur) return null;
+    return r.start_time + (r.sticking_position_pct / 100) * dur;
+  };
+
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-[11px] text-muted">
@@ -80,6 +89,32 @@ export function PoseTimeline({ videoRef, track }: PoseTimelineProps) {
           );
         })}
       </div>
+      {active >= 0 && (
+        <div className="flex items-center gap-3 text-[10px] text-muted">
+          <span className="uppercase tracking-wide">Key moments</span>
+          <button
+            type="button"
+            onClick={() => seek(reps[active].start_time)}
+            className="hover:text-foreground"
+          >
+            ▶ Start
+          </button>
+          <button
+            type="button"
+            onClick={() => seek(stickTime(reps[active]))}
+            className="hover:text-foreground"
+          >
+            ◆ Apex
+          </button>
+          <button
+            type="button"
+            onClick={() => seek(reps[active].end_time)}
+            className="hover:text-foreground"
+          >
+            ■ Stop
+          </button>
+        </div>
+      )}
     </div>
   );
 }

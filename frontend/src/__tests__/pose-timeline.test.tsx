@@ -32,6 +32,26 @@ describe('PoseTimeline', () => {
     expect(video.currentTime).toBe(5);
   });
 
+  it('shows start/apex/stop key moments for the active rep', async () => {
+    const video = document.createElement('video');
+    video.currentTime = 1.5;
+    const ref = { current: video };
+    const track = makeTrack([
+      {
+        rep_number: 1,
+        start_time: 1,
+        end_time: 3,
+        concentric_time: 2,
+        sticking_position_pct: 50,
+        concentric_velocity_ms: 0.3,
+      },
+    ]);
+    render(<PoseTimeline videoRef={ref} track={track} />);
+    await screen.findByText('▶ Start');
+    expect(screen.getByText('◆ Apex')).toBeInTheDocument();
+    expect(screen.getByText('■ Stop')).toBeInTheDocument();
+  });
+
   it('renders nothing without reps', () => {
     const ref = { current: document.createElement('video') };
     const { container } = render(<PoseTimeline videoRef={ref} track={makeTrack([])} />);
