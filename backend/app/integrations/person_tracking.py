@@ -58,11 +58,30 @@ def iou(a, b) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def greedy_match(prev_boxes, curr_boxes, iou_threshold: float = 0.3):
-    """Greedy IoU association (highest overlap first).
+def center_distance(a, b) -> float:
+    """Euclidean distance between two box centres (normalised coords)."""
+    if a is None or b is None:
+        return float("inf")
+    ca = ((a[0] + a[2]) / 2, (a[1] + a[3]) / 2)
+    cb = ((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)
+    return float(np.hypot(ca[0] - cb[0], ca[1] - cb[1]))
 
-    Person counts per frame are tiny (1–4), so greedy matching is
-    equivalent to optimal assignment in practice and needs no SciPy.
+
+def greedy_match(
+    prev_boxes,
+    curr_boxes,
+    iou_threshold: float = 0.3,
+    max_center_dist: float = 0.12,
+):
+    """Greedy association by overlap, falling back to centre proximity.
+
+    A pair matches if IoU ≥ ``iou_threshold`` **or** the centres are within
+    ``max_center_dist`` (normalised). The proximity fallback keeps a person's
+    track together when the pose bbox jitters or shrinks (occlusion), which
+    IoU alone would treat as a new person — the cause of fragmented tracks.
+
+    Person counts per frame are tiny (1–4), so greedy matching is equivalent
+    to optimal assignment in practice and needs no SciPy.
 
     Returns ``(matches, unmatched_prev, unmatched_curr)`` where ``matches`` is
     a list of ``(prev_idx, curr_idx)``.
@@ -70,9 +89,13 @@ def greedy_match(prev_boxes, curr_boxes, iou_threshold: float = 0.3):
     pairs: list[tuple[float, int, int]] = []
     for i, pb in enumerate(prev_boxes):
         for j, cb in enumerate(curr_boxes):
+            if pb is None or cb is None:
+                continue
             v = iou(pb, cb)
-            if v >= iou_threshold:
-                pairs.append((v, i, j))
+            d = center_distance(pb, cb)
+            if v >= iou_threshold or d <= max_center_dist:
+                # Prefer overlap, then proximity (0..1 each).
+                pairs.append((v + max(0.0, 1.0 - d), i, j))
     pairs.sort(reverse=True)
 
     used_prev: set[int] = set()
@@ -104,7 +127,8 @@ def build_person_tracks(
     persons_per_frame: list,
     frame_indices: list[int] | None = None,
     iou_threshold: float = 0.3,
-    max_missing: int = 5,
+    max_missing: int = 15,
+    max_center_dist: float = 0.12,
 ) -> list[dict]:
     """Associate per-frame person detections into stable tracks.
 
@@ -129,7 +153,7 @@ def build_person_tracks(
         active_boxes = [active[t]["last_bbox"] for t in active_ids]
 
         matches, _unmatched_prev, unmatched_curr = greedy_match(
-            active_boxes, boxes, iou_threshold
+            active_boxes, boxes, iou_threshold, max_center_dist
         )
         for ai, cj in matches:
             tid = active_ids[ai]

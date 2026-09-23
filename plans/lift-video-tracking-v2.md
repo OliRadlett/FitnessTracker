@@ -10,8 +10,9 @@
 > (`VIDEO_POSE_FPS`/`VIDEO_GPU_DELEGATE_ENABLED`, `--fps`/`--gpu`); F1 core
 > (bar-path metrics `bar_tracking.py` + `bar_path_json`, migration 069, UI card)
 > from the pose proxy; F3 core (sticking-point detection in `bar_velocity_from_world`
-> → `rep_timing_json` + per-rep "Stick" column). Multi-pose is wired behind
-> `VIDEO_MULTI_POSE_ENABLED`, default OFF pending real-video validation.
+> → `rep_timing_json` + per-rep "Stick" column). **T1 validated on real footage
+> and via the real Modal path** (bench spotter → lifter); bench-only gate,
+> `VIDEO_MULTI_POSE_ENABLED` default ON.
 > **Next**: validate multi-pose on the bench fixture set, benchmark T4 vs L4 and
 > raise `VIDEO_POSE_FPS` (T2 plumbing already in place), then T3 (bar tracking).
 > **Owner decision**: Hybrid architecture continues — deterministic 3D
@@ -110,7 +111,7 @@ Upload → R2 → DB row → Celery process_lift_video
 - ✅ Tests: `test_pose_analysis.py` gained `TestFramePresence`,
   `TestWorldSignal`, `TestWorldVelocityNoneSafe`.
 
-### T1 · Lifter vs spotter (do first — owner-reported bug) — 🟡 CORE DONE
+### T1 · Lifter vs spotter (do first — owner-reported bug) — ✅ DONE + VALIDATED
 
 - ✅ **`backend/app/integrations/person_tracking.py`**: pure NumPy IoU
   association (`greedy_match`, `build_person_tracks`) + `select_lifter`
@@ -130,8 +131,14 @@ Upload → R2 → DB row → Celery process_lift_video
   `PATCH /videos/{id}` (`lifter_track_id`) and forced on reprocess
   (`select_lifter(forced_track_id=…)`), plus a "who's lifting?" chooser in
   `VideoAnalysisPanel`.
-- ⏳ **Validate on real bench footage** (`run_video_local --num-poses 2`) before
-  flipping the flag on in production.
+- ✅ **Validated on real footage + Modal (2026-09-22)**: with `num_poses=1`
+  MediaPipe tracked the upright **spotter for 375/375 frames (0 horizontal)** on
+  the bench clip; `num_poses=2` + posture prior picked the horizontal lifter
+  (`horiz=0.89`). Confirmed via the real Modal path (`_process` → container).
+  **Bench-only gate** added after validation showed multi-pose fragments the
+  track and regresses other lifts (clean 150 kg squat: 100 at num_poses=1 vs 75
+  at 2) — `modal_client._process` only uses `num_poses>1` when
+  `route_exercise(user_ex)=="Bench Press"`. Flag flipped to default ON.
 - ⏳ Learned/MediaPipe person detector (beyond pose-derived boxes) — optional.
 
 ### T0/T1 original detail
