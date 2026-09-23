@@ -8,6 +8,7 @@ Replaces Gemini Vision calls with deterministic rule-based evaluation.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import subprocess
 from pathlib import Path
@@ -1830,6 +1831,12 @@ def run_pose_analysis(
     reps = detect_reps_from_pose(landmarks, timestamps, exercise,
                                  expected_reps=expected, fps=fps)
 
+    # Rest between reps (cluster sets / deliberate pauses) — fills the
+    # rest-timing columns; None for a continuous set.
+    rest = segment_rest(track.get("world") or [], timestamps, reps, exercise)
+    if rest:
+        result["rest"] = rest
+
     # Per-rep analysis
     per_rep = []
     for rep in reps:
@@ -2130,6 +2137,56 @@ def sticking_joint_angle(landmarks: list, frame_idx, exercise: str) -> float | N
     return round(
         calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16)), 1
     )
+
+
+def segment_rest(
+    world_frames: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    exercise: str,
+    min_rest_s: float = 1.5,
+    still_range_m: float = 0.008,
+) -> dict | None:
+    """Detect genuine rest between reps: a gap where the bar stays still.
+
+    A continuous set has no such gap (returns ``None``); a cluster set or a set
+    with deliberate pauses does. Populates the rest-timing columns (T6).
+    """
+    sig = _world_signal(world_frames, exercise)
+    if sig is None or len(pose_reps) < 2:
+        return None
+    ts = np.asarray(timestamps, dtype=float)
+    periods: list[dict] = []
+    for prev, nxt in itertools.pairwise(pose_reps):
+        i0 = prev.get("end_idx", prev.get("top_idx"))
+        i1 = nxt.get("start_idx", nxt.get("bottom_idx"))
+        if i0 is None or i1 is None or i1 <= i0 + 1 or i1 >= len(sig):
+            continue
+        # Longest run of near-stationary frames inside the gap (a pause, not a
+        # continuous descent).
+        run_start = None
+        best = 0.0
+        for i in range(i0 + 1, i1 + 1):
+            if abs(sig[i] - sig[i - 1]) <= still_range_m:
+                if run_start is None:
+                    run_start = i - 1
+                best = max(best, float(ts[i] - ts[run_start]))
+            else:
+                run_start = None
+        if best >= min_rest_s:
+            periods.append({
+                "after_rep": prev.get("rep_number"),
+                "seconds": round(best, 1),
+            })
+    if not periods:
+        return None
+    vals = np.array([p["seconds"] for p in periods], dtype=float)
+    mean = float(vals.mean())
+    return {
+        "periods": periods,
+        "avg_seconds": round(mean, 1),
+        "cv": round(float(vals.std() / mean), 3) if mean > 0 else 0.0,
+    }
 
 
 def bar_velocity_from_world(

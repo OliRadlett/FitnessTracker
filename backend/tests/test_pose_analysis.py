@@ -615,6 +615,53 @@ class TestStickingPoint:
         assert "sticking_position_pct" in res["rep_timings"][0]
 
 
+class TestSegmentRest:
+    @staticmethod
+    def _world(profile):
+        frames = []
+        for d in profile:
+            w = [Lm() for _ in range(33)]
+            for i in (23, 24):
+                w[i] = Lm(0.5, 0.0)
+            for i in (27, 28):
+                w[i] = Lm(0.5, d)
+            frames.append(w)
+        return frames
+
+    def test_detects_a_pause_between_reps(self):
+        profile = (
+            [0.3 + 0.3 * (i / 9) for i in range(10)]  # rep 1 ascends
+            + [0.6] * 20                               # pause at the top
+            + [0.3 + 0.3 * (i / 9) for i in range(10)]  # rep 2
+        )
+        world = self._world(profile)
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 9},
+            {"rep_number": 2, "start_idx": 30, "end_idx": 39},
+        ]
+        rest = pa.segment_rest(world, ts, reps, "Back Squat")
+        assert rest is not None
+        assert rest["periods"][0]["after_rep"] == 1
+        assert rest["avg_seconds"] >= 1.5
+
+    def test_continuous_set_has_no_rest(self):
+        profile = [0.3 + 0.3 * abs((i % 20) - 10) / 10 for i in range(40)]
+        world = self._world(profile)
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 9},
+            {"rep_number": 2, "start_idx": 20, "end_idx": 29},
+        ]
+        assert pa.segment_rest(world, ts, reps, "Back Squat") is None
+
+    def test_single_rep_returns_none(self):
+        world = self._world([0.3, 0.4, 0.5])
+        ts = [0.0, 0.1, 0.2]
+        reps = [{"rep_number": 1, "start_idx": 0, "end_idx": 2}]
+        assert pa.segment_rest(world, ts, reps, "Back Squat") is None
+
+
 class TestWorldVelocityNoneSafe:
     def test_none_world_frame_preserves_rep_count(self):
         # Regression: a single None world frame used to shift every later

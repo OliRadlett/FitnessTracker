@@ -838,6 +838,8 @@ def process_video_on_modal(
                 # Persisted pose track (T5)
                 "pose_track_r2_key": track_uploaded_key,
                 "analysis_version": analysis_version,
+                # Rest between reps (T6)
+                "rest": full_result.get("rest"),
                 # Rest timing
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
