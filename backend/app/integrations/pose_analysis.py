@@ -2233,6 +2233,23 @@ def segment_rest(
     if sig is None or len(pose_reps) < 2:
         return None
     ts = np.asarray(timestamps, dtype=float)
+
+    # Group reps into sets: a gap longer than set_gap_s starts a new set (a
+    # long session video — untrimmed — otherwise reads as one huge set).
+    set_gap_s = max(min_rest_s, 60.0)
+    reps_per_set: list[int] = []
+    run = 0
+    prev_end = None
+    for r in pose_reps:
+        i0 = min(int(r.get("start_idx", 0)), len(ts) - 1)
+        if prev_end is not None and float(ts[i0] - prev_end) > set_gap_s:
+            reps_per_set.append(run)
+            run = 0
+        run += 1
+        prev_end = float(ts[min(int(r.get("end_idx", i0)), len(ts) - 1)])
+    if run:
+        reps_per_set.append(run)
+
     periods: list[dict] = []
     for prev, nxt in itertools.pairwise(pose_reps):
         i0 = prev.get("end_idx", prev.get("top_idx"))
@@ -2255,11 +2272,15 @@ def segment_rest(
                 "after_rep": prev.get("rep_number"),
                 "seconds": round(best, 1),
             })
+
+    base = {"n_sets": len(reps_per_set), "reps_per_set": reps_per_set}
     if not periods:
-        return None
+        # Continuous set: no rest, but still report the set grouping.
+        return {**base, "periods": [], "avg_seconds": None, "cv": None}
     vals = np.array([p["seconds"] for p in periods], dtype=float)
     mean = float(vals.mean())
     return {
+        **base,
         "periods": periods,
         "avg_seconds": round(mean, 1),
         "cv": round(float(vals.std() / mean), 3) if mean > 0 else 0.0,
