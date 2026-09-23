@@ -43,6 +43,8 @@ interface RepTiming {
   sticking_position_pct?: number | null;
   sticking_min_velocity_ms?: number | null;
   sticking_joint_angle?: number | null;
+  knee_moment_nm?: number | null;
+  hip_moment_nm?: number | null;
 }
 
 function parseRepTimings(value: string | null | undefined): RepTiming[] {
@@ -499,6 +501,9 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                             : null,
                           r.sticking_joint_angle != null
                             ? `joint ${Math.round(r.sticking_joint_angle)}°`
+                            : null,
+                          r.knee_moment_nm != null
+                            ? `knee ≈${Math.round(r.knee_moment_nm)} Nm`
                             : null,
                         ]
                           .filter(Boolean)

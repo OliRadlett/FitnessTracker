@@ -80,6 +80,10 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/pose_track.py",
                 "/root/app/integrations/pose_track.py",
             )
+            image = image.add_local_file(
+                f"{analysis_dir}/biomechanics.py",
+                "/root/app/integrations/biomechanics.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -523,14 +527,23 @@ def process_video_on_modal(
                                 vel_result.get("mean_concentric_velocity", 0.0),
                                 len(vel_result.get("rep_timings", [])))
                             # F3: knee/elbow angle at the sticking frame.
+                            # F9: external joint moments there too.
+                            from app.integrations.biomechanics import joint_moments
+
                             for _e in vel_result.get("rep_timings", []):
+                                _fi = _e.get("sticking_frame_idx")
                                 _ang = sticking_joint_angle(
-                                    landmarks,
-                                    _e.get("sticking_frame_idx"),
-                                    exercise,
-                                )
+                                    landmarks, _fi, exercise)
                                 if _ang is not None:
                                     _e["sticking_joint_angle"] = _ang
+                                if (
+                                    _fi is not None
+                                    and 0 <= int(_fi) < len(pose_world)
+                                ):
+                                    _mm = joint_moments(
+                                        pose_world[int(_fi)], weight_kg, exercise)
+                                    if _mm:
+                                        _e.update(_mm)
                         if vel_result.get("tracking_quality") == "failed":
                             import cv2
 
