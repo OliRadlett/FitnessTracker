@@ -185,6 +185,9 @@ def main() -> int:
     ap.add_argument("--min-lift-score", type=float, default=0.6)
     ap.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "inbox" / "manifest.json")
     ap.add_argument("--copy-to", type=Path, default=None)
+    ap.add_argument("--eval-labels", type=Path, default=None,
+                    help="also write a video_labels.json-compatible stub for the "
+                         "eval harness (file=basename; fill reps/exercise)")
     args = ap.parse_args()
 
     if not args.takeout.exists():
@@ -206,6 +209,23 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({"videos": matches}, indent=2), encoding="utf-8")
     print(f"\n{len(matches)} candidate(s) -> {args.out}")
+
+    if args.eval_labels:
+        _VIEW = {"frontal": "front", "side": "side", "three_quarter": "three_quarter"}
+        eval_videos = [
+            {
+                "file": Path(m["path"]).name,
+                "exercise": m.get("exercise"),
+                "camera_view": _VIEW.get(m.get("view") or "", None),
+                "reps": None,
+                "notes": "imported from Takeout — fill exercise/view/reps",
+            }
+            for m in matches
+        ]
+        args.eval_labels.parent.mkdir(parents=True, exist_ok=True)
+        args.eval_labels.write_text(
+            json.dumps({"videos": eval_videos}, indent=2), encoding="utf-8")
+        print(f"wrote eval-label stub -> {args.eval_labels}")
     return 0
 
 
