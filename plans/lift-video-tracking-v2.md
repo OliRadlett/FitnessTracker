@@ -256,7 +256,10 @@ depth accuracy ≥ 0.9 on ¾ clips.
   `scripts/autolabel_bars.py` (frames → pose person-box + classical plate-box
   seed labels), `scripts/label_tool/index.html` (in-browser corrector), and
   `scripts/train_bar_detector.py` (YOLO dataset prep → Modal GPU fine-tune →
-  ONNX). Remaining: **correct the seed labels** (human pass), train, then wire
+  ONNX), and `scripts/render_synthetic_bars.py` (numpy/opencv pinhole renderer:
+  barbell + 1-3 plates/side (varied size/colour), rack, occluding person,
+  random camera → **exact** boxes; ~4 plates/frame). Remaining: **correct the
+  seed labels** (human pass), merge with the synthetic set, train, then wire
   the ONNX model into `bar_detection.bar_track_from_frame_paths` and validate.
   Chosen approach (owner): synthetic renders + a small human-labelled set.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
