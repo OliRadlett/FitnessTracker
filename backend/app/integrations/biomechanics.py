@@ -70,12 +70,19 @@ def joint_moments(
     knee = _mid(w, *_KNEE)
     hip = _mid(w, *_HIP)
     load_n = float(load_kg) * GRAVITY
-    knee_arm = abs(float(bar[0] - knee[0]))
-    hip_arm = abs(float(bar[0] - hip[0]))
+    knee_moment = load_n * abs(float(bar[0] - knee[0]))
+    hip_moment = load_n * abs(float(bar[0] - hip[0]))
+    total = knee_moment + hip_moment
     return {
-        "knee_moment_nm": round(load_n * knee_arm, 1),
-        "hip_moment_nm": round(load_n * hip_arm, 1),
-        "knee_moment_arm_m": round(knee_arm, 3),
-        "hip_moment_arm_m": round(hip_arm, 3),
+        "knee_moment_nm": round(knee_moment, 1),
+        "hip_moment_nm": round(hip_moment, 1),
+        "knee_moment_arm_m": round(abs(float(bar[0] - knee[0])), 3),
+        "hip_moment_arm_m": round(abs(float(bar[0] - hip[0])), 3),
+        # Share of the summed external moment carried by the hip — a relative
+        # quad-vs-hip-dominance readout. Higher = more hip/glute, lower = more
+        # quad. None when both moments are ~zero.
+        "hip_share_pct": (
+            round(hip_moment / total * 100, 1) if total > 1e-9 else None
+        ),
         "confidence": round(vis, 3),
     }
