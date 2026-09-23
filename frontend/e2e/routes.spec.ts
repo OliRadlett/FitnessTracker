@@ -9,8 +9,9 @@ import * as mockData from './fixtures/mock-data';
 test.describe('Routes Page', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/routes');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    // Content-aware wait (networkidle is flaky by design — Playwright
+    // discourages it; background polls/SW/timers can hold it forever).
+    await expect(page.locator('main h1')).toContainText(/saved routes|routes/i);
     // List view holds the cards/filters these specs assert (default is map).
     await page.getByRole('tab', { name: 'List' }).click();
     // Fail fast here if the list never loads (rather than 19 timeouts).
@@ -132,7 +133,9 @@ test.describe('Routes Page', () => {
     const skeleton = page.locator('.animate-pulse').first();
     await expect(skeleton).toBeVisible();
 
-    await page.waitForLoadState('networkidle');
+    // List view holds the cards (default is map, where names don't render).
+    await page.getByRole('tab', { name: 'List' }).click();
+    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 15000 });
   });
 
   // ── Error States ────────────────────────────────────────────────────────
@@ -143,9 +146,6 @@ test.describe('Routes Page', () => {
     });
 
     await page.goto('/fittrack/routes');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-
     await expect(page.locator('main h1')).toContainText(/routes/i);
   });
 
@@ -157,9 +157,6 @@ test.describe('Routes Page', () => {
     });
 
     await page.goto('/fittrack/routes');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-
     await expect(page.locator('main h1')).toContainText(/routes/i);
   });
 });
