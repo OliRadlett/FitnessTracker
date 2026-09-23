@@ -207,6 +207,42 @@ class TestRouteExercise:
         assert pa.route_exercise("Log Press", "Overhead Press", 0.95)[0] == "Overhead Press"
 
 
+class TestFootStabilization:
+    @staticmethod
+    def _frames_with_feet(positions):
+        frames = []
+        for fx, fy in positions:
+            lms = [Lm(0.5, 0.5) for _ in range(33)]
+            for i in (27, 28, 29, 30, 31, 32):
+                lms[i] = Lm(fx, fy)
+            frames.append(lms)
+        return frames
+
+    def test_planted_foot_jitter_is_removed(self):
+        jitter = [0.004, -0.003, 0.002, -0.004, 0.003, -0.002, 0.001, -0.001,
+                  0.004, -0.003, 0.002, -0.004, 0.003, -0.002, 0.001, -0.001,
+                  0.002, -0.002, 0.003, -0.003]
+        positions = [(0.4 + d, 0.9) for d in jitter]
+        frames = self._frames_with_feet(positions)
+        out = pa.stabilize_planted_feet(frames)
+        xs = [f[27].x for f in out]
+        input_range = max(p[0] for p in positions) - min(p[0] for p in positions)
+        assert max(xs) - min(xs) < input_range  # jitter reduced
+        assert max(xs) - min(xs) < 0.01
+
+    def test_moving_foot_is_followed_not_pinned(self):
+        positions = [(0.4 + 0.02 * i, 0.9) for i in range(20)]  # walking
+        frames = self._frames_with_feet(positions)
+        out = pa.stabilize_planted_feet(frames)
+        xs = [f[27].x for f in out]
+        assert max(xs) - min(xs) > 0.3  # still spans the movement
+        assert xs[0] < xs[-1]           # trend preserved
+
+    def test_too_few_frames_returned_unchanged(self):
+        frames = self._frames_with_feet([(0.4, 0.9)] * 3)
+        assert pa.stabilize_planted_feet(frames) is frames
+
+
 class TestAnalysisQuality:
     def _run(self, tmp_path, seq, exercise="Back Squat", reps=0):
         ts = [i * 0.1 for i in range(len(seq))]
