@@ -254,6 +254,23 @@ class TestFootStabilization:
         assert pa.stabilize_planted_feet(frames) is frames
 
 
+class TestRepSignal:
+    def test_legs_use_angle_signal(self):
+        sig, is_angle = pa._rep_signal([_pose(90.0)] * 5, "Back Squat", 3)
+        assert is_angle is True
+
+    def test_bench_uses_normalised_bar_height(self):
+        frames = []
+        for y in (0.3, 0.5, 0.7, 0.5, 0.3):
+            lm = [Lm() for _ in range(33)]
+            for i in (15, 16):
+                lm[i] = Lm(0.5, y)
+            frames.append(lm)
+        sig, is_angle = pa._rep_signal(frames, "Bench Press", 3)
+        assert is_angle is False
+        assert float(sig.max() - sig.min()) == pytest.approx(180.0, abs=1.0)
+
+
 class TestAnalysisQuality:
     def _run(self, tmp_path, seq, exercise="Back Squat", reps=0):
         ts = [i * 0.1 for i in range(len(seq))]
@@ -288,6 +305,24 @@ class TestAnalysisQuality:
             "Back Squat", 2, 0.0, track=track,
         )
         assert out["quality"]["level"] == "fair"
+
+    def test_multi_person_low_lifter_coverage_is_fair(self, tmp_path):
+        # A pose is detected every frame (rate 1.0) but the selected lifter
+        # covers only 25% (a spotter dominated the detector) -> capped to fair.
+        seq = _squat_sequence(reps=3)
+        track = {
+            "landmarks": seq, "world": [],
+            "timestamps": [i * 0.1 for i in range(len(seq))],
+            "detected": len(seq), "frames": len(seq) * 4,
+            "pose_frames": len(seq) * 4, "tracks": [{}, {}],
+        }
+        out = pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            "Back Squat", 3, 0.0, track=track,
+        )
+        assert out["quality"]["level"] == "fair"
+        assert out["quality"]["multi_person"] is True
+        assert out["quality"]["lifter_rate"] == pytest.approx(0.25)
 
 
 class TestRepSprite:

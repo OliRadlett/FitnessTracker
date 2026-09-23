@@ -382,14 +382,21 @@ out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy 0.50.
   "side" (enabling sagittal rules). Accuracy 0.80 → 0.90.
 - **Eval harness parity**: `_run_one` now falls back to the 2D velocity path
   when the world path fails, mirroring `_process`.
+- **Bench rep signal**: `detect_reps_from_pose` now segments the **bench press
+  from the barbell height (wrist-y)**, normalised to an angle-like 0–180 scale,
+  instead of the elbow angle — the horizontal lifter's elbow landmarks are too
+  noisy on the fragmented multi-person track. Bench velocity went from
+  `failed`/0.0 to a measured 0.524 m/s (its rep window also moved from the
+  spurious 2-frame cycle to a full 53–62 window).
+- **Lifter-coverage-aware quality**: `run_pose_analysis` now caps the level
+  (`good → fair`) when a multi-person clip's selected *lifter* covers <50% of
+  frames (a spotter dominated the detector), and reports `lifter_rate` /
+  `multi_person`; the UI shows a "spotter present" note. Bench → `fair`.
 
 **Known limitations surfaced (not yet fixed)**
-- **Bench (multi-pose) is the weak clip**: the spotter forces `num_poses=2`, but
-  MediaPipe returns the lifter for only ~31% of frames, so the elbow-angle
-  signal is fragmented and rep detection latches onto a spurious 2-frame cycle
-  (`bottom=90, top=92`) → no measurable velocity. Squat/deadlift are unaffected
-  (single-person, ~100% coverage). Needs a bench-specific rep signal (e.g.
-  wrist-y) or a better multi-person tracker.
+- **Bench lifter coverage is still ~31%** (MediaPipe returns the lifter only
+  part of the clip) — the bar-height signal plus the `fair` quality flag make
+  this honest, but a better multi-person tracker (T3) is the real fix.
 - **Auto exercise classifier confuses squat↔deadlift** (5/7 squats → "Deadlift",
   conf 0.95). Low impact — the user declares the exercise — but it feeds
   `auto_exercise`.

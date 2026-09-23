@@ -897,6 +897,44 @@ def detect_camera_view(landmarks_per_frame: list) -> dict:
 
 # ── Rep Boundary Detection ───────────────────────────────────────────────────
 
+_LEG_EXERCISES = (
+    "Squat", "Front Squat", "Back Squat", "Deadlift",
+    "Conventional Deadlift", "Sumo Deadlift", "Stone",
+)
+
+
+def _rep_signal(landmarks_per_frame: list, exercise: str, window: int):
+    """Return ``(signal, is_angle)`` for rep detection.
+
+    Legs → knee angle; overhead presses → elbow angle; **bench press → the
+    barbell height (wrist-y)**. The bench lifter is horizontal and, with a
+    spotter present, its multi-person track is fragmented — the elbow
+    landmarks are too noisy to segment reps, but the bar (wrists) stays
+    legible. The bar-height signal is normalised to an angle-like 0–180 scale
+    so the shared prominence/amplitude gates apply.
+    """
+    ex = exercise or ""
+    if ex == "Bench Press":
+        raw = [-float(_mid(lm, 15, 16)[1]) for lm in landmarks_per_frame]
+    elif ex in _LEG_EXERCISES or "stone" in ex.lower() or "sandbag" in ex.lower():
+        raw = [
+            calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
+            for lm in landmarks_per_frame
+        ]
+    else:
+        raw = [
+            calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
+            for lm in landmarks_per_frame
+        ]
+
+    signal = _median_filter(raw, window=window)
+    if ex == "Bench Press":
+        lo, hi = float(np.min(signal)), float(np.max(signal))
+        if hi - lo > 1e-6:
+            signal = (signal - lo) / (hi - lo) * 180.0
+        return signal, False
+    return signal, True
+
 
 def detect_reps_from_pose(
     landmarks_per_frame: list,
@@ -929,15 +967,8 @@ def detect_reps_from_pose(
     _win = max(3, int(round(0.7 * fps)) | 1)
     _min_gap = max(3, int(round(0.3 * fps)))
 
-    # Build a "depth signal" — knee angle for squat/deadlift, elbow angle for bench
-    signal = _median_filter([
-        calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
-        if (exercise in ("Squat", "Front Squat", "Back Squat", "Deadlift",
-                         "Conventional Deadlift", "Sumo Deadlift", "Stone")
-            or "stone" in exercise.lower() or "sandbag" in exercise.lower()) else
-        calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
-        for lm in landmarks_per_frame
-    ], window=_win)
+    # Build the rep signal (knee angle / elbow angle / bench bar-height).
+    signal, angle_signal = _rep_signal(landmarks_per_frame, exercise, _win)
 
     # Find all raw extrema, then filter by PROMINENCE (height above the
     # surrounding signal). Jitter wobbles (±2°) and setup shuffles never
@@ -975,7 +1006,8 @@ def detect_reps_from_pose(
     # Bottoms must also clear anatomical plausibility (<30° is beyond max
     # joint flexion: always an occlusion glitch, never a real bottom).
     kept_min = [i for i in raw_min
-                if _prom(i, False) >= 25.0 and signal[i] >= 30.0]
+                if _prom(i, False) >= 25.0
+                and (not angle_signal or signal[i] >= 30.0)]
 
     # Each kept bottom gets the nearest kept top on each side as bounds
     # (falling back to the signal ends for videos starting/ending mid-rep).
@@ -1006,9 +1038,10 @@ def detect_reps_from_pose(
             continue
         seg = signal[start:end + 1]
         seg_min = float(np.min(seg))
-        if seg_min < 30.0:
+        if angle_signal and seg_min < 30.0:
             # Glitch-contaminated slice (beyond max joint flexion, always
-            # an occlusion gap, never a real bottom).
+            # an occlusion gap, never a real bottom). Only meaningful for
+            # joint-angle signals.
             continue
         amplitude = float(np.max(seg) - seg_min)
         if amplitude < min_amp:
@@ -1891,9 +1924,21 @@ def run_pose_analysis(
         level = "fair"
     else:
         level = "good"
+
+    # Multi-person clips (e.g. bench with a spotter): a pose is detected every
+    # frame, but MediaPipe may return the *lifter* for only part of the clip
+    # (the upright spotter wins the rest). That fragments the lifter's signal
+    # and softens every downstream number, so cap the level on lifter coverage.
+    lifter_frames = len(landmarks)
+    lifter_rate = (lifter_frames / frames) if frames else 0.0
+    multi_person = len(track.get("tracks") or []) > 1
+    if multi_person and lifter_rate < 0.5 and level == "good":
+        level = "fair"
     result["quality"] = {
         "level": level,
         "detection_rate": round(detection_rate, 2),
+        "lifter_rate": round(lifter_rate, 2),
+        "multi_person": multi_person,
         "reps": len(reps),
         "view": view,
     }
