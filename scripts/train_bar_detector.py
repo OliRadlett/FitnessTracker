@@ -90,7 +90,11 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         model.train(data="/data/data.yaml", epochs=epochs, imgsz=imgsz,
                     project="/runs", name="bar", exist_ok=True)
         best = _P("/runs/bar/weights/best.pt")
-        onnx_path = YOLO(str(best)).export(format="onnx", opset=12, imgsz=imgsz)
+        # nms=True bakes NMS into the graph so the app parser reads
+        # (1, N, 6) [x1,y1,x2,y2,conf,cls] directly (see bar_detection).
+        onnx_path = YOLO(str(best)).export(
+            format="onnx", opset=12, imgsz=imgsz, nms=True
+        )
         return _P(onnx_path).read_bytes()
 
     with app.run():
@@ -99,6 +103,8 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
     out = REPO_ROOT / "labels" / "bar_detector.onnx"
     out.write_bytes(onnx_bytes)
     print(f"wrote {out} ({len(onnx_bytes) // 1024} KB)")
+    print("Next: upload it to R2 at models/bar_detector.onnx and set "
+          "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
 
 
 def main() -> int:

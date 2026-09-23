@@ -260,8 +260,11 @@ depth accuracy ≥ 0.9 on ¾ clips.
   barbell + 1-3 plates/side (varied size/colour), rack, occluding person,
   random camera → **exact** boxes; ~4 plates/frame). Remaining: **correct the
   seed labels** (human pass), merge with the synthetic set, train, then wire
-  the ONNX model into `bar_detection.bar_track_from_frame_paths` and validate.
-  Chosen approach (owner): synthetic renders + a small human-labelled set.
+  train, then validate. **Inference is wired**: `bar_detection` runs the ONNX
+  detector (YOLO, `nms=True` → `(1,N,6)`) when `VIDEO_BAR_DETECTOR_MODEL` (an
+  R2 key, presigned + downloaded in the container) is set, falling back to the
+  classical detector/proxy when sparse. Chosen approach (owner): synthetic
+  renders + a small human-labelled set.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.
