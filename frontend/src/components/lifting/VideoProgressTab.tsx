@@ -15,6 +15,8 @@ const TRENDS = [
   { key: 'video_form_trend', title: 'Form Score Trend' },
   { key: 'video_velocity_trend', title: 'Velocity Trend' },
   { key: 'video_consistency_trend', title: 'Consistency Trend' },
+  { key: 'video_bar_path_trend', title: 'Bar-path Consistency' },
+  { key: 'video_sticking_point_trend', title: 'Sticking Point' },
 ] as const;
 
 function TrendChart({ chartKey, title, exercise }: { chartKey: string; title: string; exercise: string }) {

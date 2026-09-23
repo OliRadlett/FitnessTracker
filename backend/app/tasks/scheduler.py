@@ -3735,6 +3735,13 @@ def process_lift_video(
                 if result.get("bar_path") is not None:
                     video.bar_path_json = json.dumps(result["bar_path"])
 
+                # ── Rest between reps (T6) ─────────────────────────────────
+                rest = result.get("rest")
+                if rest:
+                    video.rest_periods_json = json.dumps(rest.get("periods"))
+                    video.avg_rest_seconds = rest.get("avg_seconds")
+                    video.rest_cv = rest.get("cv")
+
                 # ── Persisted pose track (T5) ──────────────────────────────
                 if result.get("pose_track_r2_key"):
                     video.pose_track_r2_key = result["pose_track_r2_key"]

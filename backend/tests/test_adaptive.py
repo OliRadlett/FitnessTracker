@@ -14,6 +14,8 @@ from app.services.adaptive import (
     RECOVERY_LOW,
     TSB_FATIGUE_THRESHOLD,
     TSB_OVERLOAD_THRESHOLD,
+    VELOCITY_LOSS_HIGH,
+    VELOCITY_LOSS_SEVERE,
     _worst_alert_severity,
     derive_adaptive_advice,
 )
@@ -125,6 +127,30 @@ def test_top_deficiency_adds_advisory():
     )
     assert advice["suggestions"][-1]["type"] == "deficiency"
     assert not advice["suggestions"][-1]["actions"]
+
+
+def test_severe_velocity_loss_adds_warning_autoregulation():
+    advice = derive_adaptive_advice(velocity_loss_pct=45.0, velocity_zone="Strength")
+    assert "autoregulation" in _types(advice)
+    assert any(a["key"] == "autoregulation" for a in advice["axes"])
+    s = next(s for s in advice["suggestions"] if s["type"] == "autoregulation")
+    assert s["severity"] == "warning"
+    assert s["actions"] == []
+
+
+def test_moderate_velocity_loss_is_info_only():
+    advice = derive_adaptive_advice(velocity_loss_pct=VELOCITY_LOSS_HIGH + 2)
+    s = next(s for s in advice["suggestions"] if s["type"] == "autoregulation")
+    assert s["severity"] == "info"
+
+
+def test_low_velocity_loss_adds_nothing():
+    advice = derive_adaptive_advice(velocity_loss_pct=VELOCITY_LOSS_HIGH - 5)
+    assert "autoregulation" not in _types(advice)
+
+
+def test_velocity_loss_thresholds_are_ordered():
+    assert 0 < VELOCITY_LOSS_HIGH < VELOCITY_LOSS_SEVERE
 
 
 def test_insufficient_data_is_honest():

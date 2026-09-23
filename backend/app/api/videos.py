@@ -437,13 +437,28 @@ async def delete_video(
     if video is None:
         raise HTTPException(404, "Video not found")
 
-    if video.r2_key and _s3_configured():
+    # Delete every derived object too (trimmed clip, overlay, rep sprite sheet,
+    # persisted pose track) so nothing is orphaned in R2. Best-effort per key.
+    keys = [
+        video.r2_key,
+        video.trimmed_r2_key,
+        video.overlay_r2_key,
+        video.rep_thumbnails_r2_key,
+        video.pose_track_r2_key,
+    ]
+    if _s3_configured():
         try:
             from app.integrations.r2 import delete_object
-
-            await delete_object(video.r2_key)
-        except Exception as e:  # never fail the delete on R2 errors
-            logger.warning("Failed to delete R2 object %s: %s", video.r2_key, e)
+        except Exception as e:  # boto3 optional
+            logger.warning("R2 delete client unavailable: %s", e)
+        else:
+            for key in keys:
+                if not key:
+                    continue
+                try:
+                    await delete_object(key)
+                except Exception as e:  # never fail the delete on R2 errors
+                    logger.warning("Failed to delete R2 object %s: %s", key, e)
 
     await db.delete(video)
     # BUG-015: no explicit commit; get_db commits at return.

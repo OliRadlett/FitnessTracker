@@ -42,6 +42,9 @@ interface RepTiming {
   concentric_velocity_ms?: number | null;
   sticking_position_pct?: number | null;
   sticking_min_velocity_ms?: number | null;
+  sticking_joint_angle?: number | null;
+  knee_moment_nm?: number | null;
+  hip_moment_nm?: number | null;
 }
 
 function parseRepTimings(value: string | null | undefined): RepTiming[] {
@@ -330,11 +333,21 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   const rir = video.estimated_rpe != null ? Math.max(0, Math.round((video.estimated_rpe - 6) * 1.5)) : null;
   const formMeta = parseJsonObject(video.form_analysis_json);
   const view = typeof formMeta?.view === 'string' ? formMeta.view : null;
-  const qualityRaw =
+  const qualityObj =
     formMeta && typeof formMeta.quality === 'object' && formMeta.quality !== null
-      ? (formMeta.quality as { level?: unknown }).level
-      : undefined;
-  const quality = typeof qualityRaw === 'string' ? qualityRaw : null;
+      ? (formMeta.quality as {
+          level?: unknown;
+          lifter_rate?: unknown;
+          multi_person?: unknown;
+        })
+      : null;
+  const quality = typeof qualityObj?.level === 'string' ? qualityObj.level : null;
+  // Multi-person clip where the tracked lifter covers <50% of frames (a spotter
+  // dominated the detector) — numbers are softer than the level alone implies.
+  const lowLifterCoverage =
+    qualityObj?.multi_person === true &&
+    typeof qualityObj.lifter_rate === 'number' &&
+    qualityObj.lifter_rate < 0.5;
   const coaching =
     typeof formMeta?.coaching_summary === 'string' ? formMeta.coaching_summary : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
@@ -363,6 +376,12 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
         <p className="text-xs text-warning">
           ⚠ Couldn&apos;t analyze this clip reliably — refilm with the full body in
           frame and steady lighting.
+        </p>
+      )}
+      {quality !== 'unusable' && lowLifterCoverage && (
+        <p className="text-xs text-muted">
+          Only part of the clip tracked the lifter (a spotter was present) — the
+          numbers are indicative. Film without the spotter in frame for a fuller read.
         </p>
       )}
 
@@ -492,9 +511,19 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                     <td
                       className="py-1 text-muted"
                       title={
-                        r.sticking_min_velocity_ms != null
-                          ? `min ${r.sticking_min_velocity_ms.toFixed(2)} m/s`
-                          : undefined
+                        [
+                          r.sticking_min_velocity_ms != null
+                            ? `min ${r.sticking_min_velocity_ms.toFixed(2)} m/s`
+                            : null,
+                          r.sticking_joint_angle != null
+                            ? `joint ${Math.round(r.sticking_joint_angle)}°`
+                            : null,
+                          r.knee_moment_nm != null
+                            ? `knee ≈${Math.round(r.knee_moment_nm)} Nm`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || undefined
                       }
                     >
                       {r.sticking_position_pct != null
