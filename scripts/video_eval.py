@@ -380,6 +380,11 @@ def main() -> int:
         "--gpu", action="store_true",
         help="use the MediaPipe GPU delegate (T2)",
     )
+    ap.add_argument(
+        "--skip-exercise", action="append", default=[],
+        help="skip labels whose exercise contains this (case-insensitive, repeatable, "
+             "e.g. --skip-exercise 'log press' --skip-exercise stone)",
+    )
     args = ap.parse_args()
 
     if not args.labels.exists():
@@ -388,6 +393,13 @@ def main() -> int:
         return 2
 
     labels = json.loads(args.labels.read_text())["videos"]
+    if args.skip_exercise:
+        skips = [s.lower() for s in args.skip_exercise]
+        labels = [
+            label
+            for label in labels
+            if not any(s in (label.get("exercise") or "").lower() for s in skips)
+        ]
     if args.limit:
         labels = labels[: args.limit]
 
