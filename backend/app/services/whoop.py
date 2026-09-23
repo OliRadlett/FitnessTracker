@@ -120,19 +120,27 @@ def decode_token_exp(token: str) -> float | None:
         return None
 
 
-def is_token_expired(token: str, db_expiry: datetime | None = None) -> bool:
+def is_token_expired(
+    token: str, db_expiry: datetime | None = None, leeway_seconds: int = 300
+) -> bool:
     """Check if a Whoop bearer token is expired.
 
     Checks the JWT exp claim first. Falls back to the database token_expires_at
     if the JWT doesn't have an exp claim. Returns False if neither is available
     (assume valid — the API will return 401 if actually expired).
+
+    A 5-minute leeway refreshes proactively so the token can't die mid-sync
+    (which would otherwise be marked needs_reauth instead of refreshed).
     """
     exp = decode_token_exp(token)
     if exp is not None:
-        return time.time() > exp
+        return time.time() > exp - leeway_seconds
     # Fall back to database expiry
     if db_expiry is not None:
-        return db_expiry < datetime.now(UTC)
+        aware_expiry = db_expiry
+        if aware_expiry.tzinfo is None:
+            aware_expiry = aware_expiry.replace(tzinfo=UTC)
+        return aware_expiry < datetime.now(UTC) + timedelta(seconds=leeway_seconds)
     # No expiry info available — assume valid
     return False
 
