@@ -87,6 +87,22 @@ class Settings(BaseSettings):
     # for diagnostics/backfill.
     video_view_vlm_enabled: bool = False
 
+    # Lift-video multi-person pose (T1): detect up to `video_num_poses` people
+    # per frame and select the lifter over a spotter/bystander. OFF by default
+    # until validated on the labelled fixture set (bench spotters). When on,
+    # modal_client extracts with num_poses=2 and re-selects the lifter after the
+    # exercise is classified (the bench posture prior needs the exercise).
+    video_multi_pose_enabled: bool = False
+    video_num_poses: int = 2
+
+    # Lift-video pose extraction (T2). 10 fps is the proven default; raise to
+    # 30–60 for true peak velocity / tempo — pair with the GPU delegate to keep
+    # the wall time down. GPU delegate needs EGL (the Modal image installs it)
+    # and mediapipe>=0.10.32. Both OFF/defaults preserve current behaviour until
+    # benchmarked (T4 vs L4) on real footage.
+    video_pose_fps: float = 10.0
+    video_gpu_delegate_enabled: bool = False
+
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:
     #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"

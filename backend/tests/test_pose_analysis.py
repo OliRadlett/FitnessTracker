@@ -431,3 +431,115 @@ class TestWorldVelocity:
         res = pa.bar_velocity_from_world(self._frames(profile), ts, reps, "Back Squat")
         assert len(res["rep_timings"]) == 2
         assert all(e["concentric_velocity_ms"] is None for e in res["rep_timings"])
+
+
+class _LmWithPresence:
+    __slots__ = ("presence", "visibility", "x", "y", "z")
+
+    def __init__(self, x=0.5, y=0.5, z=0.0, visibility=0.5, presence=1.0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.visibility = visibility
+        self.presence = presence
+
+
+class TestFramePresence:
+    def test_presence_preferred_over_visibility(self):
+        lm = [_LmWithPresence(visibility=0.2, presence=0.8) for _ in range(4)]
+        assert pa._frame_presence(lm) == pytest.approx(0.8)
+
+    def test_falls_back_to_visibility(self):
+        # Lm has no `presence` attribute -> use visibility.
+        assert pa._frame_presence([Lm(visibility=0.6) for _ in range(3)]) == pytest.approx(0.6)
+
+    def test_empty_is_zero(self):
+        assert pa._frame_presence([]) == 0.0
+
+
+class TestWorldSignal:
+    """The world list is None-padded/aligned to landmarks. `_world_signal`
+    must interpolate missing frames rather than crash or shift indices."""
+
+    @staticmethod
+    def _leg_frames(profile):
+        frames = []
+        for y in profile:
+            lms = [Lm(0.5, 0.0) for _ in range(33)]
+            for i in (23, 24):
+                lms[i] = Lm(0.5, 0.0)
+            for i in (27, 28):
+                lms[i] = Lm(0.5, y)
+            frames.append(lms)
+        return frames
+
+    def test_missing_frame_is_interpolated_in_place(self):
+        frames = self._leg_frames([0.0, 0.0, 0.5, 0.5])
+        frames[2] = None  # a 2D-but-no-world frame
+        sig = pa._world_signal(frames, "Back Squat")
+        assert sig is not None
+        assert len(sig) == 4
+        # idx2 interpolates between 0.0 (idx1) and 0.5 (idx3) -> 0.25
+        assert sig[2] == pytest.approx(0.25, abs=1e-9)
+
+    def test_all_missing_returns_none(self):
+        assert pa._world_signal([None, None, None], "Back Squat") is None
+
+    def test_empty_returns_none(self):
+        assert pa._world_signal([], "Back Squat") is None
+
+    def test_press_uses_wrist_y(self):
+        frames = []
+        for y in (0.2, 0.4):
+            lms = [Lm(0.5, 0.0) for _ in range(33)]
+            lms[15] = Lm(0.5, y)
+            lms[16] = Lm(0.5, y)
+            frames.append(lms)
+        assert list(pa._world_signal(frames, "Overhead Press")) == pytest.approx([0.2, 0.4])
+
+
+class TestStickingPoint:
+    def test_min_speed_position_within_concentric(self):
+        # Fast, then a slow (sticking) segment around the middle, then fast.
+        pos = [0.0, 0.2, 0.4, 0.6, 0.8, 0.81, 0.82, 0.83, 1.0, 1.4, 1.8, 2.0]
+        ts = [i * 0.1 for i in range(len(pos))]
+        sp = pa._sticking_point(pos, ts, 0, len(pos) - 1)
+        assert sp is not None
+        assert 35.0 <= sp["sticking_position_pct"] <= 65.0
+        assert sp["sticking_min_velocity_ms"] < 0.5
+
+    def test_too_short_returns_none(self):
+        assert pa._sticking_point([0.0, 0.1, 0.2], [0.0, 0.1, 0.2], 0, 2) is None
+
+    def test_none_indices_returns_none(self):
+        assert pa._sticking_point([0.0] * 10, [i * 0.1 for i in range(10)], None, None) is None
+
+    def test_rep_timing_entry_carries_sticking_fields(self):
+        n = 12
+        frames = TestWorldVelocity._frames([0.0] * 3 + [0.5] * 6 + [1.0] * 3)
+        ts = [i * 0.1 for i in range(n)]
+        reps = [{"rep_number": 1, "start_idx": 0, "end_idx": n - 1,
+                 "bottom_idx": 0, "top_idx": n - 1}]
+        res = pa.bar_velocity_from_world(frames, ts, reps, "Back Squat")
+        assert "sticking_position_pct" in res["rep_timings"][0]
+
+
+class TestWorldVelocityNoneSafe:
+    def test_none_world_frame_preserves_rep_count(self):
+        # Regression: a single None world frame used to shift every later
+        # index (world appended only when present). It must now interpolate.
+        frames = TestWorldVelocity._frames([0.0] * 5 + [0.5] * 10 + [0.0] * 10)
+        frames[3] = None
+        ts = [i / 10 for i in range(len(frames))]
+        reps = [{"rep_number": 1, "start_idx": 0, "end_idx": len(frames) - 1}]
+        res = pa.bar_velocity_from_world(frames, ts, reps, "Back Squat")
+        assert len(res["rep_timings"]) == 1
+        assert res["mean_concentric_velocity"] is not None
+
+    def test_all_none_world_fails_gracefully(self):
+        frames = [None] * 20
+        ts = [i / 10 for i in range(len(frames))]
+        reps = [{"rep_number": 1, "start_idx": 0, "end_idx": len(frames) - 1}]
+        res = pa.bar_velocity_from_world(frames, ts, reps, "Back Squat")
+        assert res["tracking_quality"] == "failed"
+        assert res["mean_concentric_velocity"] == 0.0

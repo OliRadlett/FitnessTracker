@@ -133,7 +133,7 @@
 | `VideoChip` | **§1.1** — Small purple badge showing "📹 N" with video count. Split from `VideoEmbed` |
 | `VideoGalleryModal` | **§1.1** — Modal listing videos for a session/PR, each rendered via `VideoEmbed` |
 | `LiftVideoForm` | **§1.1** — Add-strength-video modal: R2 presigned PUT with progress bar; exercise autocomplete, optional session/PR linkage, expected-reps and **camera-angle** selectors (side unlocks sagittal form checks). Validation/upload errors render in an inline `role="alert"` banner (no native `alert()`) |
-| `VideoAnalysisPanel` | **§3.18** — Post-analysis card: form-score ring + IPF badge, deviations/cues, velocity (mean/peak/loss + VBT zone), per-rep table (ROM/time/velocity), RPE. Shows a camera-view badge, or a "film side-on" hint when the angle is unknown |
+| `VideoAnalysisPanel` | **§3.18** — Post-analysis card: form-score ring + IPF badge, deviations/cues, velocity (mean/peak/loss + VBT zone), per-rep table (ROM/time/velocity/stick), RPE. Shows a camera-view badge, or a "film side-on" hint when the angle is unknown. **T1**: a "who's lifting?" chooser when >1 person was detected (`lifter_selection_json`) → `PATCH lifter_track_id` + forced reprocess. **F1**: a "Bar path" card (efficiency / consistency / drift, proxy-badged) from `bar_path_json` |
 | `VbtPanel` | **§3.18 VBT** — Load–velocity profile for an exercise: scatter of analysed sets (load vs velocity) + fitted line + MVT reference, est. 1RM, R², confidence badge, target-velocity → recommended load. Mounted in `VideoProgressTab` |
 | `VideoCompareModal` | **§3.18** — side-by-side comparison of two analysed videos (embeds + form/validity/velocity/RPE/deviations). Opened from the videos page compare toggle |
 

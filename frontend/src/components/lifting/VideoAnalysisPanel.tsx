@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LiftVideo } from '@/lib/api';
 import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
+import { processLiftVideo, updateLiftVideo } from '@/lib/api/lifting';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 
@@ -39,6 +40,8 @@ interface RepTiming {
   amplitude_m?: number | null;
   concentric_time?: number | null;
   concentric_velocity_ms?: number | null;
+  sticking_position_pct?: number | null;
+  sticking_min_velocity_ms?: number | null;
 }
 
 function parseRepTimings(value: string | null | undefined): RepTiming[] {
@@ -49,6 +52,29 @@ function parseRepTimings(value: string | null | undefined): RepTiming[] {
     return parsed.filter((r): r is RepTiming => r && typeof r.rep_number === 'number');
   } catch {
     return [];
+  }
+}
+
+interface LifterCandidate {
+  track_id: number;
+  score: number;
+  components?: Record<string, number>;
+}
+
+interface LifterSelection {
+  source?: string;
+  chosen_track_id?: number;
+  n_tracks?: number;
+  candidates?: LifterCandidate[];
+}
+
+function parseLifterSelection(value: string | null | undefined): LifterSelection | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? (parsed as LifterSelection) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -156,6 +182,140 @@ function MiniCard({ label, value, unit }: { label: string; value: number | null 
   );
 }
 
+interface BarPath {
+  source?: string;
+  confidence?: number;
+  n_reps?: number;
+  efficiency?: number;
+  drift_ratio?: number;
+  consistency?: number;
+  note?: string;
+}
+
+function BarPathCard({ value }: { value: string | null | undefined }) {
+  const data = parseJsonObject(value) as BarPath | null;
+  if (!data || data.consistency == null) return null;
+  const proxy = data.source === 'pose_proxy';
+  return (
+    <Card className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">Bar path</p>
+        <Badge variant={proxy ? 'muted' : 'positive'}>
+          {proxy ? 'Proxy' : 'Tracked'}
+        </Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <p className="text-[11px] text-muted uppercase">Efficiency</p>
+          <p className="text-lg font-semibold text-foreground">
+            {data.efficiency != null ? `${Math.round(data.efficiency * 100)}%` : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted uppercase">Consistency</p>
+          <p className="text-lg font-semibold text-foreground">
+            {data.consistency != null ? `${Math.round(data.consistency)}%` : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted uppercase">Drift</p>
+          <p className="text-lg font-semibold text-foreground">
+            {data.drift_ratio != null ? data.drift_ratio.toFixed(2) : '—'}
+          </p>
+        </div>
+      </div>
+      {data.note && <p className="text-[11px] text-muted">{data.note}</p>}
+    </Card>
+  );
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  bar_coupling: 'bar',
+  posture: 'posture',
+  movement: 'movement',
+  coverage: 'coverage',
+};
+
+function LifterSelectionCard({ video }: { video: LiftVideo }) {
+  const { authFetch } = useAuthFetch();
+  const queryClient = useQueryClient();
+  const selection = parseLifterSelection(video.lifter_selection_json);
+  const candidates = selection?.candidates ?? [];
+  const current = video.lifter_selected ?? selection?.chosen_track_id ?? null;
+  const [choice, setChoice] = useState<number | null>(current);
+
+  useEffect(() => {
+    setChoice(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video.id, video.lifter_selected, selection?.chosen_track_id]);
+
+  const applyMutation = useMutation({
+    mutationFn: async (trackId: number) => {
+      await updateLiftVideo(authFetch, video.id, { lifter_track_id: trackId });
+      await processLiftVideo(authFetch, video.id, 'full', true);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
+  });
+
+  // Only meaningful when the model actually saw more than one person.
+  if (candidates.length < 2) return null;
+
+  const pending = applyMutation.isPending;
+  const dirty = choice != null && choice !== current;
+
+  return (
+    <Card className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">Who&apos;s lifting?</p>
+        {selection?.source === 'manual' ? (
+          <Badge variant="default">Manual</Badge>
+        ) : (
+          <span className="text-[11px] text-muted">Auto-detected</span>
+        )}
+      </div>
+      <p className="text-[11px] text-muted">
+        {candidates.length} people detected. Pick the lifter and reprocess.
+      </p>
+      <div className="space-y-1">
+        {candidates.map((c) => (
+          <label
+            key={c.track_id}
+            className="flex items-center gap-2 text-xs cursor-pointer rounded px-2 py-1 hover:bg-surface-light/50"
+          >
+            <input
+              type="radio"
+              name={`lifter-${video.id}`}
+              checked={choice === c.track_id}
+              onChange={() => setChoice(c.track_id)}
+              className="accent-accent"
+            />
+            <span className="text-foreground">Person {c.track_id + 1}</span>
+            <span className="text-muted">
+              score {c.score.toFixed(2)}
+              {c.components
+                ? ' · ' +
+                  Object.entries(c.components)
+                    .map(([k, v]) => `${SIGNAL_LABELS[k] ?? k} ${v.toFixed(2)}`)
+                    .join(', ')
+                : ''}
+            </span>
+          </label>
+        ))}
+      </div>
+      <button
+        onClick={() => choice != null && applyMutation.mutate(choice)}
+        disabled={pending || !dirty}
+        className="text-xs px-3 py-1.5 rounded bg-accent text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {pending ? 'Reprocessing…' : 'Set lifter & reprocess'}
+      </button>
+      {applyMutation.isError && (
+        <p className="text-xs text-warning">Failed to apply — try again.</p>
+      )}
+    </Card>
+  );
+}
+
 export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   const hasAnalysis =
     video.analysis_status === 'completed' &&
@@ -205,6 +365,8 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
           frame and steady lighting.
         </p>
       )}
+
+      <LifterSelectionCard video={video} />
 
       {coaching && (
         <Card className="space-y-1 border-l-2 border-accent/50">
@@ -292,6 +454,8 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
         </Card>
       )}
 
+      <BarPathCard value={video.bar_path_json} />
+
       {repTimings.length > 0 && (
         <Card className="space-y-2">
           <p className="text-sm font-medium text-foreground">Per-rep</p>
@@ -302,6 +466,9 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                 <th className="font-medium py-1">ROM</th>
                 <th className="font-medium py-1">Time</th>
                 <th className="font-medium py-1">Velocity</th>
+                <th className="font-medium py-1" title="Where the bar slowed most, as % of the lift">
+                  Stick
+                </th>
                 <th className="font-medium py-1">Flags</th>
               </tr>
             </thead>
@@ -320,6 +487,18 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                     <td className="py-1 text-muted">
                       {r.concentric_velocity_ms != null
                         ? `${r.concentric_velocity_ms.toFixed(2)} m/s`
+                        : '—'}
+                    </td>
+                    <td
+                      className="py-1 text-muted"
+                      title={
+                        r.sticking_min_velocity_ms != null
+                          ? `min ${r.sticking_min_velocity_ms.toFixed(2)} m/s`
+                          : undefined
+                      }
+                    >
+                      {r.sticking_position_pct != null
+                        ? `${Math.round(r.sticking_position_pct)}%`
                         : '—'}
                     </td>
                     <td className="py-1">

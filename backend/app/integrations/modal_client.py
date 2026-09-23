@@ -65,6 +65,17 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/pose_analysis.py",
                 "/root/app/integrations/pose_analysis.py",
             )
+            # pose_analysis imports these for multi-person lifter selection
+            # (T1) and bar-path metrics (F1). Missing mount => ImportError in
+            # the container (see pitfall #33/#34).
+            image = image.add_local_file(
+                f"{analysis_dir}/person_tracking.py",
+                "/root/app/integrations/person_tracking.py",
+            )
+            image = image.add_local_file(
+                f"{analysis_dir}/bar_tracking.py",
+                "/root/app/integrations/bar_tracking.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -91,6 +102,10 @@ def process_video_on_modal(
     weight_kg: float = 0.0,
     r2_presigned_put_thumbs: str | None = None,
     r2_upload_key_thumbs: str | None = None,
+    num_poses: int = 1,
+    forced_lifter_track_id: int | None = None,
+    pose_fps: float = 10.0,
+    gpu_delegate: bool = False,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -166,6 +181,10 @@ def process_video_on_modal(
         weight_in: float = 0.0,
         thumbs_put: str = "",
         thumbs_key: str = "",
+        num_poses: int = 1,
+        forced_lifter: int = -1,
+        pose_fps: float = 10.0,
+        gpu_delegate: bool = False,
     ) -> dict:
         import logging
         import subprocess
@@ -374,9 +393,24 @@ def process_video_on_modal(
                     route_exercise,
                 )
 
+                forced = forced_lifter if forced_lifter >= 0 else None
                 pose_track = extract_pose_track(
-                    input_path, tmpdir, trim_start, trim_end, fps=10.0,
+                    input_path, tmpdir, trim_start, trim_end, fps=pose_fps,
+                    num_poses=num_poses,
+                    forced_track_id=forced,
+                    gpu_delegate=gpu_delegate,
                 )
+                # Multi-person (T1): pick the lifter over a spotter/bystander
+                # before classification. Prefer the user-declared exercise for
+                # the posture prior (bench lifter is horizontal, spotter
+                # upright); else the default track is used and re-selected
+                # after auto-classification below.
+                if num_poses > 1 and pose_track.get("tracks"):
+                    from app.integrations.pose_analysis import reselect_lifter
+
+                    prelim = route_exercise(user_ex, "", 0.0)[0] if user_ex else None
+                    pose_track = reselect_lifter(
+                        pose_track, exercise=prelim, forced_track_id=forced)
                 landmarks = pose_track["landmarks"]
                 pose_timestamps = pose_track["timestamps"]
                 pose_world = pose_track["world"]
@@ -406,6 +440,10 @@ def process_video_on_modal(
 
             # ── Step 8: Full analysis (pose-based + optical flow) ────────
             full_result: dict = {}
+            # Surface the lifter selection (T1) regardless of depth so the
+            # scheduler can persist it and the UI can offer a manual override.
+            full_result["lifter_selection"] = pose_track.get("lifter")
+            full_result["n_person_tracks"] = len(pose_track.get("tracks") or [])
             if depth == "full":
                 # 8a: Pose-based form + setup analysis
                 try:
@@ -454,7 +492,9 @@ def process_video_on_modal(
                         sprite_reps = _pose_reps
                         # World landmarks give metric bar travel; fall back to
                         # the 2D pixels-per-metre path only if they're absent.
-                        if pose_world:
+                        # ``pose_world`` is None-padded (aligned to landmarks),
+                        # so test for any usable frame, not list truthiness.
+                        if any(w is not None for w in pose_world):
                             vel_result = bar_velocity_from_world(
                                 pose_world, pose_timestamps, _pose_reps, exercise)
                             _logger.info(
@@ -730,6 +770,15 @@ def process_video_on_modal(
     view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
     user_view = normalize_user_view(camera_view)
 
+    # Multi-person lifter selection (T1) — OFF until validated on the labelled
+    # fixture set (bench spotters). 1 = current single-person behaviour.
+    num_poses = (
+        max(1, settings.video_num_poses) if settings.video_multi_pose_enabled else 1
+    )
+    # T2 pose extraction settings (defaults preserve current behaviour).
+    pose_fps = float(settings.video_pose_fps or 10.0)
+    gpu_delegate = bool(settings.video_gpu_delegate_enabled)
+
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
         return _process.remote(
@@ -747,4 +796,8 @@ def process_video_on_modal(
             weight_kg or 0.0,
             r2_presigned_put_thumbs or "",
             r2_upload_key_thumbs or "",
+            num_poses,
+            forced_lifter_track_id if forced_lifter_track_id is not None else -1,
+            pose_fps,
+            gpu_delegate,
         )

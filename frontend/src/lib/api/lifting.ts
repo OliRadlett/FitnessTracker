@@ -43,6 +43,7 @@ export interface UpdateLiftVideoPayload {
   camera_view?: string | null;
   weight_kg?: number | null;
   reps_count?: number | null;
+  lifter_track_id?: number | null;
 }
 
 export async function updateLiftVideo(

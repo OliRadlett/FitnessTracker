@@ -20,37 +20,88 @@ logger = logging.getLogger(__name__)
 # ── MediaPipe Pose Extraction ────────────────────────────────────────────────
 
 
+def _frame_presence(lm) -> float:
+    """Mean landmark presence (falls back to visibility) for one pose frame."""
+    vals: list[float] = []
+    for point in lm:
+        p = getattr(point, "presence", None)
+        if p is None:
+            p = getattr(point, "visibility", None)
+        if p is not None:
+            vals.append(float(p))
+    return float(sum(vals) / len(vals)) if vals else 0.0
+
+
 def extract_pose_track(
     input_path: Path,
     tmpdir: str,
     trim_start: float,
     trim_end: float,
     fps: float = 10.0,
+    num_poses: int = 1,
+    select: bool = True,
+    exercise: str | None = None,
+    bar_xy: list | None = None,
+    forced_track_id: int | None = None,
+    gpu_delegate: bool = False,
 ) -> dict:
     """Extract MediaPipe Pose landmarks (2D + metric 3D) from a video segment.
 
     Uses the mediapipe.tasks API (PoseLandmarker) — the solutions API
     was removed in mediapipe >= 0.10.30.
 
-    Returns a dict:
-        landmarks:  list per detected frame of 33 normalised 2D landmarks
-        world:      parallel list of 33 metric 3D world landmarks (metres,
-                    hip-origin) where the model produced them
-        timestamps: per-frame timestamps in seconds (aligned to ``landmarks``)
-        detected:   number of frames with a pose
-        frames:     number of frames sampled
+    With ``num_poses > 1`` every detected person is tracked across frames
+    (``person_tracking.build_person_tracks``) and the lifter is chosen over a
+    spotter/bystander (``select_lifter``); the primary lists below then carry
+    the *lifter's* track. Pass ``exercise`` (e.g. ``"Bench Press"``) to enable
+    the posture prior, and ``bar_xy`` (aligned to frame index) for bar
+    coupling once bar tracking exists.
 
-    ``world`` is shorter than ``landmarks`` when the model omitted it; callers
-    must pair them by index only up to ``len(world)`` (the model emits world
-    landmarks for the same frames it emits 2D ones, in order).
+    Returns a dict:
+        landmarks:  list per detected lifter frame of 33 normalised 2D landmarks
+        world:      list aligned 1:1 with ``landmarks`` of 33 metric 3D world
+                    landmarks (metres, hip-origin), or ``None`` for a frame
+                    where the model omitted them
+        timestamps: per-frame timestamps in seconds (aligned to ``landmarks``)
+        presence:   per-frame mean landmark presence (aligned to ``landmarks``)
+        records:    per-frame dicts ``{frame_idx, t, landmarks, world,
+                    presence}`` (aligned to ``landmarks``)
+        persons:    per-track summaries ``{id, n, coverage}``
+        tracks:     full track objects (for re-selection once exercise is known)
+        lifter:     selection info ``{source, chosen_track_id, n_tracks,
+                    candidates}``
+        frame_times: ``{sampled_frame_idx: timestamp}``
+        detected:   number of frames with the lifter's pose
+        frames:     number of frames sampled
+        num_poses:  poses requested per frame
+
+    ``world`` is always the same length as ``landmarks`` (``None``-padded), so
+    index ``i`` refers to the same frame across every list. The previous
+    implementation appended to ``world`` only when the model emitted world
+    landmarks, so a single 2D-but-no-world frame silently shifted every later
+    world index — corrupting velocity for the rest of the clip.
     """
     import cv2
     import mediapipe as mp
     from mediapipe.tasks.python import BaseOptions, vision
 
+    from app.integrations.person_tracking import (
+        bbox_from_landmarks,
+        build_person_tracks,
+        dense_series,
+        select_lifter,
+    )
+
+    num_poses = max(1, int(num_poses))
+
     segment_duration = trim_end - trim_start
     if segment_duration <= 0:
-        return {"landmarks": [], "world": [], "timestamps": [], "detected": 0, "frames": 0}
+        return {
+            "landmarks": [], "world": [], "timestamps": [], "presence": [],
+            "records": [], "detected": 0, "frames": 0, "persons": [],
+            "tracks": [], "lifter": {"source": "none", "n_tracks": 0, "candidates": []},
+            "frame_times": {}, "num_poses": num_poses,
+        }
 
     # Download the pose landmarker model if not cached
     model_path = Path(tmpdir) / "pose_landmarker.task"
@@ -70,14 +121,19 @@ def extract_pose_track(
     # 10fps, conf 0.3; benchmarked 2026-09-17). CPU-only also avoids T4 cost
     # and cold-start time. (An earlier zero-detection episode was traced to
     # the ffmpeg frame-numbering bug below, not the delegate.)
+    # T2: `gpu_delegate=True` opts into the GPU delegate (needs EGL + a GPU
+    # Modal worker + mediapipe>=0.10.32) so a flat 30–60 fps stays affordable.
+    delegate = (
+        BaseOptions.Delegate.GPU if gpu_delegate else BaseOptions.Delegate.CPU
+    )
     base_options = BaseOptions(
         model_asset_path=str(model_path),
-        delegate=BaseOptions.Delegate.CPU,
+        delegate=delegate,
     )
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=vision.RunningMode.VIDEO,
-        num_poses=1,
+        num_poses=num_poses,
         min_pose_detection_confidence=0.3,
         min_pose_presence_confidence=0.3,
         min_tracking_confidence=0.3,
@@ -105,11 +161,11 @@ def extract_pose_track(
         capture_output=True, timeout=120,
     )
 
-    landmarks_list = []
-    world_list = []
-    timestamps = []
+    persons_by_frame: dict[int, list[dict]] = {}
+    frame_times: dict[int, float] = {}
     frame_interval = 1.0 / fps
     idx = 0
+    world_count = 0
 
     while True:
         frame_path = Path(tmpdir) / f"pose_{idx:04d}.jpg"
@@ -127,27 +183,108 @@ def extract_pose_track(
         result = pose_landmarker.detect_for_video(mp_image, timestamp_ms)
 
         if result.pose_landmarks:
-            # pose_landmarks is a list of NormalizedLandmarkList
-            # Each element is a list of 33 landmarks for one detected pose
-            landmarks_list.append(result.pose_landmarks[0])
-            if result.pose_world_landmarks:
-                world_list.append(result.pose_world_landmarks[0])
+            # pose_landmarks is a list (one entry per person) of 33 landmarks
+            world_lms = result.pose_world_landmarks or []
+            persons: list[dict] = []
+            for pi, lm in enumerate(result.pose_landmarks):
+                world = world_lms[pi] if pi < len(world_lms) else None
+                if world is not None:
+                    world_count += 1
+                persons.append({
+                    "landmarks": lm,
+                    "world": world,
+                    "presence": round(_frame_presence(lm), 4),
+                    "bbox": bbox_from_landmarks(lm),
+                })
             t = trim_start + (idx * frame_interval) + (frame_interval / 2)
-            timestamps.append(round(min(t, trim_end), 3))
+            persons_by_frame[idx] = persons
+            frame_times[idx] = round(min(t, trim_end), 3)
 
         idx += 1
 
     pose_landmarker.close()
+
+    det_frame_idxs = sorted(persons_by_frame.keys())
+
+    if num_poses == 1:
+        # Single-person path: keep the historical behaviour exactly — one
+        # dense series over every frame with a pose, no track association
+        # (association could split one person across a long gap).
+        tracks: list[dict] = []
+        selection: dict = {
+            "source": "single", "chosen_track_id": 0,
+            "n_tracks": 1 if det_frame_idxs else 0, "candidates": [],
+        }
+        landmarks = [persons_by_frame[i][0]["landmarks"] for i in det_frame_idxs]
+        world = [persons_by_frame[i][0]["world"] for i in det_frame_idxs]
+        presence = [persons_by_frame[i][0]["presence"] for i in det_frame_idxs]
+        timestamps = [frame_times[i] for i in det_frame_idxs]
+        persons_summary: list[dict] = []
+    else:
+        tracks = build_person_tracks(
+            [persons_by_frame[i] for i in det_frame_idxs],
+            frame_indices=det_frame_idxs,
+        )
+        lifter = None
+        selection = {"source": "none", "n_tracks": len(tracks), "candidates": []}
+        if tracks:
+            if select:
+                lifter, selection = select_lifter(
+                    tracks, idx, exercise=exercise, bar_xy=bar_xy,
+                    forced_track_id=forced_track_id)
+            else:
+                lifter = tracks[0]
+                selection = {
+                    "source": "single" if len(tracks) == 1 else "largest",
+                    "chosen_track_id": lifter["id"],
+                    "n_tracks": len(tracks),
+                    "candidates": [],
+                }
+        if lifter is None:
+            logger.info("Pose landmarks: none detected in %d frames", idx)
+            return {
+                "landmarks": [], "world": [], "timestamps": [], "presence": [],
+                "records": [], "detected": 0, "frames": idx, "persons": [],
+                "tracks": [], "lifter": selection, "frame_times": frame_times,
+                "num_poses": num_poses,
+            }
+        landmarks, world, timestamps, presence = dense_series(lifter, frame_times)
+        det_frame_idxs = sorted(lifter["detections"].keys())
+        persons_summary = [
+            {"id": t["id"], "n": t["n"], "coverage": round(t["n"] / max(idx, 1), 3)}
+            for t in tracks
+        ]
+
+    records = [
+        {
+            "frame_idx": fi,
+            "t": timestamps[k],
+            "landmarks": landmarks[k],
+            "world": world[k],
+            "presence": presence[k],
+        }
+        for k, fi in enumerate(det_frame_idxs)
+    ]
+
     logger.info(
-        "Pose landmarks: %d/%d frames (%d with world landmarks)",
-        len(landmarks_list), idx, len(world_list),
+        "Pose landmarks: %d/%d frames (%d with world landmarks), "
+        "%d person track(s), lifter=%s (%s)",
+        len(landmarks), idx, world_count, len(tracks),
+        selection.get("chosen_track_id"), selection.get("source"),
     )
     return {
-        "landmarks": landmarks_list,
-        "world": world_list,
+        "landmarks": landmarks,
+        "world": world,
         "timestamps": timestamps,
-        "detected": len(landmarks_list),
+        "presence": presence,
+        "records": records,
+        "detected": len(landmarks),
         "frames": idx,
+        "persons": persons_summary,
+        "tracks": tracks,
+        "lifter": selection,
+        "frame_times": frame_times,
+        "num_poses": num_poses,
     }
 
 
@@ -165,6 +302,63 @@ def extract_pose_landmarks(
     """
     track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps)
     return track["landmarks"], track["timestamps"]
+
+
+def reselect_lifter(
+    track: dict,
+    exercise: str | None = None,
+    bar_xy: list | None = None,
+    forced_track_id: int | None = None,
+) -> dict:
+    """Re-pick the lifter on an extracted multi-person track and rebuild the
+    primary lists (landmarks/world/timestamps/presence/records).
+
+    ``extract_pose_track`` picks a default lifter before the exercise is
+    known; once classification is available (the bench posture prior needs
+    it) call this to re-select. ``forced_track_id`` (a user override) wins.
+    No-op when the track holds ≤1 person.
+    """
+    from app.integrations.person_tracking import dense_series, select_lifter
+
+    tracks = track.get("tracks") or []
+    if len(tracks) <= 1:
+        return track
+
+    frame_times = track.get("frame_times") or {}
+    n_frames = int(track.get("frames") or 0)
+    lifter, selection = select_lifter(
+        tracks, n_frames, exercise=exercise, bar_xy=bar_xy,
+        forced_track_id=forced_track_id,
+    )
+    if lifter is None:
+        return track
+
+    landmarks, world, timestamps, presence = dense_series(lifter, frame_times)
+    det_idxs = sorted(lifter["detections"].keys())
+    updated = dict(track)
+    updated.update({
+        "landmarks": landmarks,
+        "world": world,
+        "timestamps": timestamps,
+        "presence": presence,
+        "detected": len(landmarks),
+        "lifter": selection,
+        "records": [
+            {
+                "frame_idx": fi,
+                "t": timestamps[k],
+                "landmarks": landmarks[k],
+                "world": world[k],
+                "presence": presence[k],
+            }
+            for k, fi in enumerate(det_idxs)
+        ],
+    })
+    logger.info(
+        "Lifter re-selected: track=%s (%s) exercise=%s",
+        selection.get("chosen_track_id"), selection.get("source"), exercise,
+    )
+    return updated
 
 
 # ── Pose Overlay Rendering ───────────────────────────────────────────────────
@@ -1594,6 +1788,19 @@ def run_pose_analysis(
         "view": view,
     }
 
+    # Bar-path metrics (F1) from the pose-proxy bar track. Detector-agnostic:
+    # when bar tracking (T3) lands it supplies a real track in the same shape.
+    from app.integrations.bar_tracking import (
+        analyze_bar_path,
+        bar_track_from_landmarks,
+    )
+
+    bar_track = bar_track_from_landmarks(
+        landmarks, track.get("presence"), exercise)
+    bar_path = analyze_bar_path(bar_track, reps, exercise)
+    if bar_path:
+        result["bar_path"] = bar_path
+
     # Setup analysis
     result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise, view=view)
 
@@ -1749,6 +1956,63 @@ def _hip_ankle_distance(w) -> float:
     return float(np.linalg.norm(hip - ankle))
 
 
+def _world_signal(world_frames: list, exercise: str):
+    """Per-frame 1-D vertical signal from world landmarks, NaN-interpolated.
+
+    ``world_frames`` is aligned 1:1 with the landmark/timestamp lists and may
+    contain ``None`` entries (frames where the model omitted world landmarks;
+    see ``extract_pose_track``). Missing frames are linearly interpolated so
+    downstream rep indices (which index the aligned list) stay valid.
+
+    Returns ``None`` when no frame has usable world landmarks.
+    """
+    vals: list[float] = []
+    for w in world_frames:
+        if w is None:
+            vals.append(np.nan)
+        elif _is_leg_lift(exercise):
+            vals.append(_hip_ankle_distance(w))
+        else:
+            li, ri = _velocity_tracked_indices(exercise)
+            vals.append((w[li].y + w[ri].y) / 2)
+    arr = np.asarray(vals, dtype=float)
+    if arr.size == 0 or np.all(np.isnan(arr)):
+        return None
+    mask = ~np.isnan(arr)
+    if not mask.all():
+        idx = np.arange(arr.size)
+        arr = np.interp(idx, idx[mask], arr[mask])
+    return arr
+
+
+def _sticking_point(pos, ts, bi: int, ti: int) -> dict | None:
+    """Where along the concentric phase the bar moves slowest (F3).
+
+    ``pos`` is the smoothed world signal (metres: hip→ankle distance for
+    legs, wrist-y for presses), ``bi``/``ti`` the bottom/top frame indices.
+    Returns ``{"position_pct": 0–100, "min_velocity_ms": m/s}`` or ``None``
+    when the slice is too short. Position 0% = bottom (start), 100% = top
+    (lockout) — "sticking just above parallel" reads as a low %.
+    """
+    from app.integrations.video_analysis import _smooth_signal
+
+    if bi is None or ti is None or ti - bi < 4:
+        return None
+    seg = np.asarray(pos[bi:ti + 1], dtype=float)
+    tseg = np.asarray(ts[bi:ti + 1], dtype=float)
+    dt = np.diff(tseg)
+    dt[dt <= 0] = 1e-6
+    speed = np.abs(np.diff(seg) / dt)
+    if speed.size < 3:
+        return None
+    speed = _smooth_signal(speed, window=3)
+    k = int(np.argmin(speed))
+    return {
+        "sticking_position_pct": round(float((k + 0.5) / speed.size) * 100, 1),
+        "sticking_min_velocity_ms": round(float(speed[k]), 3),
+    }
+
+
 def bar_velocity_from_world(
     world_frames: list,
     timestamps: list[float],
@@ -1778,13 +2042,13 @@ def bar_velocity_from_world(
     if n < 5 or not pose_reps:
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
 
-    if _is_leg_lift(exercise):
-        # Leg extension recovers the hip's vertical travel (bar travels with
-        # the hips in squat/deadlift); hip y itself is the world origin.
-        sig = np.array([_hip_ankle_distance(w) for w in world_frames[:n]])
-    else:
-        li, ri = _velocity_tracked_indices(exercise)
-        sig = np.array([(w[li].y + w[ri].y) / 2 for w in world_frames[:n]])
+    # Leg extension recovers the hip's vertical travel (bar travels with the
+    # hips in squat/deadlift); hip y itself is the world origin. Presses/bench
+    # track wrist y (bar moves relative to the torso). ``None`` world frames
+    # (2D-only) are interpolated; no usable frame → failed.
+    sig = _world_signal(world_frames[:n], exercise)
+    if sig is None:
+        return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
     ts = np.array(timestamps[:n])
     pos = _smooth_signal(sig, window=3)
 
@@ -1826,6 +2090,9 @@ def bar_velocity_from_world(
                     "amplitude_m": round(amp_m, 3),
                     "concentric_velocity_ms": round(v, 3),
                 })
+                sp = _sticking_point(pos, ts, bi, ti)
+                if sp:
+                    entry.update(sp)
         rep_data.append(entry)
 
     result: dict = {
