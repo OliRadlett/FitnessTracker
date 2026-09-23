@@ -16,6 +16,9 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
     video: 'retain-on-failure',
+    // No service workers in E2E: the update banner (controllerchange on
+    // first claim) overlays fresh profiles and eats clicks in CI.
+    serviceWorkers: 'block',
   },
   // CI has no stack running: build + serve production Next.js. Locally this
   // reuses the already-running dev server / Caddy instead.

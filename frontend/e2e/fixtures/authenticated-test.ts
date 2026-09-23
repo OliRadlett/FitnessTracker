@@ -296,6 +296,25 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockConnections) });
   }],
 
+  // Layout-level queries (no page renders settled without these):
+  // NotificationBell polls /notifications, UnitsProvider reads preferences.
+  ['api/v1/notifications', (route) => {
+    if (route.request().method() === 'GET') {
+      route.fulfill({ status: 200, body: JSON.stringify([]) });
+      return;
+    }
+    route.continue();
+  }],
+  ['api/v1/user/preferences', (route) => {
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify({ unit_system: 'metric', locale: 'en-GB', time_format: '24h' }),
+    });
+  }],
+  ['api/v1/weather/forecast', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify({ days: [] }) });
+  }],
+
   // Charts — return per-chart mock data based on URL path
   ['api/v1/charts/', (route) => {
     const url = route.request().url();
@@ -357,6 +376,18 @@ type TestFixtures = {
 
 export const test = base.extend<TestFixtures>({
   authenticatedPage: async ({ page }, use) => {
+    // First-run UI must never appear in E2E: the onboarding wizard
+    // auto-opens ~1.2s after auth, the PWA install prompt and routes tips
+    // also overlay fresh profiles — each has eaten spec clicks in CI.
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('fittrack-onboarding-done', 'true');
+        localStorage.setItem('fittrack-routes-tips', 'done');
+        localStorage.setItem('fittrack-install-dismissed', String(Date.now()));
+      } catch {
+        /* storage unavailable — ignore */
+      }
+    });
     // External map tiles must never hit the real network in E2E (0.10):
     // third-party tile hosts stall `networkidle` on CI runners and hang
     // every map spec. Aborting settles the page deterministically.
