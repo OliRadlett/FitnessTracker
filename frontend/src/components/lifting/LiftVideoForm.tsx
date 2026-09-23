@@ -34,6 +34,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const [cameraView, setCameraView] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
+  const [setId, setSetId] = useState('');
   const [prId, setPrId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -48,6 +49,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       setCameraView('');
       setNotes('');
       setSessionId('');
+      setSetId('');
       setPrId('');
       setFile(null);
       setUploadProgress(0);
@@ -94,6 +96,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       camera_view: cameraView || null,
       notes: notes || null,
       lifting_session_id: sessionId || null,
+      lifting_set_id: setId || null,
       personal_record_id: prId || null,
     };
 
@@ -137,6 +140,20 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       });
     } catch (err: any) {
       setFormError(`Upload failed: ${err?.message || 'please try again.'}`);
+    }
+  };
+
+  const selectedSession = sessions.find((s) => s.id === sessionId);
+  const availableSets = selectedSession?.sets ?? [];
+
+  // Picking a set autofills exercise / load / reps from it.
+  const handleSetChange = (value: string) => {
+    setSetId(value);
+    const s = availableSets.find((x) => x.id === value);
+    if (s) {
+      setExerciseName(s.exercise_name);
+      setWeightKg(String(s.weight_kg));
+      setExpectedReps(String(s.reps));
     }
   };
 
@@ -246,8 +263,12 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
         <div>
           <label className="block text-sm text-muted mb-1">Link to session (optional)</label>
           <select
+            aria-label="Link to session"
             value={sessionId}
-            onChange={(e) => setSessionId(e.target.value)}
+            onChange={(e) => {
+              setSessionId(e.target.value);
+              setSetId('');
+            }}
             className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">None</option>
@@ -258,6 +279,28 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             ))}
           </select>
         </div>
+
+        {availableSets.length > 0 && (
+          <div>
+            <label className="block text-sm text-muted mb-1">
+              Link to set <span className="text-muted/70">(autofills exercise, load &amp; reps)</span>
+            </label>
+            <select
+              aria-label="Link to set"
+              value={setId}
+              onChange={(e) => handleSetChange(e.target.value)}
+              className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">None</option>
+              {availableSets.map((st) => (
+                <option key={st.id} value={st.id}>
+                  #{st.set_number} · {st.exercise_name} · {st.weight_kg} kg × {st.reps}
+                  {st.is_warmup ? ' (warmup)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm text-muted mb-1">Link to PR (optional)</label>

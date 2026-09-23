@@ -138,6 +138,13 @@ def main() -> int:
     ap.add_argument("--dump-trajectories", action="store_true",
                     help="write per-frame hip/shoulder y + knee angle CSV "
                          "for debugging")
+    ap.add_argument("--num-poses", type=int, default=1,
+                    help="detect up to N people and select the lifter (T1); "
+                         "use 2+ for bench clips with a spotter")
+    ap.add_argument("--fps", type=float, default=10.0,
+                    help="pose extraction fps (default 10; try 30 for peak velocity)")
+    ap.add_argument("--gpu", action="store_true",
+                    help="use the MediaPipe GPU delegate (T2)")
     args = ap.parse_args()
 
     if not args.video.exists():
@@ -162,14 +169,26 @@ def main() -> int:
 
     ensure_model(tmpdir)
 
-    # Step 7: pose extract + classify (same settings as Modal)
+    # Step 7: pose extract + classify (same settings as Modal).
+    # Multi-pose (lifter vs spotter) applies to the bench press only — see
+    # modal_client._process; other lifts keep the dense single-person track.
+    is_bench = bool(args.exercise) and "bench" in args.exercise.lower()
+    effective_poses = args.num_poses if is_bench else 1
     track = extract_pose_track(
-        input_path, str(tmpdir), trim_start, trim_end, fps=10.0)
+        input_path, str(tmpdir), trim_start, trim_end, fps=args.fps,
+        num_poses=effective_poses, gpu_delegate=args.gpu)
+    if effective_poses > 1 and track.get("tracks"):
+        from app.integrations.pose_analysis import reselect_lifter
+
+        track = reselect_lifter(track, exercise=args.exercise)
+        print(f"Person tracks: {track.get('persons')} -> lifter "
+              f"{track.get('lifter', {}).get('chosen_track_id')}")
     landmarks = track["landmarks"]
     timestamps = track["timestamps"]
     world = track["world"]
     logger.info("pose landmarks: %d/%d frames (%d with world landmarks)",
-                len(landmarks), track["frames"], len(world))
+                len(landmarks), track["frames"],
+                sum(1 for w in world if w is not None))
     if not landmarks:
         print("No pose landmarks detected.")
         return 1
@@ -183,7 +202,7 @@ def main() -> int:
     print(f"Classification: {exercise} ({variation}) conf={confidence}")
 
     reps = detect_reps_from_pose(landmarks, timestamps, exercise,
-                                 expected_reps=args.expected_reps)
+                                 expected_reps=args.expected_reps, fps=args.fps)
     print(f"Reps detected: {len(reps)}"
           + (f" (expected {args.expected_reps})" if args.expected_reps else ""))
 
@@ -233,7 +252,7 @@ def main() -> int:
     if not args.skip_flow:
         vel = {"tracking_quality": "failed"}
         if landmarks and timestamps:
-            if world:
+            if any(w is not None for w in world):
                 vel = bar_velocity_from_world(world, timestamps, reps, exercise)
             if vel.get("tracking_quality") == "failed":
                 cap = cv2.VideoCapture(str(input_path))

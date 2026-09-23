@@ -257,6 +257,13 @@ class LiftVideo(Base):
         ForeignKey("personal_records.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Optional link to the exact set this video captures; exercise/load/reps
+    # are autofilled from it at creation.
+    lifting_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("lifting_sets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     expected_reps: Mapped[int | None] = mapped_column(
         Integer, nullable=True
@@ -299,6 +306,16 @@ class LiftVideo(Base):
     velocity_loss_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     velocity_profile_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     vbt_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Bar-path technique metrics (§3.18 / F1): efficiency, drift, consistency.
+    # Pose-proxy today; the learned bar detector (T3) fills the same shape.
+    bar_path_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Persisted pose track (T5) ──────────────────────────────────────────
+    # Compact per-frame landmarks JSON in R2 — powers the interactive viewer
+    # (F2) and re-analysis without re-running MediaPipe.
+    pose_track_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Pipeline version that produced this analysis (for reprocess-on-bump).
+    analysis_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ── Rest timing (§3.18) ────────────────────────────────────────────────
     rest_periods_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -319,6 +336,13 @@ class LiftVideo(Base):
     estimated_rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Multi-person lifter selection (T1) ─────────────────────────────────
+    # Track id of the chosen lifter (when >1 person was detected), or NULL for
+    # single-person clips. A user override forces this track on reprocess.
+    lifter_selected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # JSON: {source, chosen_track_id, n_tracks, candidates:[...]} for the UI.
+    lifter_selection_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True

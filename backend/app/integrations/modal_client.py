@@ -65,6 +65,21 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/pose_analysis.py",
                 "/root/app/integrations/pose_analysis.py",
             )
+            # pose_analysis imports these for multi-person lifter selection
+            # (T1) and bar-path metrics (F1). Missing mount => ImportError in
+            # the container (see pitfall #33/#34).
+            image = image.add_local_file(
+                f"{analysis_dir}/person_tracking.py",
+                "/root/app/integrations/person_tracking.py",
+            )
+            image = image.add_local_file(
+                f"{analysis_dir}/bar_tracking.py",
+                "/root/app/integrations/bar_tracking.py",
+            )
+            image = image.add_local_file(
+                f"{analysis_dir}/pose_track.py",
+                "/root/app/integrations/pose_track.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -91,6 +106,12 @@ def process_video_on_modal(
     weight_kg: float = 0.0,
     r2_presigned_put_thumbs: str | None = None,
     r2_upload_key_thumbs: str | None = None,
+    num_poses: int = 1,
+    forced_lifter_track_id: int | None = None,
+    pose_fps: float = 10.0,
+    gpu_delegate: bool = False,
+    r2_presigned_put_track: str | None = None,
+    r2_upload_key_track: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -143,13 +164,21 @@ def process_video_on_modal(
 
     app = modal.App("fittrack-video-processor", image=image)
 
+    # Modal GPU for the worker (empty = CPU-only). Setting it also turns on the
+    # MediaPipe GPU delegate so a flat 30–60 fps stays affordable — the heavy
+    # model runs ~4 fps on CPU. Benchmark L4 vs T4 before choosing (T2).
+    modal_gpu = (settings.video_modal_gpu or "").strip() or None
+    gpu_delegate = (
+        bool(gpu_delegate)
+        or bool(settings.video_gpu_delegate_enabled)
+        or bool(modal_gpu)
+    )
+
     @app.function(
         serialized=True,
         timeout=600,
         memory=4096,
-        # CPU-only: MediaPipe Pose uses the CPU delegate (proven 100%
-        # detection on powerlifting videos; also cheaper than T4).
-        # Heavy model processes ~4 fps on CPU — 600s covers 30s clips at 10fps.
+        gpu=modal_gpu,
     )
     def _process(
         presigned_get: str,
@@ -166,6 +195,12 @@ def process_video_on_modal(
         weight_in: float = 0.0,
         thumbs_put: str = "",
         thumbs_key: str = "",
+        num_poses: int = 1,
+        forced_lifter: int = -1,
+        pose_fps: float = 10.0,
+        gpu_delegate: bool = False,
+        track_put: str = "",
+        track_key: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -374,9 +409,28 @@ def process_video_on_modal(
                     route_exercise,
                 )
 
+                forced = forced_lifter if forced_lifter >= 0 else None
+                # Multi-person selection is used for the bench press only:
+                # there a spotter dominates the single-pose detector (verified
+                # on real footage — num_poses=1 tracked the upright spotter for
+                # 375/375 frames, 0 horizontal). For every other lift
+                # num_poses>1 fragments the track and regresses the analysis
+                # (verified: a clean 150 kg squat scored 100 at num_poses=1 vs
+                # 75 with the fragmented multi-pose track), so keep the dense
+                # single-person track.
+                prelim = route_exercise(user_ex, "", 0.0)[0] if user_ex else None
+                effective_poses = num_poses if prelim == "Bench Press" else 1
                 pose_track = extract_pose_track(
-                    input_path, tmpdir, trim_start, trim_end, fps=10.0,
+                    input_path, tmpdir, trim_start, trim_end, fps=pose_fps,
+                    num_poses=effective_poses,
+                    forced_track_id=forced,
+                    gpu_delegate=gpu_delegate,
                 )
+                if effective_poses > 1 and pose_track.get("tracks"):
+                    from app.integrations.pose_analysis import reselect_lifter
+
+                    pose_track = reselect_lifter(
+                        pose_track, exercise=prelim, forced_track_id=forced)
                 landmarks = pose_track["landmarks"]
                 pose_timestamps = pose_track["timestamps"]
                 pose_world = pose_track["world"]
@@ -406,6 +460,10 @@ def process_video_on_modal(
 
             # ── Step 8: Full analysis (pose-based + optical flow) ────────
             full_result: dict = {}
+            # Surface the lifter selection (T1) regardless of depth so the
+            # scheduler can persist it and the UI can offer a manual override.
+            full_result["lifter_selection"] = pose_track.get("lifter")
+            full_result["n_person_tracks"] = len(pose_track.get("tracks") or [])
             if depth == "full":
                 # 8a: Pose-based form + setup analysis
                 try:
@@ -450,11 +508,13 @@ def process_video_on_modal(
                     if landmarks and pose_timestamps:
                         _pose_reps = detect_reps_from_pose(
                             landmarks, pose_timestamps, exercise,
-                            expected_reps=expected)
+                            expected_reps=expected, fps=pose_fps)
                         sprite_reps = _pose_reps
                         # World landmarks give metric bar travel; fall back to
                         # the 2D pixels-per-metre path only if they're absent.
-                        if pose_world:
+                        # ``pose_world`` is None-padded (aligned to landmarks),
+                        # so test for any usable frame, not list truthiness.
+                        if any(w is not None for w in pose_world):
                             vel_result = bar_velocity_from_world(
                                 pose_world, pose_timestamps, _pose_reps, exercise)
                             _logger.info(
@@ -625,6 +685,51 @@ def process_video_on_modal(
                 except Exception as e:
                     _logger.warning("Rep sprite render/upload failed: %s", e)
 
+            # ── Step 9d: Upload the compact pose track (T5) ──────────────
+            # Per-frame landmarks so the interactive viewer (F2) can draw the
+            # skeleton / bar path without re-running MediaPipe. Uploaded even
+            # at basic depth (no reps/bar_path then).
+            track_uploaded_key: str | None = None
+            analysis_version: int | None = None
+            if track_put and track_key and landmarks:
+                try:
+                    from app.integrations.pose_track import (
+                        ANALYSIS_VERSION,
+                        build_track_payload,
+                    )
+
+                    payload = build_track_payload(
+                        pose_track,
+                        exercise=exercise,
+                        reps=full_result.get("rep_timing"),
+                        bar_path=full_result.get("bar_path"),
+                    )
+                    track_bytes = json.dumps(
+                        payload, separators=(",", ":")
+                    ).encode()
+                    analysis_version = ANALYSIS_VERSION
+                    for _attempt in range(3):
+                        try:
+                            httpx.put(
+                                track_put,
+                                content=track_bytes,
+                                headers={"Content-Type": "application/json"},
+                                timeout=120,
+                            ).raise_for_status()
+                            track_uploaded_key = track_key
+                            _logger.info(
+                                "Uploaded pose track (%d KB) to R2",
+                                len(track_bytes) // 1024,
+                            )
+                            break
+                        except Exception as e:
+                            _logger.warning(
+                                "Track upload attempt %d failed: %s",
+                                _attempt + 1, e)
+                            _time.sleep(5 * (_attempt + 1))
+                except Exception as e:
+                    _logger.warning("Pose track serialize/upload failed: %s", e)
+
             form_data = {
                 **full_result.get("form", {}),
                 "view": view,
@@ -702,6 +807,14 @@ def process_video_on_modal(
                 "velocity_loss_pct": vel_data.get("velocity_loss_pct"),
                 "velocity_profile_json": vel_data.get("velocities"),
                 "vbt_zone": vel_data.get("vbt_zone"),
+                # Bar path (F1) + multi-person lifter selection (T1). These must
+                # be surfaced here or the scheduler silently persists nothing.
+                "bar_path": full_result.get("bar_path"),
+                "lifter_selection": full_result.get("lifter_selection"),
+                "n_person_tracks": full_result.get("n_person_tracks"),
+                # Persisted pose track (T5)
+                "pose_track_r2_key": track_uploaded_key,
+                "analysis_version": analysis_version,
                 # Rest timing
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
@@ -730,6 +843,14 @@ def process_video_on_modal(
     view_key = settings.gemini_api_key if settings.video_view_vlm_enabled else ""
     user_view = normalize_user_view(camera_view)
 
+    # Multi-person lifter selection (T1) — applies to the bench press only
+    # (see _process). 1 = single-person behaviour.
+    num_poses = (
+        max(1, settings.video_num_poses) if settings.video_multi_pose_enabled else 1
+    )
+    # T2 pose extraction settings (defaults preserve current behaviour).
+    pose_fps = float(settings.video_pose_fps or 10.0)
+
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
         return _process.remote(
@@ -747,4 +868,10 @@ def process_video_on_modal(
             weight_kg or 0.0,
             r2_presigned_put_thumbs or "",
             r2_upload_key_thumbs or "",
+            num_poses,
+            forced_lifter_track_id if forced_lifter_track_id is not None else -1,
+            pose_fps,
+            gpu_delegate,
+            r2_presigned_put_track or "",
+            r2_upload_key_track or "",
         )
