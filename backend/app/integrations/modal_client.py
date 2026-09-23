@@ -80,6 +80,14 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/pose_track.py",
                 "/root/app/integrations/pose_track.py",
             )
+            image = image.add_local_file(
+                f"{analysis_dir}/biomechanics.py",
+                "/root/app/integrations/biomechanics.py",
+            )
+            image = image.add_local_file(
+                f"{analysis_dir}/bar_detection.py",
+                "/root/app/integrations/bar_detection.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -112,6 +120,7 @@ def process_video_on_modal(
     gpu_delegate: bool = False,
     r2_presigned_put_track: str | None = None,
     r2_upload_key_track: str | None = None,
+    bar_detection: bool = False,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -201,6 +210,7 @@ def process_video_on_modal(
         gpu_delegate: bool = False,
         track_put: str = "",
         track_key: str = "",
+        bar_detection: bool = False,
     ) -> dict:
         import logging
         import subprocess
@@ -481,6 +491,7 @@ def process_video_on_modal(
                         weight_kg=weight,
                         view=view,
                         track=pose_track,
+                        bar_detection=bar_detection,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -503,6 +514,7 @@ def process_video_on_modal(
                         bar_velocity_from_pose,
                         bar_velocity_from_world,
                         detect_reps_from_pose,
+                        sticking_joint_angle,
                     )
 
                     if landmarks and pose_timestamps:
@@ -521,6 +533,24 @@ def process_video_on_modal(
                                 "Velocity (world): mean=%.3f m/s, %d reps",
                                 vel_result.get("mean_concentric_velocity", 0.0),
                                 len(vel_result.get("rep_timings", [])))
+                            # F3: knee/elbow angle at the sticking frame.
+                            # F9: external joint moments there too.
+                            from app.integrations.biomechanics import joint_moments
+
+                            for _e in vel_result.get("rep_timings", []):
+                                _fi = _e.get("sticking_frame_idx")
+                                _ang = sticking_joint_angle(
+                                    landmarks, _fi, exercise)
+                                if _ang is not None:
+                                    _e["sticking_joint_angle"] = _ang
+                                if (
+                                    _fi is not None
+                                    and 0 <= int(_fi) < len(pose_world)
+                                ):
+                                    _mm = joint_moments(
+                                        pose_world[int(_fi)], weight_kg, exercise)
+                                    if _mm:
+                                        _e.update(_mm)
                         if vel_result.get("tracking_quality") == "failed":
                             import cv2
 
@@ -815,6 +845,8 @@ def process_video_on_modal(
                 # Persisted pose track (T5)
                 "pose_track_r2_key": track_uploaded_key,
                 "analysis_version": analysis_version,
+                # Rest between reps (T6)
+                "rest": full_result.get("rest"),
                 # Rest timing
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
@@ -850,6 +882,8 @@ def process_video_on_modal(
     )
     # T2 pose extraction settings (defaults preserve current behaviour).
     pose_fps = float(settings.video_pose_fps or 10.0)
+    # T3 v1 bar-path source (default off; see Settings).
+    bar_detection = bool(settings.video_bar_detection_enabled)
 
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
@@ -874,4 +908,5 @@ def process_video_on_modal(
             gpu_delegate,
             r2_presigned_put_track or "",
             r2_upload_key_track or "",
+            bar_detection,
         )

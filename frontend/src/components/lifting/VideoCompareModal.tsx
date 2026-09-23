@@ -8,6 +8,7 @@ import type { LiftVideo } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
+import { BarPathCompare } from '@/components/lifting/BarPathCompare';
 
 function parseJsonArray(value?: string | null): string[] {
   if (!value) return [];
@@ -66,6 +67,10 @@ export function VideoCompareModal({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <VideoEmbed video={a} />
         <VideoEmbed video={b} />
+      </div>
+
+      <div className="mt-4">
+        <BarPathCompare videoA={a} videoB={b} />
       </div>
 
       <div className="mt-4">

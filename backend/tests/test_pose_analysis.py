@@ -39,7 +39,9 @@ def _pose(knee_angle_deg, hip_y=0.40, thigh=0.15):
         11: (0.5, 0.20), 12: (0.5, 0.20),
         23: (0.5, hip_y), 24: (0.5, hip_y),
         13: (0.5, 0.30), 14: (0.5, 0.30),
-        15: (0.5, 0.40), 16: (0.5, 0.40),
+        # Hands on the bar at the shoulders (a squat, not arms hanging) — the
+        # squat/deadlift classifier keys on hand height.
+        15: (0.5, 0.22), 16: (0.5, 0.22),
     }.items():
         lms[idx] = Lm(x, y)
 
@@ -254,6 +256,23 @@ class TestFootStabilization:
         assert pa.stabilize_planted_feet(frames) is frames
 
 
+class TestRepSignal:
+    def test_legs_use_angle_signal(self):
+        sig, is_angle = pa._rep_signal([_pose(90.0)] * 5, "Back Squat", 3)
+        assert is_angle is True
+
+    def test_bench_uses_normalised_bar_height(self):
+        frames = []
+        for y in (0.3, 0.5, 0.7, 0.5, 0.3):
+            lm = [Lm() for _ in range(33)]
+            for i in (15, 16):
+                lm[i] = Lm(0.5, y)
+            frames.append(lm)
+        sig, is_angle = pa._rep_signal(frames, "Bench Press", 3)
+        assert is_angle is False
+        assert float(sig.max() - sig.min()) == pytest.approx(180.0, abs=1.0)
+
+
 class TestAnalysisQuality:
     def _run(self, tmp_path, seq, exercise="Back Squat", reps=0):
         ts = [i * 0.1 for i in range(len(seq))]
@@ -288,6 +307,24 @@ class TestAnalysisQuality:
             "Back Squat", 2, 0.0, track=track,
         )
         assert out["quality"]["level"] == "fair"
+
+    def test_multi_person_low_lifter_coverage_is_fair(self, tmp_path):
+        # A pose is detected every frame (rate 1.0) but the selected lifter
+        # covers only 25% (a spotter dominated the detector) -> capped to fair.
+        seq = _squat_sequence(reps=3)
+        track = {
+            "landmarks": seq, "world": [],
+            "timestamps": [i * 0.1 for i in range(len(seq))],
+            "detected": len(seq), "frames": len(seq) * 4,
+            "pose_frames": len(seq) * 4, "tracks": [{}, {}],
+        }
+        out = pa.run_pose_analysis(
+            tmp_path / "x.mp4", str(tmp_path), 0.0, len(seq) * 0.1,
+            "Back Squat", 3, 0.0, track=track,
+        )
+        assert out["quality"]["level"] == "fair"
+        assert out["quality"]["multi_person"] is True
+        assert out["quality"]["lifter_rate"] == pytest.approx(0.25)
 
 
 class TestRepSprite:
@@ -591,6 +628,20 @@ class TestStickingPoint:
     def test_none_indices_returns_none(self):
         assert pa._sticking_point([0.0] * 10, [i * 0.1 for i in range(10)], None, None) is None
 
+    def test_returns_absolute_frame_index(self):
+        pos = [0.0, 0.2, 0.4, 0.6, 0.8, 0.81, 0.82, 0.83, 1.0, 1.4, 1.8, 2.0]
+        ts = [i * 0.1 for i in range(len(pos))]
+        sp = pa._sticking_point(pos, ts, 0, len(pos) - 1)
+        assert 0 <= sp["sticking_frame_idx"] <= len(pos) - 1
+
+    def test_joint_angle_knee_for_squat(self):
+        seq = [_pose(90.0)]
+        assert pa.sticking_joint_angle(seq, 0, "Back Squat") == pytest.approx(90.0, abs=1.0)
+
+    def test_joint_angle_none_for_out_of_range(self):
+        assert pa.sticking_joint_angle([_pose(90.0)], 5, "Back Squat") is None
+        assert pa.sticking_joint_angle([_pose(90.0)], None, "Back Squat") is None
+
     def test_rep_timing_entry_carries_sticking_fields(self):
         n = 12
         frames = TestWorldVelocity._frames([0.0] * 3 + [0.5] * 6 + [1.0] * 3)
@@ -599,6 +650,53 @@ class TestStickingPoint:
                  "bottom_idx": 0, "top_idx": n - 1}]
         res = pa.bar_velocity_from_world(frames, ts, reps, "Back Squat")
         assert "sticking_position_pct" in res["rep_timings"][0]
+
+
+class TestSegmentRest:
+    @staticmethod
+    def _world(profile):
+        frames = []
+        for d in profile:
+            w = [Lm() for _ in range(33)]
+            for i in (23, 24):
+                w[i] = Lm(0.5, 0.0)
+            for i in (27, 28):
+                w[i] = Lm(0.5, d)
+            frames.append(w)
+        return frames
+
+    def test_detects_a_pause_between_reps(self):
+        profile = (
+            [0.3 + 0.3 * (i / 9) for i in range(10)]  # rep 1 ascends
+            + [0.6] * 20                               # pause at the top
+            + [0.3 + 0.3 * (i / 9) for i in range(10)]  # rep 2
+        )
+        world = self._world(profile)
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 9},
+            {"rep_number": 2, "start_idx": 30, "end_idx": 39},
+        ]
+        rest = pa.segment_rest(world, ts, reps, "Back Squat")
+        assert rest is not None
+        assert rest["periods"][0]["after_rep"] == 1
+        assert rest["avg_seconds"] >= 1.5
+
+    def test_continuous_set_has_no_rest(self):
+        profile = [0.3 + 0.3 * abs((i % 20) - 10) / 10 for i in range(40)]
+        world = self._world(profile)
+        ts = [i * 0.1 for i in range(len(profile))]
+        reps = [
+            {"rep_number": 1, "start_idx": 0, "end_idx": 9},
+            {"rep_number": 2, "start_idx": 20, "end_idx": 29},
+        ]
+        assert pa.segment_rest(world, ts, reps, "Back Squat") is None
+
+    def test_single_rep_returns_none(self):
+        world = self._world([0.3, 0.4, 0.5])
+        ts = [0.0, 0.1, 0.2]
+        reps = [{"rep_number": 1, "start_idx": 0, "end_idx": 2}]
+        assert pa.segment_rest(world, ts, reps, "Back Squat") is None
 
 
 class TestWorldVelocityNoneSafe:

@@ -8,6 +8,7 @@ Replaces Gemini Vision calls with deterministic rule-based evaluation.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import subprocess
 from pathlib import Path
@@ -748,6 +749,17 @@ def classify_exercise(landmarks_per_frame: list,
         sh_diffs.append(shoulder_y - hip_y)
     mean_sh_diff = np.mean(sh_diffs)
 
+    # Hand height relative to the shoulders — the squat/deadlift discriminator.
+    # A squat's hands stay on the bar at the shoulders; a deadlift's hands hang
+    # to the bar at the floor. View-tolerant (vertical ordering survives ¾ /
+    # behind cameras), unlike torso lean.
+    mean_wrist_below_shoulder = float(np.mean([
+        ((lm[15].y + lm[16].y) / 2) - ((lm[11].y + lm[12].y) / 2)
+        for lm in landmarks_per_frame
+    ]))
+    # Calibrated on the labelled set: squats read ≈0.00, deadlifts ≈0.10–0.12.
+    hands_low = mean_wrist_below_shoulder > 0.05
+
     exercise = "Unknown"
     confidence = 0.0
     variation = ""
@@ -793,33 +805,35 @@ def classify_exercise(landmarks_per_frame: list,
     # shadow them — hence elif-chained AFTER the press branch above.
     # Verified 2026-09-17: two "Squat 0.95" videos were visually
     # conventional/strongman deadlifts (torso horizontal).
-    elif hip_range > 35 and knee_range > 30 and bottom_lean > 60:
-        exercise = "Deadlift"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
-        variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
-    elif hip_range > 40 and knee_range > 50:
-        exercise = "Squat"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        if mean_sh_diff > 0.05:
-            variation = "Front Squat"
+    elif hip_range > 35 and knee_range > 30:
+        # Both a squat and a deadlift move hips + knees through large ranges,
+        # so they used to be split by torso lean — which a ¾/behind view
+        # inflates, mislabelling most squats as deadlifts (2026-09-23: 5/7 on
+        # the labelled set). Hand height separates them cleanly and
+        # view-tolerantly (lean is no longer used — it mislabelled squats).
+        if hands_low:
+            exercise = "Deadlift"
+            knee_x_spread = np.mean(
+                [abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
+            variation = (
+                "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
+            )
         else:
-            # Low vs high bar by median torso lean across the set:
-            # low-bar lifters ride 25-35°+ inclined throughout, high-bar
-            # stay ~10-20°. Threshold 22° separates the observed cases
-            # (28° vs 16°). Form thresholds are bar-style agnostic (lean
-            # is measured at the standing top), so this is labeling only.
-            med_lean = float(np.median(
-                [_torso_angle(lm) for lm in landmarks_per_frame]))
-            variation = "Low Bar Squat" if med_lean > 22 else "High Bar Squat"
+            exercise = "Squat"
+            if mean_sh_diff > 0.05:
+                variation = "Front Squat"
+            else:
+                # Low vs high bar by median torso lean across the set:
+                # low-bar lifters ride 25-35°+ inclined throughout, high-bar
+                # stay ~10-20°. Form thresholds are bar-style agnostic (lean
+                # is measured at the standing top), so this is labeling only.
+                med_lean = float(np.median(
+                    [_torso_angle(lm) for lm in landmarks_per_frame]))
+                variation = "Low Bar Squat" if med_lean > 22 else "High Bar Squat"
+        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
     elif elbow_range > 50 and hip_range < 15 and knee_range < 15:
         exercise = "Bench Press"
         confidence = min(0.95, 0.7 + elbow_range / 200)
-    elif hip_range > 35 and knee_range > 30:
-        exercise = "Deadlift"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
-        variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
     elif elbow_range > 40 and hip_range < 10:
         exercise = "Overhead Press"
         confidence = min(0.90, 0.6 + elbow_range / 200)
@@ -829,7 +843,10 @@ def classify_exercise(landmarks_per_frame: list,
 
 # ── Camera View Detection ────────────────────────────────────────────────────
 
-VIEW_SIDE_MAX_RATIO = 0.50
+# Calibrated against the labelled fixtures (2026-09-23): the true side-on squat
+# reads shoulder/torso ratio 0.30, while ¾ clips read 0.35–0.96. 0.32 separates
+# them (0.50 called the 0.35 ¾ squat "side", enabling sagittal rules wrongly).
+VIEW_SIDE_MAX_RATIO = 0.32
 VIEW_FRONTAL_MIN_RATIO = 1.10
 
 
@@ -893,6 +910,44 @@ def detect_camera_view(landmarks_per_frame: list) -> dict:
 
 # ── Rep Boundary Detection ───────────────────────────────────────────────────
 
+_LEG_EXERCISES = (
+    "Squat", "Front Squat", "Back Squat", "Deadlift",
+    "Conventional Deadlift", "Sumo Deadlift", "Stone",
+)
+
+
+def _rep_signal(landmarks_per_frame: list, exercise: str, window: int):
+    """Return ``(signal, is_angle)`` for rep detection.
+
+    Legs → knee angle; overhead presses → elbow angle; **bench press → the
+    barbell height (wrist-y)**. The bench lifter is horizontal and, with a
+    spotter present, its multi-person track is fragmented — the elbow
+    landmarks are too noisy to segment reps, but the bar (wrists) stays
+    legible. The bar-height signal is normalised to an angle-like 0–180 scale
+    so the shared prominence/amplitude gates apply.
+    """
+    ex = exercise or ""
+    if ex == "Bench Press":
+        raw = [-float(_mid(lm, 15, 16)[1]) for lm in landmarks_per_frame]
+    elif ex in _LEG_EXERCISES or "stone" in ex.lower() or "sandbag" in ex.lower():
+        raw = [
+            calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
+            for lm in landmarks_per_frame
+        ]
+    else:
+        raw = [
+            calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
+            for lm in landmarks_per_frame
+        ]
+
+    signal = _median_filter(raw, window=window)
+    if ex == "Bench Press":
+        lo, hi = float(np.min(signal)), float(np.max(signal))
+        if hi - lo > 1e-6:
+            signal = (signal - lo) / (hi - lo) * 180.0
+        return signal, False
+    return signal, True
+
 
 def detect_reps_from_pose(
     landmarks_per_frame: list,
@@ -925,15 +980,8 @@ def detect_reps_from_pose(
     _win = max(3, int(round(0.7 * fps)) | 1)
     _min_gap = max(3, int(round(0.3 * fps)))
 
-    # Build a "depth signal" — knee angle for squat/deadlift, elbow angle for bench
-    signal = _median_filter([
-        calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28))
-        if (exercise in ("Squat", "Front Squat", "Back Squat", "Deadlift",
-                         "Conventional Deadlift", "Sumo Deadlift", "Stone")
-            or "stone" in exercise.lower() or "sandbag" in exercise.lower()) else
-        calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
-        for lm in landmarks_per_frame
-    ], window=_win)
+    # Build the rep signal (knee angle / elbow angle / bench bar-height).
+    signal, angle_signal = _rep_signal(landmarks_per_frame, exercise, _win)
 
     # Find all raw extrema, then filter by PROMINENCE (height above the
     # surrounding signal). Jitter wobbles (±2°) and setup shuffles never
@@ -971,7 +1019,8 @@ def detect_reps_from_pose(
     # Bottoms must also clear anatomical plausibility (<30° is beyond max
     # joint flexion: always an occlusion glitch, never a real bottom).
     kept_min = [i for i in raw_min
-                if _prom(i, False) >= 25.0 and signal[i] >= 30.0]
+                if _prom(i, False) >= 25.0
+                and (not angle_signal or signal[i] >= 30.0)]
 
     # Each kept bottom gets the nearest kept top on each side as bounds
     # (falling back to the signal ends for videos starting/ending mid-rep).
@@ -1002,9 +1051,10 @@ def detect_reps_from_pose(
             continue
         seg = signal[start:end + 1]
         seg_min = float(np.min(seg))
-        if seg_min < 30.0:
+        if angle_signal and seg_min < 30.0:
             # Glitch-contaminated slice (beyond max joint flexion, always
-            # an occlusion gap, never a real bottom).
+            # an occlusion gap, never a real bottom). Only meaningful for
+            # joint-angle signals.
             continue
         amplitude = float(np.max(seg) - seg_min)
         if amplitude < min_amp:
@@ -1786,6 +1836,7 @@ def run_pose_analysis(
     weight_kg: float,
     view: str = "unknown",
     track: dict | None = None,
+    bar_detection: bool = False,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
@@ -1829,6 +1880,12 @@ def run_pose_analysis(
     expected = rep_count if rep_count and rep_count > 0 else None
     reps = detect_reps_from_pose(landmarks, timestamps, exercise,
                                  expected_reps=expected, fps=fps)
+
+    # Rest between reps (cluster sets / deliberate pauses) — fills the
+    # rest-timing columns; None for a continuous set.
+    rest = segment_rest(track.get("world") or [], timestamps, reps, exercise)
+    if rest:
+        result["rest"] = rest
 
     # Per-rep analysis
     per_rep = []
@@ -1881,22 +1938,49 @@ def run_pose_analysis(
         level = "fair"
     else:
         level = "good"
+
+    # Multi-person clips (e.g. bench with a spotter): a pose is detected every
+    # frame, but MediaPipe may return the *lifter* for only part of the clip
+    # (the upright spotter wins the rest). That fragments the lifter's signal
+    # and softens every downstream number, so cap the level on lifter coverage.
+    lifter_frames = len(landmarks)
+    lifter_rate = (lifter_frames / frames) if frames else 0.0
+    multi_person = len(track.get("tracks") or []) > 1
+    if multi_person and lifter_rate < 0.5 and level == "good":
+        level = "fair"
     result["quality"] = {
         "level": level,
         "detection_rate": round(detection_rate, 2),
+        "lifter_rate": round(lifter_rate, 2),
+        "multi_person": multi_person,
         "reps": len(reps),
         "view": view,
     }
 
-    # Bar-path metrics (F1) from the pose-proxy bar track. Detector-agnostic:
-    # when bar tracking (T3) lands it supplies a real track in the same shape.
+    # Bar-path metrics (F1). Prefer the real barbell plate detection (T3) when
+    # it fires on enough frames; ``bar_track_from_frame_paths`` falls back to
+    # the pose proxy internally below its detection threshold, so the metrics
+    # are never left empty and the two sources are labelled (``source``).
     from app.integrations.bar_tracking import (
         analyze_bar_path,
         bar_track_from_landmarks,
     )
 
-    bar_track = bar_track_from_landmarks(
-        landmarks, track.get("presence"), exercise)
+    bar_track = None
+    records = (track.get("records") or []) if bar_detection else []
+    if records:
+        frame_dir = Path(tmpdir)
+        frame_paths = [
+            frame_dir / f"pose_{r['frame_idx']:04d}.jpg" for r in records
+        ]
+        if all(p.exists() for p in frame_paths):
+            from app.integrations.bar_detection import bar_track_from_frame_paths
+
+            bar_track = bar_track_from_frame_paths(
+                frame_paths, [r["landmarks"] for r in records], exercise)
+    if bar_track is None:
+        bar_track = bar_track_from_landmarks(
+            landmarks, track.get("presence"), exercise)
     bar_path = analyze_bar_path(bar_track, reps, exercise)
     if bar_path:
         result["bar_path"] = bar_path
@@ -2110,6 +2194,75 @@ def _sticking_point(pos, ts, bi: int, ti: int) -> dict | None:
     return {
         "sticking_position_pct": round(float((k + 0.5) / speed.size) * 100, 1),
         "sticking_min_velocity_ms": round(float(speed[k]), 3),
+        # Absolute index into the aligned landmark list — lets callers read the
+        # joint angle at the sticking point.
+        "sticking_frame_idx": int(bi) + k,
+    }
+
+
+def sticking_joint_angle(landmarks: list, frame_idx, exercise: str) -> float | None:
+    """Knee (leg lifts) or elbow (presses) angle at the sticking frame (F3)."""
+    if frame_idx is None or not (0 <= int(frame_idx) < len(landmarks)):
+        return None
+    lm = landmarks[int(frame_idx)]
+    if lm is None:
+        return None
+    if _is_leg_lift(exercise):
+        return round(
+            calculate_angle(_mid(lm, 23, 24), _mid(lm, 25, 26), _mid(lm, 27, 28)), 1
+        )
+    return round(
+        calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16)), 1
+    )
+
+
+def segment_rest(
+    world_frames: list,
+    timestamps: list[float],
+    pose_reps: list[dict],
+    exercise: str,
+    min_rest_s: float = 1.5,
+    still_range_m: float = 0.008,
+) -> dict | None:
+    """Detect genuine rest between reps: a gap where the bar stays still.
+
+    A continuous set has no such gap (returns ``None``); a cluster set or a set
+    with deliberate pauses does. Populates the rest-timing columns (T6).
+    """
+    sig = _world_signal(world_frames, exercise)
+    if sig is None or len(pose_reps) < 2:
+        return None
+    ts = np.asarray(timestamps, dtype=float)
+    periods: list[dict] = []
+    for prev, nxt in itertools.pairwise(pose_reps):
+        i0 = prev.get("end_idx", prev.get("top_idx"))
+        i1 = nxt.get("start_idx", nxt.get("bottom_idx"))
+        if i0 is None or i1 is None or i1 <= i0 + 1 or i1 >= len(sig):
+            continue
+        # Longest run of near-stationary frames inside the gap (a pause, not a
+        # continuous descent).
+        run_start = None
+        best = 0.0
+        for i in range(i0 + 1, i1 + 1):
+            if abs(sig[i] - sig[i - 1]) <= still_range_m:
+                if run_start is None:
+                    run_start = i - 1
+                best = max(best, float(ts[i] - ts[run_start]))
+            else:
+                run_start = None
+        if best >= min_rest_s:
+            periods.append({
+                "after_rep": prev.get("rep_number"),
+                "seconds": round(best, 1),
+            })
+    if not periods:
+        return None
+    vals = np.array([p["seconds"] for p in periods], dtype=float)
+    mean = float(vals.mean())
+    return {
+        "periods": periods,
+        "avg_seconds": round(mean, 1),
+        "cv": round(float(vals.std() / mean), 3) if mean > 0 else 0.0,
     }
 
 
@@ -2150,6 +2303,9 @@ def bar_velocity_from_world(
     if sig is None:
         return {"tracking_quality": "failed", "mean_concentric_velocity": 0.0}
     ts = np.array(timestamps[:n])
+    # Median smoothing (validated). A one-euro filter was evaluated (T2) but
+    # its lag shrinks the rep's peak-to-trough amplitude — measured 0.244 m/s
+    # vs 0.277 for a clean 150 kg squat — so it is not used here.
     pos = _smooth_signal(sig, window=3)
 
     velocities: list[float] = []

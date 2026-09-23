@@ -1,5 +1,6 @@
 """Chart service — ChartData/ChartSeries dataclasses, ChartService with chart methods."""
 
+import json
 import math
 import uuid
 from dataclasses import dataclass, field
@@ -2439,6 +2440,96 @@ class ChartService:
             ],
             x_label="Date",
             y_label="Consistency (0–100)",
+        )
+
+    async def _video_json_series(
+        self,
+        user_id: uuid.UUID,
+        column: str,
+        extractor,
+        days: int = 90,
+        exercise_name: str | None = None,
+    ) -> list[tuple[str, float]]:
+        """``(iso_date, value)`` from a JSON column on analyzed videos, oldest first."""
+        from app.models.lifting import LiftVideo
+
+        cutoff = date.today() - timedelta(days=days)
+        query = select(LiftVideo).where(
+            LiftVideo.user_id == user_id,
+            LiftVideo.created_at >= cutoff,
+            getattr(LiftVideo, column).isnot(None),
+        )
+        if exercise_name:
+            query = query.where(LiftVideo.exercise_name == exercise_name)
+        result = await self.db.execute(query.order_by(LiftVideo.created_at))
+        points: list[tuple[str, float]] = []
+        for v in result.scalars().all():
+            try:
+                raw = getattr(v, column)
+                value = extractor(json.loads(raw)) if raw else None
+            except (ValueError, TypeError):
+                value = None
+            if value is not None:
+                points.append((v.created_at.date().isoformat(), float(value)))
+        return points
+
+    async def video_bar_path_trend(
+        self, user_id: uuid.UUID, days: int = 90, exercise_name: str | None = None
+    ) -> ChartData:
+        """Bar-path consistency (0–100, F1) per analyzed video over time."""
+        points = await self._video_json_series(
+            user_id,
+            "bar_path_json",
+            lambda d: d.get("consistency") if isinstance(d, dict) else None,
+            days,
+            exercise_name,
+        )
+        return ChartData(
+            chart_type="line",
+            title="Bar-path Consistency Trend",
+            labels=[p[0] for p in points],
+            series=[
+                ChartSeries(
+                    name="Bar-path consistency",
+                    data=[p[1] for p in points],
+                    color="#f59e0b",
+                )
+            ] if points else [],
+            x_label="Date",
+            y_label="Consistency (0–100)",
+        )
+
+    async def video_sticking_point_trend(
+        self, user_id: uuid.UUID, days: int = 90, exercise_name: str | None = None
+    ) -> ChartData:
+        """Mean sticking-point position (%, F3) per analyzed video over time."""
+
+        def _mean_stick(data):
+            if not isinstance(data, list):
+                return None
+            vals = [
+                r.get("sticking_position_pct")
+                for r in data
+                if isinstance(r, dict) and r.get("sticking_position_pct") is not None
+            ]
+            return sum(vals) / len(vals) if vals else None
+
+        points = await self._video_json_series(
+            user_id, "rep_timing_json", _mean_stick, days, exercise_name
+        )
+        return ChartData(
+            chart_type="line",
+            title="Sticking-point Trend",
+            labels=[p[0] for p in points],
+            series=[
+                ChartSeries(
+                    name="Mean sticking point",
+                    data=[p[1] for p in points],
+                    color="#ef4444",
+                )
+            ] if points else [],
+            x_label="Date",
+            y_label="Sticking point (% of lift)",
         )
 
     # ── Combined training load (B-31) ───────────────────────────────────────

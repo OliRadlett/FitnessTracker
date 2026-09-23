@@ -218,9 +218,13 @@ and person-selection accuracy; baseline recorded.
   frame-based windows (`window=7`, gap `<3`), so a 30 fps track smoothed ~3× less
   and dropped reps (8→7). Now scaled by `fps` (`_win≈0.7·fps`, `_min_gap≈0.3·fps`);
   10 fps behaviour is byte-identical.
-- ⏳ Remaining: pin `mediapipe>=0.10.32`, Modal Volume model cache, one-euro/Kalman
-  smoothing, gravity alignment, anthropometric scale, `vidstab` stabilization,
-  and an eval run (rep MAE + velocity) before any fps change.
+- ✅ **One-euro smoothing evaluated and rejected**: on the real 150 kg squat it
+  under-read the rep amplitude (0.244 m/s vs 0.277 for the validated median
+  window) — the filter's lag shrinks the peak-to-trough, and raising the cutoff
+  only partly recovers it. Median smoothing retained.
+- ⏳ Remaining: pin `mediapipe>=0.10.32`, Modal Volume model cache, gravity
+  alignment, anthropometric scale, `vidstab` stabilization, and an eval run
+  (rep MAE + velocity) before any fps change.
 - **Original detail**:
 - **GPU delegate**: flip `modal_client._get_modal_image` from the forced CPU
   delegate to GPU; pin `mediapipe>=0.10.32` (0.10.31 had a broken GPU delegate);
@@ -240,8 +244,18 @@ and person-selection accuracy; baseline recorded.
 **Acceptance**: joint-angle MAE < 5°; velocity MAE < 0.03 m/s; view-invariant
 depth accuracy ≥ 0.9 on ¾ clips.
 
-### T3 · Bar tracking (true bar path)
+### T3 · Bar tracking (true bar path) — 🟡 v1 SPIKE WIRED (gated)
 
+- ✅ **`backend/app/integrations/bar_detection.py`** — pose-seeded Hough-circle
+  plate detection (edge support + interior darkness + previous-detection seed +
+  jump gate + gap interpolation). Measured: fires only when the plate is seen
+  **face-on** (67% on a true side view; 0% on a ¾ squat).
+- ✅ **Wired behind `VIDEO_BAR_DETECTION_ENABLED` (default OFF)**: when on,
+  `run_pose_analysis` uses the detector track for the bar-path metrics
+  (`source="detector"`), falling back to the proxy per clip. Gated because it
+  needs side-on footage and is unvalidated on a multi-rep side clip.
+- ⏳ **Learned detector remains**: auto-label from this spike → fine-tune a small
+  ONNX model (robust to ¾ angles + heterogeneous plates) → fuse with optical flow.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.
@@ -354,13 +368,58 @@ deliberately avoided as low-ROI.
 | Joint-angle MAE vs synthetic GT | n/a | < 5° |
 | Bar-position MAE (calibrated) | n/a | < 10 mm |
 | Velocity MAE | ~0.21 m/s mean, high spread | < 0.03 m/s |
-| Rep-count MAE | 0.25–0.33 | < 0.25 |
+| Rep-count MAE | 0.30 (10-clip eval) | < 0.25 |
 | View-invariant depth accuracy (¾ clips) | not assessed | ≥ 0.9 |
-| Rest timing error | columns dead | ±5 s |
-| View classification accuracy | unreliable | ≥ 0.9 |
+| Rest timing error | columns dead → populated | ±5 s |
+| View classification accuracy | **0.90** (10-clip eval, was 0.80) | ≥ 0.9 |
 
 Carry forward the v1 targets that are still met (velocity-loss-in-range,
 form-score-zero-rate) so v2 cannot regress them.
+
+---
+
+## Diagnostics — full-labelled-set run (2026-09-23)
+
+Ran `scripts/video_eval.py --num-poses 2 --skip-exercise "log press"
+--skip-exercise stone` over the 10 remaining fixtures (Log Press / Atlas Stone
+excluded per owner) — the whole pipeline, not one clip. Measured:
+declared-rep **exact 1.00**, auto-rep MAE 0.30, form-zero 0.00, velocity-loss
+out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy **0.90**
+(was 0.50).
+
+**Fixed from the findings**
+- **View threshold** `VIEW_SIDE_MAX_RATIO` 0.50 → **0.32**: the true side-on
+  squat reads ratio 0.30, ¾ clips 0.35–0.96; 0.50 wrongly called a ¾ squat
+  "side" (enabling sagittal rules). Accuracy 0.80 → 0.90.
+- **Eval harness parity**: `_run_one` now falls back to the 2D velocity path
+  when the world path fails, mirroring `_process`.
+- **Bench rep signal**: `detect_reps_from_pose` now segments the **bench press
+  from the barbell height (wrist-y)**, normalised to an angle-like 0–180 scale,
+  instead of the elbow angle — the horizontal lifter's elbow landmarks are too
+  noisy on the fragmented multi-person track. Bench velocity went from
+  `failed`/0.0 to a measured 0.524 m/s (its rep window also moved from the
+  spurious 2-frame cycle to a full 53–62 window).
+- **Lifter-coverage-aware quality**: `run_pose_analysis` now caps the level
+  (`good → fair`) when a multi-person clip's selected *lifter* covers <50% of
+  frames (a spotter dominated the detector), and reports `lifter_rate` /
+  `multi_person`; the UI shows a "spotter present" note. Bench → `fair`.
+
+**Known limitations surfaced (not yet fixed)**
+- **Bench lifter coverage is still ~31%** (MediaPipe returns the lifter only
+  part of the clip) — the bar-height signal plus the `fair` quality flag make
+  this honest, but a better multi-person tracker (T3) is the real fix.
+- **Auto exercise classifier** — ✅ fixed: squat vs deadlift now keys on **hand
+  height** (`mean_wrist_below_shoulder`: squats ≈0.00, deadlifts ≈0.10–0.12)
+  instead of torso lean (which a ¾ view inflates — 5/7 squats read "Deadlift").
+  Accuracy 0.50 → 0.90; the last miss is the bench (multi-pose fragmentation).
+- **Auto rep detection is looser than declared**: with `expected_reps` (always
+  provided in production) reps are exact; without it a 3-rep squat read 1.
+- **Bar-path proxy drift is high** (drift_ratio 0.28–0.94): the shoulder/wrist
+  midpoint moves horizontally during a lift — expected for a proxy; the real
+  bar detector (T3) is what fixes this.
+- **"Incomplete lockout" fires on some reps** of otherwise clean 8-rep squats
+  (threshold `tan`/top-frame sensitive) — same class of over-eager threshold as
+  the squat-lean one; needs label calibration before adjusting.
 
 ---
 
