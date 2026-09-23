@@ -103,6 +103,15 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
         "method": "video_consistency_trend",
         "params": ["days", "exercise_name"],
     },
+    # Technique trends from the persisted metrics (F1/F3)
+    "video_bar_path_trend": {
+        "method": "video_bar_path_trend",
+        "params": ["days", "exercise_name"],
+    },
+    "video_sticking_point_trend": {
+        "method": "video_sticking_point_trend",
+        "params": ["days", "exercise_name"],
+    },
     # Unified load (B-31)
     "combined_training_load": {"method": "combined_training_load", "params": ["days"]},
 }
