@@ -63,6 +63,7 @@ from app.integrations.pose_analysis import (
     detect_camera_view,
     detect_reps_from_pose,
     extract_pose_track,
+    reselect_lifter,
     run_pose_analysis,
 )
 from app.integrations.video_analysis import (
@@ -105,10 +106,15 @@ def run_one(
     fps: float,
     views_only: bool = False,
     known_view: bool = False,
+    num_poses: int = 1,
+    gpu_delegate: bool = False,
 ) -> dict:
     tmpdir = Path(tempfile.mkdtemp(prefix="videoeval_"))
     try:
-        return _run_one(label, videos_dir, fps, views_only, known_view, tmpdir)
+        return _run_one(
+            label, videos_dir, fps, views_only, known_view, tmpdir, num_poses,
+            gpu_delegate,
+        )
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -120,6 +126,8 @@ def _run_one(
     views_only: bool,
     known_view: bool,
     tmpdir: Path,
+    num_poses: int = 1,
+    gpu_delegate: bool = False,
 ) -> dict:
     video_path = videos_dir / label["file"]
     record: dict = {
@@ -146,12 +154,22 @@ def _run_one(
     record["duration_s"] = round(duration, 2)
     record["trim"] = [round(trim_start, 2), round(trim_end, 2)]
 
-    track = extract_pose_track(video_path, str(tmpdir), trim_start, trim_end, fps=fps)
+    # Multi-pose (lifter vs spotter) applies to the bench press only.
+    label_exercise = label.get("exercise") or ""
+    effective_poses = num_poses if "bench" in label_exercise.lower() else 1
+    track = extract_pose_track(
+        video_path, str(tmpdir), trim_start, trim_end, fps=fps,
+        num_poses=effective_poses, gpu_delegate=gpu_delegate,
+    )
+    if effective_poses > 1 and track.get("tracks"):
+        track = reselect_lifter(track, exercise=label_exercise)
     landmarks = track["landmarks"]
     timestamps = track["timestamps"]
     world = track["world"]
+    record["n_person_tracks"] = len(track.get("tracks") or [])
+    record["lifter_track_id"] = (track.get("lifter") or {}).get("chosen_track_id")
     record["pose_frames"] = len(landmarks)
-    record["world_frames"] = len(world)
+    record["world_frames"] = sum(1 for w in world if w is not None)
     if not landmarks:
         record["error"] = "no_pose"
         return record
@@ -171,13 +189,14 @@ def _run_one(
         record["elapsed_s"] = round(time.time() - t0, 1)
         return record
 
-    auto_reps = detect_reps_from_pose(landmarks, timestamps, classification["exercise"])
+    auto_reps = detect_reps_from_pose(
+        landmarks, timestamps, classification["exercise"], fps=fps)
     record["auto_reps"] = len(auto_reps)
     record["auto_rep_error"] = abs(len(auto_reps) - int(label.get("reps") or 0))
 
     declared_reps = detect_reps_from_pose(
         landmarks, timestamps, label.get("exercise") or classification["exercise"],
-        expected_reps=label.get("reps"),
+        expected_reps=label.get("reps"), fps=fps,
     )
     record["declared_reps"] = len(declared_reps)
 
@@ -206,7 +225,7 @@ def _run_one(
     record["form_rep_count"] = pose_result.get("rep_count_detected")
 
     exercise = label.get("exercise") or classification["exercise"]
-    if world:
+    if any(w is not None for w in world):
         vel = bar_velocity_from_world(world, timestamps, declared_reps, exercise)
         record["velocity_source"] = "world"
     else:
@@ -352,6 +371,15 @@ def main() -> int:
         "--known-view", action="store_true",
         help="pass each label's camera_view to the analyzer (simulates user-declared view)",
     )
+    ap.add_argument(
+        "--num-poses", type=int, default=1,
+        help="detect up to N people and select the lifter (T1); use 2+ for "
+             "bench clips with a spotter",
+    )
+    ap.add_argument(
+        "--gpu", action="store_true",
+        help="use the MediaPipe GPU delegate (T2)",
+    )
     args = ap.parse_args()
 
     if not args.labels.exists():
@@ -368,6 +396,7 @@ def main() -> int:
         rec = run_one(
             label, args.videos_dir, args.fps,
             views_only=args.views_only, known_view=args.known_view,
+            num_poses=args.num_poses, gpu_delegate=args.gpu,
         )
         status = "skip" if not rec.get("present") else "ok"
         print(f"  [{status}] {label['file']}")

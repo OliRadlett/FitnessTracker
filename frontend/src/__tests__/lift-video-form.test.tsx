@@ -42,6 +42,18 @@ const mockSessions: LiftingSession[] = [
     total_volume_kg: 5000,
     rpe_session: 7,
     duration_seconds: 3600,
+    sets: [
+      {
+        id: 'set1',
+        session_id: 's1',
+        exercise_name: 'Back Squat',
+        set_number: 1,
+        weight_kg: 140,
+        reps: 5,
+        is_warmup: false,
+        is_amrap: false,
+      },
+    ],
   } as LiftingSession,
 ];
 
@@ -126,6 +138,21 @@ describe('LiftVideoForm', () => {
   it('populates PR dropdown', () => {
     renderForm();
     expect(screen.getByText(/Bench Press/)).toBeInTheDocument();
+  });
+
+  it('autofills exercise, load and reps when a set is linked', () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Link to session'), {
+      target: { value: 's1' },
+    });
+    fireEvent.change(screen.getByLabelText('Link to set'), {
+      target: { value: 'set1' },
+    });
+    expect(screen.getByTestId('exercise-input')).toHaveValue('Back Squat');
+    expect(screen.getByPlaceholderText('e.g. 140')).toHaveValue(140);
+    expect(
+      screen.getByPlaceholderText('e.g. 1 for a max attempt'),
+    ).toHaveValue(5);
   });
 
   it('cancel button calls onClose', () => {

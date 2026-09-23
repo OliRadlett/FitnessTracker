@@ -87,6 +87,27 @@ class Settings(BaseSettings):
     # for diagnostics/backfill.
     video_view_vlm_enabled: bool = False
 
+    # Lift-video multi-person pose (T1): detect up to `video_num_poses` people
+    # per frame and select the lifter over a spotter/bystander. Applies to the
+    # BENCH PRESS only — verified on real footage that num_poses=1 tracks the
+    # upright spotter (0/375 horizontal frames) on a bench, while other lifts
+    # regress when multi-pose fragments the track. Enabled by default; set
+    # VIDEO_MULTI_POSE_ENABLED=false to revert to single-person tracking.
+    video_multi_pose_enabled: bool = True
+    video_num_poses: int = 2
+
+    # Lift-video pose extraction (T2). 10 fps is the proven default; raise to
+    # 30–60 for true peak velocity / tempo — pair with the GPU delegate to keep
+    # the wall time down. GPU delegate needs EGL (the Modal image installs it)
+    # and mediapipe>=0.10.32. Both OFF/defaults preserve current behaviour until
+    # benchmarked (T4 vs L4) on real footage.
+    video_pose_fps: float = 10.0
+    video_gpu_delegate_enabled: bool = False
+    # Modal GPU type for the video worker (e.g. "L4", "T4"); empty = CPU-only.
+    # Setting this also enables the MediaPipe GPU delegate. Benchmark before
+    # choosing (see plans/lift-video-tracking-v2.md T2).
+    video_modal_gpu: str = ""
+
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:
     #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"

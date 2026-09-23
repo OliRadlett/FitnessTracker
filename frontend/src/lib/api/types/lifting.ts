@@ -15,6 +15,7 @@ export interface LiftVideo {
   exercise_name?: string | null;
   lifting_session_id?: string | null;
   personal_record_id?: string | null;
+  lifting_set_id?: string | null;
   notes?: string | null;
   expected_reps?: number | null;
   camera_view?: 'side' | 'back_left' | 'back_right' | 'front' | null;
@@ -24,7 +25,13 @@ export interface LiftVideo {
   trimmed_r2_key?: string | null;
   overlay_r2_key?: string | null;
   rep_thumbnails_r2_key?: string | null;
-  analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  analysis_status?:
+    | 'pending'
+    | 'queued'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;
   reps_count?: number | null;
@@ -45,6 +52,7 @@ export interface LiftVideo {
   velocity_loss_pct?: number | null;
   velocity_profile_json?: string | null;
   vbt_zone?: string | null;
+  bar_path_json?: string | null;
   // Rest timing (§3.18)
   rest_periods_json?: string | null;
   avg_rest_seconds?: number | null;
@@ -61,6 +69,12 @@ export interface LiftVideo {
   estimated_rpe?: number | null;
   rpe_confidence?: number | null;
   rpe_evidence_json?: string | null;
+  // Multi-person lifter selection (T1)
+  lifter_selected?: number | null;
+  lifter_selection_json?: string | null;
+  // Persisted pose track (T5)
+  pose_track_r2_key?: string | null;
+  analysis_version?: number | null;
 }
 
 export interface VideoUploadRequest {
@@ -130,6 +144,7 @@ export interface VideoProcessStatus {
   peak_velocity?: number | null;
   velocity_loss_pct?: number | null;
   vbt_zone?: string | null;
+  bar_path_json?: string | null;
   avg_rest_seconds?: number | null;
   rest_cv?: number | null;
   rep_consistency_score?: number | null;
@@ -138,6 +153,12 @@ export interface VideoProcessStatus {
   estimated_rpe?: number | null;
   rpe_confidence?: number | null;
   rpe_evidence_json?: string | null;
+  // Multi-person lifter selection (T1)
+  lifter_selected?: number | null;
+  lifter_selection_json?: string | null;
+  // Persisted pose track (T5)
+  pose_track_r2_key?: string | null;
+  analysis_version?: number | null;
 }
 
 export interface LiftingSession {

@@ -27,6 +27,7 @@ export function VideoEditModal({
   const queryClient = useQueryClient();
   const [exerciseName, setExerciseName] = useState(video.exercise_name ?? '');
   const [expectedReps, setExpectedReps] = useState(video.expected_reps?.toString() ?? '');
+  const [repsCount, setRepsCount] = useState(video.reps_count?.toString() ?? '');
   const [weightKg, setWeightKg] = useState(video.weight_kg?.toString() ?? '');
   const [cameraView, setCameraView] = useState(video.camera_view ?? '');
   const [notes, setNotes] = useState(video.notes ?? '');
@@ -37,6 +38,8 @@ export function VideoEditModal({
         exercise_name: exerciseName.trim() || null,
         expected_reps:
           expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
+        reps_count:
+          repsCount === '' ? null : Math.max(0, parseInt(repsCount, 10) || 0),
         weight_kg: weightKg === '' ? null : Math.max(0, parseFloat(weightKg) || 0),
         camera_view: cameraView || null,
         notes: notes.trim() || null,
@@ -76,7 +79,9 @@ export function VideoEditModal({
             />
           </div>
           <div>
-            <label className="block text-sm text-muted mb-1">Reps</label>
+            <label className="block text-sm text-muted mb-1">
+              Expected reps <span className="text-muted/70">(detection)</span>
+            </label>
             <input
               type="number"
               min={0}
@@ -86,6 +91,21 @@ export function VideoEditModal({
               className={FIELD}
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">
+            Reps counted{' '}
+            <span className="text-muted/70">(override the detected count)</span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={repsCount}
+            onChange={(e) => setRepsCount(e.target.value)}
+            placeholder="e.g. 5"
+            className={FIELD}
+          />
         </div>
 
         <div>

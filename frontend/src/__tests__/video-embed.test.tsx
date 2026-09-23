@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { getVideoStreamUrl } from '@/lib/api';
 import type { LiftVideo } from '@/lib/api';
+
+// VideoEmbed uses React Query (for the pose track), so it needs a provider.
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 // Mock the API client to avoid real network calls
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -40,7 +49,7 @@ describe('VideoEmbed', () => {
 
   it('fetches the stream URL and renders a video element', async () => {
     mockGetVideoStreamUrl.mockResolvedValueOnce({ url: 'https://r2.test/stream.mp4' });
-    const { container } = render(<VideoEmbed video={makeVideo()} />);
+    const { container } = renderWithClient(<VideoEmbed video={makeVideo()} />);
     expect(screen.getByText('Loading video…')).toBeInTheDocument();
     await waitFor(() => {
       expect(container.querySelector('video')).toBeInTheDocument();
@@ -54,7 +63,7 @@ describe('VideoEmbed', () => {
 
   it('shows an error with retry when the stream load fails', async () => {
     mockGetVideoStreamUrl.mockRejectedValueOnce(new Error('boom'));
-    render(<VideoEmbed video={makeVideo()} />);
+    renderWithClient(<VideoEmbed video={makeVideo()} />);
     await screen.findByText(/boom/);
     expect(screen.getByText('Retry')).toBeInTheDocument();
   });
@@ -62,7 +71,7 @@ describe('VideoEmbed', () => {
   it('retry button re-requests the stream URL', async () => {
     mockGetVideoStreamUrl.mockRejectedValueOnce(new Error('boom'));
     mockGetVideoStreamUrl.mockResolvedValueOnce({ url: 'https://r2.test/retry.mp4' });
-    const { container } = render(<VideoEmbed video={makeVideo()} />);
+    const { container } = renderWithClient(<VideoEmbed video={makeVideo()} />);
     await screen.findByText(/boom/);
     fireEvent.click(screen.getByText('Retry'));
     await waitFor(() => {
@@ -73,9 +82,25 @@ describe('VideoEmbed', () => {
 
   it('does not fetch when the video has no r2_key', () => {
     mockGetVideoStreamUrl.mockClear();
-    render(<VideoEmbed video={makeVideo({ r2_key: null })} />);
+    renderWithClient(<VideoEmbed video={makeVideo({ r2_key: null })} />);
     expect(screen.getByText('Loading video…')).toBeInTheDocument();
     expect(mockGetVideoStreamUrl).not.toHaveBeenCalled();
+  });
+
+  it('offers the Live pose toggle when a pose track exists', async () => {
+    mockGetVideoStreamUrl.mockResolvedValueOnce({ url: 'https://r2.test/stream.mp4' });
+    renderWithClient(
+      <VideoEmbed video={makeVideo({ pose_track_r2_key: 'lift_videos/u1/track.json' })} />,
+    );
+    await screen.findByText('Live pose');
+  });
+
+  it('hides the Live pose toggle without a pose track', async () => {
+    mockGetVideoStreamUrl.mockResolvedValueOnce({ url: 'https://r2.test/stream.mp4' });
+    renderWithClient(<VideoEmbed video={makeVideo()} />);
+    await waitFor(() => {
+      expect(screen.queryByText('Live pose')).not.toBeInTheDocument();
+    });
   });
 });
 

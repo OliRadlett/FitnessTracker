@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
@@ -26,6 +26,7 @@ export default function VideosPage() {
   const [beforeFilter, setBeforeFilter] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<LiftVideo | null>(null);
+  const [knownExercises, setKnownExercises] = useState<string[]>([]);
 
   const queryParams = new URLSearchParams();
   queryParams.set('limit', '100');
@@ -37,7 +38,32 @@ export default function VideosPage() {
     queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     staleTime: 30_000,
+    // Poll while any video is queued/processing so the badge flips to
+    // Processed automatically (Modal runs take ~1-2 min).
+    refetchInterval: (query) => {
+      const data = query.state.data as LiftVideo[] | undefined;
+      const active = data?.some(
+        (v) =>
+          v.analysis_status === 'queued' ||
+          v.analysis_status === 'processing',
+      );
+      return active ? 5000 : false;
+    },
   });
+
+  // Quick-jump exercise chips: accumulate the exercises seen in the unfiltered
+  // list so the menu stays stable while a filter is active.
+  useEffect(() => {
+    if (exerciseFilter) return;
+    const names = Array.from(
+      new Set(
+        videos
+          .map((v) => v.exercise_name || v.exercise_auto)
+          .filter((n): n is string => !!n),
+      ),
+    ).sort();
+    if (names.length) setKnownExercises(names);
+  }, [videos, exerciseFilter]);
 
   const { data: sessions = [] } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions'],
@@ -161,6 +187,35 @@ export default function VideosPage() {
         )}
       </div>
 
+      {/* Quick-jump exercise menu */}
+      {knownExercises.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setExerciseFilter('')}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+              !exerciseFilter
+                ? 'bg-accent/20 text-accent border-accent/40'
+                : 'bg-surface-light text-muted border-transparent hover:text-foreground'
+            }`}
+          >
+            All
+          </button>
+          {knownExercises.map((name) => (
+            <button
+              key={name}
+              onClick={() => setExerciseFilter(name)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                exerciseFilter === name
+                  ? 'bg-accent/20 text-accent border-accent/40'
+                  : 'bg-surface-light text-muted border-transparent hover:text-foreground'
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Video grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -207,6 +262,9 @@ export default function VideosPage() {
                   <div className="flex items-center gap-1">
                     {video.analysis_status === 'completed' && (
                       <Badge variant="lifting">Processed</Badge>
+                    )}
+                    {video.analysis_status === 'queued' && (
+                      <Badge variant="cycling">Queued…</Badge>
                     )}
                     {video.analysis_status === 'processing' && (
                       <Badge variant="cycling">Processing…</Badge>

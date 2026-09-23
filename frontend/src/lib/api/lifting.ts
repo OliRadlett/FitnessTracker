@@ -43,6 +43,7 @@ export interface UpdateLiftVideoPayload {
   camera_view?: string | null;
   weight_kg?: number | null;
   reps_count?: number | null;
+  lifter_track_id?: number | null;
 }
 
 export async function updateLiftVideo(
@@ -133,7 +134,7 @@ export async function getVideoUploadUrl(
 export async function getVideoStreamUrl(
   authFetch: AuthFetch,
   videoId: string,
-  variant: 'original' | 'trimmed' | 'overlay' | 'thumbnails' = 'original',
+  variant: 'original' | 'trimmed' | 'overlay' | 'thumbnails' | 'track' = 'original',
 ): Promise<VideoStreamUrl> {
   return authFetch<VideoStreamUrl>(
     `/api/v1/lifting/videos/${videoId}/stream-url?variant=${variant}`,

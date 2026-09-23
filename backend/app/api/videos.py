@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.models.lifting import LiftVideo
+from app.models.lifting import LiftingSession, LiftingSet, LiftVideo
 from app.models.user import User
 from app.schemas.lifting import (
     LiftVideoCreate,
@@ -102,6 +102,23 @@ async def create_video(
             "invalid content_type or size_bytes for upload-mode video",
         )
 
+    # Linking to a specific set: autofill exercise / load / reps from it (the
+    # client may have already done so, but the server is the source of truth).
+    linked_set = None
+    if payload.lifting_set_id:
+        linked_set = (
+            await db.execute(
+                select(LiftingSet)
+                .join(LiftingSession, LiftingSet.session_id == LiftingSession.id)
+                .where(
+                    LiftingSet.id == payload.lifting_set_id,
+                    LiftingSession.user_id == current_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if linked_set is None:
+            raise HTTPException(404, "Set not found")
+
     video = LiftVideo(
         user_id=current_user.id,
         r2_key=payload.r2_key,
@@ -109,13 +126,20 @@ async def create_video(
         content_type=payload.content_type,
         size_bytes=payload.size_bytes,
         duration_seconds=payload.duration_seconds,
-        exercise_name=payload.exercise_name,
-        lifting_session_id=payload.lifting_session_id,
+        exercise_name=payload.exercise_name
+        or (linked_set.exercise_name if linked_set else None),
+        lifting_session_id=payload.lifting_session_id
+        or (linked_set.session_id if linked_set else None),
+        lifting_set_id=payload.lifting_set_id,
         personal_record_id=payload.personal_record_id,
         notes=payload.notes,
-        expected_reps=payload.expected_reps,
+        expected_reps=payload.expected_reps
+        if payload.expected_reps is not None
+        else (linked_set.reps if linked_set else None),
         camera_view=payload.camera_view,
-        weight_kg=payload.weight_kg,
+        weight_kg=payload.weight_kg
+        if payload.weight_kg is not None
+        else (linked_set.weight_kg if linked_set else None),
     )
     db.add(video)
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
@@ -241,7 +265,7 @@ async def create_upload_url(
 async def get_stream_url(
     video_id: uuid.UUID,
     variant: str = Query(
-        "original", pattern="^(original|trimmed|overlay|thumbnails)$"
+        "original", pattern="^(original|trimmed|overlay|thumbnails|track)$"
     ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -266,9 +290,10 @@ async def get_stream_url(
         "trimmed": video.trimmed_r2_key,
         "overlay": video.overlay_r2_key,
         "thumbnails": video.rep_thumbnails_r2_key,
+        "track": video.pose_track_r2_key,
     }[variant]
     if not key:
-        raise HTTPException(404, f"No {variant} video for this recording")
+        raise HTTPException(404, f"No {variant} object for this recording")
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
     try:
@@ -309,12 +334,12 @@ async def process_video(
     if video.analysis_status == "processing" and not force:
         raise HTTPException(409, "Video is already being processed")
 
-    if force:
-        # Reprocess: clear the terminal/stuck status so the task actually runs
-        # (previously only "processing" was reset, so "completed" videos were
-        # re-queued and then short-circuited by the task's completed guard).
-        video.analysis_status = None
-        await db.flush()  # BUG-015: flush only; get_db commits at return.
+    # Mark queued so the UI can poll until the task flips it to
+    # processing/completed/failed. The task only short-circuits on
+    # "completed" (and only when not forced), so this is safe for both a
+    # first run and a forced reprocess.
+    video.analysis_status = "queued"
+    await db.flush()  # BUG-015: flush only; get_db commits at return.
 
     settings = get_settings()
     if not settings.modal_token_id or not settings.modal_token_secret:
@@ -369,6 +394,7 @@ async def get_process_status(
         peak_velocity=video.peak_velocity,
         velocity_loss_pct=video.velocity_loss_pct,
         vbt_zone=video.vbt_zone,
+        bar_path_json=video.bar_path_json,
         avg_rest_seconds=video.avg_rest_seconds,
         rest_cv=video.rest_cv,
         rep_consistency_score=video.rep_consistency_score,
@@ -380,6 +406,10 @@ async def get_process_status(
         calibrated_rpe=await calibrated_rpe_for(
             db, current_user.id, video.exercise_name, video.estimated_rpe
         ),
+        lifter_selected=video.lifter_selected,
+        lifter_selection_json=video.lifter_selection_json,
+        pose_track_r2_key=video.pose_track_r2_key,
+        analysis_version=video.analysis_version,
     )
 
 
@@ -430,6 +460,9 @@ class VideoPatchRequest(BaseModel):
     camera_view: str | None = None
     weight_kg: float | None = None
     reps_count: int | None = None
+    # Manual lifter override (T1): track id from the last run's
+    # `lifter_selection_json`. Applied on the next reprocess.
+    lifter_track_id: int | None = None
 
 
 @router.patch("/{video_id}", response_model=LiftVideoRead)
@@ -474,6 +507,11 @@ async def update_video(
         if payload.reps_count < 0:
             raise HTTPException(400, "reps_count must be >= 0")
         video.reps_count = payload.reps_count
+    if payload.lifter_track_id is not None:
+        if payload.lifter_track_id < 0:
+            raise HTTPException(400, "lifter_track_id must be >= 0")
+        # Persist the override; the next reprocess forces this track.
+        video.lifter_selected = payload.lifter_track_id
 
     await db.flush()  # BUG-015: flush only (refresh below needs it); get_db commits.
     await db.refresh(video)
