@@ -76,6 +76,10 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/bar_tracking.py",
                 "/root/app/integrations/bar_tracking.py",
             )
+            image = image.add_local_file(
+                f"{analysis_dir}/pose_track.py",
+                "/root/app/integrations/pose_track.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -106,6 +110,8 @@ def process_video_on_modal(
     forced_lifter_track_id: int | None = None,
     pose_fps: float = 10.0,
     gpu_delegate: bool = False,
+    r2_presigned_put_track: str | None = None,
+    r2_upload_key_track: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -193,6 +199,8 @@ def process_video_on_modal(
         forced_lifter: int = -1,
         pose_fps: float = 10.0,
         gpu_delegate: bool = False,
+        track_put: str = "",
+        track_key: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -677,6 +685,51 @@ def process_video_on_modal(
                 except Exception as e:
                     _logger.warning("Rep sprite render/upload failed: %s", e)
 
+            # ── Step 9d: Upload the compact pose track (T5) ──────────────
+            # Per-frame landmarks so the interactive viewer (F2) can draw the
+            # skeleton / bar path without re-running MediaPipe. Uploaded even
+            # at basic depth (no reps/bar_path then).
+            track_uploaded_key: str | None = None
+            analysis_version: int | None = None
+            if track_put and track_key and landmarks:
+                try:
+                    from app.integrations.pose_track import (
+                        ANALYSIS_VERSION,
+                        build_track_payload,
+                    )
+
+                    payload = build_track_payload(
+                        pose_track,
+                        exercise=exercise,
+                        reps=full_result.get("rep_timing"),
+                        bar_path=full_result.get("bar_path"),
+                    )
+                    track_bytes = json.dumps(
+                        payload, separators=(",", ":")
+                    ).encode()
+                    analysis_version = ANALYSIS_VERSION
+                    for _attempt in range(3):
+                        try:
+                            httpx.put(
+                                track_put,
+                                content=track_bytes,
+                                headers={"Content-Type": "application/json"},
+                                timeout=120,
+                            ).raise_for_status()
+                            track_uploaded_key = track_key
+                            _logger.info(
+                                "Uploaded pose track (%d KB) to R2",
+                                len(track_bytes) // 1024,
+                            )
+                            break
+                        except Exception as e:
+                            _logger.warning(
+                                "Track upload attempt %d failed: %s",
+                                _attempt + 1, e)
+                            _time.sleep(5 * (_attempt + 1))
+                except Exception as e:
+                    _logger.warning("Pose track serialize/upload failed: %s", e)
+
             form_data = {
                 **full_result.get("form", {}),
                 "view": view,
@@ -759,6 +812,9 @@ def process_video_on_modal(
                 "bar_path": full_result.get("bar_path"),
                 "lifter_selection": full_result.get("lifter_selection"),
                 "n_person_tracks": full_result.get("n_person_tracks"),
+                # Persisted pose track (T5)
+                "pose_track_r2_key": track_uploaded_key,
+                "analysis_version": analysis_version,
                 # Rest timing
                 "rest_periods_json": None,  # estimated server-side per-rep
                 "avg_rest_seconds": None,
@@ -816,4 +872,6 @@ def process_video_on_modal(
             forced_lifter_track_id if forced_lifter_track_id is not None else -1,
             pose_fps,
             gpu_delegate,
+            r2_presigned_put_track or "",
+            r2_upload_key_track or "",
         )

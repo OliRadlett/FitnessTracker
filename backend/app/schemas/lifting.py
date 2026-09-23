@@ -428,6 +428,10 @@ class LiftVideoRead(LiftVideoBase):
     lifter_selected: int | None = None
     lifter_selection_json: str | None = None
 
+    # Persisted pose track (T5)
+    pose_track_r2_key: str | None = None
+    analysis_version: int | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -468,3 +472,6 @@ class VideoProcessStatus(BaseModel):
     # (JSON) so the UI can offer a manual "who's lifting?" override.
     lifter_selected: int | None = None
     lifter_selection_json: str | None = None
+    # Persisted pose track (T5)
+    pose_track_r2_key: str | None = None
+    analysis_version: int | None = None

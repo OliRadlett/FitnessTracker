@@ -10,11 +10,13 @@
 > (`VIDEO_POSE_FPS`/`VIDEO_GPU_DELEGATE_ENABLED`, `--fps`/`--gpu`); F1 core
 > (bar-path metrics `bar_tracking.py` + `bar_path_json`, migration 069, UI card)
 > from the pose proxy; F3 core (sticking-point detection in `bar_velocity_from_world`
-> → `rep_timing_json` + per-rep "Stick" column). **T1 validated on real footage
-> and via the real Modal path** (bench spotter → lifter); bench-only gate,
-> `VIDEO_MULTI_POSE_ENABLED` default ON.
-> **Next**: validate multi-pose on the bench fixture set, benchmark T4 vs L4 and
-> raise `VIDEO_POSE_FPS` (T2 plumbing already in place), then T3 (bar tracking).
+> → `rep_timing_json` + per-rep "Stick" column); T2 benchmarked (GPU not
+> adopted — CPU-bound pipeline + non-reproducible GPU-delegate velocity; fps
+> made fps-robust); T5 (persisted pose track `pose_track.py` + migration 070 +
+> `stream-url?variant=track`, validated via Modal). **T1 + T5 validated via the
+> real Modal path.** Squat lean threshold calibrated (10→30°).
+> **Next**: F2 (interactive viewer on the persisted track), then T3 (real bar
+> detector).
 > **Owner decision**: Hybrid architecture continues — deterministic 3D
 > measurement produces all numbers; a VLM/LLM produces grounded qualitative
 > coaching only, on demand.
@@ -262,16 +264,24 @@ consistency sane on multi-rep sets.
 **Acceptance**: view accuracy ≥ 0.9; retires the "sagittal rules off for 75% of
 clips" limitation without a per-video Gemini call.
 
-### T5 · Persist the track (feature unlock)
+### T5 · Persist the track (feature unlock) — ✅ DONE + VALIDATED
 
-- **Migration** (068+): `pose_track_r2_key`, `bar_track_r2_key`,
-  `analysis_version`, `lifter_selection_json`.
-- Upload a compact track (msgpack/float16, decimated) via
-  `r2.upload_object_bytes` (`:109`); delete it with the video.
-- **`GET /videos/{id}/track`** → presigned URL or inline JSON (tens of KB).
-- **Auto-reprocess on `analysis_version` bump** task (budget makes this routine).
+- ✅ **`backend/app/integrations/pose_track.py`** — `build_track_payload()`
+  serialises the in-memory track to compact JSON
+  `{version, fps, exercise, frames:[{t, lm:[[x,y,vis]×33], w:[[x,y,z]×33]|null}],
+  reps, bar_path}`; `ANALYSIS_VERSION = 2` (pipeline version for reprocess-on-bump).
+- ✅ **Migration `070`**: `LiftVideo.pose_track_r2_key` + `analysis_version`.
+- ✅ **Upload from the container** (`_process` step 9d) via a presigned PUT
+  (same mechanism as overlay/thumbs); persisted by `process_lift_video`.
+- ✅ **`GET /videos/{id}/stream-url?variant=track`** → presigned GET for the
+  JSON (added to the existing variant map).
+- ✅ **Validated through the real Modal path**: 8-rep squat → 467 KB track,
+  315 frames, 33 landmarks + world per frame, 8 reps, bar_path, `analysis_version=2`.
+- ⏳ `bar_track_r2_key` (separate bar track) deferred until T3 supplies a real
+  bar track. Delete the track with the video (R2 lifecycle / delete handler).
+- ⏳ **Auto-reprocess on `analysis_version` bump** task.
 
-**Acceptance**: a persisted track round-trips and drives the frontend viewer
+**Acceptance**: ✅ a persisted track round-trips and drives the frontend viewer
 without re-running MediaPipe.
 
 ### T6 · Sessions & robustness

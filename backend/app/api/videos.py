@@ -241,7 +241,7 @@ async def create_upload_url(
 async def get_stream_url(
     video_id: uuid.UUID,
     variant: str = Query(
-        "original", pattern="^(original|trimmed|overlay|thumbnails)$"
+        "original", pattern="^(original|trimmed|overlay|thumbnails|track)$"
     ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -266,9 +266,10 @@ async def get_stream_url(
         "trimmed": video.trimmed_r2_key,
         "overlay": video.overlay_r2_key,
         "thumbnails": video.rep_thumbnails_r2_key,
+        "track": video.pose_track_r2_key,
     }[variant]
     if not key:
-        raise HTTPException(404, f"No {variant} video for this recording")
+        raise HTTPException(404, f"No {variant} object for this recording")
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
     try:
@@ -383,6 +384,8 @@ async def get_process_status(
         ),
         lifter_selected=video.lifter_selected,
         lifter_selection_json=video.lifter_selection_json,
+        pose_track_r2_key=video.pose_track_r2_key,
+        analysis_version=video.analysis_version,
     )
 
 

@@ -3644,6 +3644,14 @@ def process_lift_video(
                     "image/jpeg",
                     2 * 1024 * 1024,
                 )
+                # Compact per-frame pose track (T5) — powers the interactive
+                # viewer; ~0.5 MB JSON.
+                presigned_track = await create_presigned_put(
+                    video.user_id,
+                    f"track-{video.file_name}.json",
+                    "application/json",
+                    4 * 1024 * 1024,
+                )
 
                 # Auto-fill the load from the linked session's sets (best-effort)
                 try:
@@ -3674,6 +3682,8 @@ def process_lift_video(
                     r2_presigned_put_thumbs=presigned_thumbs["upload_url"],
                     r2_upload_key_thumbs=presigned_thumbs["key"],
                     forced_lifter_track_id=video.lifter_selected,
+                    r2_presigned_put_track=presigned_track["upload_url"],
+                    r2_upload_key_track=presigned_track["key"],
                 )
 
                 # Update video with results
@@ -3724,6 +3734,12 @@ def process_lift_video(
                 # ── Bar path (F1) ──────────────────────────────────────────
                 if result.get("bar_path") is not None:
                     video.bar_path_json = json.dumps(result["bar_path"])
+
+                # ── Persisted pose track (T5) ──────────────────────────────
+                if result.get("pose_track_r2_key"):
+                    video.pose_track_r2_key = result["pose_track_r2_key"]
+                if result.get("analysis_version") is not None:
+                    video.analysis_version = result["analysis_version"]
 
                 # ── Rest timing ────────────────────────────────────────────
                 if result.get("rest_periods_json") is not None:

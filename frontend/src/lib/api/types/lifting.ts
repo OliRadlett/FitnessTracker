@@ -65,6 +65,9 @@ export interface LiftVideo {
   // Multi-person lifter selection (T1)
   lifter_selected?: number | null;
   lifter_selection_json?: string | null;
+  // Persisted pose track (T5)
+  pose_track_r2_key?: string | null;
+  analysis_version?: number | null;
 }
 
 export interface VideoUploadRequest {
@@ -146,6 +149,9 @@ export interface VideoProcessStatus {
   // Multi-person lifter selection (T1)
   lifter_selected?: number | null;
   lifter_selection_json?: string | null;
+  // Persisted pose track (T5)
+  pose_track_r2_key?: string | null;
+  analysis_version?: number | null;
 }
 
 export interface LiftingSession {

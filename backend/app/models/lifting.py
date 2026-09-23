@@ -303,6 +303,13 @@ class LiftVideo(Base):
     # Pose-proxy today; the learned bar detector (T3) fills the same shape.
     bar_path_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── Persisted pose track (T5) ──────────────────────────────────────────
+    # Compact per-frame landmarks JSON in R2 — powers the interactive viewer
+    # (F2) and re-analysis without re-running MediaPipe.
+    pose_track_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Pipeline version that produced this analysis (for reprocess-on-bump).
+    analysis_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # ── Rest timing (§3.18) ────────────────────────────────────────────────
     rest_periods_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     avg_rest_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)

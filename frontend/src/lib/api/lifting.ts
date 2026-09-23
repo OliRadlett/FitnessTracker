@@ -134,7 +134,7 @@ export async function getVideoUploadUrl(
 export async function getVideoStreamUrl(
   authFetch: AuthFetch,
   videoId: string,
-  variant: 'original' | 'trimmed' | 'overlay' | 'thumbnails' = 'original',
+  variant: 'original' | 'trimmed' | 'overlay' | 'thumbnails' | 'track' = 'original',
 ): Promise<VideoStreamUrl> {
   return authFetch<VideoStreamUrl>(
     `/api/v1/lifting/videos/${videoId}/stream-url?variant=${variant}`,
