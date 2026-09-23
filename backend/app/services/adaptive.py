@@ -43,6 +43,14 @@ RAISE_FACTOR = 1.08
 # How many upcoming training days a scale-action touches.
 DAY_ACTION_LIMIT = 3
 
+# ── F4: VBT autoregulation ───────────────────────────────────────────────
+# Intra-set velocity loss above which the bar is slowing meaningfully.
+VELOCITY_LOSS_HIGH = 25.0
+# ...and above which the set was clearly a grinder.
+VELOCITY_LOSS_SEVERE = 40.0
+# How recent a video must be for its velocity loss to vote on advice.
+VELOCITY_LOSS_WINDOW_DAYS = 14
+
 # ── CD1: cross-sport fatigue interference ────────────────────────────────
 # Lifting "stress" below is an approximation: session volume_kg + session RPE
 # stand in for neuromuscular leg fatigue (there is no validated kg→TSS
@@ -414,6 +422,8 @@ def derive_adaptive_advice(
     active_alerts: int = 0,
     alert_severity: str | None = None,
     top_deficiency: str | None = None,
+    velocity_loss_pct: float | None = None,
+    velocity_zone: str | None = None,
 ) -> dict:
     """Build the adaptive recommendation from computed signals.
 
@@ -623,6 +633,48 @@ def derive_adaptive_advice(
                 "title": "Priority weakness",
                 "detail": top_deficiency,
                 "severity": "info",
+                "actions": [],
+            }
+        )
+
+    # ── Autoregulation (VBT, F4) ───────────────────────────────────────────
+    # A sharp intra-set bar-speed drop (from the latest analysed lift video)
+    # means the set was near failure — advise trimming load/reps rather than
+    # pushing on. Advisory only; it never changes the plan-level load stance.
+    if velocity_loss_pct is not None and velocity_loss_pct >= VELOCITY_LOSS_HIGH:
+        severe = velocity_loss_pct >= VELOCITY_LOSS_SEVERE
+        zone_note = f" (last zone: {velocity_zone})" if velocity_zone else ""
+        axes.append(
+            {
+                "key": "autoregulation",
+                "title": "Bar speed",
+                "stance": "ease",
+                "severity": "warning" if severe else "info",
+                "guidance": (
+                    f"Bar speed fell {velocity_loss_pct:.0f}% across your last set"
+                    f"{zone_note}. "
+                    + (
+                        "That is a grinder — cut the load ~5–10% or stop the set "
+                        "one rep earlier."
+                        if severe
+                        else "Consider trimming a rep or a small load reduction next time."
+                    )
+                ),
+            }
+        )
+        suggestions.append(
+            {
+                "type": "autoregulation",
+                "title": "Autoregulate the next set",
+                "detail": (
+                    f"Bar speed dropped {velocity_loss_pct:.0f}%"
+                    + (
+                        " — cut the load ~5–10% or end the set sooner."
+                        if severe
+                        else " — leave one rep in reserve."
+                    )
+                ),
+                "severity": "warning" if severe else "info",
                 "actions": [],
             }
         )
@@ -941,6 +993,31 @@ async def generate_adaptive_suggestions(
     except Exception:
         top_deficiency = None
 
+    # ── Latest lift-video velocity loss (F4 autoregulation) ────────────────
+    velocity_loss_pct = None
+    velocity_zone = None
+    try:
+        from app.models.lifting import LiftVideo
+
+        vrow = (
+            await db.execute(
+                select(LiftVideo)
+                .where(
+                    LiftVideo.user_id == user_id,
+                    LiftVideo.velocity_loss_pct.isnot(None),
+                    LiftVideo.created_at
+                    >= datetime.now(UTC) - timedelta(days=VELOCITY_LOSS_WINDOW_DAYS),
+                )
+                .order_by(LiftVideo.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if vrow is not None:
+            velocity_loss_pct = vrow.velocity_loss_pct
+            velocity_zone = vrow.vbt_zone
+    except Exception:
+        velocity_loss_pct = velocity_zone = None
+
     envelope = derive_adaptive_advice(
         tsb=tsb,
         ctl=ctl,
@@ -953,6 +1030,8 @@ async def generate_adaptive_suggestions(
         active_alerts=len(alerts),
         alert_severity=alert_severity,
         top_deficiency=top_deficiency,
+        velocity_loss_pct=velocity_loss_pct,
+        velocity_zone=velocity_zone,
     )
 
     # ── Attach day-level actions ───────────────────────────────────────────
