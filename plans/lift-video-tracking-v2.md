@@ -384,7 +384,8 @@ Ran `scripts/video_eval.py --num-poses 2 --skip-exercise "log press"
 --skip-exercise stone` over the 10 remaining fixtures (Log Press / Atlas Stone
 excluded per owner) — the whole pipeline, not one clip. Measured:
 declared-rep **exact 1.00**, auto-rep MAE 0.30, form-zero 0.00, velocity-loss
-out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy 0.50.
+out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy **0.90**
+(was 0.50).
 
 **Fixed from the findings**
 - **View threshold** `VIEW_SIDE_MAX_RATIO` 0.50 → **0.32**: the true side-on
@@ -407,9 +408,10 @@ out-of-range 0.00, view accuracy **0.90**, auto exercise accuracy 0.50.
 - **Bench lifter coverage is still ~31%** (MediaPipe returns the lifter only
   part of the clip) — the bar-height signal plus the `fair` quality flag make
   this honest, but a better multi-person tracker (T3) is the real fix.
-- **Auto exercise classifier confuses squat↔deadlift** (5/7 squats → "Deadlift",
-  conf 0.95). Low impact — the user declares the exercise — but it feeds
-  `auto_exercise`.
+- **Auto exercise classifier** — ✅ fixed: squat vs deadlift now keys on **hand
+  height** (`mean_wrist_below_shoulder`: squats ≈0.00, deadlifts ≈0.10–0.12)
+  instead of torso lean (which a ¾ view inflates — 5/7 squats read "Deadlift").
+  Accuracy 0.50 → 0.90; the last miss is the bench (multi-pose fragmentation).
 - **Auto rep detection is looser than declared**: with `expected_reps` (always
   provided in production) reps are exact; without it a 3-rep squat read 1.
 - **Bar-path proxy drift is high** (drift_ratio 0.28–0.94): the shoulder/wrist

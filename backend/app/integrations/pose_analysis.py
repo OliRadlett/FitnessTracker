@@ -749,6 +749,17 @@ def classify_exercise(landmarks_per_frame: list,
         sh_diffs.append(shoulder_y - hip_y)
     mean_sh_diff = np.mean(sh_diffs)
 
+    # Hand height relative to the shoulders — the squat/deadlift discriminator.
+    # A squat's hands stay on the bar at the shoulders; a deadlift's hands hang
+    # to the bar at the floor. View-tolerant (vertical ordering survives ¾ /
+    # behind cameras), unlike torso lean.
+    mean_wrist_below_shoulder = float(np.mean([
+        ((lm[15].y + lm[16].y) / 2) - ((lm[11].y + lm[12].y) / 2)
+        for lm in landmarks_per_frame
+    ]))
+    # Calibrated on the labelled set: squats read ≈0.00, deadlifts ≈0.10–0.12.
+    hands_low = mean_wrist_below_shoulder > 0.05
+
     exercise = "Unknown"
     confidence = 0.0
     variation = ""
@@ -794,33 +805,35 @@ def classify_exercise(landmarks_per_frame: list,
     # shadow them — hence elif-chained AFTER the press branch above.
     # Verified 2026-09-17: two "Squat 0.95" videos were visually
     # conventional/strongman deadlifts (torso horizontal).
-    elif hip_range > 35 and knee_range > 30 and bottom_lean > 60:
-        exercise = "Deadlift"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
-        variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
-    elif hip_range > 40 and knee_range > 50:
-        exercise = "Squat"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        if mean_sh_diff > 0.05:
-            variation = "Front Squat"
+    elif hip_range > 35 and knee_range > 30:
+        # Both a squat and a deadlift move hips + knees through large ranges,
+        # so they used to be split by torso lean — which a ¾/behind view
+        # inflates, mislabelling most squats as deadlifts (2026-09-23: 5/7 on
+        # the labelled set). Hand height separates them cleanly and
+        # view-tolerantly (lean is no longer used — it mislabelled squats).
+        if hands_low:
+            exercise = "Deadlift"
+            knee_x_spread = np.mean(
+                [abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
+            variation = (
+                "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
+            )
         else:
-            # Low vs high bar by median torso lean across the set:
-            # low-bar lifters ride 25-35°+ inclined throughout, high-bar
-            # stay ~10-20°. Threshold 22° separates the observed cases
-            # (28° vs 16°). Form thresholds are bar-style agnostic (lean
-            # is measured at the standing top), so this is labeling only.
-            med_lean = float(np.median(
-                [_torso_angle(lm) for lm in landmarks_per_frame]))
-            variation = "Low Bar Squat" if med_lean > 22 else "High Bar Squat"
+            exercise = "Squat"
+            if mean_sh_diff > 0.05:
+                variation = "Front Squat"
+            else:
+                # Low vs high bar by median torso lean across the set:
+                # low-bar lifters ride 25-35°+ inclined throughout, high-bar
+                # stay ~10-20°. Form thresholds are bar-style agnostic (lean
+                # is measured at the standing top), so this is labeling only.
+                med_lean = float(np.median(
+                    [_torso_angle(lm) for lm in landmarks_per_frame]))
+                variation = "Low Bar Squat" if med_lean > 22 else "High Bar Squat"
+        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
     elif elbow_range > 50 and hip_range < 15 and knee_range < 15:
         exercise = "Bench Press"
         confidence = min(0.95, 0.7 + elbow_range / 200)
-    elif hip_range > 35 and knee_range > 30:
-        exercise = "Deadlift"
-        confidence = min(0.95, 0.7 + (hip_range + knee_range) / 400)
-        knee_x_spread = np.mean([abs(lm[25].x - lm[26].x) for lm in landmarks_per_frame])
-        variation = "Sumo Deadlift" if knee_x_spread > 0.2 else "Conventional Deadlift"
     elif elbow_range > 40 and hip_range < 10:
         exercise = "Overhead Press"
         confidence = min(0.90, 0.6 + elbow_range / 200)

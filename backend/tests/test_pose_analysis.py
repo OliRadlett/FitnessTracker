@@ -39,7 +39,9 @@ def _pose(knee_angle_deg, hip_y=0.40, thigh=0.15):
         11: (0.5, 0.20), 12: (0.5, 0.20),
         23: (0.5, hip_y), 24: (0.5, hip_y),
         13: (0.5, 0.30), 14: (0.5, 0.30),
-        15: (0.5, 0.40), 16: (0.5, 0.40),
+        # Hands on the bar at the shoulders (a squat, not arms hanging) — the
+        # squat/deadlift classifier keys on hand height.
+        15: (0.5, 0.22), 16: (0.5, 0.22),
     }.items():
         lms[idx] = Lm(x, y)
 
