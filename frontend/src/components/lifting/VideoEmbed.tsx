@@ -1,13 +1,20 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import type { LiftVideo } from '@/lib/api';
 import { useAuthFetch, getVideoStreamUrl } from '@/lib/api';
 import { parsePoseTrack } from '@/lib/pose/track';
 import { PoseCanvas } from '@/components/lifting/PoseCanvas';
 
-type Variant = 'original' | 'trimmed' | 'overlay' | 'live';
+// three.js stays out of the first-load bundle (§3.18 / F2).
+const Pose3D = dynamic(() => import('@/components/lifting/Pose3D'), {
+  ssr: false,
+  loading: () => <div className="text-muted text-xs p-2">Loading 3D…</div>,
+});
+
+type Variant = 'original' | 'trimmed' | 'overlay' | 'live' | '3d';
 
 interface VideoEmbedProps {
   video: LiftVideo;
@@ -19,6 +26,7 @@ const VARIANT_LABELS: Record<Variant, string> = {
   trimmed: 'Trimmed',
   overlay: 'Pose',
   live: 'Live pose',
+  '3d': '3D',
 };
 
 export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
@@ -34,16 +42,16 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
   const available: Variant[] = ['original'];
   if (video.trimmed_r2_key) available.push('trimmed');
   if (video.overlay_r2_key) available.push('overlay');
-  if (video.pose_track_r2_key) available.push('live');
+  if (video.pose_track_r2_key) available.push('live', '3d');
 
   const load = useCallback(
     async (v: Variant) => {
       setLoading(true);
       setError(null);
       try {
-        // The "live" overlay draws on the clean original video.
+        // The live/3D overlays draw on the clean original video.
         const source: 'original' | 'trimmed' | 'overlay' =
-          v === 'live' ? 'original' : v;
+          v === 'live' || v === '3d' ? 'original' : v;
         const res = await getVideoStreamUrl(authFetch, video.id, source);
         setUrls((prev) => ({ ...prev, [v]: res.url }));
       } catch (err: any) {
@@ -70,7 +78,10 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
       const res = await fetch(url);
       return parsePoseTrack(await res.text());
     },
-    enabled: !!token && variant === 'live' && !!video.pose_track_r2_key,
+    enabled:
+      !!token &&
+      (variant === 'live' || variant === '3d') &&
+      !!video.pose_track_r2_key,
     staleTime: Infinity,
   });
 
@@ -151,6 +162,11 @@ export function VideoEmbed({ video, autoPlay = false }: VideoEmbedProps) {
           />
           {variant === 'live' && track && (
             <PoseCanvas videoRef={videoRef} track={track} />
+          )}
+          {variant === '3d' && track && (
+            <div className="absolute top-10 right-2 z-10 w-[38%] max-w-[260px] aspect-square rounded-lg overflow-hidden border border-surface-light/50 shadow-lg bg-background">
+              <Pose3D videoRef={videoRef} track={track} />
+            </div>
           )}
         </>
       )}
