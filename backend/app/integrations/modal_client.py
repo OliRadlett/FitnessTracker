@@ -158,13 +158,21 @@ def process_video_on_modal(
 
     app = modal.App("fittrack-video-processor", image=image)
 
+    # Modal GPU for the worker (empty = CPU-only). Setting it also turns on the
+    # MediaPipe GPU delegate so a flat 30–60 fps stays affordable — the heavy
+    # model runs ~4 fps on CPU. Benchmark L4 vs T4 before choosing (T2).
+    modal_gpu = (settings.video_modal_gpu or "").strip() or None
+    gpu_delegate = (
+        bool(gpu_delegate)
+        or bool(settings.video_gpu_delegate_enabled)
+        or bool(modal_gpu)
+    )
+
     @app.function(
         serialized=True,
         timeout=600,
         memory=4096,
-        # CPU-only: MediaPipe Pose uses the CPU delegate (proven 100%
-        # detection on powerlifting videos; also cheaper than T4).
-        # Heavy model processes ~4 fps on CPU — 600s covers 30s clips at 10fps.
+        gpu=modal_gpu,
     )
     def _process(
         presigned_get: str,
@@ -492,7 +500,7 @@ def process_video_on_modal(
                     if landmarks and pose_timestamps:
                         _pose_reps = detect_reps_from_pose(
                             landmarks, pose_timestamps, exercise,
-                            expected_reps=expected)
+                            expected_reps=expected, fps=pose_fps)
                         sprite_reps = _pose_reps
                         # World landmarks give metric bar travel; fall back to
                         # the 2D pixels-per-metre path only if they're absent.
@@ -786,7 +794,6 @@ def process_video_on_modal(
     )
     # T2 pose extraction settings (defaults preserve current behaviour).
     pose_fps = float(settings.video_pose_fps or 10.0)
-    gpu_delegate = bool(settings.video_gpu_delegate_enabled)
 
     # Run the Modal function synchronously (blocks until complete)
     with app.run():

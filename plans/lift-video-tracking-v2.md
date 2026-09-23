@@ -190,17 +190,33 @@ and person-selection accuracy; baseline recorded.
 **Acceptance**: spotter-selection error rate **0** on the bench eval set; bench
 `form_score` validity rises.
 
-### T2 · Tracking core — 🟡 PLUMBING DONE
+### T2 · Tracking core — 🟡 BENCHMARKED (GPU not adopted)
 
-- ✅ **Configurable fps + GPU delegate**: `VIDEO_POSE_FPS` (default 10.0) and
-  `VIDEO_GPU_DELEGATE_ENABLED` (default off) plumbed through
-  `process_video_on_modal` → `_process` → `extract_pose_track(gpu_delegate=…)`;
-  `run_video_local`/`video_eval` gained `--fps`/`--gpu` for benchmarking.
-  Defaults preserve current behaviour.
-- ⏳ **Benchmark T4 vs L4**, pin `mediapipe>=0.10.32` (0.10.31 had a broken GPU
-  delegate), cache `.task` models in a Modal Volume, then set a flat 30–60 fps.
-- ⏳ Remaining: one-euro/Kalman smoothing, gravity alignment, anthropometric
-  scale, `vidstab` stabilization.
+- ✅ **Configurable fps + GPU**: `VIDEO_POSE_FPS`, `VIDEO_GPU_DELEGATE_ENABLED`
+  and `VIDEO_MODAL_GPU` plumbed through `process_video_on_modal` → `_process`
+  (`@app.function(gpu=…)`) → `extract_pose_track(gpu_delegate=…)`;
+  `--fps`/`--gpu` on the local harnesses.
+- ✅ **Benchmarked on the real Modal path** (8-rep squat, 32 s):
+
+  | Config | Wall | Reps (truth 8) | Peak vel | Form |
+  |---|---|---|---|---|
+  | CPU 10 fps | 92 s | 8 | 0.282 | 93.8 |
+  | L4 30 fps | 88–155 s | 8¹ | 0.41 | 90.6 |
+  | T4 30 fps | 103–122 s | 8¹ | 0.209 | 96.9 |
+
+  ¹ after the fps-scaling fix below (was 7 before).
+- **Decision — do NOT adopt the GPU**: the pipeline is CPU-bound (ffmpeg
+  decode + OpenCV overlay render), so GPU wall time is no better than CPU
+  (88–155 s vs 92 s), and the GPU delegate produced **non-reproducible numbers**
+  across worker types (peak 0.41 on L4 vs 0.209 on T4 for the same clip). Keep
+  `VIDEO_MODAL_GPU=""` + `VIDEO_POSE_FPS=10` until the eval shows a real benefit.
+- ✅ **fps-robustness fix (latent bug)**: `detect_reps_from_pose` used
+  frame-based windows (`window=7`, gap `<3`), so a 30 fps track smoothed ~3× less
+  and dropped reps (8→7). Now scaled by `fps` (`_win≈0.7·fps`, `_min_gap≈0.3·fps`);
+  10 fps behaviour is byte-identical.
+- ⏳ Remaining: pin `mediapipe>=0.10.32`, Modal Volume model cache, one-euro/Kalman
+  smoothing, gravity alignment, anthropometric scale, `vidstab` stabilization,
+  and an eval run (rep MAE + velocity) before any fps change.
 - **Original detail**:
 - **GPU delegate**: flip `modal_client._get_modal_image` from the forced CPU
   delegate to GPU; pin `mediapipe>=0.10.32` (0.10.31 had a broken GPU delegate);

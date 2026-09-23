@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # benchmarked (T4 vs L4) on real footage.
     video_pose_fps: float = 10.0
     video_gpu_delegate_enabled: bool = False
+    # Modal GPU type for the video worker (e.g. "L4", "T4"); empty = CPU-only.
+    # Setting this also enables the MediaPipe GPU delegate. Benchmark before
+    # choosing (see plans/lift-video-tracking-v2.md T2).
+    video_modal_gpu: str = ""
 
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:

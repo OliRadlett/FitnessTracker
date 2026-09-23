@@ -189,13 +189,14 @@ def _run_one(
         record["elapsed_s"] = round(time.time() - t0, 1)
         return record
 
-    auto_reps = detect_reps_from_pose(landmarks, timestamps, classification["exercise"])
+    auto_reps = detect_reps_from_pose(
+        landmarks, timestamps, classification["exercise"], fps=fps)
     record["auto_reps"] = len(auto_reps)
     record["auto_rep_error"] = abs(len(auto_reps) - int(label.get("reps") or 0))
 
     declared_reps = detect_reps_from_pose(
         landmarks, timestamps, label.get("exercise") or classification["exercise"],
-        expected_reps=label.get("reps"),
+        expected_reps=label.get("reps"), fps=fps,
     )
     record["declared_reps"] = len(declared_reps)
 

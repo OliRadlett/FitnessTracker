@@ -357,6 +357,8 @@ def extract_pose_track(
         # is only present for part of the clip, so using the lifter's frame
         # count as "detection rate" would wrongly report "unusable".
         "pose_frames": len(persons_by_frame),
+        # Extraction rate — rep detection scales its frame windows by this.
+        "fps": fps,
     }
 
 
@@ -897,6 +899,7 @@ def detect_reps_from_pose(
     timestamps: list[float],
     exercise: str,
     expected_reps: int | None = None,
+    fps: float = 10.0,
 ) -> list[dict]:
     """Detect individual reps from pose landmark sequence.
 
@@ -908,9 +911,19 @@ def detect_reps_from_pose(
     cycles — setup dips, walkout shuffles and rerack bends all oscillate
     but span less ROM than the working rep(s). Without it, every valid
     cycle is returned (legacy behavior).
+
+    ``fps`` scales the frame-based smoothing/gap windows so a higher-fps
+    track is filtered over the same wall-clock span (7 frames @10 fps →
+    21 @30 fps). Without it, 30 fps extraction smoothed ~3× less and dropped
+    reps (8 → 7 on the labelled 8-rep squat).
     """
     if len(landmarks_per_frame) < 5:
         return []
+
+    # Frame-based windows scale with fps so smoothing/gaps are ~constant in
+    # seconds regardless of extraction rate (7 frames @10 fps ≈ 0.7 s).
+    _win = max(3, int(round(0.7 * fps)) | 1)
+    _min_gap = max(3, int(round(0.3 * fps)))
 
     # Build a "depth signal" — knee angle for squat/deadlift, elbow angle for bench
     signal = _median_filter([
@@ -920,7 +933,7 @@ def detect_reps_from_pose(
             or "stone" in exercise.lower() or "sandbag" in exercise.lower()) else
         calculate_angle(_mid(lm, 11, 12), _mid(lm, 13, 14), _mid(lm, 15, 16))
         for lm in landmarks_per_frame
-    ], window=7)
+    ], window=_win)
 
     # Find all raw extrema, then filter by PROMINENCE (height above the
     # surrounding signal). Jitter wobbles (±2°) and setup shuffles never
@@ -969,7 +982,7 @@ def detect_reps_from_pose(
         right = [m for m in kept_max if m > mi]
         start = left[-1] if left else 0
         end = right[0] if right else len(signal) - 1
-        if end - start < 3:
+        if end - start < _min_gap:
             continue
         key = (start, end)
         depth = float(signal[mi])
@@ -1458,6 +1471,13 @@ def _average_rep_scores(rep_scores: list[float]) -> float:
     return max(0.0, min(100.0, sum(rep_scores) / len(rep_scores)))
 
 
+# Forward lean (torso angle from upright, degrees) above which a squat rep is
+# flagged "excessive". Real squat lean runs ~20–40° (low-bar especially), so
+# the old 10° threshold flagged almost every squat — a clean 150 kg squat read
+# 11° and was penalised. Tune against the labelled set when calibrating.
+_SQUAT_EXCESSIVE_LEAN_DEG = 30.0
+
+
 def score_squat_form(per_rep: list[dict]) -> dict:
     deviations = []
     comp_fail = False
@@ -1494,7 +1514,7 @@ def score_squat_form(per_rep: list[dict]) -> dict:
             deviations.append(f"Rep {rn}: Heels lifting")
             cues.append(COACHING_CUES["heels_lifted"])
         back_dev = r.get("back_angle_deviation")
-        if back_dev is not None and back_dev > 10:
+        if back_dev is not None and back_dev > _SQUAT_EXCESSIVE_LEAN_DEG:
             penalty += 10
             deviations.append(f"Rep {rn}: Excessive forward lean ({back_dev:.0f})")
             cues.append(COACHING_CUES["excessive_forward_lean"])
@@ -1783,6 +1803,7 @@ def run_pose_analysis(
         track = extract_pose_track(input_path, tmpdir, trim_start, trim_end, fps=10.0)
     landmarks = track["landmarks"]
     timestamps = track["timestamps"]
+    fps = float(track.get("fps") or 10.0)
     if not landmarks:
         logger.warning("No pose landmarks extracted")
         return result
@@ -1807,7 +1828,7 @@ def run_pose_analysis(
     # Detect reps (rep_count = user-declared expectation, if any)
     expected = rep_count if rep_count and rep_count > 0 else None
     reps = detect_reps_from_pose(landmarks, timestamps, exercise,
-                                 expected_reps=expected)
+                                 expected_reps=expected, fps=fps)
 
     # Per-rep analysis
     per_rep = []

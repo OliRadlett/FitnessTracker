@@ -158,6 +158,17 @@ class TestDetectRepsFromPose:
         ts = [i * 0.1 for i in range(len(seq))]
         assert len(pa.detect_reps_from_pose(seq, ts, "Squat", expected_reps=3)) == 3
 
+    def test_fps_scaling_keeps_rep_count_at_30fps(self):
+        # Frame-based windows must scale with fps, or a 30 fps track smooths
+        # ~3x less and drops reps (8 -> 7 on the labelled squat).
+        seq10 = _squat_sequence(reps=3)
+        ts10 = [i / 10.0 for i in range(len(seq10))]
+        assert len(pa.detect_reps_from_pose(seq10, ts10, "Squat", fps=10.0)) == 3
+
+        seq30 = [lm for lm in seq10 for _ in range(3)]  # upsample ~3x
+        ts30 = [i / 30.0 for i in range(len(seq30))]
+        assert len(pa.detect_reps_from_pose(seq30, ts30, "Squat", fps=30.0)) == 3
+
 
 class TestClassifyExercise:
     def test_synthetic_squat_classified_as_squat(self):
@@ -400,6 +411,36 @@ class TestSquatFormScoring:
         bad = {**good, "depth_achieved": False}
         reps = [good, good, good, good, {**bad, "rep_number": 5}]
         assert pa.score_squat_form(reps)["overall_form_score"] >= 90.0
+
+    def test_moderate_lean_is_not_excessive(self):
+        # A real squat leans ~20-40°; the old 10° threshold penalised a clean
+        # 150 kg squat that measured 11°. Only genuine collapse should flag.
+        rep = {
+            "rep_number": 1,
+            "depth_achieved": True,
+            "lockout_complete": True,
+            "lockout_soft": False,
+            "knee_valgus": "good",
+            "heels_flat": True,
+            "back_angle_deviation": 11.0,
+        }
+        result = pa.score_squat_form([rep])
+        assert result["overall_form_score"] == 100.0
+        assert not any("forward lean" in d for d in result["deviations"])
+
+    def test_excessive_lean_is_flagged(self):
+        rep = {
+            "rep_number": 1,
+            "depth_achieved": True,
+            "lockout_complete": True,
+            "lockout_soft": False,
+            "knee_valgus": "good",
+            "heels_flat": True,
+            "back_angle_deviation": 35.0,
+        }
+        result = pa.score_squat_form([rep])
+        assert any("forward lean" in d for d in result["deviations"])
+        assert result["overall_form_score"] == 90.0
 
 
 class TestWorldVelocity:

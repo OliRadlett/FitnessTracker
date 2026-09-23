@@ -202,7 +202,7 @@ def main() -> int:
     print(f"Classification: {exercise} ({variation}) conf={confidence}")
 
     reps = detect_reps_from_pose(landmarks, timestamps, exercise,
-                                 expected_reps=args.expected_reps)
+                                 expected_reps=args.expected_reps, fps=args.fps)
     print(f"Reps detected: {len(reps)}"
           + (f" (expected {args.expected_reps})" if args.expected_reps else ""))
 
