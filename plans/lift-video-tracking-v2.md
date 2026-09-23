@@ -251,8 +251,14 @@ depth accuracy ≥ 0.9 on ¾ clips.
   `run_pose_analysis` uses the detector track for the bar-path metrics
   (`source="detector"`), falling back to the proxy per clip. Gated because it
   needs side-on footage and is unvalidated on a multi-rep side clip.
-- ⏳ **Learned detector remains**: auto-label from this spike → fine-tune a small
-  ONNX model (robust to ¾ angles + heterogeneous plates) → fuse with optical flow.
+- 🟡 **Learned detector — dataset + training pipeline built**:
+  `scripts/bar_labels.py` (JSONL schema, normalised boxes, YOLO rows),
+  `scripts/autolabel_bars.py` (frames → pose person-box + classical plate-box
+  seed labels), `scripts/label_tool/index.html` (in-browser corrector), and
+  `scripts/train_bar_detector.py` (YOLO dataset prep → Modal GPU fine-tune →
+  ONNX). Remaining: **correct the seed labels** (human pass), train, then wire
+  the ONNX model into `bar_detection.bar_track_from_frame_paths` and validate.
+  Chosen approach (owner): synthetic renders + a small human-labelled set.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.
