@@ -140,7 +140,7 @@ class WithingsClient:
         Returns: {"access_token": str, "refresh_token": str, "expires_in": int, ...}
         The API nests these either top-level or under ``body`` — normalize both.
         """
-        from app.integrations.errors import PermanentAuthError
+        from app.integrations.errors import PermanentAuthError, TransientSyncError
 
         async def _fetch():
             async with httpx.AsyncClient(timeout=30) as client:
@@ -167,16 +167,37 @@ class WithingsClient:
         normalized = self.normalize_token_response(data)
 
         # Withings reports errors as HTTP 200 with a non-zero ``status`` and no
-        # access token. During a refresh that means the refresh token is no
-        # longer valid — surface it as a permanent auth failure so the
-        # connection is marked needs_reauth instead of raising a bare KeyError.
+        # access token. Only explicit auth failures (invalid_grant / revoked /
+        # unknown refresh token) are permanent — everything else (e.g. 2554
+        # "Unspecified unknown error", 601 too-many-requests, 503) is
+        # transient so a later run retries instead of forcing a manual
+        # re-authorisation for what was a server-side blip.
         if "access_token" not in normalized and normalized.get("status") not in (
             None,
             0,
         ):
-            raise PermanentAuthError(
-                f"Withings token refresh failed "
-                f"(status {normalized.get('status')}): "
+            err_text = str(normalized.get("error", "")).lower()
+            status = normalized.get("status")
+            permanent_signals = (
+                "invalid_grant",
+                "invalid grant",
+                "revoked",
+                "invalid refresh",
+                "unknown refresh",
+                "unauthorized",
+            )
+            if any(sig in err_text for sig in permanent_signals) or status in (
+                283,
+                343,
+            ):
+                raise PermanentAuthError(
+                    f"Withings token refresh failed "
+                    f"(status {status}): "
+                    f"{normalized.get('error', 'unknown error')}"
+                )
+            raise TransientSyncError(
+                f"Withings token refresh transient failure "
+                f"(status {status}): "
                 f"{normalized.get('error', 'unknown error')}"
             )
         return normalized
