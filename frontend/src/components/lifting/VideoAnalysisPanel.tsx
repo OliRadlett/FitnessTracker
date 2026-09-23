@@ -45,6 +45,7 @@ interface RepTiming {
   sticking_joint_angle?: number | null;
   knee_moment_nm?: number | null;
   hip_moment_nm?: number | null;
+  hip_share_pct?: number | null;
 }
 
 function parseRepTimings(value: string | null | undefined): RepTiming[] {
@@ -351,6 +352,13 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
   const coaching =
     typeof formMeta?.coaching_summary === 'string' ? formMeta.coaching_summary : null;
   const repTimings = parseRepTimings(video.rep_timing_json);
+  const restMeta = parseJsonObject(video.rest_periods_json);
+  const nSets = typeof restMeta?.n_sets === 'number' ? restMeta.n_sets : null;
+  const repsPerSet = Array.isArray(restMeta?.reps_per_set)
+    ? (restMeta.reps_per_set as unknown[]).filter(
+        (n): n is number => typeof n === 'number',
+      )
+    : null;
   const { authFetch, token } = useAuthFetch();
   const { data: thumbsUrl } = useQuery({
     queryKey: ['video-thumbnails', video.id],
@@ -521,6 +529,9 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
                           r.knee_moment_nm != null
                             ? `knee ≈${Math.round(r.knee_moment_nm)} Nm`
                             : null,
+                          r.hip_share_pct != null
+                            ? `hip ${Math.round(r.hip_share_pct)}%`
+                            : null,
                         ]
                           .filter(Boolean)
                           .join(' · ') || undefined
@@ -588,6 +599,14 @@ export function VideoAnalysisPanel({ video }: VideoAnalysisPanelProps) {
         <MiniCard label="Consistency" value={video.rep_consistency_score} unit="/100" />
         <MiniCard label="Rest" value={video.avg_rest_seconds} unit="s" />
       </div>
+      {nSets != null && nSets > 1 && (
+        <p className="text-xs text-muted">
+          {nSets} sets detected
+          {repsPerSet && repsPerSet.length
+            ? ` (${repsPerSet.join(' + ')} reps)`
+            : ''}
+        </p>
+      )}
     </div>
   );
 }

@@ -113,6 +113,9 @@ export interface VbtProfile {
   load_max_kg?: number | null;
   confidence: string;
   recommended_load_kg?: number | null;
+  // VBT estimate contextualised against the stored PR (F11).
+  pr_1rm_kg?: number | null;
+  vbt_vs_pr_pct?: number | null;
   points: VbtProfilePoint[];
 }
 

@@ -91,6 +91,17 @@ export function VbtPanel({ exercise }: { exercise: string }) {
                 {data?.est_1rm_kg != null ? `${data.est_1rm_kg} kg` : '—'}
               </p>
             </div>
+            {data?.pr_1rm_kg != null && (
+              <div>
+                <p className="text-[11px] text-muted uppercase tracking-wide">
+                  vs PR
+                </p>
+                <p className="text-xl font-semibold text-foreground">
+                  {data.vbt_vs_pr_pct != null ? `${data.vbt_vs_pr_pct}%` : '—'}
+                </p>
+                <p className="text-[11px] text-muted">PR {data.pr_1rm_kg} kg</p>
+              </div>
+            )}
             <div>
               <p className="text-[11px] text-muted uppercase tracking-wide">Sets</p>
               <p className="text-xl font-semibold text-foreground">{data?.n ?? 0}</p>

@@ -186,6 +186,26 @@ async def get_vbt_profile(
         [(v.weight_kg, v.mean_concentric_velocity) for v in videos],
         exercise_name,
     )
+
+    # Contextualise the estimate against the stored PR (F11).
+    from app.models.lifting import PersonalRecord
+
+    pr = (
+        await db.execute(
+            select(PersonalRecord)
+            .where(
+                PersonalRecord.user_id == current_user.id,
+                PersonalRecord.exercise_name == exercise_name,
+                PersonalRecord.estimated_1rm.isnot(None),
+            )
+            .order_by(PersonalRecord.estimated_1rm.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    pr_1rm = pr.estimated_1rm if pr is not None else None
+    est = profile.est_1rm_kg
+    vs_pr = round(est / pr_1rm * 100, 1) if (est and pr_1rm) else None
+
     return VbtProfileResponse(
         **profile.as_dict(),
         recommended_load_kg=(
@@ -193,6 +213,8 @@ async def get_vbt_profile(
             if target_velocity
             else None
         ),
+        pr_1rm_kg=pr_1rm,
+        vbt_vs_pr_pct=vs_pr,
         points=[
             {
                 "date": v.created_at.date().isoformat(),

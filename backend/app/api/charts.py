@@ -13,6 +13,7 @@ from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.cache import _get_redis, _make_cache_key
 from app.services.charts import ChartService
+from app.services.spc import compute_control
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,41 @@ async def list_available_charts(
             for name, info in CHART_REGISTRY.items()
         ]
     }
+
+
+# Metric -> ChartService trend method whose values feed the control chart.
+CONTROL_METRICS: dict[str, str] = {
+    "form": "video_form_trend",
+    "velocity": "video_velocity_trend",
+    "consistency": "video_consistency_trend",
+    "bar_path": "video_bar_path_trend",
+    "sticking_point": "video_sticking_point_trend",
+}
+
+
+@router.get("/control")
+async def get_control_chart(
+    metric: str = Query("form"),
+    exercise_name: str | None = Query(None),
+    days: int = Query(180, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """SPC control limits (±2σ) + latest-point status for a technique metric.
+
+    Registered before the ``/{chart_name}`` catch-all so it isn't shadowed
+    (§3.18 / F5)."""
+    method_name = CONTROL_METRICS.get(metric)
+    if method_name is None:
+        raise HTTPException(status_code=400, detail=f"Unknown metric '{metric}'")
+
+    service = ChartService(db)
+    trend = await getattr(service, method_name)(current_user.id, days, exercise_name)
+    values = trend.series[0].data if trend.series else []
+    result = compute_control(values)
+    result["metric"] = metric
+    result["labels"] = trend.labels
+    return result
 
 
 @router.get("/{chart_name}")
