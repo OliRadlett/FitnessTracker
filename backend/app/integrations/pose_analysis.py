@@ -1823,6 +1823,7 @@ def run_pose_analysis(
     weight_kg: float,
     view: str = "unknown",
     track: dict | None = None,
+    bar_detection: bool = False,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
@@ -1943,15 +1944,30 @@ def run_pose_analysis(
         "view": view,
     }
 
-    # Bar-path metrics (F1) from the pose-proxy bar track. Detector-agnostic:
-    # when bar tracking (T3) lands it supplies a real track in the same shape.
+    # Bar-path metrics (F1). Prefer the real barbell plate detection (T3) when
+    # it fires on enough frames; ``bar_track_from_frame_paths`` falls back to
+    # the pose proxy internally below its detection threshold, so the metrics
+    # are never left empty and the two sources are labelled (``source``).
     from app.integrations.bar_tracking import (
         analyze_bar_path,
         bar_track_from_landmarks,
     )
 
-    bar_track = bar_track_from_landmarks(
-        landmarks, track.get("presence"), exercise)
+    bar_track = None
+    records = (track.get("records") or []) if bar_detection else []
+    if records:
+        frame_dir = Path(tmpdir)
+        frame_paths = [
+            frame_dir / f"pose_{r['frame_idx']:04d}.jpg" for r in records
+        ]
+        if all(p.exists() for p in frame_paths):
+            from app.integrations.bar_detection import bar_track_from_frame_paths
+
+            bar_track = bar_track_from_frame_paths(
+                frame_paths, [r["landmarks"] for r in records], exercise)
+    if bar_track is None:
+        bar_track = bar_track_from_landmarks(
+            landmarks, track.get("presence"), exercise)
     bar_path = analyze_bar_path(bar_track, reps, exercise)
     if bar_path:
         result["bar_path"] = bar_path

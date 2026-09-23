@@ -244,8 +244,18 @@ and person-selection accuracy; baseline recorded.
 **Acceptance**: joint-angle MAE < 5°; velocity MAE < 0.03 m/s; view-invariant
 depth accuracy ≥ 0.9 on ¾ clips.
 
-### T3 · Bar tracking (true bar path)
+### T3 · Bar tracking (true bar path) — 🟡 v1 SPIKE WIRED (gated)
 
+- ✅ **`backend/app/integrations/bar_detection.py`** — pose-seeded Hough-circle
+  plate detection (edge support + interior darkness + previous-detection seed +
+  jump gate + gap interpolation). Measured: fires only when the plate is seen
+  **face-on** (67% on a true side view; 0% on a ¾ squat).
+- ✅ **Wired behind `VIDEO_BAR_DETECTION_ENABLED` (default OFF)**: when on,
+  `run_pose_analysis` uses the detector track for the bar-path metrics
+  (`source="detector"`), falling back to the proxy per clip. Gated because it
+  needs side-on footage and is unvalidated on a multi-rep side clip.
+- ⏳ **Learned detector remains**: auto-label from this spike → fine-tune a small
+  ONNX model (robust to ¾ angles + heterogeneous plates) → fuse with optical flow.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.

@@ -108,6 +108,12 @@ class Settings(BaseSettings):
     # choosing (see plans/lift-video-tracking-v2.md T2).
     video_modal_gpu: str = ""
 
+    # T3 v1: derive the bar path from real barbell/plate detection instead of
+    # the pose proxy. OFF by default — the classical detector only fires when
+    # the plate is seen face-on (side views) and is unvalidated on a multi-rep
+    # side clip; it falls back to the proxy per clip. Enable to trial it.
+    video_bar_detection_enabled: bool = False
+
     # Web Push (VAPID) — optional. When unset, `send_push_to_user` skips.
     # Generate a keypair with:
     #   python -c "from py_vapid import Vapid02; v=Vapid02(); v.generate_keys(); print('VAPID_PUBLIC_KEY='+v.public_key.decode()); print('VAPID_PRIVATE_KEY='+v.private_key.decode())"

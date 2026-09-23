@@ -84,6 +84,10 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/biomechanics.py",
                 "/root/app/integrations/biomechanics.py",
             )
+            image = image.add_local_file(
+                f"{analysis_dir}/bar_detection.py",
+                "/root/app/integrations/bar_detection.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -116,6 +120,7 @@ def process_video_on_modal(
     gpu_delegate: bool = False,
     r2_presigned_put_track: str | None = None,
     r2_upload_key_track: str | None = None,
+    bar_detection: bool = False,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -205,6 +210,7 @@ def process_video_on_modal(
         gpu_delegate: bool = False,
         track_put: str = "",
         track_key: str = "",
+        bar_detection: bool = False,
     ) -> dict:
         import logging
         import subprocess
@@ -485,6 +491,7 @@ def process_video_on_modal(
                         weight_kg=weight,
                         view=view,
                         track=pose_track,
+                        bar_detection=bar_detection,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -875,6 +882,8 @@ def process_video_on_modal(
     )
     # T2 pose extraction settings (defaults preserve current behaviour).
     pose_fps = float(settings.video_pose_fps or 10.0)
+    # T3 v1 bar-path source (default off; see Settings).
+    bar_detection = bool(settings.video_bar_detection_enabled)
 
     # Run the Modal function synchronously (blocks until complete)
     with app.run():
@@ -899,4 +908,5 @@ def process_video_on_modal(
             gpu_delegate,
             r2_presigned_put_track or "",
             r2_upload_key_track or "",
+            bar_detection,
         )
