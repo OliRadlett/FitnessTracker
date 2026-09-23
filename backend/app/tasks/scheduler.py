@@ -424,12 +424,15 @@ def sync_all_strava_activities() -> dict:
                     await mark_connection_reauth(db, conn, str(e))
                     await db.rollback()
                 except httpx.HTTPStatusError as e:
-                    # SYNC-03: raw 401/403 mid-sync (revoked after refresh
-                    # check) → needs_reauth + banner; else transient tally.
+                    # SYNC-03: raw 401/403 mid-sync — retry once via forced
+                    # refresh (token may have died between the pre-sync
+                    # check and the API call) before marking needs_reauth.
                     logger.warning(
                         f"Strava sync HTTP failure for user {conn.user_id}: {e}"
                     )
-                    await handle_sync_http_error(db, conn, e)
+                    from app.integrations.strava_client import strava_client
+
+                    await handle_sync_http_error(db, conn, e, strava_client)
                     await db.rollback()
                 except TransientSyncError as e:
                     logger.warning(
@@ -479,11 +482,13 @@ def sync_all_strava_activities() -> dict:
                     await mark_connection_reauth(db, conn, str(e))
                     await db.rollback()
                 except httpx.HTTPStatusError as e:
-                    # SYNC-03: see Strava loop above.
+                    # SYNC-03: see Strava loop above (forced-refresh retry).
                     logger.warning(
                         f"Wahoo sync HTTP failure for user {conn.user_id}: {e}"
                     )
-                    await handle_sync_http_error(db, conn, e)
+                    from app.integrations.wahoo_client import wahoo_client
+
+                    await handle_sync_http_error(db, conn, e, wahoo_client)
                     await db.rollback()
                 except TransientSyncError as e:
                     logger.warning(
@@ -2496,11 +2501,13 @@ def sync_all_whoop_data() -> dict:
                     )
                     user_failed = True
                 except httpx.HTTPStatusError as e:
-                    # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                    # SYNC-03: raw 401/403 mid-sync — forced-refresh retry first.
                     logger.warning(
                         f"Whoop cycle sync HTTP failure for user {conn.user_id}: {e}"
                     )
-                    await handle_sync_http_error(db, conn, e)
+                    from app.integrations.whoop_client import whoop_client
+
+                    await handle_sync_http_error(db, conn, e, whoop_client)
                     user_failed = True
                 except Exception as e:
                     logger.error(
@@ -2527,11 +2534,13 @@ def sync_all_whoop_data() -> dict:
                             f"Whoop sleep sync transient failure for user {conn.user_id}: {e}"
                         )
                     except httpx.HTTPStatusError as e:
-                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        # SYNC-03: raw 401/403 mid-sync — forced-refresh retry first.
                         logger.warning(
                             f"Whoop sleep sync HTTP failure for user {conn.user_id}: {e}"
                         )
-                        await handle_sync_http_error(db, conn, e)
+                        from app.integrations.whoop_client import whoop_client
+
+                        await handle_sync_http_error(db, conn, e, whoop_client)
                         user_failed = True
                     except Exception as e:
                         logger.error(
@@ -2557,11 +2566,13 @@ def sync_all_whoop_data() -> dict:
                             f"Whoop workout sync transient failure for user {conn.user_id}: {e}"
                         )
                     except httpx.HTTPStatusError as e:
-                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        # SYNC-03: raw 401/403 mid-sync — forced-refresh retry first.
                         logger.warning(
                             f"Whoop workout sync HTTP failure for user {conn.user_id}: {e}"
                         )
-                        await handle_sync_http_error(db, conn, e)
+                        from app.integrations.whoop_client import whoop_client
+
+                        await handle_sync_http_error(db, conn, e, whoop_client)
                         user_failed = True
                     except Exception as e:
                         logger.error(
@@ -2585,11 +2596,13 @@ def sync_all_whoop_data() -> dict:
                             f"Whoop weight sync transient failure for user {conn.user_id}: {e}"
                         )
                     except httpx.HTTPStatusError as e:
-                        # SYNC-03: raw 401/403 mid-sync → needs_reauth + banner.
+                        # SYNC-03: raw 401/403 mid-sync — forced-refresh retry first.
                         logger.warning(
                             f"Whoop weight sync HTTP failure for user {conn.user_id}: {e}"
                         )
-                        await handle_sync_http_error(db, conn, e)
+                        from app.integrations.whoop_client import whoop_client
+
+                        await handle_sync_http_error(db, conn, e, whoop_client)
                         user_failed = True
                     except Exception as e:
                         logger.error(

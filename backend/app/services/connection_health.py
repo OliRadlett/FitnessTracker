@@ -36,12 +36,24 @@ logger = logging.getLogger(__name__)
 CONNECTION_STATUS_ACTIVE = "active"
 CONNECTION_STATUS_NEEDS_REAUTH = "needs_reauth"
 
+# Refresh proactively before the access token actually dies. Without a buffer
+# a token that expires between the refresh check and the last API call of a
+# long sync raises a mid-sync 401, which the scheduler marks needs_reauth —
+# forcing a manual re-auth for what a refresh would have fixed. 5 minutes
+# covers normal sync durations without causing extra rotations (Strava lives
+# 6h, Whoop ~1h, Withings ~3h).
+REFRESH_LEEWAY_SECONDS = 300
+
 
 def _db_expired(connection: OAuthConnection) -> bool:
-    return (
-        connection.token_expires_at is not None
-        and connection.token_expires_at < datetime.now(UTC)
-    )
+    if connection.token_expires_at is None:
+        return False
+    expires_at = connection.token_expires_at
+    if expires_at.tzinfo is None:
+        # Naive datetimes from legacy rows compare against aware now() —
+        # assume UTC rather than crashing the sync.
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at < datetime.now(UTC) + timedelta(seconds=REFRESH_LEEWAY_SECONDS)
 
 
 def _default_set_expiry(connection: OAuthConnection, token_data: dict) -> None:
@@ -69,15 +81,21 @@ async def refresh_connection(
     *,
     is_expired: Callable[[OAuthConnection], bool] = _db_expired,
     set_expiry: Callable[[OAuthConnection, dict], None] = _default_set_expiry,
+    force: bool = False,
 ) -> OAuthConnection:
     """Refresh a provider access token if it is expired (hardened path).
+
+    Args:
+        force: skip the expiry check and refresh unconditionally. Used for
+            retry-once after a mid-sync 401 — the token may have died between
+            the pre-sync check and the API call.
 
     Raises:
         PermanentAuthError — credentials revoked/expired without a usable
             refresh token; the connection is marked ``needs_reauth``.
         TransientSyncError — a temporary failure that a later run may beat.
     """
-    if not is_expired(connection):
+    if not force and not is_expired(connection):
         return connection
 
     if not connection.refresh_token:
@@ -100,7 +118,7 @@ async def refresh_connection(
     connection = locked.scalar_one()
 
     # Another worker may have refreshed while we waited for the lock.
-    if not is_expired(connection):
+    if not force and not is_expired(connection):
         return connection
 
     try:
@@ -147,6 +165,7 @@ async def refresh_connection(
     connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
     set_expiry(connection, token_data)
     connection.last_refreshed_at = datetime.now(UTC)
+    connection.status = CONNECTION_STATUS_ACTIVE
     connection.consecutive_failures = 0
     connection.last_error = None
     connection.last_error_at = None
@@ -242,25 +261,55 @@ def http_status_code(exc: BaseException) -> int | None:
 
 
 async def handle_sync_http_error(
-    db: AsyncSession, connection: OAuthConnection, exc: BaseException
-) -> None:
+    db: AsyncSession,
+    connection: OAuthConnection,
+    exc: BaseException,
+    refresh_client: Any | None = None,
+) -> bool:
     """Classify a raw HTTP error escaping a provider sync loop (SYNC-03).
 
-    A mid-sync 401/403 means the token was revoked after the refresh check
-    (or refresh was skipped) — mark ``needs_reauth`` with the deduped
-    notification so the scheduler stops hammering and the banner appears.
-    Anything else is recorded as a transient failure. Both commit
-    immediately so a later per-user rollback can't discard them.
+    A mid-sync 401/403 usually means the token died between the pre-sync
+    refresh check and the API call (clock skew / long pagination). When
+    *refresh_client* is supplied, attempt one forced refresh first: if it
+    succeeds the caller should retry the sync (returns True). Only when
+    there is no client, no refresh token, or the forced refresh itself fails
+    is the connection marked ``needs_reauth`` (returns False).
+
+    Anything else is recorded as a transient failure (returns False).
+
+    Both paths commit immediately so a later per-user rollback can't discard
+    them.
     """
     status = http_status_code(exc)
     if status in (401, 403):
+        if refresh_client is not None and connection.refresh_token:
+            try:
+                await refresh_connection(
+                    db, connection, refresh_client, force=True
+                )
+                logger.info(
+                    f"Recovered {connection.provider} mid-sync HTTP {status} "
+                    f"via forced refresh for user {connection.user_id}"
+                )
+                return True
+            except (PermanentAuthError, TransientSyncError):
+                # Forced refresh failed — fall through to needs_reauth
+                # (already recorded by refresh_connection).
+                pass
+            except Exception as e:
+                logger.warning(
+                    f"Forced refresh after mid-sync HTTP {status} failed "
+                    f"for {connection.provider} user {connection.user_id}: {e}"
+                )
         await _mark_reauth(
             db,
             connection,
             f"{connection.provider} rejected credentials mid-sync "
             f"(HTTP {status}); token revoked or expired.",
         )
+        return False
     else:
         await _record_transient(
             db, connection, f"{connection.provider} HTTP {status or '?'}: {exc}"
         )
+        return False
