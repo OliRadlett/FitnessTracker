@@ -2,6 +2,8 @@
 
 import pytest
 
+np = pytest.importorskip("numpy")
+
 from app.integrations import biomechanics as bm
 
 
