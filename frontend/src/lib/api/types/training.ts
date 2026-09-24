@@ -128,7 +128,30 @@ export interface TrainingPlanDay {
   notes?: string | null;
   activity_id?: string | null;
   completed: boolean;
+  // Wahoo push state (server-managed via /days/{id}/push-to-wahoo)
+  wahoo_plan_id?: number | null;
+  wahoo_workout_id?: number | null;
+  wahoo_route_id?: number | null;
+  wahoo_pushed_at?: string | null;
+  wahoo_push_workout?: boolean;
+  wahoo_push_route?: boolean;
   created_at?: string;
+}
+
+/** Body for POST /training-plans/{id}/days/{dayId}/push-to-wahoo. */
+export interface WahooPushRequest {
+  push_workout: boolean;
+  push_route: boolean;
+}
+
+/** Result of a push / remove operation against Wahoo. */
+export interface WahooPushResponse {
+  pushed_at?: string | null;
+  push_workout: boolean;
+  push_route: boolean;
+  wahoo_plan_id?: number | null;
+  wahoo_workout_id?: number | null;
+  wahoo_route_id?: number | null;
 }
 
 export interface TrainingPlan {
