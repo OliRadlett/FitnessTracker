@@ -208,3 +208,63 @@ class TestApplyStravaDurationFallback:
         assert session.duration_seconds == 5219
         assert session.started_at == start
         assert session.ended_at == start + timedelta(seconds=5219)
+
+
+class TestWeightConvention:
+    """Per-arm standard: bilateral DB / dual-handle moves log one implement."""
+
+    def test_dumbbell_moves_are_per_arm(self):
+        from app.services.exercise_db import weight_convention
+
+        for name in (
+            "Hammer Curl",
+            "Lateral Raise",
+            "Rear Delt Fly",
+            "Cable Fly",
+            "Dumbbell Bench Press",
+            "Incline Dumbbell Press",
+            "Dumbbell Row",
+            "Farmer Walk",
+        ):
+            assert weight_convention(name) == "per_arm", name
+
+    def test_barbell_machine_singles_are_total(self):
+        from app.services.exercise_db import weight_convention
+
+        for name in (
+            "Back Squat",
+            "Bench Press",
+            "Deadlift",
+            "Lat Pulldown",
+            "Tricep Pushdown",
+            "Leg Press",
+            "Kettlebell Swing",
+        ):
+            assert weight_convention(name) == "total", name
+
+    def test_ambiguous_generic_names_stay_total(self):
+        """Bicep Curl / Shrug may be barbell or dumbbells — never guess."""
+        from app.services.exercise_db import weight_convention
+
+        assert weight_convention("Bicep Curl") == "total"
+        assert weight_convention("Shrug") == "total"
+
+    def test_alias_input_resolves_before_convention(self):
+        from app.services.exercise_db import weight_convention
+
+        assert weight_convention("lat raise") == "per_arm"
+        assert weight_convention("db bench") == "per_arm"
+        assert weight_convention("triceps pushdown") == "total"
+
+    def test_looks_like_combined_weight(self):
+        from app.services.exercise_db import looks_like_combined_weight
+
+        # 30 kg against a 15 kg per-arm median → combined total.
+        assert looks_like_combined_weight("Hammer Curl", 30.0, 15.0) is True
+        # Already per-arm → not combined.
+        assert looks_like_combined_weight("Hammer Curl", 15.0, 15.0) is False
+        # Total-convention exercises never flag.
+        assert looks_like_combined_weight("Tricep Pushdown", 52.0, 26.0) is False
+        # Guards.
+        assert looks_like_combined_weight("Hammer Curl", 0, 15.0) is False
+        assert looks_like_combined_weight("Hammer Curl", 30.0, 0) is False

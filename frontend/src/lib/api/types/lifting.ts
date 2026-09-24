@@ -239,6 +239,7 @@ export interface UpdateSessionPayload {
 export interface ExerciseSuggestion {
   name: string;
   category: string;  // "big3" | "compound" | "accessory"
+  weight_convention?: string;  // "per_arm" | "total" — per-arm = log one dumbbell/handle
 }
 
 export interface WarmupTemplateStep {

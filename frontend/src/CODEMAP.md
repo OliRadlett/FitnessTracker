@@ -70,7 +70,8 @@
 | `PRCelebration` | Animated PR celebration toast |
 | `ReadinessIndicator` | Training readiness gauge |
 | `PageLoadingBar` | Top loading bar for route transitions |
-| `ExerciseAutocomplete` | Exercise name autocomplete input |
+| `ExerciseAutocomplete` | Exercise name autocomplete input (per-arm badge on bilateral suggestions via `weight_convention`) |
+| `PerArmHint` | Per-arm logging hint pill — exact-matches the typed exercise against `/lifting/exercises` and renders only for `per_arm` convention; used in LiveWorkout + AddExerciseForm |
 | `Modal` | Responsive modal — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Focus trap + once-only initial focus + `aria-modal` + `inert` app shell; opt-in `guardClose` blocks backdrop/Escape dismiss for dirty forms. Includes `ModalHeader` sub-component (44px close) |
 | `TabGroup` | Accessible tab bar with ARIA tablist/tab/selected attributes |
 | `ProviderBadge` | Provider icon + color badge (strava, komoot, wahoo, manual). Exports `ProviderIcon`, `PROVIDER_COLORS`, `PROVIDER_ICONS`. Icon paths carry the `/fittrack` basePath prefix (raw `<img>` is not prefixed automatically); manual falls back to a lucide `Pencil` |

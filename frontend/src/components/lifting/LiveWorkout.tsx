@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { PerArmHint } from '@/components/lifting/PerArmHint';
 import { PlateCalculator } from '@/components/lifting/PlateCalculator';
 import type { PersonalRecord } from '@/lib/api/types';
 import {
@@ -503,6 +504,7 @@ export function LiveWorkout({
                 </span>
               </p>
             )}
+          <PerArmHint exerciseName={exercise} />
           </section>
         )}
 
