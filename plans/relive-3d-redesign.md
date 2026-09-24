@@ -152,6 +152,23 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
   (speed/power/HR/grade), recoloured live when the metric changes (no rebuild).
   `buildRoadRibbon` gained a flat per-point `colors` input (6 tests).
 
+### Phase 3 — lighting started (2026-09-24)
+- **Sun / time-of-day**: `lib/sun.ts` (solar position + daylight phase, pure,
+  6 tests). The scene is lit for the ride's actual start time — golden hour gets
+  a warm horizon + key light, night goes dark/cool. `startDate` plumbed from the
+  activity into `Replay3D` (Theater + compare).
+- Remaining: optional imagery drape, SW tile caching, weather-driven fog/wind.
+
+### Phase 4 — core done (2026-09-24)
+- **Highlights**: `lib/highlights.ts` detects climbs, descents, best sustained
+  power and fastest km from the path (grade×distance gains, hysteresis runs;
+  8 tests).
+- **Auto-tour**: a Tour toggle seeks to the first highlight and drives the camera
+  per highlight kind (climb → drone, else chase) with a caption overlay; a
+  chapter bar lists highlights for one-tap jumps.
+- **Poster**: a PNG snapshot button (`preserveDrawingBuffer`).
+- Remaining: clip export (MediaRecorder).
+
 ## Risks / guardrails
 
 - **Decimation quality** — verify visually; keep fork/logos crisp (Blender

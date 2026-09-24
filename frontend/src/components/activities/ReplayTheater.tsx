@@ -85,6 +85,7 @@ export function ReplayTheater({
           build={build}
           polyline={polyline}
           ftpWatts={ftpWatts}
+          startDate={activity.start_date}
           canvasHeightClass="h-[68dvh]"
           theater
         />
