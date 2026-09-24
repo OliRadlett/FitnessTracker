@@ -338,6 +338,29 @@ function interp(values: number[], frac: number): number {
   return values[i0] + (values[i1] - values[i0]) * t;
 }
 
+/**
+ * Cumulative distance (m) travelled at `elapsed`, linearly interpolated between
+ * path samples. Used for ghost-race deltas. Pure.
+ */
+export function replayDistanceAt(points: ReplayPoint[], elapsed: number): number {
+  if (points.length === 0) return 0;
+  if (elapsed <= points[0].elapsed) return points[0].distance;
+  const last = points[points.length - 1];
+  if (elapsed >= last.elapsed) return last.distance;
+  let lo = 0;
+  let hi = points.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (points[mid].elapsed <= elapsed) lo = mid;
+    else hi = mid - 1;
+  }
+  const a = points[lo];
+  const b = points[Math.min(points.length - 1, lo + 1)];
+  const span = b.elapsed - a.elapsed || 1;
+  const f = Math.max(0, Math.min(1, (elapsed - a.elapsed) / span));
+  return a.distance + (b.distance - a.distance) * f;
+}
+
 /** "m:ss" / "h:mm:ss" formatting for the scrubber readout */
 export function timeFmt(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

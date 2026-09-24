@@ -169,6 +169,16 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
 - **Poster**: a PNG snapshot button (`preserveDrawingBuffer`).
 - Remaining: clip export (MediaRecorder).
 
+### Phase 5 — ghost racing done (2026-09-24)
+- **Ghost picker**: the Theater lists other rides on the same route
+  (`GET /routes/{id}/history`) and fetches the chosen ride's detail (polyline +
+  streams) to build a second replay.
+- **Ghost bike**: a translucent blue-tinted rig, time-aligned with the rider
+  (both start together; shorter rides freeze), with a live **delta** readout in
+  the HUD (+m ahead / −m behind). `replayDistanceAt` added to `lib/replay.ts`
+  (+2 tests).
+- Remaining: compare modal → ghost mode; Route3D upgrade.
+
 ## Risks / guardrails
 
 - **Decimation quality** — verify visually; keep fork/logos crisp (Blender
