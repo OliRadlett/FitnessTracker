@@ -265,6 +265,15 @@ depth accuracy ≥ 0.9 on ¾ clips.
   R2 key, presigned + downloaded in the container) is set, falling back to the
   classical detector/proxy when sparse. Chosen approach (owner): synthetic
   renders + a small human-labelled set.
+- ✅ **First model trained (2026-09-24)**: yolov8n on 144 human-labelled frames
+  (223 plate boxes) + 1,200 synthetic (real upsampled 3×) → ONNX
+  (`labels/bar_detector.onnx`, ~12 MB). **Recall is clip-dependent** — 94% on
+  one clip (IoU 0.95+), 0% on two others: domain/style variance, not a broken
+  model. Kept low conf (0.1–0.15) for pre-filling (a false box is quicker to
+  delete than to draw).
+- ✅ **Label speed-ups**: `propagate_labels.py` (interpolate between human
+  anchors within a clip), `prefill_with_model.py` (model seeds; `--skip-human-clips`
+  leaves started clips to propagation), `label_server.py` (resume + Enter-confirm).
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.

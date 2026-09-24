@@ -46,7 +46,9 @@ def main() -> int:
     ap.add_argument("--model", type=Path, default=REPO_ROOT / "labels" / "bar_detector.onnx")
     ap.add_argument("--out", type=Path, default=None,
                     help="default <data>/labels.prefilled.jsonl")
-    ap.add_argument("--conf", type=float, default=0.3)
+    ap.add_argument("--conf", type=float, default=0.15,
+                    help="detection confidence; low favours recall (a false box "
+                         "is quicker to delete than to draw)")
     ap.add_argument("--keep-barbell", action="store_true")
     ap.add_argument("--overwrite", action="store_true",
                     help="also re-detect frames that already have human boxes")
