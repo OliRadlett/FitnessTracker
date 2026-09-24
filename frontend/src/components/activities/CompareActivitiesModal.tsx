@@ -66,7 +66,7 @@ export function CompareActivitiesModal({
       power: streamInput(streams, ...POWER_STREAM_TYPES),
       hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
       cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
-      maxSamples: 800,
+      maxSamples: 4000,
     });
     return res;
   }

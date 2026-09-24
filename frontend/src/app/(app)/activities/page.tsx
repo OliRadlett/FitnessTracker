@@ -27,17 +27,13 @@ const RouteMap = dynamic(
   () => import('@/components/maps/RouteMap').then((mod) => mod.RouteMap),
   { ssr: false, loading: () => <div className="h-[250px] bg-surface-light/20 rounded-lg animate-pulse" /> },
 );
-const Replay3D = dynamic(
-  () => import('@/components/activities/Replay3D').then((mod) => mod.Replay3D),
-  { ssr: false, loading: () => <div className="h-[400px] bg-surface-light/20 rounded-lg animate-pulse" /> },
-);
 import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
-import { buildReplay, timeFmt, type ReplayBuildResult } from '@/lib/replay';
+import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
 import {
   CADENCE_STREAM_TYPES,
   ALTITUDE_STREAM_TYPES,
@@ -57,6 +53,7 @@ import { ActivityConnectionsBar } from '@/components/activities/ActivityConnecti
 import { ActivityContextBadges } from '@/components/activities/ActivityContextBadges';
 import { ActivityHealthOverlay } from '@/components/activities/ActivityHealthOverlay';
 import { CompareActivitiesModal } from '@/components/activities/CompareActivitiesModal';
+import { ReplayTheater } from '@/components/activities/ReplayTheater';
 import { TimelineView } from '@/components/activities/TimelineView';
 import { PatternsView } from '@/components/activities/PatternsView';
 
@@ -146,6 +143,8 @@ function ActivityExpanded({
   const [selectedStream, setSelectedStream] = useState<string>('');
   // Detail tabs (3.2) — Replay unmounts three.js when hidden.
   const [detailTab, setDetailTab] = useState<'overview' | 'replay' | 'analysis'>('overview');
+  // Full-screen 3D Theater (§3.16 Relive).
+  const [theaterOpen, setTheaterOpen] = useState(false);
 
   const isCycling = activity.sport_type === 'cycling';
 
@@ -189,7 +188,7 @@ function ActivityExpanded({
       power: streamInput(streams, ...POWER_STREAM_TYPES),
       hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
       cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
-      maxSamples: 800,
+      maxSamples: 4000,
     });
   }, [activity, activityDetail, isCycling]);
 
@@ -207,17 +206,9 @@ function ActivityExpanded({
     return null;
   }, [activity, activityDetail, detailError, detailLoading, isCycling]);
 
-  // Shared 3D playhead (Phase D: live readout; Phase E: full chart link).
-  const [replayElapsed, setReplayElapsed] = useState<number | null>(null);
-  // 3D→chart marker, quantized to 2 fps so the chart doesn't re-render
-  // at the 10 fps replay tick (only changes during playback).
-  const [chartMarker, setChartMarker] = useState<string | null>(null);
-  const markerRef = useRef<string | null>(null);
+  // Shared 3D playhead — reset the selected stream tab when the activity
+  // changes (the previous ride's type may not exist here, P2-3).
   useEffect(() => {
-    setReplayElapsed(null);
-    setChartMarker(null);
-    markerRef.current = null;
-    // Reset the selected stream tab — the previous ride's type may not exist here (P2-3).
     setSelectedStream('');
   }, [activity.id]);
 
@@ -228,36 +219,24 @@ function ActivityExpanded({
     enabled: isCycling && !!token,
   });
 
-  const selectedResolution = Math.max(
-    1,
-    activityDetail?.streams?.find((s) => s.stream_type === (selectedStream || streamTypes[0]))?.resolution ?? 1
-  );
-  const handleElapsed = useCallback(
-    (t: number) => {
-      setReplayElapsed(t);
-      const q = String(Math.round(Math.floor(t * 2) / 2 / selectedResolution));
-      if (q !== markerRef.current) {
-        markerRef.current = q;
-        setChartMarker(q);
-      }
-    },
-    [selectedResolution]
-  );
-
-  const streamChartWithMarker: ChartData | null = useMemo(
-    () =>
-      streamChart && chartMarker && replayBuild
-        ? { ...streamChart, reference_line: { x: chartMarker, label: '3D' } }
-        : streamChart,
-    [streamChart, chartMarker, replayBuild]
-  );
-
   // Same element identity across renders → React bails out instead of
   // re-rendering the heavy Recharts tree on every playhead tick.
   const streamChartEl = useMemo(
-    () => (streamChartWithMarker ? <Chart data={streamChartWithMarker} height={250} /> : null),
-    [streamChartWithMarker]
+    () => (streamChart ? <Chart data={streamChart} height={250} /> : null),
+    [streamChart]
   );
+
+  // Deep link ?replay=<id>: auto-open the Theater once the build is ready.
+  const { getParam } = useDeepLink();
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || !replayBuild) return;
+    if (getParam('replay') === activity.id) {
+      autoOpenedRef.current = true;
+      setDetailTab('replay');
+      setTheaterOpen(true);
+    }
+  }, [getParam, activity.id, replayBuild]);
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -324,20 +303,32 @@ function ActivityExpanded({
 
       {detailTab === 'replay' && (
       <>
-      {/* 3D Flythrough — cycling rides with a route + velocity stream (§3.16) */}
-      {replayBuild && replayBuild.points.length >= 2 && (
-        <div className="mb-4">
-          <Replay3D
-            name={activity.name}
-            build={replayBuild}
-            polyline={activity.encoded_polyline ?? undefined}
-            onElapsed={handleElapsed}
-            ftpWatts={profile?.ftp_watts ?? null}
-          />
-        </div>
+      {/* 3D Replay launcher — the full experience lives in the Theater (§3.16) */}
+      {replayBuild && replayBuild.points.length >= 2 ? (
+        <button
+          onClick={() => setTheaterOpen(true)}
+          className="mb-4 flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-foreground">Open 3D Replay</span>
+            <span className="block text-xs text-muted">
+              Ride the route in a full-screen theater — cameras, terrain and live telemetry.
+            </span>
+          </span>
+          <span className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground">Theater</span>
+        </button>
+      ) : (
+        replayMissingReason && <p className="mb-4 text-sm text-muted">{replayMissingReason}</p>
       )}
-      {replayMissingReason && (
-        <p className="mb-4 text-sm text-muted">{replayMissingReason}</p>
+
+      {theaterOpen && replayBuild && (
+        <ReplayTheater
+          activity={activity}
+          build={replayBuild}
+          polyline={activity.encoded_polyline ?? undefined}
+          ftpWatts={profile?.ftp_watts ?? null}
+          onClose={() => setTheaterOpen(false)}
+        />
       )}
 
       {/* Stream Data */}
@@ -361,11 +352,6 @@ function ActivityExpanded({
                 {streamLabel(st)}
               </button>
             ))}
-            {replayElapsed != null && replayBuild && (
-              <span className="ml-auto self-center font-mono text-xs tabular-nums text-muted">
-                3D ▸ {timeFmt(replayElapsed)}
-              </span>
-            )}
           </div>
           {streamChartEl}
         </>
