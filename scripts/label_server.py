@@ -8,8 +8,8 @@ frames per clip (a detector needs ~5-10 labelled frames per clip, not all).
     C:\\Users\\oradl\\.venvs\\fittrack-video\\Scripts\\python.exe scripts/label_server.py
     # then open http://localhost:8765
 
-Hotkeys:  P=plate  B=barbell  E=person  Del=delete  C=copy previous frame
-          N / ->=next  <- =prev  S=save  Space=toggle auto-advance
+Hotkeys:  Enter=confirm boxes & next  P=plate  B=barbell  E=person  Del=delete
+          C=copy previous frame  N / ->=next  <-=prev  S=save  Space=auto-advance
 
 Edits persist to ``<data>/labels.corrected.jsonl`` on every change.
 """
@@ -54,6 +54,7 @@ HTML = r"""<!doctype html>
   <button id="del">Delete</button>
   <button id="copy">Copy prev (C)</button>
   <button id="skip">Skip</button>
+  <button id="confirm" style="background:#166534;border-color:#22c55e">Confirm &amp; next (Enter)</button>
   <span style="width:10px"></span>
   <button id="auto" class="on">Auto-advance</button>
   <span id="status" class="muted"></span>
@@ -99,12 +100,14 @@ document.addEventListener('keydown',e=>{const k=e.key;
   else if(k==='e'){curLabel='person';setActive();}
   else if(k==='s'){save();}
   else if(k==='c'){copyPrev();}
+  else if(k==='Enter'){e.preventDefault();confirmNext();}
   else if(k===' '){auto=!auto;$('auto').classList.toggle('on',auto);e.preventDefault();}});
+function confirmNext(){rec.boxes.forEach(b=>b.source='human');rec.done=true;save();go(1);}
 document.querySelectorAll('button[data-label]').forEach(b=>b.onclick=()=>{curLabel=b.dataset.label;if(sel>=0){rec.boxes[sel].label=curLabel;rec.boxes[sel].source='human';draw();save();}setActive();});
 function setActive(){document.querySelectorAll('button[data-label]').forEach(b=>b.classList.toggle('on',b.dataset.label===curLabel));}
 function copyPrev(){const p=st.records[st.i-1];if(!p)return;rec.boxes=p.boxes.map(b=>({...b,source:'human'}));draw();save();}
 $('prev').onclick=()=>go(-1);$('next').onclick=()=>go(1);$('del').onclick=()=>{if(sel>=0){rec.boxes.splice(sel,1);sel=-1;draw();save();}};
-$('copy').onclick=copyPrev;$('skip').onclick=()=>{rec.done=true;save();go(1);};
+$('copy').onclick=copyPrev;$('skip').onclick=()=>{rec.done=true;save();go(1);};$('confirm').onclick=confirmNext;
 $('auto').onclick=()=>{auto=!auto;$('auto').classList.toggle('on',auto);};
 fetch('/api/state').then(r=>r.json()).then(s=>{st=s;show(s.i);});
 </script></body></html>"""

@@ -35,33 +35,43 @@ DATASET = REPO_ROOT / "labels" / "bar_dataset"
 
 def prepare_dataset(sources: list, out_dir: Path,
                     val_frac: float = 0.2, seed: int = 0) -> Path:
-    """Write a YOLO dataset from one or more ``(data_root, labels_path)``.
+    """Write a YOLO dataset from ``(data_root, labels_path, repeat)`` sources.
 
-    Sources are merged (e.g. real seed labels + synthetic renders) and split
-    into images|labels/{train,val} + data.yaml.
+    Sources are merged (e.g. real seed labels + synthetic renders). ``repeat``
+    upsamples a source so a small real set isn't drowned by synthetic renders;
+    it is applied to the **train** split only (val stays a fair sample).
     """
     items: list[tuple[Path, dict]] = []
-    for root, labels_path in sources:
-        items.extend((root, rec) for rec in load_jsonl(labels_path))
+    repeats: list[int] = []
+    for root, labels_path, repeat in sources:
+        for rec in load_jsonl(labels_path):
+            items.append((root, rec))
+            repeats.append(max(1, repeat))
     if not items:
-        raise SystemExit(f"no labels in {[str(p) for _r, p in sources]}")
+        raise SystemExit(f"no labels in {[str(p) for _r, p, _n in sources]}")
 
-    random.Random(seed).shuffle(items)
+    order = list(range(len(items)))
+    random.Random(seed).shuffle(order)
     n_val = max(1, int(len(items) * val_frac))
-    splits = {"val": items[:n_val], "train": items[n_val:]}
+    val_idx = order[:n_val]
+    # Upsample the train split only (val stays a fair sample of the sources).
+    train_idx = [i for i in order[n_val:] for _ in range(repeats[i])]
 
     for name in ("train", "val"):
         (out_dir / "images" / name).mkdir(parents=True, exist_ok=True)
         (out_dir / "labels" / name).mkdir(parents=True, exist_ok=True)
 
-    for split, recs in splits.items():
-        for root, rec in recs:
+    for split, idxs in (("val", val_idx), ("train", train_idx)):
+        seen: dict[str, int] = {}
+        for i in idxs:
+            root, rec = items[i]
             src = root / rec["image"]
-            stem = src.stem
+            k = seen.get(src.stem, 0)
+            seen[src.stem] = k + 1
+            stem = src.stem if k == 0 else f"{src.stem}_dup{k}"
             shutil.copyfile(src, out_dir / "images" / split / f"{stem}.jpg")
-            rows = to_yolo_rows(rec)
             (out_dir / "labels" / split / f"{stem}.txt").write_text(
-                "\n".join(rows), encoding="utf-8")
+                "\n".join(to_yolo_rows(rec)), encoding="utf-8")
 
     names = "\n".join(f"  {i}: {label}" for i, label in enumerate(LABELS))
     (out_dir / "data.yaml").write_text(
@@ -71,8 +81,7 @@ def prepare_dataset(sources: list, out_dir: Path,
         f"names:\n{names}\n",
         encoding="utf-8",
     )
-    print(f"dataset: {len(splits['train'])} train / {len(splits['val'])} val "
-          f"-> {out_dir}")
+    print(f"dataset: {len(train_idx)} train / {len(val_idx)} val -> {out_dir}")
     return out_dir
 
 
@@ -98,7 +107,7 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         # data.yaml carries the local absolute path; repoint it at the mount.
         _yp = _P("/data/data.yaml")
         _yp.write_text(_re.sub(r"^path:.*$", "path: /data", _yp.read_text(),
-                               flags=_re.M))
+                               flags=_re.MULTILINE))
 
         model = YOLO("yolov8n.pt")
         model.train(data="/data/data.yaml", epochs=epochs, imgsz=imgsz,
@@ -131,6 +140,9 @@ def main() -> int:
                         default=REPO_ROOT / "labels" / "bars_synthetic" / "labels.jsonl",
                         help="synthetic renders (optional)")
     p_prep.add_argument("--out", type=Path, default=DATASET)
+    p_prep.add_argument("--real-repeat", type=int, default=6,
+                        help="upsample the real labels so synthetic doesn't "
+                             "dominate the train split")
     p_train = sub.add_parser("train")
     p_train.add_argument("--epochs", type=int, default=60)
     p_train.add_argument("--gpu", default="T4")
@@ -138,9 +150,9 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "prepare":
-        sources = [(DATA, args.real)]
+        sources = [(DATA, args.real, max(1, args.real_repeat))]
         if args.synthetic.exists():
-            sources.append((args.synthetic.parent, args.synthetic))
+            sources.append((args.synthetic.parent, args.synthetic, 1))
         prepare_dataset(sources, args.out)
     else:
         train_on_modal(args.epochs, args.gpu, args.imgsz)
