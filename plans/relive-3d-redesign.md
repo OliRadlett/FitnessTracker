@@ -157,19 +157,20 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
   6 tests). The scene is lit for the ride's actual start time — golden hour gets
   a warm horizon + key light, night goes dark/cool. `startDate` plumbed from the
   activity into `Replay3D` (Theater + compare).
+- **Shared sky**: `lib/sky.ts` (gradient dome + palette) now used by both the
+  replay and `Route3D`, which also gained ACES tone-mapping + fog.
 - Remaining: optional imagery drape, SW tile caching, weather-driven fog/wind.
 
-### Phase 4 — core done (2026-09-24)
+### Phase 4 — done (2026-09-24)
 - **Highlights**: `lib/highlights.ts` detects climbs, descents, best sustained
   power and fastest km from the path (grade×distance gains, hysteresis runs;
   8 tests).
 - **Auto-tour**: a Tour toggle seeks to the first highlight and drives the camera
   per highlight kind (climb → drone, else chase) with a caption overlay; a
   chapter bar lists highlights for one-tap jumps.
-- **Poster**: a PNG snapshot button (`preserveDrawingBuffer`).
-- Remaining: clip export (MediaRecorder).
+- **Export**: PNG poster + 6-second webm clip (`MediaRecorder`).
 
-### Phase 5 — ghost racing done (2026-09-24)
+### Phase 5 — done (2026-09-24)
 - **Ghost picker**: the Theater lists other rides on the same route
   (`GET /routes/{id}/history`) and fetches the chosen ride's detail (polyline +
   streams) to build a second replay.
@@ -177,7 +178,13 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
   (both start together; shorter rides freeze), with a live **delta** readout in
   the HUD (+m ahead / −m behind). `replayDistanceAt` added to `lib/replay.ts`
   (+2 tests).
-- Remaining: compare modal → ghost mode; Route3D upgrade.
+- **Compare = ghost race**: the compare modal's 3D tab is now one scene with B
+  as the ghost (was two side-by-side canvases).
+- **Route3D**: shared sky + ACES + fog for visual consistency.
+
+### Remaining
+- Phase 1: terrarium DEM terrain (higher-resolution than the Open-Meteo grid).
+- Phase 3: optional imagery drape + SW tile caching.
 
 ## Risks / guardrails
 
