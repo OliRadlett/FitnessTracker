@@ -274,6 +274,11 @@ depth accuracy ≥ 0.9 on ¾ clips.
 - ✅ **Label speed-ups**: `propagate_labels.py` (interpolate between human
   anchors within a clip), `prefill_with_model.py` (model seeds; `--skip-human-clips`
   leaves started clips to propagation), `label_server.py` (resume + Enter-confirm).
+- **Labelling conventions**: `person` = the whole visible body **including arms**
+  (one box) — matches the auto-labels (all landmarks) + COCO; only `plate`/
+  `barbell` feed the bar path, so `person` is optional. Side views: label only
+  the camera-side plate (the far plate is invisible) and no barbell (edge-on).
+  The synthetic renderer now draws arms too so it matches.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.

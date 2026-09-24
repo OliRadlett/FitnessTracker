@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Render synthetic barbell frames with exact labels (T3 dataset).
 
-A tiny pinhole renderer draws a randomised scene — barbell with 1-3 plates per
-side (varied size/colour/thickness), a rack, and an occluding person — from a
-random camera (azimuth/elevation/distance/FOV), and emits **exact** boxes for
-the plates, bar and person. No Blender, no assets; pure numpy + opencv.
+A small pinhole renderer draws a randomised scene — barbell with 1-3 plates per
+side (structured: rim, rings, hub, bolt holes; varied size/colour), a rack, and
+an occluding person (torso + head + legs) — from a random camera
+(azimuth/elevation/distance/FOV **+ roll**) and emits **exact** boxes for the
+plates, bar and person. Adds motion blur (a moving lift is blurry) and a
+lighting gradient so the synthetic domain is closer to real ¾ footage.
+
+No Blender, no assets; pure numpy + opencv.
 
     C:\\Users\\oradl\\.venvs\\fittrack-video\\Scripts\\python.exe scripts/render_synthetic_bars.py --n 300
 
@@ -26,46 +30,50 @@ from bar_labels import box_from_xyxy, make_record, write_jsonl
 
 W, H = 1280, 720
 PLATE_COLOURS = [
-    (20, 20, 20), (40, 40, 45), (30, 30, 160), (160, 40, 40),
-    (40, 140, 40), (200, 180, 40), (200, 200, 200),
+    (22, 22, 24), (40, 40, 46), (150, 40, 40), (38, 90, 165),
+    (40, 130, 60), (190, 170, 40), (205, 205, 205), (90, 90, 95),
 ]
 
 
-def _basis(cam, target):
+def _basis(cam, target, roll):
     f = target - cam
     f = f / np.linalg.norm(f)
     up = np.array([0.0, 1.0, 0.0])
     r = np.cross(f, up)
     r = r / np.linalg.norm(r)
     u = np.cross(r, f)
-    return r, u, f
+    cr, sr = np.cos(roll), np.sin(roll)
+    r2 = cr * r + sr * u
+    u2 = -sr * r + cr * u
+    return r2, u2, f
 
 
 def _project(points, cam, basis, fov):
     r, u, f = basis
     d = np.atleast_2d(points) - cam
-    zc = d @ f
+    zc = np.maximum(d @ f, 1e-6)
     focal = (H / 2) / np.tan(fov / 2)
-    zc = np.maximum(zc, 1e-6)
     px = W / 2 + focal * (d @ r) / zc
     py = H / 2 - focal * (d @ u) / zc
     return np.stack([px, py], axis=1), zc
 
 
-def _bbox_of(pts2d, in_front):
-    pts = pts2d[in_front]
-    if pts.size == 0:
-        return None
-    return (pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max())
-
-
-def _disc_points(center, radius, n=24):
-    """Points on a disc whose normal is the world x-axis (the bar)."""
+def _disc_poly(centre, radius, cam, basis, fov, n=28):
+    """Exact projected outline of a disc whose normal is the world x-axis."""
     ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    yy = center[1] + radius * np.cos(ang)
-    zz = center[2] + radius * np.sin(ang)
-    xx = np.full_like(yy, center[0])
-    return np.stack([xx, yy, zz], axis=1)
+    pts = np.stack([
+        centre + radius * (np.cos(a) * np.array([0.0, 1.0, 0.0])
+                           + np.sin(a) * np.array([0.0, 0.0, 1.0]))
+        for a in ang
+    ])
+    p2d, zc = _project(pts, cam, basis, fov)
+    return p2d, zc
+
+
+def _poly_bbox(p2d, zc):
+    if np.any(zc <= 0.05):
+        return None
+    return (p2d[:, 0].min(), p2d[:, 1].min(), p2d[:, 0].max(), p2d[:, 1].max())
 
 
 def _box_corners(c, half):
@@ -77,111 +85,146 @@ def _box_corners(c, half):
     ])
 
 
+def _motion_kernel(cv2, length, angle):
+    k = np.zeros((length, length), np.float32)
+    c = length // 2
+    dx, dy = int(np.cos(angle) * c), int(np.sin(angle) * c)
+    cv2.line(k, (c - dx, c - dy), (c + dx, c + dy), 1.0, 1)
+    s = float(k.sum())
+    return k / s if s > 0 else k
+
+
 def render_one(rng, idx, out_dir, exercise="Back Squat", view="side"):
     import cv2
 
     # ── Scene geometry (metres) ────────────────────────────────────────────
-    bar_h = rng.uniform(0.9, 1.5)          # bar height (y)
-    bar_y = 0.30                            # bar depth (z)
-    half_len = rng.uniform(0.35, 0.55)
-    n_plates = int(rng.integers(1, 4))      # per side
-    plates = []                             # (x, radius, colour, thickness)
+    bar_h = rng.uniform(0.9, 1.5)
+    bar_y = 0.30
+    half_len = rng.uniform(0.33, 0.55)
+    n_plates = int(rng.integers(1, 4))  # per side
+    plates = []
     x = half_len
     for _ in range(n_plates):
-        r = rng.uniform(0.14, 0.225)
+        r = rng.uniform(0.13, 0.225)
         thick = rng.uniform(0.03, 0.07)
-        col = rng.choice(PLATE_COLOURS)
-        plates.append((x + thick / 2, r, tuple(int(c) for c in col), thick))
+        col = tuple(int(v) for v in rng.choice(PLATE_COLOURS))
+        plates.append((x + thick / 2, r, col, thick))
         x += thick
-    left = [(-p[0], p[1], p[2], p[3]) for p in plates]  # mirror to -x
-    all_plates = plates + left
+    all_plates = plates + [(-p[0], p[1], p[2], p[3]) for p in plates]
 
-    # Person (a torso box + head) behind/around the bar — occluder.
-    person_h = rng.uniform(1.5, 1.9)
-    torso = np.array([0.0, bar_h - 0.05, bar_y - 0.10])
-    torso_half = np.array([0.22, person_h * 0.22, 0.14])
-    head = np.array([0.0, bar_h + 0.42, bar_y - 0.10])
-    head_r = 0.11
-    person = rng.random() < 0.8
-
-    # ── Camera ─────────────────────────────────────────────────────────────
-    az = np.radians(rng.uniform(-85, 85))   # 0 = side-on, ±90 = front/back
-    el = np.radians(rng.uniform(-5, 20))
-    dist = rng.uniform(2.6, 5.0)
+    # ── Camera (+ roll) ────────────────────────────────────────────────────
+    az = np.radians(rng.uniform(-88, 88))
+    el = np.radians(rng.uniform(-8, 22))
+    dist = rng.uniform(1.8, 3.8)
+    # View follows the camera: az~0 is in front of the lifter (plates edge-on),
+    # az~90 is to the side (plates face-on) — matching real clip conventions.
+    a_deg = abs(np.degrees(az))
+    view = "side" if a_deg > 60 else ("three_quarter" if a_deg > 30 else "front")
+    roll = rng.uniform(-0.22, 0.22)
     target = np.array([0.0, bar_h, bar_y])
     cam = target + dist * np.array([
         np.sin(az) * np.cos(el), np.sin(el), np.cos(az) * np.cos(el)
     ])
-    basis = _basis(cam, target)
+    basis = _basis(cam, target, roll)
     fov = np.radians(rng.uniform(35, 65))
 
-    # ── Render ─────────────────────────────────────────────────────────────
-    bright = rng.uniform(120, 215)
+    bright = rng.uniform(115, 210)
     img = np.full((H, W, 3), bright, dtype=np.uint8)
-    # floor
-    fl = bright - rng.uniform(20, 60)
-    cv2.rectangle(img, (0, int(H * 0.78)), (W, H), (int(fl),) * 3, -1)
+    cv2.rectangle(img, (0, int(H * 0.78)), (W, H),
+                  (int(bright - rng.uniform(20, 60)),) * 3, -1)
 
     def pbox(points):
-        pts, zc = _project(points, cam, basis, fov)
-        return _bbox_of(pts, zc > 0.05)
+        p2d, zc = _project(points, cam, basis, fov)
+        return _poly_bbox(p2d, zc)
 
     boxes = []
 
     # Rack uprights
     for sx in (-1, 1):
-        c = np.array([sx * 0.75, bar_h, bar_y - 0.05])
-        bb = pbox(_box_corners(c, np.array([0.05, 0.9, 0.05])))
+        bb = pbox(_box_corners(np.array([sx * 0.75, bar_h, bar_y - 0.05]),
+                               np.array([0.05, 0.9, 0.05])))
         if bb:
             x1, y1, x2, y2 = (int(v) for v in bb)
-            cv2.rectangle(img, (x1, y1), (x2, y2), (70, 70, 75), -1)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (68, 68, 74), -1)
 
-    # Person (drawn before the bar when "behind")
-    def draw_person():
-        bb = pbox(_box_corners(torso, torso_half))
-        if bb:
-            x1, y1, x2, y2 = (int(v) for v in bb)
-            cv2.rectangle(img, (x1, y1), (x2, y2), (60, 90, 140), -1)
-        hb = pbox(_disc_points(head, head_r))
+    # Person: torso + head + two legs (occlude the bar realistically)
+    person = rng.random() < 0.85
+    part_boxes = []
+    torso = np.array([0.0, bar_h - 0.05, bar_y - 0.10])
+    leg_off = rng.uniform(0.10, 0.18)
+    for sx in (-1, 1):
+        leg = np.array([sx * leg_off, bar_h - 0.75, bar_y - 0.05])
+        part_boxes.append(_box_corners(leg, np.array([0.09, 0.45, 0.11])))
+    part_boxes.append(_box_corners(torso, np.array([0.21, 0.33, 0.14])))
+    # Arms (shoulder -> hands): part of the person box (whole-body convention).
+    for sx in (-1, 1):
+        arm = np.array([sx * (leg_off + 0.06), bar_h - 0.22, bar_y + 0.02])
+        part_boxes.append(_box_corners(arm, np.array([0.07, 0.30, 0.08])))
+    if person:
+        for corners in part_boxes:
+            bb = pbox(corners)
+            if bb:
+                x1, y1, x2, y2 = (int(v) for v in bb)
+                cv2.rectangle(img, (x1, y1), (x2, y2), (58, 88, 138), -1)
+        hb = pbox(_box_corners(np.array([0.0, bar_h + 0.42, bar_y - 0.10]),
+                               np.array([0.10, 0.11, 0.10])))
         if hb:
             x1, y1, x2, y2 = (int(v) for v in hb)
             cv2.ellipse(img, ((x1 + x2) // 2, (y1 + y2) // 2),
                         (max(1, (x2 - x1) // 2), max(1, (y2 - y1) // 2)),
                         0, 0, 360, (150, 120, 110), -1)
+        allc = np.vstack(part_boxes)
+        bb = pbox(allc)
+        if bb:
+            boxes.append(box_from_xyxy(*bb, "person", W, H, "auto"))
 
-    if person:
-        draw_person()
-        pb = pbox(_box_corners(torso, torso_half))
-        if pb:
-            boxes.append(box_from_xyxy(*pb, "person", W, H, "auto"))
-
-    # Bar (a thin box along x)
-    bb_bar = pbox(_box_corners(np.array([0.0, bar_h, bar_y]),
-                               np.array([half_len + sum(p[3] for p in plates), 0.02, 0.02])))
+    # Bar (thin box along x)
+    bb_bar = pbox(_box_corners(
+        np.array([0.0, bar_h, bar_y]),
+        np.array([half_len + sum(p[3] for p in plates), 0.02, 0.02])))
     if bb_bar:
         x1, y1, x2, y2 = (int(v) for v in bb_bar)
-        cv2.rectangle(img, (x1, y1), (x2, y2), (190, 195, 200), -1)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (188, 192, 198), -1)
         boxes.append(box_from_xyxy(*bb_bar, "barbell", W, H, "auto"))
 
-    # Plates (discs with normal = x)
-    for (px, pr, col, _thick) in all_plates:
+    # Plates — structured discs (rim + rings + hub + bolt holes)
+    for (px, pr, col, thick) in all_plates:
         centre = np.array([px, bar_h, bar_y])
-        pts = _disc_points(centre, pr)
-        bb = pbox(pts)
+        p2d, zc = _disc_poly(centre, pr, cam, basis, fov)
+        bb = _poly_bbox(p2d, zc)
         if not bb:
             continue
-        x1, y1, x2, y2 = (int(v) for v in bb)
-        cv2.ellipse(img, ((x1 + x2) // 2, (y1 + y2) // 2),
-                    (max(1, (x2 - x1) // 2), max(1, (y2 - y1) // 2)),
-                    0, 0, 360, col, -1)
-        cv2.ellipse(img, ((x1 + x2) // 2, (y1 + y2) // 2),
-                    (max(1, (x2 - x1) // 2), max(1, (y2 - y1) // 2)),
-                    0, 0, 360, (10, 10, 10), 2)
+        poly = np.round(p2d).astype(np.int32)
+        cv2.fillPoly(img, [poly], col)
+        # rim
+        cv2.polylines(img, [poly], True, (12, 12, 12), 3)
+        # inner rings
+        for frac, t in ((0.8, 2), (0.55, 2)):
+            r2d, _ = _disc_poly(centre, pr * frac, cam, basis, fov)
+            cv2.polylines(img, [np.round(r2d).astype(np.int32)], True,
+                          tuple(int(c * 0.35) for c in col), t)
+        # hub
+        hub, _ = _disc_poly(centre, pr * 0.2, cam, basis, fov)
+        cv2.fillPoly(img, [np.round(hub).astype(np.int32)],
+                     tuple(min(255, int(c * 1.5) + 40) for c in col))
+        # bolt holes
+        ring_col = tuple(max(0, int(c * 0.5)) for c in col)
+        for a in np.linspace(0, 2 * np.pi, 6, endpoint=False):
+            hc = centre + pr * 0.55 * (np.cos(a) * np.array([0.0, 1.0, 0.0])
+                                       + np.sin(a) * np.array([0.0, 0.0, 1.0]))
+            hp, hz = _disc_poly(hc, pr * 0.06, cam, basis, fov)
+            if np.all(hz > 0.05):
+                cv2.fillPoly(img, [np.round(hp).astype(np.int32)], ring_col)
         boxes.append(box_from_xyxy(*bb, "plate", W, H, "auto"))
 
-    # Noise
-    noise = rng.normal(0, rng.uniform(2, 9), img.shape)
-    img = np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+    # Lighting gradient (top-lit), motion blur, sensor noise
+    grad = np.linspace(1.06, 0.88, H, dtype=np.float32).reshape(-1, 1, 1)
+    img = np.clip(img.astype(np.float32) * grad, 0, 255)
+    if rng.random() < 0.6:
+        klen = int(rng.integers(3, 11))
+        ang = rng.uniform(0, np.pi)
+        img = cv2.filter2D(img, -1, _motion_kernel(cv2, klen, ang))
+    img = np.clip(img + rng.normal(0, rng.uniform(2, 8), img.shape), 0, 255).astype(np.uint8)
 
     name = f"syn_{idx:05d}.jpg"
     cv2.imwrite(str(out_dir / "frames" / name), img, [cv2.IMWRITE_JPEG_QUALITY, 88])
@@ -200,8 +243,7 @@ def main() -> int:
     rng = np.random.default_rng(args.seed)
     records = []
     for i in range(args.n):
-        view = ["side", "three_quarter", "front"][i % 3]
-        records.append(render_one(rng, i, args.out, "Back Squat", view))
+        records.append(render_one(rng, i, args.out, "Back Squat"))
     write_jsonl(args.out / "labels.jsonl", records)
 
     n_plate = sum(1 for r in records for b in r["boxes"] if b["label"] == "plate")

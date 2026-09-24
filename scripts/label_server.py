@@ -61,6 +61,7 @@ HTML = r"""<!doctype html>
 </header>
 <div id="wrap"><canvas id="c"></canvas></div>
 <p class="muted" style="padding:0 12px">Drag on empty space to add a <b>plate</b> box &middot; drag a box to move &middot; corner to resize &middot; <kbd>P</kbd>/<kbd>B</kbd>/<kbd>E</kbd> set label &middot; <kbd>Del</kbd> remove &middot; <kbd>N</kbd>/<kbd>&rarr;</kbd> next</p>
+<p class="muted" style="padding:0 12px">Convention: <b>person</b> = whole visible body incl. arms (one box). Only <b>plate</b>/<b>barbell</b> feed the bar path &mdash; person is optional.</p>
 <script>
 const COLORS={plate:'#facc15',barbell:'#22c55e',person:'#38bdf8'};
 const c=document.getElementById('c'),ctx=c.getContext('2d'),img=new Image();
