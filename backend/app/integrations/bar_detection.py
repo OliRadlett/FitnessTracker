@@ -150,12 +150,124 @@ def _interpolate_gaps(track: list) -> list:
     return track
 
 
+# ── Learned detector (ONNX) ──────────────────────────────────────────────────
+# Class order must match scripts/bar_labels.LABELS.
+ONNX_LABELS = ("barbell", "plate", "person")
+_ONNX_SESSION = None
+
+
+def _load_onnx(model_path: str):
+    global _ONNX_SESSION
+    if _ONNX_SESSION is None:
+        import onnxruntime as ort
+
+        _ONNX_SESSION = ort.InferenceSession(
+            model_path, providers=["CPUExecutionProvider"]
+        )
+    return _ONNX_SESSION
+
+
+def detect_bars_onnx(image_bgr, model_path: str, input_size: int = 640,
+                     conf: float = 0.35) -> list:
+    """Run the trained YOLO detector (exported with ``nms=True``).
+
+    Returns ``[{"label","x","y","w","h","confidence"}]`` in normalised coords.
+    """
+    import cv2
+    import numpy as np
+
+    session = _load_onnx(model_path)
+    h0, w0 = image_bgr.shape[:2]
+    scale = min(input_size / w0, input_size / h0)
+    nw, nh = int(round(w0 * scale)), int(round(h0 * scale))
+    canvas = np.full((input_size, input_size, 3), 114, np.uint8)
+    pad_x, pad_y = (input_size - nw) // 2, (input_size - nh) // 2
+    canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = cv2.resize(image_bgr, (nw, nh))
+
+    blob = canvas[:, :, ::-1].astype(np.float32) / 255.0  # BGR -> RGB
+    blob = np.transpose(blob, (2, 0, 1))[None]
+    out = session.run(None, {session.get_inputs()[0].name: blob})[0]
+    dets = out[0] if out.ndim == 3 else out
+
+    boxes = []
+    for det in dets:
+        if len(det) < 6:
+            continue
+        x1, y1, x2, y2, score, cls = (float(v) for v in det[:6])
+        if score < conf:
+            continue
+        ci = int(cls)
+        if not (0 <= ci < len(ONNX_LABELS)):
+            continue
+        x1 = (x1 - pad_x) / scale
+        x2 = (x2 - pad_x) / scale
+        y1 = (y1 - pad_y) / scale
+        y2 = (y2 - pad_y) / scale
+        boxes.append({
+            "label": ONNX_LABELS[ci],
+            "x": round(((x1 + x2) / 2) / w0, 4),
+            "y": round(((y1 + y2) / 2) / h0, 4),
+            "w": round(abs(x2 - x1) / w0, 4),
+            "h": round(abs(y2 - y1) / h0, 4),
+            "confidence": round(score, 3),
+        })
+    return boxes
+
+
+def bar_track_from_frames_onnx(frame_paths: list, model_path: str,
+                               conf: float = 0.35) -> list:
+    """Bar track from the learned detector: per frame, the highest-confidence
+    plate/barbell box centre, or ``None``."""
+    import cv2
+
+    track: list = []
+    for path in frame_paths:
+        img = cv2.imread(str(path))
+        if img is None:
+            track.append(None)
+            continue
+        dets = detect_bars_onnx(img, model_path, conf=conf)
+        candidates = [d for d in dets if d["label"] in ("plate", "barbell")]
+        if candidates:
+            best = max(candidates, key=lambda d: d["confidence"])
+            track.append({"x": best["x"], "y": best["y"],
+                          "confidence": best["confidence"], "source": "detector"})
+        else:
+            track.append(None)
+    return track
+
+
+def _fill_gaps_onnx(track: list) -> list:
+    """Linearly interpolate the ONNX track across frames with no detection."""
+    hit_idx = [i for i, t in enumerate(track) if t and t.get("source") == "detector"]
+    if len(hit_idx) < 2:
+        return track
+    xs = np.array([track[i]["x"] for i in hit_idx], dtype=float)
+    ys = np.array([track[i]["y"] for i in hit_idx], dtype=float)
+    conf = float(np.mean([track[i]["confidence"] for i in hit_idx]))
+    all_i = np.arange(len(track))
+    ix = np.interp(all_i, hit_idx, xs)
+    iy = np.interp(all_i, hit_idx, ys)
+    for i in range(len(track)):
+        if track[i] is not None and track[i].get("source") == "detector":
+            continue
+        track[i] = {
+            "x": round(float(ix[i]), 4),
+            "y": round(float(iy[i]), 4),
+            "confidence": round(conf * 0.8, 3),
+            "source": "detector",
+            "interpolated": True,
+        }
+    return track
+
+
 def bar_track_from_frame_paths(
     frame_paths: list,
     landmarks: list,
     exercise: str = "",
     proxy_point=None,
     min_detection_rate: float = 0.6,
+    model_path: str | None = None,
 ) -> list:
     """Detect the plate (bar) per frame, seeded by the previous detection.
 
@@ -166,9 +278,20 @@ def bar_track_from_frame_paths(
     interpolated; otherwise the whole track falls back to the pose proxy so the
     two sources are never mixed (which would inject jumps).
 
+    When ``model_path`` is given the **learned ONNX detector** is used first;
+    if it fires on too few frames (<20%) the classical detector runs instead.
+
     Returns a list aligned to ``frame_paths`` of
     ``{"x","y","confidence","source"}`` or ``None``.
     """
+    if model_path:
+        onnx_track = bar_track_from_frames_onnx(frame_paths, model_path)
+        rate = sum(1 for t in onnx_track if t) / max(1, len(onnx_track))
+        logger.info("ONNX bar detection: %.0f%% of frames", rate * 100)
+        if rate >= 0.2:
+            return _fill_gaps_onnx(onnx_track)
+        logger.info("ONNX detection sparse — falling back to classical detector")
+
     import cv2
 
     from app.integrations.bar_tracking import _proxy_point

@@ -54,6 +54,11 @@ class Route(Base):
     )
     terrain_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     predicted_effort: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Wahoo push state — id of the route uploaded to the user's Wahoo library
+    wahoo_route_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wahoo_route_pushed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bar labeler — T3</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b1220; color: #e2e8f0; font: 13px/1.4 system-ui, sans-serif; }
+  header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; background: #111a2e; position: sticky; top: 0; }
+  button, select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button:hover { background: #273449; }
+  button.primary { background: #0369a1; border-color: #0ea5e9; }
+  #wrap { padding: 12px; display: flex; justify-content: center; }
+  canvas { max-width: 100%; height: auto; border: 1px solid #334155; border-radius: 8px; cursor: crosshair; touch-action: none; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .muted { color: #94a3b8; }
+  kbd { background: #1e293b; border: 1px solid #334155; border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<header>
+  <button id="prev">◀ Prev</button>
+  <span id="counter" class="muted"></span>
+  <button id="next">Next ▶</button>
+  <span style="width:12px"></span>
+  <button id="addPlate">+ Plate (drag on image)</button>
+  <button data-label="plate">Plate</button>
+  <button data-label="barbell">Barbell</button>
+  <button data-label="person">Person</button>
+  <button id="del">Delete</button>
+  <span style="width:12px"></span>
+  <button id="save" class="primary">Save corrected ▾</button>
+  <span class="legend muted">
+    <span><i class="dot" style="background:#facc15"></i>plate</span>
+    <span><i class="dot" style="background:#22c55e"></i>barbell</span>
+    <span><i class="dot" style="background:#38bdf8"></i>person</span>
+    <span>· drag a box to move · corner to resize · <kbd>←</kbd>/<kbd>→</kbd> nav · <kbd>Del</kbd></span>
+  </span>
+</header>
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<script>
+const COLORS = { plate: '#facc15', barbell: '#22c55e', person: '#38bdf8' };
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const img = new Image();
+let records = [], i = 0, sel = -1;
+let drag = null; // {mode:'move'|'resize'|'new', box, ox, oy}
+
+function toPx(b) {
+  const w = canvas.width, h = canvas.height;
+  return { x1: (b.x - b.w / 2) * w, y1: (b.y - b.h / 2) * h,
+           x2: (b.x + b.w / 2) * w, y2: (b.y + b.h / 2) * h };
+}
+function normRect(x1, y1, x2, y2) {
+  const w = canvas.width, h = canvas.height;
+  const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
+  const rx2 = Math.max(x1, x2), ry2 = Math.max(y1, y2);
+  return { x: (rx1 + rx2) / 2 / w, y: (ry1 + ry2) / 2 / h,
+           w: (rx2 - rx1) / w, h: (ry2 - ry1) / h };
+}
+function mousePos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (canvas.width / r.width),
+           y: (e.clientY - r.top) * (canvas.height / r.height) };
+}
+function hitBox(p) {
+  const boxes = records[i].boxes;
+  for (let k = boxes.length - 1; k >= 0; k--) {
+    const r = toPx(boxes[k]);
+    if (p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2) return k;
+  }
+  return -1;
+}
+function nearHandle(p) {
+  if (sel < 0) return false;
+  const r = toPx(records[i].boxes[sel]);
+  return Math.abs(p.x - r.x2) < 14 && Math.abs(p.y - r.y2) < 14;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (img.complete) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  records[i].boxes.forEach((b, k) => {
+    const r = toPx(b);
+    ctx.lineWidth = k === sel ? 4 : 2;
+    ctx.strokeStyle = COLORS[b.label] || '#fff';
+    ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+    ctx.fillStyle = COLORS[b.label] || '#fff';
+    ctx.fillText(b.label, r.x1 + 4, r.y1 + 13);
+    if (k === sel) { ctx.fillRect(r.x2 - 5, r.y2 - 5, 10, 10); }
+  });
+}
+function updateBar() {
+  document.getElementById('counter').textContent = `${i + 1} / ${records.length} — ${records[i].image}`;
+}
+function show(n) {
+  i = Math.max(0, Math.min(records.length - 1, n));
+  sel = -1;
+  img.onload = () => {
+    const maxW = 1280;
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.style.width = Math.min(maxW, img.naturalWidth) + 'px';
+    draw();
+  };
+  img.src = '../' + records[i].image;
+  updateBar();
+}
+function markHuman(k) { records[i].boxes[k].source = 'human'; }
+
+canvas.addEventListener('pointerdown', (e) => {
+  const p = mousePos(e);
+  if (nearHandle(p)) { drag = { mode: 'resize' }; return; }
+  const k = hitBox(p);
+  if (k >= 0) {
+    sel = k;
+    const r = toPx(records[i].boxes[k]);
+    drag = { mode: 'move', ox: p.x - (r.x1 + r.x2) / 2, oy: p.y - (r.y1 + r.y2) / 2 };
+  } else {
+    // new plate box
+    const b = { label: 'plate', source: 'human', x: 0, y: 0, w: 0, h: 0 };
+    records[i].boxes.push(b);
+    sel = records[i].boxes.length - 1;
+    drag = { mode: 'new', anchor: p };
+  }
+  draw();
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const p = mousePos(e);
+  const b = records[i].boxes[sel];
+  if (drag.mode === 'move') {
+    const cx = p.x - drag.ox, cy = p.y - drag.oy;
+    Object.assign(b, normRect(cx - (b.w * canvas.width) / 2, cy - (b.h * canvas.height) / 2,
+      cx + (b.w * canvas.width) / 2, cy + (b.h * canvas.height) / 2));
+    markHuman(sel);
+  } else if (drag.mode === 'resize') {
+    const r = toPx(b);
+    Object.assign(b, normRect(r.x1, r.y1, p.x, p.y));
+    markHuman(sel);
+  } else if (drag.mode === 'new') {
+    Object.assign(b, normRect(drag.anchor.x, drag.anchor.y, p.x, p.y));
+  }
+  draw();
+});
+window.addEventListener('pointerup', () => {
+  if (drag && sel >= 0) {
+    const b = records[i].boxes[sel];
+    if (b.w < 0.01 || b.h < 0.01) records[i].boxes.splice(sel, 1); // discard tiny
+    else markHuman(sel);
+  }
+  drag = null;
+  draw();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') show(i + 1);
+  else if (e.key === 'ArrowLeft') show(i - 1);
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) {
+    records[i].boxes.splice(sel, 1); sel = -1; e.preventDefault(); draw();
+  }
+});
+document.querySelectorAll('button[data-label]').forEach((btn) => {
+  btn.onclick = () => { if (sel >= 0) { records[i].boxes[sel].label = btn.dataset.label; markHuman(sel); draw(); } };
+});
+document.getElementById('prev').onclick = () => show(i - 1);
+document.getElementById('next').onclick = () => show(i + 1);
+document.getElementById('del').onclick = () => { if (sel >= 0) { records[i].boxes.splice(sel, 1); sel = -1; draw(); } };
+document.getElementById('addPlate').onclick = () => alert('Drag on the image to draw a plate box.');
+document.getElementById('save').onclick = () => {
+  const body = records.map((r) => JSON.stringify(r)).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], { type: 'application/x-ndjson' }));
+  a.download = 'labels.corrected.jsonl';
+  a.click();
+};
+
+(async () => {
+  const res = await fetch('../labels.jsonl');
+  records = (await res.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  if (records.length) show(0);
+})();
+</script>
+</body>
+</html>

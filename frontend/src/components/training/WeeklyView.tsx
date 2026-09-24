@@ -32,6 +32,7 @@ import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
+import { WahooPushModal } from './WahooPushModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -201,6 +202,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const [currentWeek, setCurrentWeek] = useState(() => getCurrentRealWeek(plan));
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
+  const [showWahooPush, setShowWahooPush] = useState(false);
 
   const realCurrentWeek = getCurrentRealWeek(plan);
   const todayStr = toDateStr(new Date());
@@ -693,9 +695,18 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
               quickEdit.mutate({ dayId: expandedDay.id, payload })
             }
             onOpenRoutePicker={() => setShowRoutePicker(true)}
+            onOpenWahooPush={() => setShowWahooPush(true)}
           />
         </div>
       )}
+
+      {/* Wahoo push modal — opened from the expanded panel */}
+      <WahooPushModal
+        open={showWahooPush}
+        onClose={() => setShowWahooPush(false)}
+        planId={plan.id}
+        day={expandedDay}
+      />
 
       {/* Route picker modal — opened from the expanded panel */}
       <RoutePickerModal
@@ -966,6 +977,7 @@ function ExpandedPanel({
   onUnassignRoute,
   onQuickEdit,
   onOpenRoutePicker,
+  onOpenWahooPush,
 }: {
   day: TrainingWeekDay;
   planId: string;
@@ -973,6 +985,7 @@ function ExpandedPanel({
   onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
   onOpenRoutePicker: () => void;
+  onOpenWahooPush: () => void;
 }) {
   const [duration, setDuration] = useState(day.planned_duration_min?.toString() ?? '');
   const [tss, setTss] = useState(day.planned_tss?.toString() ?? '');
@@ -1088,6 +1101,37 @@ function ExpandedPanel({
               className="text-[10px] text-accent hover:text-accent/80"
             >
               🗺️ Pick a route...
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Wahoo push (cycle days only) */}
+      {day.sport === 'cycle' && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
+            Wahoo
+          </p>
+          {day.wahoo_pushed_at ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
+                Pushed {new Date(day.wahoo_pushed_at).toLocaleDateString()}
+                {day.wahoo_push_workout ? ' · workout' : ''}
+                {day.wahoo_route_id ? ' · route' : ''}
+              </span>
+              <button
+                onClick={onOpenWahooPush}
+                className="text-[10px] text-accent hover:text-accent/80 shrink-0"
+              >
+                Manage
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onOpenWahooPush}
+              className="text-[10px] text-accent hover:text-accent/80"
+            >
+              📤 Push to Wahoo
             </button>
           )}
         </div>

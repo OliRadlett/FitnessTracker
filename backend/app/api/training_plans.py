@@ -27,9 +27,12 @@ from app.schemas.training_plan import (
     TrainingPlanUpdate,
     TrainingWeekResponse,
     UnplannedActualsResponse,
+    WahooPushRequest,
+    WahooPushResponse,
 )
 from app.services import conformity as conformity_service
 from app.services import training_plan as plan_service
+from app.services import wahoo_push as wahoo_push_service
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -177,6 +180,59 @@ async def update_plan_day(
         code = 404 if "not found" in detail else 400
         raise HTTPException(status_code=code, detail=detail) from e
     return TrainingPlanDayRead.model_validate(day)
+
+
+# ── Wahoo push (planned cycle + route) ──────────────────────────────────
+
+
+@router.post(
+    "/{plan_id}/days/{day_id}/push-to-wahoo",
+    response_model=WahooPushResponse,
+)
+async def push_plan_day_to_wahoo(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    data: WahooPushRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Push a cycle day to Wahoo as a scheduled workout and/or route.
+
+    Fails 409 when the user has no Wahoo connection and 403 when the connection
+    lacks the required write scopes (the user must reconnect Wahoo).
+    """
+    try:
+        result = await wahoo_push_service.push_plan_day(
+            db,
+            current_user.id,
+            plan_id,
+            day_id,
+            push_workout=data.push_workout,
+            push_route=data.push_route,
+        )
+    except wahoo_push_service.WahooPushError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+    return WahooPushResponse.model_validate(result)
+
+
+@router.delete(
+    "/{plan_id}/days/{day_id}/push-to-wahoo",
+    response_model=WahooPushResponse,
+)
+async def remove_plan_day_from_wahoo(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a day's scheduled Wahoo workout/plan (route stays in the library)."""
+    try:
+        await wahoo_push_service.remove_plan_day_from_wahoo(
+            db, current_user.id, plan_id, day_id
+        )
+    except wahoo_push_service.WahooPushError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+    return WahooPushResponse()
 
 
 # ── FL1: refresh cycle targets ──────────────────────────────────────────
