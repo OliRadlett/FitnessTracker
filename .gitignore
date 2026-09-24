@@ -51,6 +51,8 @@ infra/caddy-root.crt
 
 # Bike 3D model sources (932MB+ of source OBJs + 4K textures stay local;
 # pipeline scripts, web_tex/ and the built frontend/public/models/*.glb commit normally)
+# Full-res source GLB used as input to scripts/optimize-bike.mjs (stays local).
+bike_model/*.glb
 bike_model/model_*.obj
 bike_model/frame_*.obj
 bike_model/*_decal.obj

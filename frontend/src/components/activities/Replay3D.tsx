@@ -10,8 +10,8 @@ import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/repl
 import { TOUR_PRESETS, powerZoneBounds, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
-
-const RIDER_COLOR = new THREE.Color('#ffffff');
+import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
+import { buildRoadRibbon } from '@/lib/road';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -50,6 +50,83 @@ function nearestIndex(points: ReplayPoint[], elapsed: number): number {
     else hi = mid - 1;
   }
   return lo;
+}
+
+/** asphalt ribbon texture: dark surface, dashed centre line, faint edge lines */
+function createRoadTexture(): THREE.Texture {
+  const s = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#1b2330';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 500; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
+      ctx.fillRect(Math.random() * s, Math.random() * s, 1, 1);
+    }
+    ctx.strokeStyle = 'rgba(226,232,240,0.8)';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([18, 18]);
+    ctx.beginPath();
+    ctx.moveTo(s / 2, 0);
+    ctx.lineTo(s / 2, s);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.lineTo(4, s);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s - 4, 0);
+    ctx.lineTo(s - 4, s);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** vertical-gradient sky dome that always surrounds the camera (styled dark) */
+function createSkyDome(radius: number, top: THREE.Color, bottom: THREE.Color): THREE.Mesh {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, `#${top.getHexString()}`);
+    grad.addColorStop(0.55, `#${bottom.getHexString()}`);
+    grad.addColorStop(1, '#060a14');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 2, 256);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const geo = new THREE.SphereGeometry(radius, 32, 16);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = -1;
+  return mesh;
+}
+
+/** Signed lean (radians) from the corner curvature around point `i`. */
+function leanAt(points: ReplayPoint[], i: number): number {
+  const a = points[Math.max(0, i - 3)];
+  const mid = points[i];
+  const b = points[Math.min(points.length - 1, i + 3)];
+  const h1 = Math.atan2(mid.y - a.y, mid.x - a.x);
+  const h2 = Math.atan2(b.y - mid.y, b.x - mid.x);
+  let d = h2 - h1;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  const dt = Math.max(0.5, b.elapsed - a.elapsed);
+  return leanFromCurvature(mid.speed, d / dt);
 }
 
 interface StripRow {
@@ -245,6 +322,8 @@ export function Replay3D({
   onElapsed,
   link,
   ftpWatts,
+  canvasHeightClass = 'h-[300px]',
+  theater = false,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -256,6 +335,10 @@ export function Replay3D({
   link?: ReplayLink | null;
   /** rider FTP for Coggan zone bands behind the power row */
   ftpWatts?: number | null;
+  /** Tailwind height class for the canvas container (Theater passes a taller one) */
+  canvasHeightClass?: string;
+  /** full-screen Theater host — trim the in-card chrome */
+  theater?: boolean;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
@@ -265,7 +348,7 @@ export function Replay3D({
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 60));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'cockpit'>('orbit');
+  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'cockpit'>('chase');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
 
@@ -275,7 +358,8 @@ export function Replay3D({
     camera: THREE.PerspectiveCamera;
     scene: THREE.Scene;
     grid: THREE.GridHelper;
-    rider: THREE.Mesh;
+    rider: THREE.Object3D;
+    bike: BikeRig | null;
     trail: Line2;
     pathGeo: LineGeometry | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
@@ -349,11 +433,16 @@ export function Replay3D({
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
 
     const scene = new THREE.Scene();
-    // Lights for the opt-in DEM terrain bed (basic materials ignore them).
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    // Styled dark world: hemisphere ambient + warm key light, fog, gradient sky.
+    const SKY_TOP = new THREE.Color('#0a1428');
+    const SKY_HORIZON = new THREE.Color('#1b2b46');
+    const FOG_COLOR = new THREE.Color('#101a2e');
+    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, 0.9));
+    const dirLight = new THREE.DirectionalLight(0xfff2df, 1.4);
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
 
@@ -366,6 +455,11 @@ export function Replay3D({
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 100);
+
+    // Gradient sky dome (follows the camera) + distance fog tuned to the ride.
+    const sky = createSkyDome(size * 4, SKY_TOP, SKY_HORIZON);
+    scene.add(sky);
+    scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.4, size * 3.2);
 
     const camera = new THREE.PerspectiveCamera(
       55,
@@ -392,7 +486,7 @@ export function Replay3D({
     controls.dampingFactor = 0.08;
     controls.target.set(cx, cy, minZ + (maxZ - minZ) * 0.5);
     // Keep zoom inside the scene: close enough for detail, never lost in the void.
-    controls.minDistance = size * 0.05;
+    controls.minDistance = 3;
     controls.maxDistance = size * 6;
     controls.rotateSpeed = 0.55;
     // Zoom toward the pointer so exploring a long route doesn't lose it.
@@ -445,14 +539,42 @@ export function Replay3D({
     const trail = new Line2(trailGeo, trailMat);
     scene.add(trail);
 
-    // ── Rider marker: slim dart oriented along the heading ───────────────
-    // (reads as direction from any angle, unlike a stubby cone)
-    const riderGeo = new THREE.ConeGeometry(Math.max(size * 0.008, 1.5), Math.max(size * 0.04, 7), 12);
-    const rider = new THREE.Mesh(riderGeo, new THREE.MeshBasicMaterial({ color: RIDER_COLOR }));
+    // ── Road ribbon: flat asphalt under the bike ──────────────────────────
+    const roadData = buildRoadRibbon(points, { width: 6, zOffset: -0.01 });
+    let roadGeo: THREE.BufferGeometry | null = null;
+    let roadMat: THREE.MeshBasicMaterial | null = null;
+    let roadTex: THREE.Texture | null = null;
+    if (roadData) {
+      roadGeo = new THREE.BufferGeometry();
+      roadGeo.setAttribute('position', new THREE.BufferAttribute(roadData.positions, 3));
+      roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadData.uvs, 2));
+      roadGeo.setIndex(new THREE.BufferAttribute(roadData.indices, 1));
+      roadTex = createRoadTexture();
+      roadMat = new THREE.MeshBasicMaterial({ map: roadTex, side: THREE.DoubleSide });
+      scene.add(new THREE.Mesh(roadGeo, roadMat));
+    }
+
+    // ── Bike rig: real-scale model, oriented + leaning (Phase 0) ──────────
+    const rider = new THREE.Group();
     scene.add(rider);
     const riderDir = new THREE.Vector3(1, 0, 0);
     const UP_Y = new THREE.Vector3(0, 1, 0);
     const UP_Z = new THREE.Vector3(0, 0, 1);
+    let bikeRig: BikeRig | null = null;
+    let bikeCancelled = false;
+    createBikeRig()
+      .then((rig) => {
+        if (bikeCancelled) {
+          rig.dispose();
+          return;
+        }
+        rider.add(rig.object);
+        bikeRig = rig;
+        if (sceneRef.current) sceneRef.current.bike = rig;
+      })
+      .catch(() => {
+        /* model failed to load — the path line still tells the story */
+      });
 
     // ── Km markers: dot + distance label at regular intervals ──────────────
     // Out-and-back courses revisit the same ground — skip markers that land
@@ -521,6 +643,7 @@ export function Replay3D({
 
     let raf = 0;
     let last = performance.now();
+    let prevElapsed = 0;
     const tmpDir = new THREE.Vector3();
     const tmpDesired = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
@@ -539,15 +662,30 @@ export function Replay3D({
           setPlaying(false);
         }
       }
-      const i = nearestIndex(points, elapsedRef.current);
-      const p = points[i];
-      rider.position.set(p.x, p.y, p.z);
-      // Heading from a look-ahead sample (stable at standstill).
-      const j = Math.min(points.length - 1, i + 8);
-      const q = points[j];
-      tmpDir.set(q.x - p.x, q.y - p.y, q.z - p.z);
+      const t = elapsedRef.current;
+      const rideDelta = Math.max(0, Math.min(0.25, t - prevElapsed));
+      prevElapsed = t;
+      const i = nearestIndex(points, t);
+      const p0 = points[i];
+      const p1 = points[Math.min(points.length - 1, i + 1)];
+      // Interpolate the bike between samples so motion is smooth at any
+      // decimation (points are distance-stepped, not time-stepped).
+      const spanE = p1.elapsed - p0.elapsed || 1;
+      const f = p1 === p0 ? 0 : Math.max(0, Math.min(1, (t - p0.elapsed) / spanE));
+      rider.position.set(
+        p0.x + (p1.x - p0.x) * f,
+        p0.y + (p1.y - p0.y) * f,
+        p0.z + (p1.z - p0.z) * f
+      );
+      // Forward from a look-ahead window (smooth, stable at standstill).
+      const a = points[Math.max(0, i - 4)];
+      const b = points[Math.min(points.length - 1, i + 6)];
+      tmpDir.set(b.x - a.x, b.y - a.y, b.z - a.z);
       if (tmpDir.lengthSq() > 1e-9) riderDir.copy(tmpDir.normalize());
-      rider.quaternion.setFromUnitVectors(UP_Y, riderDir);
+      if (bikeRig) {
+        bikeRig.setPose(riderDir, leanAt(points, i), dt);
+        bikeRig.update(p0.speed, rideDelta);
+      }
       // Segments drawn = point index (points 0..i need i segments).
       trailGeo.instanceCount = Math.max(0, Math.min(i, points.length - 1));
 
@@ -563,26 +701,28 @@ export function Replay3D({
         camera.up.copy(UP_Z);
         rider.visible = mode !== 'cockpit';
         if (mode === 'chase') {
-          const dist = size * 0.3;
-          const height = size * 0.15;
+          // Real-scale chase: ~9 m behind, ~3 m up, eyes on the road ahead.
+          const dist = 9;
+          const height = 3.2;
           const hLen = Math.hypot(riderDir.x, riderDir.y) || 1;
           tmpDesired.set(
-            p.x - (riderDir.x / hLen) * dist,
-            p.y - (riderDir.y / hLen) * dist,
-            p.z + height
+            rider.position.x - (riderDir.x / hLen) * dist,
+            rider.position.y - (riderDir.y / hLen) * dist,
+            rider.position.z + height
           );
           tmpLook.set(
-            p.x + riderDir.x * size * 0.05,
-            p.y + riderDir.y * size * 0.05,
-            p.z + riderDir.z * size * 0.05
+            rider.position.x + riderDir.x * 18,
+            rider.position.y + riderDir.y * 18,
+            rider.position.z + riderDir.z * 18 + 1.2
           );
         } else {
-          // cockpit: eyes on the path ahead.
-          tmpDesired.set(p.x, p.y, p.z + size * 0.008);
+          // cockpit: eyes just above the bars, looking far down the road.
+          const eyeH = 1.5;
+          tmpDesired.set(rider.position.x, rider.position.y, rider.position.z + eyeH);
           tmpLook.set(
-            p.x + riderDir.x * size * 0.5,
-            p.y + riderDir.y * size * 0.5,
-            p.z + riderDir.z * size * 0.5
+            rider.position.x + riderDir.x * 45,
+            rider.position.y + riderDir.y * 45,
+            rider.position.z + riderDir.z * 45 + eyeH * 0.6
           );
         }
         if (!followPosRef.current) followPosRef.current = tmpDesired.clone();
@@ -591,6 +731,7 @@ export function Replay3D({
         camera.position.copy(followPosRef.current);
         camera.lookAt(tmpLook);
       }
+      sky.position.copy(camera.position);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
@@ -611,21 +752,24 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, trail, pathGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, pathGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
     const cleanup = () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      bikeCancelled = true;
+      bikeRig?.dispose();
       renderer.domElement.removeEventListener('dblclick', onDblClick);
       controls.dispose();
       pathGeo.dispose();
       pathMat.dispose();
       trailGeo.dispose();
       trailMat.dispose();
-      riderGeo.dispose();
-      (rider.material as THREE.Material).dispose();
+      roadGeo?.dispose();
+      roadMat?.dispose();
+      roadTex?.dispose();
       markerGroup.children.forEach((child) => {
         if (child instanceof THREE.Sprite) child.material.map?.dispose();
         markerGroup.remove(child);
@@ -638,6 +782,9 @@ export function Replay3D({
         (terrainMesh.material as THREE.Material).dispose();
       }
       dirLight.dispose?.();
+      sky.geometry.dispose();
+      (sky.material as THREE.MeshBasicMaterial).map?.dispose();
+      (sky.material as THREE.Material).dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
       sceneRef.current = null;
@@ -868,12 +1015,14 @@ export function Replay3D({
   }
 
   return (
-    <div className="rounded border border-surface-light bg-surface/40 p-3">
+    <div className={`${theater ? '' : 'rounded border border-surface-light bg-surface/40 p-3'}`}>
+      {!theater && (
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted uppercase tracking-wide">
         <span className="font-medium text-foreground">3D Flythrough</span>
         <span>{name}</span>
         <span className="ml-auto">{km} km · {timeFmt(totalTime)}</span>
       </div>
+      )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
@@ -929,7 +1078,7 @@ export function Replay3D({
         </div>
       </div>
 
-      <div className="relative h-[300px] w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent">
+      <div className={`relative ${canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
           drag to orbit · pinch to zoom · double-click to focus
