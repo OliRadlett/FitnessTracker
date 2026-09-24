@@ -276,6 +276,8 @@ _ALIASES: dict[str, str] = {
     "concentration curl": "Concentration Curl",
     "cable curl": "Cable Curl",
     "tricep pushdown": "Tricep Pushdown",
+    "triceps pushdown": "Tricep Pushdown",
+    "triceps pushdowns": "Tricep Pushdown",
     "tricep extension": "Tricep Extension",
     "skull crusher": "Skull Crusher",
     "skull crushers": "Skull Crusher",
@@ -294,6 +296,8 @@ _ALIASES: dict[str, str] = {
     "farmer walk": "Farmer Walk",
     "farmer carry": "Farmer Walk",
     "farmer's walk": "Farmer Walk",
+    "chest supported ro": "Chest Supported Row",
+    "chest supported row": "Chest Supported Row",
     "sled push": "Sled Push",
     "sled pull": "Sled Pull",
     "battle ropes": "Battle Ropes",
@@ -398,3 +402,85 @@ def search_exercises(query: str, limit: int = 10) -> list[dict[str, str]]:
 def get_all_exercises() -> list[dict[str, str]]:
     """Return all exercises in default display order."""
     return search_exercises("", limit=999)
+
+
+# ── Weight convention (per-arm vs total) ─────────────────────────────────────
+# Standard: bilateral free-weight / dual-handle cable moves are logged PER
+# implement (one dumbbell / one handle). A "22.5 kg dumbbell curl" means
+# 22.5 kg in each hand — never the 45 kg combined total.
+#
+# Historical data mixed the two conventions (same exercise logged at both
+# ~22 kg and ~45 kg). Migration 072 halved the combined clusters for the
+# unambiguous exercises below and merged duplicate names.
+
+PER_ARM_EXERCISES: frozenset[str] = frozenset(
+    {
+        # Dumbbell compounds (one DB per hand)
+        "Dumbbell Bench Press",
+        "Dumbbell Row",
+        "Dumbbell Shoulder Press",
+        "Incline Dumbbell Press",
+        # Dumbbell isolation (one DB per hand)
+        "Dumbbell Curl",
+        "Hammer Curl",
+        "Concentration Curl",
+        "Dumbbell Fly",
+        "Lateral Raise",
+        "Front Raise",
+        "Cable Lateral Raise",
+        "Rear Delt Fly",
+        "Rear Delt Row",
+        "Arnold Press",
+        # Dual-handle cable (one stack/handle per side)
+        "Cable Fly",
+        # Loaded carries / lunges (one DB per hand)
+        "Farmer Walk",
+        "Bulgarian Split Squat",
+        "Walking Lunge",
+        "Step Up",
+        "Lateral Lunge",
+    }
+)
+"""Canonical exercise names whose ``weight_kg`` means per-hand implement weight."""
+
+
+def weight_convention(exercise_name: str) -> str:
+    """Return ``"per_arm"`` or ``"total"`` for an exercise name.
+
+    ``"per_arm"``: log the weight of ONE dumbbell/handle (bilateral moves).
+    ``"total"`` (default): log the single loaded weight — barbell, machine
+    stack, kettlebell, or ambiguous generic names (e.g. "Bicep Curl" may be
+    barbell or dumbbells, so it stays ``"total"`` rather than guessing).
+    """
+    return (
+        "per_arm"
+        if normalise_exercise_name(exercise_name) in PER_ARM_EXERCISES
+        else "total"
+    )
+
+
+def is_per_arm_exercise(exercise_name: str) -> bool:
+    """True when an exercise is logged per-hand implement (see above)."""
+    return weight_convention(exercise_name) == "per_arm"
+
+
+def looks_like_combined_weight(
+    exercise_name: str,
+    weight_kg: float,
+    reference_per_arm_kg: float,
+    tolerance: float = 0.15,
+) -> bool:
+    """True when ``weight_kg`` looks like a combined (both-hands) total.
+
+    Compares against a known per-arm reference (e.g. the user's median for
+    the exercise): a combined total lands at ~2× the per-arm weight.
+    Only applies to per-arm exercises; always False for ``"total"`` ones.
+    """
+    if not is_per_arm_exercise(exercise_name):
+        return False
+    if reference_per_arm_kg <= 0 or weight_kg <= 0:
+        return False
+    return (
+        abs(weight_kg - 2 * reference_per_arm_kg)
+        <= tolerance * 2 * reference_per_arm_kg
+    )

@@ -54,7 +54,17 @@ async def search_exercises(
         return (cat_order.get(ex.category, 3), starts, name_lower)
 
     rows.sort(key=sort_key)
-    return [{"id": str(ex.id), "name": ex.name, "category": ex.category} for ex in rows[:limit]]
+    from app.services.exercise_db import weight_convention
+
+    return [
+        {
+            "id": str(ex.id),
+            "name": ex.name,
+            "category": ex.category,
+            "weight_convention": weight_convention(ex.name),
+        }
+        for ex in rows[:limit]
+    ]
 
 
 async def get_all_exercises(

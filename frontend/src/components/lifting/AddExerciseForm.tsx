@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftingSet, AddSetPayload, WarmupTemplate } from '@/lib/api';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { PerArmHint } from '@/components/lifting/PerArmHint';
 
 interface SetRow {
   weight_kg: number;
@@ -129,6 +130,11 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
           required
           autoFocus
         />
+        {exerciseName.trim() && (
+          <div className="mt-1.5">
+            <PerArmHint exerciseName={exerciseName} />
+          </div>
+        )}
       </div>
 
       {/* Warmup Template Picker */}
