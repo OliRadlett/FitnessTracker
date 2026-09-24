@@ -7,7 +7,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
-import { TOUR_PRESETS, powerZoneBounds, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
+import { TOUR_PRESETS, powerZoneBounds, replayDistanceAt, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
@@ -329,6 +329,7 @@ export function Replay3D({
   theater = false,
   lite,
   startDate = null,
+  ghost = null,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -348,6 +349,8 @@ export function Replay3D({
   lite?: boolean;
   /** ride start time (ISO) — lights the scene for the actual time of day */
   startDate?: string | null;
+  /** ghost ride for a race overlay (Phase 5) — time-aligned with the rider */
+  ghost?: { build: ReplayBuildResult; name?: string } | null;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
@@ -607,6 +610,28 @@ export function Replay3D({
         /* model failed to load — the path line still tells the story */
       });
 
+    // ── Ghost bike (Phase 5): translucent, time-aligned with the rider ────
+    const ghostPoints = ghost?.build.points ?? null;
+    const ghostRider = new THREE.Group();
+    ghostRider.visible = false;
+    scene.add(ghostRider);
+    const ghostDir = new THREE.Vector3(1, 0, 0);
+    let ghostRig: BikeRig | null = null;
+    if (ghostPoints) {
+      createBikeRig({ ghost: true })
+        .then((rig) => {
+          if (bikeCancelled) {
+            rig.dispose();
+            return;
+          }
+          ghostRider.add(rig.object);
+          ghostRig = rig;
+        })
+        .catch(() => {
+          /* ghost model optional */
+        });
+    }
+
     // ── Km markers: dot + distance label at regular intervals ──────────────
     // Out-and-back courses revisit the same ground — skip markers that land
     // on top of an earlier one and stagger label heights so pairs separate.
@@ -675,9 +700,21 @@ export function Replay3D({
     let raf = 0;
     let last = performance.now();
     let prevElapsed = 0;
-    const tmpDir = new THREE.Vector3();
     const tmpDesired = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
+    const poseAt = (pts: ReplayPoint[], time: number, pos: THREE.Vector3, dir: THREE.Vector3) => {
+      const i = nearestIndex(pts, time);
+      const p0 = pts[i];
+      const p1 = pts[Math.min(pts.length - 1, i + 1)];
+      const spanE = p1.elapsed - p0.elapsed || 1;
+      const f = p1 === p0 ? 0 : Math.max(0, Math.min(1, (time - p0.elapsed) / spanE));
+      pos.set(p0.x + (p1.x - p0.x) * f, p0.y + (p1.y - p0.y) * f, p0.z + (p1.z - p0.z) * f);
+      const a = pts[Math.max(0, i - 4)];
+      const b = pts[Math.min(pts.length - 1, i + 6)];
+      dir.set(b.x - a.x, b.y - a.y, b.z - a.z);
+      if (dir.lengthSq() > 1e-9) dir.normalize();
+      return { index: i, speed: p0.speed };
+    };
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -696,29 +733,23 @@ export function Replay3D({
       const t = elapsedRef.current;
       const rideDelta = Math.max(0, Math.min(0.25, t - prevElapsed));
       prevElapsed = t;
-      const i = nearestIndex(points, t);
-      const p0 = points[i];
-      const p1 = points[Math.min(points.length - 1, i + 1)];
-      // Interpolate the bike between samples so motion is smooth at any
-      // decimation (points are distance-stepped, not time-stepped).
-      const spanE = p1.elapsed - p0.elapsed || 1;
-      const f = p1 === p0 ? 0 : Math.max(0, Math.min(1, (t - p0.elapsed) / spanE));
-      rider.position.set(
-        p0.x + (p1.x - p0.x) * f,
-        p0.y + (p1.y - p0.y) * f,
-        p0.z + (p1.z - p0.z) * f
-      );
-      // Forward from a look-ahead window (smooth, stable at standstill).
-      const a = points[Math.max(0, i - 4)];
-      const b = points[Math.min(points.length - 1, i + 6)];
-      tmpDir.set(b.x - a.x, b.y - a.y, b.z - a.z);
-      if (tmpDir.lengthSq() > 1e-9) riderDir.copy(tmpDir.normalize());
+      const riderPose = poseAt(points, t, rider.position, riderDir);
       if (bikeRig) {
-        bikeRig.setPose(riderDir, leanAt(points, i), dt);
-        bikeRig.update(p0.speed, rideDelta);
+        bikeRig.setPose(riderDir, leanAt(points, riderPose.index), dt);
+        bikeRig.update(riderPose.speed, rideDelta);
       }
       // Segments drawn = point index (points 0..i need i segments).
-      trailGeo.instanceCount = Math.max(0, Math.min(i, points.length - 1));
+      trailGeo.instanceCount = Math.max(0, Math.min(riderPose.index, points.length - 1));
+
+      if (ghostPoints) {
+        const gt = Math.min(t, ghostPoints[ghostPoints.length - 1].elapsed);
+        const gp = poseAt(ghostPoints, gt, ghostRider.position, ghostDir);
+        ghostRider.visible = camModeRef.current !== 'cockpit';
+        if (ghostRig) {
+          ghostRig.setPose(ghostDir, leanAt(ghostPoints, gp.index), dt);
+          ghostRig.update(gp.speed, rideDelta);
+        }
+      }
 
       const mode = camModeRef.current;
       if (mode === 'orbit') {
@@ -807,6 +838,7 @@ export function Replay3D({
       ro.disconnect();
       bikeCancelled = true;
       bikeRig?.dispose();
+      ghostRig?.dispose();
       renderer.domElement.removeEventListener('dblclick', onDblClick);
       controls.dispose();
       pathGeo.dispose();
@@ -836,7 +868,7 @@ export function Replay3D({
       sceneRef.current = null;
     };
     return cleanup;
-  }, [points, totalTime, build.totalDistance, liteMode, startDate]);
+  }, [points, totalTime, build.totalDistance, liteMode, startDate, ghost]);
 
   // Recolour the path line + road ribbon without rebuilding the scene.
   useEffect(() => {
@@ -1087,6 +1119,12 @@ export function Replay3D({
     };
   }, [points, displayElapsed]);
 
+  // Ghost delta: metres ahead (+) or behind (−) at the current time.
+  const ghostDelta = useMemo(
+    () => (ghost ? replayDistanceAt(points, displayElapsed) - replayDistanceAt(ghost.build.points, displayElapsed) : null),
+    [ghost, points, displayElapsed]
+  );
+
   // Active highlight at the playhead (tour caption + camera director).
   const activeHighlight = useMemo(
     () => (tour ? highlightAt(highlights, displayElapsed) : null),
@@ -1215,6 +1253,15 @@ export function Replay3D({
             {hud.cadence != null && <span className="text-violet-400"> · {Math.round(hud.cadence)} rpm</span>}
             {hud.grade != null && (
               <span className="text-emerald-400"> · {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}%</span>
+            )}
+            {ghostDelta != null && (
+              <span className={ghostDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                {' · '}
+                {ghostDelta >= 0 ? '+' : '−'}
+                {Math.abs(ghostDelta) >= 1000
+                  ? `${(Math.abs(ghostDelta) / 1000).toFixed(2)} km`
+                  : `${Math.round(Math.abs(ghostDelta))} m`}
+              </span>
             )}
           </div>
         )}

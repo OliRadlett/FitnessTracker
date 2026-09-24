@@ -8,6 +8,7 @@ import {
   replayMetricMax,
   replayMetricScale,
   replayMetricValue,
+  replayDistanceAt,
   timeFmt,
   tourRate,
 } from '@/lib/replay';
@@ -262,5 +263,32 @@ describe('timeFmt', () => {
   });
   it('clamps negatives to zero', () => {
     expect(timeFmt(-5)).toBe('0:00');
+  });
+});
+
+describe('replayDistanceAt', () => {
+  const pts = [0, 10, 20, 30].map((d, i) => ({
+    elapsed: i * 10,
+    distance: d,
+    x: 0,
+    y: 0,
+    z: 0,
+    speed: 1,
+    power: null,
+    hr: null,
+    cadence: null,
+    grade: 0,
+  }));
+
+  it('interpolates between samples', () => {
+    expect(replayDistanceAt(pts, 15)).toBeCloseTo(15, 6);
+    expect(replayDistanceAt(pts, 0)).toBe(0);
+    expect(replayDistanceAt(pts, 30)).toBe(30);
+  });
+
+  it('clamps outside the ride', () => {
+    expect(replayDistanceAt(pts, -5)).toBe(0);
+    expect(replayDistanceAt(pts, 999)).toBe(30);
+    expect(replayDistanceAt([], 5)).toBe(0);
   });
 });
