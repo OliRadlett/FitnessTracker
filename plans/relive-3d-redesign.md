@@ -182,9 +182,23 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
   as the ghost (was two side-by-side canvases).
 - **Route3D**: shared sky + ACES + fog for visual consistency.
 
+### Phase 1 — terrain done (2026-09-24)
+- **High-res DEM**: `lib/terrainTiles.ts` fetches keyless **terrarium** tiles
+  (AWS Open Data; SRTM + UK LiDAR, ~30 m) and samples them into a dense
+  (≤256×256) grid — the terrain now reads as real relief instead of the ~1 km
+  Open-Meteo grid. Falls back to Open-Meteo on failure. Pure tile/decode math
+  unit-tested (7 tests).
+
+### Phase 3 — imagery done (2026-09-24)
+- **Satellite drape**: `lib/imageryTiles.ts` stitches keyless **Esri World
+  Imagery** tiles into one canvas, UV-mapped onto the DEM mesh (toggle shown
+  when terrain is on). Attribution shown in the footer.
+- **SW caching**: `public/sw.js` caches terrarium + Esri tiles (stale-while-
+  revalidate, `CACHE_NAME` bumped to v6).
+- Sun/time-of-day lighting + shared sky (`lib/sun.ts`, `lib/sky.ts`) as above.
+
 ### Remaining
-- Phase 1: terrarium DEM terrain (higher-resolution than the Open-Meteo grid).
-- Phase 3: optional imagery drape + SW tile caching.
+- Optional: push terrain/imagery into `Route3D` too; weather-driven fog/wind.
 
 ## Risks / guardrails
 
