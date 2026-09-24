@@ -68,7 +68,7 @@ def test_prepare_dataset_writes_yolo_layout(tmp_path):
         make_record("frames/a.jpg", 100, 100,
                     [make_box(0.5, 0.5, 0.2, 0.2, "plate", "human")]),
     ])
-    out = prepare_dataset(labels, tmp_path, tmp_path / "ds", val_frac=0.5)
+    out = prepare_dataset([(tmp_path, labels)], tmp_path / "ds", val_frac=0.5)
     assert (out / "data.yaml").exists()
     txt = list((out / "labels").rglob("*.txt"))
     assert len(txt) == 1

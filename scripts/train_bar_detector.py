@@ -33,24 +33,30 @@ DATA = REPO_ROOT / "labels" / "bars"
 DATASET = REPO_ROOT / "labels" / "bar_dataset"
 
 
-def prepare_dataset(labels_path: Path, data_root: Path, out_dir: Path,
+def prepare_dataset(sources: list, out_dir: Path,
                     val_frac: float = 0.2, seed: int = 0) -> Path:
-    """Write a YOLO dataset (images/{train,val}, labels/{train,val}, data.yaml)."""
-    records = load_jsonl(labels_path)
-    if not records:
-        raise SystemExit(f"no labels in {labels_path}")
+    """Write a YOLO dataset from one or more ``(data_root, labels_path)``.
 
-    random.Random(seed).shuffle(records)
-    n_val = max(1, int(len(records) * val_frac))
-    splits = {"val": records[:n_val], "train": records[n_val:]}
+    Sources are merged (e.g. real seed labels + synthetic renders) and split
+    into images|labels/{train,val} + data.yaml.
+    """
+    items: list[tuple[Path, dict]] = []
+    for root, labels_path in sources:
+        items.extend((root, rec) for rec in load_jsonl(labels_path))
+    if not items:
+        raise SystemExit(f"no labels in {[str(p) for _r, p in sources]}")
+
+    random.Random(seed).shuffle(items)
+    n_val = max(1, int(len(items) * val_frac))
+    splits = {"val": items[:n_val], "train": items[n_val:]}
 
     for name in ("train", "val"):
         (out_dir / "images" / name).mkdir(parents=True, exist_ok=True)
         (out_dir / "labels" / name).mkdir(parents=True, exist_ok=True)
 
     for split, recs in splits.items():
-        for rec in recs:
-            src = data_root / rec["image"]
+        for root, rec in recs:
+            src = root / rec["image"]
             stem = src.stem
             shutil.copyfile(src, out_dir / "images" / split / f"{stem}.jpg")
             rows = to_yolo_rows(rec)
@@ -111,7 +117,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p_prep = sub.add_parser("prepare")
-    p_prep.add_argument("--labels", type=Path, default=DATA / "labels.jsonl")
+    p_prep.add_argument("--real", type=Path, default=DATA / "labels.jsonl",
+                        help="human-corrected real labels")
+    p_prep.add_argument("--synthetic", type=Path,
+                        default=REPO_ROOT / "labels" / "bars_synthetic" / "labels.jsonl",
+                        help="synthetic renders (optional)")
     p_prep.add_argument("--out", type=Path, default=DATASET)
     p_train = sub.add_parser("train")
     p_train.add_argument("--epochs", type=int, default=60)
@@ -120,7 +130,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "prepare":
-        prepare_dataset(args.labels, DATA, args.out)
+        sources = [(DATA, args.real)]
+        if args.synthetic.exists():
+            sources.append((args.synthetic.parent, args.synthetic))
+        prepare_dataset(sources, args.out)
     else:
         train_on_modal(args.epochs, args.gpu, args.imgsz)
     return 0
