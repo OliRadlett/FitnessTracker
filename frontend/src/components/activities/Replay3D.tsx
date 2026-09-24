@@ -14,6 +14,7 @@ import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
 import { detectHighlights, highlightAt } from '@/lib/highlights';
 import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
+import { createSkyDome } from '@/lib/sky';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -95,28 +96,7 @@ function createRoadTexture(): THREE.Texture {
   return tex;
 }
 
-/** vertical-gradient sky dome that always surrounds the camera (styled dark) */
-function createSkyDome(radius: number, top: THREE.Color, bottom: THREE.Color): THREE.Mesh {
-  const canvas = document.createElement('canvas');
-  canvas.width = 2;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, `#${top.getHexString()}`);
-    grad.addColorStop(0.55, `#${bottom.getHexString()}`);
-    grad.addColorStop(1, '#060a14');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 2, 256);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const geo = new THREE.SphereGeometry(radius, 32, 16);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = -1;
-  return mesh;
-}
+
 
 /** Signed lean (radians) from the corner curvature around point `i`. */
 function leanAt(points: ReplayPoint[], i: number): number {
@@ -1102,6 +1082,35 @@ export function Replay3D({
     }, 'image/png');
   };
 
+  const takeClip = () => {
+    const s = sceneRef.current;
+    if (!s || typeof MediaRecorder === 'undefined' || !s.renderer.domElement.captureStream) return;
+    const stream = s.renderer.domElement.captureStream(30);
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    } catch {
+      rec = new MediaRecorder(stream);
+    }
+    const chunks: BlobPart[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name.replace(/[^\w-]+/g, '_').slice(0, 40) || 'ride'}-3d.webm`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    rec.start();
+    window.setTimeout(() => {
+      if (rec.state !== 'inactive') rec.stop();
+    }, 6000);
+  };
+
   const km = (build.totalDistance / 1000).toFixed(1);
   const maxKmh = build.maxSpeed * 3.6;
 
@@ -1231,6 +1240,13 @@ export function Replay3D({
           className="rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
         >
           Poster
+        </button>
+        <button
+          onClick={takeClip}
+          title="Record a 6-second webm clip of the current view"
+          className="rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
+        >
+          Clip
         </button>
       </div>
 

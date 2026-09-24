@@ -268,7 +268,7 @@ export function CompareActivitiesModal({
                 onClick={() => setView('3d')}
                 className={`px-3 py-1 rounded ${view === '3d' ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-surface-light/40'}`}
               >
-                3D Side-by-Side
+                3D Ghost Race
               </button>
             </div>
           )}
@@ -329,24 +329,25 @@ export function CompareActivitiesModal({
                     </>
                   )}
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted mb-1">
-                      {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
-                    </p>
-                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} link={linked ? linkFor : null} startDate={activityA.start_date} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted mb-1">
-                      {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
-                    </p>
-                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} link={linked ? linkFor : null} startDate={activityB.start_date} />
-                  </div>
+                <div>
+                  <p className="text-xs text-muted mb-1">
+                    {activityA.name.slice(0, 24)} <span className="text-blue-400">(you)</span> vs{' '}
+                    {activityB.name.slice(0, 24)} <span className="text-sky-300">(ghost)</span>
+                  </p>
+                  <Replay3D
+                    name={activityA.name}
+                    build={replayA!}
+                    polyline={activityA.encoded_polyline ?? undefined}
+                    link={linked ? linkFor : null}
+                    startDate={activityA.start_date}
+                    ghost={{ build: replayB!, name: activityB.name }}
+                    canvasHeightClass="h-[440px]"
+                  />
                 </div>
                 <p className="text-[11px] text-muted">
                   {linked
-                    ? 'Linked playback: both rides share one clock in real time — the shorter ride finishes first.'
-                    : 'Two independent fly-throughs — toggle Linked for one shared clock.'}
+                    ? 'Ghost race: both rides share one clock in real time — the rider is blue, the ghost is translucent blue.'
+                    : 'Ghost race: B rides as a ghost. Toggle Linked for one shared clock.'}
                 </p>
               </div>
             ) : (

@@ -10,6 +10,7 @@ import { decodePolyline } from '@/lib/polyline';
 import type { BuildRoute3DResult, ColorMode, RoutePathPoint, TerrainInput } from '@/lib/route3d';
 import { DESCENT_COLOR, ELEVATION_RAMP, GRADE_RAMP, GRADE_SCALE, buildRoute3D, computeGrid, pointColor, steepestKm } from '@/lib/route3d';
 import type { Segment } from '@/lib/api/types';
+import { FOG_COLOR, SKY_HORIZON, SKY_TOP, createSkyDome } from '@/lib/sky';
 
 const START_COLOR = new THREE.Color('#22c55e');
 const END_COLOR = new THREE.Color('#ef4444');
@@ -158,6 +159,8 @@ export function Route3D({
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -179,10 +182,13 @@ export function Route3D({
     const cz = (minZ + maxZ) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 60);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, 0.9));
+    const dirLight = new THREE.DirectionalLight(0xfff2df, 1.4);
     dirLight.position.set(size * 0.6, -size * 0.5, size);
     scene.add(dirLight);
+    const sky = createSkyDome(size * 4, SKY_TOP, SKY_HORIZON);
+    scene.add(sky);
+    scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.6, size * 4);
 
     // ── Terrain bed from the DEM grid (same frame as the path) ───────────
     const geos: THREE.BufferGeometry[] = [];
@@ -383,6 +389,7 @@ export function Route3D({
     let raf = 0;
     const tick = () => {
       controls.update();
+      sky.position.copy(camera.position);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
@@ -416,6 +423,9 @@ export function Route3D({
         geos.forEach((g) => g.dispose());
         mats.forEach((m) => m.dispose());
         labelDisposables.forEach((d) => d.dispose());
+        sky.geometry.dispose();
+        (sky.material as THREE.MeshBasicMaterial).map?.dispose();
+        (sky.material as THREE.Material).dispose();
         renderer.dispose();
         mount.removeChild(renderer.domElement);
         sceneRef.current = null;
