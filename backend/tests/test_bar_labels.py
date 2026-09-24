@@ -75,6 +75,20 @@ def test_prepare_dataset_writes_yolo_layout(tmp_path):
     assert txt[0].read_text().startswith("1 ")  # plate = class 1
 
 
+def test_build_worklist_subsamples_per_clip():
+    from label_server import build_worklist
+
+    recs = (
+        [{"image": f"frames/a_{i:04d}.jpg"} for i in range(20)]
+        + [{"image": f"frames/b_{i:04d}.jpg"} for i in range(20)]
+    )
+    work = build_worklist(recs, per_clip=5)
+    assert len(work) == 10  # 5 per clip
+    assert work == sorted(work)
+    assert all(recs[i]["image"].startswith("frames/a_") or
+               recs[i]["image"].startswith("frames/b_") for i in work)
+
+
 def test_to_yolo_rows_uses_label_indices():
     rec = make_record("x.jpg", 100, 100, [
         make_box(0.5, 0.5, 0.2, 0.2, "barbell"),
