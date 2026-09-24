@@ -74,6 +74,14 @@ function loadState(): LiveSessionState | null {
     if (!state || typeof state.startedAt !== 'string') return null;
     // States persisted before idempotency keys existed get one retroactively
     if (!state.liveKey) state.liveKey = newClientId();
+    // Legacy `finishing` states predate the durable `finish_requested` flag.
+    // Neither the retry effect nor flush()'s finish step would ever run for
+    // them, so the user was wedged on the finishing overlay forever with no
+    // way to start a new session. Backfill the intent so it can complete.
+    if (state.phase === 'finishing' && !state.finish_requested) {
+      state.finish_requested = true;
+      if (!state.endedAt) state.endedAt = new Date().toISOString();
+    }
     return state;
   } catch {
     return null;
@@ -324,20 +332,37 @@ export function useLiveSession(authFetch: AuthFetch) {
 
       // Step 4: finish flow — gated on the durable finish_requested flag so a
       // flush that started before requestFinish (snapshot had phase='active')
-      // still applies ended_at/rpe/notes from the persisted intent.
-      if (working.finish_requested) {
+      // still applies ended_at/rpe/notes from the persisted intent. Also runs
+      // for any `finishing` state so a legacy snapshot (pre-flag) completes.
+      if (working.finish_requested || working.phase === 'finishing') {
+        // A `finishing` state with no remote session has nothing to persist —
+        // clear it locally rather than PATCHing /sessions/null forever.
+        if (!working.sessionId) {
+          setState(null);
+          saveState(null);
+          setSyncError(false);
+          syncingRef.current = false;
+          return { finished: true };
+        }
         const endedAt = working.endedAt ?? new Date().toISOString();
         const durationSeconds = Math.max(
           0,
           Math.round((new Date(endedAt).getTime() - new Date(working.startedAt).getTime()) / 1000)
         );
-        await updateLiftingSession(authFetchRef.current, working.sessionId!, {
-          session_date: localDateStr(working.startedAt),
-          ended_at: endedAt,
-          duration_seconds: durationSeconds,
-          rpe_session: working.rpe_session,
-          notes: working.notes,
-        });
+        try {
+          await updateLiftingSession(authFetchRef.current, working.sessionId, {
+            session_date: localDateStr(working.startedAt),
+            ended_at: endedAt,
+            duration_seconds: durationSeconds,
+            rpe_session: working.rpe_session,
+            notes: working.notes,
+          });
+        } catch (err) {
+          // The remote session was deleted/auto-closed while this finish was
+          // queued. It's already gone — treat the finish as done instead of
+          // retrying a 404 forever (which wedged START behind the overlay).
+          if ((err as { status?: number } | null)?.status !== 404) throw err;
+        }
         setState(null);
         saveState(null);
         setSyncError(false);
@@ -417,7 +442,13 @@ export function useLiveSession(authFetch: AuthFetch) {
   const startSession = useCallback(
     (opts: { programName?: string; focus?: string; planTargets?: PlanTarget[] }) => {
       const existing = loadState();
-      if (existing && existing.phase !== 'finishing') return; // never clobber an active session
+      if (existing && existing.phase !== 'finishing') {
+        // Another tab (or a stale mount) already owns an active session. Adopt
+        // it into React state instead of silently ignoring the tap — a no-op
+        // here makes START look dead ("not starting a session").
+        setState(existing);
+        return;
+      }
       const fresh: LiveSessionState = {
         phase: 'active',
         sessionId: null,
@@ -626,8 +657,9 @@ export function useLiveSession(authFetch: AuthFetch) {
   // failed mid-flight never leaves the user stuck on the overlay. Note this
   // runs even when `sessionId` is still null — a create that failed (e.g. dead
   // backend token) must be retried too, not abandoned.
+  const finishing = state?.phase === 'finishing' || !!state?.finish_requested;
   useEffect(() => {
-    if (!state?.finish_requested) return;
+    if (!finishing) return;
     if (syncingRef.current) return;
 
     const timer = setTimeout(() => {
@@ -635,7 +667,7 @@ export function useLiveSession(authFetch: AuthFetch) {
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [state?.finish_requested, state?.sessionId, state?.endedAt, flush]);
+  }, [finishing, state?.sessionId, state?.endedAt, flush]);
 
   // Derived helpers
   const setsForExercise = useCallback(
