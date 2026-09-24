@@ -15,6 +15,7 @@ import { buildRoadRibbon } from '@/lib/road';
 import { detectHighlights, highlightAt } from '@/lib/highlights';
 import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
+import type { RouteGrid } from '@/lib/route3d';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -349,6 +350,9 @@ export function Replay3D({
   const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit'>('chase');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
+  const [terrainAttribution, setTerrainAttribution] = useState<string>('');
+  const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
+  const [imageryAttribution, setImageryAttribution] = useState<string>('');
   const [tour, setTour] = useState(false);
 
   const sceneRef = useRef<{
@@ -908,8 +912,12 @@ export function Replay3D({
   useEffect(() => {
     terrainStateRef.current = terrainState;
   }, [terrainState]);
+  const imageryStateRef = useRef(imageryState);
+  useEffect(() => {
+    imageryStateRef.current = imageryState;
+  }, [imageryState]);
 
-  // ── Opt-in DEM terrain bed: fetched only when the user asks ────────────
+  // ── Opt-in DEM terrain bed: high-res terrarium, Open-Meteo fallback ─────
   useEffect(() => {
     if (terrainState !== 'loading') return;
     if (!polyline) {
@@ -920,34 +928,51 @@ export function Replay3D({
     const controller = new AbortController();
     (async () => {
       try {
-        const [{ fetchTerrainResult }, { computeGrid, buildTerrainMesh }] = await Promise.all([
-          import('@/lib/terrain'),
-          import('@/lib/route3d'),
-        ]);
         const coords = decodePolyline(polyline);
-        const gridSpec = computeGrid(coords);
-        if (!gridSpec) throw new Error('no-grid');
-        const result = await fetchTerrainResult(gridSpec, controller.signal);
+        let gridSpec: RouteGrid;
+        let heights: number[];
+        let attribution: string;
+        try {
+          const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
+          const res = await fetchTerrariumTerrain(coords, { signal: controller.signal });
+          gridSpec = res.grid;
+          heights = res.heights;
+          attribution = TERRARIUM_ATTRIBUTION;
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') throw e;
+          const [{ fetchTerrainResult }, { computeGrid }] = await Promise.all([
+            import('@/lib/terrain'),
+            import('@/lib/route3d'),
+          ]);
+          const g = computeGrid(coords);
+          if (!g) throw new Error('no-grid');
+          const res = await fetchTerrainResult(g, controller.signal);
+          gridSpec = res.grid;
+          heights = res.heights;
+          attribution = 'Terrain © Open-Meteo — Copernicus DEM (GLO-90)';
+        }
         if (cancelled) return;
+        const { buildTerrainMesh } = await import('@/lib/route3d');
         const s = sceneRef.current;
         if (!s) return;
         // Flat rides (no altitude stream) sit at z=0 — base the bed on the
         // DEM minimum so the path rests on the terrain instead of under it.
         const hasAlt = points.some((p) => p.z !== 0);
-        const finite = result.heights.filter(Number.isFinite);
+        const finite = heights.filter(Number.isFinite);
         const demMin = finite.length ? Math.min(...finite) : 0;
-        const meshData = buildTerrainMesh(result.grid, result.heights, {
+        const meshData = buildTerrainMesh(gridSpec, heights, {
           lat0: build.lat0,
           lng0: build.lng0,
           altMin: hasAlt ? build.altMin : demMin,
           zScale: build.zScale,
         });
-        const geo = new THREE.PlaneGeometry(1, 1, result.grid.cols - 1, result.grid.rows - 1);
+        const geo = new THREE.PlaneGeometry(1, 1, gridSpec.cols - 1, gridSpec.rows - 1);
         geo.setAttribute('position', new THREE.BufferAttribute(meshData.positions, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(meshData.colors, 3));
         geo.computeVertexNormals();
         const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
         const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData.grid = gridSpec;
         // The scene may have rebuilt while fetching — attach to the live one.
         const live = sceneRef.current;
         if (!live || cancelled) {
@@ -963,7 +988,10 @@ export function Replay3D({
         live.scene.add(mesh);
         live.grid.visible = false;
         live.terrain = mesh;
+        setTerrainAttribution(attribution);
         setTerrainState('on');
+        // Re-drape imagery if it was already on.
+        if (imageryStateRef.current === 'on') setImageryState('loading');
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         setTerrainState('failed');
@@ -974,6 +1002,57 @@ export function Replay3D({
       controller.abort();
     };
   }, [terrainState, polyline, points, build]);
+
+  // ── Optional satellite imagery drape over the terrain (Phase 3) ────────
+  useEffect(() => {
+    if (imageryState !== 'loading') return;
+    let cancelled = false;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const mesh = sceneRef.current?.terrain;
+        const grid = mesh?.userData.grid as RouteGrid | undefined;
+        if (!mesh || !grid) {
+          setImageryState('failed');
+          return;
+        }
+        const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
+        const drape = await fetchImageryDrape(grid, { signal: controller.signal });
+        if (cancelled) return;
+        const uv = new Float32Array(grid.rows * grid.cols * 2);
+        for (let r = 0; r < grid.rows; r++) {
+          for (let c = 0; c < grid.cols; c++) {
+            const [u, v] = imageryUv(drape, grid.lats[r], grid.lngs[c]);
+            const i = (r * grid.cols + c) * 2;
+            uv[i] = u;
+            uv[i + 1] = v;
+          }
+        }
+        const tex = new THREE.CanvasTexture(drape.canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        const live = sceneRef.current?.terrain;
+        if (!live || cancelled) {
+          tex.dispose();
+          return;
+        }
+        const mat = live.material as THREE.MeshLambertMaterial;
+        mat.vertexColors = false;
+        mat.map = tex;
+        mat.needsUpdate = true;
+        live.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+        setImageryAttribution(IMAGERY_ATTRIBUTION);
+        setImageryState('on');
+      } catch (err) {
+        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
+        setImageryState('failed');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [imageryState]);
 
   const toggleTerrain = () => {
     if (terrainState === 'on') {
@@ -986,8 +1065,26 @@ export function Replay3D({
       }
       if (s) s.grid.visible = true;
       setTerrainState('off');
+      setImageryState('off');
+      setImageryAttribution('');
     } else if (terrainState === 'off' || terrainState === 'failed') {
       setTerrainState('loading');
+    }
+  };
+
+  const toggleImagery = () => {
+    if (imageryState === 'on') {
+      const mat = sceneRef.current?.terrain?.material as THREE.MeshLambertMaterial | undefined;
+      if (mat) {
+        mat.map?.dispose();
+        mat.map = null;
+        mat.vertexColors = true;
+        mat.needsUpdate = true;
+      }
+      setImageryState('off');
+      setImageryAttribution('');
+    } else if (imageryState === 'off' || imageryState === 'failed') {
+      setImageryState('loading');
     }
   };
 
@@ -1216,6 +1313,24 @@ export function Replay3D({
                   : 'Terrain'}
           </button>
         )}
+        {terrainState === 'on' && (
+          <button
+            onClick={toggleImagery}
+            disabled={imageryState === 'loading'}
+            title="Drape satellite imagery over the terrain (extra download)"
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
+              imageryState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
+            }`}
+          >
+            {imageryState === 'on'
+              ? 'Satellite on'
+              : imageryState === 'loading'
+                ? 'Loading imagery…'
+                : imageryState === 'failed'
+                  ? 'Retry imagery'
+                  : 'Satellite'}
+          </button>
+        )}
         <div className="flex items-center rounded border border-surface-light" role="group" aria-label="View presets">
           {(
             [
@@ -1358,7 +1473,10 @@ export function Replay3D({
         ftpWatts={ftpWatts}
       />
       {terrainState === 'on' && (
-        <p className="mt-1 text-[10px] text-muted">Terrain © Open-Meteo — Copernicus DEM (GLO-90)</p>
+        <p className="mt-1 text-[10px] text-muted">
+          {terrainAttribution}
+          {imageryState === 'on' && imageryAttribution ? ` · ${imageryAttribution}` : ''}
+        </p>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">

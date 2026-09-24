@@ -1,7 +1,7 @@
 // FitTrack Service Worker — runtime caching (no build-time precache)
-const CACHE_NAME = 'fittrack-v5';
+const CACHE_NAME = 'fittrack-v6';
 const OFFLINE_URL = '/fittrack';
-const TILE_CACHE_MAX = 200; // OSM tiles are ~10-30KB opaque responses
+const TILE_CACHE_MAX = 320; // map tiles + DEM/imagery tiles are ~10-60KB opaque responses
 const DEM_CACHE_MAX = 50; // Open-Meteo elevation JSON is tiny
 
 // ── §3.8 Web Push ─────────────────────────────────────────────────────────
@@ -114,7 +114,10 @@ self.addEventListener('fetch', (event) => {
   // Map tiles + elevation DEM: stale-while-revalidate with a size cap so
   // maps and 3D terrain degrade gracefully offline instead of blank.
   // (Opaque cross-origin responses can't be size-checked — count entries.)
-  const isTile = /\.tile\.openstreetmap\.org$/.test(url.hostname);
+  const isTile =
+    /\.tile\.openstreetmap\.org$/.test(url.hostname) ||
+    url.hostname === 'server.arcgisonline.com' ||
+    (url.hostname === 's3.amazonaws.com' && url.pathname.startsWith('/elevation-tiles-prod/'));
   const isDem = url.hostname === 'api.open-meteo.com' && url.pathname.startsWith('/v1/elevation');
   if (isTile || isDem) {
     const cap = isTile ? TILE_CACHE_MAX : DEM_CACHE_MAX;
