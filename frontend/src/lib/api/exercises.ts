@@ -4,6 +4,7 @@ export interface ExerciseEntry {
   id: string;
   name: string;
   category: string;
+  weight_convention?: string;  // "per_arm" | "total" — per-arm = log one dumbbell/handle
 }
 
 export interface ExerciseDetail {

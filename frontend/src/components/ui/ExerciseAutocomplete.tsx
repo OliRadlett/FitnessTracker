@@ -191,6 +191,14 @@ export function ExerciseAutocomplete({
                       }`}
                     >
                       <span>{item.name}</span>
+                      {item.weight_convention === 'per_arm' && (
+                        <span
+                          className="ml-2 text-[10px] text-accent"
+                          title="Log the weight of one dumbbell/handle"
+                        >
+                          per-arm
+                        </span>
+                      )}
                       <span className={`ml-2 text-[10px] ${CATEGORY_COLOURS[item.category] || 'text-muted'}`}>
                         {CATEGORY_LABELS[item.category] || item.category}
                       </span>
