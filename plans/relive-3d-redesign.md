@@ -143,7 +143,14 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
 - **Scene**: gradient sky dome (follows the camera), distance fog, ACES tone
   mapping, hemisphere + warm key light, **road ribbon** (`lib/road.ts`, asphalt +
   dashed centre line under the bike), default camera is now **chase**.
-- Remaining: terrarium DEM terrain, camera director (drone/flyby), Lite mode.
+- **Cameras**: chase / drone (elevated) / cockpit / orbit.
+- **Lite mode**: auto-on for small screens (no MSAA, pixel ratio 1).
+- Remaining: terrarium DEM terrain.
+
+### Phase 2 — started (2026-09-24)
+- **Effort road**: the ribbon is now vertex-coloured by the selected metric
+  (speed/power/HR/grade), recoloured live when the metric changes (no rebuild).
+  `buildRoadRibbon` gained a flat per-point `colors` input (6 tests).
 
 ## Risks / guardrails
 

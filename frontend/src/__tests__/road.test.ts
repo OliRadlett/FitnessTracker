@@ -37,4 +37,19 @@ describe('buildRoadRibbon', () => {
     expect(r!.uvs[1]).toBeCloseTo(0, 6); // first sample v=0
     expect(r!.uvs[5]).toBeCloseTo(2, 6); // 16 m / 8 m period
   });
+
+  it('omits colours by default', () => {
+    const r = buildRoadRibbon([pt(0, 0, 0, 0), pt(10, 0, 0, 10)]);
+    expect(r!.colors).toBeNull();
+  });
+
+  it('duplicates each per-point colour onto both ribbon edges', () => {
+    const pts = [pt(0, 0, 0, 0), pt(10, 0, 0, 10)];
+    const r = buildRoadRibbon(pts, { colors: [1, 0, 0, 0, 1, 0] });
+    expect(r!.colors).not.toBeNull();
+    expect(Array.from(r!.colors!.slice(0, 3))).toEqual([1, 0, 0]);
+    expect(Array.from(r!.colors!.slice(3, 6))).toEqual([1, 0, 0]);
+    expect(Array.from(r!.colors!.slice(6, 9))).toEqual([0, 1, 0]);
+    expect(r!.colors!.length).toBe(pts.length * 2 * 3);
+  });
 });
