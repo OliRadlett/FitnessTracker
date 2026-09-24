@@ -334,13 +334,13 @@ export function CompareActivitiesModal({
                     <p className="text-xs text-muted mb-1">
                       {activityA.name.slice(0, 24)} · {timeFmt(replayA!.totalTime)} · {(replayA!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
+                    <Replay3D name={activityA.name} build={replayA!} polyline={activityA.encoded_polyline ?? undefined} link={linked ? linkFor : null} startDate={activityA.start_date} />
                   </div>
                   <div>
                     <p className="text-xs text-muted mb-1">
                       {activityB.name.slice(0, 24)} · {timeFmt(replayB!.totalTime)} · {(replayB!.totalDistance / 1000).toFixed(1)} km
                     </p>
-                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} link={linked ? linkFor : null} />
+                    <Replay3D name={activityB.name} build={replayB!} polyline={activityB.encoded_polyline ?? undefined} link={linked ? linkFor : null} startDate={activityB.start_date} />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">
