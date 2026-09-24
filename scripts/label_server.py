@@ -194,14 +194,27 @@ def main() -> int:
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
 
-    labels_path = args.labels or (args.data / "labels.jsonl")
+    # Prefer pre-filled / corrected labels so the reviewer resumes their work.
+    labels_path = args.labels or next(
+        (p for p in (args.data / "labels.prefilled.jsonl",
+                     args.data / "labels.corrected.jsonl",
+                     args.data / "labels.jsonl") if p.exists()),
+        args.data / "labels.jsonl",
+    )
     out_path = args.out or (args.data / "labels.corrected.jsonl")
     records = [json.loads(l) for l in labels_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     work = build_worklist(records, args.per_clip)
-    state = {"records": records, "work": work, "i": work[0] if work else 0}
+    # Resume at the first frame not yet human-labelled.
+    start = next(
+        (i for i in work
+         if not any(b.get("source") == "human" for b in records[i]["boxes"])),
+        work[0] if work else 0,
+    )
+    state = {"records": records, "work": work, "i": start}
 
     url = f"http://localhost:{args.port}"
-    print(f"{len(records)} records; {len(work)} to label ({args.per_clip}/clip)")
+    print(f"loaded {labels_path.name}: {len(records)} records; "
+          f"{len(work)} to label ({args.per_clip}/clip)")
     print(f"serving {args.data} -> {url}  (edits -> {out_path})")
     if not args.no_browser:
         webbrowser.open(url)
