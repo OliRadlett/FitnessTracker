@@ -1220,7 +1220,7 @@ def fit_personalized_power_models() -> dict:
     """Fit personalized power models for all cycling users via Modal.
 
     Runs weekly (Sunday 5:30 AM UTC). For each user with cycling activities:
-    1. Computes the best power curve from streams → fits CP/W' (Morton 2004)
+    1. Computes the best power curve from streams → fits CP/W'/Pmax (Morton 3-param)
     2. Collects steady-state rides → fits personalized VO2max from power-HR regression
     3. Collects daily TSS + HRV → fits adaptive CTL/ATL time constants
 
@@ -1376,6 +1376,7 @@ def fit_personalized_power_models() -> dict:
                         if cp_result.get("cp"):
                             profile.critical_power = cp_result["cp"]
                             profile.w_prime = cp_result.get("w_prime")
+                            profile.p_max = cp_result.get("p_max")
                             profile.power_model_r_squared = cp_result.get(
                                 "model_r_squared"
                             )

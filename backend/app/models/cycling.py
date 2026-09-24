@@ -45,6 +45,7 @@ class CyclingProfile(Base):
     # Personalized power model fields (fitted by Modal weekly task)
     critical_power: Mapped[float | None] = mapped_column(Float, nullable=True)
     w_prime: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     power_model_r_squared: Mapped[float | None] = mapped_column(Float, nullable=True)
     personalized_vo2max: Mapped[float | None] = mapped_column(Float, nullable=True)
     ctl_tau: Mapped[int | None] = mapped_column(Integer, nullable=True)

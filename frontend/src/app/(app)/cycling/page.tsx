@@ -182,7 +182,7 @@ export default function CyclingPage() {
     enabled: !!token,
   });
 
-  // Merge the Morton 2004 fitted curve (keyed by duration seconds) into the
+  // Merge the Morton 3-param fitted curve (keyed by duration seconds) into the
   // stream power-curve chart as a second series overlay.
   const fittedCurveData = useMemo<ChartData | undefined>(() => {
     if (!chartPowerCurve || !powerCurve?.fitted_curve) return undefined;

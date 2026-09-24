@@ -29,10 +29,13 @@ class CyclingProfileRead(BaseModel):
     )
     # Personalized power model fields (fitted by Modal weekly task)
     critical_power: float | None = Field(
-        None, description="Critical Power from Morton 2004 model (watts)"
+        None, description="Critical Power from Morton 3-param model (watts)"
     )
     w_prime: float | None = Field(
         None, description="W' (anaerobic work capacity) in joules"
+    )
+    p_max: float | None = Field(
+        None, description="Pmax sprint ceiling from Morton 3-param model (watts)"
     )
     power_model_r_squared: float | None = Field(
         None, description="R² fit quality of the CP model"
@@ -151,8 +154,9 @@ class PowerCurveResponse(BaseModel):
     data: list[PowerDurationPoint]
     ftp_watts: float | None = None
     # Personalized model overlay
-    cp: float | None = Field(None, description="Critical Power (Morton 2004)")
+    cp: float | None = Field(None, description="Critical Power (Morton 3-param)")
     w_prime: float | None = Field(None, description="W' in joules")
+    p_max: float | None = Field(None, description="Pmax sprint ceiling in watts")
     model_r_squared: float | None = Field(None, description="CP model fit quality")
     fitted_curve: dict[str, float] | None = Field(
         None, description="Model-predicted power at standard durations"
@@ -349,6 +353,7 @@ class PowerModelCriticalPower(BaseModel):
 
     cp: float | None = Field(None, description="Critical Power (watts)")
     w_prime: float | None = Field(None, description="W' (joules)")
+    p_max: float | None = Field(None, description="Pmax sprint ceiling (watts)")
     model_r_squared: float | None = Field(None, description="R² fit quality")
     fitted_curve: dict[str, float] | None = Field(
         None, description="Model-predicted power at standard durations"

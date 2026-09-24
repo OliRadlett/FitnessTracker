@@ -28,20 +28,50 @@ def _modal_configured() -> bool:
 
 
 def _morton_power_duration(t: float, cp: float, w_prime: float) -> float:
-    """Morton 2004: P(t) = W'/t + CP.
+    """Morton 2004 (2-param): P(t) = W'/t + CP.
 
-    The hyperbolic power-duration relationship.
+    The hyperbolic power-duration relationship. Kept as a fallback when
+    the 3-param fit fails — note it diverges as t → 0, so it must NOT be
+    evaluated at short durations (see the 3-param variant below).
     """
     if t <= 0:
         return 0.0
     return w_prime / t + cp
 
 
+def _morton_3param_power_duration(
+    t: float, cp: float, w_prime: float, p_max: float
+) -> float:
+    """Morton 3-param hyperbolic model with a finite max-power ceiling.
+
+    P(t) = W' / (t + k) + CP, where k = W' / (Pmax - CP).
+
+    P(0) = Pmax, P(∞) = CP. Unlike the 2-param form this stays bounded at
+    short durations, so the fitted curve can be shown over the full 5s–120min
+    range without the 3000W+ spike the 2-param model produces at 5s.
+    Falls back to the 2-param form if Pmax <= CP (degenerate).
+    """
+    if t <= 0:
+        return 0.0
+    if p_max <= cp:
+        return w_prime / t + cp
+    k = w_prime / (p_max - cp)
+    return w_prime / (t + k) + cp
+
+
 def _morton_residuals(params: tuple, durations: list, powers: list) -> list:
-    """Residuals for curve fitting: observed - predicted power."""
+    """Residuals for 2-param curve fitting: observed - predicted power."""
     cp, w_prime = params
     return [
-        p - _morton_power_duration(t, cp, w_prime)
+        p - _morton_power_duration(t, cp, w_prime) for t, p in zip(durations, powers)
+    ]
+
+
+def _morton_3param_residuals(params: tuple, durations: list, powers: list) -> list:
+    """Residuals for 3-param curve fitting: observed - predicted power."""
+    cp, w_prime, p_max = params
+    return [
+        p - _morton_3param_power_duration(t, cp, w_prime, p_max)
         for t, p in zip(durations, powers)
     ]
 
@@ -54,10 +84,15 @@ def _levenberg_marquardt(
     max_iter: int = 200,
     tol: float = 1e-6,
     lam0: float = 1e-3,
+    constrain=None,
 ) -> tuple:
     """Simple Levenberg-Marquardt implementation for curve fitting.
 
     Minimizes sum of squared residuals. No numpy/scipy dependency.
+
+    ``constrain`` is an optional callable ``(new_params) -> list`` applied
+    to each trial step to enforce parameter bounds (e.g. Pmax > CP for the
+    3-param model). Defaults to clamping every parameter to >= 1.0.
     """
     n_params = len(x0)
     n_data = len(data_x)
@@ -127,8 +162,11 @@ def _levenberg_marquardt(
         # Try the step
         new_params = [params[j] + delta[j] for j in range(n_params)]
 
-        # Ensure positive parameters
-        new_params = [max(p, 1.0) for p in new_params]
+        # Enforce parameter bounds
+        if constrain is not None:
+            new_params = constrain(new_params)
+        else:
+            new_params = [max(p, 1.0) for p in new_params]
 
         new_residuals = f(new_params, data_x, data_y)
         new_cost = sum(r * r for r in new_residuals)
@@ -148,15 +186,77 @@ def _levenberg_marquardt(
     return tuple(params)
 
 
+def _constrain_3param(new_params: list) -> list:
+    """Bounds for the 3-param fit: CP/W' positive, Pmax above CP.
+
+    Keeps the optimizer inside physiologically plausible ranges so a noisy
+    short-duration bucket can't push Pmax below CP or W' negative.
+    """
+    cp = max(new_params[0], 1.0)
+    w_prime = min(max(new_params[1], 500.0), 100000.0)
+    p_max = min(max(new_params[2], cp + 50.0), 3000.0)
+    return [cp, w_prime, p_max]
+
+
+def _fit_2param_fallback(dur_list: list, pow_list: list) -> dict | None:
+    """2-param Morton fallback when the 3-param fit is unreasonable.
+
+    Fits CP/W' to durations >= 60s only (as before) and deliberately omits
+    the short-duration predictions that blow up — the returned curve starts
+    at 60s so the chart never shows the 3000W+ spike.
+    """
+    data = [(d, p) for d, p in zip(dur_list, pow_list) if d >= 60]
+    if len(data) < 2:
+        return None
+    d2 = [d for d, _ in data]
+    p2 = [p for _, p in data]
+    try:
+        cp, w_prime = _levenberg_marquardt(
+            _morton_residuals,
+            (p2[-1], 20000.0),
+            d2,
+            p2,
+        )
+    except Exception as e:
+        logger.warning(f"CP 2-param fallback failed: {e}")
+        return None
+    if cp < 50 or cp > 600:
+        return None
+    predicted = [_morton_power_duration(t, cp, w_prime) for t in d2]
+    mean_power = sum(p2) / len(p2)
+    ss_res = sum((p - pred) ** 2 for p, pred in zip(p2, predicted))
+    ss_tot = sum((p - mean_power) ** 2 for p in p2)
+    r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+    fitted_curve = {
+        str(d): round(_morton_power_duration(d, cp, w_prime), 1)
+        for d in [60, 120, 300, 600, 1200, 1800, 2700, 3600, 5400, 7200]
+    }
+    return {
+        "cp": round(cp, 1),
+        "w_prime": round(w_prime, 0),
+        "p_max": None,
+        "model_r_squared": round(max(0.0, r_squared), 4),
+        "fitted_curve": fitted_curve,
+        "method": "morton_2004",
+        "data_points_used": len(data),
+    }
+
+
 def fit_critical_power(
     durations: list[int],
     powers: list[float],
-    min_duration: int = 60,
+    min_duration: int = 5,
 ) -> dict:
     """Fit a critical power model to power-duration data.
 
-    Uses the Morton 2004 hyperbolic model: P(t) = W'/t + CP.
-    Fits via Levenberg-Marquardt (no scipy dependency).
+    Uses the Morton 3-param hyperbolic model with a max-power ceiling:
+    P(t) = W' / (t + k) + CP, where k = W' / (Pmax - CP).
+    P(0) = Pmax, P(∞) = CP, so the curve stays bounded at sprint durations
+    instead of diverging like the 2-param P(t) = W'/t + CP form (which
+    predicted 3000W+ at 5s when extrapolated from 60s+ data).
+
+    Fits via Levenberg-Marquardt (no scipy dependency). Falls back to the
+    2-param model (60s+ curve only) if the 3-param result is unreasonable.
 
     Parameters
     ----------
@@ -165,20 +265,21 @@ def fit_critical_power(
     powers:
         Corresponding best power at each duration (watts).
     min_duration:
-        Minimum duration to include in the fit (short anaerobic efforts
-        can skew the model).
+        Minimum duration to include in the fit. Defaults to 5s so sprint
+        buckets anchor Pmax.
 
     Returns
     -------
-    dict with cp, w_prime, model_r_squared, fitted_curve, method.
+    dict with cp, w_prime, p_max, model_r_squared, fitted_curve, method.
     """
     # Filter to valid data points
     data = [(d, p) for d, p in zip(durations, powers) if d >= min_duration and p > 0]
 
-    if len(data) < 2:
+    if len(data) < 4:
         return {
             "cp": None,
             "w_prime": None,
+            "p_max": None,
             "model_r_squared": 0.0,
             "fitted_curve": None,
             "method": "insufficient_data",
@@ -187,57 +288,92 @@ def fit_critical_power(
     dur_list = [d for d, _ in data]
     pow_list = [p for _, p in data]
 
-    # Initial guess: CP ≈ best 60-min power, W' ≈ 20000 J
+    # Initial guess: CP ≈ longest-duration power, W' ≈ 20000 J,
+    # Pmax ≈ best short-duration power.
     cp_guess = pow_list[-1] if pow_list else 200.0
     w_prime_guess = 20000.0
+    pmax_guess = max(pow_list)
 
     try:
-        cp, w_prime = _levenberg_marquardt(
-            _morton_residuals,
-            (cp_guess, w_prime_guess),
+        cp, w_prime, p_max = _levenberg_marquardt(
+            _morton_3param_residuals,
+            (cp_guess, w_prime_guess, pmax_guess),
             dur_list,
             pow_list,
+            constrain=_constrain_3param,
         )
     except Exception as e:
-        logger.warning(f"CP fitting failed: {e}")
+        logger.warning(f"CP 3-param fitting failed: {e}")
+        fallback = _fit_2param_fallback(dur_list, pow_list)
+        if fallback is not None:
+            return fallback
         return {
             "cp": None,
             "w_prime": None,
+            "p_max": None,
             "model_r_squared": 0.0,
             "fitted_curve": None,
             "method": "fitting_failed",
         }
 
-    # Compute R²
-    predicted = [_morton_power_duration(t, cp, w_prime) for t in dur_list]
+    # Sanity check: CP 50–600W, W' 1–100kJ, Pmax above CP and within reason.
+    # Pmax must also roughly agree with the observed sprint best (within
+    # -30%/+15%) so a stale 5s bucket can't drag the whole curve.
+    observed_sprint = max(pow_list)
+    pmax_ok = (
+        p_max > cp + 50
+        and 200 <= p_max <= 2500
+        and observed_sprint * 0.7 <= p_max <= observed_sprint * 1.15 + 50
+    )
+    if not (50 <= cp <= 600 and 1000 <= w_prime <= 100000 and pmax_ok):
+        fallback = _fit_2param_fallback(dur_list, pow_list)
+        if fallback is not None:
+            return fallback
+        return {
+            "cp": None,
+            "w_prime": None,
+            "p_max": None,
+            "model_r_squared": 0.0,
+            "fitted_curve": None,
+            "method": "unreasonable_cp",
+        }
+
+    # Compute R² over all fitted points (including sprints)
+    predicted = [_morton_3param_power_duration(t, cp, w_prime, p_max) for t in dur_list]
     mean_power = sum(pow_list) / len(pow_list)
     ss_res = sum((p - pred) ** 2 for p, pred in zip(pow_list, predicted))
     ss_tot = sum((p - mean_power) ** 2 for p in pow_list)
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     # Generate fitted curve for all standard durations
-    all_durations = [5, 10, 15, 30, 60, 120, 300, 600, 1200, 1800, 2700, 3600, 5400, 7200]
+    all_durations = [
+        5,
+        10,
+        15,
+        30,
+        60,
+        120,
+        300,
+        600,
+        1200,
+        1800,
+        2700,
+        3600,
+        5400,
+        7200,
+    ]
     fitted_curve = {
-        str(d): round(_morton_power_duration(d, cp, w_prime), 1)
+        str(d): round(_morton_3param_power_duration(d, cp, w_prime, p_max), 1)
         for d in all_durations
     }
-
-    # Sanity check: CP should be positive and reasonable
-    if cp < 50 or cp > 600:
-        return {
-            "cp": None,
-            "w_prime": None,
-            "model_r_squared": 0.0,
-            "fitted_curve": None,
-            "method": "unreasonable_cp",
-        }
 
     return {
         "cp": round(cp, 1),
         "w_prime": round(w_prime, 0),
+        "p_max": round(p_max, 0),
         "model_r_squared": round(max(0.0, r_squared), 4),
         "fitted_curve": fitted_curve,
-        "method": "morton_2004",
+        "method": "morton_3param",
         "data_points_used": len(data),
     }
 
@@ -270,8 +406,12 @@ def fit_personalized_vo2max(
     """
     # Filter to valid steady-state data
     valid = [
-        r for r in steady_state_rides
-        if r.get("avg_watts") and r.get("avg_hr") and r["avg_watts"] > 0 and r["avg_hr"] > 0
+        r
+        for r in steady_state_rides
+        if r.get("avg_watts")
+        and r.get("avg_hr")
+        and r["avg_watts"] > 0
+        and r["avg_hr"] > 0
     ]
 
     if len(valid) < 3:
@@ -430,7 +570,9 @@ def fit_adaptive_time_constants(
             mean_tsb = sum(tsb_vals) / len(tsb_vals)
             mean_hrv = sum(hrv_vals) / len(hrv_vals)
 
-            cov = sum((t - mean_tsb) * (h - mean_hrv) for t, h in zip(tsb_vals, hrv_vals))
+            cov = sum(
+                (t - mean_tsb) * (h - mean_hrv) for t, h in zip(tsb_vals, hrv_vals)
+            )
             std_tsb = math.sqrt(sum((t - mean_tsb) ** 2 for t in tsb_vals))
             std_hrv = math.sqrt(sum((h - mean_hrv) ** 2 for h in hrv_vals))
 
@@ -514,7 +656,12 @@ def _fit_power_models_modal(
     if durations and powers:
         result["critical_power"] = fit_critical_power(durations, powers)
     else:
-        result["critical_power"] = {"cp": None, "w_prime": None, "method": "no_data"}
+        result["critical_power"] = {
+            "cp": None,
+            "w_prime": None,
+            "p_max": None,
+            "method": "no_data",
+        }
 
     # Personalized VO2max
     if ss_data and len(ss_data) >= 3:
@@ -573,10 +720,7 @@ def fit_power_models_on_modal(
 
     import modal
 
-    image = (
-        modal.Image.debian_slim(python_version="3.12")
-        .pip_install("numpy")
-    )
+    image = modal.Image.debian_slim(python_version="3.12").pip_install("numpy")
 
     app = modal.App("fittrack-power-models", image=image)
 

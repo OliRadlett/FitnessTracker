@@ -65,13 +65,14 @@ async def get_power_curve(
     # Include personalized model overlay if fitted
     cp = profile.critical_power
     w_prime = profile.w_prime
+    p_max = profile.p_max
     model_r_squared = profile.power_model_r_squared
     fitted_curve = None
 
     if cp and w_prime:
         from app.services.cycling.power_curve import personalized_power_curve
 
-        fitted_curve_raw = personalized_power_curve(cp, w_prime)
+        fitted_curve_raw = personalized_power_curve(cp, w_prime, p_max)
         # Convert int keys to string keys for JSON compatibility
         fitted_curve = {str(k): v for k, v in fitted_curve_raw.items()}
 
@@ -90,6 +91,7 @@ async def get_power_curve(
         ftp_watts=ftp,
         cp=cp,
         w_prime=w_prime,
+        p_max=p_max,
         model_r_squared=model_r_squared,
         fitted_curve=fitted_curve,
     )
@@ -879,15 +881,16 @@ async def get_power_model_results(
         from app.services.cycling.power_curve import personalized_power_curve
 
         fitted_curve_raw = personalized_power_curve(
-            profile.critical_power, profile.w_prime or 0
+            profile.critical_power, profile.w_prime or 0, profile.p_max
         )
         fitted_curve = {str(k): v for k, v in fitted_curve_raw.items()}
         cp_result = PowerModelCriticalPower(
             cp=profile.critical_power,
             w_prime=profile.w_prime,
+            p_max=profile.p_max,
             model_r_squared=profile.power_model_r_squared,
             fitted_curve=fitted_curve,
-            method="morton_2004",
+            method="morton_3param" if profile.p_max else "morton_2004",
         )
 
     vo2max_result = None
