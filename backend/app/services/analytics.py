@@ -10,7 +10,7 @@ Analytics page and the Feature 5 brief read the table.
 import logging
 import math
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import mean
 
 from sqlalchemy import select

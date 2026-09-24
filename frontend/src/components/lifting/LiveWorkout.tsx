@@ -329,7 +329,7 @@ export function LiveWorkout({
 
   return (
     <>
-    <div className="fixed inset-0 flex flex-col bg-background">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* Header */}
       <header className="shrink-0 px-4 pt-4 pb-3 bg-surface border-b border-surface-light/50">
         <div className="flex items-center justify-between gap-3">

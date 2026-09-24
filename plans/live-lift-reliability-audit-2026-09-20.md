@@ -67,3 +67,14 @@ New unit tests: `src/__tests__/lifting-features.test.ts` (12 tests).
 - `npm run build` — succeeds
 - `python fittrack.py exec backend env TEST_DATABASE_URL=… pytest tests/integration/test_lifting_api.py -v` — 19 passed
 - No migration touched.
+
+## 6. Follow-up — stuck "Finishing…"/"Loading…" on mobile (BUG-098)
+
+A `finishing` state could wedge forever, leaving START unreachable. Fixed:
+legacy `finishing` states (pre-`finish_requested`) are backfilled so the retry
+effect and `flush()` Step 4 can complete them; finish `PATCH` 404 (remote row
+deleted/auto-closed) is treated as done; `startSession` adopts an active session
+written by another tab instead of silently no-op'ing; the live workout /
+finishing overlay / finish sheet sit at `z-50` so `MobileBottomNav` (`z-40`)
+can't cover the buttons. 3 new tests in `live-session-sync.test.tsx` (201
+passing). See BUG-098.

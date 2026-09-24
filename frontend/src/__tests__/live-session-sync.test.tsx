@@ -205,4 +205,91 @@ describe('useLiveSession sync engine', () => {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null');
     expect(stored?.sessionId).toBe('new-session');
   });
+
+  it('completes a legacy finishing state that predates finish_requested', async () => {
+    vi.useFakeTimers();
+    const authFetch = vi.fn();
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        phase: 'finishing',
+        sessionId: 'legacy-session',
+        liveKey: 'legacy-key',
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        currentExercise: null,
+        sets: [],
+        pendingDeletes: [],
+        lastSetAt: null,
+        // no finish_requested / endedAt — persisted before the flag existed
+      })
+    );
+
+    const { result } = renderHook(() => useLiveSession(authFetch as never));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+
+    expect(api.updateLiftingSession).toHaveBeenCalledWith(
+      authFetch,
+      'legacy-session',
+      expect.objectContaining({ ended_at: expect.any(String) })
+    );
+    expect(result.current.state).toBeNull();
+  });
+
+  it('clears a finishing session when the remote row is gone (404)', async () => {
+    vi.useFakeTimers();
+    const authFetch = vi.fn();
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        phase: 'finishing',
+        sessionId: 'deleted-session',
+        liveKey: 'gone-key',
+        startedAt: new Date().toISOString(),
+        currentExercise: null,
+        sets: [],
+        pendingDeletes: [],
+        lastSetAt: null,
+        finish_requested: true,
+        endedAt: new Date().toISOString(),
+      })
+    );
+    api.updateLiftingSession.mockRejectedValue(
+      Object.assign(new Error('Session not found'), { status: 404 })
+    );
+
+    const { result } = renderHook(() => useLiveSession(authFetch as never));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+
+    expect(result.current.state).toBeNull();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('adopts an active session written by another tab instead of ignoring START', async () => {
+    const authFetch = vi.fn();
+    const { result } = renderHook(() => useLiveSession(authFetch as never));
+    expect(result.current.state).toBeNull();
+
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        phase: 'active',
+        sessionId: 'other-tab-session',
+        liveKey: 'other-tab-key',
+        startedAt: new Date().toISOString(),
+        currentExercise: null,
+        sets: [],
+        pendingDeletes: [],
+        lastSetAt: null,
+      })
+    );
+
+    act(() => result.current.startSession({}));
+
+    expect(result.current.state?.sessionId).toBe('other-tab-session');
+    expect(api.createLiftingSession).not.toHaveBeenCalled();
+  });
 });
