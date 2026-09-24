@@ -177,6 +177,10 @@ def detect_bars_onnx(image_bgr, model_path: str, input_size: int = 640,
     import numpy as np
 
     session = _load_onnx(model_path)
+    # Use the model's own input size (exports differ: 640, 512, …).
+    shape = session.get_inputs()[0].shape
+    if len(shape) == 4 and isinstance(shape[2], int) and shape[2] > 0:
+        input_size = int(shape[2])
     h0, w0 = image_bgr.shape[:2]
     scale = min(input_size / w0, input_size / h0)
     nw, nh = int(round(w0 * scale)), int(round(h0 * scale))
