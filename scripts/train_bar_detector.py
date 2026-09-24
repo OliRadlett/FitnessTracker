@@ -85,6 +85,9 @@ def prepare_dataset(sources: list, out_dir: Path,
     return out_dir
 
 
+VOLUME_NAME = "fittrack-bar-detector"
+
+
 def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
     import modal
 
@@ -96,9 +99,11 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         .pip_install("ultralytics", "onnx", "onnxruntime")
         .add_local_dir(str(DATASET), "/data", copy=True)
     )
+    vol = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
-    @app.function(image=image, gpu=gpu, timeout=3600, serialized=True)
-    def train() -> bytes:
+    @app.function(image=image, gpu=gpu, timeout=5400, serialized=True,
+                  volumes={"/vol": vol})
+    def train() -> str:
         import re as _re
         from pathlib import Path as _P
 
@@ -118,16 +123,36 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         onnx_path = YOLO(str(best)).export(
             format="onnx", opset=12, imgsz=imgsz, nms=True
         )
-        return _P(onnx_path).read_bytes()
+        # Persist to the Volume so the model survives a client timeout/kill.
+        _P("/vol/bar_detector.onnx").write_bytes(_P(onnx_path).read_bytes())
+        vol.commit()
+        return "ok"
 
     with app.run():
-        onnx_bytes = train.remote()
+        train.remote()
+    print("training finished; model written to the Modal Volume")
 
-    out = REPO_ROOT / "labels" / "bar_detector.onnx"
-    out.write_bytes(onnx_bytes)
-    print(f"wrote {out} ({len(onnx_bytes) // 1024} KB)")
-    print("Next: upload it to R2 at models/bar_detector.onnx and set "
-          "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
+    fetch_from_volume()
+
+
+def fetch_from_volume() -> None:
+    """Pull the last trained model out of the Modal Volume into labels/."""
+    import subprocess
+    import sys
+
+    dest = REPO_ROOT / "labels"
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"fetching {VOLUME_NAME}:/bar_detector.onnx -> {dest}")
+    subprocess.run(
+        [sys.executable, "-m", "modal", "volume", "get", VOLUME_NAME,
+         "bar_detector.onnx", str(dest)],
+        check=False,
+    )
+    out = dest / "bar_detector.onnx"
+    if out.exists():
+        print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
+        print("Next: upload it to R2 at models/bar_detector.onnx and set "
+              "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
 
 
 def main() -> int:
@@ -147,6 +172,7 @@ def main() -> int:
     p_train.add_argument("--epochs", type=int, default=60)
     p_train.add_argument("--gpu", default="T4")
     p_train.add_argument("--imgsz", type=int, default=640)
+    sub.add_parser("fetch", help="pull the last model from the Modal Volume")
     args = ap.parse_args()
 
     if args.cmd == "prepare":
@@ -154,8 +180,10 @@ def main() -> int:
         if args.synthetic.exists():
             sources.append((args.synthetic.parent, args.synthetic, 1))
         prepare_dataset(sources, args.out)
-    else:
+    elif args.cmd == "train":
         train_on_modal(args.epochs, args.gpu, args.imgsz)
+    else:
+        fetch_from_volume()
     return 0
 
 
