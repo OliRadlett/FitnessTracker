@@ -8,6 +8,9 @@
 | `connection_health.py` | Connection health state machine (BUG-072): single hardened token-refresh path (`SELECT … FOR UPDATE`, immediate commit of rotated tokens), 5-min proactive expiry leeway, `force=True` retry-once after mid-sync 401/403, typed error classification, `needs_reauth` marking. SYNC-03: `handle_sync_http_error()` optionally takes `refresh_client` for forced-refresh recovery (returns True) else reauth + banner, else transient tally | `refresh_connection()`, `mark_connection_reauth()`, `reset_connection_health()`, `handle_sync_http_error()` |
 | `strava/` package (`sync.py`, `linking.py`, `webhooks.py`, `webhook_queue.py`) | Strava activity sync, activity↔lifting linking (`linking._match_score()`), webhook handling, route sync | `sync_activities()`, `link_activity_to_lifting_sessions()`, `handle_strava_event()`, `sync_strava_routes()` |
 | `wahoo.py` | Wahoo activity + route sync | `sync_wahoo_activities()`, `sync_wahoo_routes()` |
+| `wahoo_push.py` | Push a cycle plan day to Wahoo (scheduled structured workout + FIT route) | `push_plan_day()`, `remove_plan_day_from_wahoo()`, `WahooPushError` |
+| `wahoo_plan_file.py` | Pure `plan.json` builder from a plan day's zone/power/duration | `build_plan_json()`, `zone_if_band()` |
+| `fit_course.py` | Hand-rolled FIT **course** encoder for route upload (via `fitparse`-verified format) | `encode_course_fit()`, `course_points_from_route()` |
 | `komoot.py` | Komoot route sync | `sync_komoot_routes()` |
 | `merge_service.py` | Activity dedup/merge engine, activity↔route linking | `find_duplicate_activity()`, `merge_activity()`, `link_activity_to_route()` |
 | `route_service.py` | Route CRUD, dedup/merge (proximity + distance + name + shape scoring) | `create_or_merge_route()`, `get_routes()`, `delete_route()` |

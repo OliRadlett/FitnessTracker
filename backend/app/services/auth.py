@@ -87,7 +87,10 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "userinfo_url": "https://api.wahooligan.com/v1/user",
         "client_id": lambda: settings.wahoo_client_id,
         "client_secret": lambda: settings.wahoo_client_secret,
-        "scopes": "user_read workouts_read routes_read",
+        "scopes": (
+            "user_read workouts_read workouts_write "
+            "routes_read routes_write plans_read plans_write"
+        ),
     },
     "whoop": {
         "authorize_url": "https://api.prod.whoop.com/oauth/oauth2/auth",

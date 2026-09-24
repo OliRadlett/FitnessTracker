@@ -5,6 +5,8 @@ import type {
   TrainingPlanDay,
   AdaptiveSuggestionsResponse,
   RefreshTargetsResponse,
+  WahooPushRequest,
+  WahooPushResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -58,6 +60,31 @@ export async function refreshTargets(
   return authFetch<RefreshTargetsResponse>(
     `/api/v1/training-plans/${planId}/refresh-targets`,
     { method: 'POST' },
+  );
+}
+
+/** Push a cycle day to Wahoo as a scheduled structured workout and/or route. */
+export async function pushPlanDayToWahoo(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string,
+  payload: WahooPushRequest
+): Promise<WahooPushResponse> {
+  return authFetch<WahooPushResponse>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/push-to-wahoo`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+/** Remove a day's scheduled Wahoo workout/plan (route stays in the library). */
+export async function removePlanDayFromWahoo(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string
+): Promise<WahooPushResponse> {
+  return authFetch<WahooPushResponse>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/push-to-wahoo`,
+    { method: 'DELETE' }
   );
 }
 
