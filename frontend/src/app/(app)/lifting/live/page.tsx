@@ -271,7 +271,7 @@ export default function LiveLiftPage() {
       await queryClient.invalidateQueries({ queryKey: ['lifting-active-session'] });
     };
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 text-center">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
           <p className="text-foreground font-semibold">Finishing session…</p>
           <p className="text-muted text-sm">
@@ -631,7 +631,7 @@ function FinishSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" role="dialog" aria-label="Finish session">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" role="dialog" aria-label="Finish session">
       <div className="bg-surface rounded-t-2xl border-t border-surface-light/50 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
         <h2 className="text-lg font-bold text-foreground">Session summary</h2>
 
