@@ -12,6 +12,8 @@ import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
+import { detectHighlights, highlightAt } from '@/lib/highlights';
+import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -326,6 +328,7 @@ export function Replay3D({
   canvasHeightClass = 'h-[300px]',
   theater = false,
   lite,
+  startDate = null,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -343,12 +346,17 @@ export function Replay3D({
   theater?: boolean;
   /** force Lite mode (no MSAA, pixel ratio 1); auto-on for small screens */
   lite?: boolean;
+  /** ride start time (ISO) — lights the scene for the actual time of day */
+  startDate?: string | null;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
 
   // Lite mode: auto-on for small screens (no MSAA, pixel ratio 1) unless forced.
   const liteMode = lite ?? (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
+
+  // Auto-tour highlights (Phase 4) — computed once per path.
+  const highlights = useMemo(() => detectHighlights(points), [points]);
 
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -358,6 +366,7 @@ export function Replay3D({
   const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit'>('chase');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
+  const [tour, setTour] = useState(false);
 
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -433,7 +442,7 @@ export function Replay3D({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: !liteMode, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: !liteMode, alpha: true, preserveDrawingBuffer: true });
       if (!renderer.getContext()) throw new Error('no-webgl');
     } catch {
       setFailed(true);
@@ -445,12 +454,20 @@ export function Replay3D({
     renderer.toneMappingExposure = 1.05;
 
     const scene = new THREE.Scene();
-    // Styled dark world: hemisphere ambient + warm key light, fog, gradient sky.
-    const SKY_TOP = new THREE.Color('#0a1428');
-    const SKY_HORIZON = new THREE.Color('#1b2b46');
-    const FOG_COLOR = new THREE.Color('#101a2e');
-    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, 0.9));
-    const dirLight = new THREE.DirectionalLight(0xfff2df, 1.4);
+    // Styled world lit for the ride's actual time of day (golden hour / night).
+    const sunDate = startDate ? new Date(startDate) : null;
+    const sun = sunDate && !Number.isNaN(sunDate.valueOf()) ? solarPosition(sunDate, build.lat0, build.lng0) : null;
+    const phase = sun ? daylightPhase(sun.elevationDeg) : 'day';
+    const PALETTE = {
+      day: { top: '#0a1428', horizon: '#1b2b46', fog: '#101a2e', light: 0xfff2df, li: 1.4, hi: 0.9 },
+      golden: { top: '#12233f', horizon: '#c9762e', fog: '#2a2430', light: 0xffb066, li: 1.6, hi: 0.7 },
+      night: { top: '#04060d', horizon: '#0a1322', fog: '#070b14', light: 0x8fb0ff, li: 0.5, hi: 0.4 },
+    }[phase];
+    const SKY_TOP = new THREE.Color(PALETTE.top);
+    const SKY_HORIZON = new THREE.Color(PALETTE.horizon);
+    const FOG_COLOR = new THREE.Color(PALETTE.fog);
+    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, PALETTE.hi));
+    const dirLight = new THREE.DirectionalLight(PALETTE.light, PALETTE.li);
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
 
@@ -481,7 +498,8 @@ export function Replay3D({
     grid.rotation.x = Math.PI / 2;
     grid.scale.setScalar(size / 2);
     grid.position.set(cx, cy, Math.max(minZ - size * 0.05, 0));
-    dirLight.position.set(cx + size * 0.6, cy - size * 0.5, minZ + size);
+    const sd = sun ? sunDirection(sun) : [0.5, -0.5, 0.8];
+    dirLight.position.set(cx + sd[0] * size, cy + sd[1] * size, minZ + Math.max(0.2, sd[2]) * size);
     scene.add(dirLight);
 
     // Aerial 3/4 default view — flat courses read as a course, not an edge.
@@ -818,7 +836,7 @@ export function Replay3D({
       sceneRef.current = null;
     };
     return cleanup;
-  }, [points, totalTime, build.totalDistance, liteMode]);
+  }, [points, totalTime, build.totalDistance, liteMode, startDate]);
 
   // Recolour the path line + road ribbon without rebuilding the scene.
   useEffect(() => {
@@ -1030,6 +1048,28 @@ export function Replay3D({
     setRate(r);
   };
 
+  // Entering the tour: jump to the first highlight and start playing.
+  useEffect(() => {
+    if (!tour || !highlights.length) return;
+    seek(highlights[0].startElapsed);
+    if (!linkRef.current) setPlaying(true);
+  }, [tour]);
+
+  const takePoster = () => {
+    const s = sceneRef.current;
+    if (!s) return;
+    s.renderer.render(s.scene, s.camera);
+    s.renderer.domElement.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name.replace(/[^\w-]+/g, '_').slice(0, 40) || 'ride'}-3d.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  };
+
   const km = (build.totalDistance / 1000).toFixed(1);
   const maxKmh = build.maxSpeed * 3.6;
 
@@ -1046,6 +1086,16 @@ export function Replay3D({
       grade: p.grade,
     };
   }, [points, displayElapsed]);
+
+  // Active highlight at the playhead (tour caption + camera director).
+  const activeHighlight = useMemo(
+    () => (tour ? highlightAt(highlights, displayElapsed) : null),
+    [tour, highlights, displayElapsed]
+  );
+  useEffect(() => {
+    if (!tour || !activeHighlight) return;
+    setCamMode(activeHighlight.kind === 'climb' ? 'drone' : 'chase');
+  }, [tour, activeHighlight]);
 
   if (failed) {
     return (
@@ -1089,6 +1139,18 @@ export function Replay3D({
             </button>
           ))}
         </div>
+        {highlights.length > 0 && (
+          <button
+            onClick={() => setTour((t) => !t)}
+            aria-pressed={tour}
+            title="Cinematic tour of this ride's highlights (climbs, descents, sprints)"
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 ${
+              tour ? 'bg-accent/20 text-accent' : 'text-muted'
+            }`}
+          >
+            {tour ? 'Touring' : 'Tour'}
+          </button>
+        )}
         {polyline && (
           <button
             onClick={toggleTerrain}
@@ -1125,6 +1187,13 @@ export function Replay3D({
             </button>
           ))}
         </div>
+        <button
+          onClick={takePoster}
+          title="Download a PNG poster of the current view"
+          className="rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
+        >
+          Poster
+        </button>
       </div>
 
       <div className={`relative ${canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
@@ -1132,6 +1201,12 @@ export function Replay3D({
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
           drag to orbit · pinch to zoom · double-click to focus
         </div>
+        {activeHighlight && (
+          <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center">
+            <p className="text-xs font-semibold text-accent">{activeHighlight.label}</p>
+            <p className="text-[11px] text-foreground">{activeHighlight.detail}</p>
+          </div>
+        )}
         {hud && (
           <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground">
             {hud.kmh.toFixed(1)} km/h
@@ -1144,6 +1219,28 @@ export function Replay3D({
           </div>
         )}
       </div>
+
+      {highlights.length > 0 && (
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Ride highlights">
+          {highlights.map((h, i) => (
+            <button
+              key={`${h.kind}-${i}`}
+              onClick={() => {
+                setTour(true);
+                seek(h.startElapsed);
+              }}
+              title={h.detail}
+              className={`shrink-0 rounded-full border px-3 py-1 min-h-[36px] text-[11px] transition-colors ${
+                activeHighlight === h
+                  ? 'border-accent/50 bg-accent/20 text-accent'
+                  : 'border-surface-light text-muted hover:border-accent/30'
+              }`}
+            >
+              {h.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Path colour mode + scale */}
       <div className="mt-2 flex items-center gap-2">
