@@ -60,13 +60,14 @@ function createRoadTexture(): THREE.Texture {
   canvas.height = s;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.fillStyle = '#1b2330';
+    // mid-grey asphalt so the effort tint reads through the texture
+    ctx.fillStyle = '#4a5461';
     ctx.fillRect(0, 0, s, s);
     for (let i = 0; i < 500; i++) {
-      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`;
       ctx.fillRect(Math.random() * s, Math.random() * s, 1, 1);
     }
-    ctx.strokeStyle = 'rgba(226,232,240,0.8)';
+    ctx.strokeStyle = 'rgba(240,244,250,0.9)';
     ctx.lineWidth = 4;
     ctx.setLineDash([18, 18]);
     ctx.beginPath();
@@ -74,7 +75,7 @@ function createRoadTexture(): THREE.Texture {
     ctx.lineTo(s / 2, s);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+    ctx.strokeStyle = 'rgba(226,232,240,0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(4, 0);
@@ -324,6 +325,7 @@ export function Replay3D({
   ftpWatts,
   canvasHeightClass = 'h-[300px]',
   theater = false,
+  lite,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -339,16 +341,21 @@ export function Replay3D({
   canvasHeightClass?: string;
   /** full-screen Theater host — trim the in-card chrome */
   theater?: boolean;
+  /** force Lite mode (no MSAA, pixel ratio 1); auto-on for small screens */
+  lite?: boolean;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
+
+  // Lite mode: auto-on for small screens (no MSAA, pixel ratio 1) unless forced.
+  const liteMode = lite ?? (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
 
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 60));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'cockpit'>('chase');
+  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit'>('chase');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
 
@@ -362,6 +369,7 @@ export function Replay3D({
     bike: BikeRig | null;
     trail: Line2;
     pathGeo: LineGeometry | null;
+    roadGeo: THREE.BufferGeometry | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
   } | null>(null);
@@ -425,13 +433,13 @@ export function Replay3D({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: !liteMode, alpha: true });
       if (!renderer.getContext()) throw new Error('no-webgl');
     } catch {
       setFailed(true);
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(liteMode ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
@@ -539,8 +547,12 @@ export function Replay3D({
     const trail = new Line2(trailGeo, trailMat);
     scene.add(trail);
 
-    // ── Road ribbon: flat asphalt under the bike ──────────────────────────
-    const roadData = buildRoadRibbon(points, { width: 6, zOffset: -0.01 });
+    // ── Road ribbon: asphalt under the bike, tinted by the effort metric ──
+    const roadData = buildRoadRibbon(points, {
+      width: 6,
+      zOffset: -0.01,
+      colors: replayPathColorArray(points, colorByRef.current),
+    });
     let roadGeo: THREE.BufferGeometry | null = null;
     let roadMat: THREE.MeshBasicMaterial | null = null;
     let roadTex: THREE.Texture | null = null;
@@ -549,8 +561,9 @@ export function Replay3D({
       roadGeo.setAttribute('position', new THREE.BufferAttribute(roadData.positions, 3));
       roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadData.uvs, 2));
       roadGeo.setIndex(new THREE.BufferAttribute(roadData.indices, 1));
+      if (roadData.colors) roadGeo.setAttribute('color', new THREE.BufferAttribute(roadData.colors, 3));
       roadTex = createRoadTexture();
-      roadMat = new THREE.MeshBasicMaterial({ map: roadTex, side: THREE.DoubleSide });
+      roadMat = new THREE.MeshBasicMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });
       scene.add(new THREE.Mesh(roadGeo, roadMat));
     }
 
@@ -715,6 +728,21 @@ export function Replay3D({
             rider.position.y + riderDir.y * 18,
             rider.position.z + riderDir.z * 18 + 1.2
           );
+        } else if (mode === 'drone') {
+          // Elevated trailing drone: ~26 m back, ~12 m up.
+          const dist = 26;
+          const height = 12;
+          const hLen = Math.hypot(riderDir.x, riderDir.y) || 1;
+          tmpDesired.set(
+            rider.position.x - (riderDir.x / hLen) * dist,
+            rider.position.y - (riderDir.y / hLen) * dist,
+            rider.position.z + height
+          );
+          tmpLook.set(
+            rider.position.x + riderDir.x * 12,
+            rider.position.y + riderDir.y * 12,
+            rider.position.z + 1.5
+          );
         } else {
           // cockpit: eyes just above the bars, looking far down the road.
           const eyeH = 1.5;
@@ -752,7 +780,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, pathGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
@@ -790,13 +818,26 @@ export function Replay3D({
       sceneRef.current = null;
     };
     return cleanup;
-  }, [points, totalTime, build.totalDistance]);
+  }, [points, totalTime, build.totalDistance, liteMode]);
 
-  // Recolour the path line without rebuilding the scene.
+  // Recolour the path line + road ribbon without rebuilding the scene.
   useEffect(() => {
     const s = sceneRef.current;
     if (!s?.pathGeo || points.length < 2) return;
-    s.pathGeo.setColors(replayPathColorArray(points, colorBy));
+    const colors = replayPathColorArray(points, colorBy);
+    s.pathGeo.setColors(colors);
+    const attr = s.roadGeo?.getAttribute('color') as THREE.BufferAttribute | undefined;
+    if (attr && attr.count === points.length * 2) {
+      const arr = attr.array as Float32Array;
+      for (let i = 0; i < points.length; i++) {
+        const c = i * 3;
+        const o = i * 6;
+        arr[o] = arr[o + 3] = colors[c];
+        arr[o + 1] = arr[o + 4] = colors[c + 1];
+        arr[o + 2] = arr[o + 5] = colors[c + 2];
+      }
+      attr.needsUpdate = true;
+    }
   }, [colorBy, points]);
 
   const colorStats = useMemo(() => {
@@ -1026,12 +1067,20 @@ export function Replay3D({
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
-          {(['orbit', 'chase', 'cockpit'] as const).map((m) => (
+          {(['orbit', 'chase', 'drone', 'cockpit'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setCamMode(m)}
               aria-pressed={camMode === m}
-              title={m === 'orbit' ? 'Free orbit camera' : m === 'chase' ? 'Follow behind the rider' : 'Rider point of view'}
+              title={
+                m === 'orbit'
+                  ? 'Free orbit camera'
+                  : m === 'chase'
+                    ? 'Follow behind the rider'
+                    : m === 'drone'
+                      ? 'Elevated trailing drone'
+                      : 'Rider point of view'
+              }
               className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors ${
                 camMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
               }`}

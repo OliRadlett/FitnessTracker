@@ -14,6 +14,8 @@ export interface RoadRibbon {
   positions: Float32Array;
   uvs: Float32Array;
   indices: Uint32Array;
+  /** per-vertex RGB (0..1), parallel to positions — null when no colours given */
+  colors: Float32Array | null;
   /** number of path samples (2 vertices each) */
   count: number;
 }
@@ -25,6 +27,9 @@ export interface RoadOptions {
   zOffset?: number;
   /** texture repeat period along the road, in metres */
   dashPeriodM?: number;
+  /** per-path-point RGB (0..1) as a flat array (length n*3); duplicated onto
+   *  both ribbon edges for tinting */
+  colors?: ArrayLike<number> | null;
 }
 
 /** Build a road ribbon from the replay path (null when fewer than 2 points). */
@@ -34,10 +39,12 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
   const half = (opts.width ?? 6) / 2;
   const zOffset = opts.zOffset ?? 0.04;
   const period = opts.dashPeriodM ?? 8;
+  const inColors = opts.colors && opts.colors.length >= n * 3 ? opts.colors : null;
 
   const positions = new Float32Array(n * 2 * 3);
   const uvs = new Float32Array(n * 2 * 2);
   const indices = new Uint32Array((n - 1) * 6);
+  const colors = inColors ? new Float32Array(n * 2 * 3) : null;
 
   for (let i = 0; i < n; i++) {
     const p = points[i];
@@ -65,6 +72,15 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
     uvs[u + 1] = v;
     uvs[u + 2] = 1;
     uvs[u + 3] = v;
+    if (colors && inColors) {
+      const c = i * 3;
+      colors[o] = inColors[c];
+      colors[o + 1] = inColors[c + 1];
+      colors[o + 2] = inColors[c + 2];
+      colors[o + 3] = inColors[c];
+      colors[o + 4] = inColors[c + 1];
+      colors[o + 5] = inColors[c + 2];
+    }
   }
 
   for (let i = 0; i < n - 1; i++) {
@@ -81,5 +97,5 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
     indices[o + 5] = c;
   }
 
-  return { positions, uvs, indices, count: n };
+  return { positions, uvs, indices, colors, count: n };
 }
