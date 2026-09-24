@@ -82,15 +82,23 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
     app = modal.App("fittrack-bar-detector")
     image = (
         modal.Image.debian_slim()
+        # ultralytics imports cv2, which needs these system libs.
+        .apt_install("libgl1", "libglib2.0-0")
         .pip_install("ultralytics", "onnx", "onnxruntime")
         .add_local_dir(str(DATASET), "/data", copy=True)
     )
 
-    @app.function(image=image, gpu=gpu, timeout=3600)
+    @app.function(image=image, gpu=gpu, timeout=3600, serialized=True)
     def train() -> bytes:
+        import re as _re
         from pathlib import Path as _P
 
         from ultralytics import YOLO
+
+        # data.yaml carries the local absolute path; repoint it at the mount.
+        _yp = _P("/data/data.yaml")
+        _yp.write_text(_re.sub(r"^path:.*$", "path: /data", _yp.read_text(),
+                               flags=_re.M))
 
         model = YOLO("yolov8n.pt")
         model.train(data="/data/data.yaml", epochs=epochs, imgsz=imgsz,
