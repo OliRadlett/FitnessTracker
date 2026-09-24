@@ -98,8 +98,10 @@ def render_one(rng, idx, out_dir, exercise="Back Squat", view="side"):
     import cv2
 
     # ── Scene geometry (metres) ────────────────────────────────────────────
-    bar_h = rng.uniform(0.9, 1.5)
-    bar_y = 0.30
+    scene = "bench" if rng.random() < 0.4 else "squat"
+    bar_h = (rng.uniform(0.36, 0.62) if scene == "bench"
+             else rng.uniform(0.9, 1.5))
+    bar_y = rng.uniform(0.22, 0.38)
     half_len = rng.uniform(0.33, 0.55)
     n_plates = int(rng.integers(1, 4))  # per side
     plates = []
@@ -147,19 +149,54 @@ def render_one(rng, idx, out_dir, exercise="Back Squat", view="side"):
             x1, y1, x2, y2 = (int(v) for v in bb)
             cv2.rectangle(img, (x1, y1), (x2, y2), (68, 68, 74), -1)
 
+    # Background clutter (gym machinery/pipes) — real footage is cluttered.
+    for _ in range(int(rng.integers(2, 6))):
+        c3 = np.array([rng.uniform(-1.3, 1.3), rng.uniform(0.2, 1.7),
+                       rng.uniform(-0.3, 1.3)])
+        h3 = np.array([rng.uniform(0.08, 0.35), rng.uniform(0.1, 0.6),
+                       rng.uniform(0.08, 0.35)])
+        bb = pbox(_box_corners(c3, h3))
+        if bb:
+            x1, y1, x2, y2 = (int(v) for v in bb)
+            g = int(rng.uniform(60, 155))
+            cv2.rectangle(img, (x1, y1), (x2, y2), (g, g, int(g * 1.02)), -1)
+
+    # Bench (for a lying scene)
+    if scene == "bench":
+        bb = pbox(_box_corners(np.array([0.0, bar_h - 0.30, bar_y + 0.15]),
+                               np.array([0.22, 0.05, 0.55])))
+        if bb:
+            x1, y1, x2, y2 = (int(v) for v in bb)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (38, 38, 44), -1)
+
     # Person: torso + head + two legs (occlude the bar realistically)
     person = rng.random() < 0.85
     part_boxes = []
-    torso = np.array([0.0, bar_h - 0.05, bar_y - 0.10])
-    leg_off = rng.uniform(0.10, 0.18)
-    for sx in (-1, 1):
-        leg = np.array([sx * leg_off, bar_h - 0.75, bar_y - 0.05])
-        part_boxes.append(_box_corners(leg, np.array([0.09, 0.45, 0.11])))
-    part_boxes.append(_box_corners(torso, np.array([0.21, 0.33, 0.14])))
-    # Arms (shoulder -> hands): part of the person box (whole-body convention).
-    for sx in (-1, 1):
-        arm = np.array([sx * (leg_off + 0.06), bar_h - 0.22, bar_y + 0.02])
-        part_boxes.append(_box_corners(arm, np.array([0.07, 0.30, 0.08])))
+    if scene == "bench":
+        # Lying supine: torso along z at chest height, legs away, arms to the bar.
+        part_boxes.append(_box_corners(np.array([0.0, bar_h - 0.16, bar_y + 0.12]),
+                                       np.array([0.20, 0.13, 0.34])))
+        for sx in (-1, 1):
+            part_boxes.append(_box_corners(
+                np.array([sx * 0.11, bar_h - 0.34, bar_y + 0.46]),
+                np.array([0.08, 0.12, 0.32])))
+        for sx in (-1, 1):
+            part_boxes.append(_box_corners(
+                np.array([sx * 0.13, bar_h - 0.02, bar_y + 0.05]),
+                np.array([0.06, 0.10, 0.10])))
+    else:
+        leg_off = rng.uniform(0.10, 0.18)
+        for sx in (-1, 1):
+            part_boxes.append(_box_corners(
+                np.array([sx * leg_off, bar_h - 0.75, bar_y - 0.05]),
+                np.array([0.09, 0.45, 0.11])))
+        part_boxes.append(_box_corners(np.array([0.0, bar_h - 0.05, bar_y - 0.10]),
+                                       np.array([0.21, 0.33, 0.14])))
+        # Arms (shoulder -> hands): part of the person box (whole-body convention).
+        for sx in (-1, 1):
+            part_boxes.append(_box_corners(
+                np.array([sx * (leg_off + 0.06), bar_h - 0.22, bar_y + 0.02]),
+                np.array([0.07, 0.30, 0.08])))
     if person:
         for corners in part_boxes:
             bb = pbox(corners)
@@ -215,6 +252,16 @@ def render_one(rng, idx, out_dir, exercise="Back Squat", view="side"):
             hp, hz = _disc_poly(hc, pr * 0.06, cam, basis, fov)
             if np.all(hz > 0.05):
                 cv2.fillPoly(img, [np.round(hp).astype(np.int32)], ring_col)
+        # Calibrated-plate style: large cut-outs (the disc reads as a ring).
+        if rng.random() < 0.5:
+            bg = (int(bright), int(bright), int(bright))
+            for a in np.linspace(0, 2 * np.pi, 3, endpoint=False):
+                hc = centre + pr * 0.55 * (
+                    np.cos(a) * np.array([0.0, 1.0, 0.0])
+                    + np.sin(a) * np.array([0.0, 0.0, 1.0]))
+                hp, hz = _disc_poly(hc, pr * 0.19, cam, basis, fov)
+                if np.all(hz > 0.05):
+                    cv2.fillPoly(img, [np.round(hp).astype(np.int32)], bg)
         boxes.append(box_from_xyxy(*bb, "plate", W, H, "auto"))
 
     # Lighting gradient (top-lit), motion blur, sensor noise
