@@ -93,9 +93,18 @@ async function loadTile(z: number, x: number, y: number, signal?: AbortSignal): 
   img.crossOrigin = 'anonymous';
   img.decoding = 'async';
   await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new TerrainTilesError('DEM tile failed to load.'));
-    signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+    const timer = setTimeout(() => reject(new TerrainTilesError('DEM tile timed out.')), 8000);
+    const done = (fn: () => void) => {
+      clearTimeout(timer);
+      fn();
+    };
+    img.onload = () => done(resolve);
+    img.onerror = () => done(() => reject(new TerrainTilesError('DEM tile failed to load.')));
+    signal?.addEventListener(
+      'abort',
+      () => done(() => reject(new DOMException('aborted', 'AbortError'))),
+      { once: true },
+    );
     img.src = TILE_URL(z, x, y);
   });
   const canvas = document.createElement('canvas');
@@ -150,13 +159,16 @@ export async function fetchTerrariumTerrain(
   const lng1 = lng0 + lngSpan;
   const z = chooseZoom(lat0, lng0, lat1, lng1, maxTiles);
 
-  // aspect-correct dense grid, capped
+  // aspect-correct dense grid, capped; both axes kept >= 8 so a narrow
+  // out-and-back bbox doesn't collapse into a degenerate 2-wide strip.
   const midLat = (lat0 + lat1) / 2;
   const aspect = (lngSpan * Math.cos((midLat * Math.PI) / 180)) / (latSpan || 1e-6) || 1;
-  let cols = Math.max(2, Math.round(Math.sqrt(maxGridPoints * aspect)));
-  let rows = Math.max(2, Math.round(maxGridPoints / cols));
-  cols = Math.min(cols, 384);
-  rows = Math.min(rows, 384);
+  let cols = Math.max(8, Math.min(384, Math.round(Math.sqrt(maxGridPoints * aspect))));
+  let rows = Math.max(8, Math.min(384, Math.round(maxGridPoints / cols)));
+  while (cols * rows > maxGridPoints && (cols > 8 || rows > 8)) {
+    if (cols >= rows) cols--;
+    else rows--;
+  }
   const lats = linspace(lat0, lat1, rows);
   const lngs = linspace(lng0, lng1, cols);
 
@@ -174,10 +186,18 @@ export async function fetchTerrariumTerrain(
   }
   await Promise.all(jobs);
 
+  // Sanitise: terrarium writes 32767 for void/nodata — never let that spike the mesh.
+  let valid = 0;
   const heights = new Array<number>(rows * cols);
   for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) heights[r * cols + c] = sampleTiles(tiles, z, lats[r], lngs[c]);
+    for (let c = 0; c < cols; c++) {
+      const h = sampleTiles(tiles, z, lats[r], lngs[c]);
+      const ok = Number.isFinite(h) && h > -1000 && h < 8000;
+      heights[r * cols + c] = ok ? h : 0;
+      if (ok) valid++;
+    }
   }
+  if (valid === 0) throw new TerrainTilesError('no-valid-heights');
 
   return {
     grid: { cols, rows, lat0, lng0, latSpan, lngSpan, lats, lngs },
