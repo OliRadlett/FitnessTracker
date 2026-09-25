@@ -29,6 +29,40 @@ def _modal_configured() -> bool:
 # ── Linear Regression Helpers ────────────────────────────────────────────────
 
 
+def _mean_bearing(points: list) -> float | None:
+    """Length-weighted mean compass bearing (degrees, 0-360) of a polyline.
+
+    Used to resolve each ride's route heading so headwind/tailwind buckets
+    reflect the ridden direction. Accepts [(lat, lng), ...] tuples or lists.
+    Returns None for degenerate (<2 distinct points) input.
+    """
+    if not points or len(points) < 2:
+        return None
+    sin_sum = 0.0
+    cos_sum = 0.0
+    for i in range(1, len(points)):
+        try:
+            lat1, lng1 = float(points[i - 1][0]), float(points[i - 1][1])
+            lat2, lng2 = float(points[i][0]), float(points[i][1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dlam = math.radians(lng2 - lng1)
+        seg_len = math.hypot(lat2 - lat1, lng2 - lng1)
+        if seg_len == 0:
+            continue
+        theta = math.atan2(
+            math.sin(dlam) * math.cos(phi2),
+            math.cos(phi1) * math.sin(phi2)
+            - math.sin(phi1) * math.cos(phi2) * math.cos(dlam),
+        )
+        sin_sum += math.sin(theta) * seg_len
+        cos_sum += math.cos(theta) * seg_len
+    if sin_sum == 0.0 and cos_sum == 0.0:
+        return None
+    return (math.degrees(math.atan2(sin_sum, cos_sum)) + 360.0) % 360.0
+
+
 def _linear_regression(x: list[float], y: list[float]) -> dict:
     """Simple linear regression: y = slope * x + intercept.
 
@@ -422,10 +456,11 @@ def analyze_weather_performance(
         y_target = []
         for r in feature_rides:
             w = r["weather"]
-            # ``or`` defaults (not ``.get(key, default)``): the API builds each
-            # ride's weather dict with the keys present but ``None`` when the
-            # value isn't stored (humidity/pressure are never stored), so a
-            # dict-default lookup still yields None and breaks the regression.
+            # ``or`` defaults (not ``.get(key, default)``): older tagged rows
+            # predate the humidity/pressure/wind-direction columns and carry
+            # the keys as None, so a dict-default lookup still yields None
+            # and breaks the regression. Constant placeholder columns are
+            # dropped inside _multiple_linear_regression.
             x_matrix.append([
                 w.get("temperature") or 0,
                 w.get("wind_speed_kmh") or 0,

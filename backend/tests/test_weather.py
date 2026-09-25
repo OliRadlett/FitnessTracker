@@ -167,6 +167,9 @@ def test_normalize_daily_shapes_days():
         "precipitation_probability": 80,
         "precipitation_sum": 3.4,
         "wind_speed_max": 22.7,
+        "wind_direction_deg": None,
+        "humidity_mean": None,
+        "pressure_mean": None,
     }
 
 

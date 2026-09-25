@@ -15,6 +15,7 @@ import random
 import pytest
 
 from app.integrations.weather_analysis import (
+    _mean_bearing,
     _multiple_linear_regression,
     analyze_weather_performance,
 )
@@ -145,3 +146,69 @@ def test_decoupling_threshold_needs_data():
     assert result["decoupling_vs_temp"]["threshold_c"] is not None
     # …but 12 points are below the insight gate.
     assert not any("Decoupling increases" in s for s in result["personalized_insights"])
+
+
+# ── RMI-07: route heading + daily normalizer ───────────────────────────────
+
+
+def test_mean_bearing_cardinal_legs():
+    # East leg then north leg of equal length → NE mean.
+    assert _mean_bearing([(0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]) == pytest.approx(
+        45.0, abs=2.0
+    )
+    # Due north.
+    assert _mean_bearing([(0.0, 0.0), (1.0, 0.0)]) == pytest.approx(0.0, abs=0.5)
+    # Due east.
+    assert _mean_bearing([(0.0, 0.0), (0.0, 1.0)]) == pytest.approx(90.0, abs=0.5)
+
+
+def test_mean_bearing_degenerate():
+    assert _mean_bearing([]) is None
+    assert _mean_bearing([(1.0, 2.0)]) is None
+    assert _mean_bearing([(1.0, 2.0), (1.0, 2.0)]) is None
+    # A repeated point contributes nothing but doesn't break the chain.
+    assert _mean_bearing([(0.0, 0.0), (0.0, 0.0), (1.0, 0.0)]) == pytest.approx(
+        0.0, abs=0.5
+    )
+    # Malformed points are skipped, not fatal.
+    assert _mean_bearing([(0.0, 0.0), None, (0.0, 1.0)]) is None
+
+
+def test_normalize_daily_carries_new_fields():
+    from app.services.weather import _normalize_daily
+
+    payload = {
+        "daily": {
+            "time": ["2026-09-01"],
+            "weather_code": [3],
+            "temperature_2m_max": [20.9],
+            "temperature_2m_min": [12.1],
+            "precipitation_sum": [0.0],
+            "precipitation_probability_max": [10],
+            "wind_speed_10m_max": [15.0],
+            "wind_direction_10m_dominant": [250],
+            "relative_humidity_2m_mean": [70],
+            "pressure_msl_mean": [1020.1],
+        }
+    }
+    days = _normalize_daily(payload, 51.5, -0.1)["days"]
+    assert days[0]["wind_direction_deg"] == 250
+    assert days[0]["humidity_mean"] == 70
+    assert days[0]["pressure_mean"] == pytest.approx(1020.1)
+
+
+def test_normalize_daily_tolerates_missing_new_fields():
+    # Old cached payloads predate the RMI-07 params — must not crash.
+    from app.services.weather import _normalize_daily
+
+    payload = {
+        "daily": {
+            "time": ["2026-09-01"],
+            "weather_code": [3],
+            "temperature_2m_max": [20.9],
+        }
+    }
+    days = _normalize_daily(payload, 51.5, -0.1)["days"]
+    assert days[0]["wind_direction_deg"] is None
+    assert days[0]["humidity_mean"] is None
+    assert days[0]["pressure_mean"] is None

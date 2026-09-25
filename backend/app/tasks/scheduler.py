@@ -12,10 +12,18 @@ from celery import Celery
 from celery.schedules import crontab
 
 from app.config import get_settings
+from app.integrations.resilience import ModalCircuitBreaker
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+# Shared Modal circuit breaker (RMI-13): trips after 3 consecutive Modal
+# failures per task so one outage doesn't block every per-user call to its
+# 300 s timeout. In-memory per worker process by design.
+_MODAL_BREAKER = ModalCircuitBreaker(
+    failures_before_open=3, cooldown_seconds=600.0
+)
 
 # ── Celery app ────────────────────────────────────────────────────────────────
 
@@ -1028,12 +1036,21 @@ def classify_route_terrain() -> dict:
     from app.models.route import Route
 
     async def _run():
+        from sqlalchemy import or_
+
         async with task_session() as db:
-            # Get all routes with elevation profiles but no terrain classification
+            # Routes with elevation data lacking a usable classification.
+            # "unknown" rows are revisited (a legacy Komoot {"elevations"}
+            # profile or a replaced geometry may classify now); unknown
+            # results are NOT persisted so stuck rows keep retrying (RMI-04).
             result = await db.execute(
                 select(Route).where(
                     Route.elevation_profile.isnot(None),
-                    Route.terrain_classification.is_(None),
+                    or_(
+                        Route.terrain_classification.is_(None),
+                        Route.terrain_classification["terrain_type"].astext
+                        == "unknown",
+                    ),
                 )
             )
             routes_to_classify = list(result.scalars().all())
@@ -1041,21 +1058,24 @@ def classify_route_terrain() -> dict:
             if not routes_to_classify:
                 return {"classified": 0, "note": "All routes already classified"}
 
-            # Try Modal for batch classification
+            # Batch terrain classification, chunked (RMI-13): one giant Modal
+            # payload means one bad route fails the whole batch. Each chunk
+            # tries Modal first with per-route local fallback, so a Modal
+            # outage (or a single bad profile) can't block every route.
+            # "unknown" results are not persisted, so those rows retry.
             classified = 0
-            try:
-                from app.integrations.route_intelligence import (
-                    analyze_routes_on_modal,
-                    classify_route_terrain,
-                )
+            from app.integrations.route_intelligence import (
+                analyze_routes_on_modal,
+                classify_route_terrain,
+            )
+            from app.services.polyline_utils import decode_polyline
 
-                # Prepare route data for Modal
+            for chunk_start in range(0, len(routes_to_classify), 25):
+                chunk = routes_to_classify[chunk_start : chunk_start + 25]
                 routes_data = []
-                for route in routes_to_classify:
+                for route in chunk:
                     points = []
                     if route.encoded_polyline:
-                        from app.services.polyline_utils import decode_polyline
-
                         points = decode_polyline(route.encoded_polyline)
                     routes_data.append(
                         {
@@ -1067,41 +1087,39 @@ def classify_route_terrain() -> dict:
                         }
                     )
 
-                # Call Modal for batch terrain classification
-                modal_result = analyze_routes_on_modal(
-                    routes_data=routes_data,
-                    compute_similarity=False,
-                    compute_terrain=True,
-                    compute_effort_predictions=False,
-                )
+                try:
+                    modal_result = analyze_routes_on_modal(
+                        routes_data=routes_data
+                    )
+                    terrain_classifications = modal_result.get(
+                        "terrain_classifications", {}
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Modal terrain chunk failed, falling back to local: {e}"
+                    )
+                    terrain_classifications = {}
 
-                terrain_classifications = modal_result.get("terrain_classifications", {})
-
-                for route in routes_to_classify:
+                for route in chunk:
                     terrain = terrain_classifications.get(str(route.id))
-                    if terrain:
+                    if not terrain:
+                        try:
+                            terrain = classify_route_terrain(
+                                route.elevation_profile,
+                                decode_polyline(route.encoded_polyline)
+                                if route.encoded_polyline
+                                else None,
+                            )
+                        except Exception as e2:
+                            logger.warning(
+                                f"Terrain classification failed for route {route.id}: {e2}"
+                            )
+                            continue
+                    if terrain.get("terrain_type") != "unknown":
                         route.terrain_classification = terrain
                         classified += 1
 
-                await db.commit()
-
-            except Exception as e:
-                logger.warning(
-                    f"Modal terrain classification failed, falling back to local: {e}"
-                )
-                # Fallback: local classification
-                from app.integrations.route_intelligence import classify_route_terrain
-
-                for route in routes_to_classify:
-                    try:
-                        terrain = classify_route_terrain(route.elevation_profile)
-                        route.terrain_classification = terrain
-                        classified += 1
-                    except Exception as e2:
-                        logger.warning(
-                            f"Local terrain classification failed for route {route.id}: {e2}"
-                        )
-                await db.commit()
+            await db.commit()
 
             return {
                 "classified": classified,
@@ -1262,6 +1280,13 @@ def fit_personalized_power_models() -> dict:
             errors: list[str] = []
 
             for uid in user_ids:
+                if not _MODAL_BREAKER.allow("fit_personalized_power_models"):
+                    logger.warning(
+                        "fit_personalized_power_models: circuit breaker open — "
+                        "skipping remaining users"
+                    )
+                    break
+                modal_ok = False
                 try:
                     # 1. Build power curve data from CyclingPowerRecord
                     result = await db.execute(
@@ -1370,6 +1395,8 @@ def fit_personalized_power_models() -> dict:
                         weight_kg=weight,
                         hr_anchor=profile.lactate_threshold_hr if profile else None,
                     )
+                    modal_ok = True
+                    _MODAL_BREAKER.record("fit_personalized_power_models", True)
 
                     # 5. Store results in CyclingProfile
                     if profile and results.get("critical_power"):
@@ -1395,6 +1422,10 @@ def fit_personalized_power_models() -> dict:
                         await db.commit()
 
                 except Exception as e:
+                    if not modal_ok:
+                        _MODAL_BREAKER.record(
+                            "fit_personalized_power_models", False
+                        )
                     logger.error(
                         f"Failed to fit power model for user {uid}: {e}",
                         exc_info=True,
@@ -1450,6 +1481,13 @@ def analyze_weather_performance_weekly() -> dict:
             errors: list[str] = []
 
             for uid in user_ids:
+                if not _MODAL_BREAKER.allow("analyze_weather_performance_weekly"):
+                    logger.warning(
+                        "analyze_weather_performance_weekly: circuit breaker "
+                        "open — skipping remaining users"
+                    )
+                    break
+                modal_ok = False
                 try:
                     # Collect cycling activities with weather data
                     result = await db.execute(
@@ -1465,6 +1503,30 @@ def analyze_weather_performance_weekly() -> dict:
 
                     if len(activities) < 15:
                         continue
+
+                    # Prefetch linked-route headings (one query): rides need
+                    # a route heading for headwind/tailwind bucketing.
+                    from app.integrations.weather_analysis import _mean_bearing
+                    from app.models.route import Route
+                    from app.services.polyline_utils import decode_polyline
+
+                    route_ids = {
+                        a.route_id for a in activities if a.route_id
+                    }
+                    heading_by_route: dict = {}
+                    if route_ids:
+                        route_result = await db.execute(
+                            select(Route.id, Route.encoded_polyline).where(
+                                Route.id.in_(route_ids)
+                            )
+                        )
+                        for rid, poly in route_result.all():
+                            try:
+                                heading_by_route[str(rid)] = _mean_bearing(
+                                    decode_polyline(poly) if poly else []
+                                )
+                            except Exception:
+                                heading_by_route[str(rid)] = None
 
                     # Build rides data for Modal
                     rides = []
@@ -1490,6 +1552,11 @@ def analyze_weather_performance_weekly() -> dict:
                             "moving_time": int(act.duration_seconds)
                             if act.duration_seconds
                             else None,
+                            "route_heading_degrees": heading_by_route.get(
+                                str(act.route_id)
+                            )
+                            if act.route_id
+                            else None,
                             "weather": {
                                 "temperature": float(act.weather_temperature)
                                 if act.weather_temperature
@@ -1497,12 +1564,20 @@ def analyze_weather_performance_weekly() -> dict:
                                 "wind_speed_kmh": float(act.weather_wind_speed_kmh)
                                 if act.weather_wind_speed_kmh
                                 else None,
-                                "wind_direction": None,  # stored as string, parse if needed
-                                "humidity": None,  # not stored on activity model
+                                "wind_direction": float(
+                                    act.weather_wind_direction_deg
+                                )
+                                if act.weather_wind_direction_deg is not None
+                                else None,
+                                "humidity": float(act.weather_humidity_pct)
+                                if act.weather_humidity_pct is not None
+                                else None,
                                 "precipitation_mm": float(act.weather_precipitation_mm)
                                 if act.weather_precipitation_mm
                                 else None,
-                                "pressure_hpa": None,  # not stored on activity model
+                                "pressure_hpa": float(act.weather_pressure_hpa)
+                                if act.weather_pressure_hpa is not None
+                                else None,
                                 "conditions": act.weather_conditions,
                             },
                         }
@@ -1510,6 +1585,10 @@ def analyze_weather_performance_weekly() -> dict:
 
                     # Call Modal
                     results = analyze_weather_on_modal(rides)
+                    modal_ok = True
+                    _MODAL_BREAKER.record(
+                        "analyze_weather_performance_weekly", True
+                    )
 
                     # Store results in CyclingProfile
                     profile_result = await db.execute(
@@ -1539,6 +1618,10 @@ def analyze_weather_performance_weekly() -> dict:
                         await db.commit()
 
                 except Exception as e:
+                    if not modal_ok:
+                        _MODAL_BREAKER.record(
+                            "analyze_weather_performance_weekly", False
+                        )
                     logger.error(
                         f"Failed to analyze weather for user {uid}: {e}",
                         exc_info=True,
@@ -1593,6 +1676,13 @@ def analyze_segments_intelligence_weekly() -> dict:
             errors: list[str] = []
 
             for uid in user_ids:
+                if not _MODAL_BREAKER.allow("analyze_segments_intelligence_weekly"):
+                    logger.warning(
+                        "analyze_segments_intelligence_weekly: circuit breaker "
+                        "open — skipping remaining users"
+                    )
+                    break
+                modal_ok = False
                 try:
                     # Get user's segments
                     result = await db.execute(
@@ -1671,9 +1761,18 @@ def analyze_segments_intelligence_weekly() -> dict:
                             "effort_vam": eff.effort_vam,
                         })
 
-                    # Call Modal
+                    # Call Modal (tuned clustering: pairs aren't clusters and
+                    # eps 0.4 groups almost everything — RMI-11)
                     results = analyze_segments_on_modal(
-                        segments_data, efforts_data, user_fitness
+                        segments_data,
+                        efforts_data,
+                        user_fitness,
+                        eps=0.35,
+                        min_cluster_size=3,
+                    )
+                    modal_ok = True
+                    _MODAL_BREAKER.record(
+                        "analyze_segments_intelligence_weekly", True
                     )
 
                     # Update segments with results
@@ -1703,6 +1802,10 @@ def analyze_segments_intelligence_weekly() -> dict:
                     await db.commit()
 
                 except Exception as e:
+                    if not modal_ok:
+                        _MODAL_BREAKER.record(
+                            "analyze_segments_intelligence_weekly", False
+                        )
                     logger.error(
                         f"Failed to analyze segments for user {uid}: {e}",
                         exc_info=True,
@@ -1952,6 +2055,13 @@ def analyze_cross_domain_weekly() -> dict:
             errors: list[str] = []
 
             for uid in user_ids:
+                if not _MODAL_BREAKER.allow("analyze_cross_domain_weekly"):
+                    logger.warning(
+                        "analyze_cross_domain_weekly: circuit breaker open — "
+                        "skipping remaining users"
+                    )
+                    break
+                modal_ok = False
                 try:
                     # Collect sleep data (last 90 days)
                     cutoff = datetime.now(UTC) - timedelta(days=90)
@@ -2090,6 +2200,8 @@ def analyze_cross_domain_weekly() -> dict:
                         recovery_data=recovery_data,
                         **race_kwargs,
                     )
+                    modal_ok = True
+                    _MODAL_BREAKER.record("analyze_cross_domain_weekly", True)
 
                     # Store results
                     for insight_type in ["sleep_performance", "cross_sport", "race_retrospective"]:
@@ -2140,6 +2252,8 @@ def analyze_cross_domain_weekly() -> dict:
                     await db.commit()
 
                 except Exception as e:
+                    if not modal_ok:
+                        _MODAL_BREAKER.record("analyze_cross_domain_weekly", False)
                     logger.error(
                         f"Failed to analyze cross-domain for user {uid}: {e}",
                         exc_info=True,
