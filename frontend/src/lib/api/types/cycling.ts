@@ -12,6 +12,7 @@ export interface CyclingProfile {
   // Personalized power model fields
   critical_power?: number | null;
   w_prime?: number | null;
+  p_max?: number | null;
   power_model_r_squared?: number | null;
   personalized_vo2max?: number | null;
   ctl_tau?: number | null;
@@ -115,6 +116,7 @@ export interface PowerCurveResponse {
   ftp_watts?: number;
   cp?: number;
   w_prime?: number;
+  p_max?: number;
   model_r_squared?: number;
   fitted_curve?: Record<string, number>;
 }
@@ -366,6 +368,7 @@ export interface RideAnalysis {
 export interface PowerModelCriticalPower {
   cp: number | null;
   w_prime: number | null;
+  p_max: number | null;
   model_r_squared: number | null;
   fitted_curve: Record<string, number> | null;
   method: string | null;
@@ -437,6 +440,7 @@ export interface WeatherCoefficients {
   intercept: number;
   r_squared: number;
   data_points: number;
+  dropped_features: string[];
 }
 
 export interface WeatherAnalysisResponse {

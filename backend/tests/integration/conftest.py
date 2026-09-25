@@ -321,6 +321,7 @@ async def test_route(db_session: AsyncSession, test_user: User) -> Route:
 
     source = RouteSource(
         route_id=route.id,
+        user_id=test_user.id,
         provider="strava",
         provider_route_id="strava_route_123",
         provider_name="Richmond Park Loop",

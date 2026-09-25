@@ -95,13 +95,27 @@ def test_rounding_to_one_decimal():
 
 
 def test_personalized_power_curve_morton():
-    # P(t) = W'/t + CP with CP=250 W, W'=20000 J
+    # Legacy 2-param P(t) = W'/t + CP with CP=250 W, W'=20000 J.
+    # Short-duration predictions are omitted (the hyperbola diverges as
+    # t → 0) — only >= 60s buckets are returned.
     curve = personalized_power_curve(250, 20000)
-    assert set(curve) == {d for d, _ in POWER_DURATION_BUCKETS}
+    assert set(curve) == {d for d, _ in POWER_DURATION_BUCKETS if d >= 60}
+    assert 5 not in curve
     assert curve[60] == 583.3
     assert curve[3600] == 255.6
-    # hyperbola: short durations well above CP, long durations asymptote to CP
-    assert curve[5] > curve[60] > curve[3600] >= 250
+    # hyperbola: longer durations asymptote to CP
+    assert curve[60] > curve[3600] >= 250
+
+
+def test_personalized_power_curve_3param_bounded():
+    # 3-param P(t) = W'/(t + k) + CP stays bounded at sprint durations and
+    # covers the full bucket range.
+    curve = personalized_power_curve(182, 22012, 1062)
+    assert set(curve) == {d for d, _ in POWER_DURATION_BUCKETS}
+    # P(5s) near the Pmax ceiling, not the 3000W+ 2-param blow-up
+    assert curve[5] == pytest.approx(915.7, abs=1.0)
+    assert curve[5] <= 1062
+    assert curve[5] > curve[60] > curve[3600] >= 182
 
 
 def test_personalized_power_curve_zero_w_prime():

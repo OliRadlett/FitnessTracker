@@ -203,7 +203,14 @@ def _predict_segment_effort(
             "predicted_vam": round(predicted_vam, 1),
             "predicted_time_seconds": round(predicted_time, 1),
             "predicted_power_watts": None,
-            "difficulty_score": round(min(100, avg_grad * 5 + length_m / 100), 1),
+            # Same 0-100 scale as the history-based path below: gradient,
+            # length, and elevation gain weighted identically, so the score
+            # doesn't jump when a segment gains its first similar effort.
+            "difficulty_score": round(min(100, (
+                avg_grad * 4
+                + length_m / 50
+                + gain_m / 10
+            )), 1),
             "confidence": 0.2,
             "similar_efforts_used": 0,
         }
@@ -349,11 +356,21 @@ def analyze_segments(
         }
 
     # ── B. Segment similarity clustering ─────────────────────────────────────
+    # Feature vectors are reused below to weight efforts by true similarity
+    # (RMI-11): previously every effort carried a flat 0.5 weight.
+    features = [_extract_segment_features(s) for s in segments]
+    seg_ids = [s.get("id", f"seg_{i}") for i, s in enumerate(segments)]
+    feature_by_id = dict(zip(seg_ids, features))
+
+    def _feature_distance(a_id: str, b_id: str) -> float:
+        fa = feature_by_id.get(a_id)
+        fb = feature_by_id.get(b_id)
+        if fa is None or fb is None:
+            return float("inf")
+        return _euclidean_distance(fa, fb)
+
     clusters = []
     if len(segments) >= min_cluster_size:
-        # Extract feature vectors
-        features = [_extract_segment_features(s) for s in segments]
-
         # Run DBSCAN
         labels = _dbscan(features, eps=eps, min_samples=min_cluster_size)
 
@@ -361,8 +378,7 @@ def analyze_segments(
         cluster_map: dict[int, list[str]] = {}
         for i, label in enumerate(labels):
             if label >= 0:
-                seg_id = segments[i].get("id", f"seg_{i}")
-                cluster_map.setdefault(label, []).append(seg_id)
+                cluster_map.setdefault(label, []).append(seg_ids[i])
 
         for cluster_id, seg_ids in cluster_map.items():
             if len(seg_ids) < min_cluster_size:
@@ -407,12 +423,26 @@ def analyze_segments(
 
         if seg_cluster:
             similar_efforts = [
-                e for e in efforts
+                {**e, "similarity": 1.0 / (1.0 + _feature_distance(seg_id, e.get("segment_id", "")))}
+                for e in efforts
                 if e.get("segment_id") in seg_cluster["segment_ids"]
                 and e.get("segment_id") != seg_id
             ]
         else:
-            similar_efforts = seg_efforts
+            # Unclustered: own efforts at full weight plus efforts from the
+            # K nearest segments by gradient signature (RMI-11) — previously
+            # only own efforts were used, so a new climb had no context.
+            others = sorted(
+                (sid for sid in seg_ids if sid != seg_id),
+                key=lambda sid: _feature_distance(seg_id, sid),
+            )[:3]
+            similar_efforts = [
+                {**e, "similarity": 1.0} for e in seg_efforts
+            ] + [
+                {**e, "similarity": 1.0 / (1.0 + _feature_distance(seg_id, e.get("segment_id", "")))}
+                for e in efforts
+                if e.get("segment_id") in others
+            ]
 
         prediction = _predict_segment_effort(seg, similar_efforts, user_fitness)
         predictions[seg_id] = prediction

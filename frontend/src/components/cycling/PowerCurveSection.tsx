@@ -133,6 +133,11 @@ export function PowerCurveSection({
                       W&apos;: {(powerCurve.w_prime / 1000).toFixed(1)}kJ
                     </span>
                   )}
+                  {powerCurve.p_max && (
+                    <span className="text-xs text-cyan-400 font-mono">
+                      Pmax: {powerCurve.p_max.toFixed(0)}W
+                    </span>
+                  )}
                   {powerCurve.model_r_squared != null && (
                     <span className="text-xs text-positive font-mono">
                       R²: {(powerCurve.model_r_squared * 100).toFixed(1)}%

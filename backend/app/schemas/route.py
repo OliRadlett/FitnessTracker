@@ -109,7 +109,6 @@ class RouteRead(BaseModel):
     is_favorite: bool = False
     quality_score: float | None = None
     terrain_classification: dict | None = None
-    predicted_effort: dict | None = None
     sources: list[RouteSourceRead] = []
     tags: list[RouteTagRead] = []
     created_at: datetime
@@ -338,7 +337,6 @@ class MergedRouteView(BaseModel):
     is_favorite: bool = False
     quality_score: float | None = None
     terrain_classification: dict | None = None
-    predicted_effort: dict | None = None
     sources: list[RouteSourceRead] = []
     ridden_segments: list[RiddenSegment] = []
     created_at: datetime
