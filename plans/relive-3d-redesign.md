@@ -253,10 +253,19 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
 - **Route3D parity** — the routes-page 3D now uses the same high-res terrarium DEM
   (with Open-Meteo fallback), inheriting the slope shading + edge fade.
 
+### Polish pass 4 (2026-09-25)
+- **Terrain drape** — the road/bike now follow per-point DEM heights (smoothed),
+  with the terrain bed anchored so the road never sits under it and the camera
+  clamped above the DEM surface.
+- **Fly-by camera** — a slow cinematic orbit/dolly around the rider.
+- **Weather rain** — camera-relative falling streaks when the ride weather is wet.
+- **Photo mode** — hides UI chrome for a clean view; Poster now renders at 2x.
+
 ### Remaining
-- Optional: weather **effects** (rain streaks/wet road/wind sock), not just sky.
-- Terrain vertical alignment is approximate (road held above the bed rather than
-  draped onto it).
+- Optional: wet-road sheen / wind sock, **segment racing** and **public share
+  link** (both need backend/product scope).
+- `AGENTS.md` / `frontend/src/CODEMAP.md` §3.16 still need the latest entries at
+  release time.
 
 ## Risks / guardrails
 

@@ -31,14 +31,15 @@ export const MAX_PATH_SAMPLES = 1200;
 /** gradient at which the slope colour ramp saturates (%) */
 export const GRADE_SCALE = 12;
 
-/** colour ramp stops: terrain elevation tint (hypsometric) */
+/** colour ramp stops: terrain elevation tint (hypsometric, natural) */
 export const ELEVATION_RAMP: [number, string][] = [
-  [0.0, '#0ea5e9'],
-  [0.2, '#34d399'],
-  [0.4, '#a3e635'],
-  [0.6, '#facc15'],
-  [0.8, '#fb923c'],
-  [1.0, '#f43f5e'],
+  [0.0, '#3f6c3a'], // lowland green
+  [0.25, '#6b8f3a'], // grass
+  [0.45, '#9a8b3a'], // dry grass / scrub
+  [0.6, '#8a6a44'], // earthy hills
+  [0.75, '#6e5544'], // rock
+  [0.88, '#8a8a8a'], // grey scree
+  [1.0, '#d8dce0'], // snow-capped
 ];
 
 /** colour ramp stops: line slope tint */
@@ -50,7 +51,9 @@ export const GRADE_RAMP: [number, string][] = [
   [1.0, '#ef4444'],
 ];
 
-const SLATE: [number, number, number] = [0.474, 0.506, 0.549];
+// Base terrain albedo (warm earth) blended under the hypsometric ramp so the
+// bed never reads as flat grey even before exaggeration kicks in.
+const GROUND: [number, number, number] = [0.36, 0.33, 0.28];
 
 export interface TerrainInput {
   grid: RouteGrid;
@@ -250,16 +253,48 @@ export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, 
 }
 
 /** terrain mesh vertex data from the DEM grid, in the path's projection frame */
+/** per-vertex surface normal (metres) from neighbour height differences */
+function terrainNormalAt(
+  heights: number[],
+  cols: number,
+  rows: number,
+  r: number,
+  c: number,
+  lngStepM: number,
+  latStepM: number,
+): [number, number, number] {
+  const base = heights[r * cols + c];
+  const at = (rr: number, cc: number) => {
+    const v = heights[rr * cols + cc];
+    return Number.isFinite(v) ? v : base;
+  };
+  const hL = at(r, Math.max(0, c - 1));
+  const hR = at(r, Math.min(cols - 1, c + 1));
+  const hD = at(Math.max(0, r - 1), c);
+  const hU = at(Math.min(rows - 1, r + 1), c);
+  return [-(hR - hL) / (2 * lngStepM), -(hU - hD) / (2 * latStepM), 1];
+}
+
+/** Lambert diffuse vs a warm, elevated sun. Returns ~0.4..1.0. */
+function terrainLambert(n: [number, number, number]): number {
+  const nlen = Math.hypot(n[0], n[1], n[2]) || 1;
+  // sun dir (normalised): from front-right, elevated
+  const sx = 0.45, sy = 0.5, sz = 0.95;
+  const slen = Math.hypot(sx, sy, sz);
+  return Math.max(0.4, ((n[0] * sx + n[1] * sy + n[2] * sz) / (nlen * slen)) * 0.6 + 0.4);
+}
+
 export function buildTerrainMesh(
   grid: RouteGrid,
   heights: number[],
-  opts: { lat0: number; lng0: number; altMin: number; zScale: number }
+  opts: { lat0: number; lng0: number; altMin: number; zScale: number; seaLevelM?: number },
 ): { count: number; positions: Float32Array; colors: Float32Array } {
   const { cols, rows, lats, lngs } = grid;
   const mPerDegLng = M_PER_DEG_LAT * Math.cos((opts.lat0 * Math.PI) / 180);
   const count = rows * cols;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
+  const sea = opts.seaLevelM ?? 0;
 
   let lo = Infinity;
   let hi = -Infinity;
@@ -276,6 +311,9 @@ export function buildTerrainMesh(
   // Fade the outer ~6% of the grid to black so the terrain slab's hard edge
   // dissolves into the horizon instead of ending abruptly.
   const fadeDepth = Math.max(1, Math.min(rows, cols) * 0.06);
+  // Water colour ramp: deep → shallow, blended toward shore at the coastline.
+  const SEA_DEEP: [number, number, number] = [0.05, 0.16, 0.34];
+  const SEA_SHALLOW: [number, number, number] = [0.2, 0.45, 0.58];
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -286,29 +324,35 @@ export function buildTerrainMesh(
       positions[idx + 1] = (lats[r] - opts.lat0) * M_PER_DEG_LAT;
       positions[idx + 2] = (hv - opts.altMin) * opts.zScale;
 
-      const t = (hv - lo) / span;
-      const raw = rampColor(ELEVATION_RAMP, t);
-      // Slope shading: steep faces darken so relief reads even in flat light.
-      const at = (rr: number, cc: number) => {
-        const v = heights[rr * cols + cc];
-        return Number.isFinite(v) ? v : hv;
-      };
-      const hL = at(r, Math.max(0, c - 1));
-      const hR = at(r, Math.min(cols - 1, c + 1));
-      const hD = at(Math.max(0, r - 1), c);
-      const hU = at(Math.min(rows - 1, r + 1), c);
-      const slope = Math.hypot((hR - hL) / (2 * lngStepM), (hU - hD) / (2 * latStepM));
-      const shade = Math.max(0.35, 1 - slope * 0.9);
-      const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
-      const k = shade * edge;
-      colors[idx] = (raw[0] * 0.45 + SLATE[0] * 0.55) * k;
-      colors[idx + 1] = (raw[1] * 0.45 + SLATE[1] * 0.55) * k;
-      colors[idx + 2] = (raw[2] * 0.45 + SLATE[2] * 0.55) * k;
+      const belowSea = hv <= sea;
+      if (belowSea) {
+        // Water: depth below sea level darkens the blue; shallowest blends to shore.
+        const depth = Math.max(0, Math.min(1, (sea - hv) / 10));
+        const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
+        const k = edge * (0.7 + 0.3 * (1 - depth));
+        const wr = SEA_DEEP[0] + (SEA_SHALLOW[0] - SEA_DEEP[0]) * (1 - depth);
+        const wg = SEA_DEEP[1] + (SEA_SHALLOW[1] - SEA_DEEP[1]) * (1 - depth);
+        const wb = SEA_DEEP[2] + (SEA_SHALLOW[2] - SEA_DEEP[2]) * (1 - depth);
+        colors[idx] = wr * k;
+        colors[idx + 1] = wg * k;
+        colors[idx + 2] = wb * k;
+      } else {
+        const t = (hv - lo) / span;
+        const raw = rampColor(ELEVATION_RAMP, t);
+        const n = terrainNormalAt(heights, cols, rows, r, c, lngStepM, latStepM);
+        const lambert = terrainLambert(n);
+        const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
+        const k = lambert * edge;
+        // Blend the hypsometric ramp over a warm earth base, then shade.
+        colors[idx] = (raw[0] * 0.7 + GROUND[0] * 0.3) * k;
+        colors[idx + 1] = (raw[1] * 0.7 + GROUND[1] * 0.3) * k;
+        colors[idx + 2] = (raw[2] * 0.7 + GROUND[2] * 0.3) * k;
+      }
     }
   }
+
   return { count, positions, colors };
 }
-
 /**
  * Build the 3D route drape + optional terrain bed.
  * Pure — no DOM/three dependencies; unit-testable.
@@ -410,7 +454,9 @@ export function buildRoute3D(opts: BuildRoute3DOptions): BuildRoute3DResult {
     if (slope < minSlopePct) minSlopePct = slope;
   }
 
-  const terrainVerts = terrain ? buildTerrainMesh(terrain.grid, terrain.heights, { lat0, lng0, altMin, zScale }) : null;
+  const terrainVerts = terrain
+    ? buildTerrainMesh(terrain.grid, terrain.heights, { lat0, lng0, altMin, zScale, seaLevelM: 0 })
+    : null;
 
   return { path: points, terrainVerts, lat0, lng0, zScale, altMin, altMax, altSpan, maxSlopePct, minSlopePct };
 }
