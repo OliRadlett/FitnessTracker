@@ -141,6 +141,26 @@ export interface ReplayBuildResult {
  * Build the time-synchronised 3D flight path for a ride.
  * Pure — no DOM/three dependencies; unit-testable.
  */
+/** Centred moving average over `values` (window `w`), ignoring nulls. */
+function smoothNulls(values: (number | null)[], w: number): (number | null)[] {
+  const n = values.length;
+  if (n < 3 || w < 3) return values;
+  const half = Math.floor(w / 2);
+  const out: (number | null)[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = Math.max(0, i - half); j <= Math.min(n - 1, i + half); j++) {
+      const v = values[j];
+      if (v == null) continue;
+      sum += v;
+      count++;
+    }
+    out[i] = count ? sum / count : null;
+  }
+  return out;
+}
+
 export function buildReplay(
   opts: ReplayBuildOptions
 ): ReplayBuildResult {
@@ -181,9 +201,14 @@ export function buildReplay(
   const altMin = alts.length ? Math.min(...alts) : 0;
   const altSpan = alts.length ? Math.max(...alts) - altMin : 0;
   const extentX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  // Cinematic exaggeration: modest (≤3×) so a chase camera isn't buried by
+  // the vertical profile. The raw profile still drives `grade`.
   const zScale =
     opts.zScale ??
-    (altSpan > 0 ? Math.min(10, Math.max(2, extentX / (altSpan || 1) * 0.12)) : 1);
+    (altSpan > 0 ? Math.min(3, Math.max(1.5, extentX / (altSpan || 1) * 0.12)) : 1);
+  // Smooth the vertical profile (moving average) so barometric noise doesn't
+  // spike the road/terrain into near-vertical facets at high exaggeration.
+  const altZ = smoothNulls(altByDist, 5);
 
   // Map cumulative distance → polyline fraction for (x, y).
   const polylineFracAtDist = (d: number): number => {
@@ -209,7 +234,7 @@ export function buildReplay(
     const polyFrac = polylineFracAtDist(distance);
     const px = xs.length ? interp(xs, polyFrac) : 0;
     const py = ys.length ? interp(ys, polyFrac) : 0;
-    const rawAlt = altByDist[k];
+    const rawAlt = altZ[k];
     const z = rawAlt == null ? 0 : (rawAlt - altMin) * zScale;
     const speed = velocity[k] ?? 0;
     // Gradient between consecutive output samples (stride-averaged when decimated).

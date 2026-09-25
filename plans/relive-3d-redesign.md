@@ -197,8 +197,40 @@ Each phase ends green: `vitest` + `tsc --noEmit` + a manual check.
   revalidate, `CACHE_NAME` bumped to v6).
 - Sun/time-of-day lighting + shared sky (`lib/sun.ts`, `lib/sky.ts`) as above.
 
+### Debug & polish pass (2026-09-24, local iteration)
+Driven by a local harness (`/fittrack/dev/replay`, real prod fixtures) + headless
+Playwright screenshots. Fixed:
+- **Bike never loaded** — `BIKE_MODEL_URL` was missing the `/fittrack` basePath
+  (404). Every other public asset already used `/fittrack/…`.
+- **Wrong bike paint** — the shipped GLB was the old yellow spec; rebuilt it with
+  the pipeline's 2026 white/black texture (`BaseColor_flipped_2026.png`, has the
+  mirrored CUBE region the UVs expect) by swapping the base-colour image in the
+  GLB (Blender) → re-optimized (2.45 MB).
+- **Giant "road wedge"** — the ribbon was drawn for the whole 20-50 km route, so
+  the distant/return leg (out-and-back) projected into a screen-filling band.
+  Fix: draw only a ±120-segment window of road around the rider (`setDrawRange`).
+  (Ribbon geometry was verified correct: 5 m wide, max tri edge 27.5 m.)
+- **Altitude exaggeration** — `zScale` capped 10 → 3 and the profile smoothed
+  (grade kept raw), so the road no longer climbs off-screen.
+- **Noise in follow cams** — hide the full-route line (doubles back visually) and
+  fade the road with tight mode-dependent fog (near 60 / far 1400) instead of a
+  hard cut.
+- **Chase → Orbit** — revolve around the rider instead of a stale scene-centre
+  `controls.target`.
+- **Terrain/satellite** — imagery now unlit (`MeshBasicMaterial`) so it isn't
+  muddy; terrain baseline anchored to the path start (+1.2 m clearance) so the
+  road sits on the bed; per-tile 8 s timeout so a slow PNG falls back instead of
+  hanging.
+- Km-marker dots/labels shrunk for the close camera; chase tightened to 7 m/2.6 m.
+
+Tooling added: `scripts/optimize-bike.mjs` (already), `frontend/public/dev-fixtures/`
+(gitignored), `frontend/scripts/_*.mjs` Playwright helpers (gitignored), and the
+local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
+
 ### Remaining
 - Optional: push terrain/imagery into `Route3D` too; weather-driven fog/wind.
+- Terrain vertical alignment is approximate (DEM vs barometric offset varies
+  along the route; anchored at the start).
 
 ## Risks / guardrails
 
