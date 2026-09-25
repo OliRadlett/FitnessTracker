@@ -300,13 +300,24 @@ depth accuracy ≥ 0.9 on ¾ clips.
     coverage-limited.
   → **Conclusion**: keep the offset correction; drop CoTracker; **retrain the
     detector** on the 232-frame human set + 1,500 synthetic renders.
-- ✅ **Retrain ready + smoke-tested (2026-09-25)**: `train_bar_detector.py prepare`
-  now defaults to `labels.human.jsonl` (232 plate frames / 29 clips) and merges
-  the 1,500 synthetic renders → **2,394 train / 349 val**; `train` (Modal T4,
-  `yolov8n` → ONNX `nms=True`) verified end-to-end with a 3-epoch smoke run
-  (12 MB ONNX pulled back from the Modal Volume). A full retrain is one command.
-  Next: full train, then score with `scripts/validate_tracking.py` against the
-  232-frame human set before wiring `VIDEO_BAR_DETECTOR_MODEL`.
+- ✅ **Retrained + validated (2026-09-25)**: `train_bar_detector.py prepare` now
+  defaults to `labels.human.jsonl` (232 plate frames / 29 clips) and merges the
+  1,500 synthetic renders → **2,394 train / 349 val**; `train --epochs 60`
+  (Modal T4, `yolov8n` → ONNX `nms=True`) ran end-to-end (12 MB ONNX from the
+  Modal Volume). Scored with `detect_bars_onnx`:
+
+  | split | recall@0.5 | mean IoU | n |
+  |---|---|---|---|
+  | **val (held out)** human | **0.971** | 0.863 | 103 |
+  | val (held out) synthetic | 0.955 | 0.876 | 1,502 |
+  | train human | 1.000 | 0.952 | 2,436 |
+
+  This is the decisive comparison — **classical 18%**, **YOLO-World zero-shot
+  ~23% IoU**, **trained detector 97% recall on held-out human frames**. The
+  earlier "0% on some clips" model had only 144 labelled frames; the 232-frame
+  set fixes the generalisation. ⏳ Remaining: a **clip-level** holdout (val is
+  frame-level, same 29 clips) before wiring `VIDEO_BAR_DETECTOR_MODEL`; then the
+  offset correction composes on top.
 - **Labelling conventions**: `person` = the whole visible body **including arms**
   (one box) — matches the auto-labels (all landmarks) + COCO; only `plate`/
   `barbell` feed the bar path, so `person` is optional. Side views: label only

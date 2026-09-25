@@ -150,8 +150,8 @@ def fetch_from_volume() -> None:
     dest.mkdir(parents=True, exist_ok=True)
     print(f"fetching {VOLUME_NAME}:/bar_detector.onnx -> {dest}")
     subprocess.run(
-        [sys.executable, "-m", "modal", "volume", "get", VOLUME_NAME,
-         "bar_detector.onnx", str(dest)],
+        [sys.executable, "-m", "modal", "volume", "get", "--force",
+         VOLUME_NAME, "bar_detector.onnx", str(dest)],
         check=False,
     )
     out = dest / "bar_detector.onnx"
