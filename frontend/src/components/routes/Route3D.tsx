@@ -101,8 +101,22 @@ export function Route3D({
         return;
       }
       try {
-        const { fetchTerrainResult } = await import('@/lib/terrain');
-        const result = await fetchTerrainResult(grid, controller.signal);
+        // High-res terrarium DEM first (same tiles as the replay), Open-Meteo
+        // as a fallback.
+        let result: TerrainInput;
+        try {
+          const { fetchTerrariumTerrain } = await import('@/lib/terrainTiles');
+          const res = await fetchTerrariumTerrain(coords, {
+            maxTiles: 36,
+            maxGridPoints: 90000,
+            signal: controller.signal,
+          });
+          result = { grid: res.grid, heights: res.heights };
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') throw e;
+          const { fetchTerrainResult } = await import('@/lib/terrain');
+          result = await fetchTerrainResult(grid, controller.signal);
+        }
         if (cancelled) return;
         setTerrain(result);
         setTerrainState('ready');

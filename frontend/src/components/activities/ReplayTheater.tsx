@@ -171,6 +171,13 @@ export function ReplayTheater({
           ftpWatts={ftpWatts}
           startDate={activity.start_date}
           ghost={ghost}
+          weather={{
+            conditions: activity.weather_conditions,
+            temperature: activity.weather_temperature,
+            windSpeedKmh: activity.weather_wind_speed_kmh,
+            windDirection: activity.weather_wind_direction,
+            precipitationMm: activity.weather_precipitation_mm,
+          }}
           canvasHeightClass="h-[68dvh]"
           theater
         />
