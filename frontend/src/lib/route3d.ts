@@ -271,25 +271,39 @@ export function buildTerrainMesh(
   }
   const span = hi - lo || 1;
 
+  const latStepM = (lats[1] - lats[0]) * M_PER_DEG_LAT || 1;
+  const lngStepM = (lngs[1] - lngs[0]) * mPerDegLng || 1;
+  // Fade the outer ~6% of the grid to black so the terrain slab's hard edge
+  // dissolves into the horizon instead of ending abruptly.
+  const fadeDepth = Math.max(1, Math.min(rows, cols) * 0.06);
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const idx = (r * cols + c) * 3;
+      const h = heights[r * cols + c];
+      const hv = Number.isFinite(h) ? h : lo;
       positions[idx] = (lngs[c] - opts.lng0) * mPerDegLng;
       positions[idx + 1] = (lats[r] - opts.lat0) * M_PER_DEG_LAT;
-      positions[idx + 2] = Number.isFinite(heights[r * cols + c])
-        ? (heights[r * cols + c] - opts.altMin) * opts.zScale
-        : (lo - opts.altMin) * opts.zScale;
+      positions[idx + 2] = (hv - opts.altMin) * opts.zScale;
 
-      const t = (heights[r * cols + c] - lo) / span;
+      const t = (hv - lo) / span;
       const raw = rampColor(ELEVATION_RAMP, t);
-      const [r8, g8, b8] = [
-        raw[0] * 0.45 + SLATE[0] * 0.55,
-        raw[1] * 0.45 + SLATE[1] * 0.55,
-        raw[2] * 0.45 + SLATE[2] * 0.55,
-      ];
-      colors[idx] = r8;
-      colors[idx + 1] = g8;
-      colors[idx + 2] = b8;
+      // Slope shading: steep faces darken so relief reads even in flat light.
+      const at = (rr: number, cc: number) => {
+        const v = heights[rr * cols + cc];
+        return Number.isFinite(v) ? v : hv;
+      };
+      const hL = at(r, Math.max(0, c - 1));
+      const hR = at(r, Math.min(cols - 1, c + 1));
+      const hD = at(Math.max(0, r - 1), c);
+      const hU = at(Math.min(rows - 1, r + 1), c);
+      const slope = Math.hypot((hR - hL) / (2 * lngStepM), (hU - hD) / (2 * latStepM));
+      const shade = Math.max(0.35, 1 - slope * 0.9);
+      const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
+      const k = shade * edge;
+      colors[idx] = (raw[0] * 0.45 + SLATE[0] * 0.55) * k;
+      colors[idx + 1] = (raw[1] * 0.45 + SLATE[1] * 0.55) * k;
+      colors[idx + 2] = (raw[2] * 0.45 + SLATE[2] * 0.55) * k;
     }
   }
   return { count, positions, colors };
