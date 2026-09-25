@@ -9,7 +9,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
 import { TOUR_PRESETS, powerZoneBounds, replayDistanceAt, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
-import { DESCENT_COLOR, GRADE_RAMP, slopeColor } from '@/lib/route3d';
+import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
 import { detectHighlights, highlightAt } from '@/lib/highlights';
@@ -56,6 +56,37 @@ function nearestIndex(points: ReplayPoint[], elapsed: number): number {
   return lo;
 }
 
+/** soft radial blob used as the bike's contact shadow */
+function createSoftShadowTexture(): THREE.Texture {
+  const s = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(0.55, 'rgba(255,255,255,0.4)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Lift effort colours toward asphalt grey so the road reads as a road. Pure. */
+function roadTint(colors: number[], amount = 0.5): number[] {
+  const out = new Array<number>(colors.length);
+  for (let i = 0; i < colors.length; i += 3) {
+    out[i] = amount + (1 - amount) * colors[i];
+    out[i + 1] = amount + (1 - amount) * colors[i + 1];
+    out[i + 2] = amount + (1 - amount) * colors[i + 2];
+  }
+  return out;
+}
+
 /** asphalt ribbon texture: dark surface, dashed centre line, faint edge lines */
 function createRoadTexture(): THREE.Texture {
   const s = 128;
@@ -71,16 +102,16 @@ function createRoadTexture(): THREE.Texture {
       ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`;
       ctx.fillRect(Math.random() * s, Math.random() * s, 1, 1);
     }
-    ctx.strokeStyle = 'rgba(240,244,250,0.9)';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([18, 18]);
+    ctx.strokeStyle = 'rgba(240,244,250,0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([32, 96]);
     ctx.beginPath();
     ctx.moveTo(s / 2, 0);
     ctx.lineTo(s / 2, s);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(226,232,240,0.5)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(226,232,240,0.45)';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(4, 0);
     ctx.lineTo(4, s);
@@ -364,6 +395,7 @@ export function Replay3D({
     rider: THREE.Object3D;
     bike: BikeRig | null;
     trail: Line2;
+    path: Line2;
     pathGeo: LineGeometry | null;
     roadGeo: THREE.BufferGeometry | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
@@ -417,6 +449,12 @@ export function Replay3D({
     camModeRef.current = camMode;
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
+    // Entering orbit from a follow cam: revolve around the rider, not the stale
+    // scene-centre target (which aimed the camera at a distant point).
+    if (camMode === 'orbit') {
+      const s = sceneRef.current;
+      if (s) s.controls.target.copy(s.rider.position);
+    }
   }, [camMode]);
 
   // Build the three.js scene once for this ride.
@@ -429,7 +467,13 @@ export function Replay3D({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: !liteMode, alpha: true, preserveDrawingBuffer: true });
+      renderer = new THREE.WebGLRenderer({
+        antialias: !liteMode,
+        alpha: true,
+        preserveDrawingBuffer: true,
+        // km-scale scenes with near~0.5m need log depth or the terrain z-fights
+        logarithmicDepthBuffer: true,
+      });
       if (!renderer.getContext()) throw new Error('no-webgl');
     } catch {
       setFailed(true);
@@ -476,8 +520,8 @@ export function Replay3D({
     const camera = new THREE.PerspectiveCamera(
       55,
       mount.clientWidth / mount.clientHeight,
-      0.1,
-      size * 10
+      0.3,
+      size * 8
     );
 
     // Ground grid, scaled to the ride: GridHelper lives in XZ, so rotate it
@@ -554,9 +598,10 @@ export function Replay3D({
 
     // ── Road ribbon: asphalt under the bike, tinted by the effort metric ──
     const roadData = buildRoadRibbon(points, {
-      width: 6,
-      zOffset: -0.01,
-      colors: replayPathColorArray(points, colorByRef.current),
+      width: 5,
+      zOffset: -0.02,
+      dashPeriodM: 12,
+      colors: roadTint(replayPathColorArray(points, colorByRef.current)),
     });
     let roadGeo: THREE.BufferGeometry | null = null;
     let roadMat: THREE.MeshBasicMaterial | null = null;
@@ -571,6 +616,20 @@ export function Replay3D({
       roadMat = new THREE.MeshBasicMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });
       scene.add(new THREE.Mesh(roadGeo, roadMat));
     }
+
+    // ── Contact shadow under the bike (grounds it visually) ───────────────
+    const shadowTex = createSoftShadowTexture();
+    const shadowGeo = new THREE.CircleGeometry(0.6, 24);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      color: 0x000000,
+    });
+    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    shadow.renderOrder = 1;
+    scene.add(shadow);
 
     // ── Bike rig: real-scale model, oriented + leaning (Phase 0) ──────────
     const rider = new THREE.Group();
@@ -625,7 +684,7 @@ export function Replay3D({
     {
       const totalKm = build.totalDistance / 1000;
       const intervalKm = totalKm > 150 ? 25 : totalKm > 60 ? 10 : 5;
-      const dotGeo = new THREE.SphereGeometry(Math.max(size * 0.004, 1.5), 10, 10);
+      const dotGeo = new THREE.SphereGeometry(1, 10, 10);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
       markerDisposables.push(dotGeo, dotMat);
       const placed: THREE.Vector3[] = [];
@@ -666,7 +725,7 @@ export function Replay3D({
         const tex = new THREE.CanvasTexture(canvas);
         const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
         const sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(size * 0.055, size * 0.014, 1);
+        sprite.scale.set(size * 0.02, size * 0.005, 1);
         stagger = stagger === 0 ? 1 : 0;
         sprite.position.set(pos.x, pos.y, pos.z + size * (0.025 + stagger * 0.025));
         markerGroup.add(sprite);
@@ -695,8 +754,12 @@ export function Replay3D({
       pos.set(p0.x + (p1.x - p0.x) * f, p0.y + (p1.y - p0.y) * f, p0.z + (p1.z - p0.z) * f);
       const a = pts[Math.max(0, i - 4)];
       const b = pts[Math.min(pts.length - 1, i + 6)];
-      dir.set(b.x - a.x, b.y - a.y, b.z - a.z);
-      if (dir.lengthSq() > 1e-9) dir.normalize();
+      // Only replace the heading when the window is non-degenerate — a zeroed
+      // forward vector would collapse the chase camera onto the bike.
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      if (dx * dx + dy * dy + dz * dz > 1e-9) dir.set(dx, dy, dz).normalize();
       return { index: i, speed: p0.speed };
     };
     const tick = (now: number) => {
@@ -724,6 +787,36 @@ export function Replay3D({
       }
       // Segments drawn = point index (points 0..i need i segments).
       trailGeo.instanceCount = Math.max(0, Math.min(riderPose.index, points.length - 1));
+      // Draw only a window of road around the rider — the full 20-50 km ribbon
+      // otherwise projects its distant/return leg into a screen-filling band.
+      if (roadGeo) {
+        const W = 120;
+        const segStart = Math.max(0, riderPose.index - W);
+        const segEnd = Math.min(points.length - 2, riderPose.index + W);
+        roadGeo.setDrawRange(segStart * 6, Math.max(0, (segEnd - segStart + 1) * 6));
+      }
+      // The full-route line (doubling back on an out-and-back) is visual noise
+      // from a low chase camera — show it only in the aerial orbit view.
+      pathLine.visible = camModeRef.current === 'orbit';
+      // Contact shadow follows the bike on the ground.
+      shadow.position.set(rider.position.x, rider.position.y, rider.position.z + 0.02);
+      shadow.rotation.z = Math.atan2(riderDir.y, riderDir.x);
+      shadow.visible = camModeRef.current !== 'cockpit';
+      // Km-marker dots: keep a constant apparent size — at real scale the 0 km
+      // dot would otherwise engulf the close camera.
+      for (const child of markerGroup.children) {
+        if ((child as THREE.Mesh).isMesh) {
+          child.scale.setScalar(Math.max(0.15, camera.position.distanceTo(child.position) * 0.012));
+        }
+      }
+      // Tight fog in follow cams so the windowed road fades out instead of
+      // ending in a hard edge; wide in orbit so the whole route stays visible.
+      if (scene.fog) {
+        const fog = scene.fog as THREE.Fog;
+        const follow = camModeRef.current !== 'orbit';
+        fog.near = follow ? 60 : size * 0.4;
+        fog.far = follow ? 1400 : size * 3.2;
+      }
 
       if (ghostPoints) {
         const gt = Math.min(t, ghostPoints[ghostPoints.length - 1].elapsed);
@@ -747,9 +840,9 @@ export function Replay3D({
         camera.up.copy(UP_Z);
         rider.visible = mode !== 'cockpit';
         if (mode === 'chase') {
-          // Real-scale chase: ~9 m behind, ~3 m up, eyes on the road ahead.
-          const dist = 9;
-          const height = 3.2;
+          // Close chase: ~7 m behind, ~2.6 m up, eyes on the road ahead.
+          const dist = 7;
+          const height = 2.6;
           const hLen = Math.hypot(riderDir.x, riderDir.y) || 1;
           tmpDesired.set(
             rider.position.x - (riderDir.x / hLen) * dist,
@@ -787,10 +880,40 @@ export function Replay3D({
           );
         }
         if (!followPosRef.current) followPosRef.current = tmpDesired.clone();
-        const k = 1 - Math.exp(-dt * 4);
+        // At high playback rates the rider moves far each frame — snap instead of
+        // smoothing, or the camera lags kilometres behind and the road vanishes.
+        const lag = followPosRef.current.distanceTo(tmpDesired);
+        const k = lag > 120 ? 1 : 1 - Math.exp(-dt * 4);
         followPosRef.current.lerp(tmpDesired, k);
         camera.position.copy(followPosRef.current);
         camera.lookAt(tmpLook);
+      }
+      // Keep the camera above the terrain bed so follow cams can't clip through
+      // hills (the DEM y is only known here via the mesh's stored grid).
+      const terrainMesh = sceneRef.current?.terrain;
+      if (mode !== 'orbit' && terrainMesh?.userData.heights && followPosRef.current) {
+        const g = terrainMesh.userData.grid as RouteGrid;
+        const tAltMin = terrainMesh.userData.altMin as number;
+        const tZ = terrainMesh.userData.zScale as number;
+        const mPerDegLng = 111320 * Math.cos((build.lat0 * Math.PI) / 180);
+        const lat = build.lat0 + camera.position.y / 111320;
+        const lng = build.lng0 + camera.position.x / mPerDegLng;
+        const h = bilinearHeight(g, terrainMesh.userData.heights as number[], lat, lng);
+        if (h != null) {
+          const minCamZ = (h - tAltMin) * tZ + 1.6;
+          if (followPosRef.current.z < minCamZ) {
+            followPosRef.current.z = minCamZ;
+            camera.position.z = minCamZ;
+            camera.lookAt(tmpLook);
+          }
+        }
+      }
+      // Speed feel: widen the FOV slightly with speed (follow cams only).
+      const followMode = camModeRef.current !== 'orbit';
+      const targetFov = followMode ? 55 + Math.min(1, riderPose.speed / 12) * 9 : 55;
+      if (Math.abs(camera.fov - targetFov) > 0.05) {
+        camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
+        camera.updateProjectionMatrix();
       }
       sky.position.copy(camera.position);
       renderer.render(scene, camera);
@@ -813,7 +936,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     if (terrainStateRef.current === 'on') setTerrainState('loading');
 
@@ -832,6 +955,9 @@ export function Replay3D({
       roadGeo?.dispose();
       roadMat?.dispose();
       roadTex?.dispose();
+      shadowGeo.dispose();
+      shadowMat.dispose();
+      shadowTex.dispose();
       markerGroup.children.forEach((child) => {
         if (child instanceof THREE.Sprite) child.material.map?.dispose();
         markerGroup.remove(child);
@@ -859,6 +985,7 @@ export function Replay3D({
     const s = sceneRef.current;
     if (!s?.pathGeo || points.length < 2) return;
     const colors = replayPathColorArray(points, colorBy);
+    const tinted = roadTint(colors);
     s.pathGeo.setColors(colors);
     const attr = s.roadGeo?.getAttribute('color') as THREE.BufferAttribute | undefined;
     if (attr && attr.count === points.length * 2) {
@@ -866,9 +993,9 @@ export function Replay3D({
       for (let i = 0; i < points.length; i++) {
         const c = i * 3;
         const o = i * 6;
-        arr[o] = arr[o + 3] = colors[c];
-        arr[o + 1] = arr[o + 4] = colors[c + 1];
-        arr[o + 2] = arr[o + 5] = colors[c + 2];
+        arr[o] = arr[o + 3] = tinted[c];
+        arr[o + 1] = arr[o + 4] = tinted[c + 1];
+        arr[o + 2] = arr[o + 5] = tinted[c + 2];
       }
       attr.needsUpdate = true;
     }
@@ -934,7 +1061,7 @@ export function Replay3D({
         let attribution: string;
         try {
           const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
-          const res = await fetchTerrariumTerrain(coords, { signal: controller.signal });
+          const res = await fetchTerrariumTerrain(coords, { maxTiles: 25, signal: controller.signal });
           gridSpec = res.grid;
           heights = res.heights;
           attribution = TERRARIUM_ATTRIBUTION;
@@ -952,7 +1079,7 @@ export function Replay3D({
           attribution = 'Terrain © Open-Meteo — Copernicus DEM (GLO-90)';
         }
         if (cancelled) return;
-        const { buildTerrainMesh } = await import('@/lib/route3d');
+        const { buildTerrainMesh, bilinearHeight } = await import('@/lib/route3d');
         const s = sceneRef.current;
         if (!s) return;
         // Flat rides (no altitude stream) sit at z=0 — base the bed on the
@@ -960,19 +1087,42 @@ export function Replay3D({
         const hasAlt = points.some((p) => p.z !== 0);
         const finite = heights.filter(Number.isFinite);
         const demMin = finite.length ? Math.min(...finite) : 0;
+        // Barometric/PPS altitude and the DEM disagree, and the gap varies along
+        // the route. Anchor the terrain so it is NEVER above the road: for each
+        // (sampled) path point require terrain z ≤ road z, i.e.
+        //   altMin ≥ dem(pt) − pathZ(pt)/zScale;  take the max, + 2 m clearance.
+        let altMin = demMin;
+        if (hasAlt) {
+          const mPerDegLng = 111320 * Math.cos((build.lat0 * Math.PI) / 180);
+          let maxDelta = -Infinity;
+          const step = Math.max(1, Math.floor(points.length / 240));
+          for (let i = 0; i < points.length; i += step) {
+            const p = points[i];
+            const lat = build.lat0 + p.y / 111320;
+            const lng = build.lng0 + p.x / mPerDegLng;
+            const dem = bilinearHeight(gridSpec, heights, lat, lng);
+            if (dem == null) continue;
+            const delta = dem - p.z / build.zScale;
+            if (delta > maxDelta) maxDelta = delta;
+          }
+          altMin = Number.isFinite(maxDelta) ? maxDelta + 2 : demMin;
+        }
         const meshData = buildTerrainMesh(gridSpec, heights, {
           lat0: build.lat0,
           lng0: build.lng0,
-          altMin: hasAlt ? build.altMin : demMin,
+          altMin,
           zScale: build.zScale,
         });
         const geo = new THREE.PlaneGeometry(1, 1, gridSpec.cols - 1, gridSpec.rows - 1);
         geo.setAttribute('position', new THREE.BufferAttribute(meshData.positions, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(meshData.colors, 3));
         geo.computeVertexNormals();
-        const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+        const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.userData.grid = gridSpec;
+        mesh.userData.heights = heights;
+        mesh.userData.altMin = altMin;
+        mesh.userData.zScale = build.zScale;
         // The scene may have rebuilt while fetching — attach to the live one.
         const live = sceneRef.current;
         if (!live || cancelled) {
@@ -1017,7 +1167,7 @@ export function Replay3D({
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
-        const drape = await fetchImageryDrape(grid, { signal: controller.signal });
+        const drape = await fetchImageryDrape(grid, { maxTiles: 25, signal: controller.signal });
         if (cancelled) return;
         const uv = new Float32Array(grid.rows * grid.cols * 2);
         for (let r = 0; r < grid.rows; r++) {
@@ -1036,10 +1186,11 @@ export function Replay3D({
           tex.dispose();
           return;
         }
-        const mat = live.material as THREE.MeshLambertMaterial;
-        mat.vertexColors = false;
-        mat.map = tex;
-        mat.needsUpdate = true;
+        // Satellite drapes read best unlit (full brightness regardless of the
+        // scene's day/night lighting), so swap to a basic material.
+        const old = live.material as THREE.Material;
+        live.material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, toneMapped: false });
+        old.dispose();
         live.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         setImageryAttribution(IMAGERY_ATTRIBUTION);
         setImageryState('on');
@@ -1074,12 +1225,12 @@ export function Replay3D({
 
   const toggleImagery = () => {
     if (imageryState === 'on') {
-      const mat = sceneRef.current?.terrain?.material as THREE.MeshLambertMaterial | undefined;
-      if (mat) {
-        mat.map?.dispose();
-        mat.map = null;
-        mat.vertexColors = true;
-        mat.needsUpdate = true;
+      const mesh = sceneRef.current?.terrain;
+      const old = mesh?.material as THREE.MeshBasicMaterial | undefined;
+      if (mesh && old) {
+        old.map?.dispose();
+        mesh.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+        old.dispose();
       }
       setImageryState('off');
       setImageryAttribution('');
@@ -1163,6 +1314,29 @@ export function Replay3D({
     seek(highlights[0].startElapsed);
     if (!linkRef.current) setPlaying(true);
   }, [tour]);
+
+  // Keyboard shortcuts: space = play/pause, ←/→ = seek 15 s, 1–4 = cameras.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        toggle();
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        seek(displayElapsed + 15);
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        seek(displayElapsed - 15);
+      } else if (e.key >= '1' && e.key <= '4') {
+        const modes = ['orbit', 'chase', 'drone', 'cockpit'] as const;
+        setCamMode(modes[Number(e.key) - 1]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggle, seek, displayElapsed]);
 
   const takePoster = () => {
     const s = sceneRef.current;
@@ -1368,7 +1542,7 @@ export function Replay3D({
       <div className={`relative ${canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
-          drag to orbit · pinch to zoom · double-click to focus
+          drag to orbit · pinch to zoom · space play · ←/→ seek · 1–4 cameras
         </div>
         {activeHighlight && (
           <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center">

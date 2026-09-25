@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-export const BIKE_MODEL_URL = '/models/cube-agree-c62-2026.glb';
+export const BIKE_MODEL_URL = '/fittrack/models/cube-agree-c62-2026.glb';
 
 /** ground-plane up in the replay frame (x=lng, y=lat, z=altitude) */
 export const UP_Z = new THREE.Vector3(0, 0, 1);

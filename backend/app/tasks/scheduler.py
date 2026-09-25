@@ -3653,6 +3653,17 @@ def process_lift_video(
                     4 * 1024 * 1024,
                 )
 
+                # T3 learned detector: presign the ONNX model (an R2 key) so
+                # the container can download it.
+                bar_detector_model_url = None
+                if settings.video_bar_detector_model:
+                    try:
+                        bar_detector_model_url = await create_presigned_get(
+                            settings.video_bar_detector_model
+                        )
+                    except Exception as e:
+                        logger.warning("Bar detector model presign failed: %s", e)
+
                 # Auto-fill the load from the linked session's sets (best-effort)
                 try:
                     from app.services.video_analytics import infer_video_load
@@ -3684,6 +3695,7 @@ def process_lift_video(
                     forced_lifter_track_id=video.lifter_selected,
                     r2_presigned_put_track=presigned_track["upload_url"],
                     r2_upload_key_track=presigned_track["key"],
+                    bar_detector_model_url=bar_detector_model_url,
                 )
 
                 # Update video with results

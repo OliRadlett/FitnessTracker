@@ -53,6 +53,10 @@ infra/caddy-root.crt
 # pipeline scripts, web_tex/ and the built frontend/public/models/*.glb commit normally)
 # Full-res source GLB used as input to scripts/optimize-bike.mjs (stays local).
 bike_model/*.glb
+# Offline 3D dev fixtures dumped from prod (never commit real activity data).
+frontend/public/dev-fixtures/
+# Temp dev/debug scripts (prefixed with _)
+frontend/scripts/_*.mjs
 bike_model/model_*.obj
 bike_model/frame_*.obj
 bike_model/*_decal.obj
@@ -105,3 +109,6 @@ bike_model_stock/bike_model_final.glb
 backend/tests/fixtures/videos/
 backend/tests/fixtures/video_manifest.json
 reports/
+
+# T3 bar-detector dataset (frames + labels) — generated locally, large.
+labels/

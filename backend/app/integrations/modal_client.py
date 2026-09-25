@@ -121,6 +121,7 @@ def process_video_on_modal(
     r2_presigned_put_track: str | None = None,
     r2_upload_key_track: str | None = None,
     bar_detection: bool = False,
+    bar_detector_model_url: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -211,6 +212,7 @@ def process_video_on_modal(
         track_put: str = "",
         track_key: str = "",
         bar_detection: bool = False,
+        bar_detector_model_url: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -220,6 +222,18 @@ def process_video_on_modal(
 
         logging.basicConfig(level=logging.INFO)
         _logger = logging.getLogger("modal._process")
+
+        # T3 learned detector: download the presigned ONNX model once per run.
+        _bar_model_path: str | None = None
+        if bar_detector_model_url:
+            try:
+                _mp = f"{tempfile.gettempdir()}/bar_detector.onnx"
+                with open(_mp, "wb") as _fh:
+                    _fh.write(httpx.get(bar_detector_model_url, timeout=120).content)
+                _bar_model_path = _mp
+                _logger.info("Downloaded bar detector model")
+            except Exception as _e:
+                _logger.warning("Bar detector model download failed: %s", _e)
 
         # ── Step 1: Download video from R2 ────────────────────────────────
         _logger.info("Downloading video from R2...")
@@ -492,6 +506,7 @@ def process_video_on_modal(
                         view=view,
                         track=pose_track,
                         bar_detection=bar_detection,
+                        bar_detector_model=_bar_model_path,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -882,7 +897,9 @@ def process_video_on_modal(
     )
     # T2 pose extraction settings (defaults preserve current behaviour).
     pose_fps = float(settings.video_pose_fps or 10.0)
-    # T3 v1 bar-path source (default off; see Settings).
+    # T3 bar-path source (default off; see Settings). A learned ONNX model
+    # (presigned URL, downloaded in the container) takes precedence over the
+    # classical detector when supplied.
     bar_detection = bool(settings.video_bar_detection_enabled)
 
     # Run the Modal function synchronously (blocks until complete)
@@ -909,4 +926,5 @@ def process_video_on_modal(
             r2_presigned_put_track or "",
             r2_upload_key_track or "",
             bar_detection,
+            bar_detector_model_url or "",
         )

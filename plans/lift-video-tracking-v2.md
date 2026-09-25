@@ -251,8 +251,34 @@ depth accuracy ≥ 0.9 on ¾ clips.
   `run_pose_analysis` uses the detector track for the bar-path metrics
   (`source="detector"`), falling back to the proxy per clip. Gated because it
   needs side-on footage and is unvalidated on a multi-rep side clip.
-- ⏳ **Learned detector remains**: auto-label from this spike → fine-tune a small
-  ONNX model (robust to ¾ angles + heterogeneous plates) → fuse with optical flow.
+- 🟡 **Learned detector — dataset + training pipeline built**:
+  `scripts/bar_labels.py` (JSONL schema, normalised boxes, YOLO rows),
+  `scripts/autolabel_bars.py` (frames → pose person-box + classical plate-box
+  seed labels), `scripts/label_tool/index.html` (in-browser corrector), and
+  `scripts/train_bar_detector.py` (YOLO dataset prep → Modal GPU fine-tune →
+  ONNX), and `scripts/render_synthetic_bars.py` (numpy/opencv pinhole renderer:
+  barbell + 1-3 plates/side (varied size/colour), rack, occluding person,
+  random camera → **exact** boxes; ~4 plates/frame). Remaining: **correct the
+  seed labels** (human pass), merge with the synthetic set, train, then wire
+  train, then validate. **Inference is wired**: `bar_detection` runs the ONNX
+  detector (YOLO, `nms=True` → `(1,N,6)`) when `VIDEO_BAR_DETECTOR_MODEL` (an
+  R2 key, presigned + downloaded in the container) is set, falling back to the
+  classical detector/proxy when sparse. Chosen approach (owner): synthetic
+  renders + a small human-labelled set.
+- ✅ **First model trained (2026-09-24)**: yolov8n on 144 human-labelled frames
+  (223 plate boxes) + 1,200 synthetic (real upsampled 3×) → ONNX
+  (`labels/bar_detector.onnx`, ~12 MB). **Recall is clip-dependent** — 94% on
+  one clip (IoU 0.95+), 0% on two others: domain/style variance, not a broken
+  model. Kept low conf (0.1–0.15) for pre-filling (a false box is quicker to
+  delete than to draw).
+- ✅ **Label speed-ups**: `propagate_labels.py` (interpolate between human
+  anchors within a clip), `prefill_with_model.py` (model seeds; `--skip-human-clips`
+  leaves started clips to propagation), `label_server.py` (resume + Enter-confirm).
+- **Labelling conventions**: `person` = the whole visible body **including arms**
+  (one box) — matches the auto-labels (all landmarks) + COCO; only `plate`/
+  `barbell` feed the bar path, so `person` is optional. Side views: label only
+  the camera-side plate (the far plate is invisible) and no barbell (edge-on).
+  The synthetic renderer now draws arms too so it matches.
 - **Train on Modal**: `scripts/train_bar_detector.py` — small detector
   (barbell + plates + sleeve + person boxes) over synthetic + auto-labelled real
   data (pose proxy seeds candidates; corrections clean labels). Export ONNX.

@@ -27,6 +27,8 @@ export interface RoadOptions {
   zOffset?: number;
   /** texture repeat period along the road, in metres */
   dashPeriodM?: number;
+  /** skip a segment longer than this (guards against path discontinuities) */
+  maxSegmentM?: number;
   /** per-path-point RGB (0..1) as a flat array (length n*3); duplicated onto
    *  both ribbon edges for tinting */
   colors?: ArrayLike<number> | null;
@@ -84,6 +86,11 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
   }
 
   for (let i = 0; i < n - 1; i++) {
+    // A path discontinuity (GPS gap / out-and-back join) would stretch the
+    // ribbon into a huge triangle — skip those segments (indices stay 0).
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    if (Math.hypot(p1.x - p0.x, p1.y - p0.y) > (opts.maxSegmentM ?? 300)) continue;
     const a = i * 2;
     const b = a + 1;
     const c = a + 2;
