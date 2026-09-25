@@ -9,7 +9,7 @@ np = pytest.importorskip("numpy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import track_bars as tb  # noqa: E402
+import track_bars as tb
 
 
 def test_clip_and_frame_parses_index():
