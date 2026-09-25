@@ -105,3 +105,6 @@ bike_model_stock/bike_model_final.glb
 backend/tests/fixtures/videos/
 backend/tests/fixtures/video_manifest.json
 reports/
+
+# T3 bar-detector dataset (frames + labels) — generated locally, large.
+labels/

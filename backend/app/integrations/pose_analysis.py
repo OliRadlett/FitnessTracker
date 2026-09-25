@@ -1837,6 +1837,7 @@ def run_pose_analysis(
     view: str = "unknown",
     track: dict | None = None,
     bar_detection: bool = False,
+    bar_detector_model: str | None = None,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
@@ -1966,8 +1967,9 @@ def run_pose_analysis(
         bar_track_from_landmarks,
     )
 
+    use_detection = bar_detection or bool(bar_detector_model)
     bar_track = None
-    records = (track.get("records") or []) if bar_detection else []
+    records = (track.get("records") or []) if use_detection else []
     if records:
         frame_dir = Path(tmpdir)
         frame_paths = [
@@ -1977,7 +1979,8 @@ def run_pose_analysis(
             from app.integrations.bar_detection import bar_track_from_frame_paths
 
             bar_track = bar_track_from_frame_paths(
-                frame_paths, [r["landmarks"] for r in records], exercise)
+                frame_paths, [r["landmarks"] for r in records], exercise,
+                model_path=bar_detector_model or None)
     if bar_track is None:
         bar_track = bar_track_from_landmarks(
             landmarks, track.get("presence"), exercise)
