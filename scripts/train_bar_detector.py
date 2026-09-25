@@ -19,6 +19,7 @@ Inference stays ONNX-only in the app (no torch) — see
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import shutil
 import sys
@@ -29,8 +30,13 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from bar_labels import LABELS, load_jsonl, to_yolo_rows
 
-DATA = REPO_ROOT / "labels" / "bars"
+DATA = Path(os.environ.get("TRACKING_DATA", REPO_ROOT / "labels" / "bars"))
 DATASET = REPO_ROOT / "labels" / "bar_dataset"
+
+
+def _default_real() -> Path:
+    human = DATA / "labels.human.jsonl"
+    return human if human.exists() else DATA / "labels.jsonl"
 
 
 def prepare_dataset(sources: list, out_dir: Path,
@@ -159,8 +165,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p_prep = sub.add_parser("prepare")
-    p_prep.add_argument("--real", type=Path, default=DATA / "labels.jsonl",
-                        help="human-corrected real labels")
+    p_prep.add_argument("--real", type=Path, default=None,
+                        help="human-corrected real labels (default: "
+                             "labels.human.jsonl, else labels.jsonl)")
     p_prep.add_argument("--synthetic", type=Path,
                         default=REPO_ROOT / "labels" / "bars_synthetic" / "labels.jsonl",
                         help="synthetic renders (optional)")
@@ -176,7 +183,11 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "prepare":
-        sources = [(DATA, args.real, max(1, args.real_repeat))]
+        if args.real is None:
+            args.real = _default_real()
+        # Image paths in a labels file are relative to that file's directory,
+        # so a labels file anywhere (e.g. another worktree's labels/bars) works.
+        sources = [(args.real.parent, args.real, max(1, args.real_repeat))]
         if args.synthetic.exists():
             sources.append((args.synthetic.parent, args.synthetic, 1))
         prepare_dataset(sources, args.out)
