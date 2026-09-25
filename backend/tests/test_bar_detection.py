@@ -78,3 +78,29 @@ class TestEdgeAndDarkness:
     def test_edge_support_zero_on_a_blank_frame(self):
         img = np.full((600, 800), 200, dtype=np.uint8)
         assert bd._edge_support(img, 400, 300, 120) == 0.0
+
+
+class TestSeededPlateTracker:
+    def test_tracks_a_moving_patch_from_the_seed(self, tmp_path):
+        rng = np.random.default_rng(0)
+        patch = rng.integers(0, 255, (20, 20), dtype=np.uint8)
+        paths = []
+        for k in range(6):
+            img = np.zeros((100, 100), dtype=np.uint8)
+            y = 10 + k * 5  # patch moves down 5 px per frame
+            img[y:y + 20, 30:50] = patch
+            p = tmp_path / f"f{k}.jpg"
+            cv2.imwrite(str(p), img)
+            paths.append(p)
+        seed = {"x": 0.4, "y": 0.25, "w": 0.2, "h": 0.2}
+        track = bd.track_plate_from_seed(paths, 0, seed)
+        assert all(t is not None for t in track)
+        assert all(t["source"] == "tracker" for t in track)
+        assert track[-1]["y"] > track[0]["y"]  # followed the downward motion
+
+    def test_bad_seed_returns_empty_track(self, tmp_path):
+        img = np.zeros((50, 50), dtype=np.uint8)
+        cv2.imwrite(str(tmp_path / "f0.jpg"), img)
+        track = bd.track_plate_from_seed([tmp_path / "f0.jpg"], 0,
+                                         {"x": 0.5, "y": 0.5, "w": 0.0, "h": 0.0})
+        assert track == [None]

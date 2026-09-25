@@ -339,3 +339,83 @@ def bar_track_from_frame_paths(
         # Not confident enough — use the pose proxy for the whole track.
         return hits
     return _interpolate_gaps(hits)
+
+
+# ── Seeded plate tracker (human-anchored bar path) ───────────────────────────
+
+
+def _match_template(cv2, gray, template, prev, pad: float = 0.35):
+    """Best ``template`` location in a window around ``prev`` (x1,y1,x2,y2)."""
+    h, w = gray.shape[:2]
+    x1, y1, x2, y2 = prev
+    bw, bh = x2 - x1, y2 - y1
+    mx, my = int(bw * pad) + 8, int(bh * pad) + 8
+    sx1, sy1 = max(0, x1 - mx), max(0, y1 - my)
+    sx2, sy2 = min(w, x2 + mx), min(h, y2 + my)
+    if sx2 - sx1 < bw or sy2 - sy1 < bh:
+        return None, 0.0
+    res = cv2.matchTemplate(gray[sy1:sy2, sx1:sx2], template, cv2.TM_CCOEFF_NORMED)
+    _mn, score, _ml, loc = cv2.minMaxLoc(res)
+    nx, ny = sx1 + loc[0], sy1 + loc[1]
+    return (nx, ny, nx + bw, ny + bh), float(score)
+
+
+def track_plate_from_seed(
+    frame_paths: list,
+    seed_frame_pos: int,
+    seed_box: dict,
+    min_score: float = 0.45,
+) -> list:
+    """Template-match the plate across frames, seeded by a human ``seed_box``.
+
+    Used when a user marks the plate on one frame ("set bar position"): the
+    plate is a high-contrast, smoothly-moving object, so template matching
+    yields a **real bar path** with no trained model. Tracks forwards then
+    backwards from the seed.
+
+    Returns a per-frame ``{"x","y","confidence","source":"tracker"}`` (plate
+    centre) or ``None``, aligned to ``frame_paths``.
+    """
+    import cv2
+
+    n = len(frame_paths)
+    if not (0 <= seed_frame_pos < n):
+        return [None] * n
+    img0 = cv2.imread(str(frame_paths[seed_frame_pos]), cv2.IMREAD_GRAYSCALE)
+    if img0 is None:
+        return [None] * n
+    h, w = img0.shape[:2]
+    x1 = int((seed_box["x"] - seed_box["w"] / 2) * w)
+    x2 = int((seed_box["x"] + seed_box["w"] / 2) * w)
+    y1 = int((seed_box["y"] - seed_box["h"] / 2) * h)
+    y2 = int((seed_box["y"] + seed_box["h"] / 2) * h)
+    if x2 - x1 < 4 or y2 - y1 < 4:
+        return [None] * n
+    template = img0[y1:y2, x1:x2].copy()
+
+    out: list = [None] * n
+
+    def _store(i: int, xyxy, score: float) -> None:
+        bx1, by1, bx2, by2 = xyxy
+        out[i] = {
+            "x": round(((bx1 + bx2) / 2) / w, 4),
+            "y": round(((by1 + by2) / 2) / h, 4),
+            "confidence": round(score, 3),
+            "source": "tracker",
+        }
+
+    _store(seed_frame_pos, (x1, y1, x2, y2), 1.0)
+    for direction in (1, -1):
+        prev = (x1, y1, x2, y2)
+        i = seed_frame_pos + direction
+        while 0 <= i < n:
+            gray = cv2.imread(str(frame_paths[i]), cv2.IMREAD_GRAYSCALE)
+            if gray is None:
+                break
+            nxt, score = _match_template(cv2, gray, template, prev)
+            if nxt is None or score < min_score:
+                break
+            _store(i, nxt, score)
+            prev = nxt
+            i += direction
+    return out
