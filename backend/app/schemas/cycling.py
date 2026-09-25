@@ -545,6 +545,10 @@ class WeatherCoefficients(BaseModel):
     intercept: float
     r_squared: float
     data_points: int
+    dropped_features: list[str] = Field(
+        default_factory=list,
+        description="Features excluded from the fit (zero variance, e.g. unstored humidity/pressure placeholders)",
+    )
 
 
 class WeatherAnalysisResponse(BaseModel):

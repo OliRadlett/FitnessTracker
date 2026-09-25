@@ -169,47 +169,32 @@ def analyze_sleep_performance(
         }
 
     # ── Compute correlations ─────────────────────────────────────────────────
-    sleep_features = {
-        "total_sleep_hours": [],
-        "deep_sleep_hours": [],
-        "rem_sleep_hours": [],
-        "sleep_efficiency": [],
-        "hrv_ms": [],
-        "recovery_score": [],
-    }
-    perf_values = []
-
-    for p in paired:
-        s = p["sleep"]
-        pf = p["performance"]
-
-        total_h = s.get("total_sleep_hours")
-        deep_h = s.get("deep_sleep_hours")
-        rem_h = s.get("rem_sleep_hours")
-        efficiency = s.get("sleep_efficiency")
-        hrv = s.get("hrv_ms")
-        recovery = s.get("recovery_score")
-
-        if total_h is not None:
-            sleep_features["total_sleep_hours"].append(total_h)
-        if deep_h is not None:
-            sleep_features["deep_sleep_hours"].append(deep_h)
-        if rem_h is not None:
-            sleep_features["rem_sleep_hours"].append(rem_h)
-        if efficiency is not None:
-            sleep_features["sleep_efficiency"].append(efficiency)
-        if hrv is not None:
-            sleep_features["hrv_ms"].append(hrv)
-        if recovery is not None:
-            sleep_features["recovery_score"].append(recovery)
-
-        perf_values.append(pf["avg_watts"])
+    # Per-feature pairing: correlate only the (sleep, performance) pairs where
+    # that sleep feature is present. The features must NOT be accumulated into
+    # independent ragged lists and sliced positionally against perf_values —
+    # one missing value would shift every later day out of alignment and the
+    # resulting R²/slope (and any insight derived from them) would be wrong.
+    feature_names = [
+        "total_sleep_hours",
+        "deep_sleep_hours",
+        "rem_sleep_hours",
+        "sleep_efficiency",
+        "hrv_ms",
+        "recovery_score",
+    ]
 
     correlations = {}
-    for feature_name, feature_values in sleep_features.items():
-        min_len = min(len(feature_values), len(perf_values))
-        if min_len >= 10:
-            reg = _linear_regression(feature_values[:min_len], perf_values[:min_len])
+    for feature_name in feature_names:
+        xs: list[float] = []
+        ys: list[float] = []
+        for p in paired:
+            v = p["sleep"].get(feature_name)
+            w = p["performance"].get("avg_watts")
+            if v is not None and w is not None:
+                xs.append(v)
+                ys.append(w)
+        if len(xs) >= 10:
+            reg = _linear_regression(xs, ys)
             correlations[feature_name] = {
                 "r_squared": reg["r_squared"],
                 "slope": reg["slope"],
@@ -219,25 +204,40 @@ def analyze_sleep_performance(
                     else "moderate" if reg["r_squared"] > 0.1
                     else "weak"
                 ),
-                "n_points": min_len,
+                "n_points": len(xs),
             }
 
     # ── Cross-correlation with lag ───────────────────────────────────────────
-    hrv_values = [s.get("hrv_ms", 0) or 0 for s in sleep_data]
-    power_values = [p.get("avg_watts", 0) or 0 for p in performance_data]
-
-    min_len = min(len(hrv_values), len(power_values))
-    if min_len >= 14:
+    # Date-aligned daily series: HRV per sleep-night against mean power per
+    # calendar day over their common dates. The two input series have different
+    # lengths and cadences (nights vs activities, several activities per day
+    # possible), so zipping them positionally would correlate unrelated days.
+    power_by_date: dict[str, list[float]] = {}
+    for p in performance_data:
+        if p.get("date") and p.get("avg_watts"):
+            power_by_date.setdefault(p["date"], []).append(p["avg_watts"])
+    daily_power = {d: sum(v) / len(v) for d, v in power_by_date.items()}
+    hrv_by_date = {
+        s["date"]: s["hrv_ms"]
+        for s in sleep_data
+        if s.get("date") and s.get("hrv_ms") is not None
+    }
+    common_dates = sorted(set(hrv_by_date) & set(daily_power))
+    if len(common_dates) >= 14:
         lag_correlations = _cross_correlate(
-            hrv_values[:min_len], power_values[:min_len], max_lag=7
+            [hrv_by_date[d] for d in common_dates],
+            [daily_power[d] for d in common_dates],
+            max_lag=7,
         )
     else:
         lag_correlations = []
 
     # ── Optimal sleep profile ────────────────────────────────────────────────
-    # Find sleep characteristics associated with top 25% performances
-    if perf_values:
-        sorted_perf = sorted(perf_values)
+    # Find sleep characteristics associated with top 25% performances.
+    # Derived from the aligned pairs (never from a detached value list).
+    paired_powers = [p["performance"]["avg_watts"] for p in paired]
+    if paired_powers:
+        sorted_perf = sorted(paired_powers)
         threshold = sorted_perf[int(len(sorted_perf) * 0.75)]
 
         top_sleep = [p["sleep"] for p in paired if p["performance"]["avg_watts"] >= threshold]

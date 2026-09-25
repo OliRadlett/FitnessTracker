@@ -10,7 +10,9 @@ import pytest
 
 from app.integrations.power_models import (
     _morton_3param_power_duration,
+    fit_adaptive_time_constants,
     fit_critical_power,
+    fit_personalized_vo2max,
 )
 
 # Sprint-anchored power-duration data resembling a real rider curve.
@@ -64,3 +66,62 @@ def test_flat_data_falls_back_to_2param_without_short_durations():
     assert result["p_max"] is None
     assert "5" not in result["fitted_curve"]
     assert "60" in result["fitted_curve"]
+
+
+# ── Audit E: VO2max HR anchor ──────────────────────────────────────────────
+
+
+def _steady_rides():
+    # HR = 100 + 0.25 * watts (exact line).
+    return [
+        {"avg_watts": float(w), "avg_hr": 100.0 + 0.25 * w, "duration_seconds": 1800}
+        for w in (180, 200, 220, 240, 260)
+    ]
+
+
+def test_vo2max_uses_lthr_anchor_when_valid():
+    result = fit_personalized_vo2max(_steady_rides(), weight_kg=75.0, hr_anchor=150.0)
+    assert result["hr_threshold_used"] == 150.0
+    # x in W/kg: slope 18.75, intercept 100 → (150-100)/18.75 = 2.667 W/kg
+    assert result["vo2max"] == pytest.approx(10.8 * 2.6667 + 7.0, abs=0.2)
+
+
+def test_vo2max_falls_back_to_170_without_anchor():
+    default = fit_personalized_vo2max(_steady_rides(), weight_kg=75.0)
+    assert default["hr_threshold_used"] == 170.0
+    anchored = fit_personalized_vo2max(_steady_rides(), weight_kg=75.0, hr_anchor=150.0)
+    # Different anchors must give different estimates (the old code ignored
+    # the user's physiology and always read at 170).
+    assert default["vo2max"] != pytest.approx(anchored["vo2max"], abs=0.5)
+
+
+def test_vo2max_rejects_implausible_anchor():
+    result = fit_personalized_vo2max(_steady_rides(), weight_kg=75.0, hr_anchor=50.0)
+    assert result["hr_threshold_used"] == 170.0
+
+
+# ── Audit F: improvement_pct clamp ─────────────────────────────────────────
+
+
+def test_improvement_none_when_baseline_zero():
+    # Constant HRV: no grid point can correlate, so the fit reports defaults
+    # with no_valid_fit (previously: -inf correlation; and a % improvement
+    # over the ~zero baseline divided by ~1e-10 → billions).
+    days = [f"2026-01-{i + 1:02d}" for i in range(40)]
+    tss = [{"date": d, "tss": 50.0 + (i % 5) * 20.0} for i, d in enumerate(days)]
+    hrv = [{"date": d, "hrv_ms": 55.0} for d in days]
+    result = fit_adaptive_time_constants(tss, hrv)
+    assert result["method"] == "no_valid_fit"
+    assert result["improvement_pct"] is None
+    assert result["correlation"] == 0.0
+
+
+def test_improvement_none_when_baseline_negligible():
+    # Near-constant HRV: correlations are valid but ~zero, so % improvement
+    # over baseline is still undefined → None (not a huge number).
+    days = [f"2026-02-{i + 1:02d}" for i in range(40)]
+    tss = [{"date": d, "tss": 50.0 + (i % 5) * 20.0} for i, d in enumerate(days)]
+    hrv = [{"date": d, "hrv_ms": 55.0 + 0.001 * (i % 2)} for i, d in enumerate(days)]
+    result = fit_adaptive_time_constants(tss, hrv)
+    assert result["method"] == "hrv_recovery_fit"
+    assert result["improvement_pct"] is None

@@ -440,6 +440,7 @@ export interface WeatherCoefficients {
   intercept: number;
   r_squared: number;
   data_points: number;
+  dropped_features: string[];
 }
 
 export interface WeatherAnalysisResponse {

@@ -203,7 +203,14 @@ def _predict_segment_effort(
             "predicted_vam": round(predicted_vam, 1),
             "predicted_time_seconds": round(predicted_time, 1),
             "predicted_power_watts": None,
-            "difficulty_score": round(min(100, avg_grad * 5 + length_m / 100), 1),
+            # Same 0-100 scale as the history-based path below: gradient,
+            # length, and elevation gain weighted identically, so the score
+            # doesn't jump when a segment gains its first similar effort.
+            "difficulty_score": round(min(100, (
+                avg_grad * 4
+                + length_m / 50
+                + gain_m / 10
+            )), 1),
             "confidence": 0.2,
             "similar_efforts_used": 0,
         }

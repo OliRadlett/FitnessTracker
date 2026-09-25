@@ -1007,6 +1007,7 @@ async def get_weather_analysis(
                 intercept=c.get("intercept", 0),
                 r_squared=c.get("r_squared", 0),
                 data_points=c.get("data_points", 0),
+                dropped_features=c.get("dropped_features", []),
             )
 
     return WeatherAnalysisResponse(

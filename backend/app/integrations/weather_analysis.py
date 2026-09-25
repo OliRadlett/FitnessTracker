@@ -63,61 +63,102 @@ def _linear_regression(x: list[float], y: list[float]) -> dict:
     }
 
 
+def _solve_linear_system(a: list[list[float]], b: list[float]) -> list[float]:
+    """Solve A·x = b via Gaussian elimination with partial pivoting.
+
+    No numpy dependency (Modal container is bare debian_slim). Near-singular
+    dimensions are left at 0.0 instead of exploding.
+    """
+    n = len(a)
+    m = [row[:] + [bi] for row, bi in zip(a, b)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(m[r][col]))
+        m[col], m[piv] = m[piv], m[col]
+        if abs(m[col][col]) < 1e-12:
+            continue
+        for row in range(col + 1, n):
+            factor = m[row][col] / m[col][col]
+            for j in range(col, n + 1):
+                m[row][j] -= factor * m[col][j]
+    x = [0.0] * n
+    for i in range(n - 1, -1, -1):
+        if abs(m[i][i]) < 1e-12:
+            continue
+        x[i] = m[i][n] - sum(m[i][j] * x[j] for j in range(i + 1, n))
+        x[i] /= m[i][i]
+    return x
+
+
 def _multiple_linear_regression(
-    x_matrix: list[list[float]], y: list[float]
+    x_matrix: list[list[float]], y: list[float],
+    feature_names: list[str] | None = None,
 ) -> dict:
-    """Multiple linear regression via normal equations: (X^T X)^-1 X^T y.
+    """Multiple linear regression via least squares (normal equations).
+
+    Solves (XᵀX)·β = Xᵀy for the coefficient vector β (last entry is the
+    intercept). Unlike eliminating the raw n×(k+1) system — which merely
+    satisfies k+1 of the n equations and biases coefficients toward
+    extreme rows — this minimizes the sum of squared residuals over ALL
+    data points.
+
+    Zero-variance feature columns (e.g. humidity/pressure placeholders that
+    are constant across every ride) are dropped before fitting and reported
+    in ``dropped_features``; fitting them would make XᵀX singular.
 
     x_matrix: list of feature vectors (each is a list of floats).
     y: target vector.
 
-    Returns coefficients (per feature), intercept, r_squared.
+    Returns coefficients (per feature), intercept, r_squared,
+    dropped_features.
     """
     n = len(y)
     if n < 5 or not x_matrix or len(x_matrix[0]) < 1:
-        return {"coefficients": [], "intercept": 0.0, "r_squared": 0.0}
+        return {
+            "coefficients": [],
+            "intercept": 0.0,
+            "r_squared": 0.0,
+            "dropped_features": [],
+        }
 
     k = len(x_matrix[0])
+    names = feature_names or [f"x{j}" for j in range(k)]
 
-    # Build augmented [X | y] matrix
-    # X has n rows, k+1 columns (k features + intercept column of 1s)
-    augmented = []
+    # Underdetermined without strictly more points than parameters.
+    if n <= k + 1:
+        return {
+            "coefficients": [0.0] * k,
+            "intercept": sum(y) / n,
+            "r_squared": 0.0,
+            "dropped_features": list(names),
+        }
+
+    # Drop zero-variance columns (constant placeholders).
+    means = [sum(row[j] for row in x_matrix) / n for j in range(k)]
+    kept = [
+        j for j in range(k)
+        if sum((row[j] - means[j]) ** 2 for row in x_matrix) > 1e-12
+    ]
+    dropped = [names[j] for j in range(k) if j not in kept]
+
+    m = len(kept) + 1  # kept features + intercept
+    xtx = [[0.0] * m for _ in range(m)]
+    xty = [0.0] * m
     for i in range(n):
-        row = x_matrix[i][:] + [1.0, y[i]]
-        augmented.append(row)
+        feats = [x_matrix[i][j] for j in kept] + [1.0]
+        for a in range(m):
+            xty[a] += feats[a] * y[i]
+            for b in range(m):
+                xtx[a][b] += feats[a] * feats[b]
 
-    # Solve via Gaussian elimination with partial pivoting
-    for col in range(k + 1):
-        # Find pivot
-        max_row = col
-        for row in range(col + 1, n):
-            if abs(augmented[row][col]) > abs(augmented[max_row][col]):
-                max_row = row
-        augmented[col], augmented[max_row] = augmented[max_row], augmented[col]
+    sol = _solve_linear_system(xtx, xty)
+    kept_coefs = sol[: len(kept)]
+    intercept = sol[len(kept)]
 
-        if abs(augmented[col][col]) < 1e-12:
-            continue
+    coefficients = [0.0] * k
+    for j, c in zip(kept, kept_coefs):
+        coefficients[j] = c
 
-        # Eliminate below
-        for row in range(col + 1, n):
-            factor = augmented[row][col] / augmented[col][col]
-            for j in range(col, k + 2):
-                augmented[row][j] -= factor * augmented[col][j]
-
-    # Back-substitution
-    solution = [0.0] * (k + 1)
-    for i in range(min(k + 1, n) - 1, -1, -1):
-        if abs(augmented[i][i]) < 1e-12:
-            continue
-        solution[i] = augmented[i][k + 1]
-        for j in range(i + 1, k + 1):
-            solution[i] -= augmented[i][j] * solution[j]
-        solution[i] /= augmented[i][i]
-
-    coefficients = solution[:k]
-    intercept = solution[k]
-
-    # Compute R²
+    # Compute R² over all points
     y_pred = [
         sum(coefficients[j] * x_matrix[i][j] for j in range(k)) + intercept
         for i in range(n)
@@ -131,6 +172,7 @@ def _multiple_linear_regression(
         "coefficients": [round(c, 6) for c in coefficients],
         "intercept": round(intercept, 4),
         "r_squared": round(max(0.0, r_squared), 4),
+        "dropped_features": dropped,
     }
 
 
@@ -393,8 +435,6 @@ def analyze_weather_performance(
             ])
             y_target.append(r.get("normalized_power") or r["avg_watts"])
 
-        reg_multi = _multiple_linear_regression(x_matrix, y_target)
-
         feature_names = [
             "temperature",
             "wind_speed",
@@ -402,6 +442,10 @@ def analyze_weather_performance(
             "precipitation",
             "pressure",
         ]
+        reg_multi = _multiple_linear_regression(
+            x_matrix, y_target, feature_names
+        )
+
         weather_coefficients = {
             "features": feature_names,
             "coefficients": {
@@ -411,37 +455,55 @@ def analyze_weather_performance(
             "intercept": reg_multi["intercept"],
             "r_squared": reg_multi["r_squared"],
             "data_points": len(feature_rides),
+            "dropped_features": reg_multi.get("dropped_features", []),
         }
 
     # ── F. Personalized Insights ─────────────────────────────────────────────
+    # Every insight is gated on fit quality (R²) and sample size. An
+    # ungated correlation over a handful of rides will happily "discover"
+    # patterns in noise and present them as personal physiology.
     insights: list[str] = []
 
     if power_vs_temp and power_vs_temp.get("optimal_range_c"):
-        lo, hi = power_vs_temp["optimal_range_c"]
-        insights.append(
-            f"Optimal riding temperature: {lo}–{hi}°C"
-        )
-        if power_vs_temp.get("slope_per_celsius") and power_vs_temp["slope_per_celsius"] < -1:
+        if (power_vs_temp.get("r_squared") or 0) >= 0.1:
+            lo, hi = power_vs_temp["optimal_range_c"]
             insights.append(
-                f"Power drops ~{abs(power_vs_temp['slope_per_celsius']):.1f}W per °C above optimal"
+                f"Optimal riding temperature: {lo}–{hi}°C"
             )
+            if power_vs_temp.get("slope_per_celsius") and power_vs_temp["slope_per_celsius"] < -1:
+                insights.append(
+                    f"Power drops ~{abs(power_vs_temp['slope_per_celsius']):.1f}W per °C above optimal"
+                )
 
     if power_vs_wind and power_vs_wind.get("headwind_penalty_pct") is not None:
+        wind_counts = power_vs_wind.get("data_points", {})
         penalty = power_vs_wind["headwind_penalty_pct"]
-        if penalty < -2:
+        # A penalty averaged over a couple of windy rides is noise: require
+        # at least 5 headwind and 5 calm rides before claiming an effect.
+        # (The penalty is computed over headwind > ~7 km/h, so the text no
+        # longer claims a ">30 km/h" threshold the math never applied.)
+        if (
+            penalty < -2
+            and wind_counts.get("headwind", 0) >= 5
+            and wind_counts.get("calm", 0) >= 5
+        ):
             insights.append(
-                f"Headwinds >30 km/h reduce power by ~{abs(penalty):.1f}%"
+                f"Headwinds reduce power by ~{abs(penalty):.1f}%"
             )
 
     if decoupling_vs_temp and decoupling_vs_temp.get("threshold_c") is not None:
-        insights.append(
-            f"Decoupling increases above {decoupling_vs_temp['threshold_c']}°C "
-            f"(+{decoupling_vs_temp['penalty_above_pct']:.1f}% avg)"
-        )
+        if (
+            (decoupling_vs_temp.get("r_squared") or 0) >= 0.1
+            and (decoupling_vs_temp.get("data_points") or 0) >= 15
+        ):
+            insights.append(
+                f"Decoupling increases above {decoupling_vs_temp['threshold_c']}°C "
+                f"(+{decoupling_vs_temp['penalty_above_pct']:.1f}% avg)"
+            )
 
     if hr_vs_temp and hr_vs_temp.get("slope_bpm_per_celsius"):
         slope = hr_vs_temp["slope_bpm_per_celsius"]
-        if abs(slope) > 0.3:
+        if abs(slope) > 0.3 and (hr_vs_temp.get("r_squared") or 0) >= 0.1:
             direction = "increases" if slope > 0 else "decreases"
             insights.append(
                 f"Heart rate {direction} by ~{abs(slope):.1f} bpm per °C"

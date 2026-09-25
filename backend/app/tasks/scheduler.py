@@ -1368,6 +1368,7 @@ def fit_personalized_power_models() -> dict:
                         daily_tss=daily_tss_data,
                         hrv_data=hrv_data,
                         weight_kg=weight,
+                        hr_anchor=profile.lactate_threshold_hr if profile else None,
                     )
 
                     # 5. Store results in CyclingProfile
@@ -2095,6 +2096,12 @@ def analyze_cross_domain_weekly() -> dict:
                         insight_data = results.get(insight_type)
                         if not insight_data:
                             continue
+
+                        # Fresh per type: the race branch has no data_quality
+                        # gate, so without this reset it would reuse the
+                        # previous type's dict — or raise NameError when
+                        # neither prior type was sufficient.
+                        data_quality: dict = {}
 
                         if insight_type == "race_retrospective":
                             # Tag for dedup; the retrospective worker returns

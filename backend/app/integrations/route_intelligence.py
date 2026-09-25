@@ -145,7 +145,7 @@ def _compute_frechet_distance(
     # Build distance matrix
     dist_matrix = [
         [_haversine(a[i][0], a[i][1], b[j][0], b[j][1]) for j in range(len(b))]
-        for i in range(a)
+        for i in range(len(a))
     ]
 
     return _discrete_frechet(dist_matrix)
@@ -394,9 +394,13 @@ def _predict_route_effort(
             "method": "no_matching_segments",
         }
 
-    # Inverse-distance-weighted average of efforts
+    # Inverse-distance-weighted average of efforts. Neighbors are SEGMENTS
+    # (climbs), so their elapsed times must NOT be averaged directly as the
+    # route duration — a 2 km climb's 600 s says nothing about an 80 km
+    # route's duration. Instead average their *pace* (speed in m/s) and scale
+    # to the full route distance.
     total_weight = 0.0
-    weighted_duration = 0.0
+    weighted_speed = 0.0
     weighted_power = 0.0
     weighted_vam = 0.0
 
@@ -405,8 +409,13 @@ def _predict_route_effort(
         efforts = seg["efforts"]
         best_effort = min(efforts, key=lambda e: e["elapsed_s"])
 
+        seg_dist = seg.get("distance_m", 0) or 0
+        seg_time = best_effort.get("elapsed_s", 0) or 0
+        if seg_dist <= 0 or seg_time <= 0:
+            continue
+
         weight = 1.0 / (dist + 0.001)  # inverse distance weighting
-        weighted_duration += weight * best_effort["elapsed_s"]
+        weighted_speed += weight * (seg_dist / seg_time)
         if best_effort.get("avg_power_watts"):
             weighted_power += weight * best_effort["avg_power_watts"]
         if best_effort.get("avg_vam"):
@@ -422,7 +431,8 @@ def _predict_route_effort(
             "method": "zero_weight",
         }
 
-    predicted_duration = weighted_duration / total_weight
+    predicted_speed = weighted_speed / total_weight
+    predicted_duration = route_distance_m / max(predicted_speed, 0.1)
     predicted_power = weighted_power / total_weight if weighted_power > 0 else None
     predicted_vam = weighted_vam / total_weight if weighted_vam > 0 else None
 

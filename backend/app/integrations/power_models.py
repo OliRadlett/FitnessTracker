@@ -384,12 +384,13 @@ def fit_critical_power(
 def fit_personalized_vo2max(
     steady_state_rides: list[dict],
     weight_kg: float | None = None,
+    hr_anchor: float | None = None,
 ) -> dict:
     """Fit personalized VO2max from steady-state power-HR pairs.
 
     Uses linear regression of HR on power (or W/kg) to find the
     relationship, then estimates VO2max by extrapolating to the
-    user's theoretical max HR.
+    user's threshold heart rate.
 
     Parameters
     ----------
@@ -398,6 +399,11 @@ def fit_personalized_vo2max(
         steady-state efforts (>20min, CV of power < 15%).
     weight_kg:
         User weight for W/kg normalization.
+    hr_anchor:
+        Heart rate at which to read power off the regression line. Uses the
+        user's LTHR when supplied (valid 100–210 bpm); otherwise falls back
+        to 170. A fixed 170 for everyone biases the estimate for riders
+        whose threshold sits well above or below it.
 
     Returns
     -------
@@ -457,9 +463,13 @@ def fit_personalized_vo2max(
 
     # Estimate VO2max using the ACSM relationship:
     # VO2 = 10.8 * W/kg + 7
-    # At threshold (HR ≈ HRmax * 0.85), power corresponds to FTP
-    # Use the regression to find power at a threshold HR, then apply ACSM
-    hr_threshold = 170.0  # typical threshold HR for estimation
+    # Read power off the regression line at the user's threshold HR
+    # (their LTHR when known, else the 170 bpm population fallback), then
+    # apply ACSM.
+    if hr_anchor is not None and 100 <= hr_anchor <= 210:
+        hr_threshold = float(hr_anchor)
+    else:
+        hr_threshold = 170.0  # typical threshold HR for estimation
     if slope > 0:
         power_at_threshold = (hr_threshold - intercept) / slope
         if weight_kg and weight_kg > 0:
@@ -586,6 +596,18 @@ def fit_adaptive_time_constants(
                     best_ctl = ctl_d
                     best_atl = atl_d
 
+    # No grid point produced a valid correlation (e.g. constant HRV makes
+    # every std zero). Report defaults rather than -inf correlation.
+    if best_score == float("inf"):
+        return {
+            "ctl_tau": 42,
+            "atl_tau": 7,
+            "improvement_pct": None,
+            "correlation": 0.0,
+            "method": "no_valid_fit",
+            "data_points_used": len(common_dates),
+        }
+
     # Compute improvement over defaults
     default_ctl_decay = 1 - math.exp(-1 / 42)
     default_atl_decay = 1 - math.exp(-1 / 7)
@@ -611,14 +633,20 @@ def fit_adaptive_time_constants(
         s_hrv = math.sqrt(sum((h - m_hrv) ** 2 for h in hrv_v))
         corr_default = c_default / (s_tsb * s_hrv) if s_tsb > 0 and s_hrv > 0 else 0
 
-        improvement = ((-best_score) - corr_default) / abs(corr_default + 1e-10) * 100
+        # A % improvement over a ~zero baseline is undefined (dividing by
+        # ~1e-10 prints astronomical nonsense like 3e9%). Report None unless
+        # the default taus actually correlate with HRV.
+        if abs(corr_default) < 0.05:
+            improvement = None
+        else:
+            improvement = ((-best_score) - corr_default) / abs(corr_default) * 100
     else:
         improvement = 0.0
 
     return {
         "ctl_tau": best_ctl,
         "atl_tau": best_atl,
-        "improvement_pct": round(improvement, 1),
+        "improvement_pct": round(improvement, 1) if improvement is not None else None,
         "correlation": round(-best_score, 4),
         "method": "hrv_recovery_fit",
         "data_points_used": len(common_dates),
@@ -634,12 +662,15 @@ def _fit_power_models_modal(
     tss_json: str,
     hrv_json: str,
     weight: float | None,
+    hr_anchor: float | None = None,
 ) -> dict:
     """Modal remote worker for power model fitting.
 
     Must stay at module global scope: Modal raises ``InvalidError`` for
     functions defined inside other functions. All inputs arrive as explicit
-    arguments (JSON strings); pure-compute helpers are module globals.
+    arguments (JSON strings + scalars); pure-compute helpers are module globals.
+    ``hr_anchor`` is appended (not packed into JSON) so older scheduled calls
+    passing 5 positional args keep working.
     """
     import json as _json
 
@@ -665,7 +696,9 @@ def _fit_power_models_modal(
 
     # Personalized VO2max
     if ss_data and len(ss_data) >= 3:
-        result["personalized_vo2max"] = fit_personalized_vo2max(ss_data, weight)
+        result["personalized_vo2max"] = fit_personalized_vo2max(
+            ss_data, weight, hr_anchor
+        )
     else:
         result["personalized_vo2max"] = {"vo2max": None, "method": "insufficient_data"}
 
@@ -691,6 +724,7 @@ def fit_power_models_on_modal(
     daily_tss: list[dict] | None = None,
     hrv_data: list[dict] | None = None,
     weight_kg: float | None = None,
+    hr_anchor: float | None = None,
 ) -> dict:
     """Dispatch power model fitting to Modal and return results.
 
@@ -706,6 +740,9 @@ def fit_power_models_on_modal(
         [{date, hrv_ms}] for adaptive time constant fitting.
     weight_kg:
         User weight for W/kg normalization.
+    hr_anchor:
+        User's LTHR (bpm) anchoring the VO2max power-HR extrapolation;
+        falls back to 170 inside the worker when absent/invalid.
 
     Returns
     -------
@@ -734,4 +771,6 @@ def fit_power_models_on_modal(
     hrv_json = _json.dumps(hrv_data or [])
 
     with app.run():
-        return remote_fit.remote(pc_json, ss_json, tss_json, hrv_json, weight_kg)
+        return remote_fit.remote(
+            pc_json, ss_json, tss_json, hrv_json, weight_kg, hr_anchor
+        )
