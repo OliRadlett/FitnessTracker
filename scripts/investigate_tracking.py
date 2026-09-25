@@ -18,6 +18,7 @@ Output drives the improvement plan (which method to invest in, where it fails).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.request
 from collections import defaultdict
@@ -33,7 +34,7 @@ MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
 )
-DATA = REPO_ROOT / "labels" / "bars"
+DATA = Path(os.environ.get("TRACKING_DATA", REPO_ROOT / "labels" / "bars"))
 
 
 def _dist(a, b) -> float:

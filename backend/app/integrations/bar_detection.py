@@ -125,6 +125,98 @@ def detect_bar_circle(
     return best
 
 
+def _ellipse_edge_support(gray, cx, cy, a, b, ang_deg, n: int = 72) -> float:
+    """Fraction of an ellipse's perimeter on a strong gradient."""
+    import cv2
+
+    gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+    mag = cv2.magnitude(gx, gy)
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    ang = np.radians(ang_deg)
+    ca, sa = np.cos(ang), np.sin(ang)
+    x = cx + (a / 2) * np.cos(t) * ca - (b / 2) * np.sin(t) * sa
+    y = cy + (a / 2) * np.cos(t) * sa + (b / 2) * np.sin(t) * ca
+    xs = np.clip(x.astype(int), 0, gray.shape[1] - 1)
+    ys = np.clip(y.astype(int), 0, gray.shape[0] - 1)
+    vals = mag[ys, xs]
+    if vals.size == 0:
+        return 0.0
+    mx = float(vals.max())
+    if mx < 1e-6:
+        return 0.0
+    return float((vals > 0.4 * mx).mean())
+
+
+def detect_bar_ellipse(
+    gray,
+    seed_xy: tuple[float, float],
+    min_r_frac: float = _MIN_R_FRAC,
+    max_r_frac: float = _MAX_R_FRAC,
+    search_frac: float = _SEARCH_FRAC,
+) -> dict | None:
+    """Find a plate as an **ellipse** (contours + ``fitEllipse``) near the seed.
+
+    The Hough-circle detector only fires when the plate is seen face-on; at ¾
+    the plate projects to an ellipse. Fitting ellipses to edge contours
+    recovers those views.
+    """
+    import cv2
+
+    h, w = gray.shape[:2]
+    sx, sy = int(seed_xy[0] * w), int(seed_xy[1] * h)
+    half_x, half_y = int(search_frac * w), int(search_frac * h)
+    x0, x1 = max(0, sx - half_x), min(w, sx + half_x)
+    y0, y1 = max(0, sy - half_y), min(h, sy + half_y)
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return None
+
+    crop = gray[y0:y1, x0:x1]
+    edges = cv2.Canny(crop, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    min_r = max(8.0, min_r_frac * w)
+    max_r = max_r_frac * w
+    diag = float(np.hypot(w, h))
+    best = None
+    best_score = 0.0
+    for contour in contours:
+        if len(contour) < 20:
+            continue
+        area = cv2.contourArea(contour)
+        if area < min_r ** 2 or area > (max_r ** 2) * 4:
+            continue
+        (cx, cy), (a, b), ang = cv2.fitEllipse(contour)
+        if a <= 0 or b <= 0:
+            continue
+        r_eq = (a + b) / 4
+        if not (min_r * 0.5 <= r_eq <= max_r * 1.3):
+            continue
+        if not (0.4 <= a / b <= 2.5):  # an ellipse, not a line/blob
+            continue
+        cx, cy = float(cx + x0), float(cy + y0)
+        edge = _ellipse_edge_support(gray, cx, cy, a, b, ang)
+        dark = _interior_darkness(gray, cx, cy, r_eq)
+        prox = 1.0 - min(1.0, float(np.hypot(cx - sx, cy - sy)) / (0.25 * diag))
+        score = 0.45 * edge + 0.35 * min(1.0, dark * 2.0) + 0.20 * prox
+        if score > best_score:
+            best_score = score
+            best = {"x": cx / w, "y": cy / h, "r": r_eq / w,
+                    "confidence": round(score, 3)}
+    if best is None or best["confidence"] < _MIN_CONFIDENCE:
+        return None
+    best["source"] = "detector"
+    return best
+
+
+def detect_bar_plate(gray, seed_xy: tuple[float, float]) -> dict | None:
+    """Best plate candidate near the seed: circle (face-on) or ellipse (¾)."""
+    candidates = [c for c in (detect_bar_circle(gray, seed_xy),
+                              detect_bar_ellipse(gray, seed_xy)) if c is not None]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda d: d["confidence"])
+
+
 def _interpolate_gaps(track: list) -> list:
     """Linearly interpolate detector hits across frames with no detection."""
     idx = [i for i, t in enumerate(track) if t and t.get("source") == "detector"]
@@ -265,6 +357,91 @@ def _fill_gaps_onnx(track: list) -> list:
     return track
 
 
+def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
+    """Per-frame bar detection aligned to ``frame_paths`` (dict or ``None``)."""
+    import cv2
+
+    det: list = [None] * len(frame_paths)
+    if model_path:
+        for i, path in enumerate(frame_paths):
+            img = cv2.imread(str(path))
+            if img is None:
+                continue
+            cands = [d for d in detect_bars_onnx(img, model_path)
+                     if d["label"] in ("plate", "barbell")]
+            if cands:
+                b = max(cands, key=lambda d: d["confidence"])
+                det[i] = {"x": b["x"], "y": b["y"],
+                          "confidence": b["confidence"], "source": "detector"}
+        return det
+
+    seed: tuple[float, float] | None = None
+    for i, path in enumerate(frame_paths):
+        lm = landmarks[i] if i < len(landmarks) else None
+        if lm is None:
+            continue
+        px, py = proxy_of(lm)
+        img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        hit = detect_bar_plate(img, seed or (px, py)) if img is not None else None
+        # Reject a hit far from the pose proxy (locks onto the rack/floor).
+        if hit is not None and np.hypot(hit["x"] - px, hit["y"] - py) > 0.35:
+            hit = None
+        # Temporal gate: the bar moves smoothly; a jump is a false positive.
+        if hit is not None and seed is not None and np.hypot(
+            hit["x"] - seed[0], hit["y"] - seed[1]
+        ) > 0.07:
+            hit = None
+        if hit is not None:
+            seed = (hit["x"], hit["y"])
+            det[i] = {"x": hit["x"], "y": hit["y"],
+                      "confidence": hit["confidence"], "source": "detector"}
+    return det
+
+
+def _pure_proxy_track(landmarks, proxy_of, presence=None) -> list:
+    track: list = []
+    for i, lm in enumerate(landmarks):
+        if lm is None:
+            track.append(None)
+            continue
+        px, py = proxy_of(lm)
+        c = float(presence[i]) if presence and i < len(presence) else 0.5
+        track.append({"x": round(float(px), 4), "y": round(float(py), 4),
+                      "confidence": round(c, 3), "source": "pose_proxy"})
+    return track
+
+
+def _median_offset(det, landmarks, proxy_of):
+    """Median bar-to-proxy offset over frames with a detection.
+
+    Returns ``(ox, oy, median_confidence, n_hits)`` or ``None``.
+    """
+    pairs = [i for i in range(min(len(det), len(landmarks)))
+             if det[i] is not None and landmarks[i] is not None]
+    if not pairs:
+        return None
+    offs = np.array([
+        (det[i]["x"] - proxy_of(landmarks[i])[0],
+         det[i]["y"] - proxy_of(landmarks[i])[1])
+        for i in pairs
+    ])
+    return (float(np.median(offs[:, 0])), float(np.median(offs[:, 1])),
+            float(np.median([det[i]["confidence"] for i in pairs])), len(pairs))
+
+
+def _apply_offset(landmarks, proxy_of, offset, confidence) -> list:
+    ox, oy = offset
+    track: list = []
+    for lm in landmarks:
+        if lm is None:
+            track.append(None)
+            continue
+        px, py = proxy_of(lm)
+        track.append({"x": round(px + ox, 4), "y": round(py + oy, 4),
+                      "confidence": round(confidence, 3), "source": "proxy_offset"})
+    return track
+
+
 def bar_track_from_frame_paths(
     frame_paths: list,
     landmarks: list,
@@ -272,73 +449,56 @@ def bar_track_from_frame_paths(
     proxy_point=None,
     min_detection_rate: float = 0.6,
     model_path: str | None = None,
+    min_offset_hits: int = 2,
+    presence: list | None = None,
 ) -> list:
-    """Detect the plate (bar) per frame, seeded by the previous detection.
+    """Automatic bar track.
 
-    Seeding each frame from the **previous** detection (falling back to the
-    pose proxy at the start) keeps the search locked to the moving bar instead
-    of re-finding the plate globally. If the detection rate clears
-    ``min_detection_rate`` the track is a **pure detector** track with gaps
-    interpolated; otherwise the whole track falls back to the pose proxy so the
-    two sources are never mixed (which would inject jumps).
+    Validated against the human ground truth: the individual plate detections
+    are *not* accurate enough to use as a direct track (their error exceeds the
+    proxy's), but they reliably reveal the **per-clip bar-to-body offset**. So:
 
-    When ``model_path`` is given the **learned ONNX detector** is used first;
-    if it fires on too few frames (<20%) the classical detector runs instead.
+    1. **>= ``min_offset_hits`` detections** → the pose **proxy corrected** by
+       the median bar-to-proxy offset. The proxy's motion is accurate; only its
+       absolute position is off (~3x error reduction where it fires).
+    2. **No/too few detections** → the raw pose proxy.
 
-    Returns a list aligned to ``frame_paths`` of
-    ``{"x","y","confidence","source"}`` or ``None``.
+    ``model_path`` selects the learned ONNX detector instead of the classical
+    one. Returns entries aligned to ``frame_paths``.
     """
-    if model_path:
-        onnx_track = bar_track_from_frames_onnx(frame_paths, model_path)
-        rate = sum(1 for t in onnx_track if t) / max(1, len(onnx_track))
-        logger.info("ONNX bar detection: %.0f%% of frames", rate * 100)
-        if rate >= 0.2:
-            return _fill_gaps_onnx(onnx_track)
-        logger.info("ONNX detection sparse — falling back to classical detector")
-
-    import cv2
-
     from app.integrations.bar_tracking import _proxy_point
 
     def proxy_of(lm):
         return proxy_point(lm) if proxy_point else _proxy_point(lm, exercise)
 
-    hits: list = []
-    seed: tuple[float, float] | None = None
-    n_detected = 0
-    for i, path in enumerate(frame_paths):
-        lm = landmarks[i] if i < len(landmarks) else None
-        if lm is None:
-            hits.append(None)
-            continue
+    det = _detections_per_frame(frame_paths, landmarks, proxy_of, model_path)
+    n = sum(1 for d in det if d)
+    logger.info("Bar detections: %d/%d frames (%.0f%%)",
+                n, len(det), 100.0 * n / max(1, len(det)))
+
+    first = _median_offset(det, landmarks, proxy_of)
+    if first is None or first[3] < min_offset_hits:
+        return _pure_proxy_track(landmarks, proxy_of, presence)
+
+    total = (first[0], first[1])
+    conf = first[2]
+    n_first = first[3]
+
+    # Refine: re-run the detector seeded by the now-corrected proxy — its hits
+    # are closer to the true plate, so the second offset is more accurate.
+    def proxy2(lm):
         px, py = proxy_of(lm)
-        img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-        hit = detect_bar_circle(img, seed or (px, py)) if img is not None else None
-        # Sanity: reject a detection that jumped far from the pose proxy
-        # (locks onto the rack/floor otherwise).
-        if hit is not None and np.hypot(hit["x"] - px, hit["y"] - py) > 0.35:
-            hit = None
-        # Temporal gate: the bar moves smoothly, so a detection that jumps far
-        # from the previous one is a false positive (e.g. the rack upright).
-        if hit is not None and seed is not None and np.hypot(
-            hit["x"] - seed[0], hit["y"] - seed[1]
-        ) > 0.07:
-            hit = None
-        if hit is not None:
-            seed = (hit["x"], hit["y"])
-            n_detected += 1
-            hits.append(hit)
-        else:
-            hits.append({"x": float(px), "y": float(py), "confidence": 0.5,
-                         "source": "pose_proxy"})
+        return (px + total[0], py + total[1])
 
-    rate = n_detected / max(1, len(hits))
-    logger.info("Bar detection: %d/%d frames (%.0f%%)", n_detected, len(hits), rate * 100)
+    det2 = _detections_per_frame(frame_paths, landmarks, proxy2, model_path)
+    second = _median_offset(det2, landmarks, proxy2)
+    if second is not None and second[3] >= min_offset_hits:
+        total = (total[0] + second[0], total[1] + second[1])
+        conf = (conf + second[2]) / 2
 
-    if rate < min_detection_rate:
-        # Not confident enough — use the pose proxy for the whole track.
-        return hits
-    return _interpolate_gaps(hits)
+    logger.info("Bar track: proxy + per-clip offset (hits %d -> %d)",
+                n_first, second[3] if second else 0)
+    return _apply_offset(landmarks, proxy_of, total, conf)
 
 
 # ── Seeded plate tracker (human-anchored bar path) ───────────────────────────
