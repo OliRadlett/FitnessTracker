@@ -35,6 +35,18 @@ FPS = 10.0
 PROMPTS = ["barbell", "weight plate", "dumbbell"]
 
 
+def all_clips() -> list[str]:
+    clips = set()
+    for line in (DATA / "labels.human.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if any(b.get("source") == "human" and b["label"] == "plate"
+               for b in rec["boxes"]):
+            clips.add(Path(rec["image"]).stem.rsplit("_", 1)[0])
+    return sorted(clips)
+
+
 def _gt_for_clip(clip: str) -> dict[int, list[float]]:
     gt: dict[int, list[float]] = {}
     for line in (DATA / "labels.human.jsonl").read_text(encoding="utf-8").splitlines():
@@ -53,7 +65,7 @@ def _gt_for_clip(clip: str) -> dict[int, list[float]]:
     return gt
 
 
-def prepare(clip: str, exercise: str) -> int:
+def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
     import run_video_local as rvl
 
     sys.path.insert(0, str(REPO_ROOT / "backend"))
@@ -89,7 +101,8 @@ def prepare(clip: str, exercise: str) -> int:
 
     tmp = Path(tempfile.mkdtemp(prefix="proxy_"))
     tr = extract_pose_track(video, str(tmp), trim_start, trim_end,
-                            fps=FPS, num_poses=1)
+                            fps=proxy_fps, num_poses=1)
+    step = max(1, int(round(FPS / proxy_fps)))
     proxy: list = [None] * n
     for rec in tr.get("records", []):
         lm = rec.get("landmarks")
@@ -97,7 +110,7 @@ def prepare(clip: str, exercise: str) -> int:
             continue
         p = _proxy_point(lm, exercise)
         if p:
-            fi = int(rec["frame_idx"])
+            fi = int(rec["frame_idx"]) * step
             if 0 <= fi < n:
                 proxy[fi] = [round(float(p[0]), 4), round(float(p[1]), 4)]
     import shutil as _sh
@@ -235,15 +248,162 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
         return run.remote()
 
 
+def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
+    import modal
+
+    app = modal.App("fittrack-cotracker-all")
+    image = (
+        modal.Image.debian_slim()
+        .apt_install("git", "libgl1", "libglib2.0-0")
+        .pip_install("ultralytics",
+                     "git+https://github.com/ultralytics/CLIP.git",
+                     "git+https://github.com/facebookresearch/co-tracker.git")
+        .add_local_dir(str(STAGE), "/data", copy=True)
+    )
+
+    @app.function(image=image, gpu=gpu, timeout=7200, serialized=True)
+    def run() -> dict:
+        import os as _os
+
+        _os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+        import glob
+
+        import cv2
+        import numpy as np
+        import torch
+        from ultralytics import YOLO
+
+        out: dict = {}
+        cotracker = None
+        det = YOLO(model) if seed_mode != "proxy" else None
+        if det is not None:
+            det.set_classes(PROMPTS)
+        for d in sorted(glob.glob("/data/*/")):
+            clip = d.rstrip("/").split("/")[-1]
+            paths = sorted(glob.glob(d + "frames/*.jpg"))
+            if not paths:
+                continue
+            H, W = 360, 640
+            video_np = np.stack([cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
+                                 for p in paths])
+            proxy = json.loads(open(d + "proxy.json").read())
+            proxy_pts = [[i, v[0], v[1]] for i, v in enumerate(proxy) if v]
+            if seed_mode == "proxy":
+                seed_norm = [p for p in proxy_pts if p[0] % 5 == 0]
+            else:
+                seed_norm = []
+                for i, p in enumerate(paths):
+                    r = det.predict(p, conf=conf, verbose=False, imgsz=640)[0]
+                    if r.boxes is None or not len(r.boxes):
+                        continue
+                    xy = r.boxes.xyxyn.tolist()
+                    cx = [(b[0] + b[2]) / 2 for b in xy]
+                    cy = [(b[1] + b[3]) / 2 for b in xy]
+                    if i < len(proxy) and proxy[i]:
+                        px, py = proxy[i]
+                        dist = [((a - px) ** 2 + (b - py) ** 2) ** 0.5
+                                for a, b in zip(cx, cy)]
+                        k = int(np.argmin(dist))
+                        if dist[k] > 0.20:
+                            continue
+                    else:
+                        k = int(np.argmax(r.boxes.conf.tolist()))
+                    seed_norm.append([i, cx[k], cy[k]])
+            if not seed_norm:
+                out[clip] = {"track": [], "proxy": proxy_pts}
+                continue
+            if cotracker is None:
+                cotracker = torch.hub.load("facebookresearch/co-tracker",
+                                           "cotracker3_offline").eval().cuda()
+            del video_np
+            torch.cuda.empty_cache()
+            bar = [None] * len(paths)
+            win, ov = 150, 20
+            start = 0
+            while start < len(paths):
+                end = min(start + win, len(paths))
+                sub = np.stack([cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
+                                for p in paths[start:end]])
+                wseed = [s for s in seed_norm if start <= s[0] < end]
+                if wseed:
+                    q = torch.tensor([[s[0] - start, s[1] * W, s[2] * H]
+                                      for s in wseed],
+                                     dtype=torch.float32)[None].cuda()
+                    vid = (torch.from_numpy(sub).permute(0, 3, 1, 2)[None]
+                           .float().cuda() / 255.0)
+                    with torch.no_grad():
+                        tr_w, vis_w = cotracker(vid, queries=q)
+                    tr_w = tr_w[0].cpu().numpy()
+                    vis_w = vis_w[0].cpu().numpy()
+                    for t in range(tr_w.shape[0]):
+                        m = vis_w[t] > 0.5
+                        if m.sum():
+                            bar[start + t] = [
+                                float(np.median(tr_w[t, m, 0]) / W),
+                                float(np.median(tr_w[t, m, 1]) / H)]
+                    del vid, q, sub, tr_w, vis_w
+                else:
+                    del sub
+                torch.cuda.empty_cache()
+                if end == len(paths):
+                    break
+                start = end - ov
+            out[clip] = {"track": bar, "proxy": proxy_pts,
+                         "seeds": len(seed_norm)}
+        return out
+
+    with app.run():
+        result = run.remote()
+
+    import statistics
+
+    rows, all_t, all_p = [], [], []
+    for clip in sorted(result):
+        r = result[clip]
+        gt = _gt_for_clip(clip)
+        track = r.get("track") or []
+        prox = {int(p[0]): (p[1], p[2]) for p in r.get("proxy", [])}
+        te, pe = [], []
+        for k, g in sorted(gt.items()):
+            gx, gy = (g[0] + g[2]) / 2, (g[1] + g[3]) / 2
+            if k < len(track) and track[k]:
+                t = track[k]
+                te.append(((t[0] - gx) ** 2 + (t[1] - gy) ** 2) ** 0.5)
+            pr = prox.get(k)
+            if pr:
+                pe.append(((pr[0] - gx) ** 2 + (pr[1] - gy) ** 2) ** 0.5)
+        all_t += te
+        all_p += pe
+        rows.append((clip, len(te),
+                     statistics.mean(te) if te else None,
+                     statistics.mean(pe) if pe else None))
+
+    print(f"{'clip':<38} {'n':>3} {'track':>7} {'proxy':>7}  win")
+    for clip, n, t, p in rows:
+        win = "" if (t is None or p is None) else ("YOLO" if t < p else "proxy")
+        print(f"{clip[:37]:<38} {n:>3} "
+              f"{'--' if t is None else f'{t:.3f}':>7} "
+              f"{'--' if p is None else f'{p:.3f}':>7}  {win}")
+    if all_t:
+        print(f"\nOVERALL ({len(all_t)} GT pts across {len(rows)} clips): "
+              f"CoTracker={statistics.mean(all_t):.3f}  proxy={statistics.mean(all_p):.3f}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for cmd in ("prepare", "eval"):
+    for cmd in ("prepare", "eval", "eval-all"):
         p = sub.add_parser(cmd)
-        p.add_argument("--clip", required=True)
         if cmd == "prepare":
+            p.add_argument("--clip")
+            p.add_argument("--all", action="store_true")
             p.add_argument("--exercise", default="Back Squat")
+            p.add_argument("--proxy-fps", type=float, default=2.0)
         else:
+            if cmd == "eval":
+                p.add_argument("--clip", required=True)
             p.add_argument("--gpu", default="T4")
             p.add_argument("--conf", type=float, default=0.05)
             p.add_argument("--model", default="yolov8x-worldv2.pt")
@@ -252,7 +412,15 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "prepare":
-        return prepare(args.clip, args.exercise)
+        clips = all_clips() if args.all else [args.clip]
+        if not clips or clips == [None]:
+            print("no clip given")
+            return 1
+        for c in clips:
+            prepare(c, args.exercise, args.proxy_fps)
+        return 0
+    if args.cmd == "eval-all":
+        return evaluate_all(args.gpu, args.conf, args.model, args.seed_mode)
     result = evaluate(args.clip, args.gpu, args.conf, args.model, args.seed_mode)
 
     meta = json.loads((STAGE / args.clip / "meta.json").read_text())
