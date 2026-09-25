@@ -24,8 +24,10 @@ def test_xyxy_from_normalised_box():
 def test_match_finds_a_translated_template():
     import cv2
 
+    # A textured patch (a uniform template makes TM_CCOEFF_NORMED undefined).
+    rng = np.random.default_rng(0)
     gray = np.zeros((60, 60), dtype=np.uint8)
-    gray[20:30, 20:30] = 255  # a bright 10x10 square
+    gray[20:30, 20:30] = rng.integers(0, 255, (10, 10), dtype=np.uint8)
     template = gray[20:30, 20:30].copy()
     nxt, score = tb._match(cv2, gray, template, (18, 18, 28, 28), 60, 60)
     assert score > 0.9
