@@ -30,6 +30,9 @@ class ForecastDay(BaseModel):
     precipitation_probability: int | None = None
     precipitation_sum: float | None = None
     wind_speed_max: float | None = None
+    wind_direction_deg: float | None = None
+    humidity_mean: float | None = None
+    pressure_mean: float | None = None
 
 
 class ForecastResponse(BaseModel):
@@ -48,6 +51,9 @@ class ActivityWeatherResponse(BaseModel):
     conditions: str | None = None
     wind_speed_kmh: float | None = None
     wind_direction: str | None = None
+    wind_direction_deg: float | None = None
+    humidity_pct: float | None = None
+    pressure_hpa: float | None = None
     precipitation_mm: float | None = None
 
 

@@ -53,7 +53,11 @@ class Route(Base):
         Float, nullable=True, index=True
     )
     terrain_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    predicted_effort: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Wahoo push state — id of the route uploaded to the user's Wahoo library
+    wahoo_route_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wahoo_route_pushed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -87,7 +91,10 @@ class RouteSource(Base):
     __tablename__ = "route_sources"
     __table_args__ = (
         UniqueConstraint(
-            "provider", "provider_route_id", name="uq_route_source_provider"
+            "provider",
+            "provider_route_id",
+            "user_id",
+            name="uq_route_source_provider_user",
         ),
     )
 
@@ -97,6 +104,12 @@ class RouteSource(Base):
     route_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

@@ -988,6 +988,7 @@ async def sync_strava_routes(
                 sa_select(RouteSource).where(
                     RouteSource.provider == "strava",
                     RouteSource.provider_route_id == route_id,
+                    RouteSource.user_id == user_id,
                 )
             )
             was_existing = existing.scalar_one_or_none() is not None
@@ -1050,6 +1051,7 @@ async def sync_strava_routes(
             sa_select(RouteSource).where(
                 RouteSource.provider == "strava",
                 RouteSource.provider_route_id == activity_provider_id,
+                RouteSource.user_id == user_id,
             )
         )
         if existing.scalar_one_or_none():

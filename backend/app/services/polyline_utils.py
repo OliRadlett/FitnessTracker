@@ -283,3 +283,45 @@ def extract_elevation_profile_from_wahoo_points(
         "distance": distances[:min_len],
         "elevation": elevations[:min_len],
     }
+
+
+def extract_elevation_profile_from_komoot_trackpoints(
+    trackpoints: list[dict],
+) -> dict | None:
+    """Extract an elevation profile from Komoot trackpoints.
+
+    Trackpoints are dicts with flexible keys: {lat|latitude, lng|lon|longitude,
+    alt|altitude|elevation}. Returns the canonical Route.elevation_profile
+    shape (``{"distance": [...], "elevation": [...]}``, distance in meters)
+    or None when fewer than 2 points carry both coordinates and elevation.
+    Points missing either are dropped (arrays stay aligned); the legacy
+    ``{"elevations": [...]}`` shape this replaces carried no distances and
+    could never be terrain-classified (RMI-04).
+    """
+    if not trackpoints or len(trackpoints) < 2:
+        return None
+
+    distances: list[float] = []
+    elevations: list[float] = []
+    cumulative = 0.0
+    prev: tuple[float, float] | None = None
+
+    for tp in trackpoints:
+        if not isinstance(tp, dict):
+            continue
+        lat = tp.get("lat") or tp.get("latitude")
+        lng = tp.get("lng") or tp.get("lon") or tp.get("longitude")
+        alt = tp.get("alt") or tp.get("altitude") or tp.get("elevation")
+        if lat is None or lng is None or alt is None:
+            continue
+        lat_f, lng_f = float(lat), float(lng)
+        if prev is not None:
+            cumulative += haversine_distance(prev[0], prev[1], lat_f, lng_f)
+        prev = (lat_f, lng_f)
+        distances.append(cumulative)
+        elevations.append(float(alt))
+
+    if len(distances) < 2:
+        return None
+
+    return {"distance": distances, "elevation": elevations}
