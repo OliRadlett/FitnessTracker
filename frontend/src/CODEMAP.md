@@ -225,6 +225,7 @@
 | `WeatherForecast` | 7-day forecast chips (`['weather-forecast']` query) with poor-cycling-conditions warning dots — rendered above plans grid on training page |
 | `EventAiAnalysisCard` | AI event/race preparation analysis (on-demand Gemini) |
 | `RoutePickerModal` | Route selection modal for training plan day assignment — browse/search routes, preview on map |
+| `WahooPushModal` | Push a cycle plan day to Wahoo — choose structured workout and/or route; shows pushed state, re-push/remove, display-window warning. Triggered from `WeeklyView`'s expanded panel ("📤 Push to Wahoo") |
 
 ### `settings/` — Settings page components
 | Component | Purpose |
