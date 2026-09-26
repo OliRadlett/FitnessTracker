@@ -9,6 +9,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { Activity, ActivityDetail } from '@/lib/api';
 import type { RouteHistoryResponse } from '@/lib/api/types/routes';
 import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
+import { buildRaceRides } from '@/lib/raceRides';
 import {
   ALTITUDE_STREAM_TYPES,
   CADENCE_STREAM_TYPES,
@@ -48,6 +49,7 @@ export function ReplayTheater({
   const { authFetch, token } = useAuthFetch();
   const [mounted, setMounted] = useState(false);
   const [ghostId, setGhostId] = useState<string | null>(null);
+  const [raceMode, setRaceMode] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -87,6 +89,24 @@ export function ReplayTheater({
       name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
     };
   }, [ghostDetail, ghostCandidates, ghostId]);
+
+  // ── "Race Yourself": fetch all rides on the route and build traces ─────
+  const allRideIds = useMemo(
+    () => (history?.rides ?? []).map((r) => r.activity_id).slice(0, 8),
+    [history],
+  );
+  const { data: raceDetails } = useQuery<ActivityDetail[]>({
+    queryKey: ['race-details', allRideIds],
+    queryFn: () => Promise.all(allRideIds.map((id) => authFetch<ActivityDetail>(`/api/v1/activities/${id}`))),
+    enabled: raceMode && !!token && allRideIds.length > 0,
+  });
+  const race = useMemo(() => {
+    if (!raceMode || !history || !raceDetails) return null;
+    const detailById: Record<string, { name: string; encoded_polyline?: string | null; streams?: ActivityDetail['streams'] }> = {};
+    for (const d of raceDetails) detailById[d.id] = d;
+    const rides = buildRaceRides({ history, detailById });
+    return rides.length >= 2 ? rides : null;
+  }, [raceMode, history, raceDetails]);
 
   useEffect(() => {
     const main = document.querySelector('main');
@@ -160,6 +180,16 @@ export function ReplayTheater({
               {r.average_power ? ` · ${Math.round(r.average_power)}W` : ''}
             </button>
           ))}
+          <button
+            onClick={() => setRaceMode((v) => !v)}
+            aria-pressed={raceMode}
+            title="Show every ride on this route as coloured traces in the overview"
+            className={`ml-2 rounded-full border px-3 py-1 min-h-[36px] transition-colors ${
+              raceMode ? 'border-accent/50 bg-accent/20 text-accent' : 'border-surface-light text-muted hover:border-accent/30'
+            }`}
+          >
+            Race Yourself
+          </button>
         </div>
       )}
 
@@ -171,6 +201,7 @@ export function ReplayTheater({
           ftpWatts={ftpWatts}
           startDate={activity.start_date}
           ghost={ghost}
+          race={race}
           weather={{
             conditions: activity.weather_conditions,
             temperature: activity.weather_temperature,
