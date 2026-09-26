@@ -315,9 +315,26 @@ depth accuracy ≥ 0.9 on ¾ clips.
   This is the decisive comparison — **classical 18%**, **YOLO-World zero-shot
   ~23% IoU**, **trained detector 97% recall on held-out human frames**. The
   earlier "0% on some clips" model had only 144 labelled frames; the 232-frame
-  set fixes the generalisation. ⏳ Remaining: a **clip-level** holdout (val is
-  frame-level, same 29 clips) before wiring `VIDEO_BAR_DETECTOR_MODEL`; then the
-  offset correction composes on top.
+  set fixes the generalisation.
+- ✅ **Clip-level holdout (2026-09-25)**: `scripts/holdout_bar_detector.py` — 6
+  clips held out entirely, model retrained without them: **recall@0.5 1.000,
+  mean IoU 0.927** across 48 unseen-clip frames (per-clip IoU 0.87–0.98). The
+  detector genuinely generalises to unseen clips, not just unseen frames.
+- ✅ **End-to-end bar-position error (2026-09-25)** — the number that matters,
+  scored at every GT frame across all 29 clips (239 points):
+
+  | track source | mean error |
+  |---|---|
+  | pose proxy | 0.259 |
+  | proxy-seeded CoTracker3 | 0.250 |
+  | **trained ONNX detector** | **0.063** |
+
+  The detector beats the proxy on **28/29 clips** — a **4.1×** improvement. This
+  is the unlock T3 was waiting for; the offset correction now becomes a small
+  residual cleanup rather than the load-bearing fix.
+- ⏳ Remaining: upload the ONNX to R2 (`models/bar_detector.onnx`), set
+  `VIDEO_BAR_DETECTOR_MODEL`, flip `VIDEO_BAR_DETECTION_ENABLED`, then re-run the
+  chain (bar-path metrics + `PoseCanvas` trail) against the human set.
 - **Labelling conventions**: `person` = the whole visible body **including arms**
   (one box) — matches the auto-labels (all landmarks) + COCO; only `plate`/
   `barbell` feed the bar path, so `person` is optional. Side views: label only

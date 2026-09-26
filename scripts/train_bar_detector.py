@@ -94,7 +94,9 @@ def prepare_dataset(sources: list, out_dir: Path,
 VOLUME_NAME = "fittrack-bar-detector"
 
 
-def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
+def train_on_modal(epochs: int, gpu: str, imgsz: int,
+                   dataset: Path = DATASET,
+                   out_name: str = "bar_detector") -> None:
     import modal
 
     app = modal.App("fittrack-bar-detector")
@@ -103,7 +105,7 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         # ultralytics imports cv2, which needs these system libs.
         .apt_install("libgl1", "libglib2.0-0")
         .pip_install("ultralytics", "onnx", "onnxruntime")
-        .add_local_dir(str(DATASET), "/data", copy=True)
+        .add_local_dir(str(dataset), "/data", copy=True)
     )
     vol = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
@@ -130,7 +132,7 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
             format="onnx", opset=12, imgsz=imgsz, nms=True
         )
         # Persist to the Volume so the model survives a client timeout/kill.
-        _P("/vol/bar_detector.onnx").write_bytes(_P(onnx_path).read_bytes())
+        _P(f"/vol/{out_name}.onnx").write_bytes(_P(onnx_path).read_bytes())
         vol.commit()
         return "ok"
 
@@ -138,27 +140,28 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         train.remote()
     print("training finished; model written to the Modal Volume")
 
-    fetch_from_volume()
+    fetch_from_volume(out_name)
 
 
-def fetch_from_volume() -> None:
+def fetch_from_volume(name: str = "bar_detector") -> None:
     """Pull the last trained model out of the Modal Volume into labels/."""
     import subprocess
     import sys
 
     dest = REPO_ROOT / "labels"
     dest.mkdir(parents=True, exist_ok=True)
-    print(f"fetching {VOLUME_NAME}:/bar_detector.onnx -> {dest}")
+    print(f"fetching {VOLUME_NAME}:/{name}.onnx -> {dest}")
     subprocess.run(
         [sys.executable, "-m", "modal", "volume", "get", "--force",
-         VOLUME_NAME, "bar_detector.onnx", str(dest)],
+         VOLUME_NAME, f"{name}.onnx", str(dest)],
         check=False,
     )
-    out = dest / "bar_detector.onnx"
+    out = dest / f"{name}.onnx"
     if out.exists():
         print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
-        print("Next: upload it to R2 at models/bar_detector.onnx and set "
-              "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
+        if name == "bar_detector":
+            print("Next: upload it to R2 at models/bar_detector.onnx and set "
+                  "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
 
 
 def main() -> int:
