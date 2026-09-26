@@ -24,12 +24,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from bar_labels import box_to_xyxy_norm  # noqa: E402
+from bar_labels import box_to_xyxy_norm
 
-DATA = Path(os.environ.get("TRACKING_DATA",
-                           r"C:\Users\oradl\FitnessTracker\labels\bars"))
-VIDEOS = Path(os.environ.get("TRACKING_VIDEOS",
-                             r"C:\Users\oradl\FitnessTracker\backend\tests\fixtures\videos"))
+DATA = Path(
+    os.environ.get("TRACKING_DATA", r"C:\Users\oradl\FitnessTracker\labels\bars")
+)
+VIDEOS = Path(
+    os.environ.get(
+        "TRACKING_VIDEOS",
+        r"C:\Users\oradl\FitnessTracker\backend\tests\fixtures\videos",
+    )
+)
 STAGE = REPO_ROOT / "labels" / "ct_eval"
 FPS = 10.0
 PROMPTS = ["barbell", "weight plate", "dumbbell"]
@@ -41,8 +46,9 @@ def all_clips() -> list[str]:
         if not line.strip():
             continue
         rec = json.loads(line)
-        if any(b.get("source") == "human" and b["label"] == "plate"
-               for b in rec["boxes"]):
+        if any(
+            b.get("source") == "human" and b["label"] == "plate" for b in rec["boxes"]
+        ):
             clips.add(Path(rec["image"]).stem.rsplit("_", 1)[0])
     return sorted(clips)
 
@@ -57,11 +63,14 @@ def _gt_for_clip(clip: str) -> dict[int, list[float]]:
         if not stem.startswith(clip):
             continue
         idx = int(stem.rsplit("_", 1)[1])
-        plates = [b for b in rec["boxes"]
-                  if b.get("source") == "human" and b["label"] == "plate"]
+        plates = [
+            b
+            for b in rec["boxes"]
+            if b.get("source") == "human" and b["label"] == "plate"
+        ]
         if plates:
             b = max(plates, key=lambda x: x["w"] * x["h"])
-            gt[int(round(idx * FPS / 2.0))] = list(box_to_xyxy_norm(b))
+            gt[round(idx * FPS / 2.0)] = list(box_to_xyxy_norm(b))
     return gt
 
 
@@ -70,8 +79,14 @@ def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
 
     sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-    video = next((p for p in sorted(VIDEOS.glob(f"{clip}.*"))
-                  if p.suffix.lower() in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}), None)
+    video = next(
+        (
+            p
+            for p in sorted(VIDEOS.glob(f"{clip}.*"))
+            if p.suffix.lower() in {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+        ),
+        None,
+    )
     if video is None:
         print(f"no video for {clip} in {VIDEOS}")
         return 1
@@ -84,10 +99,26 @@ def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
     duration = rvl.probe_duration(video)
     trim_start, trim_end = rvl.trim_points(rvl.detect_scenes(video, duration), duration)
     subprocess.run(
-        ["ffmpeg", "-y", "-ss", str(trim_start), "-to", str(trim_end),
-         "-i", str(video), "-vf", f"fps={FPS}", "-q:v", "2",
-         "-start_number", "0", str(frames_dir / "frame_%04d.jpg")],
-        capture_output=True, timeout=300, check=True,
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(trim_start),
+            "-to",
+            str(trim_end),
+            "-i",
+            str(video),
+            "-vf",
+            f"fps={FPS}",
+            "-q:v",
+            "2",
+            "-start_number",
+            "0",
+            str(frames_dir / "frame_%04d.jpg"),
+        ],
+        capture_output=True,
+        timeout=300,
+        check=True,
     )
     n = len(list(frames_dir.glob("*.jpg")))
     gt = _gt_for_clip(clip)
@@ -100,9 +131,10 @@ def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
     from app.integrations.pose_analysis import extract_pose_track
 
     tmp = Path(tempfile.mkdtemp(prefix="proxy_"))
-    tr = extract_pose_track(video, str(tmp), trim_start, trim_end,
-                            fps=proxy_fps, num_poses=1)
-    step = max(1, int(round(FPS / proxy_fps)))
+    tr = extract_pose_track(
+        video, str(tmp), trim_start, trim_end, fps=proxy_fps, num_poses=1
+    )
+    step = max(1, round(FPS / proxy_fps))
     proxy: list = [None] * n
     for rec in tr.get("records", []):
         lm = rec.get("landmarks")
@@ -114,6 +146,7 @@ def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
             if 0 <= fi < n:
                 proxy[fi] = [round(float(p[0]), 4), round(float(p[1]), 4)]
     import shutil as _sh
+
     _sh.rmtree(tmp, ignore_errors=True)
     (out / "proxy.json").write_text(json.dumps(proxy), encoding="utf-8")
 
@@ -131,28 +164,40 @@ def prepare(clip: str, exercise: str, proxy_fps: float = 2.0) -> int:
             if a is not None and b is not None:
                 b = cv2.resize(b, (a.shape[1], a.shape[0]))
                 diffs.append(float(np.mean(np.abs(a.astype(int) - b.astype(int)))))
-    (out / "meta.json").write_text(json.dumps({
-        "clip": clip, "video": str(video), "trim_start": trim_start,
-        "trim_end": trim_end, "fps": FPS, "frames": n,
-        "gt": {str(k): v for k, v in gt.items()},
-    }), encoding="utf-8")
+    (out / "meta.json").write_text(
+        json.dumps(
+            {
+                "clip": clip,
+                "video": str(video),
+                "trim_start": trim_start,
+                "trim_end": trim_end,
+                "fps": FPS,
+                "frames": n,
+                "gt": {str(k): v for k, v in gt.items()},
+            }
+        ),
+        encoding="utf-8",
+    )
     n_proxy = sum(1 for p in proxy if p)
-    print(f"{clip}: {n} frames, {len(gt)} GT points, proxy={n_proxy}/{n}, "
-          f"align mean|diff|={sum(diffs) / len(diffs):.1f} (n={len(diffs)})")
+    print(
+        f"{clip}: {n} frames, {len(gt)} GT points, proxy={n_proxy}/{n}, "
+        f"align mean|diff|={sum(diffs) / len(diffs):.1f} (n={len(diffs)})"
+    )
     return 0
 
 
-def evaluate(clip: str, gpu: str, conf: float, model: str,
-             seed_mode: str) -> int:
+def evaluate(clip: str, gpu: str, conf: float, model: str, seed_mode: str) -> int:
     import modal
 
     app = modal.App("fittrack-cotracker-eval")
     image = (
         modal.Image.debian_slim()
         .apt_install("git", "libgl1", "libglib2.0-0")
-        .pip_install("ultralytics",
-                     "git+https://github.com/ultralytics/CLIP.git",
-                     "git+https://github.com/facebookresearch/co-tracker.git")
+        .pip_install(
+            "ultralytics",
+            "git+https://github.com/ultralytics/CLIP.git",
+            "git+https://github.com/facebookresearch/co-tracker.git",
+        )
         .add_local_dir(str(STAGE / clip), "/data", copy=True)
     )
 
@@ -171,10 +216,11 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
 
         paths = sorted(glob.glob("/data/frames/*.jpg"))
         H, W = 360, 640
-        video_np = np.stack([cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
-                             for p in paths])
+        video_np = np.stack(
+            [cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H)) for p in paths]
+        )
 
-        proxy = json.loads(open("/data/proxy.json").read())
+        proxy = json.loads(Path("/data/proxy.json").read_text())
         proxy_seeds = [[i] + proxy[i] for i in range(len(proxy)) if proxy[i]]
 
         box_frames = tot_boxes = 0
@@ -199,8 +245,9 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
                 cy = [(b[1] + b[3]) / 2 for b in xy]
                 if i < len(proxy) and proxy[i]:
                     px, py = proxy[i]
-                    dist = [((a - px) ** 2 + (b - py) ** 2) ** 0.5
-                            for a, b in zip(cx, cy)]
+                    dist = [
+                        ((a - px) ** 2 + (b - py) ** 2) ** 0.5 for a, b in zip(cx, cy)
+                    ]
                     k = int(np.argmin(dist))
                     if dist[k] > 0.20:
                         continue
@@ -213,10 +260,14 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
 
         queries = [[i, x * W, y * H] for i, x, y in seed_norm]
         gold = {
-            "seeds": len(queries), "frames": len(paths),
-            "box_frames": box_frames, "tot_boxes": tot_boxes,
-            "max_conf": round(max_conf, 3), "proxy_n": len(proxy_seeds),
-            "seed_norm": seed_norm, "mode": seed_mode,
+            "seeds": len(queries),
+            "frames": len(paths),
+            "box_frames": box_frames,
+            "tot_boxes": tot_boxes,
+            "max_conf": round(max_conf, 3),
+            "proxy_n": len(proxy_seeds),
+            "seed_norm": seed_norm,
+            "mode": seed_mode,
             "seed_conf_mean": round(float(np.mean(seed_conf)), 3) if seed_conf else 0,
         }
         if not queries:
@@ -224,10 +275,14 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
             gold["note"] = "no seeds"
             return gold
 
-        cotracker = torch.hub.load("facebookresearch/co-tracker",
-                                   "cotracker3_offline").eval().cuda()
-        vid = (torch.from_numpy(video_np).permute(0, 3, 1, 2)[None]
-               .float().cuda() / 255.0)
+        cotracker = (
+            torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline")
+            .eval()
+            .cuda()
+        )
+        vid = (
+            torch.from_numpy(video_np).permute(0, 3, 1, 2)[None].float().cuda() / 255.0
+        )
         q = torch.tensor(queries, dtype=torch.float32)[None].cuda()
         with torch.no_grad():
             tracks, vis = cotracker(vid, queries=q)
@@ -237,9 +292,14 @@ def evaluate(clip: str, gpu: str, conf: float, model: str,
         bar = []
         for t in range(tracks.shape[0]):
             m = vis[t] > 0.5
-            bar.append(None if m.sum() == 0 else
-                       [float(np.median(tracks[t, m, 0]) / W),
-                        float(np.median(tracks[t, m, 1]) / H)])
+            bar.append(
+                None
+                if m.sum() == 0
+                else [
+                    float(np.median(tracks[t, m, 0]) / W),
+                    float(np.median(tracks[t, m, 1]) / H),
+                ]
+            )
         gold["track"] = bar
         gold["proxy"] = proxy_seeds
         return gold
@@ -255,9 +315,11 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
     image = (
         modal.Image.debian_slim()
         .apt_install("git", "libgl1", "libglib2.0-0")
-        .pip_install("ultralytics",
-                     "git+https://github.com/ultralytics/CLIP.git",
-                     "git+https://github.com/facebookresearch/co-tracker.git")
+        .pip_install(
+            "ultralytics",
+            "git+https://github.com/ultralytics/CLIP.git",
+            "git+https://github.com/facebookresearch/co-tracker.git",
+        )
         .add_local_dir(str(STAGE), "/data", copy=True)
     )
 
@@ -285,9 +347,10 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
             if not paths:
                 continue
             H, W = 360, 640
-            video_np = np.stack([cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
-                                 for p in paths])
-            proxy = json.loads(open(d + "proxy.json").read())
+            video_np = np.stack(
+                [cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H)) for p in paths]
+            )
+            proxy = json.loads(Path(d, "proxy.json").read_text())
             proxy_pts = [[i, v[0], v[1]] for i, v in enumerate(proxy) if v]
             if seed_mode == "proxy":
                 seed_norm = [p for p in proxy_pts if p[0] % 5 == 0]
@@ -302,8 +365,10 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
                     cy = [(b[1] + b[3]) / 2 for b in xy]
                     if i < len(proxy) and proxy[i]:
                         px, py = proxy[i]
-                        dist = [((a - px) ** 2 + (b - py) ** 2) ** 0.5
-                                for a, b in zip(cx, cy)]
+                        dist = [
+                            ((a - px) ** 2 + (b - py) ** 2) ** 0.5
+                            for a, b in zip(cx, cy)
+                        ]
                         k = int(np.argmin(dist))
                         if dist[k] > 0.20:
                             continue
@@ -314,8 +379,11 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
                 out[clip] = {"track": [], "proxy": proxy_pts}
                 continue
             if cotracker is None:
-                cotracker = torch.hub.load("facebookresearch/co-tracker",
-                                           "cotracker3_offline").eval().cuda()
+                cotracker = (
+                    torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline")
+                    .eval()
+                    .cuda()
+                )
             del video_np
             torch.cuda.empty_cache()
             bar = [None] * len(paths)
@@ -323,15 +391,22 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
             start = 0
             while start < len(paths):
                 end = min(start + win, len(paths))
-                sub = np.stack([cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
-                                for p in paths[start:end]])
+                sub = np.stack(
+                    [
+                        cv2.resize(cv2.imread(p)[:, :, ::-1], (W, H))
+                        for p in paths[start:end]
+                    ]
+                )
                 wseed = [s for s in seed_norm if start <= s[0] < end]
                 if wseed:
-                    q = torch.tensor([[s[0] - start, s[1] * W, s[2] * H]
-                                      for s in wseed],
-                                     dtype=torch.float32)[None].cuda()
-                    vid = (torch.from_numpy(sub).permute(0, 3, 1, 2)[None]
-                           .float().cuda() / 255.0)
+                    q = torch.tensor(
+                        [[s[0] - start, s[1] * W, s[2] * H] for s in wseed],
+                        dtype=torch.float32,
+                    )[None].cuda()
+                    vid = (
+                        torch.from_numpy(sub).permute(0, 3, 1, 2)[None].float().cuda()
+                        / 255.0
+                    )
                     with torch.no_grad():
                         tr_w, vis_w = cotracker(vid, queries=q)
                     tr_w = tr_w[0].cpu().numpy()
@@ -341,7 +416,8 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
                         if m.sum():
                             bar[start + t] = [
                                 float(np.median(tr_w[t, m, 0]) / W),
-                                float(np.median(tr_w[t, m, 1]) / H)]
+                                float(np.median(tr_w[t, m, 1]) / H),
+                            ]
                     del vid, q, sub, tr_w, vis_w
                 else:
                     del sub
@@ -349,8 +425,7 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
                 if end == len(paths):
                     break
                 start = end - ov
-            out[clip] = {"track": bar, "proxy": proxy_pts,
-                         "seeds": len(seed_norm)}
+            out[clip] = {"track": bar, "proxy": proxy_pts, "seeds": len(seed_norm)}
         return out
 
     with app.run():
@@ -375,19 +450,28 @@ def evaluate_all(gpu: str, conf: float, model: str, seed_mode: str) -> int:
                 pe.append(((pr[0] - gx) ** 2 + (pr[1] - gy) ** 2) ** 0.5)
         all_t += te
         all_p += pe
-        rows.append((clip, len(te),
-                     statistics.mean(te) if te else None,
-                     statistics.mean(pe) if pe else None))
+        rows.append(
+            (
+                clip,
+                len(te),
+                statistics.mean(te) if te else None,
+                statistics.mean(pe) if pe else None,
+            )
+        )
 
     print(f"{'clip':<38} {'n':>3} {'track':>7} {'proxy':>7}  win")
     for clip, n, t, p in rows:
         win = "" if (t is None or p is None) else ("YOLO" if t < p else "proxy")
-        print(f"{clip[:37]:<38} {n:>3} "
-              f"{'--' if t is None else f'{t:.3f}':>7} "
-              f"{'--' if p is None else f'{p:.3f}':>7}  {win}")
+        print(
+            f"{clip[:37]:<38} {n:>3} "
+            f"{'--' if t is None else f'{t:.3f}':>7} "
+            f"{'--' if p is None else f'{p:.3f}':>7}  {win}"
+        )
     if all_t:
-        print(f"\nOVERALL ({len(all_t)} GT pts across {len(rows)} clips): "
-              f"CoTracker={statistics.mean(all_t):.3f}  proxy={statistics.mean(all_p):.3f}")
+        print(
+            f"\nOVERALL ({len(all_t)} GT pts across {len(rows)} clips): "
+            f"CoTracker={statistics.mean(all_t):.3f}  proxy={statistics.mean(all_p):.3f}"
+        )
     return 0
 
 
@@ -407,8 +491,9 @@ def main() -> int:
             p.add_argument("--gpu", default="T4")
             p.add_argument("--conf", type=float, default=0.05)
             p.add_argument("--model", default="yolov8x-worldv2.pt")
-            p.add_argument("--seed", dest="seed_mode", default="det",
-                           choices=["det", "proxy"])
+            p.add_argument(
+                "--seed", dest="seed_mode", default="det", choices=["det", "proxy"]
+            )
     args = ap.parse_args()
 
     if args.cmd == "prepare":
@@ -426,42 +511,58 @@ def main() -> int:
     meta = json.loads((STAGE / args.clip / "meta.json").read_text())
     gt = {int(k): v for k, v in meta["gt"].items()}
     track = result.get("track")
-    print(f"seeds={result['seeds']}/{result['frames']} "
-          f"box_frames={result.get('box_frames')} tot_boxes={result.get('tot_boxes')} "
-          f"max_conf={result.get('max_conf')} proxy_n={result.get('proxy_n')} "
-          f"tracked={sum(1 for t in (track or []) if t)}/{result.get('frames')}")
+    print(
+        f"seeds={result['seeds']}/{result['frames']} "
+        f"box_frames={result.get('box_frames')} tot_boxes={result.get('tot_boxes')} "
+        f"max_conf={result.get('max_conf')} proxy_n={result.get('proxy_n')} "
+        f"tracked={sum(1 for t in (track or []) if t)}/{result.get('frames')}"
+    )
     if result.get("seed_norm"):
-        print("first seeds [frame, x, y]:",
-              [[s[0], round(s[1], 3), round(s[2], 3)]
-               for s in result["seed_norm"][:6]])
+        print(
+            "first seeds [frame, x, y]:",
+            [[s[0], round(s[1], 3), round(s[2], 3)] for s in result["seed_norm"][:6]],
+        )
     if track:
         prox = {int(p[0]): (p[1], p[2]) for p in result.get("proxy", [])}
         for k, g in sorted(gt.items()):
             gx, gy = (g[0] + g[2]) / 2, (g[1] + g[3]) / 2
             t = track[k] if k < len(track) else None
             pr = prox.get(k)
-            print(f"  k={k:<4} gt=({gx:.3f},{gy:.3f}) "
-                  f"track={'None' if not t else f'({t[0]:.3f},{t[1]:.3f})'} "
-                  f"proxy={'None' if not pr else f'({pr[0]:.3f},{pr[1]:.3f})'}")
+            print(
+                f"  k={k:<4} gt=({gx:.3f},{gy:.3f}) "
+                f"track={'None' if not t else f'({t[0]:.3f},{t[1]:.3f})'} "
+                f"proxy={'None' if not pr else f'({pr[0]:.3f},{pr[1]:.3f})'}"
+            )
     if track:
         errs = []
         for k, g in sorted(gt.items()):
             if k < len(track) and track[k]:
                 t = track[k]
-                errs.append(((t[0] - (g[0] + g[2]) / 2) ** 2
-                             + (t[1] - (g[1] + g[3]) / 2) ** 2) ** 0.5)
+                errs.append(
+                    ((t[0] - (g[0] + g[2]) / 2) ** 2 + (t[1] - (g[1] + g[3]) / 2) ** 2)
+                    ** 0.5
+                )
         perrs = []
         for k, g in sorted(gt.items()):
             pr = prox.get(k)
             if pr:
-                perrs.append(((pr[0] - (g[0] + g[2]) / 2) ** 2
-                              + (pr[1] - (g[1] + g[3]) / 2) ** 2) ** 0.5)
+                perrs.append(
+                    (
+                        (pr[0] - (g[0] + g[2]) / 2) ** 2
+                        + (pr[1] - (g[1] + g[3]) / 2) ** 2
+                    )
+                    ** 0.5
+                )
         if perrs:
-            print(f"raw proxy baseline: GT-n={len(perrs)} "
-                  f"mean_err={sum(perrs) / len(perrs):.3f}")
+            print(
+                f"raw proxy baseline: GT-n={len(perrs)} "
+                f"mean_err={sum(perrs) / len(perrs):.3f}"
+            )
         if errs:
-            print(f"CoTracker track: GT-n={len(errs)} mean_err={sum(errs) / len(errs):.3f} "
-                  f"median_err={sorted(errs)[len(errs) // 2]:.3f}")
+            print(
+                f"CoTracker track: GT-n={len(errs)} mean_err={sum(errs) / len(errs):.3f} "
+                f"median_err={sorted(errs)[len(errs) // 2]:.3f}"
+            )
     return 0
 
 

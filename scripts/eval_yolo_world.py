@@ -28,24 +28,24 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from bar_labels import box_to_xyxy_norm  # noqa: E402
+from bar_labels import box_to_xyxy_norm
 
-DATA = Path(os.environ.get("TRACKING_DATA",
-                           r"C:\Users\oradl\FitnessTracker\labels\bars"))
+DATA = Path(
+    os.environ.get("TRACKING_DATA", r"C:\Users\oradl\FitnessTracker\labels\bars")
+)
 STAGE = REPO_ROOT / "labels" / "yolo_eval"
 PROMPTS = ["barbell", "weight plate", "dumbbell"]
 MODEL = "yolov8x-worldv2.pt"
 CONF = 0.05
 
 
-def _image() -> "object":
+def _image() -> object:
     import modal
 
     return (
         modal.Image.debian_slim()
         .apt_install("git", "libgl1", "libglib2.0-0")
-        .pip_install("ultralytics",
-                     "git+https://github.com/ultralytics/CLIP.git")
+        .pip_install("ultralytics", "git+https://github.com/ultralytics/CLIP.git")
         .add_local_dir(str(STAGE), "/data", copy=True)
     )
 
@@ -57,8 +57,11 @@ def prepare() -> int:
         if not line.strip():
             continue
         rec = json.loads(line)
-        plates = [b for b in rec["boxes"]
-                  if b.get("source") == "human" and b["label"] == "plate"]
+        plates = [
+            b
+            for b in rec["boxes"]
+            if b.get("source") == "human" and b["label"] == "plate"
+        ]
         if not plates:
             continue
         b = max(plates, key=lambda x: x["w"] * x["h"])
@@ -84,8 +87,12 @@ def diagnose(gpu: str, model_name: str) -> int:
 
         model = YOLO(model_name)
         prompt_sets = [
-            ["person"], ["barbell"], ["dumbbell"], ["weight plate"],
-            ["barbell", "weight plate", "dumbbell"], ["bar"],
+            ["person"],
+            ["barbell"],
+            ["dumbbell"],
+            ["weight plate"],
+            ["barbell", "weight plate", "dumbbell"],
+            ["bar"],
         ]
         imgs = sorted(glob.glob("/data/images/*.jpg"))[:12]
         out: dict = {"_imgs": len(imgs), "_model": model_name}
@@ -127,10 +134,14 @@ def evaluate(gpu: str, model_name: str, conf: float, prompts: list[str]) -> int:
         model.set_classes(prompts)
         preds_by_img: dict[str, list[list[float]]] = {n: [] for n in names}
         for n in names:
-            res = model.predict(f"/data/images/{n}", conf=conf,
-                                verbose=False, imgsz=640)[0]
-            preds_by_img[n] = (res.boxes.xyxyn.tolist()
-                               if res.boxes is not None and len(res.boxes) else [])
+            res = model.predict(
+                f"/data/images/{n}", conf=conf, verbose=False, imgsz=640
+            )[0]
+            preds_by_img[n] = (
+                res.boxes.xyxyn.tolist()
+                if res.boxes is not None and len(res.boxes)
+                else []
+            )
 
         def iou(a, b):
             ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
@@ -194,8 +205,10 @@ def main() -> int:
     if args.cmd == "prepare":
         return prepare()
     if args.cmd == "diag":
-        print("YOLO-WORLD PROMPT DIAG:",
-              json.dumps(diagnose(args.gpu, args.model), indent=1))
+        print(
+            "YOLO-WORLD PROMPT DIAG:",
+            json.dumps(diagnose(args.gpu, args.model), indent=1),
+        )
         return 0
     prompts = [x for x in args.prompts.split(",") if x]
     result = evaluate(args.gpu, args.model, args.conf, prompts)

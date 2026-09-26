@@ -23,13 +23,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from bar_labels import box_to_xyxy_norm, load_jsonl  # noqa: E402
-from eval_cotracker import all_clips  # noqa: E402
-from train_bar_detector import prepare_dataset, train_on_modal  # noqa: E402
+from bar_labels import box_to_xyxy_norm, load_jsonl
+from eval_cotracker import all_clips
+from train_bar_detector import prepare_dataset, train_on_modal
 
 DATA = Path(os.environ.get("TRACKING_DATA", REPO_ROOT / "labels" / "bars"))
-SYNTH = Path(os.environ.get("TRACKING_SYNTHETIC",
-                            r"C:\Users\oradl\FitnessTracker\labels\bars_synthetic"))
+SYNTH = Path(
+    os.environ.get(
+        "TRACKING_SYNTHETIC", r"C:\Users\oradl\FitnessTracker\labels\bars_synthetic"
+    )
+)
 WORK = REPO_ROOT / "labels" / "bar_holdout"
 DATASET = REPO_ROOT / "labels" / "bar_dataset_holdout"
 MODEL_NAME = "bar_detector_holdout"
@@ -43,8 +46,7 @@ def build(n_holdout: int, seed: int, real_repeat: int) -> int:
     WORK.mkdir(parents=True, exist_ok=True)
 
     recs = load_jsonl(DATA / "labels.human.jsonl")
-    keep = [r for r in recs
-            if Path(r["image"]).stem.rsplit("_", 1)[0] not in held]
+    keep = [r for r in recs if Path(r["image"]).stem.rsplit("_", 1)[0] not in held]
     kept_path = WORK / "human_train.jsonl"
     kept_path.write_text("\n".join(json.dumps(r) for r in keep), encoding="utf-8")
 
@@ -53,13 +55,17 @@ def build(n_holdout: int, seed: int, real_repeat: int) -> int:
     for r in recs:
         if Path(r["image"]).stem.rsplit("_", 1)[0] not in held:
             continue
-        plates = [b for b in r["boxes"]
-                  if b.get("source") == "human" and b["label"] == "plate"]
+        plates = [
+            b
+            for b in r["boxes"]
+            if b.get("source") == "human" and b["label"] == "plate"
+        ]
         if plates:
             b = max(plates, key=lambda x: x["w"] * x["h"])
             gt[str(DATA / r["image"])] = list(box_to_xyxy_norm(b))
-    (WORK / "holdout_gt.json").write_text(json.dumps({
-        "clips": holdout, "frames": gt}), encoding="utf-8")
+    (WORK / "holdout_gt.json").write_text(
+        json.dumps({"clips": holdout, "frames": gt}), encoding="utf-8"
+    )
 
     sources = [(DATA, kept_path, max(1, real_repeat))]
     synth_labels = SYNTH / "labels.jsonl"
@@ -96,10 +102,20 @@ def score(conf: float) -> int:
     ious, contained, cyerr = [], 0, []
     for path, g in gt.items():
         img = cv2.imread(path)
-        dets = [d for d in detect_bars_onnx(img, model, conf=conf)
-                if d["label"] in ("plate", "barbell")]
-        boxes = [(d["x"] - d["w"] / 2, d["y"] - d["h"] / 2,
-                  d["x"] + d["w"] / 2, d["y"] + d["h"] / 2) for d in dets]
+        dets = [
+            d
+            for d in detect_bars_onnx(img, model, conf=conf)
+            if d["label"] in ("plate", "barbell")
+        ]
+        boxes = [
+            (
+                d["x"] - d["w"] / 2,
+                d["y"] - d["h"] / 2,
+                d["x"] + d["w"] / 2,
+                d["y"] + d["h"] / 2,
+            )
+            for d in dets
+        ]
         gx, gy = (g[0] + g[2]) / 2, (g[1] + g[3]) / 2
         i = max((iou(b, g) for b in boxes), default=0.0)
         ious.append(i)
@@ -112,15 +128,20 @@ def score(conf: float) -> int:
 
     a = np.array(ious)
     ce = np.array(cyerr) if cyerr else np.array([1.0])
-    print(f"CLIP-LEVEL HOLDOUT ({len(a)} frames, {len(per_clip)} unseen clips), "
-          f"conf={conf}")
-    print(f"  recall@0.5={ (a>0.5).mean():.3f}  mean_IoU={a.mean():.3f}  "
-          f"contained={contained/len(a):.3f}  cy_err<0.05={(ce<0.05).mean():.3f}")
-    for clip, vals in sorted(per_clip.items(),
-                             key=lambda kv: -np.mean(kv[1])):
+    print(
+        f"CLIP-LEVEL HOLDOUT ({len(a)} frames, {len(per_clip)} unseen clips), "
+        f"conf={conf}"
+    )
+    print(
+        f"  recall@0.5={(a > 0.5).mean():.3f}  mean_IoU={a.mean():.3f}  "
+        f"contained={contained / len(a):.3f}  cy_err<0.05={(ce < 0.05).mean():.3f}"
+    )
+    for clip, vals in sorted(per_clip.items(), key=lambda kv: -np.mean(kv[1])):
         v = np.array(vals)
-        print(f"    {clip[:36]:<37} n={len(v):>2} recall={(v>0.5).mean():.2f} "
-              f"IoU={v.mean():.3f}")
+        print(
+            f"    {clip[:36]:<37} n={len(v):>2} recall={(v > 0.5).mean():.2f} "
+            f"IoU={v.mean():.3f}"
+        )
     return 0
 
 
@@ -142,8 +163,9 @@ def main() -> int:
     if args.cmd == "build":
         return build(args.holdout, args.seed, args.real_repeat)
     if args.cmd == "train":
-        train_on_modal(args.epochs, args.gpu, args.imgsz,
-                       dataset=DATASET, out_name=MODEL_NAME)
+        train_on_modal(
+            args.epochs, args.gpu, args.imgsz, dataset=DATASET, out_name=MODEL_NAME
+        )
         return 0
     return score(args.conf)
 
