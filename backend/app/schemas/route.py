@@ -201,7 +201,16 @@ class DuplicatePair(BaseModel):
     route_a: RouteRead
     route_b: RouteRead
     score: float
-    requires_confirmation: bool = False  # True for scores 0.40–0.89
+    requires_confirmation: bool = False  # True unless tier == "auto"
+    tier: str = "review"  # "auto" | "review"
+    breakdown: dict | None = None  # per-component match explanation
+
+
+class MergeResult(BaseModel):
+    """Result of a merge — includes the audit-log id for undo."""
+
+    route: RouteRead
+    merge_log_id: uuid.UUID | None = None
 
 
 class MergeManyRequest(BaseModel):

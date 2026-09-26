@@ -87,6 +87,86 @@ class Route(Base):
     )
 
 
+class RouteMergeLog(Base):
+    """Audit trail for a route merge so it can be reviewed / undone.
+
+    ``merged_route_id`` is intentionally **not** a FK — the duplicate route row
+    is deleted during the merge, and the snapshot below is enough to recreate it.
+    """
+
+    __tablename__ = "route_merge_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    primary_route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    merged_route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    moved: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    undone_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class RouteSimilarity(Base):
+    """Cached pairwise route-match scores (Modal / local engine output).
+
+    Keyed by the ordered pair ``(route_a_id, route_b_id)``; the graph is rebuilt
+    idempotently per user, so rows are cleared before each upsert.
+    """
+
+    __tablename__ = "route_similarity"
+    __table_args__ = (
+        UniqueConstraint("route_a_id", "route_b_id", name="uq_route_similarity_pair"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    route_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    route_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class RouteSource(Base):
     __tablename__ = "route_sources"
     __table_args__ = (

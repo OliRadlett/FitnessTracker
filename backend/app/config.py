@@ -138,7 +138,13 @@ class Settings(BaseSettings):
     )
     activity_route_link_threshold: float = 0.70
     route_match_threshold: float = (
-        0.55  # lowered from 0.60 to catch same-route variants
+        0.55  # review floor — below this a pair is not a candidate
+    )
+    route_match_auto_threshold: float = (
+        0.82  # at/above this a duplicate pair auto-merges; the rest go to review
+    )
+    route_match_gate: float = (
+        0.45  # hard gate — below this the composite score is forced to 0
     )
 
     model_config = {"env_file": ".env", "extra": "ignore"}
