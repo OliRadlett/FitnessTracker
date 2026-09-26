@@ -20,6 +20,8 @@ import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlig
 import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
+import type { RaceRide } from '@/lib/raceRides';
+import { raceIndexAt, speedColor } from '@/lib/raceRides';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -58,6 +60,17 @@ function nearestIndex(points: ReplayPoint[], elapsed: number): number {
     else hi = mid - 1;
   }
   return lo;
+}
+
+/** cardinal/abbreviated wind direction → degrees (meteorological "from" direction). */
+function parseCardinal(dir: string | null): number {
+  if (!dir) return 0;
+  const d = dir.toUpperCase().replace(/[^A-Z]/g, '');
+  const map: Record<string, number> = {
+    N: 0, NNE: 22, NE: 45, ENE: 67, E: 90, ESE: 112, SE: 135, SSE: 157,
+    S: 180, SSW: 202, SW: 225, WSW: 247, W: 270, WNW: 292, NW: 315, NNW: 337,
+  };
+  return d in map ? map[d] : 0;
 }
 
 /** soft radial blob used as the bike's contact shadow */
@@ -440,6 +453,7 @@ export function Replay3D({
   ghost = null,
   terrainDefault = true,
   weather = null,
+  race = null,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -471,6 +485,8 @@ export function Replay3D({
     windDirection?: string | null;
     precipitationMm?: number | null;
   } | null;
+  /** "Race Yourself" — other rides on the same route, drawn as coloured traces */
+  race?: RaceRide[] | null;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
@@ -519,6 +535,7 @@ export function Replay3D({
     path: Line2;
     pathGeo: LineGeometry | null;
     roadGeo: THREE.BufferGeometry | null;
+    roadMat: THREE.MeshLambertMaterial | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
     composer: EffectComposer | null;
@@ -533,6 +550,10 @@ export function Replay3D({
   const colorByRef = useRef<ReplayColorMode>(colorBy);
   const onElapsedRef = useRef(onElapsed);
   const linkRef = useRef(link);
+  // Ride-time weather, read per-frame (wet road sheen + wind HUD).
+  const wetnessRef = useRef(0);
+  const windSpeedRef = useRef(0);
+  const windDirRef = useRef<string | null>(null);
   const followPosRef = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
@@ -627,10 +648,17 @@ export function Replay3D({
     // Weather tweaks on top of the time-of-day palette.
     const cond = (weather?.conditions ?? '').toLowerCase();
     const precip = weather?.precipitationMm ?? 0;
+    const windSpeed = weather?.windSpeedKmh ?? 0;
+    const windDir = weather?.windDirection ?? null;
     const rainy = precip > 0.2 || /rain|drizzle|shower|storm/.test(cond);
     const snowy = /snow|sleet|blizzard/.test(cond);
     const foggy = /fog|mist|haze/.test(cond);
     const overcast = !rainy && !snowy && /overcast|cloud|broken|drizzle/.test(cond);
+    // Wetness 0..1 drives the road sheen (rain/snow accumulation).
+    const wetness = Math.min(1, (rainy ? 0.6 : 0) + Math.min(0.4, precip / 4) + (snowy ? 0.5 : 0));
+    wetnessRef.current = wetness;
+    windSpeedRef.current = windSpeed;
+    windDirRef.current = windDir;
     const SKY_TOP = new THREE.Color(PALETTE.top);
     const SKY_HORIZON = new THREE.Color(PALETTE.horizon);
     const FOG_COLOR = new THREE.Color(PALETTE.fog);
@@ -804,6 +832,47 @@ export function Replay3D({
     setLineResolution(pathMat);
     const pathLine = new Line2(pathGeo, pathMat);
     scene.add(pathLine);
+
+    // ── "Race Yourself": coloured traces + animated markers for other rides ─
+    const raceLines: { line: Line2; mat: LineMaterial }[] = [];
+    const raceMarkers: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial }[] = [];
+    if (race && race.length > 0) {
+      // max speed across all rides for the Phase 3 colour ramp
+      let maxSpeed = 1;
+      for (const ride of race) for (const p of ride.points) if (p.speed > maxSpeed) maxSpeed = p.speed;
+      for (const ride of race) {
+        if (ride.points.length < 2) continue;
+        const rg = new LineGeometry();
+        const rp: number[] = [];
+        const rc: number[] = [];
+        for (const p of ride.points) {
+          rp.push(p.x, p.y, p.z + 0.5);
+          // Phase 3: colour by speed (green→amber→red), tinted toward the ride colour
+          const [sr, sg, sb] = speedColor(p.speed, maxSpeed);
+          const rideR = new THREE.Color(ride.color).r;
+          const rideG = new THREE.Color(ride.color).g;
+          const rideB = new THREE.Color(ride.color).b;
+          rc.push(sr * 0.5 + rideR * 0.5, sg * 0.5 + rideG * 0.5, sb * 0.5 + rideB * 0.5);
+        }
+        rg.setPositions(rp);
+        rg.setColors(rc);
+        const rm = new LineMaterial({ linewidth: 2, vertexColors: true, transparent: true, opacity: 0.65 });
+        setLineResolution(rm);
+        const rl = new Line2(rg, rm);
+        rl.visible = false; // shown only in orbit/overview
+        scene.add(rl);
+        raceLines.push({ line: rl, mat: rm });
+
+        // Animated marker: a small cone at the ride's current position
+        const mkGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
+        const mkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(ride.color) });
+        const mk = new THREE.Mesh(mkGeo, mkMat);
+        mk.rotation.x = Math.PI / 2; // point along +Z (up in our frame)
+        mk.visible = false;
+        scene.add(mk);
+        raceMarkers.push({ mesh: mk, mat: mkMat });
+      }
+    }
 
     // ── Ridden trail: wider translucent halo, grown via instanceCount ──────
     const trailGeo = new LineGeometry();
@@ -1075,6 +1144,24 @@ export function Replay3D({
       // The full-route line (doubling back on an out-and-back) is visual noise
       // from a low chase camera — show it only in the aerial orbit view.
       pathLine.visible = camModeRef.current === 'orbit';
+      // Race traces + markers likewise: overview only.
+      const inOverview = camModeRef.current === 'orbit';
+      for (const rl of raceLines) rl.line.visible = inOverview;
+      if (race && inOverview) {
+        for (let ri = 0; ri < race.length && ri < raceMarkers.length; ri++) {
+          const ride = race[ri];
+          const mk = raceMarkers[ri];
+          const idx = raceIndexAt(ride.points, t);
+          const p = ride.points[idx];
+          mk.mesh.position.set(p.x, p.y, p.z + 1.8);
+          mk.mesh.visible = true;
+          // scale marker by camera distance for constant apparent size
+          const d = camera.position.distanceTo(mk.mesh.position);
+          mk.mesh.scale.setScalar(Math.max(0.5, d * 0.006));
+        }
+      } else {
+        for (const mk of raceMarkers) mk.mesh.visible = false;
+      }
       // Contact shadow follows the bike on the ground.
       shadow.position.set(rider.position.x, rider.position.y, rider.position.z + 0.02);
       shadow.rotation.z = Math.atan2(riderDir.y, riderDir.x);
@@ -1114,6 +1201,14 @@ export function Replay3D({
           }
         }
         (rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      }
+      // Wet road: darken + desaturate the asphalt and lift a faint sheen so a
+      // rainy ride reads as slick. Dry → no change.
+      const roadMat = sceneRef.current?.roadMat;
+      if (roadMat) {
+        const w = wetnessRef.current;
+        const base = 1 - w * 0.45; // darker when wet
+        roadMat.color.setRGB(base, base, base + w * 0.04); // faint blue sheen
       }
       // Tight fog in follow cams so the windowed road fades out instead of
       // ending in a hard edge; wide in orbit so the whole route stays visible.
@@ -1259,7 +1354,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null, composer };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer };
     (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
@@ -1279,6 +1374,14 @@ export function Replay3D({
       controls.dispose();
       pathGeo.dispose();
       pathMat.dispose();
+      for (const rl of raceLines) {
+        rl.line.geometry.dispose();
+        rl.mat.dispose();
+      }
+      for (const mk of raceMarkers) {
+        mk.mesh.geometry.dispose();
+        mk.mat.dispose();
+      }
       trailGeo.dispose();
       trailMat.dispose();
       roadGeo?.dispose();
@@ -1310,7 +1413,7 @@ export function Replay3D({
       sceneRef.current = null;
     };
     return cleanup;
-  }, [points, totalTime, build.totalDistance, liteMode, startDate, ghost, drapeZ]);
+  }, [points, totalTime, build.totalDistance, liteMode, startDate, ghost, drapeZ, race]);
 
   // Recolour the path line + road ribbon without rebuilding the scene.
   useEffect(() => {
@@ -1798,6 +1901,20 @@ export function Replay3D({
     [ghost, points, displayElapsed]
   );
 
+  // "Race Yourself" live standings: each ride's distance at the current time,
+  // sorted leader-first, with delta vs. the leader.
+  const raceStandings = useMemo(() => {
+    if (!race || race.length === 0) return null;
+    const entries = race.map((r) => {
+      const idx = raceIndexAt(r.points, displayElapsed);
+      const dist = r.points[idx]?.distance ?? 0;
+      return { id: r.id, name: r.name, date: r.date, color: r.color, isPr: r.isPr, distance: dist, durationSeconds: r.durationSeconds };
+    });
+    entries.sort((a, b) => b.distance - a.distance);
+    const leader = entries[0]?.distance ?? 0;
+    return entries.map((e) => ({ ...e, delta: e.distance - leader }));
+  }, [race, displayElapsed]);
+
   // Active highlight at the playhead (tour caption + camera director).
   const activeHighlight = useMemo(
     () => (tour ? highlightAt(highlights, displayElapsed) : null),
@@ -1964,6 +2081,18 @@ export function Replay3D({
             {hud.grade != null && (
               <span className="text-emerald-400"> · {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}%</span>
             )}
+            {windSpeedRef.current > 0 && (
+              <span className="text-sky-300" title={`Wind ${windSpeedRef.current} km/h ${windDirRef.current ?? ''}`}>
+                {' · '}
+                <span
+                  className="inline-block"
+                  style={{ transform: `rotate(${(parseCardinal(windDirRef.current) + 180) % 360}deg)` }}
+                >
+                  ↑
+                </span>
+                {Math.round(windSpeedRef.current)} km/h
+              </span>
+            )}
             {ghostDelta != null && (
               <span className={ghostDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 {' · '}
@@ -1996,6 +2125,56 @@ export function Replay3D({
               {h.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Race Yourself legend — coloured traces for other rides on the route */}
+      {race && race.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] [.photo_&]:hidden">
+          <span className="uppercase tracking-wide text-muted">Rides</span>
+          {race.map((r) => (
+            <span key={r.id} className="inline-flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: r.color }}
+                aria-hidden="true"
+              />
+              <span className="text-muted">{new Date(r.date).toLocaleDateString()}</span>
+              {r.isPr && <span className="text-amber-400" title="Personal best">★</span>}
+              {r.durationSeconds != null && (
+                <span className="text-foreground/70">
+                  {Math.floor(r.durationSeconds / 60)}:{String(Math.round(r.durationSeconds % 60)).padStart(2, '0')}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Race Yourself live standings — leader-first with deltas (orbit view) */}
+      {raceStandings && raceStandings.length >= 2 && (
+        <div className="mt-1 rounded border border-surface-light bg-surface/60 p-2 text-[11px] [.photo_&]:hidden">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="uppercase tracking-wide text-muted">Race</span>
+            <span className="text-muted/70">{timeFmt(displayElapsed)}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {raceStandings.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-2">
+                <span className="w-4 text-right font-mono text-muted">{i + 1}.</span>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-foreground/80">{new Date(s.date).toLocaleDateString()}</span>
+                <span className="font-mono tabular-nums text-foreground">{(s.distance / 1000).toFixed(2)} km</span>
+                <span
+                  className={`w-14 text-right font-mono tabular-nums ${
+                    i === 0 ? 'text-emerald-400' : s.delta < -50 ? 'text-rose-400' : 'text-muted'
+                  }`}
+                >
+                  {i === 0 ? 'leader' : `${(s.delta / 1000).toFixed(2)} km`}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
