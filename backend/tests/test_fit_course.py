@@ -141,16 +141,13 @@ def test_record_coordinates_round_trip():
 
     for msg, (lat, lng, alt) in zip(records, _POINTS):
         if _HAS_FITPARSE:
-            # fitparse returns the raw semicircle integer for position fields
-            # (it does not apply the semicircle transform itself), so convert
-            # to degrees here to compare against the input.
-            raw_lat = msg.get_value("position_lat")
-            raw_lng = msg.get_value("position_long")
-            raw_alt = msg.get_value("altitude")
+            # fitparse applies the altitude field's scale/offset (so altitude
+            # already comes back in metres) but NOT the semicircle transform
+            # for position fields, which stay as raw semicircle integers.
             got = (
-                _semicircles_to_degrees(raw_lat),
-                _semicircles_to_degrees(raw_lng),
-                raw_alt / 5.0 - 500.0,
+                _semicircles_to_degrees(msg.get_value("position_lat")),
+                _semicircles_to_degrees(msg.get_value("position_long")),
+                msg.get_value("altitude"),
             )
         else:
             got = (msg[0] / _SEMI, msg[1] / _SEMI, msg[2] / 5.0 - 500.0)
