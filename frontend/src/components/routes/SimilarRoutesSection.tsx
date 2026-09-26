@@ -17,12 +17,18 @@ import { fmtElevation, computeDifficulty, DifficultyBadge } from '@/lib/routeUti
 export function SimilarRoutesSection({ routeId }: { routeId: string }) {
   const { token } = useAuthFetch();
 
-  const { data: similar = [], isLoading } = useQuery<SimilarRoute[]>({
+  const { data, isLoading } = useQuery<SimilarRoute[]>({
     queryKey: ['route-similar', routeId],
     queryFn: () => getSimilarRoutes(routeId, token),
     enabled: !!token && !!routeId,
     staleTime: 300_000,
   });
+
+  // Defensive: tolerate a non-array / partially-shaped payload (e.g. a mocked
+  // endpoint) rather than crashing the detail panel.
+  const similar = (Array.isArray(data) ? data : []).filter(
+    (item): item is SimilarRoute => !!item && !!item.route,
+  );
 
   if (isLoading || similar.length === 0) return null;
 

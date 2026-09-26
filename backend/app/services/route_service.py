@@ -30,6 +30,14 @@ settings = get_settings()
 LOOP_THRESHOLD_M = 200  # Start/end within this distance = loop
 
 
+def _safe_decode(encoded: str) -> list[tuple[float, float]]:
+    """``decode_polyline`` that tolerates malformed input (returns [])."""
+    try:
+        return decode_polyline(encoded)
+    except Exception:
+        return []
+
+
 # ── Scoring components ───────────────────────────────────────────────────────
 
 
@@ -138,8 +146,8 @@ def _compute_match_score(
     direction-sensitive; lap/detour tolerant) + endpoint proximity. Reversed
     routes score 0.
     """
-    new_points = decode_polyline(new_encoded_polyline)
-    existing_points = decode_polyline(existing.encoded_polyline)
+    new_points = _safe_decode(new_encoded_polyline)
+    existing_points = _safe_decode(existing.encoded_polyline)
     if len(new_points) < 2 or len(existing_points) < 2:
         return 0.0
 
@@ -168,8 +176,8 @@ def score_route_breakdown(
     existing: Route,
 ) -> ScoreBreakdown:
     """Full :class:`ScoreBreakdown` for a candidate vs an existing route."""
-    new_points = decode_polyline(new_encoded_polyline)
-    existing_points = decode_polyline(existing.encoded_polyline)
+    new_points = _safe_decode(new_encoded_polyline)
+    existing_points = _safe_decode(existing.encoded_polyline)
     if len(new_points) < 2 or len(existing_points) < 2:
         return score_route_pair([], [])
     return score_route_pair(
@@ -226,7 +234,7 @@ async def find_duplicate_route(
     if not existing_routes:
         return None
 
-    if len(decode_polyline(encoded_polyline)) < 2:
+    if len(_safe_decode(encoded_polyline)) < 2:
         return None
 
     best_route = None
@@ -294,7 +302,7 @@ async def create_route(
     raw_data: dict | None = None,
 ) -> Route:
     """Create a new route with computed start/end coordinates and loop detection."""
-    points = decode_polyline(encoded_polyline)
+    points = _safe_decode(encoded_polyline)
     if not points:
         raise ValueError("Polyline contains no points")
 
@@ -419,7 +427,7 @@ async def create_or_merge_route(
         return route
 
     # Compute geometry from polyline
-    points = decode_polyline(encoded_polyline)
+    points = _safe_decode(encoded_polyline)
     if not points:
         raise ValueError(f"Empty polyline for {provider}/{provider_route_id}")
 
@@ -453,7 +461,7 @@ async def create_or_merge_route(
         )
         # Optionally update the canonical polyline if the new one is higher fidelity
         new_point_count = len(points)
-        existing_points = decode_polyline(duplicate.encoded_polyline)
+        existing_points = _safe_decode(duplicate.encoded_polyline)
         if new_point_count > len(existing_points):
             duplicate.encoded_polyline = encoded_polyline
             if elevation_profile:
@@ -783,8 +791,8 @@ async def merge_routes(
             await db.delete(dup_quality)
 
     # 8. Canonical fields
-    dup_points = decode_polyline(duplicate.encoded_polyline)
-    prim_points = decode_polyline(primary.encoded_polyline)
+    dup_points = _safe_decode(duplicate.encoded_polyline)
+    prim_points = _safe_decode(primary.encoded_polyline)
     if len(dup_points) > len(prim_points):
         primary.encoded_polyline = duplicate.encoded_polyline
         if duplicate.elevation_profile:
@@ -972,7 +980,7 @@ async def find_potential_duplicates(
     routes = list(result.scalars().all())
 
     decoded: dict[uuid.UUID, list[tuple[float, float]]] = {
-        route.id: decode_polyline(route.encoded_polyline) for route in routes
+        route.id: _safe_decode(route.encoded_polyline) for route in routes
     }
 
     potential: list[dict] = []
