@@ -84,6 +84,15 @@ class Activity(Base):
     weather_wind_direction: Mapped[str | None] = mapped_column(
         String(10), nullable=True
     )  # compass, e.g. "NW"
+    weather_wind_direction_deg: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # dominant direction, degrees (numeric, for analysis)
+    weather_humidity_pct: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # mean relative humidity %
+    weather_pressure_hpa: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # mean sea-level pressure hPa
     weather_precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # §1.3 — precomputed ride context (zones, decoupling, climbing, top speed,

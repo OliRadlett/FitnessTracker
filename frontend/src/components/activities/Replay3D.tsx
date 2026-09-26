@@ -6,13 +6,17 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
 import { TOUR_PRESETS, powerZoneBounds, replayDistanceAt, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
-import { detectHighlights, highlightAt } from '@/lib/highlights';
+import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlights';
 import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
@@ -129,6 +133,98 @@ function createRoadTexture(): THREE.Texture {
 }
 
 
+
+/** index of the point whose cumulative distance is closest to `d` */
+function nearestByDistance(points: ReplayPoint[], d: number): number {
+  let lo = 0;
+  let hi = points.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].distance < d) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo > 0 && Math.abs(points[lo - 1].distance - d) < Math.abs(points[lo].distance - d)) lo--;
+  return lo;
+}
+
+/**
+ * Elevation profile used as the Theater scrubber — a filled area over the ride
+ * with a playhead; click/drag anywhere to seek. Coloured by grade.
+ */
+function CourseProfile({
+  points,
+  totalDistance,
+  elapsed,
+  onSeek,
+}: {
+  points: ReplayPoint[];
+  totalDistance: number;
+  elapsed: number;
+  onSeek: (t: number) => void;
+}) {
+  const W = 100;
+  const H = 24;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragging = useRef(false);
+
+  const { areaPath, linePath } = useMemo(() => {
+    if (points.length < 2 || totalDistance <= 0) return { areaPath: '', linePath: '' };
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    for (const p of points) {
+      if (p.z < zMin) zMin = p.z;
+      if (p.z > zMax) zMax = p.z;
+    }
+    const zSpan = zMax - zMin || 1;
+    const sx = (d: number) => (d / totalDistance) * W;
+    const sy = (z: number) => H - ((z - zMin) / zSpan) * (H - 3) - 1.5;
+    let line = `M ${sx(points[0].distance).toFixed(2)} ${sy(points[0].z).toFixed(2)}`;
+    for (let i = 1; i < points.length; i++) {
+      line += ` L ${sx(points[i].distance).toFixed(2)} ${sy(points[i].z).toFixed(2)}`;
+    }
+    return { linePath: line, areaPath: `${line} L ${W} ${H} L 0 ${H} Z` };
+  }, [points, totalDistance]);
+
+  const curDist = replayDistanceAt(points, elapsed);
+  const px = totalDistance > 0 ? Math.max(0, Math.min(W, (curDist / totalDistance) * W)) : 0;
+
+  const seekFromClientX = (clientX: number) => {
+    const el = svgRef.current;
+    if (!el || totalDistance <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
+    onSeek(points[nearestByDistance(points, frac * totalDistance)].elapsed);
+  };
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      role="slider"
+      aria-label="Course elevation profile — click to seek"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(totalDistance)}
+      aria-valuenow={Math.round(curDist)}
+      className="mt-2 h-14 w-full cursor-crosshair touch-none select-none"
+      onPointerDown={(e) => {
+        dragging.current = true;
+        (e.target as Element).setPointerCapture?.(e.pointerId);
+        seekFromClientX(e.clientX);
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) seekFromClientX(e.clientX);
+      }}
+      onPointerUp={() => {
+        dragging.current = false;
+      }}
+    >
+      <path d={areaPath} className="fill-accent/20" />
+      <path d={linePath} className="fill-none stroke-accent" strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
+      <line x1={px} x2={px} y1={0} y2={H} className="stroke-foreground" strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
 
 /** Signed lean (radians) from the corner curvature around point `i`. */
 function leanAt(points: ReplayPoint[], i: number): number {
@@ -342,6 +438,8 @@ export function Replay3D({
   lite,
   startDate = null,
   ghost = null,
+  terrainDefault = true,
+  weather = null,
 }: {
   name: string;
   build: ReplayBuildResult;
@@ -363,6 +461,16 @@ export function Replay3D({
   startDate?: string | null;
   /** ghost ride for a race overlay (Phase 5) — time-aligned with the rider */
   ghost?: { build: ReplayBuildResult; name?: string } | null;
+  /** fetch the DEM terrain bed on mount (default true; compare modal opts out) */
+  terrainDefault?: boolean;
+  /** ride weather — tints the sky/fog and lighting (rain/overcast/snow/fog) */
+  weather?: {
+    conditions?: string | null;
+    temperature?: number | null;
+    windSpeedKmh?: number | null;
+    windDirection?: string | null;
+    precipitationMm?: number | null;
+  } | null;
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
@@ -378,13 +486,26 @@ export function Replay3D({
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 60));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit'>('chase');
+  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby'>('chase');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
-  const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
+  const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
+    if (!terrainDefault) return 'off';
+    return typeof window !== 'undefined' && window.localStorage?.getItem('relive:terrain') === 'off' ? 'off' : 'loading';
+  });
+  // Bumped whenever the scene is rebuilt so the terrain bed is re-attached.
+  const [terrainEpoch, setTerrainEpoch] = useState(0);
   const [terrainAttribution, setTerrainAttribution] = useState<string>('');
-  const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>('off');
+  const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>(() =>
+    typeof window !== 'undefined' && window.localStorage?.getItem('relive:imagery') === 'on' ? 'loading' : 'off'
+  );
   const [imageryAttribution, setImageryAttribution] = useState<string>('');
   const [tour, setTour] = useState(false);
+  // Photo mode: hide the chrome for a clean view / capture.
+  const [photo, setPhoto] = useState(false);
+  // Per-point DEM height so the road/bike follow the terrain bed instead of the
+  // raw barometric profile. Null = undraped.
+  const [drapeZ, setDrapeZ] = useState<number[] | null>(null);
+  const drapeZRef = useRef<number[] | null>(null);
 
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -400,6 +521,7 @@ export function Replay3D({
     roadGeo: THREE.BufferGeometry | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
+    composer: EffectComposer | null;
   } | null>(null);
 
   // Playback clock lives in refs so the rAF loop reads the freshest values
@@ -460,9 +582,15 @@ export function Replay3D({
   // Build the three.js scene once for this ride.
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount || points.length < 2) {
+    if (!mount || build.points.length < 2) {
       setFailed(true);
       return;
+    }
+    // Drape the scene onto the DEM once loaded: the road + bike follow the
+    // terrain bed; falls back to the raw barometric profile when terrain is off.
+    let points = build.points;
+    if (drapeZ && drapeZ.length === build.points.length) {
+      points = build.points.map((p, i) => (p.z === drapeZ[i] ? p : { ...p, z: drapeZ[i] }));
     }
 
     let renderer: THREE.WebGLRenderer;
@@ -483,6 +611,8 @@ export function Replay3D({
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = !liteMode;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     // Styled world lit for the ride's actual time of day (golden hour / night).
@@ -494,11 +624,65 @@ export function Replay3D({
       golden: { top: '#12233f', horizon: '#c9762e', fog: '#2a2430', light: 0xffb066, li: 1.6, hi: 0.7 },
       night: { top: '#04060d', horizon: '#0a1322', fog: '#070b14', light: 0x8fb0ff, li: 0.5, hi: 0.4 },
     }[phase];
+    // Weather tweaks on top of the time-of-day palette.
+    const cond = (weather?.conditions ?? '').toLowerCase();
+    const precip = weather?.precipitationMm ?? 0;
+    const rainy = precip > 0.2 || /rain|drizzle|shower|storm/.test(cond);
+    const snowy = /snow|sleet|blizzard/.test(cond);
+    const foggy = /fog|mist|haze/.test(cond);
+    const overcast = !rainy && !snowy && /overcast|cloud|broken|drizzle/.test(cond);
     const SKY_TOP = new THREE.Color(PALETTE.top);
     const SKY_HORIZON = new THREE.Color(PALETTE.horizon);
     const FOG_COLOR = new THREE.Color(PALETTE.fog);
-    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, PALETTE.hi));
-    const dirLight = new THREE.DirectionalLight(PALETTE.light, PALETTE.li);
+    let sunIntensity = PALETTE.li;
+    let hemiIntensity = PALETTE.hi;
+    let fogFarScale = 1;
+    let exposure = 1.05;
+    if (overcast) {
+      SKY_TOP.lerp(new THREE.Color('#39424f'), 0.5);
+      SKY_HORIZON.lerp(new THREE.Color('#4a5563'), 0.5);
+      sunIntensity = 0.7;
+      hemiIntensity = 1.1;
+    }
+    if (rainy) {
+      SKY_TOP.lerp(new THREE.Color('#2a3038'), 0.7);
+      SKY_HORIZON.lerp(new THREE.Color('#3a424c'), 0.7);
+      FOG_COLOR.lerp(new THREE.Color('#333b45'), 0.5);
+      sunIntensity = 0.5;
+      hemiIntensity = 1.0;
+      fogFarScale = 0.5;
+      exposure = 0.9;
+    }
+    if (snowy) {
+      SKY_TOP.lerp(new THREE.Color('#9aa7b8'), 0.7);
+      SKY_HORIZON.lerp(new THREE.Color('#c2ccd8'), 0.7);
+      FOG_COLOR.lerp(new THREE.Color('#c2ccd8'), 0.5);
+      sunIntensity = 0.9;
+      hemiIntensity = 1.4;
+      fogFarScale = 0.6;
+    }
+    if (foggy) {
+      SKY_HORIZON.lerp(FOG_COLOR, 0.6);
+      fogFarScale = 0.35;
+    }
+    renderer.toneMappingExposure = exposure;
+    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, hemiIntensity));
+    const dirLight = new THREE.DirectionalLight(PALETTE.light, sunIntensity);
+    scene.add(dirLight.target);
+    if (!liteMode) {
+      // Small frustum that follows the bike — a 20 km frustum would have no
+      // usable resolution for a 1.7 m bike.
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.set(1024, 1024);
+      dirLight.shadow.camera.near = 1;
+      dirLight.shadow.camera.far = 90;
+      dirLight.shadow.camera.left = -18;
+      dirLight.shadow.camera.right = 18;
+      dirLight.shadow.camera.top = 18;
+      dirLight.shadow.camera.bottom = -18;
+      dirLight.shadow.bias = -0.0006;
+      dirLight.shadow.normalBias = 0.05;
+    }
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
 
@@ -515,7 +699,31 @@ export function Replay3D({
     // Gradient sky dome (follows the camera) + distance fog tuned to the ride.
     const sky = createSkyDome(size * 4, SKY_TOP, SKY_HORIZON);
     scene.add(sky);
-    scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.4, size * 3.2);
+    scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.4, size * 3.2 * fogFarScale);
+
+    // Rain: short falling streaks in camera-relative space when it's raining.
+    let rain: THREE.LineSegments | null = null;
+    if (rainy) {
+      const N = 900;
+      const pos = new Float32Array(N * 6);
+      for (let i = 0; i < N; i++) {
+        const x = (Math.random() - 0.5) * 70;
+        const y = (Math.random() - 0.5) * 70;
+        const z = Math.random() * 40;
+        pos[i * 6] = x;
+        pos[i * 6 + 1] = y;
+        pos[i * 6 + 2] = z;
+        pos[i * 6 + 3] = x + 0.18;
+        pos[i * 6 + 4] = y;
+        pos[i * 6 + 5] = z - 0.9;
+      }
+      const rainGeo = new THREE.BufferGeometry();
+      rainGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const rainMat = new THREE.LineBasicMaterial({ color: 0xa8bcd4, transparent: true, opacity: 0.38 });
+      rain = new THREE.LineSegments(rainGeo, rainMat);
+      rain.frustumCulled = false;
+      scene.add(rain);
+    }
 
     const camera = new THREE.PerspectiveCamera(
       55,
@@ -523,6 +731,17 @@ export function Replay3D({
       0.3,
       size * 8
     );
+
+    // Post: bloom for the glowing effort-road / sun + final tone mapping.
+    let composer: EffectComposer | null = null;
+    if (!liteMode) {
+      composer = new EffectComposer(renderer);
+      composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      composer.setSize(mount.clientWidth, mount.clientHeight);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth, mount.clientHeight), 0.6, 0.5, 0.8));
+      composer.addPass(new OutputPass());
+    }
 
     // Ground grid, scaled to the ride: GridHelper lives in XZ, so rotate it
     // flat into the path frame (XY) and slide it under the lowest point.
@@ -604,7 +823,7 @@ export function Replay3D({
       colors: roadTint(replayPathColorArray(points, colorByRef.current)),
     });
     let roadGeo: THREE.BufferGeometry | null = null;
-    let roadMat: THREE.MeshBasicMaterial | null = null;
+    let roadMat: THREE.MeshLambertMaterial | null = null;
     let roadTex: THREE.Texture | null = null;
     if (roadData) {
       roadGeo = new THREE.BufferGeometry();
@@ -613,8 +832,10 @@ export function Replay3D({
       roadGeo.setIndex(new THREE.BufferAttribute(roadData.indices, 1));
       if (roadData.colors) roadGeo.setAttribute('color', new THREE.BufferAttribute(roadData.colors, 3));
       roadTex = createRoadTexture();
-      roadMat = new THREE.MeshBasicMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });
-      scene.add(new THREE.Mesh(roadGeo, roadMat));
+      roadMat = new THREE.MeshLambertMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });
+      const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+      roadMesh.receiveShadow = true;
+      scene.add(roadMesh);
     }
 
     // ── Contact shadow under the bike (grounds it visually) ───────────────
@@ -646,6 +867,10 @@ export function Replay3D({
           return;
         }
         rider.add(rig.object);
+        rig.object.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) m.castShadow = true;
+        });
         bikeRig = rig;
         if (sceneRef.current) sceneRef.current.bike = rig;
       })
@@ -723,11 +948,62 @@ export function Replay3D({
           ctx.fillText(label, 128, 33);
         }
         const tex = new THREE.CanvasTexture(canvas);
-        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+        // Screen-constant (sizeAttenuation false) so the label stays legible
+        // from both the chase cam and the aerial overview.
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false });
         const sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(size * 0.02, size * 0.005, 1);
+        sprite.scale.set(0.085, 0.021, 1);
         stagger = stagger === 0 ? 1 : 0;
-        sprite.position.set(pos.x, pos.y, pos.z + size * (0.025 + stagger * 0.025));
+        sprite.position.set(pos.x, pos.y, pos.z + 4 + stagger * 3);
+        markerGroup.add(sprite);
+        markerDisposables.push(tex, spriteMat);
+      }
+    }
+
+    // ── Highlight markers: climbs / descents / sprint / fastest on the road ─
+    const HIGHLIGHT_COLOR: Record<HighlightKind, string> = {
+      climb: '#f97316',
+      descent: '#38bdf8',
+      sprint: '#facc15',
+      fastest: '#22c55e',
+    };
+    {
+      for (const h of detectHighlights(points)) {
+        const mp = points[nearestIndex(points, h.startElapsed)];
+        const dotGeo = new THREE.SphereGeometry(1, 10, 10);
+        const dotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(HIGHLIGHT_COLOR[h.kind]) });
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.set(mp.x, mp.y, mp.z + 1);
+        markerGroup.add(dot); // mesh children are distance-scaled each frame
+        markerDisposables.push(dotGeo, dotMat);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 96;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.font = 'bold 44px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const label = h.label;
+          const w = Math.min(496, ctx.measureText(label).width + 40);
+          const x0 = (512 - w) / 2;
+          ctx.fillStyle = HIGHLIGHT_COLOR[h.kind];
+          if (typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(x0, 12, w, 72, 14);
+            ctx.fill();
+          } else {
+            ctx.fillRect(x0, 12, w, 72);
+          }
+          ctx.fillStyle = '#0b1220';
+          ctx.fillText(label, 256, 50);
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(0.16, 0.03, 1);
+        sprite.position.set(mp.x, mp.y, mp.z + 6);
         markerGroup.add(sprite);
         markerDisposables.push(tex, spriteMat);
       }
@@ -787,10 +1063,11 @@ export function Replay3D({
       }
       // Segments drawn = point index (points 0..i need i segments).
       trailGeo.instanceCount = Math.max(0, Math.min(riderPose.index, points.length - 1));
-      // Draw only a window of road around the rider — the full 20-50 km ribbon
-      // otherwise projects its distant/return leg into a screen-filling band.
+      // Draw only a window of road around the rider — the full ribbon's distant
+      // leg projects into a band, but we keep a generous span so the road reads
+      // as a continuous route ahead and behind.
       if (roadGeo) {
-        const W = 120;
+        const W = 160;
         const segStart = Math.max(0, riderPose.index - W);
         const segEnd = Math.min(points.length - 2, riderPose.index + W);
         roadGeo.setDrawRange(segStart * 6, Math.max(0, (segEnd - segStart + 1) * 6));
@@ -805,9 +1082,38 @@ export function Replay3D({
       // Km-marker dots: keep a constant apparent size — at real scale the 0 km
       // dot would otherwise engulf the close camera.
       for (const child of markerGroup.children) {
+        const dist = camera.position.distanceTo(child.position);
         if ((child as THREE.Mesh).isMesh) {
-          child.scale.setScalar(Math.max(0.15, camera.position.distanceTo(child.position) * 0.012));
+          child.scale.setScalar(Math.max(0.15, dist * 0.012));
+        } else if ((child as THREE.Sprite).isSprite) {
+          // Screen-constant labels would clutter the horizon — fade them out.
+          (child as THREE.Sprite).material.opacity = Math.max(0, Math.min(1, 1 - (dist - 600) / 900));
         }
+      }
+      // Keep the shadow frustum centred on the bike.
+      if (dirLight.castShadow) {
+        dirLight.position.set(
+          rider.position.x + sd[0] * 30,
+          rider.position.y + sd[1] * 30,
+          rider.position.z + Math.max(2, sd[2]) * 30
+        );
+        dirLight.target.position.copy(rider.position);
+        dirLight.target.updateMatrixWorld();
+      }
+      // Rain streaks fall in camera-relative space.
+      if (rain) {
+        rain.position.copy(camera.position);
+        const arr = (rain.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+        const fall = Math.min(0.1, dt) * 26;
+        for (let i = 0; i < arr.length; i += 6) {
+          arr[i + 2] -= fall;
+          arr[i + 5] -= fall;
+          if (arr[i + 5] < -20) {
+            arr[i + 2] += 40;
+            arr[i + 5] += 40;
+          }
+        }
+        (rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
       }
       // Tight fog in follow cams so the windowed road fades out instead of
       // ending in a hard edge; wide in orbit so the whole route stays visible.
@@ -815,7 +1121,7 @@ export function Replay3D({
         const fog = scene.fog as THREE.Fog;
         const follow = camModeRef.current !== 'orbit';
         fog.near = follow ? 60 : size * 0.4;
-        fog.far = follow ? 1400 : size * 3.2;
+        fog.far = follow ? 1400 * fogFarScale : size * 3.2 * fogFarScale;
       }
 
       if (ghostPoints) {
@@ -869,6 +1175,17 @@ export function Replay3D({
             rider.position.y + riderDir.y * 12,
             rider.position.z + 1.5
           );
+        } else if (mode === 'flyby') {
+          // Cinematic fly-by: a slow orbit around the rider (no camera lag).
+          const ang = (now / 1000) * 0.35;
+          const radius = 13;
+          const height = 4.5 + Math.sin(now / 4500) * 1.5;
+          tmpDesired.set(
+            rider.position.x + Math.cos(ang) * radius,
+            rider.position.y + Math.sin(ang) * radius,
+            rider.position.z + height
+          );
+          tmpLook.set(rider.position.x, rider.position.y, rider.position.z + 1.3);
         } else {
           // cockpit: eyes just above the bars, looking far down the road.
           const eyeH = 1.5;
@@ -879,19 +1196,23 @@ export function Replay3D({
             rider.position.z + riderDir.z * 45 + eyeH * 0.6
           );
         }
-        if (!followPosRef.current) followPosRef.current = tmpDesired.clone();
-        // At high playback rates the rider moves far each frame — snap instead of
-        // smoothing, or the camera lags kilometres behind and the road vanishes.
-        const lag = followPosRef.current.distanceTo(tmpDesired);
-        const k = lag > 120 ? 1 : 1 - Math.exp(-dt * 4);
-        followPosRef.current.lerp(tmpDesired, k);
-        camera.position.copy(followPosRef.current);
+        if (mode === 'flyby') {
+          camera.position.copy(tmpDesired);
+        } else {
+          if (!followPosRef.current) followPosRef.current = tmpDesired.clone();
+          // At high playback rates the rider moves far each frame — snap instead of
+          // smoothing, or the camera lags kilometres behind and the road vanishes.
+          const lag = followPosRef.current.distanceTo(tmpDesired);
+          const k = lag > 120 ? 1 : 1 - Math.exp(-dt * 4);
+          followPosRef.current.lerp(tmpDesired, k);
+          camera.position.copy(followPosRef.current);
+        }
         camera.lookAt(tmpLook);
       }
       // Keep the camera above the terrain bed so follow cams can't clip through
       // hills (the DEM y is only known here via the mesh's stored grid).
       const terrainMesh = sceneRef.current?.terrain;
-      if (mode !== 'orbit' && terrainMesh?.userData.heights && followPosRef.current) {
+      if (mode !== 'orbit' && terrainMesh?.userData.heights) {
         const g = terrainMesh.userData.grid as RouteGrid;
         const tAltMin = terrainMesh.userData.altMin as number;
         const tZ = terrainMesh.userData.zScale as number;
@@ -901,9 +1222,9 @@ export function Replay3D({
         const h = bilinearHeight(g, terrainMesh.userData.heights as number[], lat, lng);
         if (h != null) {
           const minCamZ = (h - tAltMin) * tZ + 1.6;
-          if (followPosRef.current.z < minCamZ) {
-            followPosRef.current.z = minCamZ;
+          if (camera.position.z < minCamZ) {
             camera.position.z = minCamZ;
+            if (followPosRef.current) followPosRef.current.z = minCamZ;
             camera.lookAt(tmpLook);
           }
         }
@@ -916,7 +1237,8 @@ export function Replay3D({
         camera.updateProjectionMatrix();
       }
       sky.position.copy(camera.position);
-      renderer.render(scene, camera);
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -928,6 +1250,7 @@ export function Replay3D({
         renderer.setSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        composer?.setSize(w, h);
         // Line2 widths are resolution-dependent — keep both materials in sync.
         pathMat.resolution.set(w, h);
         trailMat.resolution.set(w, h);
@@ -936,9 +1259,15 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, home: { pos: homePos, target: homeTarget }, terrain: null, composer };
+    (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
-    if (terrainStateRef.current === 'on') setTerrainState('loading');
+    // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
+    // the effect re-runs even if terrainState was mid-load).
+    if (terrainStateRef.current !== 'off') {
+      setTerrainState('loading');
+      setTerrainEpoch((e) => e + 1);
+    }
 
     const cleanup = () => {
       cancelAnimationFrame(raf);
@@ -973,12 +1302,15 @@ export function Replay3D({
       sky.geometry.dispose();
       (sky.material as THREE.MeshBasicMaterial).map?.dispose();
       (sky.material as THREE.Material).dispose();
+      composer?.dispose();
+      rain?.geometry.dispose();
+      (rain?.material as THREE.Material | undefined)?.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
     return cleanup;
-  }, [points, totalTime, build.totalDistance, liteMode, startDate, ghost]);
+  }, [points, totalTime, build.totalDistance, liteMode, startDate, ghost, drapeZ]);
 
   // Recolour the path line + road ribbon without rebuilding the scene.
   useEffect(() => {
@@ -1061,7 +1393,7 @@ export function Replay3D({
         let attribution: string;
         try {
           const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
-          const res = await fetchTerrariumTerrain(coords, { maxTiles: 25, signal: controller.signal });
+          const res = await fetchTerrariumTerrain(coords, { maxTiles: 36, maxGridPoints: 110000, signal: controller.signal });
           gridSpec = res.grid;
           heights = res.heights;
           attribution = TERRARIUM_ATTRIBUTION;
@@ -1087,31 +1419,46 @@ export function Replay3D({
         const hasAlt = points.some((p) => p.z !== 0);
         const finite = heights.filter(Number.isFinite);
         const demMin = finite.length ? Math.min(...finite) : 0;
-        // Barometric/PPS altitude and the DEM disagree, and the gap varies along
-        // the route. Anchor the terrain so it is NEVER above the road: for each
-        // (sampled) path point require terrain z ≤ road z, i.e.
-        //   altMin ≥ dem(pt) − pathZ(pt)/zScale;  take the max, + 2 m clearance.
-        let altMin = demMin;
+        // Drape: pick a baseline DEM height and render the bed as
+        // (dem − base)·zScale. Compute the same for every path point so the road
+        // + bike sit exactly on the bed (falling back to the raw z where the DEM
+        // has no data). Terrain and road then share the frame exactly.
+        const mPerDegLng = 111320 * Math.cos((build.lat0 * Math.PI) / 180);
+        const base = bilinearHeight(gridSpec, heights, build.lat0, build.lng0) ?? demMin;
+        // Terrain sits a fixed clearance below the draped road (a coarse mesh
+        // still reads as ground while never occluding the ribbon).
+        const CLEAR_M = 1.2;
+        const altMin = base + CLEAR_M;
+        // Per-point DEM, smoothed so DEM cliffs/noise don't spike the road.
+        let drape: number[] | null = null;
         if (hasAlt) {
-          const mPerDegLng = 111320 * Math.cos((build.lat0 * Math.PI) / 180);
-          let maxDelta = -Infinity;
-          const step = Math.max(1, Math.floor(points.length / 240));
-          for (let i = 0; i < points.length; i += step) {
-            const p = points[i];
-            const lat = build.lat0 + p.y / 111320;
-            const lng = build.lng0 + p.x / mPerDegLng;
-            const dem = bilinearHeight(gridSpec, heights, lat, lng);
-            if (dem == null) continue;
-            const delta = dem - p.z / build.zScale;
-            if (delta > maxDelta) maxDelta = delta;
-          }
-          altMin = Number.isFinite(maxDelta) ? maxDelta + 2 : demMin;
+          const dem = points.map((p) =>
+            bilinearHeight(gridSpec, heights, build.lat0 + p.y / 111320, build.lng0 + p.x / mPerDegLng),
+          );
+          const W = 4;
+          const smooth = dem.map((_, i) => {
+            let s = 0;
+            let c = 0;
+            for (let j = Math.max(0, i - W); j <= Math.min(dem.length - 1, i + W); j++) {
+              const v = dem[j];
+              if (v != null) {
+                s += v;
+                c++;
+              }
+            }
+            return c ? s / c : null;
+          });
+          drape = points.map((p, i) => {
+            const d = smooth[i];
+            return d == null ? p.z : (d - base) * build.zScale;
+          });
         }
         const meshData = buildTerrainMesh(gridSpec, heights, {
           lat0: build.lat0,
           lng0: build.lng0,
           altMin,
           zScale: build.zScale,
+          seaLevelM: 0,
         });
         const geo = new THREE.PlaneGeometry(1, 1, gridSpec.cols - 1, gridSpec.rows - 1);
         geo.setAttribute('position', new THREE.BufferAttribute(meshData.positions, 3));
@@ -1123,6 +1470,7 @@ export function Replay3D({
         mesh.userData.heights = heights;
         mesh.userData.altMin = altMin;
         mesh.userData.zScale = build.zScale;
+        mesh.receiveShadow = true;
         // The scene may have rebuilt while fetching — attach to the live one.
         const live = sceneRef.current;
         if (!live || cancelled) {
@@ -1140,6 +1488,26 @@ export function Replay3D({
         live.terrain = mesh;
         setTerrainAttribution(attribution);
         setTerrainState('on');
+        // Propagate the drape (only when it changed, to avoid a rebuild loop).
+        if (drape) {
+          const prev = drapeZRef.current;
+          let changed = !prev || prev.length !== drape.length;
+          if (!changed && prev) {
+            for (let i = 0; i < drape.length; i++) {
+              if (Math.abs(prev[i] - drape[i]) > 0.01) {
+                changed = true;
+                break;
+              }
+            }
+          }
+          if (changed) {
+            drapeZRef.current = drape;
+            setDrapeZ(drape);
+          }
+        } else if (drapeZRef.current) {
+          drapeZRef.current = null;
+          setDrapeZ(null);
+        }
         // Re-drape imagery if it was already on.
         if (imageryStateRef.current === 'on') setImageryState('loading');
       } catch (err) {
@@ -1151,7 +1519,7 @@ export function Replay3D({
       cancelled = true;
       controller.abort();
     };
-  }, [terrainState, polyline, points, build]);
+  }, [terrainState, polyline, points, build, terrainEpoch]);
 
   // ── Optional satellite imagery drape over the terrain (Phase 3) ────────
   useEffect(() => {
@@ -1167,7 +1535,7 @@ export function Replay3D({
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
-        const drape = await fetchImageryDrape(grid, { maxTiles: 25, signal: controller.signal });
+        const drape = await fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal });
         if (cancelled) return;
         const uv = new Float32Array(grid.rows * grid.cols * 2);
         for (let r = 0; r < grid.rows; r++) {
@@ -1218,7 +1586,11 @@ export function Replay3D({
       setTerrainState('off');
       setImageryState('off');
       setImageryAttribution('');
+      drapeZRef.current = null;
+      setDrapeZ(null);
+      try { window.localStorage?.setItem('relive:terrain', 'off'); } catch { /* ignore */ }
     } else if (terrainState === 'off' || terrainState === 'failed') {
+      try { window.localStorage?.setItem('relive:terrain', 'on'); } catch { /* ignore */ }
       setTerrainState('loading');
     }
   };
@@ -1234,7 +1606,9 @@ export function Replay3D({
       }
       setImageryState('off');
       setImageryAttribution('');
+      try { window.localStorage?.setItem('relive:imagery', 'off'); } catch { /* ignore */ }
     } else if (imageryState === 'off' || imageryState === 'failed') {
+      try { window.localStorage?.setItem('relive:imagery', 'on'); } catch { /* ignore */ }
       setImageryState('loading');
     }
   };
@@ -1341,8 +1715,27 @@ export function Replay3D({
   const takePoster = () => {
     const s = sceneRef.current;
     if (!s) return;
-    s.renderer.render(s.scene, s.camera);
-    s.renderer.domElement.toBlob((blob) => {
+    // Render at 2x for a crisp poster, then restore the on-screen size.
+    const el = s.renderer.domElement;
+    const prevRatio = s.renderer.getPixelRatio();
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    const render = () => {
+      if (s.composer) s.composer.render();
+      else s.renderer.render(s.scene, s.camera);
+    };
+    s.renderer.setPixelRatio(2);
+    s.renderer.setSize(w, h, false);
+    s.composer?.setPixelRatio(2);
+    s.composer?.setSize(w, h);
+    s.camera.updateProjectionMatrix();
+    render();
+    el.toBlob((blob) => {
+      s.renderer.setPixelRatio(prevRatio);
+      s.renderer.setSize(w, h, false);
+      s.composer?.setPixelRatio(prevRatio);
+      s.composer?.setSize(w, h);
+      s.camera.updateProjectionMatrix();
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1424,9 +1817,9 @@ export function Replay3D({
   }
 
   return (
-    <div className={`${theater ? '' : 'rounded border border-surface-light bg-surface/40 p-3'}`}>
+    <div className={`${theater ? '' : 'rounded border border-surface-light bg-surface/40 p-3'}${photo ? ' photo' : ''}`}>
       {!theater && (
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted uppercase tracking-wide">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted uppercase tracking-wide [.photo_&]:hidden">
         <span className="font-medium text-foreground">3D Flythrough</span>
         <span>{name}</span>
         <span className="ml-auto">{km} km · {timeFmt(totalTime)}</span>
@@ -1434,8 +1827,8 @@ export function Replay3D({
       )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
-          {(['orbit', 'chase', 'drone', 'cockpit'] as const).map((m) => (
+        <div className="flex items-center rounded border border-surface-light [.photo_&]:hidden" role="group" aria-label="Camera mode">
+          {(['orbit', 'chase', 'drone', 'cockpit', 'flyby'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setCamMode(m)}
@@ -1447,7 +1840,9 @@ export function Replay3D({
                     ? 'Follow behind the rider'
                     : m === 'drone'
                       ? 'Elevated trailing drone'
-                      : 'Rider point of view'
+                      : m === 'cockpit'
+                        ? 'Rider point of view'
+                        : 'Cinematic fly-by orbit'
               }
               className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors ${
                 camMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
@@ -1462,7 +1857,7 @@ export function Replay3D({
             onClick={() => setTour((t) => !t)}
             aria-pressed={tour}
             title="Cinematic tour of this ride's highlights (climbs, descents, sprints)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 ${
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 [.photo_&]:hidden ${
               tour ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
@@ -1474,7 +1869,7 @@ export function Replay3D({
             onClick={toggleTerrain}
             disabled={terrainState === 'loading'}
             title="Drape the ride over real DEM terrain (extra download)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 [.photo_&]:hidden ${
               terrainState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
@@ -1492,7 +1887,7 @@ export function Replay3D({
             onClick={toggleImagery}
             disabled={imageryState === 'loading'}
             title="Drape satellite imagery over the terrain (extra download)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 [.photo_&]:hidden ${
               imageryState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
@@ -1505,7 +1900,7 @@ export function Replay3D({
                   : 'Satellite'}
           </button>
         )}
-        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="View presets">
+        <div className="flex items-center rounded border border-surface-light [.photo_&]:hidden" role="group" aria-label="View presets">
           {(
             [
               ['Reset', resetView, 'Restore the overview'],
@@ -1537,21 +1932,31 @@ export function Replay3D({
         >
           Clip
         </button>
+        <button
+          onClick={() => setPhoto((p) => !p)}
+          aria-pressed={photo}
+          title="Photo mode — hide the UI chrome for a clean view/capture"
+          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 ${
+            photo ? 'bg-accent/20 text-accent' : 'text-muted'
+          }`}
+        >
+          {photo ? 'Exit photo' : 'Photo'}
+        </button>
       </div>
 
-      <div className={`relative ${canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
+      <div className={`relative ${photo ? 'h-[80dvh]' : canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
-        <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted">
+        <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">
           drag to orbit · pinch to zoom · space play · ←/→ seek · 1–4 cameras
         </div>
         {activeHighlight && (
-          <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center">
+          <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center [.photo_&]:hidden">
             <p className="text-xs font-semibold text-accent">{activeHighlight.label}</p>
             <p className="text-[11px] text-foreground">{activeHighlight.detail}</p>
           </div>
         )}
         {hud && (
-          <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground">
+          <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground [.photo_&]:hidden">
             {hud.kmh.toFixed(1)} km/h
             {hud.power != null && <span className="text-blue-400"> · {Math.round(hud.power)} W</span>}
             {hud.hr != null && <span className="text-amber-400"> · {Math.round(hud.hr)} bpm</span>}
@@ -1573,7 +1978,7 @@ export function Replay3D({
       </div>
 
       {highlights.length > 0 && (
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Ride highlights">
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [.photo_&]:hidden" role="group" aria-label="Ride highlights">
           {highlights.map((h, i) => (
             <button
               key={`${h.kind}-${i}`}
@@ -1595,7 +2000,7 @@ export function Replay3D({
       )}
 
       {/* Path colour mode + scale */}
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex items-center gap-2 [.photo_&]:hidden">
         <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Path colour metric">
           {(['speed', 'power', 'hr', 'grade'] as const).map((m) => {
             const available =
@@ -1640,20 +2045,22 @@ export function Replay3D({
         </div>
       </div>
 
-      <TelemetryStrip
-        points={points}
-        playhead={displayElapsed}
-        elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
-        ftpWatts={ftpWatts}
-      />
+      <div className="[.photo_&]:hidden">
+        <TelemetryStrip
+          points={points}
+          playhead={displayElapsed}
+          elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
+          ftpWatts={ftpWatts}
+        />
+      </div>
       {terrainState === 'on' && (
-        <p className="mt-1 text-[10px] text-muted">
+        <p className="mt-1 text-[10px] text-muted [.photo_&]:hidden">
           {terrainAttribution}
           {imageryState === 'on' && imageryAttribution ? ` · ${imageryAttribution}` : ''}
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2 [.photo_&]:hidden">
         {link ? (
           <span
             title="Playback follows the compare master clock above"
@@ -1690,16 +2097,20 @@ export function Replay3D({
         </span>
       </div>
 
-      <input
-        type="range"
-        min={0}
-        max={totalTime}
-        step={0.1}
-        value={displayElapsed}
-        onChange={(e) => seek(Number(e.target.value))}
-        aria-label="Replay scrubbing"
-        className="mt-2 h-11 w-full accent-accent"
-      />
+      <div className="[.photo_&]:hidden">
+        <CourseProfile points={points} totalDistance={build.totalDistance} elapsed={displayElapsed} onSeek={seek} />
+
+        <input
+          type="range"
+          min={0}
+          max={totalTime}
+          step={0.1}
+          value={displayElapsed}
+          onChange={(e) => seek(Number(e.target.value))}
+          aria-label="Replay scrubbing"
+          className="mt-2 h-11 w-full accent-accent"
+        />
+      </div>
     </div>
   );
 }

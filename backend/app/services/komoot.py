@@ -20,6 +20,7 @@ from app.integrations.komoot_client import komoot_client
 from app.models.route import Route, RouteSource
 from app.services.polyline_utils import (
     encode_polyline,
+    extract_elevation_profile_from_komoot_trackpoints,
     komoot_coordinate_array_to_polyline,
     komoot_coordinates_to_polyline,
     polyline_total_distance,
@@ -85,15 +86,6 @@ def _build_polyline_from_trackpoints(trackpoints: list[dict]) -> str | None:
         return None
 
     return encode_polyline(points)
-
-
-def _extract_elevations_from_trackpoints(trackpoints: list[dict]) -> list[float | None]:
-    """Extract elevation values from trackpoint data."""
-    elevations: list[float | None] = []
-    for tp in trackpoints:
-        alt = tp.get("alt") or tp.get("altitude") or tp.get("elevation")
-        elevations.append(float(alt) if alt is not None else None)
-    return elevations
 
 
 def _extract_surface_profile(surface_data: dict) -> dict[str, float] | None:
@@ -260,11 +252,11 @@ async def _enrich_and_create_route(
     if distance <= 0:
         distance = polyline_total_distance(polyline)
 
-    # Build elevation profile from trackpoints
-    elevation_profile = None
-    elevations = _extract_elevations_from_trackpoints(trackpoints)
-    if any(e is not None for e in elevations):
-        elevation_profile = {"elevations": elevations}
+    # Build elevation profile from trackpoints (canonical
+    # {"distance", "elevation"} shape so terrain classification works)
+    elevation_profile = extract_elevation_profile_from_komoot_trackpoints(
+        trackpoints
+    )
 
     # Enrich raw_data with Komoot route type
     raw_data = dict(tour_data)

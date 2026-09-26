@@ -227,10 +227,45 @@ Tooling added: `scripts/optimize-bike.mjs` (already), `frontend/public/dev-fixtu
 (gitignored), `frontend/scripts/_*.mjs` Playwright helpers (gitignored), and the
 local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
 
+### Terrain default + enhancement (2026-09-25)
+- **On by default** in the Theater (`terrainDefault`, compare modal opts out) and
+  the terrain/imagery toggles are remembered in `localStorage`
+  (`relive:terrain`, `relive:imagery`).
+- **Resolution**: DEM tiles 25 → 36, grid 65K → 110K points for sharper relief.
+- **Shading** (`buildTerrainMesh`): per-vertex slope darkening (steep faces
+  darken so relief reads in flat light) + an outer-border fade so the slab edge
+  dissolves into the horizon instead of ending abruptly. Benefits `Route3D` too.
+
+### Roadmap completion pass (2026-09-25)
+- **Course profile scrubber** — an elevation area chart above the transport with a
+  playhead; click/drag anywhere to seek (distance-mapped). `CourseProfile` in
+  `Replay3D`, uses `replayDistanceAt`.
+- **On-road markers** — climbs/descents/sprint/fastest drawn on the road (coloured
+  dots + screen-constant labels via `sizeAttenuation:false`, faded by distance).
+  Km labels made screen-constant too.
+- **Real shadows + bloom** — `renderer.shadowMap` (PCFSoft) with a small
+  directional shadow frustum that follows the bike; bike `castShadow`, road +
+  terrain `receiveShadow`; road switched to `MeshLambertMaterial` so shadows land
+  on it. `EffectComposer` + `RenderPass` + `UnrealBloomPass` + `OutputPass`
+  (skipped in Lite mode).
+- **Weather-driven world** — `weather` prop tints the sky/fog/lighting for
+  overcast/rain/snow/fog (from `Activity.weather_*`; Theater + compare).
+- **Route3D parity** — the routes-page 3D now uses the same high-res terrarium DEM
+  (with Open-Meteo fallback), inheriting the slope shading + edge fade.
+
+### Polish pass 4 (2026-09-25)
+- **Terrain drape** — the road/bike now follow per-point DEM heights (smoothed),
+  with the terrain bed anchored so the road never sits under it and the camera
+  clamped above the DEM surface.
+- **Fly-by camera** — a slow cinematic orbit/dolly around the rider.
+- **Weather rain** — camera-relative falling streaks when the ride weather is wet.
+- **Photo mode** — hides UI chrome for a clean view; Poster now renders at 2x.
+
 ### Remaining
-- Optional: push terrain/imagery into `Route3D` too; weather-driven fog/wind.
-- Terrain vertical alignment is approximate (DEM vs barometric offset varies
-  along the route; anchored at the start).
+- Optional: wet-road sheen / wind sock, **segment racing** and **public share
+  link** (both need backend/product scope).
+- `AGENTS.md` / `frontend/src/CODEMAP.md` §3.16 still need the latest entries at
+  release time.
 
 ## Risks / guardrails
 

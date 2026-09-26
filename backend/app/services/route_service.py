@@ -318,12 +318,14 @@ async def add_route_source(
     provider_name: str,
     encoded_polyline: str,
     raw_data: dict | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> RouteSource:
     """Add a provider source to an existing route.
 
     Skips if a source with the same provider already exists on this route
     to avoid duplicate provider badges in the UI (e.g. Strava Routes API
     and activity-derived polyline both mapping to provider="strava").
+    ``user_id`` scopes the source row to its owner (RMI-09).
     """
     # Check if a source from this provider already exists on this route
     existing = await db.execute(
@@ -341,6 +343,7 @@ async def add_route_source(
 
     source = RouteSource(
         route_id=route_id,
+        user_id=user_id,
         provider=provider,
         provider_route_id=provider_route_id,
         provider_name=provider_name,
@@ -375,11 +378,13 @@ async def create_or_merge_route(
     This is the main entry point called by provider sync services.
     Returns the Route (either newly created or the existing one with a new source).
     """
-    # Check if this provider route already exists
+    # Check if this provider route already exists (user-scoped: each user
+    # owns a distinct Route for the same provider tour — RMI-09)
     existing_source = await db.execute(
         select(RouteSource).where(
             RouteSource.provider == provider,
             RouteSource.provider_route_id == provider_route_id,
+            RouteSource.user_id == user_id,
         )
     )
     existing_row = existing_source.scalar_one_or_none()
@@ -429,6 +434,7 @@ async def create_or_merge_route(
             provider_name,
             encoded_polyline,
             raw_data,
+            user_id,
         )
         # Optionally update the canonical polyline if the new one is higher fidelity
         new_point_count = len(points)
@@ -437,6 +443,8 @@ async def create_or_merge_route(
             duplicate.encoded_polyline = encoded_polyline
             if elevation_profile:
                 duplicate.elevation_profile = elevation_profile
+            # Geometry changed: derived data must be recomputed (RMI-10).
+            duplicate.terrain_classification = None
         # Update surface profile if the new source provides it and the existing route doesn't have one
         if surface_profile and not duplicate.surface_profile:
             duplicate.surface_profile = surface_profile
@@ -471,6 +479,7 @@ async def create_or_merge_route(
             provider_name,
             encoded_polyline,
             raw_data,
+            user_id,
         )
         logger.info(f"Created new route '{name}' from {provider}/{provider_route_id}")
         return route
@@ -599,6 +608,8 @@ async def merge_routes(
         primary.encoded_polyline = duplicate.encoded_polyline
         if duplicate.elevation_profile:
             primary.elevation_profile = duplicate.elevation_profile
+        # Geometry changed: derived data must be recomputed (RMI-10).
+        primary.terrain_classification = None
 
     await db.flush()
 

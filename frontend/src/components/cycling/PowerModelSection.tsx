@@ -48,7 +48,7 @@ export function PowerModelSection({ powerModel, isLoading }: PowerModelSectionPr
       {/* Critical Power Stats */}
       {cp && cp.cp && (
         <div className="mb-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="bg-surface-light rounded-lg p-3">
               <div className="text-xs text-muted mb-1">Critical Power</div>
               <div className="text-lg font-mono font-bold text-accent">
@@ -67,6 +67,17 @@ export function PowerModelSection({ powerModel, isLoading }: PowerModelSectionPr
               </div>
             </div>
             <div className="bg-surface-light rounded-lg p-3">
+              <div className="text-xs text-muted mb-1">Pmax (Sprint)</div>
+              <div className="text-lg font-mono font-bold text-cyan-400">
+                {cp.p_max ? (
+                  <>
+                    {cp.p_max.toFixed(0)}{' '}
+                    <span className="text-xs text-muted">W</span>
+                  </>
+                ) : '—'}
+              </div>
+            </div>
+            <div className="bg-surface-light rounded-lg p-3">
               <div className="text-xs text-muted mb-1">Model Fit (R²)</div>
               <div className="text-lg font-mono font-bold text-positive">
                 {cp.model_r_squared ? (cp.model_r_squared * 100).toFixed(1) : '—'}%
@@ -80,7 +91,7 @@ export function PowerModelSection({ powerModel, isLoading }: PowerModelSectionPr
             </div>
           </div>
           <div className="mt-2 text-xs text-muted">
-            Morton 2004 model: P(t) = W&apos;/t + CP
+            Morton 3-param model: P(t) = W&apos;/(t + k) + CP, k = W&apos;/(Pmax − CP)
           </div>
         </div>
       )}

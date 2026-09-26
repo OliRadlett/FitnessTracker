@@ -149,3 +149,127 @@ class TestRouteListing:
 
         route = await get_route_by_id(db_session, uuid.uuid4(), test_user.id)
         assert route is None
+
+
+# ── Provider Source Ownership (RMI-09) ───────────────────────────────────
+
+
+class TestRouteSourceOwnership:
+    """RouteSources are scoped to the owning user."""
+
+    async def _second_user(self, db_session):
+        from app.models.user import User
+
+        user = User(
+            id=uuid.uuid4(), email="second@example.com", name="Second User"
+        )
+        db_session.add(user)
+        await db_session.flush()
+        return user
+
+    async def test_same_provider_tour_gives_distinct_routes(
+        self, db_session, test_user
+    ):
+        """Two users importing the same provider tour own distinct Routes."""
+        from app.services.route_service import create_or_merge_route
+
+        encoded = "o}~mH~}xMz@z@z@z@z@z@"
+        kwargs = {
+            "name": "Shared Komoot Tour",
+            "sport_type": "cycling",
+            "distance_meters": 12000.0,
+            "encoded_polyline": encoded,
+            "provider": "komoot",
+            "provider_route_id": "komoot_tour_999",
+            "provider_name": "Shared Komoot Tour",
+        }
+        route_a = await create_or_merge_route(db_session, test_user.id, **kwargs)
+        user_b = await self._second_user(db_session)
+        route_b = await create_or_merge_route(db_session, user_b.id, **kwargs)
+        await db_session.flush()
+
+        assert route_a.id != route_b.id
+        assert route_a.user_id == test_user.id
+        assert route_b.user_id == user_b.id
+
+        sources = list(
+            (
+                await db_session.execute(
+                    select(RouteSource).where(
+                        RouteSource.provider == "komoot",
+                        RouteSource.provider_route_id == "komoot_tour_999",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {s.user_id for s in sources} == {test_user.id, user_b.id}
+
+    async def test_repeat_import_returns_own_route(self, db_session, test_user):
+        """Re-importing returns the user's own route, not another's."""
+        from app.services.route_service import create_or_merge_route
+
+        encoded = "o}~mH~}xMz@z@z@z@z@z@"
+        kwargs = {
+            "name": "Shared Komoot Tour",
+            "sport_type": "cycling",
+            "distance_meters": 12000.0,
+            "encoded_polyline": encoded,
+            "provider": "komoot",
+            "provider_route_id": "komoot_tour_999",
+            "provider_name": "Shared Komoot Tour",
+        }
+        route_a = await create_or_merge_route(db_session, test_user.id, **kwargs)
+        user_b = await self._second_user(db_session)
+        await create_or_merge_route(db_session, user_b.id, **kwargs)
+        again = await create_or_merge_route(db_session, test_user.id, **kwargs)
+        assert again.id == route_a.id
+
+
+# ── Derived-Data Invalidation (RMI-10) ───────────────────────────────────
+
+
+class TestTerrainInvalidation:
+    """Replacing a route's geometry clears stale derived data."""
+
+    async def test_merge_upgrading_polyline_clears_terrain(
+        self, db_session, test_user
+    ):
+        """Auto-merge with a higher-fidelity polyline resets terrain."""
+        from app.services.polyline_utils import encode_polyline
+        from app.services.route_service import create_route, merge_routes
+
+        short_poly = encode_polyline([(51.0, -0.1), (51.01, -0.1)])
+        long_poly = encode_polyline(
+            [(51.0, -0.1), (51.01, -0.1), (51.02, -0.1), (51.03, -0.1)]
+        )
+        primary = await create_route(
+            db_session,
+            test_user.id,
+            name="Primary",
+            sport_type="cycling",
+            distance_meters=3000.0,
+            encoded_polyline=short_poly,
+        )
+        primary.terrain_classification = {"terrain_type": "flat"}
+        duplicate = await create_route(
+            db_session,
+            test_user.id,
+            name="Duplicate",
+            sport_type="cycling",
+            distance_meters=3000.0,
+            encoded_polyline=long_poly,
+        )
+        await db_session.flush()
+
+        merged = await merge_routes(
+            db_session, primary.id, duplicate.id, test_user.id
+        )
+        await db_session.flush()
+
+        assert merged is not None
+        assert merged.id == primary.id
+        assert merged.terrain_classification is None
+        # The better geometry wins.
+        assert merged.encoded_polyline == long_poly

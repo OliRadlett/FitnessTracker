@@ -1322,8 +1322,11 @@ async def classify_route_terrain(
         )
 
     from app.integrations.route_intelligence import classify_route_terrain
+    from app.services.polyline_utils import decode_polyline
 
-    terrain = classify_route_terrain(route.elevation_profile)
+    terrain = classify_route_terrain(
+        route.elevation_profile, decode_polyline(route.encoded_polyline)
+    )
     route.terrain_classification = terrain
     await db.flush()
 

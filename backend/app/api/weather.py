@@ -165,5 +165,8 @@ async def get_weather_for_activity(
         conditions=activity.weather_conditions,
         wind_speed_kmh=activity.weather_wind_speed_kmh,
         wind_direction=activity.weather_wind_direction,
+        wind_direction_deg=activity.weather_wind_direction_deg,
+        humidity_pct=activity.weather_humidity_pct,
+        pressure_hpa=activity.weather_pressure_hpa,
         precipitation_mm=activity.weather_precipitation_mm,
     )

@@ -170,9 +170,7 @@ def estimate_ftp_from_power_curve_detailed(
 
     # Overall confidence: confidence-weighted mean of the estimates actually
     # blended — reporting the max would overstate certainty in the blend.
-    overall_confidence = round(
-        sum(c * c for _, c, _, _ in gated) / total_weight, 2
-    )
+    overall_confidence = round(sum(c * c for _, c, _, _ in gated) / total_weight, 2)
     best_estimate = max(gated, key=lambda e: e[1])  # highest confidence
 
     # Determine primary method (highest confidence)
@@ -333,7 +331,10 @@ async def compute_power_curve_from_streams(
                 best_avg = best_power_rolling_average(power_data, window)
                 if best_avg is None:
                     continue
-                if duration_sec not in best_power or best_avg > best_power[duration_sec]:
+                if (
+                    duration_sec not in best_power
+                    or best_avg > best_power[duration_sec]
+                ):
                     best_power[duration_sec] = best_avg
 
     _power_curve_cache[cache_key] = (now, best_power)
@@ -458,21 +459,35 @@ async def backfill_ftp_estimates(
     return created_entries
 
 
-# ── Personalized Model Overlay (Morton 2004) ────────────────────────────────
+# ── Personalized Model Overlay (Morton 3-param with Pmax ceiling) ──────────
 
 
-def personalized_power_curve(cp: float, w_prime: float) -> dict[int, float]:
-    """Evaluate the fitted Morton 2004 model P(t) = W'/t + CP.
+def personalized_power_curve(
+    cp: float, w_prime: float, p_max: float | None = None
+) -> dict[int, float]:
+    """Evaluate the fitted Morton model over ``POWER_DURATION_BUCKETS``.
 
-    Mirrors ``_morton_power_duration`` in
+    With ``p_max`` (3-param): P(t) = W'/(t + k) + CP, k = W'/(Pmax - CP) —
+    bounded at sprint durations. Without it (legacy profiles fitted before
+    the 3-param migration): 2-param P(t) = W'/t + CP, returned only for
+    durations >= 60s — the 2-param form diverges as t → 0, so short-duration
+    predictions are omitted rather than shown as 3000W+ spikes.
+
+    Mirrors ``_morton_3param_power_duration`` / ``_morton_power_duration`` in
     ``app/integrations/power_models.py`` (the fitter) so the API overlay
-    matches the weekly-fitted curve. Returns ``{duration_seconds: watts}``
-    over the standard ``POWER_DURATION_BUCKETS``; callers stringify keys
-    for JSON. ``w_prime`` is in joules, ``cp`` in watts.
+    matches the weekly-fitted curve. Returns ``{duration_seconds: watts}``;
+    callers stringify keys for JSON. ``w_prime`` is in joules, ``cp`` and
+    ``p_max`` in watts.
     """
     curve = {}
+    use_3param = p_max is not None and p_max > cp
+    k = w_prime / (p_max - cp) if use_3param else 0.0
     for duration_sec, _ in POWER_DURATION_BUCKETS:
         if duration_sec <= 0:
             continue
-        curve[duration_sec] = round(w_prime / duration_sec + cp, 1)
+        if use_3param:
+            curve[duration_sec] = round(w_prime / (duration_sec + k) + cp, 1)
+        elif duration_sec >= 60:
+            # 2-param legacy: only valid where the hyperbola was fitted.
+            curve[duration_sec] = round(w_prime / duration_sec + cp, 1)
     return curve

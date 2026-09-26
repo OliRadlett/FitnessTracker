@@ -32,7 +32,8 @@ _CURRENT_PARAMS = (
 )
 _DAILY_PARAMS = (
     "weather_code,temperature_2m_max,temperature_2m_min,"
-    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max"
+    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,"
+    "wind_direction_10m_dominant,relative_humidity_2m_mean,pressure_msl_mean"
 )
 
 _CACHE_TTL = {
@@ -342,6 +343,9 @@ def _normalize_daily(payload: dict, lat: float, lng: float) -> dict:
     pprob = daily.get("precipitation_probability_max") or []
     psum = daily.get("precipitation_sum") or []
     wmax = daily.get("wind_speed_10m_max") or []
+    wdir = daily.get("wind_direction_10m_dominant") or []
+    rhum = daily.get("relative_humidity_2m_mean") or []
+    pres = daily.get("pressure_msl_mean") or []
 
     def _at(arr, i):
         return arr[i] if i < len(arr) else None
@@ -361,6 +365,9 @@ def _normalize_daily(payload: dict, lat: float, lng: float) -> dict:
                 "precipitation_probability": _at(pprob, i),
                 "precipitation_sum": _at(psum, i),
                 "wind_speed_max": _at(wmax, i),
+                "wind_direction_deg": _at(wdir, i),
+                "humidity_mean": _at(rhum, i),
+                "pressure_mean": _at(pres, i),
             }
         )
     return {"latitude": lat, "longitude": lng, "days": days}
@@ -422,7 +429,16 @@ async def get_historical(
         and cached.get("start_date") == start_date.isoformat()
         and cached.get("end_date") == end_date.isoformat()
     ):
-        return {k: v for k, v in cached.items() if k not in ("start_date", "end_date")}
+        days = cached.get("days", [])
+        # Cache rows written before the RMI-07 params (wind direction,
+        # humidity, pressure) lack those keys — refetch rather than serve
+        # a permanently incomplete day.
+        if days and all(
+            k in days[0]
+            for k in ("wind_direction_deg", "humidity_mean", "pressure_mean")
+        ):
+            return {k: v for k, v in cached.items() if k not in ("start_date", "end_date")}
+        # else: fall through and refetch (overwrites the stale row below)
 
     today = datetime.now(UTC).date()
     data: dict
@@ -501,7 +517,11 @@ async def tag_activity(db: AsyncSession, user_id, activity_id) -> dict | None:
     activity.weather_temperature = d.get("temp_max")
     activity.weather_conditions = d.get("conditions")
     activity.weather_wind_speed_kmh = d.get("wind_speed_max")
-    activity.weather_wind_direction = None  # direction only in current endpoint
+    wind_deg = d.get("wind_direction_deg")
+    activity.weather_wind_direction_deg = wind_deg
+    activity.weather_wind_direction = degrees_to_compass(wind_deg)
+    activity.weather_humidity_pct = d.get("humidity_mean")
+    activity.weather_pressure_hpa = d.get("pressure_mean")
     activity.weather_precipitation_mm = d.get("precipitation_sum")
 
     await db.flush()
@@ -512,6 +532,9 @@ async def tag_activity(db: AsyncSession, user_id, activity_id) -> dict | None:
         "conditions": activity.weather_conditions,
         "wind_speed_kmh": activity.weather_wind_speed_kmh,
         "wind_direction": activity.weather_wind_direction,
+        "wind_direction_deg": activity.weather_wind_direction_deg,
+        "humidity_pct": activity.weather_humidity_pct,
+        "pressure_hpa": activity.weather_pressure_hpa,
         "precipitation_mm": activity.weather_precipitation_mm,
     }
 

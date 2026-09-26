@@ -341,7 +341,15 @@ export function CompareActivitiesModal({
                     link={linked ? linkFor : null}
                     startDate={activityA.start_date}
                     ghost={{ build: replayB!, name: activityB.name }}
+                    weather={{
+                      conditions: activityA.weather_conditions,
+                      temperature: activityA.weather_temperature,
+                      windSpeedKmh: activityA.weather_wind_speed_kmh,
+                      windDirection: activityA.weather_wind_direction,
+                      precipitationMm: activityA.weather_precipitation_mm,
+                    }}
                     canvasHeightClass="h-[440px]"
+                    terrainDefault={false}
                   />
                 </div>
                 <p className="text-[11px] text-muted">
