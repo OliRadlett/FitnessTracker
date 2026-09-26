@@ -116,7 +116,7 @@ Modal serverless containers handle compute-heavy features that would be too expe
 | Integration | File | Purpose |
 |------------|------|---------|
 | Video processing | `app/integrations/modal_client.py` | ffmpeg + Gemini Vision for lifting video analysis |
-| Route intelligence | `app/integrations/route_intelligence.py` | Terrain classification (flat/rolling/hilly/mountainous) incl. legacy Komoot profile alignment |
+| Route intelligence | `app/integrations/route_intelligence.py` | Terrain classification (flat/rolling/hilly/mountainous) incl. legacy Komoot profile alignment; route **similarity graph** (`compute_route_similarity_on_modal`) using the shared `route_matching` engine (mounted into the Modal image) |
 | Power models | `app/integrations/power_models.py` | 3-param critical power fitting (Morton CP/W'/Pmax — bounded at sprint durations; 2-param fallback returns 60s+ curve only), personalized VO2max from power-HR regression, adaptive CTL/ATL time constant fitting |
 | Weather analysis | `app/integrations/weather_analysis.py` | Weather-performance correlation, personalized weather coefficients, decoupling vs temperature analysis |
 | Segment intelligence | `app/integrations/segment_intelligence.py` | Gaussian-smoothed climb detection, DBSCAN segment clustering, personal difficulty prediction |
@@ -145,6 +145,7 @@ Modal serverless containers handle compute-heavy features that would be too expe
 | `analyze_cross_domain_weekly` | Weekly Sun 7AM | Cross-domain correlation: sleep-performance, lifting-cycling fatigue, race retrospective |
 | `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs for all cycling routes |
 | `classify_route_terrain` | Weekly Sat 2:30AM | Classifies terrain (flat/rolling/hilly/mountainous) for routes with elevation profiles. Uses Modal when configured, falls back to local |
+| `recompute_route_similarity` | Weekly Sun 3:05AM | Modal similarity graph over each user's routes (local fallback) → caches `route_similarity` and non-destructively auto-merges `auto`-tier duplicates (audit-logged, undoable). Runs before segment recompute so segments rebuild on merged routes |
 | `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |

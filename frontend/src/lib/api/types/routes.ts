@@ -161,11 +161,52 @@ export interface RouteSyncResult {
   new_count: number;
 }
 
+export interface DuplicateMatchBreakdown {
+  total: number;
+  matched: boolean;
+  tier: string;
+  reversed: boolean;
+  coverage_ab: number;
+  coverage_ba: number;
+  min_coverage: number;
+  frechet_forward_m: number;
+  frechet_reverse_m: number;
+  frechet_similarity: number;
+  endpoint_similarity: number;
+  length_ratio: number;
+  lap_ratio: number | null;
+  length_a_m: number;
+  length_b_m: number;
+}
+
 export interface DuplicatePair {
   route_a: RouteData;
   route_b: RouteData;
   score: number;
   requires_confirmation: boolean;
+  tier?: 'auto' | 'review' | string;
+  breakdown?: DuplicateMatchBreakdown | null;
+}
+
+export interface MergeResult {
+  route: RouteData;
+  merge_log_id: string | null;
+}
+
+export interface RouteMergeLogEntry {
+  id: string;
+  primary_route_id: string;
+  merged_route_id: string;
+  score: number;
+  created_at: string | null;
+  undone_at: string | null;
+}
+
+export interface SimilarRoute {
+  route: RouteData;
+  score: number;
+  tier: string;
+  breakdown?: DuplicateMatchBreakdown | null;
 }
 
 // ── Quality ──────────────────────────────────────────────────────────────────

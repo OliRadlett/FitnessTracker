@@ -8,6 +8,7 @@ import {
   getDuplicateRoutes,
   autoMergeDuplicates,
   mergeRoutes,
+  undoRouteMerge,
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -26,6 +27,8 @@ export default function DuplicatesPage() {
   const queryClient = useQueryClient();
 
   const [autoMerging, setAutoMerging] = useState(false);
+  const [lastMergeLogId, setLastMergeLogId] = useState<string | null>(null);
+  const [undoMessage, setUndoMessage] = useState<string | null>(null);
 
   const { data: pairs = [], isLoading, refetch } = useQuery({
     queryKey: ['route-duplicates'],
@@ -44,7 +47,19 @@ export default function DuplicatesPage() {
 
   const manualMergeMutation = useMutation({
     mutationFn: ({ a, b }: { a: string; b: string }) => mergeRoutes(a, b, token),
+    onSuccess: (result) => {
+      setLastMergeLogId(result.merge_log_id);
+      setUndoMessage(null);
+      queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+    },
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: (logId: string) => undoRouteMerge(logId, token),
     onSuccess: () => {
+      setLastMergeLogId(null);
+      setUndoMessage('Merge undone — the route was restored.');
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
@@ -150,6 +165,29 @@ export default function DuplicatesPage() {
           </Card>
         )}
 
+        {undoMessage && (
+          <Card className="mb-4">
+            <div className="p-4 text-sm text-positive">{undoMessage}</div>
+          </Card>
+        )}
+
+        {lastMergeLogId && (
+          <Card className="mb-4">
+            <div className="p-4 flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted">
+                Merge completed. You can undo it if it was a mistake.
+              </span>
+              <button
+                onClick={() => lastMergeLogId && undoMutation.mutate(lastMergeLogId)}
+                disabled={undoMutation.isPending}
+                className="px-3 py-1.5 text-sm bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors disabled:opacity-50"
+              >
+                {undoMutation.isPending ? 'Undoing…' : 'Undo merge'}
+              </button>
+            </div>
+          </Card>
+        )}
+
         {visiblePairs.length === 0 ? (
           <Card>
             <div className="p-12 text-center text-muted">
@@ -241,10 +279,23 @@ function DuplicatePairCard({
           >
             {Math.round(pair.score * 100)}% match
           </Badge>
+          <Badge variant="muted" className="text-xs ml-2">
+            {pair.tier === 'auto' ? 'Auto' : 'Review'}
+          </Badge>
           {pair.requires_confirmation && (
             <Badge variant="muted" className="text-xs ml-2">
               Review required
             </Badge>
+          )}
+          {pair.breakdown && (
+            <div className="mt-3 text-xs text-muted flex flex-wrap gap-x-3 gap-y-1">
+              <span>overlap {Math.round((pair.breakdown.min_coverage ?? 0) * 100)}%</span>
+              <span>shape {Math.round((pair.breakdown.frechet_similarity ?? 0) * 100)}%</span>
+              {pair.breakdown.lap_ratio != null && (
+                <span>≈{pair.breakdown.lap_ratio} lap route</span>
+              )}
+              {pair.breakdown.reversed && <span className="text-warning">reversed</span>}
+            </div>
           )}
           <div className="flex gap-2">
             <button

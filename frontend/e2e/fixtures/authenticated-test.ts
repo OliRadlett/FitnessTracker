@@ -183,6 +183,17 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteCollections) });
   }],
 
+  // Route similarity graph (route merging overhaul) — empty until the weekly
+  // recompute_route_similarity task has produced a graph. MUST precede the
+  // general routes handler, which would otherwise return the routes array.
+  ['/similar', (route) => {
+    if (/\/api\/v1\/routes\/[^/]+\/similar/.test(route.request().url())) {
+      route.fulfill({ status: 200, body: JSON.stringify([]) });
+      return;
+    }
+    route.continue();
+  }],
+
   // Routes
   ['api/v1/routes/', (route) => {
     const url = route.request().url();

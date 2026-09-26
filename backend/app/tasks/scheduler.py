@@ -164,6 +164,13 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.classify_route_terrain",
         "schedule": crontab(hour=2, minute=30, day_of_week=6),
     },
+    # Recompute the route similarity graph + auto-merge dups weekly
+    # (Sunday 3:05 AM UTC, after quality, before segment recompute).
+    "recompute-route-similarity": {
+        "task": "app.tasks.scheduler.recompute_route_similarity",
+        "schedule": crontab(hour=3, minute=5, day_of_week=0),
+        "options": {"expires": 7200},
+    },
     # Recompute ride segments + efforts weekly (Sunday 3:15 AM UTC, post quality)
     "recompute-ride-segments": {
         "task": "app.tasks.scheduler.recompute_ride_segments",
@@ -1231,6 +1238,129 @@ def backfill_activity_context() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.recompute_route_similarity")
+def recompute_route_similarity() -> dict:
+    """Recompute the route similarity graph and auto-merge high-confidence dups.
+
+    Runs weekly (Sunday 3:05 AM UTC, after terrain/quality, before segment
+    recompute so segments rebuild on merged routes). Scoring is dispatched to
+    Modal with a local fallback; results are cached in ``route_similarity`` for
+    the duplicates review queue, and ``auto``-tier pairs are merged
+    non-destructively (with an audit log for undo).
+    """
+    import asyncio
+    import uuid as _uuid
+
+    from sqlalchemy import delete, func, select
+
+    from app.config import get_settings
+    from app.database import task_session
+    from app.integrations.route_intelligence import (
+        _pairs_for_routes,
+        compute_route_similarity_on_modal,
+    )
+    from app.models.route import Route, RouteSimilarity
+    from app.services.polyline_utils import decode_polyline
+    from app.services.route_service import merge_routes
+
+    async def _run():
+        settings = get_settings()
+        auto = settings.route_match_auto_threshold
+        review = settings.route_match_threshold
+        gate = settings.route_match_gate
+
+        async with task_session() as db:
+            result = await db.execute(
+                select(Route.user_id)
+                .group_by(Route.user_id)
+                .having(func.count(Route.id) >= 2)
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            users_done = 0
+            total_pairs = 0
+            merged_count = 0
+
+            for user_id in user_ids:
+                try:
+                    routes = (
+                        await db.execute(
+                            select(Route).where(Route.user_id == user_id)
+                        )
+                    ).scalars().all()
+                    routes_data = [
+                        {
+                            "id": str(r.id),
+                            "polyline": decode_polyline(r.encoded_polyline),
+                            "distance_meters": r.distance_meters,
+                        }
+                        for r in routes
+                    ]
+                    graph = compute_route_similarity_on_modal(
+                        routes_data,
+                        _pairs_for_routes(len(routes_data)),
+                        auto_threshold=auto,
+                        review_floor=review,
+                        gate=gate,
+                    )
+                    pairs = graph.get("pairs", [])
+
+                    # Refresh the cached graph for this user.
+                    await db.execute(
+                        delete(RouteSimilarity).where(
+                            RouteSimilarity.user_id == user_id
+                        )
+                    )
+                    for p in pairs:
+                        db.add(
+                            RouteSimilarity(
+                                user_id=user_id,
+                                route_a_id=_uuid.UUID(p["a"]),
+                                route_b_id=_uuid.UUID(p["b"]),
+                                score=p["total"],
+                                tier=p["tier"],
+                                breakdown=p,
+                            )
+                        )
+
+                    # Auto-merge high-confidence pairs (skip already-merged ids).
+                    merged_away: set[str] = set()
+                    for p in pairs:
+                        if p["tier"] != "auto":
+                            continue
+                        if p["a"] in merged_away or p["b"] in merged_away:
+                            continue
+                        merged = await merge_routes(
+                            db,
+                            _uuid.UUID(p["a"]),
+                            _uuid.UUID(p["b"]),
+                            user_id,
+                            score=p["total"],
+                            breakdown=p,
+                        )
+                        if merged is not None:
+                            merged_away.add(p["b"])
+                            merged_count += 1
+
+                    await db.commit()
+                    total_pairs += len(pairs)
+                    users_done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Route similarity failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "users_processed": users_done,
+                "pairs_found": total_pairs,
+                "auto_merged": merged_count,
+            }
+
+    return asyncio.run(_run_task_guarded("recompute_route_similarity", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.fit_personalized_power_models")

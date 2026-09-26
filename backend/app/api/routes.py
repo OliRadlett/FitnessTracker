@@ -26,7 +26,7 @@ from sqlalchemy.orm import selectinload
 from app.api.activities import _extract_encoded_polyline
 from app.database import get_db
 from app.models.activity import Activity
-from app.models.route import Route, RouteSource
+from app.models.route import Route, RouteMergeLog, RouteSimilarity, RouteSource
 from app.models.route_organize import (
     RouteCollection,
     RouteCollectionItem,
@@ -45,6 +45,7 @@ from app.schemas.route import (
     MergedRouteView,
     MergeManyRequest,
     MergeRequest,
+    MergeResult,
     RiddenSegment,
     RouteCollectionCreate,
     RouteCollectionRead,
@@ -876,13 +877,13 @@ async def merge_routes_many(
     return results
 
 
-@router.post("/merge", response_model=RouteRead)
+@router.post("/merge", response_model=MergeResult)
 async def merge_routes(
     body: MergeRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually merge two routes."""
+    """Manually merge two routes (non-destructive; returns an undo log id)."""
     if body.primary_route_id == body.duplicate_route_id:
         raise HTTPException(status_code=400, detail="Cannot merge a route with itself")
 
@@ -894,8 +895,67 @@ async def merge_routes(
     )
     if not merged:
         raise HTTPException(status_code=404, detail="One or both routes not found")
+
+    log = (
+        await db.execute(
+            select(RouteMergeLog)
+            .where(
+                RouteMergeLog.primary_route_id == body.primary_route_id,
+                RouteMergeLog.merged_route_id == body.duplicate_route_id,
+                RouteMergeLog.user_id == current_user.id,
+                RouteMergeLog.undone_at.is_(None),
+            )
+            .order_by(RouteMergeLog.created_at.desc())
+        )
+    ).scalars().first()
+
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
-    return RouteRead.model_validate(merged)
+    return MergeResult(
+        route=RouteRead.model_validate(merged),
+        merge_log_id=log.id if log else None,
+    )
+
+
+@router.get("/merges", response_model=list[dict])
+async def list_route_merges(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List recent route merges (undo available while ``undone_at`` is null)."""
+    logs = (
+        await db.execute(
+            select(RouteMergeLog)
+            .where(RouteMergeLog.user_id == current_user.id)
+            .order_by(RouteMergeLog.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "primary_route_id": str(log.primary_route_id),
+            "merged_route_id": str(log.merged_route_id),
+            "score": log.score,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "undone_at": log.undone_at.isoformat() if log.undone_at else None,
+        }
+        for log in logs
+    ]
+
+
+@router.post("/merges/{log_id}/undo", response_model=RouteRead)
+async def undo_route_merge(
+    log_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo a previous route merge (recreates the merged-away route)."""
+    restored = await route_service.undo_route_merge(db, log_id, current_user.id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Merge not found or already undone")
+    await db.flush()
+    return RouteRead.model_validate(restored)
 
 
 # ─── Bulk Operations ───────────────────────────────────────────────────────────
@@ -1074,13 +1134,22 @@ async def list_duplicates(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Find potential duplicate routes for manual review."""
-    pairs = await route_service.find_potential_duplicates(db, current_user.id)
+    """Find potential duplicate routes for manual review.
+
+    Prefers the cached similarity graph (weekly Modal task); falls back to a
+    synchronous local scan when no graph has been computed yet.
+    """
+    pairs = await route_service.find_cached_duplicates(db, current_user.id)
+    if pairs is None:
+        pairs = await route_service.find_potential_duplicates(db, current_user.id)
     return [
         DuplicatePair(
             route_a=RouteRead.model_validate(p["route_a"]),
             route_b=RouteRead.model_validate(p["route_b"]),
             score=p["score"],
+            requires_confirmation=p.get("requires_confirmation", True),
+            tier=p.get("tier", "review"),
+            breakdown=p.get("breakdown"),
         )
         for p in pairs
     ]
@@ -1093,19 +1162,28 @@ async def auto_merge_duplicates(
     db: AsyncSession = Depends(get_db),
 ):
     """Auto-merge duplicate pairs above the given threshold."""
-    pairs = await route_service.find_potential_duplicates(db, current_user.id)
+    pairs = await route_service.find_cached_duplicates(db, current_user.id)
+    if pairs is None:
+        pairs = await route_service.find_potential_duplicates(db, current_user.id)
 
     merged_count = 0
+    merged_away: set[uuid.UUID] = set()
     for p in pairs:
-        if p["score"] >= threshold:
-            merged = await route_service.merge_routes(
-                db,
-                p["route_a"].id,
-                p["route_b"].id,
-                current_user.id,
-            )
-            if merged:
-                merged_count += 1
+        if p["score"] < threshold:
+            continue
+        if p["route_a"].id in merged_away or p["route_b"].id in merged_away:
+            continue
+        merged = await route_service.merge_routes(
+            db,
+            p["route_a"].id,
+            p["route_b"].id,
+            current_user.id,
+            score=p["score"],
+            breakdown=p.get("breakdown"),
+        )
+        if merged:
+            merged_away.add(p["route_b"].id)
+            merged_count += 1
 
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"merged": merged_count, "threshold": threshold}
@@ -1434,3 +1512,61 @@ async def get_merged_route_view(
             )
 
     return merged
+
+
+@router.get("/{route_id}/similar", response_model=list[dict])
+async def get_similar_routes(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Routes similar to this one, from the cached Modal similarity graph.
+
+    Returns ``[{route, score, tier, breakdown}]``; empty until the weekly
+    ``recompute_route_similarity`` task has run for the user.
+    """
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    rows = (
+        await db.execute(
+            select(RouteSimilarity).where(
+                RouteSimilarity.user_id == current_user.id,
+                (RouteSimilarity.route_a_id == route_id)
+                | (RouteSimilarity.route_b_id == route_id),
+            )
+        )
+    ).scalars().all()
+
+    other_ids = [
+        row.route_b_id if row.route_a_id == route_id else row.route_a_id
+        for row in rows
+    ]
+    if not other_ids:
+        return []
+
+    others = (
+        await db.execute(
+            select(Route)
+            .where(Route.id.in_(other_ids))
+            .options(selectinload(Route.sources))
+        )
+    ).scalars().all()
+    by_id = {r.id: r for r in others}
+
+    out = []
+    for row in sorted(rows, key=lambda r: r.score, reverse=True):
+        other_id = row.route_b_id if row.route_a_id == route_id else row.route_a_id
+        other = by_id.get(other_id)
+        if other is None:
+            continue
+        out.append(
+            {
+                "route": RouteRead.model_validate(other).model_dump(mode="json"),
+                "score": row.score,
+                "tier": row.tier,
+                "breakdown": row.breakdown,
+            }
+        )
+    return out
