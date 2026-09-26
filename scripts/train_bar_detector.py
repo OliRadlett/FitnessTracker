@@ -19,6 +19,7 @@ Inference stays ONNX-only in the app (no torch) — see
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import shutil
 import sys
@@ -29,8 +30,13 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from bar_labels import LABELS, load_jsonl, to_yolo_rows
 
-DATA = REPO_ROOT / "labels" / "bars"
+DATA = Path(os.environ.get("TRACKING_DATA", REPO_ROOT / "labels" / "bars"))
 DATASET = REPO_ROOT / "labels" / "bar_dataset"
+
+
+def _default_real() -> Path:
+    human = DATA / "labels.human.jsonl"
+    return human if human.exists() else DATA / "labels.jsonl"
 
 
 def prepare_dataset(sources: list, out_dir: Path,
@@ -88,7 +94,9 @@ def prepare_dataset(sources: list, out_dir: Path,
 VOLUME_NAME = "fittrack-bar-detector"
 
 
-def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
+def train_on_modal(epochs: int, gpu: str, imgsz: int,
+                   dataset: Path = DATASET,
+                   out_name: str = "bar_detector") -> None:
     import modal
 
     app = modal.App("fittrack-bar-detector")
@@ -97,7 +105,7 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         # ultralytics imports cv2, which needs these system libs.
         .apt_install("libgl1", "libglib2.0-0")
         .pip_install("ultralytics", "onnx", "onnxruntime")
-        .add_local_dir(str(DATASET), "/data", copy=True)
+        .add_local_dir(str(dataset), "/data", copy=True)
     )
     vol = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
@@ -124,7 +132,7 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
             format="onnx", opset=12, imgsz=imgsz, nms=True
         )
         # Persist to the Volume so the model survives a client timeout/kill.
-        _P("/vol/bar_detector.onnx").write_bytes(_P(onnx_path).read_bytes())
+        _P(f"/vol/{out_name}.onnx").write_bytes(_P(onnx_path).read_bytes())
         vol.commit()
         return "ok"
 
@@ -132,35 +140,37 @@ def train_on_modal(epochs: int, gpu: str, imgsz: int) -> None:
         train.remote()
     print("training finished; model written to the Modal Volume")
 
-    fetch_from_volume()
+    fetch_from_volume(out_name)
 
 
-def fetch_from_volume() -> None:
+def fetch_from_volume(name: str = "bar_detector") -> None:
     """Pull the last trained model out of the Modal Volume into labels/."""
     import subprocess
     import sys
 
     dest = REPO_ROOT / "labels"
     dest.mkdir(parents=True, exist_ok=True)
-    print(f"fetching {VOLUME_NAME}:/bar_detector.onnx -> {dest}")
+    print(f"fetching {VOLUME_NAME}:/{name}.onnx -> {dest}")
     subprocess.run(
-        [sys.executable, "-m", "modal", "volume", "get", VOLUME_NAME,
-         "bar_detector.onnx", str(dest)],
+        [sys.executable, "-m", "modal", "volume", "get", "--force",
+         VOLUME_NAME, f"{name}.onnx", str(dest)],
         check=False,
     )
-    out = dest / "bar_detector.onnx"
+    out = dest / f"{name}.onnx"
     if out.exists():
         print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
-        print("Next: upload it to R2 at models/bar_detector.onnx and set "
-              "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
+        if name == "bar_detector":
+            print("Next: upload it to R2 at models/bar_detector.onnx and set "
+                  "VIDEO_BAR_DETECTOR_MODEL=models/bar_detector.onnx")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p_prep = sub.add_parser("prepare")
-    p_prep.add_argument("--real", type=Path, default=DATA / "labels.jsonl",
-                        help="human-corrected real labels")
+    p_prep.add_argument("--real", type=Path, default=None,
+                        help="human-corrected real labels (default: "
+                             "labels.human.jsonl, else labels.jsonl)")
     p_prep.add_argument("--synthetic", type=Path,
                         default=REPO_ROOT / "labels" / "bars_synthetic" / "labels.jsonl",
                         help="synthetic renders (optional)")
@@ -176,7 +186,11 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "prepare":
-        sources = [(DATA, args.real, max(1, args.real_repeat))]
+        if args.real is None:
+            args.real = _default_real()
+        # Image paths in a labels file are relative to that file's directory,
+        # so a labels file anywhere (e.g. another worktree's labels/bars) works.
+        sources = [(args.real.parent, args.real, max(1, args.real_repeat))]
         if args.synthetic.exists():
             sources.append((args.synthetic.parent, args.synthetic, 1))
         prepare_dataset(sources, args.out)

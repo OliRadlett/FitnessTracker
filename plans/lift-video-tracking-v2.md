@@ -12,10 +12,13 @@
 > F11 (VBT 1RM vs PR). Owner's four workflow notes done (set link, process
 > polling, quick menu, edit counts). Deep-dive fixes: view threshold, bench
 > bar-height rep signal, lifter-coverage quality gate, squat/deadlift classifier.
-> **Blocked / deferred**: T3 learned detector (needs training data); T4 trained
-> classifier; T2 gravity alignment + anthropometric scale (needs a stature
-> input) + vidstab; F6 grounded coaching (Gemini quota); F10 multi-view 3D
-> (needs two camera angles).
+> **Blocked / deferred**: T4 trained classifier; T2 gravity alignment +
+> anthropometric scale (needs a stature input) + vidstab; F6 grounded coaching
+> (Gemini quota); F10 multi-view 3D (needs two camera angles).
+> **T3 (2026-09-25)**: zero-shot / classical / optical-flow shortcuts were
+> investigated and **rejected** against the 232-frame human plate set — the
+> unlock is a *trained* detector on the existing labels + synthetic renders.
+> See "Detector-approach investigation" under T3.
 > **Owner decision**: Hybrid architecture continues — deterministic 3D
 > measurement produces all numbers; a VLM/LLM produces grounded qualitative
 > coaching only, on demand.
@@ -274,6 +277,64 @@ depth accuracy ≥ 0.9 on ¾ clips.
 - ✅ **Label speed-ups**: `propagate_labels.py` (interpolate between human
   anchors within a clip), `prefill_with_model.py` (model seeds; `--skip-human-clips`
   leaves started clips to propagation), `label_server.py` (resume + Enter-confirm).
+- 🔬 **Detector-approach investigation (2026-09-25) — negative results, recorded
+  so we don't retry them.** Scored against the now **232-frame / 29-clip** human
+  plate set (`labels/bars/labels.human.jsonl`). Harness: `scripts/validate_tracking.py`,
+  `scripts/eval_yolo_world.py`, `scripts/eval_cotracker.py`.
+  - **Classical (Hough + new `detect_bar_ellipse`)**: 43/232 = **18%**
+    oracle-seeded frames. The contour + `fitEllipse` plate detector added **2**
+    hits out of 232 — it does not fire on ¾-view plates. Classical CV is a dead
+    end here.
+  - **YOLO-World zero-shot** (`yolov8x-worldv2`; prompts `barbell`/`weight
+    plate`/`dumbbell`; **no training**): 41% frame containment at conf 0.05, but
+    at conf ≥ 0.25 the top box is a **static** object (a spare plate / equipment
+    on a rack), not the moving barbell. Unreliable standalone; open-vocab is not
+    the answer for this footage.
+  - **CoTracker3 propagation** (proxy-seeded, median over tracks): validated on
+    **all 29 clips / 239 GT points** — mean error **0.250 vs 0.259** for the raw
+    pose proxy (**~4% better**). It tracks faithfully but "garbage in, garbage
+    out": propagating a poor proxy does not create accuracy. **Not adopted.**
+  - **Per-clip offset correction** (`bar_track_from_frame_paths`: proxy shifted
+    by the median detector↔proxy offset, re-seeded once) — **~2× better where
+    the detector fires** (0.108 vs 0.28 on a side-view clip), but
+    coverage-limited.
+  → **Conclusion**: keep the offset correction; drop CoTracker; **retrain the
+    detector** on the 232-frame human set + 1,500 synthetic renders.
+- ✅ **Retrained + validated (2026-09-25)**: `train_bar_detector.py prepare` now
+  defaults to `labels.human.jsonl` (232 plate frames / 29 clips) and merges the
+  1,500 synthetic renders → **2,394 train / 349 val**; `train --epochs 60`
+  (Modal T4, `yolov8n` → ONNX `nms=True`) ran end-to-end (12 MB ONNX from the
+  Modal Volume). Scored with `detect_bars_onnx`:
+
+  | split | recall@0.5 | mean IoU | n |
+  |---|---|---|---|
+  | **val (held out)** human | **0.971** | 0.863 | 103 |
+  | val (held out) synthetic | 0.955 | 0.876 | 1,502 |
+  | train human | 1.000 | 0.952 | 2,436 |
+
+  This is the decisive comparison — **classical 18%**, **YOLO-World zero-shot
+  ~23% IoU**, **trained detector 97% recall on held-out human frames**. The
+  earlier "0% on some clips" model had only 144 labelled frames; the 232-frame
+  set fixes the generalisation.
+- ✅ **Clip-level holdout (2026-09-25)**: `scripts/holdout_bar_detector.py` — 6
+  clips held out entirely, model retrained without them: **recall@0.5 1.000,
+  mean IoU 0.927** across 48 unseen-clip frames (per-clip IoU 0.87–0.98). The
+  detector genuinely generalises to unseen clips, not just unseen frames.
+- ✅ **End-to-end bar-position error (2026-09-25)** — the number that matters,
+  scored at every GT frame across all 29 clips (239 points):
+
+  | track source | mean error |
+  |---|---|
+  | pose proxy | 0.259 |
+  | proxy-seeded CoTracker3 | 0.250 |
+  | **trained ONNX detector** | **0.063** |
+
+  The detector beats the proxy on **28/29 clips** — a **4.1×** improvement. This
+  is the unlock T3 was waiting for; the offset correction now becomes a small
+  residual cleanup rather than the load-bearing fix.
+- ⏳ Remaining: upload the ONNX to R2 (`models/bar_detector.onnx`), set
+  `VIDEO_BAR_DETECTOR_MODEL`, flip `VIDEO_BAR_DETECTION_ENABLED`, then re-run the
+  chain (bar-path metrics + `PoseCanvas` trail) against the human set.
 - **Labelling conventions**: `person` = the whole visible body **including arms**
   (one box) — matches the auto-labels (all landmarks) + COCO; only `plate`/
   `barbell` feed the bar path, so `person` is optional. Side views: label only

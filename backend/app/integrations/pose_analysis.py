@@ -1980,7 +1980,8 @@ def run_pose_analysis(
 
             bar_track = bar_track_from_frame_paths(
                 frame_paths, [r["landmarks"] for r in records], exercise,
-                model_path=bar_detector_model or None)
+                model_path=bar_detector_model or None,
+                presence=[r.get("presence") for r in records])
     if bar_track is None:
         bar_track = bar_track_from_landmarks(
             landmarks, track.get("presence"), exercise)
