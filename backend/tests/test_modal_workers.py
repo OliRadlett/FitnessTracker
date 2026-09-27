@@ -32,6 +32,47 @@ WORKERS = [
     (route_intelligence, "_analyze_routes_modal"),
 ]
 
+# Modal workers defined in a module that is NOT mounted standalone but shares
+# the app package. The road-graph workers must not import app.config at module
+# scope or inside the worker (pitfall #33: bare image lacks pydantic_settings).
+_ROAD_GRAPH_WORKERS = (
+    "app.integrations.route_road_graph",
+    ("_match_routes_road_modal", "_build_road_graph_modal", "_download_osm_region"),
+)
+
+
+def test_road_graph_workers_avoid_app_config():
+    """The road-graph Modal workers must not touch app.config (pitfall #33)."""
+    import ast
+
+    import app.integrations.route_road_graph as rr
+
+    src = Path(rr.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    for name in _ROAD_GRAPH_WORKERS[1]:
+        fn = next(
+            (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name),
+            None,
+        )
+        assert fn is not None, f"{name} missing"
+        # Walk only real import statements (docstrings mentioning app.config are
+        # fine — the guard is about imports inside the Modal container).
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                mods = [node.module or ""]
+            else:
+                continue
+            for mod in mods:
+                top = mod.split(".")[0]
+                assert top not in ("pydantic_settings",), (
+                    f"{name} imports {mod} (pitfall #33)"
+                )
+                assert not mod.startswith("app.config"), (
+                    f"{name} imports {mod} (pitfall #33)"
+                )
 
 @pytest.mark.parametrize("module,fn_name", WORKERS)
 def test_modal_worker_is_module_scope(module, fn_name):

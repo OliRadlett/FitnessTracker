@@ -28,6 +28,9 @@ ROAD_MATCH_VERSION = 1
 
 _GEOFABRIK = "https://download.geofabrik.de/{path}-latest.osm.pbf"
 _DEFAULT_VOLUME = "fittrack-osm"
+# Default Geofabrik slug (note: the UK extract lives under `europe/`; a top-level
+# `great-britain` returns a 9 KB HTML error page with HTTP 200).
+_DEFAULT_GEOFABRIK_PATH = "europe/united-kingdom"
 
 
 def _geofabrik_url(geofabrik_path: str) -> str:
@@ -113,13 +116,14 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
         return out
 
     # One pass with locations applied on the fly (nodes precede ways in a PBF).
-    # A disk-backed location index keeps RAM bounded while resolving way node
-    # refs across the whole extract; fall back to the default in-memory index.
+    # Prefer the in-memory index (fast); fall back to a disk-backed one if RAM
+    # is insufficient. If the PBF is a pre-clipped ``{region}-roads.osm.pbf`` the
+    # in-memory index is small and this is quick.
     try:
-        return _run("sparse_file_array,/tmp/fittrack_osm_nodes.idx")
-    except Exception as e:
-        logger.warning(f"OSM disk-backed index unavailable ({e}); using in-memory")
         return _run(None)
+    except Exception as e:
+        logger.warning(f"OSM in-memory index unavailable ({e}); using disk-backed")
+        return _run("sparse_file_array,/tmp/fittrack_osm_nodes.idx")
 
 
 def _match_routes_road_modal(
@@ -211,14 +215,17 @@ def _match_routes_road_modal(
 def _build_road_graph_modal(
     region: str,
     bbox: tuple[float, float, float, float],
+    vol_name: str,
     osm_dir: str = "/osm",
 ) -> dict:
-    """Modal worker: parse the region PBF once and cache a road GeoJSON in the Volume.
+    """Modal worker: parse the region PBF once and cache a trimmed road GeoJSON.
 
-    Module-global (Modal rejects closures). Prefers a pre-clipped
-    ``{region}-roads.osm.pbf`` (from ``osmium extract``) so the parse is fast;
-    otherwise parses ``{region}-latest.osm.pbf``. Writes
-    ``{region}-roads.geojson`` and commits the Volume. Returns stats.
+    Module-global (Modal rejects closures). ``vol_name`` is passed as a plain
+    string — the worker must NOT import ``app.config`` (pitfall #33). Prefers a
+    bbox-clipped ``{region}-roads.osm.pbf`` if present, else parses
+    ``{region}-latest.osm.pbf``. Only edge segments whose midpoint is inside the
+    (padded) bbox are written, keeping the cache small, then the Volume is
+    committed. Returns stats.
     """
     import json as _json
     import os
@@ -230,55 +237,105 @@ def _build_road_graph_modal(
         return {"error": f"no PBF found for region {region}"}
 
     edges = _build_edges_from_pbf(pbf, bbox)
+    if not edges:
+        return {"error": "no edges parsed"}
 
-    features = [
-        {
-            "type": "Feature",
-            "properties": {"way_id": key.split(":")[0], "name": name, "highway": highway},
-            "geometry": {
-                "type": "LineString",
-                "coordinates": [[pt[1], pt[0]] for pt in pts],
-            },
-        }
-        for (key, _u, _v, pts, name, highway) in edges
-    ]
+    # Trim to the padded bbox so the cache stays small (the PBF may be a whole
+    # country); keep edges near the routes only.
+    pad = 0.05
+    min_lat, min_lng, max_lat, max_lng = (
+        bbox[0] - pad,
+        bbox[1] - pad,
+        bbox[2] + pad,
+        bbox[3] + pad,
+    )
+
+    features = []
+    for (key, _u, _v, pts, name, highway) in edges:
+        lat = (pts[0][0] + pts[1][0]) / 2.0
+        lng = (pts[0][1] + pts[1][1]) / 2.0
+        if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
+            continue
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "way_id": key.split(":")[0],
+                    "name": name,
+                    "highway": highway,
+                },
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[pt[1], pt[0]] for pt in pts],
+                },
+            }
+        )
+
     dest = os.path.join(osm_dir, f"{region}-roads.geojson")
     with open(dest, "w") as fh:
-        _json.dump({"type": "FeatureCollection", "features": features}, fh)
+        _json.dump({"type": "FeatureCollection", "features": features}, fh, separators=(",", ":"))
 
     import modal
 
-    modal.Volume.from_name(_volume_name()).commit()
-    return {"pbf_used": os.path.basename(pbf), "edges": len(edges), "dest": dest}
+    modal.Volume.from_name(vol_name).commit()
+    return {"pbf_used": os.path.basename(pbf), "edges": len(features), "dest": dest}
 
 
-def _download_osm_region(region: str, geofabrik_path: str, osm_dir: str = "/osm") -> str:
+def _download_osm_region(
+    region: str,
+    geofabrik_path: str,
+    vol_name: str,
+    bbox: tuple[float, float, float, float] | None = None,
+    osm_dir: str = "/osm",
+) -> str:
     """Download a Geofabrik extract into the mounted Volume (one-off bootstrap).
 
-    ``geofabrik_path`` is the Geofabrik slug (e.g. ``europe/united-kingdom``); the
-    file is stored as ``{region}-latest.osm.pbf`` so the matcher can find it by
-    the logical region key. Raises a plain ``RuntimeError`` (picklable across the
-    Modal boundary) rather than httpx's ``HTTPStatusError``.
+    ``geofabrik_path`` is the Geofabrik slug (e.g. ``europe/united-kingdom``).
+    When ``bbox`` is given the full-country download is clipped to that box with
+    ``osmium extract`` and only the small ``{region}-roads.osm.pbf`` is kept.
+    Validates the response so an HTML error page (Geofabrik returns 200 for some
+    bad slugs) fails loudly. ``vol_name`` is a plain string — no ``app.config``
+    import inside the Modal image (pitfall #33). Commits the Volume before exit.
     """
     import os
+    import subprocess
 
     import httpx
 
     os.makedirs(osm_dir, exist_ok=True)
-    dest = _dest_path(region, osm_dir)
+    dest = os.path.join(osm_dir, f"{region}-roads.osm.pbf")
     url = _geofabrik_url(geofabrik_path)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=600) as resp:
-        if resp.status_code != 200:
+    tmp_full = "/tmp/osm_full.pbf"
+    with httpx.stream("GET", url, follow_redirects=True, timeout=1200) as resp:
+        ctype = resp.headers.get("content-type", "")
+        if resp.status_code != 200 or "html" in ctype:
             raise RuntimeError(
-                f"OSM download failed: HTTP {resp.status_code} for {url}"
+                f"OSM download failed: HTTP {resp.status_code} ({ctype}) for {url} "
+                "— check the Geofabrik slug (UK is 'europe/united-kingdom')"
             )
-        with open(dest, "wb") as fh:
+        with open(tmp_full, "wb") as fh:
             fh.writelines(resp.iter_bytes(1 << 20))
 
-    # Persist to the Volume (otherwise the write is discarded on exit).
+    if os.path.getsize(tmp_full) < 1_000_000:
+        raise RuntimeError(
+            f"OSM download suspiciously small: {os.path.getsize(tmp_full)} bytes"
+        )
+
+    if bbox is not None:
+        min_lat, min_lng, max_lat, max_lng = bbox
+        # osmium extract -b min_lng,min_lat,max_lng,max_lat (note lng first)
+        box = f"{min_lng},{min_lat},{max_lng},{max_lat}"
+        subprocess.run(
+            ["osmium", "extract", "-b", box, "-o", dest, "--overwrite", tmp_full],
+            check=True,
+        )
+        os.remove(tmp_full)
+    else:
+        os.replace(tmp_full, dest)
+
     import modal
 
-    modal.Volume.from_name(_volume_name()).commit()
+    modal.Volume.from_name(vol_name).commit()
     return dest
 
 
@@ -291,6 +348,7 @@ def _image(project_root: str):
     rm_path = f"{project_root}/app/services/road_graph.py"
     return (
         modal.Image.debian_slim(python_version="3.12")
+        .apt_install("osmium-tool")
         .pip_install("osmium", "httpx")
         .add_local_file(rm_path, "/root/road_graph.py")
     )
@@ -353,13 +411,14 @@ def bootstrap_osm_region_on_modal(region: str, geofabrik_path: str) -> str:
 
     project_root = str(Path(__file__).resolve().parent.parent.parent)
     image = _image(project_root)
-    volume = modal.Volume.from_name(_volume_name(), create_if_missing=True)
+    vol_name = _volume_name()
+    volume = modal.Volume.from_name(vol_name, create_if_missing=True)
     app = modal.App("fittrack-route-road-graph", image=image)
     remote = app.function(volumes={"/osm": volume}, timeout=3600, memory=4096)(
         _download_osm_region
     )
     with app.run():
-        return remote.remote(region, geofabrik_path)
+        return remote.remote(region, geofabrik_path, vol_name)
 
 
 def build_road_graph_on_modal(
@@ -384,7 +443,8 @@ def build_road_graph_on_modal(
 
     project_root = str(Path(__file__).resolve().parent.parent.parent)
     image = _image(project_root)
-    volume = modal.Volume.from_name(_volume_name(), create_if_missing=True)
+    vol_name = _volume_name()
+    volume = modal.Volume.from_name(vol_name, create_if_missing=True)
     app = modal.App("fittrack-route-road-graph", image=image)
     download = app.function(volumes={"/osm": volume}, timeout=3600, memory=4096)(
         _download_osm_region
@@ -396,7 +456,7 @@ def build_road_graph_on_modal(
     with app.run():
         if geofabrik_path:
             try:
-                download.remote(region, geofabrik_path)
+                download.remote(region, geofabrik_path, vol_name, bbox)
             except Exception as e:
                 logger.warning(f"OSM clipped download skipped ({e})")
-        return build.remote(region, bbox)
+        return build.remote(region, bbox, vol_name)
