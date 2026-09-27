@@ -18,7 +18,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function VideosPage() {
   usePageTitle('Videos');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const [exerciseFilter, setExerciseFilter] = useState('');
@@ -37,6 +37,7 @@ export default function VideosPage() {
   const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
+    enabled: !!token,
     staleTime: 30_000,
     // Poll while any video is queued/processing so the badge flips to
     // Processed automatically (Modal runs take ~1-2 min).
@@ -69,14 +70,14 @@ export default function VideosPage() {
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=50'),
     staleTime: 60_000,
-    enabled: showAddForm,
+    enabled: showAddForm && !!token,
   });
 
   const { data: prs = [] } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs?limit=50'),
     staleTime: 60_000,
-    enabled: showAddForm,
+    enabled: showAddForm && !!token,
   });
 
   const deleteMutation = useMutation({

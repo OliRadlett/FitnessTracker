@@ -101,6 +101,7 @@ export default function TrainingPage() {
   const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErrorMessage } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans'],
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
+    enabled: !!token,
   });
 
   // Auto-select the most recent active plan on initial load
@@ -121,17 +122,19 @@ export default function TrainingPage() {
    const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
     queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${selectedPlanId}`),
-    enabled: !!selectedPlanId,
+    enabled: !!selectedPlanId && !!token,
   });
 
   const { data: events } = useQuery<Event[]>({
     queryKey: ['events', 'upcoming'],
     queryFn: () => authFetch<Event[]>('/api/v1/events?upcoming_only=true'),
+    enabled: !!token,
   });
 
   const { data: periodizationChart } = useQuery<ChartData>({
      queryKey: ['chart-periodization', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
+    enabled: !!token,
   });
 
   // ── Mutations ───────────────────────────────────────────────────────

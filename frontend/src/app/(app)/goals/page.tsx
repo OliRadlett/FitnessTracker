@@ -22,7 +22,7 @@ const TABS: { key: StatusTab; label: string }[] = [
 
 export default function GoalsPage() {
   usePageTitle('Goals');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const [tab, setTab] = useState<StatusTab>('active');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
@@ -37,6 +37,7 @@ export default function GoalsPage() {
   } = useQuery<Goal[]>({
     queryKey: ['goals', tab],
     queryFn: () => listGoals(authFetch, statusFilter),
+    enabled: !!token,
     staleTime: 60_000,
   });
 

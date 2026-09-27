@@ -17,12 +17,13 @@ const BADGE_STYLES: Record<string, string> = {
  * Fetches projections for up to 5 active goals that have a target_date.
  */
 export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) => void }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   // Fetch active goals
   const { data: goals } = useQuery<Goal[]>({
     queryKey: ['goals', 'active'],
     queryFn: () => listGoals(authFetch, 'active'),
+    enabled: !!token,
     staleTime: 60_000,
   });
 
@@ -43,7 +44,7 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
       );
       return results.filter(Boolean) as GoalProjectionResponse[];
     },
-    enabled: eligibleGoals.length > 0,
+    enabled: eligibleGoals.length > 0 && !!token,
     staleTime: 5 * 60_000,
   });
 

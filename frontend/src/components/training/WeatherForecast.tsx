@@ -82,6 +82,7 @@ export function WeatherForecast() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['weather-forecast'],
     queryFn: () => getForecast(token, 7),
+    enabled: !!token,
     staleTime: 30 * 60_000,
     retry: false, // 404 (no location set) is a normal state
   });

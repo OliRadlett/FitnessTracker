@@ -131,7 +131,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
 
 export default function LiftingPage() {
   usePageTitle('Lifting');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -167,18 +167,21 @@ export default function LiftingPage() {
   const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
+    enabled: !!token,
     staleTime: 60_000,  // 1 min
   });
 
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 
   const { data: weeklyVolumeChart, isLoading: weeklyVolumeLoading } = useQuery<ChartData>({
     queryKey: ['chart-weekly-volume', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 
@@ -202,31 +205,33 @@ export default function LiftingPage() {
     queryFn: () => authFetch<ChartData>(
       `/api/v1/charts/estimated_1rm_history?exercise_name=${encodeURIComponent(effectiveE1rmExercise)}`
     ),
-    enabled: !!effectiveE1rmExercise,
+    enabled: !!effectiveE1rmExercise && !!token,
     staleTime: 300_000,
   });
 
   const { data: sessionDetail } = useQuery<LiftingSession>({
     queryKey: ['lifting-session', selectedSessionId],
     queryFn: () => authFetch<LiftingSession>(`/api/v1/lifting/sessions/${selectedSessionId}`),
-    enabled: !!selectedSessionId,
+    enabled: !!selectedSessionId && !!token,
   });
 
   const { data: sessionAnalysis } = useQuery<LiftingAnalysis>({
     queryKey: ['lifting-analysis', selectedSessionId],
     queryFn: () => authFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${selectedSessionId}/analysis`),
-    enabled: !!selectedSessionId,
+    enabled: !!selectedSessionId && !!token,
   });
 
   const { data: personalRecords, isLoading: prLoading } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs'),
+    enabled: !!token,
     staleTime: 300_000,  // 5 min — PRs change rarely
   });
 
   const { data: allVideos } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos'],
     queryFn: () => authFetch<LiftVideo[]>('/api/v1/lifting/videos/?limit=200'),
+    enabled: !!token,
     staleTime: 60_000,
   });
 
@@ -273,6 +278,7 @@ export default function LiftingPage() {
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
     queryKey: ['deficiency'],
     queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
+    enabled: !!token,
     staleTime: 600_000,  // 10 min — expensive server-side computation
   });
 
@@ -325,6 +331,7 @@ export default function LiftingPage() {
   const { data: volumeResponse, isLoading: volumeLoading } = useQuery<VolumeTrendResponse>({
     queryKey: ['lifting-volume'],
     queryFn: () => authFetch<VolumeTrendResponse>('/api/v1/lifting/volume-trends?weeks=12'),
+    enabled: !!token,
     staleTime: 300_000,  // 5 min — volume trends are expensive
   });
   const volumeData = volumeResponse?.data;

@@ -8,12 +8,13 @@ import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration } from '@/lib/utils';
 
 export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const { data: linkableActivities, isLoading, isError, error } = useQuery<Activity[]>({
     queryKey: ['linkable-activities', sessionId],
     queryFn: () => authFetch<Activity[]>(`/api/v1/lifting/sessions/${sessionId}/linkable-activities`),
+    enabled: !!token,
   });
 
   const linkMutation = useMutation({
