@@ -86,13 +86,13 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
 
-## Database (42 tables, UUID PKs)
+## Database (43 tables, UUID PKs)
 
 **Relationships (compact)**:
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
@@ -132,22 +132,30 @@ Modal serverless containers handle compute-heavy features that would be too expe
 | `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to incremental window (start → today) |
 | `sync_all_withings_data` | 30 min | Incremental via watermark (−24h overlap). Scale weigh-ins → `WeightLog` (`source="withings"`) with BIA body composition; needs `WITHINGS_CLIENT_ID/SECRET` |
 | `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
+| `compute_athlete_insights_nightly` | Daily 3AM UTC | Deterministic athlete-model insights (Feature 3/B-15) — six observed-coefficient insights upserted per user via `services/analytics.py` |
 | `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
 | `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today). Also fires `goal_milestone` notifications on 50/75/100% crossings |
+| `weekly_plan_review` | Weekly Mon 6:15AM | Fires a `plan_review` notification per user with an active plan (FL2) |
+| `send_weekly_digest` | Weekly Mon 8AM | Weekly summary / `streak_milestone` / `deload_started` notifications (B-22) |
 | `send_plan_reminders` | Daily 7AM UTC | Fires a `plan_reminder` notification per user when today's active plan has a non-rest session (dedup per date) |
 | `send_event_day_notifications` | Daily 6:30AM UTC | Fires a `race_day` notification per user with an event today (dedup per event id) |
+| `send_event_countdown_notifications` | Daily 6:45AM UTC | `event_countdown` (1–7 days out, deduped per day), `taper_start`, and bad-weather `ride_weather` notifications |
 | `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
 | `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
 | `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
+| `check_stale_ftp` | Weekly Sun 4:15AM | Notifies `ftp_stale` on >10% / >20 W divergence or a missing FTP for `auto_estimate_ftp=False` profiles |
+| `check_cycling_prs_weekly` | Weekly Sun 4:30AM | Records lifetime cycling power PRs (`CyclingPowerRecord`) |
 | `fit_personalized_power_models` | Weekly Sun 5:30AM | Fits CP/W'/Pmax (Morton 3-param), personalized VO2max from power-HR regression, adaptive CTL/ATL time constants via Modal |
 | `analyze_weather_performance_weekly` | Weekly Sun 6AM | Analyzes weather-performance correlations via Modal: power vs temp, wind penalties, decoupling thresholds, personalized insights |
 | `analyze_segments_intelligence_weekly` | Weekly Sun 6:15AM | Clusters segments by gradient signature via DBSCAN, classifies climb types, predicts personal VAM/power/difficulty |
 | `analyze_cross_domain_weekly` | Weekly Sun 7AM | Cross-domain correlation: sleep-performance, lifting-cycling fatigue, race retrospective |
 | `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs for all cycling routes |
 | `classify_route_terrain` | Weekly Sat 2:30AM | Classifies terrain (flat/rolling/hilly/mountainous) for routes with elevation profiles. Uses Modal when configured, falls back to local |
+| `compute_route_quality_scores` | Weekly Sun 3AM | Recomputes route quality scores for all routes |
 | `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
+| `aggregate_video_analyses_weekly` | Weekly Sun 7:30AM UTC | Per-exercise video aggregation + injury-risk flags + RPE calibration + lifting-TSS backfill (B-27/B-29/B-30) |
 | `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
 | `process_strava_webhook_events` | 5 min | Drains the `strava_webhook_events` queue oldest-first, with attempts/error tracking and retry-then-fail |
 | `reconcile_strava_activities` | Weekly Sun 4:30AM UTC | Heals drift (missed deletes/renames) against the Strava list within a bounded recent window |
@@ -167,7 +175,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **No raw SQL**: Use SQLAlchemy `select()` constructs
 - **Service signature**: `(db: AsyncSession, user_id: UUID, ...)` — services don't use FastAPI DI
 - **Structured logging**: JSON in production, human-readable in debug. Correlation IDs via middleware.
-- **Rate limiting**: slowapi (100/min global, 20/min auth). In-memory — won't work across multiple workers.
+- **Rate limiting**: auth/`/sync-user` requests go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), shared across workers, fail-open on Redis outage). A slowapi `Limiter` is instantiated but **not** registered as middleware, so no global per-IP cap is actually enforced (SEC-03).
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
 - **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
@@ -198,7 +206,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
 6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
 7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/fittrack*` → frontend (with `/api/auth*` redirected to `/fittrack` for NextAuth basePath), `/api/v1/*` → backend, `/health` → backend
-8. **Alembic numbering**: Revisions are sequential `"001"`→head (`061`). ⚠️ Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"` (chain is 002→004→005, intact; do NOT rename the file). Trust `revision`/`down_revision` headers, not filenames
+8. **Alembic numbering**: Revisions are sequential `"001"`→head (`077`). ⚠️ Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"` (chain is 002→004→005, intact; do NOT rename the file). Trust `revision`/`down_revision` headers, not filenames
 9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
 10. **fitparse/reportlab/boto3**: New dependencies — rebuild backend container after adding
 11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
