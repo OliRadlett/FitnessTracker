@@ -31,6 +31,10 @@ _CONSISTENCY_SAMPLES = 20
 # MediaPipe pose foot landmarks (heel, foot index) — used for the midfoot line.
 _HEEL_IDX = (29, 30)
 _FOOT_IDX = (31, 32)
+# Minimum foot length (fraction of the image) before the midfoot normalisation
+# is trusted — a tiny / partly-occluded foot makes the ratio explode (a real
+# clip read 4.7 foot-lengths because the feet were barely in frame).
+_MIN_FOOT_LEN = 0.04
 
 
 def _proxy_point(lm, exercise: str) -> tuple[float, float]:
@@ -199,7 +203,7 @@ def analyze_bar_path(
                     continue
                 lm = landmarks[i]
                 mf = _midfoot(lm) if lm is not None else None
-                if mf and mf[1] > 1e-6:
+                if mf and mf[1] >= _MIN_FOOT_LEN:
                     offs.append((float(bar_track[i]["x"]) - mf[0]) / mf[1])
             if offs:
                 entry["bar_over_midfoot"] = round(float(np.mean(offs)), 3)
@@ -251,5 +255,11 @@ def analyze_bar_path(
         result["note"] = (
             "Proxy track (shoulder/wrist midpoint, not the bar) — lateral "
             "drift/J-curve are indicative only. Bar tilt needs the detector."
+        )
+    elif source == "proxy_offset":
+        result["note"] = (
+            "Detector-tracked bar: the absolute offset is corrected, but the "
+            "lateral motion still follows the pose proxy, so net lateral is "
+            "indicative; bar tilt comes from the real plates."
         )
     return result
