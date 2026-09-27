@@ -112,14 +112,18 @@ export default function CyclingPage() {
   }, []);
 
   // ── Queries ─────────────────────────────────────────────────────────────
-  const { data: profile, isLoading: profileLoading } = useQuery<CyclingProfile>({
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    isError: profileError,
+  } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
     staleTime: 300_000,
     enabled: !!token,
   });
 
-  const { data: metrics } = useQuery<CyclingMetricsSummary>({
+  const { data: metrics, isError: metricsError } = useQuery<CyclingMetricsSummary>({
     queryKey: ['cycling-metrics'],
     queryFn: () => authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary'),
     staleTime: 120_000,
@@ -496,6 +500,7 @@ export default function CyclingPage() {
   }
 
   const currentLoad = trainingLoad?.data?.[trainingLoad.data.length - 1];
+  const hasQueryError = profileError || metricsError;
 
   return (
     <div className="space-y-8">
@@ -503,6 +508,20 @@ export default function CyclingPage() {
         <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
+
+      {/* ── Core query error banner ─────────────────────────────────────────── */}
+      {hasQueryError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
+          <span>Some cycling data failed to load.</span>
+          <button
+            type="button"
+            onClick={() => queryClient.invalidateQueries()}
+            className="shrink-0 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Profile Editor (collapsible — summary row, 1.8) */}
       <Card>

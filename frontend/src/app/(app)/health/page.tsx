@@ -46,7 +46,7 @@ export default function HealthPage() {
 
   const chartOptions = { staleTime: 300_000 } as const;
 
-  const { data: readiness } = useQuery<ReadinessResponse>({
+  const { data: readiness, isError: readinessError } = useQuery<ReadinessResponse>({
     queryKey: ['readiness'],
     queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
     staleTime: 300_000,
@@ -140,7 +140,11 @@ export default function HealthPage() {
   });
 
   // ── Health alert history ─────────────────────────────────────────────────
-  const { data: alerts, isLoading: alertsLoading } = useQuery<HealthAlert[]>({
+  const {
+    data: alerts,
+    isLoading: alertsLoading,
+    isError: alertsError,
+  } = useQuery<HealthAlert[]>({
     queryKey: ['health-alerts', alertTab],
     queryFn: () =>
       authFetch<HealthAlert[]>(
@@ -164,6 +168,7 @@ export default function HealthPage() {
   });
 
   const sleepingLoading = !sleepConsistency && !sleepDebt && !optimalBedtime;
+  const hasQueryError = readinessError || alertsError;
 
   return (
     <div className="space-y-8">
@@ -173,6 +178,20 @@ export default function HealthPage() {
           Recovery, sleep, trends, and health alerts — powered by Whoop.
         </p>
       </div>
+
+      {/* ── Core query error banner ─────────────────────────────────────────── */}
+      {hasQueryError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
+          <span>Some health data failed to load.</span>
+          <button
+            type="button"
+            onClick={() => queryClient.invalidateQueries()}
+            className="shrink-0 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* ── Status Row ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
