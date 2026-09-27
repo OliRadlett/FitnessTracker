@@ -61,52 +61,65 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
 
     ``bbox`` = (min_lat, min_lng, max_lat, max_lng). Returns a list of
     ``(key, u, v, [(lat, lng), ...], name, highway)``. Uses pyosmium's location
-    index so way node refs resolve to coordinates.
+    index so way node refs resolve to coordinates. Tries a disk-backed index
+    (bounded RAM) and falls back to the default in-memory index.
     """
     import osmium
 
     min_lat, min_lng, max_lat, max_lng = bbox
-    out: list[tuple] = []
 
-    class _Handler(osmium.SimpleHandler):
-        def way(self, w):
-            highway = w.tags.get("highway")
-            if not highway:
-                return
-            name = w.tags.get("name")
-            way_id = w.id
-            prev = None
-            idx = 0
-            for node in w.nodes:
-                loc = node.location
-                if not loc.valid():
-                    prev = None
-                    continue
-                pt = (loc.lat, loc.lon)
-                if not (min_lat <= pt[0] <= max_lat and min_lng <= pt[1] <= max_lng):
-                    prev = None
-                    continue
-                if prev is not None:
-                    idx += 1
-                    out.append(
-                        (
-                            f"{way_id}:{idx}",
-                            f"{way_id}:{idx - 1}",
-                            f"{way_id}:{idx}",
-                            [prev, pt],
-                            name,
-                            highway,
+    def _run(idx_value: str | None) -> list[tuple]:
+        out: list[tuple] = []
+
+        class _Handler(osmium.SimpleHandler):
+            def way(self, w):
+                highway = w.tags.get("highway")
+                if not highway:
+                    return
+                name = w.tags.get("name")
+                way_id = w.id
+                prev = None
+                idx = 0
+                for node in w.nodes:
+                    loc = node.location
+                    if not loc.valid():
+                        prev = None
+                        continue
+                    pt = (loc.lat, loc.lon)
+                    if not (
+                        min_lat <= pt[0] <= max_lat and min_lng <= pt[1] <= max_lng
+                    ):
+                        prev = None
+                        continue
+                    if prev is not None:
+                        idx += 1
+                        out.append(
+                            (
+                                f"{way_id}:{idx}",
+                                f"{way_id}:{idx - 1}",
+                                f"{way_id}:{idx}",
+                                [prev, pt],
+                                name,
+                                highway,
+                            )
                         )
-                    )
-                prev = pt
+                    prev = pt
 
-    index = osmium.index.create_map("flex_mem")
-    locations = osmium.NodeLocationsForWays(index)
-    locations.ignore_errors()
-    locations.apply_file(pbf_path)
-    handler = _Handler()
-    handler.apply_file(pbf_path, locations=True)
-    return out
+        handler = _Handler()
+        if idx_value is None:
+            handler.apply_file(pbf_path, locations=True)
+        else:
+            handler.apply_file(pbf_path, locations=True, idx=idx_value)
+        return out
+
+    # One pass with locations applied on the fly (nodes precede ways in a PBF).
+    # A disk-backed location index keeps RAM bounded while resolving way node
+    # refs across the whole extract; fall back to the default in-memory index.
+    try:
+        return _run("sparse_file_array,/tmp/fittrack_osm_nodes.idx")
+    except Exception as e:
+        logger.warning(f"OSM disk-backed index unavailable ({e}); using in-memory")
+        return _run(None)
 
 
 def _match_routes_road_modal(
@@ -250,7 +263,7 @@ def match_routes_to_roads_on_modal(
     image = _image(project_root)
     volume = modal.Volume.from_name(_volume_name(), create_if_missing=True)
     app = modal.App("fittrack-route-road-graph", image=image)
-    remote = app.function(volumes={"/osm": volume}, timeout=900, memory=8192)(
+    remote = app.function(volumes={"/osm": volume}, timeout=1800, memory=16384)(
         _match_routes_road_modal
     )
 
