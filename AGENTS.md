@@ -184,7 +184,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
 - **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
-- **Jev free-text tagging**: `TYPESAFE_API_KEY` enables TypeSafe Jev to tag `LiftingSession.notes` into `ai_tags` (optional — `services/jev_tagging` no-ops when unset; best-effort, never blocks a write). Backfilled weekly by `backfill_free_text_tags`. What is sent: [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md); plan: [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
+- **Jev decision layer**: `TYPESAFE_API_KEY` enables TypeSafe Jev (optional — every call site no-ops when unset; best-effort, never blocks a write). Phases: (1) tag `LiftingSession.notes` → `ai_tags`; (2) tag `Activity.name` → `Activity.context['tags']` purpose; (3) arbitrate the route-duplicate **review tier** (`route_service._apply_route_arbitration`); (4) arbitrate the ambiguous activity↔lifting-session match band (`strava/linking._arbitrate_link`). Weekly backfill: `backfill_free_text_tags`. What is sent: [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md); plan: [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
 - **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation — never import `async_session_factory` directly in tasks
 
 ### Frontend
