@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { useToast } from '@/components/ui/Toast';
 import { useAuthFetch, Connection } from '@/lib/api';
 import type { CyclingProfile } from '@/lib/api';
 import { ExerciseManager } from '@/components/settings/ExerciseManager';
@@ -113,6 +114,7 @@ export default function SettingsPage() {
   const units = useUnits();
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [, setLoading] = useState(true);
@@ -192,6 +194,7 @@ export default function SettingsPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export failed:', err);
+      toast.error(`Export failed: ${(err as Error)?.message || 'please try again.'}`);
     }
   }
 
@@ -268,6 +271,7 @@ export default function SettingsPage() {
       setConnections(connections.filter(c => c.id !== connectionId));
     } catch (err) {
       console.error('Failed to disconnect:', err);
+      toast.error(`Disconnect failed: ${(err as Error)?.message || 'please try again.'}`);
     }
   }
 

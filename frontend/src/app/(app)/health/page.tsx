@@ -15,6 +15,7 @@ import type {
   HealthAlert,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { useToast } from '@/components/ui/Toast';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -40,6 +41,7 @@ export default function HealthPage() {
   usePageTitle('Health');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [alertTab, setAlertTab] = useState<'all' | 'active' | 'dismissed'>('all');
 
   const chartOptions = { staleTime: 300_000 } as const;
@@ -158,6 +160,7 @@ export default function HealthPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['health-alerts'] });
     },
+    onError: (err) => toast.error(`Dismiss alert failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const sleepingLoading = !sleepConsistency && !sleepDebt && !optimalBedtime;
