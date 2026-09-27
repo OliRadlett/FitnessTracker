@@ -18,6 +18,12 @@ export function diffDays(a: string, b: string): number {
   );
 }
 
+export function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return toDateStr(d);
+}
+
 export function mondayOf(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
   const offset = (d.getDay() + 6) % 7;

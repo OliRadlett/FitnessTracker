@@ -38,6 +38,7 @@ import {
 import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { getActiveLocale } from '@/lib/utils';
+import { getTotalWeeks } from '@/lib/training/week';
 import { RoutePickerModal } from './RoutePickerModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -101,21 +102,9 @@ function addDays(dateStr: string, n: number): string {
   return toDateStr(d);
 }
 
-function diffDays(a: string, b: string): number {
-  return Math.round(
-    (new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) /
-      86400000,
-  );
-}
-
 function getWeekDates(startDate: string, weekIndex: number): string[] {
   const weekStart = addDays(startDate, weekIndex * 7);
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-}
-
-function getTotalWeeks(startDate?: string, endDate?: string): number {
-  if (!startDate || !endDate) return 1;
-  return Math.max(1, Math.ceil((diffDays(startDate, endDate) + 1) / 7));
 }
 
 function getDayOfWeek(dateStr: string): string {

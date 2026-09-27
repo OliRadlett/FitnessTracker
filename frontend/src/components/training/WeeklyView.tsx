@@ -27,6 +27,13 @@ import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanAc
 import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
+import {
+  toDateStr,
+  addDays,
+  getWeek1Start,
+  getTotalWeeks,
+  getCurrentWeek,
+} from '@/lib/training/week';
 import { ConformityBadge } from './ConformityBadge';
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
@@ -75,52 +82,10 @@ const ZONE_DOT_COLORS: Record<string, string> = {
 
 // ─── Date helpers ─────────────────────────────────────────────────────────
 
-function toDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
-
-function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return toDateStr(d);
-}
-
-function diffDays(a: string, b: string): number {
-  return Math.round(
-    (new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000,
-  );
-}
-
-function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  // JS getDay(): 0=Sun…6=Sat → convert to Mon-based offset
-  const offset = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - offset);
-  return toDateStr(d);
-}
-
-/**
- * Week math mirrors the backend exactly:
- *   week1_start = plan.start_date − weekday(plan.start_date)
- *   total_weeks = ((end − week1_start).days // 7) + 1
- */
-function getWeek1Start(plan: TrainingPlan): string {
-  return mondayOf(plan.start_date);
-}
-
-function getTotalWeeks(plan: TrainingPlan): number {
-  if (!plan.end_date) return 1;
-  return Math.max(1, Math.floor(diffDays(getWeek1Start(plan), plan.end_date) / 7) + 1);
-}
-
-function getCurrentRealWeek(plan: TrainingPlan): number {
-  const totalWeeks = getTotalWeeks(plan);
-  const today = toDateStr(new Date());
-  const raw = Math.floor(diffDays(getWeek1Start(plan), today) / 7) + 1;
-  return Math.min(totalWeeks, Math.max(1, raw));
-}
+// Week math lives in @/lib/training/week (shared with PlanBuilder / Today)
+// and mirrors the backend exactly:
+//   week1_start = plan.start_date − weekday(plan.start_date)
+//   total_weeks = ((end − week1_start).days // 7) + 1
 
 // ─── Small formatters ─────────────────────────────────────────────────────
 
@@ -198,13 +163,18 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const totalWeeks = useMemo(() => getTotalWeeks(plan), [plan]);
-  const [currentWeek, setCurrentWeek] = useState(() => getCurrentRealWeek(plan));
+  const totalWeeks = useMemo(
+    () => getTotalWeeks(plan.start_date, plan.end_date),
+    [plan.start_date, plan.end_date],
+  );
+  const [currentWeek, setCurrentWeek] = useState(() =>
+    getCurrentWeek(plan.start_date, plan.end_date),
+  );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
 
-  const realCurrentWeek = getCurrentRealWeek(plan);
+  const realCurrentWeek = getCurrentWeek(plan.start_date, plan.end_date);
   const todayStr = toDateStr(new Date());
 
   // FL1 — last refresh-targets result (counts + CP/FTP cross-check), shown
@@ -322,7 +292,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
 
   // ── Derived data ────────────────────────────────────────────────────────
   const weekData = weekQuery.data;
-  const weekStart = weekData?.week_start ?? addDays(getWeek1Start(plan), (currentWeek - 1) * 7);
+  const weekStart = weekData?.week_start ?? addDays(getWeek1Start(plan.start_date), (currentWeek - 1) * 7);
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart],
