@@ -21,6 +21,23 @@ logger = logging.getLogger(__name__)
 _MODAL_IMAGE = None
 
 
+# Packages installed into the Modal video-compute image. Keep this in sync with
+# every import performed by the mounted analysis modules — a runtime dep the
+# container lacks fails only at call time inside the container.
+# ``onnxruntime`` is required by the T3 learned bar detector
+# (``bar_detection.detect_bars_onnx``, imported lazily): without it the ONNX
+# branch raised ``ModuleNotFoundError`` and aborted the WHOLE pose analysis,
+# losing reps/form/velocity/bar-path (regression found in production 2026-09-27).
+_MODAL_PIP_PACKAGES = (
+    "httpx",
+    "opencv-python-headless",
+    "numpy",
+    "mediapipe>=0.10.30",
+    "protobuf>=3.20,<6",
+    "onnxruntime",
+)
+
+
 def _get_modal_image(project_root: str | None = None):
     """Lazy-load the Modal image to avoid import at module level.
 
@@ -45,13 +62,7 @@ def _get_modal_image(project_root: str | None = None):
                 "libgles2-mesa",
                 "libglib2.0-0",
             )
-            .pip_install(
-                "httpx",
-                "opencv-python-headless",
-                "numpy",
-                "mediapipe>=0.10.30",
-                "protobuf>=3.20,<6",
-            )
+            .pip_install(*_MODAL_PIP_PACKAGES)
         )
 
         # Mount the analysis modules into the container

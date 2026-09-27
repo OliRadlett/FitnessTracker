@@ -46,6 +46,21 @@ def test_modal_worker_is_module_scope(module, fn_name):
     )
 
 
+def test_modal_image_installs_onnxruntime():
+    """The video Modal image must install ``onnxruntime``.
+
+    The T3 learned bar detector (``bar_detection.detect_bars_onnx``) imports
+    ``onnxruntime`` lazily, so a missing runtime only fails at call time inside
+    the container — and because the ONNX branch is taken whenever
+    ``VIDEO_BAR_DETECTOR_MODEL`` is set, it aborted the whole pose analysis
+    (production regression 2026-09-27).
+    """
+    from app.integrations.modal_client import _MODAL_PIP_PACKAGES
+
+    names = {p.split(">=")[0].split("==")[0].strip() for p in _MODAL_PIP_PACKAGES}
+    assert "onnxruntime" in names
+
+
 def test_worker_modules_import_without_config_or_pydantic():
     """The Modal remote container imports each worker module from a bare image.
 
