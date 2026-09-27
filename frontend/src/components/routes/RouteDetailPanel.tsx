@@ -8,6 +8,7 @@ import type { RouteData, MergedRouteView, Segment } from '@/lib/api/types';
 import { getMergedRouteView } from '@/lib/api/routes';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { TabGroup } from '@/components/ui/TabGroup';
+import { useToast } from '@/components/ui/Toast';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { QualityBadge } from '@/components/routes/QualityBadge';
 import { EffortEstimateCard } from '@/components/routes/EffortEstimateCard';
@@ -45,6 +46,7 @@ interface RouteDetailPanelProps {
 export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDetailPanelProps) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [detailTab, setDetailTab] = useState<'overview' | 'map' | 'history' | 'merged' | 'weather' | 'effort' | 'segments'>('overview');
@@ -69,6 +71,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       onClose();
     },
+    onError: (err) => toast.error(`Delete route failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const favoriteMutation = useMutation({
@@ -81,6 +84,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       queryClient.invalidateQueries({ queryKey: ['route', route?.id] });
     },
+    onError: (err) => toast.error(`Favorite route failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const renameMutation = useMutation({
@@ -94,6 +98,8 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
       queryClient.invalidateQueries({ queryKey: ['route', route?.id] });
       setIsRenaming(false);
     },
+    // Keep the inline edit open so the user can correct and retry.
+    onError: (err) => toast.error(`Rename failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   // No placeholder drawer — the map/list takes the space until a route is

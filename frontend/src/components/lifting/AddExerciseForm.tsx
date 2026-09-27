@@ -17,7 +17,7 @@ interface SetRow {
 }
 
 export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const [exerciseName, setExerciseName] = useState('');
@@ -31,6 +31,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
   const { data: warmupTemplates } = useQuery<WarmupTemplate[]>({
     queryKey: ['warmup-templates'],
     queryFn: () => authFetch<WarmupTemplate[]>('/api/v1/lifting/warmup-templates'),
+    enabled: !!token,
   });
 
   // Filter templates that match the current exercise name or are generic (no exercise_name)

@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
 import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
+import { useToast } from '@/components/ui/Toast';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { VideoCompareModal } from '@/components/lifting/VideoCompareModal';
@@ -18,8 +19,9 @@ import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function VideosPage() {
   usePageTitle('Videos');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [exerciseFilter, setExerciseFilter] = useState('');
   const [afterFilter, setAfterFilter] = useState('');
@@ -37,6 +39,7 @@ export default function VideosPage() {
   const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
+    enabled: !!token,
     staleTime: 30_000,
     // Poll while any video is queued/processing so the badge flips to
     // Processed automatically (Modal runs take ~1-2 min).
@@ -69,19 +72,20 @@ export default function VideosPage() {
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=50'),
     staleTime: 60_000,
-    enabled: showAddForm,
+    enabled: showAddForm && !!token,
   });
 
   const { data: prs = [] } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
     queryFn: () => authFetch<PersonalRecord[]>('/api/v1/lifting/prs?limit=50'),
     staleTime: 60_000,
-    enabled: showAddForm,
+    enabled: showAddForm && !!token,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (videoId: string) => deleteLiftVideo(authFetch, videoId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
+    onError: (err) => toast.error(`Delete video failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const processMutation = useMutation({

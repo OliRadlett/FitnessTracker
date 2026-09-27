@@ -18,6 +18,7 @@ export function WeatherWidget() {
   const { data: weather } = useQuery<CurrentWeather | null>({
     queryKey: ['weather-current'],
     queryFn: () => getCurrentWeather(token),
+    enabled: !!token,
     staleTime: 15 * 60_000,
     retry: false, // 404 (no location set) is a normal state
   });

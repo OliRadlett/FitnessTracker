@@ -102,7 +102,7 @@ function buildCalendarDays(currentMonth: Date): Date[] {
 
 export default function CalendarPage() {
   usePageTitle('Calendar');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
   // Sport filter (2.3) — dims non-matching pills so one sport stands out.
@@ -124,6 +124,7 @@ export default function CalendarPage() {
       authFetch<CalendarDayData>(
         `/api/v1/activities/calendar?start_date=${fetchStart}&end_date=${fetchEnd}`,
       ),
+    enabled: !!token,
   });
 
   const activities = calendarData?.activities;

@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
 import { fmtElevation, computeDifficulty, DifficultyBadge } from '@/lib/routeUtils';
 import {
@@ -25,6 +26,7 @@ import {
 export default function DuplicatesPage() {
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [autoMerging, setAutoMerging] = useState(false);
   const [lastMergeLogId, setLastMergeLogId] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export default function DuplicatesPage() {
   const { data: pairs = [], isLoading, refetch } = useQuery({
     queryKey: ['route-duplicates'],
     queryFn: () => getDuplicateRoutes(token),
+    enabled: !!token,
     staleTime: 60_000,
   });
 
@@ -42,6 +45,7 @@ export default function DuplicatesPage() {
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
+    onError: (err) => toast.error(`Auto-merge failed: ${(err as Error)?.message || 'please try again.'}`),
     onSettled: () => setAutoMerging(false),
   });
 
@@ -53,6 +57,7 @@ export default function DuplicatesPage() {
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
+    onError: (err) => toast.error(`Merge failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const undoMutation = useMutation({
@@ -63,6 +68,7 @@ export default function DuplicatesPage() {
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
+    onError: (err) => toast.error(`Undo merge failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const handleAutoMerge = () => {

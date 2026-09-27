@@ -84,6 +84,9 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
         onClose();
       }, 2000);
     },
+    // Surface create failures in the form (the existing submit try/catch also
+    // covers this; keeping it here so the mutation never fails silently).
+    onError: (err) => setFormError(`Upload failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
