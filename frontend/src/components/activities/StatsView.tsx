@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import type { Activity, ChartData } from '@/lib/api';
 import { ChartCard } from '@/components/charts/ChartCard';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { getActiveLocale } from '@/lib/utils';
 
@@ -15,7 +16,13 @@ function getISOWeek(date: Date): string {
   return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
 }
 
-export function StatsView({ activities }: { activities: Activity[] }) {
+export function StatsView({
+  activities,
+  isLoading = false,
+}: {
+  activities: Activity[];
+  isLoading?: boolean;
+}) {
   // Monthly distance bars (last 6 months)
   const monthlyDistanceChart: ChartData | null = useMemo(() => {
     if (activities.length === 0) return null;
@@ -88,6 +95,18 @@ export function StatsView({ activities }: { activities: Activity[] }) {
       series: [{ name: 'TSS', data: uniqueWeeks.map((w) => Math.round(w.tss)) }],
     };
   }, [activities]);
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" aria-label="Loading stats">
+        <SkeletonRow className="h-[280px]" />
+        <SkeletonRow className="h-[280px]" />
+        <div className="lg:col-span-2">
+          <SkeletonRow className="h-[280px]" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
