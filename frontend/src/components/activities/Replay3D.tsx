@@ -16,13 +16,13 @@ import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
+import { buildDirectorPath, samplePath } from '@/lib/director';
 import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlights';
 import { daylightPhase, solarPosition, sunDirection } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
-import { getActiveLocale } from '@/lib/utils';
 
 /** flat RGB array for a LineGeometry under a colour mode (grade uses the diverging ramp) */
 function replayPathColorArray(points: ReplayPoint[], mode: ReplayColorMode): number[] {
@@ -220,7 +220,7 @@ function CourseProfile({
       aria-valuemin={0}
       aria-valuemax={Math.round(totalDistance)}
       aria-valuenow={Math.round(curDist)}
-      className="mt-2 h-14 w-full cursor-crosshair touch-none select-none"
+      className="mt-2 h-20 sm:h-14 w-full cursor-crosshair touch-none select-none"
       onPointerDown={(e) => {
         dragging.current = true;
         (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -501,9 +501,9 @@ export function Replay3D({
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [rate, setRate] = useState(() => tourRate(totalTime, 60));
+  const [rate, setRate] = useState(() => tourRate(totalTime, 300));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby'>('chase');
+  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' | 'cinematic'>('cinematic');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
     if (!terrainDefault) return 'off';
@@ -512,13 +512,21 @@ export function Replay3D({
   // Bumped whenever the scene is rebuilt so the terrain bed is re-attached.
   const [terrainEpoch, setTerrainEpoch] = useState(0);
   const [terrainAttribution, setTerrainAttribution] = useState<string>('');
-  const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>(() =>
-    typeof window !== 'undefined' && window.localStorage?.getItem('relive:imagery') === 'on' ? 'loading' : 'off'
-  );
+  const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
+    // Auto-load for the cinematic intro (satellite looks great from height);
+    // reverted to 'off' at the chase hand-off. Compare modal (no terrain) and
+    // users who explicitly saved 'off' opt out.
+    if (!terrainDefault) return 'off';
+    const saved = typeof window !== 'undefined' ? window.localStorage?.getItem('relive:imagery') : null;
+    if (saved === 'off') return 'off';
+    return 'loading';
+  });
   const [imageryAttribution, setImageryAttribution] = useState<string>('');
   const [tour, setTour] = useState(false);
   // Photo mode: hide the chrome for a clean view / capture.
   const [photo, setPhoto] = useState(false);
+  // Day/night scrubber: hours offset from the ride's start time (re-lights).
+  const [timeOffsetH, setTimeOffsetH] = useState(0);
   // Per-point DEM height so the road/bike follow the terrain bed instead of the
   // raw barometric profile. Null = undraped.
   const [drapeZ, setDrapeZ] = useState<number[] | null>(null);
@@ -540,6 +548,9 @@ export function Replay3D({
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
     composer: EffectComposer | null;
+    dirLight: THREE.DirectionalLight | null;
+    sky: THREE.Mesh | null;
+    hemiLight: THREE.HemisphereLight | null;
   } | null>(null);
 
   // Playback clock lives in refs so the rAF loop reads the freshest values
@@ -551,10 +562,14 @@ export function Replay3D({
   const colorByRef = useRef<ReplayColorMode>(colorBy);
   const onElapsedRef = useRef(onElapsed);
   const linkRef = useRef(link);
+  // Smoothed look target for follow cams (prevents jitter on heading changes).
+  const lookTargetRef = useRef<THREE.Vector3 | null>(null);
   // Ride-time weather, read per-frame (wet road sheen + wind HUD).
   const wetnessRef = useRef(0);
   const windSpeedRef = useRef(0);
   const windDirRef = useRef<string | null>(null);
+  // True when the cinematic intro auto-enabled satellite imagery (revert on hand-off).
+  const cinematicImageryRef = useRef(false);
   const followPosRef = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
@@ -563,9 +578,58 @@ export function Replay3D({
   useEffect(() => {
     rateRef.current = rate;
   }, [rate]);
+  // Day/night scrubber: recompute sun position + sky palette when the offset
+  // changes, updating the live scene's lights and sky dome.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s || !s.dirLight || !s.sky || !s.hemiLight) return;
+    const sunDate = startDate ? new Date(new Date(startDate).getTime() + timeOffsetH * 3600_000) : null;
+    if (!sunDate || Number.isNaN(sunDate.valueOf())) return;
+    const sun = solarPosition(sunDate, build.lat0, build.lng0);
+    const phase = daylightPhase(sun.elevationDeg);
+    const PAL = {
+      day: { top: '#0a1428', horizon: '#1b2b46', light: 0xfff2df, li: 1.4, hi: 0.9 },
+      golden: { top: '#12233f', horizon: '#c9762e', light: 0xffb066, li: 1.6, hi: 0.7 },
+      night: { top: '#04060d', horizon: '#0a1322', light: 0x8fb0ff, li: 0.5, hi: 0.4 },
+    }[phase];
+    // Update lights
+    s.dirLight.color.setHex(PAL.light);
+    s.dirLight.intensity = PAL.li;
+    s.hemiLight.color.set(new THREE.Color(PAL.horizon));
+    s.hemiLight.intensity = PAL.hi;
+    // Update sun direction
+    const sd = sunDirection(sun);
+    const size = 1000; // arbitrary scale — the tick repositions relative to the bike
+    s.dirLight.position.set(sd[0] * size, sd[1] * size, Math.max(0.2, sd[2]) * size);
+    // Update sky dome texture
+    const mat = s.sky.material as THREE.MeshBasicMaterial;
+    if (mat.map) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, PAL.top);
+        grad.addColorStop(0.55, PAL.horizon);
+        grad.addColorStop(1, '#060a14');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 2, 256);
+      }
+      mat.map.dispose();
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mat.map = tex;
+      mat.needsUpdate = true;
+    }
+  }, [timeOffsetH, startDate, build.lat0, build.lng0]);
+
   // Tour default follows the ride length (not a stale fixed 4×).
   useEffect(() => {
-    setRate(tourRate(totalTime, 60));
+    setRate(tourRate(totalTime, 300));
+  }, [totalTime]);
+  useEffect(() => {
+    setRate(tourRate(totalTime, 300));
   }, [totalTime]);
 
   // Whole-ride presets for this ride's length, deduped for short rides.
@@ -593,6 +657,7 @@ export function Replay3D({
     camModeRef.current = camMode;
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
+    lookTargetRef.current = null;
     // Entering orbit from a follow cam: revolve around the rider, not the stale
     // scene-centre target (which aimed the camera at a distant point).
     if (camMode === 'orbit') {
@@ -600,6 +665,12 @@ export function Replay3D({
       if (s) s.controls.target.copy(s.rider.position);
     }
   }, [camMode]);
+
+  // Cinematic intro auto-enabled the imagery (default 'loading'); revert to
+  // 'off' at the chase hand-off unless the user manually toggled it on.
+  useEffect(() => {
+    cinematicImageryRef.current = true;
+  }, []);
 
   // Build the three.js scene once for this ride.
   useEffect(() => {
@@ -695,7 +766,8 @@ export function Replay3D({
       fogFarScale = 0.35;
     }
     renderer.toneMappingExposure = exposure;
-    scene.add(new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, hemiIntensity));
+    const hemiLight = new THREE.HemisphereLight(SKY_HORIZON.getHex(), 0x0a0f1a, hemiIntensity);
+    scene.add(hemiLight);
     const dirLight = new THREE.DirectionalLight(PALETTE.light, sunIntensity);
     scene.add(dirLight.target);
     if (!liteMode) {
@@ -772,8 +844,13 @@ export function Replay3D({
       composer.addPass(new OutputPass());
     }
 
-    // Ground grid, scaled to the ride: GridHelper lives in XZ, so rotate it
-    // flat into the path frame (XY) and slide it under the lowest point.
+    // Cinematic director: a scripted camera path that plays on open / on demand,
+    // then hands off to a normal follow cam.
+    const directorPath = buildDirectorPath(build, { introSeconds: 9 });
+    // The cinematic clock doesn't start until the terrain bed (and imagery, if
+    // loading) is ready — otherwise the camera sweeps over a bare grid.
+    let cinematicStart = -1; // -1 = not started yet
+    const CINEMATIC_HOLD = 1.5; // seconds to hold the final frame before handing off
     grid.rotation.x = Math.PI / 2;
     grid.scale.setScalar(size / 2);
     grid.position.set(cx, cy, Math.max(minZ - size * 0.05, 0));
@@ -796,6 +873,13 @@ export function Replay3D({
     controls.rotateSpeed = 0.55;
     // Zoom toward the pointer so exploring a long route doesn't lose it.
     controls.zoomToCursor = true;
+    // Mobile touch: one finger rotates, two fingers zoom+pan. Prevent the
+    // browser's own scroll/zoom so gestures stay in the 3D view.
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
+    renderer.domElement.style.touchAction = 'none';
 
     // Home pose for the Reset-view button.
     const homePos = camera.position.clone();
@@ -819,6 +903,51 @@ export function Replay3D({
       }
     };
     renderer.domElement.addEventListener('dblclick', onDblClick);
+
+    // Click-to-seek: in orbit mode, a single click on the ground finds the
+    // nearest route point and jumps the playhead there.
+    let downX = 0;
+    let downY = 0;
+    const onMouseDown = (e: MouseEvent) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      // Only a clean click (no drag) — OrbitControls owns drags.
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
+      if (camModeRef.current !== 'orbit') return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(pointer, camera);
+      // Raycast against the terrain bed (or the road ribbon as fallback).
+      const targets: THREE.Object3D[] = [];
+      if (sceneRef.current?.terrain) targets.push(sceneRef.current.terrain);
+      if (roadHitProxy) targets.push(roadHitProxy);
+      if (targets.length === 0) return;
+      const hits = raycaster.intersectObjects(targets, false);
+      if (hits.length === 0) return;
+      const pt = hits[0].point;
+      // Find the nearest route point by XY distance.
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < points.length; i++) {
+        const d = Math.hypot(points[i].x - pt.x, points[i].y - pt.y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      // Only seek if the click was reasonably close to the route (< 500 m).
+      if (bestDist < 500) {
+        elapsedRef.current = points[bestIdx].elapsed;
+        setDisplayElapsed(elapsedRef.current);
+      }
+    };
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    renderer.domElement.addEventListener('mouseup', onMouseUp);
 
     // ── Path line (Line2: constant pixel width, vertex-coloured) ──────────
     const pathPositions: number[] = [];
@@ -907,6 +1036,23 @@ export function Replay3D({
       roadMesh.receiveShadow = true;
       scene.add(roadMesh);
     }
+    // Reusable hit proxy for click-to-seek (avoids creating a Mesh per click).
+    const roadHitProxy = roadGeo ? new THREE.Mesh(roadGeo) : null;
+
+    // ── Playhead beacon: a vertical light beam at the bike so the current
+    // position is always findable from the overview zoom. Fades in orbit only.
+    const beaconGeo = new THREE.CylinderGeometry(1.5, 1.5, 1, 8, 1, true);
+    const beaconMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+    beacon.visible = false;
+    scene.add(beacon);
 
     // ── Contact shadow under the bike (grounds it visually) ───────────────
     const shadowTex = createSoftShadowTexture();
@@ -970,12 +1116,31 @@ export function Replay3D({
         });
     }
 
-    // ── Km markers: dot + distance label at regular intervals ──────────────
-    // Out-and-back courses revisit the same ground — skip markers that land
-    // on top of an earlier one and stagger label heights so pairs separate.
+    // ── Start/finish markers: green cone at start, white sphere at end ────
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
     const markerDisposables: { dispose: () => void }[] = [];
+    {
+      const first = points[0];
+      const last = points[points.length - 1];
+      const startGeo = new THREE.ConeGeometry(1, 2.5, 8);
+      const startMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+      const startMk = new THREE.Mesh(startGeo, startMat);
+      startMk.position.set(first.x, first.y, first.z + 1.2);
+      markerGroup.add(startMk);
+      markerDisposables.push(startGeo, startMat);
+
+      const endGeo = new THREE.SphereGeometry(1, 12, 12);
+      const endMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
+      const endMk = new THREE.Mesh(endGeo, endMat);
+      endMk.position.set(last.x, last.y, last.z + 1.2);
+      markerGroup.add(endMk);
+      markerDisposables.push(endGeo, endMat);
+    }
+
+    // ── Km markers: dot + distance label at regular intervals ──────────────
+    // Out-and-back courses revisit the same ground — skip markers that land
+    // on top of an earlier one and stagger label heights so pairs separate.
     {
       const totalKm = build.totalDistance / 1000;
       const intervalKm = totalKm > 150 ? 25 : totalKm > 60 ? 10 : 5;
@@ -1027,6 +1192,37 @@ export function Replay3D({
         sprite.position.set(pos.x, pos.y, pos.z + 4 + stagger * 3);
         markerGroup.add(sprite);
         markerDisposables.push(tex, spriteMat);
+      }
+    }
+
+    // ── Segment zones: climb sections as coloured bands on the road ────────
+    // A thicker, semi-transparent ribbon over the road where the highlight
+    // occurs, so climbs/descents read at a glance from the overview.
+    const zoneMeshes: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial }[] = [];
+    {
+      for (const h of detectHighlights(points)) {
+        if (h.kind !== 'climb' && h.kind !== 'descent') continue;
+        const startIdx = nearestIndex(points, h.startElapsed);
+        const endIdx = nearestIndex(points, h.endElapsed);
+        if (endIdx - startIdx < 2) continue;
+        const zonePts = points.slice(startIdx, endIdx + 1);
+        const zoneData = buildRoadRibbon(zonePts, { width: 9, zOffset: 0.15 });
+        if (!zoneData) continue;
+        const zg = new THREE.BufferGeometry();
+        zg.setAttribute('position', new THREE.BufferAttribute(zoneData.positions, 3));
+        zg.setIndex(new THREE.BufferAttribute(zoneData.indices, 1));
+        const zc = new THREE.Color(h.kind === 'climb' ? '#f97316' : '#38bdf8');
+        const zm = new THREE.MeshBasicMaterial({
+          color: zc.getHex(),
+          transparent: true,
+          opacity: 0.25,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const zm_mesh = new THREE.Mesh(zg, zm);
+        zm_mesh.visible = false; // overview only
+        scene.add(zm_mesh);
+        zoneMeshes.push({ mesh: zm_mesh, mat: zm });
       }
     }
 
@@ -1144,11 +1340,14 @@ export function Replay3D({
       }
       // The full-route line (doubling back on an out-and-back) is visual noise
       // from a low chase camera — show it only in the aerial orbit view.
-      pathLine.visible = camModeRef.current === 'orbit';
-      // Race traces + markers likewise: overview only.
-      const inOverview = camModeRef.current === 'orbit';
+      pathLine.visible = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
+      // Segment zones + race traces + markers likewise: overview only.
+      const inOverview = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
+      for (const z of zoneMeshes) z.mesh.visible = inOverview;
       for (const rl of raceLines) rl.line.visible = inOverview;
-      if (race && inOverview) {
+      // Race markers: orbit only (not during the cinematic intro — visual noise).
+      const raceVisible = camModeRef.current === 'orbit';
+      if (race && raceVisible) {
         for (let ri = 0; ri < race.length && ri < raceMarkers.length; ri++) {
           const ride = race[ri];
           const mk = raceMarkers[ri];
@@ -1167,6 +1366,16 @@ export function Replay3D({
       shadow.position.set(rider.position.x, rider.position.y, rider.position.z + 0.02);
       shadow.rotation.z = Math.atan2(riderDir.y, riderDir.x);
       shadow.visible = camModeRef.current !== 'cockpit';
+      // Playhead beacon: a vertical beam at the bike, visible from the overview.
+      // Scale by camera distance so it reads at any zoom (taller when far away).
+      {
+        const camDist = camera.position.distanceTo(rider.position);
+        const beamH = Math.max(8, camDist * 0.06);
+        const beamR = Math.max(0.8, camDist * 0.004);
+        beacon.position.set(rider.position.x, rider.position.y, rider.position.z + beamH / 2);
+        beacon.scale.set(beamR, beamH, beamR);
+        beacon.visible = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
+      }
       // Km-marker dots: keep a constant apparent size — at real scale the 0 km
       // dot would otherwise engulf the close camera.
       for (const child of markerGroup.children) {
@@ -1215,7 +1424,7 @@ export function Replay3D({
       // ending in a hard edge; wide in orbit so the whole route stays visible.
       if (scene.fog) {
         const fog = scene.fog as THREE.Fog;
-        const follow = camModeRef.current !== 'orbit';
+        const follow = camModeRef.current !== 'orbit' && camModeRef.current !== 'cinematic';
         fog.near = follow ? 60 : size * 0.4;
         fog.far = follow ? 1400 * fogFarScale : size * 3.2 * fogFarScale;
       }
@@ -1236,6 +1445,43 @@ export function Replay3D({
         controls.enabled = true;
         rider.visible = true;
         controls.update();
+      } else if (mode === 'cinematic' && directorPath.duration > 0) {
+        // Cinematic director: wait for the terrain bed + imagery to settle,
+        // then play a scripted flyover and hand off to chase.
+        controls.enabled = false;
+        // Gate on the terrain bed being ready (imagery loads during the flight
+        // and pops in — waiting for it would stall the intro for 20+ seconds).
+        const terrainReady = !!sceneRef.current?.terrain;
+        if (cinematicStart < 0 && terrainReady) {
+          cinematicStart = performance.now();
+        }
+        if (cinematicStart < 0) {
+          // Not ready yet — hold a static overview shot (orbit home pose).
+          camera.up.copy(UP_Y);
+          camera.position.copy(homePos);
+          camera.fov = 55;
+          camera.updateProjectionMatrix();
+          camera.lookAt(homeTarget);
+          rider.visible = true;
+        } else {
+          const cinematicTime = (now - cinematicStart) / 1000;
+          const sample = samplePath(directorPath, cinematicTime);
+          camera.up.copy(UP_Z);
+          camera.fov = sample.fov;
+          camera.updateProjectionMatrix();
+          camera.position.set(sample.position[0], sample.position[1], sample.position[2]);
+          tmpLook.set(sample.target[0], sample.target[1], sample.target[2]);
+          camera.lookAt(tmpLook);
+          rider.visible = true;
+          if (cinematicTime >= directorPath.duration + CINEMATIC_HOLD) {
+            // hand off to chase; revert auto-enabled imagery (too low-res close-up)
+            if (cinematicImageryRef.current) {
+              cinematicImageryRef.current = false;
+              setImageryState('off');
+            }
+            setCamMode('orbit');
+          }
+        }
       } else {
         // Follow cams drive the camera directly; OrbitControls stays out.
         controls.enabled = false;
@@ -1296,14 +1542,24 @@ export function Replay3D({
           camera.position.copy(tmpDesired);
         } else {
           if (!followPosRef.current) followPosRef.current = tmpDesired.clone();
-          // At high playback rates the rider moves far each frame — snap instead of
-          // smoothing, or the camera lags kilometres behind and the road vanishes.
+          // Smooth chase: exponential lerp with a distance-adaptive rate so the
+          // camera catches up fast when it's behind (high playback rates) but
+          // glides when it's close. Snap only on extreme jumps (> 25 m).
           const lag = followPosRef.current.distanceTo(tmpDesired);
-          const k = lag > 120 ? 1 : 1 - Math.exp(-dt * 4);
+          const baseRate = 10; // fast enough to track at 24× playback
+          const boost = Math.min(4, lag / 5); // up to 4× faster when > 20 m behind
+          const rate = baseRate + boost;
+          const k = lag > 25 ? 1 : 1 - Math.exp(-dt * rate);
           followPosRef.current.lerp(tmpDesired, k);
           camera.position.copy(followPosRef.current);
         }
-        camera.lookAt(tmpLook);
+        // Smooth the look target too — a hard lookAt on every frame makes the
+        // view jitter when the heading changes. Lerp toward the desired target.
+        if (!lookTargetRef.current) lookTargetRef.current = tmpLook.clone();
+        const lookLag = lookTargetRef.current.distanceTo(tmpLook);
+        const lookK = lookLag > 20 ? 1 : 1 - Math.exp(-dt * 8);
+        lookTargetRef.current.lerp(tmpLook, lookK);
+        camera.lookAt(lookTargetRef.current);
       }
       // Keep the camera above the terrain bed so follow cams can't clip through
       // hills (the DEM y is only known here via the mesh's stored grid).
@@ -1321,12 +1577,16 @@ export function Replay3D({
           if (camera.position.z < minCamZ) {
             camera.position.z = minCamZ;
             if (followPosRef.current) followPosRef.current.z = minCamZ;
-            camera.lookAt(tmpLook);
+            // Only re-look in follow cams; the cinematic director owns its lookAt.
+            if (lookTargetRef.current && camModeRef.current !== 'cinematic') {
+              camera.lookAt(lookTargetRef.current);
+            }
           }
         }
       }
-      // Speed feel: widen the FOV slightly with speed (follow cams only).
-      const followMode = camModeRef.current !== 'orbit';
+      // Speed feel: widen the FOV slightly with speed (follow cams only —
+      // the cinematic director owns its own FOV).
+      const followMode = camModeRef.current !== 'orbit' && camModeRef.current !== 'cinematic';
       const targetFov = followMode ? 55 + Math.min(1, riderPose.speed / 12) * 9 : 55;
       if (Math.abs(camera.fov - targetFov) > 0.05) {
         camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
@@ -1355,7 +1615,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer, dirLight, sky, hemiLight };
     (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
@@ -1372,6 +1632,8 @@ export function Replay3D({
       bikeRig?.dispose();
       ghostRig?.dispose();
       renderer.domElement.removeEventListener('dblclick', onDblClick);
+      renderer.domElement.removeEventListener('mousedown', onMouseDown);
+      renderer.domElement.removeEventListener('mouseup', onMouseUp);
       controls.dispose();
       pathGeo.dispose();
       pathMat.dispose();
@@ -1391,6 +1653,12 @@ export function Replay3D({
       shadowGeo.dispose();
       shadowMat.dispose();
       shadowTex.dispose();
+      beaconGeo.dispose();
+      beaconMat.dispose();
+      for (const z of zoneMeshes) {
+        z.mesh.geometry.dispose();
+        z.mat.dispose();
+      }
       markerGroup.children.forEach((child) => {
         if (child instanceof THREE.Sprite) child.material.map?.dispose();
         markerGroup.remove(child);
@@ -1635,7 +1903,8 @@ export function Replay3D({
         const mesh = sceneRef.current?.terrain;
         const grid = mesh?.userData.grid as RouteGrid | undefined;
         if (!mesh || !grid) {
-          setImageryState('failed');
+          // Terrain not attached yet (scene rebuild race) — stay in 'loading'
+          // and retry when the terrain epoch bumps (mesh re-attaches).
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
@@ -1658,10 +1927,11 @@ export function Replay3D({
           tex.dispose();
           return;
         }
-        // Satellite drapes read best unlit (full brightness regardless of the
-        // scene's day/night lighting), so swap to a basic material.
+        // Satellite drape: lit material so it responds to the scene's day/night
+        // lighting and ACES tone mapping (prevents the bloom blowout that
+        // self-lit basic materials caused on bright terrain/water).
         const old = live.material as THREE.Material;
-        live.material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, toneMapped: false });
+        live.material = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
         old.dispose();
         live.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         setImageryAttribution(IMAGERY_ATTRIBUTION);
@@ -1675,7 +1945,7 @@ export function Replay3D({
       cancelled = true;
       controller.abort();
     };
-  }, [imageryState]);
+  }, [imageryState, terrainEpoch]);
 
   const toggleTerrain = () => {
     if (terrainState === 'on') {
@@ -1717,21 +1987,6 @@ export function Replay3D({
     }
   };
 
-  const bounds = useMemo(() => {
-    if (points.length < 2) return null;
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
-    const zs = points.map((p) => p.z);
-    return {
-      minX: Math.min(...xs),
-      maxX: Math.max(...xs),
-      minY: Math.min(...ys),
-      maxY: Math.max(...ys),
-      minZ: Math.min(...zs),
-      maxZ: Math.max(...zs),
-    };
-  }, [points]);
-
   // View presets always drop back to free-orbit first (follow cams own the camera).
   const resetView = () => {
     const s = sceneRef.current;
@@ -1740,25 +1995,6 @@ export function Replay3D({
     s.camera.up.set(0, 1, 0);
     s.camera.position.copy(s.home.pos);
     s.controls.target.copy(s.home.target);
-    s.controls.update();
-  };
-  const topView = () => {
-    const s = sceneRef.current;
-    if (!s || !bounds) return;
-    setCamMode('orbit');
-    const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 100);
-    const bx = (bounds.minX + bounds.maxX) / 2;
-    const by = (bounds.minY + bounds.maxY) / 2;
-    s.camera.up.set(0, 1, 0);
-    s.camera.position.set(bx, by, bounds.maxZ + span * 2);
-    s.controls.target.set(bx, by, bounds.minZ);
-    s.controls.update();
-  };
-  const trackRider = () => {
-    const s = sceneRef.current;
-    if (!s) return;
-    setCamMode('orbit');
-    s.controls.target.copy(s.rider.position);
     s.controls.update();
   };
 
@@ -1807,8 +2043,8 @@ export function Replay3D({
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
         seek(displayElapsed - 15);
-      } else if (e.key >= '1' && e.key <= '4') {
-        const modes = ['orbit', 'chase', 'drone', 'cockpit'] as const;
+      } else if (e.key >= '1' && e.key <= '5') {
+        const modes = ['orbit', 'chase', 'drone', 'cockpit', 'cinematic'] as const;
         setCamMode(modes[Number(e.key) - 1]);
       }
     };
@@ -1944,9 +2180,9 @@ export function Replay3D({
       </div>
       )}
 
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <div className="flex items-center rounded border border-surface-light [.photo_&]:hidden" role="group" aria-label="Camera mode">
-          {(['orbit', 'chase', 'drone', 'cockpit', 'flyby'] as const).map((m) => (
+      <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 [.photo_&]:hidden">
+        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
+          {(['orbit', 'chase', 'drone', 'cockpit', 'flyby', 'cinematic'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setCamMode(m)}
@@ -1960,9 +2196,11 @@ export function Replay3D({
                       ? 'Elevated trailing drone'
                       : m === 'cockpit'
                         ? 'Rider point of view'
-                        : 'Cinematic fly-by orbit'
+                        : m === 'flyby'
+                          ? 'Cinematic fly-by orbit'
+                          : 'Cinematic director — scripted flyover then chase'
               }
-              className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors ${
+              className={`rounded px-2 py-1 min-h-[44px] sm:min-h-[36px] min-w-[44px] sm:min-w-[36px] text-[11px] capitalize transition-colors ${
                 camMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
               }`}
             >
@@ -1974,8 +2212,8 @@ export function Replay3D({
           <button
             onClick={() => setTour((t) => !t)}
             aria-pressed={tour}
-            title="Cinematic tour of this ride's highlights (climbs, descents, sprints)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 [.photo_&]:hidden ${
+            title="Cinematic tour of this ride's highlights"
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
               tour ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
@@ -1986,86 +2224,46 @@ export function Replay3D({
           <button
             onClick={toggleTerrain}
             disabled={terrainState === 'loading'}
-            title="Drape the ride over real DEM terrain (extra download)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 [.photo_&]:hidden ${
+            title="Drape over real DEM terrain"
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
               terrainState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
-            {terrainState === 'on'
-              ? 'Terrain on'
-              : terrainState === 'loading'
-                ? 'Loading terrain…'
-                : terrainState === 'failed'
-                  ? 'Retry terrain'
-                  : 'Terrain'}
+            {terrainState === 'on' ? 'Terrain' : terrainState === 'loading' ? 'Loading…' : terrainState === 'failed' ? 'Retry' : 'Terrain'}
           </button>
         )}
         {terrainState === 'on' && (
           <button
             onClick={toggleImagery}
             disabled={imageryState === 'loading'}
-            title="Drape satellite imagery over the terrain (extra download)"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 disabled:opacity-50 [.photo_&]:hidden ${
+            title="Satellite imagery over the terrain"
+            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
               imageryState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
             }`}
           >
-            {imageryState === 'on'
-              ? 'Satellite on'
-              : imageryState === 'loading'
-                ? 'Loading imagery…'
-                : imageryState === 'failed'
-                  ? 'Retry imagery'
-                  : 'Satellite'}
+            {imageryState === 'on' ? 'Satellite' : imageryState === 'loading' ? 'Loading…' : imageryState === 'failed' ? 'Retry' : 'Satellite'}
           </button>
         )}
-        <div className="flex items-center rounded border border-surface-light [.photo_&]:hidden" role="group" aria-label="View presets">
-          {(
-            [
-              ['Reset', resetView, 'Restore the overview'],
-              ['Top', topView, 'Plan view from above'],
-              ['Rider', trackRider, 'Pivot around the rider'],
-            ] as const
-          ).map(([label, fn, title]) => (
-            <button
-              key={label}
-              onClick={fn}
-              title={title}
-              className="rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={takePoster}
-          title="Download a PNG poster of the current view"
-          className="rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
-        >
-          Poster
-        </button>
-        <button
-          onClick={takeClip}
-          title="Record a 6-second webm clip of the current view"
-          className="rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs text-muted transition-colors hover:bg-surface-light/40"
-        >
-          Clip
-        </button>
+        <span className="flex-1" />
+        <button onClick={resetView} title="Reset to overview" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Reset</button>
+        <button onClick={takePoster} title="Download PNG poster" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Poster</button>
+        <button onClick={takeClip} title="Record 6s webm clip" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Clip</button>
         <button
           onClick={() => setPhoto((p) => !p)}
           aria-pressed={photo}
-          title="Photo mode — hide the UI chrome for a clean view/capture"
-          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] text-xs transition-colors hover:bg-surface-light/40 ${
+          title="Photo mode — hide UI for a clean capture"
+          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
             photo ? 'bg-accent/20 text-accent' : 'text-muted'
           }`}
         >
-          {photo ? 'Exit photo' : 'Photo'}
+          {photo ? 'Exit' : 'Photo'}
         </button>
       </div>
 
-      <div className={`relative ${photo ? 'h-[80dvh]' : canvasHeightClass} w-full overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
+      <div className={`relative ${photo ? 'h-[80dvh]' : canvasHeightClass} w-full touch-none overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">
-          drag to orbit · pinch to zoom · space play · ←/→ seek · 1–4 cameras
+          drag to orbit · pinch to zoom · space play · ←/→ seek · 1–5 cameras · click route to jump
         </div>
         {activeHighlight && (
           <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center [.photo_&]:hidden">
@@ -2108,7 +2306,7 @@ export function Replay3D({
       </div>
 
       {highlights.length > 0 && (
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [.photo_&]:hidden" role="group" aria-label="Ride highlights">
+        <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 [.photo_&]:hidden" role="group" aria-label="Ride highlights">
           {highlights.map((h, i) => (
             <button
               key={`${h.kind}-${i}`}
@@ -2117,7 +2315,7 @@ export function Replay3D({
                 seek(h.startElapsed);
               }}
               title={h.detail}
-              className={`shrink-0 rounded-full border px-3 py-1 min-h-[36px] text-[11px] transition-colors ${
+              className={`shrink-0 rounded-full border px-2.5 py-0.5 min-h-[32px] text-[10px] transition-colors ${
                 activeHighlight === h
                   ? 'border-accent/50 bg-accent/20 text-accent'
                   : 'border-surface-light text-muted hover:border-accent/30'
@@ -2131,7 +2329,7 @@ export function Replay3D({
 
       {/* Race Yourself legend — coloured traces for other rides on the route */}
       {race && race.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] [.photo_&]:hidden">
+        <div className="mt-2 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[11px] [.photo_&]:hidden sm:flex">
           <span className="uppercase tracking-wide text-muted">Rides</span>
           {race.map((r) => (
             <span key={r.id} className="inline-flex items-center gap-1.5">
@@ -2140,7 +2338,7 @@ export function Replay3D({
                 style={{ backgroundColor: r.color }}
                 aria-hidden="true"
               />
-              <span className="text-muted">{new Date(r.date).toLocaleDateString(getActiveLocale())}</span>
+              <span className="text-muted">{new Date(r.date).toLocaleDateString()}</span>
               {r.isPr && <span className="text-amber-400" title="Personal best">★</span>}
               {r.durationSeconds != null && (
                 <span className="text-foreground/70">
@@ -2154,7 +2352,7 @@ export function Replay3D({
 
       {/* Race Yourself live standings — leader-first with deltas (orbit view) */}
       {raceStandings && raceStandings.length >= 2 && (
-        <div className="mt-1 rounded border border-surface-light bg-surface/60 p-2 text-[11px] [.photo_&]:hidden">
+        <div className="mt-1 hidden rounded border border-surface-light bg-surface/60 p-2 text-[11px] [.photo_&]:hidden sm:block">
           <div className="mb-1 flex items-center gap-2">
             <span className="uppercase tracking-wide text-muted">Race</span>
             <span className="text-muted/70">{timeFmt(displayElapsed)}</span>
@@ -2164,7 +2362,7 @@ export function Replay3D({
               <div key={s.id} className="flex items-center gap-2">
                 <span className="w-4 text-right font-mono text-muted">{i + 1}.</span>
                 <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate text-foreground/80">{new Date(s.date).toLocaleDateString(getActiveLocale())}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground/80">{new Date(s.date).toLocaleDateString()}</span>
                 <span className="font-mono tabular-nums text-foreground">{(s.distance / 1000).toFixed(2)} km</span>
                 <span
                   className={`w-14 text-right font-mono tabular-nums ${
@@ -2179,107 +2377,107 @@ export function Replay3D({
         </div>
       )}
 
-      {/* Path colour mode + scale */}
-      <div className="mt-2 flex items-center gap-2 [.photo_&]:hidden">
-        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Path colour metric">
-          {(['speed', 'power', 'hr', 'grade'] as const).map((m) => {
-            const available =
-              m === 'speed' ||
-              (m === 'power' && colorStats.hasPower) ||
-              (m === 'hr' && colorStats.hasHr) ||
-              (m === 'grade' && colorStats.hasGrade);
-            return (
-              <button
-                key={m}
-                onClick={() => setColorBy(m)}
-                disabled={!available}
-                title={available ? `Colour the path by ${m}` : `No ${m} data on this ride`}
-                className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs capitalize transition-colors disabled:opacity-30 ${
-                  colorBy === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
-                }`}
-              >
-                {m === 'hr' ? 'HR' : m}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-1 flex-col gap-0.5" aria-hidden>
-          <div
-            className="h-1.5 w-full rounded-full"
-            style={{ background: colorBy === 'grade' ? GRADE_GRADIENT : INTENSITY_GRADIENT }}
-          />
-          <div className="flex justify-between text-[10px] tabular-nums text-muted">
-            <span>
-              {colorBy === 'speed' && '0 km/h'}
-              {colorBy === 'power' && '0 W'}
-              {colorBy === 'hr' && '0 bpm'}
-              {colorBy === 'grade' && '-12%'}
-            </span>
-            <span>
-              {colorBy === 'speed' && `${maxKmh.toFixed(0)} km/h`}
-              {colorBy === 'power' && `${Math.round(colorStats.maxPower)} W`}
-              {colorBy === 'hr' && `${Math.round(colorStats.maxHr)} bpm`}
-              {colorBy === 'grade' && '+12%'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="[.photo_&]:hidden">
-        <TelemetryStrip
-          points={points}
-          playhead={displayElapsed}
-          elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
-          ftpWatts={ftpWatts}
-        />
-      </div>
-      {terrainState === 'on' && (
-        <p className="mt-1 text-[10px] text-muted [.photo_&]:hidden">
-          {terrainAttribution}
-          {imageryState === 'on' && imageryAttribution ? ` · ${imageryAttribution}` : ''}
-        </p>
-      )}
-
-      <div className="mt-2 flex flex-wrap items-center gap-2 [.photo_&]:hidden">
-        {link ? (
-          <span
-            title="Playback follows the compare master clock above"
-            className="inline-flex min-h-[44px] items-center rounded bg-accent/20 px-3 py-1 text-sm font-medium text-accent"
-          >
-            Linked
-          </span>
-        ) : (
-          <>
-            <button
-              onClick={toggle}
-              className="rounded bg-accent px-3 py-1 min-h-[44px] text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
-            >
-              {playing ? 'Pause' : 'Play'}
-            </button>
-            <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
-              {tourOptions.map((o) => (
+      {/* Path colour mode + scale + telemetry in one compact block (desktop only on mobile) */}
+      <div className="mt-2 hidden sm:block [.photo_&]:hidden">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Path colour metric">
+            {(['speed', 'power', 'hr', 'grade'] as const).map((m) => {
+              const available =
+                m === 'speed' ||
+                (m === 'power' && colorStats.hasPower) ||
+                (m === 'hr' && colorStats.hasHr) ||
+                (m === 'grade' && colorStats.hasGrade);
+              return (
                 <button
-                  key={o.label}
-                  onClick={() => pickRate(o.rate)}
-                  title={`Whole ride in ~${o.label} (${o.rate}×)`}
-                  className={`rounded px-2 py-1 min-h-[44px] min-w-[44px] text-xs transition-colors ${
-                    rate === o.rate ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                  key={m}
+                  onClick={() => setColorBy(m)}
+                  disabled={!available}
+                  title={available ? `Colour by ${m}` : `No ${m} data`}
+                  className={`rounded px-2 py-1 min-h-[44px] sm:min-h-[36px] min-w-[44px] sm:min-w-[36px] text-[11px] capitalize transition-colors disabled:opacity-30 ${
+                    colorBy === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
                   }`}
                 >
-                  {o.label}
+                  {m === 'hr' ? 'HR' : m}
                 </button>
-              ))}
+              );
+            })}
+          </div>
+          <div className="flex flex-1 flex-col gap-0.5" aria-hidden>
+            <div
+              className="h-1.5 w-full rounded-full"
+              style={{ background: colorBy === 'grade' ? GRADE_GRADIENT : INTENSITY_GRADIENT }}
+            />
+            <div className="flex justify-between text-[10px] tabular-nums text-muted">
+              <span>
+                {colorBy === 'speed' && '0 km/h'}
+                {colorBy === 'power' && '0 W'}
+                {colorBy === 'hr' && '0 bpm'}
+                {colorBy === 'grade' && '-12%'}
+              </span>
+              <span>
+                {colorBy === 'speed' && `${maxKmh.toFixed(0)} km/h`}
+                {colorBy === 'power' && `${Math.round(colorStats.maxPower)} W`}
+                {colorBy === 'hr' && `${Math.round(colorStats.maxHr)} bpm`}
+                {colorBy === 'grade' && '+12%'}
+              </span>
             </div>
-          </>
+          </div>
+        </div>
+        <div className="mt-1.5">
+          <TelemetryStrip
+            points={points}
+            playhead={displayElapsed}
+            elevationBase={{ altMin: build.altMin, zScale: build.zScale }}
+            ftpWatts={ftpWatts}
+          />
+        </div>
+        {terrainState === 'on' && (
+          <p className="mt-0.5 text-[9px] text-muted/60">
+            {terrainAttribution}
+            {imageryState === 'on' && imageryAttribution ? ` · ${imageryAttribution}` : ''}
+          </p>
         )}
-        <span className="ml-1 font-mono text-xs tabular-nums text-muted">
-          {timeFmt(displayElapsed)} / {timeFmt(totalTime)}
-        </span>
       </div>
 
-      <div className="[.photo_&]:hidden">
+      {/* Transport + profile + scrubber */}
+      <div className="mt-2 [.photo_&]:hidden">
+        <div className="flex flex-wrap items-center gap-2">
+          {link ? (
+            <span
+              title="Playback follows the compare master clock"
+              className="inline-flex min-h-[44px] sm:min-h-[36px] items-center rounded bg-accent/20 px-3 py-1 text-sm font-medium text-accent"
+            >
+              Linked
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={toggle}
+                className="rounded bg-accent px-4 py-1 min-h-[48px] sm:min-h-[36px] text-base sm:text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+              >
+                {playing ? 'Pause' : 'Play'}
+              </button>
+              <div className="flex items-center gap-0.5" role="group" aria-label="Playback speed">
+                {tourOptions.map((o) => (
+                  <button
+                    key={o.label}
+                    onClick={() => pickRate(o.rate)}
+                    title={`Whole ride in ~${o.label} (${o.rate}×)`}
+                    className={`rounded px-2 py-1 min-h-[44px] sm:min-h-[36px] min-w-[44px] sm:min-w-[36px] text-[11px] transition-colors ${
+                      rate === o.rate ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <span className="ml-auto font-mono text-xs tabular-nums text-muted">
+            {timeFmt(displayElapsed)} / {timeFmt(totalTime)}
+          </span>
+        </div>
         <CourseProfile points={points} totalDistance={build.totalDistance} elapsed={displayElapsed} onSeek={seek} />
-
         <input
           type="range"
           min={0}
@@ -2288,8 +2486,54 @@ export function Replay3D({
           value={displayElapsed}
           onChange={(e) => seek(Number(e.target.value))}
           aria-label="Replay scrubbing"
-          className="mt-2 h-11 w-full accent-accent"
+          className="mt-1 h-11 sm:h-9 w-full accent-accent"
         />
+        {startDate && (
+          <div className="mt-1 hidden items-center gap-2 sm:flex">
+            <span
+              className="text-[10px] text-muted"
+              title="Ride start time drives the lighting — drag to explore other times of day"
+            >
+              {(() => {
+                const rideTime = new Date(startDate);
+                const shifted = new Date(rideTime.getTime() + timeOffsetH * 3600_000);
+                const sun = solarPosition(shifted, build.lat0, build.lng0);
+                const phase = daylightPhase(sun.elevationDeg);
+                const icon = phase === 'night' ? '🌙' : phase === 'golden' ? '🌅' : '☀';
+                const hh = shifted.getHours();
+                const mm = String(shifted.getMinutes()).padStart(2, '0');
+                return (
+                  <>
+                    <span aria-hidden>{icon}</span>{' '}
+                    <span className="font-mono tabular-nums">{hh}:{mm}</span>{' '}
+                    <span className="text-muted/60">
+                      {phase === 'night' ? 'night' : phase === 'golden' ? 'golden hour' : 'daylight'}
+                    </span>
+                  </>
+                );
+              })()}
+            </span>
+            <input
+              type="range"
+              min={-12}
+              max={12}
+              step={0.5}
+              value={timeOffsetH}
+              onChange={(e) => setTimeOffsetH(Number(e.target.value))}
+              aria-label="Time of day — drag to re-light the scene"
+              className="h-7 flex-1 accent-amber-400"
+            />
+            {timeOffsetH !== 0 && (
+              <button
+                onClick={() => setTimeOffsetH(0)}
+                title="Back to the ride's actual start time"
+                className="rounded border border-surface-light px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface-light/40"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

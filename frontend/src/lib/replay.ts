@@ -279,11 +279,12 @@ export function powerZoneBounds(ftpWatts: number): number[] {
   return [0.55, 0.75, 0.9, 1.05, 1.2, 1.5].map((f) => f * ftpWatts).concat(Infinity);
 }
 
-/** tour-speed presets: whole-ride playback in ~2 min / ~1 min / ~30 s */
+/** tour-speed presets: whole-ride playback duration targets */
 export const TOUR_PRESETS = [
+  { label: '10m', secs: 600 },
+  { label: '5m', secs: 300 },
   { label: '2m', secs: 120 },
   { label: '1m', secs: 60 },
-  { label: '30s', secs: 30 },
 ] as const;
 
 /** playback rate finishing totalSeconds in ~targetSecs (min 1×) */
