@@ -222,22 +222,26 @@ async def exchange_code_for_user(
             },
             headers={"Accept": "application/json"},
         )
+        # Log the status only — never headers/body: the token response carries
+        # the access + refresh tokens in plaintext.
         logger.info(
-            f"Token exchange response from {provider}: status={token_resp.status_code}, headers={dict(token_resp.headers)}, body={token_resp.text[:500]}"
+            f"Token exchange response from {provider}: status={token_resp.status_code}"
         )
         try:
             token_data = token_resp.json()
         except Exception:
             logger.error(
-                f"Failed to parse token response as JSON from {provider}: status={token_resp.status_code}, body={token_resp.text[:500]}"
+                f"Failed to parse token response as JSON from {provider}: "
+                f"status={token_resp.status_code}"
             )
             raise ValueError(
-                f"Token exchange failed for {provider}: HTTP {token_resp.status_code}, body={token_resp.text[:200]}"
+                f"Token exchange failed for {provider}: HTTP {token_resp.status_code}"
             )
 
     access_token = token_data.get("access_token")
     if not access_token:
-        raise ValueError(f"Failed to get access token from {provider}: {token_data}")
+        # Do not include token_data — it can contain a partial/erroneous token.
+        raise ValueError(f"Failed to get access token from {provider}")
 
     refresh_token = token_data.get("refresh_token")
     expires_in = token_data.get("expires_in")

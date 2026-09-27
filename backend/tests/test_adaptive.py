@@ -119,6 +119,18 @@ def test_active_alerts_override_other_advice():
         == "critical"
     )
     assert "health_check" in _types(advice)
+    # Freshness must not also advise adding load while alerts are active.
+    assert "intensity_raise" not in _types(advice)
+
+
+def test_active_alerts_suppress_raise_but_keep_cut():
+    # Fresh (would raise) + active alerts → the raise is suppressed.
+    fresh = derive_adaptive_advice(tsb=10.0, active_alerts=1)
+    assert "intensity_raise" not in _types(fresh)
+    assert not any(a["key"] == "load" and a["stance"] == "build" for a in fresh["axes"])
+    # Fatigued (would cut) + active alerts → easing advice is still given.
+    tired = derive_adaptive_advice(tsb=-30.0, ctl=70.0, atl=100.0, active_alerts=1)
+    assert "intensity_cut" in _types(tired)
 
 
 def test_top_deficiency_adds_advisory():

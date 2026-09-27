@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.models.lifting import LiftingSession, LiftingSet, LiftVideo
+from app.models.lifting import (
+    LiftingSession,
+    LiftingSet,
+    LiftVideo,
+    PersonalRecord,
+)
 from app.models.user import User
 from app.schemas.lifting import (
     LiftVideoCreate,
@@ -92,8 +97,6 @@ async def create_video(
         raise HTTPException(400, "r2_key is required")
     if not payload.file_name or not payload.content_type or not payload.size_bytes:
         raise HTTPException(400, "file_name, content_type and size_bytes are required")
-    if not _s3_configured():
-        raise HTTPException(501, "R2 storage is not configured on this instance")
     if payload.content_type not in ALLOWED_CONTENT_TYPES or not (
         0 < payload.size_bytes <= MAX_UPLOAD_BYTES
     ):
@@ -101,6 +104,33 @@ async def create_video(
             400,
             "invalid content_type or size_bytes for upload-mode video",
         )
+
+    # Ownership guards: the uploaded key must live under this user's namespace,
+    # and any linked session / PR must belong to the caller — otherwise a user
+    # could reference another user's R2 object or rows.
+    if not payload.r2_key.startswith(f"lift_videos/{current_user.id}/"):
+        raise HTTPException(400, "r2_key does not belong to the current user")
+    if payload.lifting_session_id and (
+        await db.execute(
+            select(LiftingSession.id).where(
+                LiftingSession.id == payload.lifting_session_id,
+                LiftingSession.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none() is None:
+        raise HTTPException(404, "Session not found")
+    if payload.personal_record_id and (
+        await db.execute(
+            select(PersonalRecord.id).where(
+                PersonalRecord.id == payload.personal_record_id,
+                PersonalRecord.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none() is None:
+        raise HTTPException(404, "Personal record not found")
+
+    if not _s3_configured():
+        raise HTTPException(501, "R2 storage is not configured on this instance")
 
     # Linking to a specific set: autofill exercise / load / reps from it (the
     # client may have already done so, but the server is the source of truth).

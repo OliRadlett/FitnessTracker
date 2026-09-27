@@ -147,6 +147,13 @@ class Settings(BaseSettings):
         0.45  # hard gate — below this the composite score is forced to 0
     )
 
+    # Phase 2 — OSM road-graph map-matching + route embeddings
+    road_match_enabled: bool = True
+    osm_region: str = "great-britain"  # logical region key for the cached OSM data
+    osm_volume_name: str = "fittrack-osm"
+    road_match_search_radius_m: float = 40.0
+    road_match_max_snap_m: float = 60.0
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     def model_post_init(self, __context) -> None:
