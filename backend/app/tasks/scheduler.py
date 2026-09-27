@@ -1500,6 +1500,7 @@ def fit_personalized_power_models() -> dict:
 
         from app.integrations.power_models import (
             _modal_configured,
+            adaptive_taus_to_persist,
             fit_personalized_vo2max,
             fit_power_models_on_modal,
         )
@@ -1650,10 +1651,9 @@ def fit_personalized_power_models() -> dict:
                         if vo2_result.get("vo2max"):
                             profile.personalized_vo2max = vo2_result["vo2max"]
                         constants = results.get("adaptive_constants", {})
-                        if constants.get("ctl_tau"):
-                            profile.ctl_tau = constants["ctl_tau"]
-                        if constants.get("atl_tau"):
-                            profile.atl_tau = constants["atl_tau"]
+                        taus = adaptive_taus_to_persist(constants)
+                        if taus is not None:
+                            profile.ctl_tau, profile.atl_tau = taus
                         profile.power_model_fitted_at = datetime.now(UTC)
 
                         fitted_count += 1
