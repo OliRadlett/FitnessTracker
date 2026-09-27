@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
 import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
+import { useToast } from '@/components/ui/Toast';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { VideoCompareModal } from '@/components/lifting/VideoCompareModal';
@@ -20,6 +21,7 @@ export default function VideosPage() {
   usePageTitle('Videos');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [exerciseFilter, setExerciseFilter] = useState('');
   const [afterFilter, setAfterFilter] = useState('');
@@ -83,6 +85,7 @@ export default function VideosPage() {
   const deleteMutation = useMutation({
     mutationFn: (videoId: string) => deleteLiftVideo(authFetch, videoId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lift-videos'] }),
+    onError: (err) => toast.error(`Delete video failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const processMutation = useMutation({
