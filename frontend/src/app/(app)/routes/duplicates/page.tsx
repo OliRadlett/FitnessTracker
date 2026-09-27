@@ -11,6 +11,7 @@ import {
   undoRouteMerge,
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
@@ -32,12 +33,14 @@ export default function DuplicatesPage() {
   const [lastMergeLogId, setLastMergeLogId] = useState<string | null>(null);
   const [undoMessage, setUndoMessage] = useState<string | null>(null);
 
-  const { data: pairs = [], isLoading, refetch } = useQuery({
+  const { data: pairs = [], isLoading, isError: pairsError, refetch } = useQuery({
     queryKey: ['route-duplicates'],
     queryFn: () => getDuplicateRoutes(token),
     enabled: !!token,
     staleTime: 60_000,
   });
+
+  const hasQueryError = pairsError;
 
   const autoMergeMutation = useMutation({
     mutationFn: (threshold: number) => autoMergeDuplicates(threshold, token),
@@ -161,6 +164,8 @@ export default function DuplicatesPage() {
             </button>
           </div>
         </div>
+
+        <QueryErrorBanner show={hasQueryError} message="Duplicate routes failed to load." />
 
         {autoMergeMutation.isSuccess && autoMergeMutation.data && (
           <Card className="mb-4">

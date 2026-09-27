@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
 import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { useToast } from '@/components/ui/Toast';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
@@ -36,7 +37,7 @@ export default function VideosPage() {
   if (afterFilter) queryParams.set('after', afterFilter);
   if (beforeFilter) queryParams.set('before', beforeFilter);
 
-  const { data: videos = [], isLoading } = useQuery<LiftVideo[]>({
+  const { data: videos = [], isLoading, isError: videosError } = useQuery<LiftVideo[]>({
     queryKey: ['lift-videos', exerciseFilter, afterFilter, beforeFilter],
     queryFn: () => authFetch<LiftVideo[]>(`/api/v1/lifting/videos/?${queryParams}`),
     enabled: !!token,
@@ -53,6 +54,8 @@ export default function VideosPage() {
       return active ? 5000 : false;
     },
   });
+
+  const hasQueryError = videosError;
 
   // Quick-jump exercise chips: accumulate the exercises seen in the unfiltered
   // list so the menu stays stable while a filter is active.
@@ -144,6 +147,8 @@ export default function VideosPage() {
           </button>
         </div>
       </div>
+
+      <QueryErrorBanner show={hasQueryError} message="Videos failed to load." />
 
       {tab === 'progress' ? (
         <VideoProgressTab initialExercise={exerciseFilter} />

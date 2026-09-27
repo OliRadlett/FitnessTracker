@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { useAuthFetch, Connection } from '@/lib/api';
@@ -117,6 +118,7 @@ export default function SettingsPage() {
   const toast = useToast();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectionsError, setConnectionsError] = useState(false);
   const [, setLoading] = useState(true);
   const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   useEffect(() => {
@@ -149,8 +151,10 @@ export default function SettingsPage() {
     try {
       const data = await authFetch<Connection[]>('/api/v1/connections/');
       setConnections(data);
+      setConnectionsError(false);
     } catch {
-      // No connections yet
+      // No connections yet — or the request failed; the banner distinguishes it.
+      setConnectionsError(true);
     } finally {
       setLoading(false);
     }
@@ -317,12 +321,14 @@ export default function SettingsPage() {
     return connections.find(c => c.provider === provider);
   }
 
-  const { data: cyclingProfile, isLoading: cyclingProfileLoading } = useQuery<CyclingProfile>({
+  const { data: cyclingProfile, isLoading: cyclingProfileLoading, isError: cyclingProfileError } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
     staleTime: 300_000,
     enabled: !!token,
   });
+
+  const hasQueryError = cyclingProfileError || connectionsError;
 
   return (
     <div className="space-y-6">
@@ -330,6 +336,8 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold text-foreground">Settings</h1>
         <p className="text-muted mt-1">Manage your account and integrations</p>
       </div>
+
+      <QueryErrorBanner show={hasQueryError} message="Some settings failed to load." />
 
       {/* Profile */}
       <Card>
