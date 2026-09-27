@@ -84,8 +84,40 @@ track for the 2D overlay.
 - Occlusion / <2 plates visible ⇒ no depth ⇒ fall back to the 2D metric (flagged
   approximate), as today.
 
+## Prototype results (`scripts/investigate_3d_bar.py`, same clip)
+
+Ran steps 1-2 end-to-end. It **works but the calibration does not close**, and
+the reasons are instructive:
+
+| finding | evidence | consequence |
+|---|---|---|
+| **MediaPipe's world metric scale is unreliable** | head→heel reads **0.874 m** for a real person (~1.5 m) — ~2x small; the feet also sit at y=0.55, i.e. mid-frame | everything metric is ~2x off until corrected |
+| **The user's height is the right correction** | applying `--height 1.80` moves the computed subject distance 1.4 m → 2.9 m (the corrected one is the plausible one, given the subject is small/far in frame) | height is not optional for metric work |
+| **The focal is unidentifiable from the body** | fitting `f` from the pose's own depth span returned a 12° "telephoto" | needs a device/lens assumption (`--fov`, default 66°) or EXIF |
+| **The principal point must be the image centre** | fitting it (weak-perspective) gave `cx=299px` on a 1080 frame | a ~0.5 m lateral bias |
+| **Anchoring the bar's depth at the shoulders beats the hips** | plausible lateral (60-140 mm) on clean frames once fixed | use the joint the bar is actually at |
+| **The plate diameter did not help** | `--plate-diameter 0.45` made every axis worse | the detected "plate" is a **stack**, not one plate; needs the load context |
+| outliers | a few frames give ±1 m lateral | plate detections need gating (the ONNX path has none today) |
+
+**Net:** the geometry is sound but the **absolute scale needs two things the pose
+cannot supply** — a trustworthy metric anchor (the user's height) and the
+**focal length** (the phone lens / EXIF, or a one-off calibration against a known
+distance). Until both are pinned the axis values drift by ~2x and are not usable.
+
 ## Next step
 
-Prototype **Step 1 + 2** on one clip and eyeball the 3D trace against the 2D
-track (the vertical must agree; the front-back must be smooth and small in a
-squat). Then Step 3's metric and a UI pass.
+1. **Calibration**: get the focal from the video/phone (or calibrate once against
+   a measured distance), and take the lifter's height as a per-clip input. Then
+   re-run — the vertical should land at ~1.3-1.5 m above the foot and the lateral
+   under ~100 mm.
+2. **Gate the plate detections** (reject a plate far from the pose proxy).
+3. Only then step 3 (the body-frame metric) + a UI pass.
+
+## Inputs we have / could get
+
+- **height** — a profile field (only `sync_profile_reference_weight` exists today).
+- **focal / lens** — EXIF of the source video, or a manual "which lens" choice.
+- **plate diameter** — only useful if we resolve the **stack** (we know `load_kg`
+  per clip, so the stack is computable in principle).
+- **bar length** — ties the plate separation to the depth difference, but the
+  plate spacing depends on the load, so it is the least reliable.
