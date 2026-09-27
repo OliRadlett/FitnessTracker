@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { WeatherBadge } from '@/components/activities/WeatherBadge';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import type { Activity, ActivitySource, ActivityContext } from '@/lib/api';
@@ -100,7 +100,7 @@ export function ActivityCard({
               <SourceBadges sources={activity.sources} />
             </div>
             <p className="text-xs text-muted mt-0.5">
-              {new Date(activity.start_date).toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {new Date(activity.start_date).toLocaleString(getActiveLocale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
               {activity.route_name && (
                 <span className="ml-2 text-accent">{'\u{1F4CD}'} {activity.route_name}</span>
               )}

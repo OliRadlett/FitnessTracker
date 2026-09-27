@@ -1,6 +1,7 @@
 'use client';
 
 import type { WhoopWeeklySummary } from '@/lib/api/types';
+import { getActiveLocale } from '@/lib/utils';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { TrendArrow } from '@/components/ui/TrendArrow';
 
@@ -55,7 +56,7 @@ export function WhoopWeeklyCard({ data }: WhoopWeeklyCardProps) {
             <div>
               <span className="text-muted">Best: </span>
               <span className="text-positive">
-                {new Date(data.best_recovery_day.date).toLocaleDateString(undefined, { weekday: 'short' })} ({data.best_recovery_day.score?.toFixed(0)}%)
+                {new Date(data.best_recovery_day.date).toLocaleDateString(getActiveLocale(), { weekday: 'short' })} ({data.best_recovery_day.score?.toFixed(0)}%)
               </span>
             </div>
           )}
@@ -63,7 +64,7 @@ export function WhoopWeeklyCard({ data }: WhoopWeeklyCardProps) {
             <div>
               <span className="text-muted">Worst: </span>
               <span className="text-warning">
-                {new Date(data.worst_recovery_day.date).toLocaleDateString(undefined, { weekday: 'short' })} ({data.worst_recovery_day.score?.toFixed(0)}%)
+                {new Date(data.worst_recovery_day.date).toLocaleDateString(getActiveLocale(), { weekday: 'short' })} ({data.worst_recovery_day.score?.toFixed(0)}%)
               </span>
             </div>
           )}

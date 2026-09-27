@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import type { Goal, GoalProjectionResponse } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ export function GoalCard({
             projection?.projection?.projected_date ? (
               <span className="ml-1">
                 · Projected{' '}
-                {new Date(projection.projection.projected_date).toLocaleDateString(undefined, {
+                {new Date(projection.projection.projected_date).toLocaleDateString(getActiveLocale(), {
                   month: 'short',
                   day: 'numeric',
                 })}

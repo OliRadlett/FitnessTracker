@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch, listGoals, getGoalProjection } from '@/lib/api';
 import type { Goal, GoalProjectionResponse } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 
 const BADGE_STYLES: Record<string, string> = {
   'On Track': 'bg-green-500/20 text-positive',
@@ -72,7 +73,7 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
             if (targetDate && projDate > targetDate) {
               dateText = 'Behind';
             } else {
-              dateText = projDate.toLocaleDateString(undefined, {
+              dateText = projDate.toLocaleDateString(getActiveLocale(), {
                 month: 'short',
                 day: 'numeric',
               });
