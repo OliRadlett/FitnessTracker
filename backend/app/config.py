@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     modal_token_id: str = ""
     modal_token_secret: str = ""
 
+    # TypeSafe Jev (System One decisions) — optional. When unset, every Jev
+    # call site no-ops and deterministic behaviour is unchanged.
+    typesafe_api_key: str = ""
+    jev_enabled: bool = True          # kill switch without unsetting the key
+    jev_model: str = "jev-latest"     # pin a version for reproducibility
+    jev_timeout_s: float = 8.0        # above the SDK's own retry budget
+
     # Lift-video camera-view classification via Gemini Vision. OFF by default:
     # a per-video call competes with the weekly/on-demand LLM analysis under a
     # low daily Gemini quota. Prefer the user-declared view; enable this only
@@ -242,6 +249,7 @@ class Settings(BaseSettings):
             "Google OAuth": (self.google_client_id, self.google_client_secret),
             "GitHub OAuth": (self.github_client_id, self.github_client_secret),
             "Komoot": (self.komoot_email, self.komoot_password),
+            "TypeSafe Jev": (self.typesafe_api_key, "x"),
         }
         for name, (client_id, client_secret) in optional_providers.items():
             if not client_id or not client_secret:
