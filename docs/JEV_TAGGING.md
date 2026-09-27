@@ -1,8 +1,8 @@
 # Jev free-text tagging (TypeSafe "System One")
 
-FitTrack uses TypeSafe **Jev** to interpret free-text fields — starting with
-`LiftingSession.notes` — into a small set of typed tags (pain/injury mention,
-high fatigue, PR mention, session outcome, energy). Tags feed deterministic
+FitTrack uses TypeSafe **Jev** to interpret free-text fields — `LiftingSession.notes`
+(pain/injury, fatigue, PR, outcome, energy) and `Activity.name` (purpose) — into a
+small set of typed tags. Tags feed deterministic
 downstream logic; Jev generates no prose and does not replace the numeric
 analysis (TSS/CTL/ATL, injury-risk math, PR detection).
 
@@ -21,8 +21,9 @@ Only the note text plus the minimal numeric context it is judged against:
 }
 ```
 
-The note is capped at 4,000 characters. No account identifiers, streams, health
-metrics, or other personal data are sent.
+For activities, only the workout name + `sport_type` are sent. The note is
+capped at 4,000 characters. No account identifiers, streams, health metrics, or
+other personal data are sent.
 
 ## How it is used
 
