@@ -54,9 +54,12 @@ Two things made 3/4 hard:
     boxes, the centre separation is median **0.44** (min 0.14, max 0.65) of image
     width; **100% are ≥0.10 apart, 0% below 0.03**. These are the two plates at
     the bar's ends, not one plate detected twice.
-- The whole-bar `barbell` class is only reliable from the **front**. Reason: the
-  model's whole-bar examples are **synthetic-only** (the 1,500 synthetic frames
-  carry a `barbell` box; the 232 real frames are **plate-only**).
+- The whole-bar `barbell` class is only reliable from the **front**. Reason: it is
+  heavily **under-labelled on real data** — every one of the 1,500 synthetic
+  frames carries a `barbell` box, but only **88 of the 248 real labelled frames**
+  do (the rest are plate/person only), so the class never learned real whole-bar
+  appearance beyond those 88. Completing the real labels is option B's first step
+  (`scripts/prefill_barbell.py` seeds it: 88 kept, 103 suggested, 57 to draw).
 - Side views see one plate (they overlap) → 44% "2+ plates" is mostly one plate
   split/duplicated, not a true pair.
 
@@ -70,10 +73,13 @@ of ¾ frames. Residual: the image midpoint is perspective-biased (the near plate
 reads larger/lower); correctable via the plate **size ratio** if it proves material.
 
 **B. Whole-bar labels + retrain.**
-Label whole-bar boxes on the real frames (tooling exists: `scripts/label_server.py`
-/ `label_tool`) and retrain → the `barbell` class becomes reliable on real footage,
-and its box centre is the bar centre in **any** view. Needs a labelling pass +
-retrain (~1 session).
+Complete the real whole-bar labels (88 of 248 frames already done) and retrain →
+the `barbell` class becomes reliable on real footage, and its box centre is the
+bar centre in **any** view. `scripts/prefill_barbell.py` seeds the pass (keeps the
+88 human boxes, adds 103 detector suggestions, leaves 57 to draw) and the
+correction runs in `scripts/label_server.py` (`--data <data> --labels
+<data>/labels.barbell.jsonl`, Barbell = **B**; `--data` is the labels root, not
+the frames dir — the tool requests `/frames/frames/<name>`). Then retrain.
 
 **C. Body-frame / metric 3D (deepest).**
 MediaPipe **world landmarks** already give a metric 3D body frame (used by
