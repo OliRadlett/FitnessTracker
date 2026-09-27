@@ -323,3 +323,56 @@ class TestBackfillAllActivities:
         )
         activities = list(db_result.scalars().all())
         assert len(activities) == 5
+
+
+# ─── Stream fetch failures are logged, not silently swallowed ─────────────
+
+
+def _http_status_error(status: int):
+    import httpx
+
+    req = httpx.Request("GET", "https://www.strava.com/api/v3/activities/1/streams")
+    return httpx.HTTPStatusError(
+        f"HTTP {status}", request=req, response=httpx.Response(status, request=req)
+    )
+
+
+class TestStreamFetchFailures:
+    """A failed stream fetch must not abort the sync (streams are optional),
+    and must not be swallowed silently — it is logged."""
+
+    async def test_sync_completes_when_streams_404(
+        self, db_session, test_user, strava_connection, strava_responses
+    ):
+        from app.services.strava.sync import sync_activities
+
+        with patch("app.services.strava.sync.strava_client") as mock_client:
+            mock_client.get_activities = AsyncMock(
+                return_value=strava_responses["activities"][:1]
+            )
+            mock_client.get_activity_streams = AsyncMock(
+                side_effect=_http_status_error(404)
+            )
+            synced = await sync_activities(db_session, test_user.id)
+
+        assert len(synced) == 1
+        result = await db_session.execute(
+            select(ActivityStream).where(ActivityStream.activity_id == synced[0].id)
+        )
+        assert list(result.scalars().all()) == []
+
+    async def test_sync_completes_when_streams_500(
+        self, db_session, test_user, strava_connection, strava_responses
+    ):
+        from app.services.strava.sync import sync_activities
+
+        with patch("app.services.strava.sync.strava_client") as mock_client:
+            mock_client.get_activities = AsyncMock(
+                return_value=strava_responses["activities"][:1]
+            )
+            mock_client.get_activity_streams = AsyncMock(
+                side_effect=_http_status_error(500)
+            )
+            synced = await sync_activities(db_session, test_user.id)
+
+        assert len(synced) == 1
