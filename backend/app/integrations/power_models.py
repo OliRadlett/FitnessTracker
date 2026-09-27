@@ -497,6 +497,29 @@ def fit_personalized_vo2max(
 # ── Adaptive CTL/ATL Time Constants ─────────────────────────────────────────
 
 
+def adaptive_taus_to_persist(
+    constants: dict,
+) -> tuple[int | None, int | None] | None:
+    """Decide which adaptive CTL/ATL taus to persist from a fit result.
+
+    Returns ``(ctl_tau, atl_tau)`` to store, or ``None`` to leave the stored
+    values unchanged:
+
+    - successful fit → the fitted values;
+    - a real run that could not personalise (insufficient data/overlap) →
+      ``(None, None)``, so the canonical 42/7 defaults are not later reported
+      as a personalized ``hrv_recovery_fit``;
+    - no/unknown result (transient failure, circuit breaker) → ``None`` (keep
+      any previously fitted values).
+    """
+    method = (constants or {}).get("method")
+    if method == "hrv_recovery_fit":
+        return (constants.get("ctl_tau"), constants.get("atl_tau"))
+    if method in ("insufficient_data", "insufficient_overlap"):
+        return (None, None)
+    return None
+
+
 def fit_adaptive_time_constants(
     daily_tss: list[dict],
     hrv_data: list[dict],
