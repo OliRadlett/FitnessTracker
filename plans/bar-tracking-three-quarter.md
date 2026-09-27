@@ -32,6 +32,10 @@ Two things made 3/4 hard:
   box. In ¾ views **86% of frames have both plates detected** → we can recover the
   **bar centre** (midpoint) and the **tilt** (line between them) without any new
   model.
+  - **Verified distinct, not duplicates**: across the 152 ¾ frames with two plate
+    boxes, the centre separation is median **0.44** (min 0.14, max 0.65) of image
+    width; **100% are ≥0.10 apart, 0% below 0.03**. These are the two plates at
+    the bar's ends, not one plate detected twice.
 - The whole-bar `barbell` class is only reliable from the **front**. Reason: the
   model's whole-bar examples are **synthetic-only** (the 1,500 synthetic frames
   carry a `barbell` box; the 232 real frames are **plate-only**).
