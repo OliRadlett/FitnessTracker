@@ -186,6 +186,8 @@ export interface DuplicatePair {
   requires_confirmation: boolean;
   tier?: 'auto' | 'review' | string;
   breakdown?: DuplicateMatchBreakdown | null;
+  jev_decision?: 'same' | 'different' | 'unclear' | string | null;
+  jev_confidence?: number | null;
 }
 
 export interface MergeResult {

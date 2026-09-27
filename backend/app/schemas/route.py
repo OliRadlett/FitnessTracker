@@ -205,6 +205,9 @@ class DuplicatePair(BaseModel):
     requires_confirmation: bool = False  # True unless tier == "auto"
     tier: str = "review"  # "auto" | "review"
     breakdown: dict | None = None  # per-component match explanation
+    # Jev arbitration of the review tier (Phase 3) — None when Jev is unset.
+    jev_decision: str | None = None  # "same" | "different" | "unclear"
+    jev_confidence: float | None = None
 
 
 class MergeResult(BaseModel):

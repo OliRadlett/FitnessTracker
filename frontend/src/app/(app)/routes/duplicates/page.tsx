@@ -298,6 +298,15 @@ function DuplicatePairCard({
               Review required
             </Badge>
           )}
+          {pair.jev_decision && (
+            <Badge
+              variant="muted"
+              className="text-xs ml-2"
+              title="Jev's read on whether these are the same route"
+            >
+              Jev: {pair.jev_decision}
+            </Badge>
+          )}
           {pair.breakdown && (
             <div className="mt-3 text-xs text-muted flex flex-wrap gap-x-3 gap-y-1">
               <span>overlap {Math.round((pair.breakdown.min_coverage ?? 0) * 100)}%</span>
