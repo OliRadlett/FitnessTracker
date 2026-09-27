@@ -295,6 +295,8 @@ class ScoreBreakdown:
     lap_ratio: float | None
     length_a_m: float
     length_b_m: float
+    road_jaccard: float | None = None  # Phase 2 — OSM edge-set similarity
+    embedding_similarity: float | None = None  # Phase 2 — route embedding cosine
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -365,6 +367,8 @@ def score_route_pair(
     resample_n: int = DEFAULT_RESAMPLE_N,
     tol_m: float = DEFAULT_TOL_M,
     frechet_ceiling_m: float = DEFAULT_FRECHET_CEILING_M,
+    road_jaccard: float | None = None,
+    embedding_similarity: float | None = None,
 ) -> ScoreBreakdown:
     """Score a candidate route pair. Returns a full :class:`ScoreBreakdown`.
 
@@ -411,8 +415,20 @@ def score_route_pair(
     frechet_sim = max(0.0, 1.0 - frechet_fwd / frechet_ceiling_m)
     endpoint = _endpoint_similarity(points_a[0], points_a[-1], points_b[0], points_b[-1])
 
+    # Phase 2 — road-anchored signal (edge Jaccard and/or embedding cosine).
+    road_signal: float | None = None
+    if road_jaccard is not None:
+        road_signal = max(0.0, min(1.0, road_jaccard))
+    if embedding_similarity is not None:
+        es = max(0.0, min(1.0, embedding_similarity))
+        road_signal = es if road_signal is None else (road_signal + es) / 2.0
+
+    # The gate is relaxed when the road/embedding signal is strong: routes that
+    # traverse ~the same roads match even if raw GPS coverage is mediocre.
+    effective_cov = max(min_cov, road_signal or 0.0)
+
     # Hard gates.
-    if min_cov < gate:
+    if effective_cov < gate:
         bd = _empty_breakdown(la, lb)
         bd.coverage_ab = round(cov_ab, 4)
         bd.coverage_ba = round(cov_ba, 4)
@@ -421,6 +437,8 @@ def score_route_pair(
         bd.frechet_similarity = round(frechet_sim, 4)
         bd.endpoint_similarity = round(endpoint, 4)
         bd.length_ratio = round(length_ratio, 4)
+        bd.road_jaccard = road_signal
+        bd.embedding_similarity = embedding_similarity
         return bd
 
     total = (
@@ -428,6 +446,8 @@ def score_route_pair(
         + _W_FRECHET * frechet_sim
         + _W_ENDPOINT * endpoint
     )
+    if road_signal is not None:
+        total = 0.7 * total + 0.3 * road_signal
 
     if total >= auto_threshold:
         tier = "auto"
@@ -459,6 +479,8 @@ def score_route_pair(
         lap_ratio=lap_ratio,
         length_a_m=round(la, 1),
         length_b_m=round(lb, 1),
+        road_jaccard=road_signal,
+        embedding_similarity=embedding_similarity,
     )
 
 

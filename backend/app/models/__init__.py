@@ -22,6 +22,7 @@ from app.models.nutrition import RideFuelPlan
 from app.models.push import PushSubscription
 from app.models.route import (
     Route,
+    RouteMatchMetric,
     RouteMergeLog,
     RouteSimilarity,
     RouteSource,
@@ -70,6 +71,7 @@ __all__ = [
     "Route",
     "RouteCollection",
     "RouteCollectionItem",
+    "RouteMatchMetric",
     "RouteMergeLog",
     "RouteQuality",
     "RouteSimilarity",

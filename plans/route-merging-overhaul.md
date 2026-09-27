@@ -163,8 +163,7 @@ this revision only adds the two new tables.
   merge log + undo, migration 079.
 - **Phase 1b (done)**: Modal pair-scoring + similarity graph, weekly task,
   cache-backed duplicates endpoint, review-queue UX, merge undo API, Similar routes.
-- **Phase 2 (todo)**: OSM road-graph map-matching (platform-wide + merges) and
-  self-supervised route embeddings trained on accumulated merge decisions.
+- **Phase 2 (done 2026-09-27 — see [`route-matching-phase2.md`](route-matching-phase2.md))**: OSM road-graph map-matching + route embeddings.
 
 ### Implementation map
 
