@@ -230,6 +230,20 @@ async def _store_analysis(
     return record
 
 
+def _gemini_client_message(exc: Exception) -> str:
+    """Client-facing message for a failed Gemini call.
+
+    Never includes the raw provider error — it can contain request details,
+    prompts, or API-side internals — which is logged server-side instead.
+    """
+    msg = str(exc).lower()
+    if "rate limit" in msg or "429" in msg:
+        return "AI analysis rate limit exceeded. Please try again in a few minutes."
+    if "timeout" in msg or "deadline" in msg:
+        return "AI analysis timed out. The service may be overloaded — please try again."
+    return "AI analysis failed. Please try again later."
+
+
 async def _call_gemini(prompt: str, truncation_label: str) -> str:
     """Call the Gemini API with a prompt and return the response text.
 
@@ -276,19 +290,9 @@ async def _call_gemini(prompt: str, truncation_label: str) -> str:
                 await asyncio.sleep(delay)
                 delay *= 2
     except Exception as e:
-        error_msg = str(e).lower()
-        if "rate limit" in error_msg or "429" in error_msg:
-            logger.error("Gemini API rate limit hit: %s", e)
-            raise ValueError(
-                "AI analysis rate limit exceeded. Please try again in a few minutes."
-            ) from e
-        if "timeout" in error_msg or "deadline" in error_msg:
-            logger.error("Gemini API timeout: %s", e)
-            raise ValueError(
-                "AI analysis timed out. The service may be overloaded — please try again."
-            ) from e
+        # Log the full provider error server-side; return a safe message.
         logger.error("Gemini API call failed: %s", e)
-        raise ValueError(f"AI analysis failed: {e!s}") from e
+        raise ValueError(_gemini_client_message(e)) from e
 
     if not response.text:
         raise ValueError("Gemini returned an empty response. Please try again.")
