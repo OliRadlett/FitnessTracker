@@ -9,8 +9,16 @@
 > most frames resolved the bar centre (pair-rate ≥ 0.5), flags them
 > `lateral_basis = "three_quarter"` (shown with a trailing `~` in the UI) and
 > explains them in the note. Validated on a real ¾ clip: **89% of resolved frames
-> gave `plate_pair`**. Residual perspective bias is still unquantified (see the
-> validation gap) — hence the approximate flag.
+> gave `plate_pair`**, and `bar_over_midfoot` came out **0.75** (vs the bogus
+> 4.7 on a single plate).
+>
+> **Bar tilt stays frontal-only** (revised after seeing real data): the first cut
+> allowed it in ¾, but a real squat read **20°**, which no barbell does — the two
+> plates sit at different depths in a ¾ view, so the image line between them is
+> perspective, not tilt.
+>
+> Residual perspective bias in the midfoot/lateral numbers is still unquantified
+> (see the validation gap) — hence the approximate flag.
 
 ## Why this matters
 

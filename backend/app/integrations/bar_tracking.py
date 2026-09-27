@@ -201,8 +201,11 @@ def analyze_bar_path(
     # when the bar centre was actually resolved.
     lateral_ok = sagittal or (three_q and pair_rate >= _MIN_PAIR_RATE_3Q)
 
+    # Bar tilt stays frontal-only: in a 3/4 view the two plates sit at
+    # different depths, so the image line between them is dominated by
+    # perspective (a real squat read 20 degrees, which no barbell does).
     tilts = []
-    if frontal or three_q:
+    if frontal:
         tilts = [abs(float(p["tilt_deg"])) for p in bar_track
                  if p and p.get("tilt_deg") is not None]
         tilts = [min(t, 90.0) for t in tilts]
@@ -304,7 +307,7 @@ def analyze_bar_path(
         )
     elif not lateral_ok:
         notes.append("Bar-over-midfoot / net lateral need a side view.")
-    if not frontal and not three_q:
+    if not frontal:
         notes.append("Bar tilt needs a front/back view.")
     if notes:
         result["note"] = " ".join(notes)
