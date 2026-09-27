@@ -109,7 +109,7 @@ OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.jso
 
 ## Database Migrations
 
-⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→061(head).
+⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→079(head).
 
 ```bash
 # Generate

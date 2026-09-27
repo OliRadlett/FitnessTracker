@@ -1,6 +1,6 @@
 # FitTrack Bug Report
 
-> Generated: 2026-08-24, updated 2026-09-22 | Total: 95 bugs | Fixed: 85 | Deferred: 6 | Investigating: 1 | Verified: 1 | Documented: 1
+> Generated: 2026-08-24, updated 2026-09-26 | Total: 98 bugs | Fixed: 90 | Deferred: 4 | Investigating: 1 | Verified: 1 | Documented: 1 | Already fixed: 1
 
 ---
 
