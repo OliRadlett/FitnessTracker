@@ -24,6 +24,9 @@ from sqlalchemy.orm import selectinload
 
 # Reuse the polyline extraction helper from the activities API
 from app.api.activities import _extract_encoded_polyline
+
+# Reuse the safe Content-Disposition builder from the export API
+from app.api.export import content_disposition
 from app.database import get_db
 from app.models.activity import Activity
 from app.models.route import Route, RouteMergeLog, RouteSimilarity, RouteSource
@@ -781,7 +784,10 @@ async def create_route(
 ):
     """Create a route from GPX data or encoded polyline."""
     if body.gpx_data:
-        parsed = parse_gpx(body.gpx_data)
+        try:
+            parsed = parse_gpx(body.gpx_data)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         encoded = encode_polyline(parsed["points"])
         elevations = parsed["elevations"]
         name = body.name or parsed["name"]
@@ -1074,12 +1080,12 @@ async def download_gpx(
         raise HTTPException(status_code=404, detail="Route not found")
 
     gpx_content = route_to_gpx(route)
-    filename = f"{route.name.replace(' ', '_').replace('/', '_')}.gpx"
+    filename = f"{route.name or 'route'}.gpx"
 
     return StreamingResponse(
         BytesIO(gpx_content.encode("utf-8")),
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -1104,7 +1110,10 @@ async def upload_gpx(
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="File must be valid UTF-8 text")
 
-    parsed = parse_gpx(gpx_text)
+    try:
+        parsed = parse_gpx(gpx_text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     encoded = encode_polyline(parsed["points"])
     elevations = parsed["elevations"]
     elevation_profile = (
