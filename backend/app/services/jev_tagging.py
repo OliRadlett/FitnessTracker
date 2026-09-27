@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.integrations import jev_client
+from app.models.activity import Activity
 from app.models.lifting import LiftingSession
 
 logger = logging.getLogger(__name__)
@@ -158,11 +159,88 @@ async def tag_lifting_session_by_id(session_id: uuid.UUID, user_id: uuid.UUID) -
         )
 
 
+def _activity_questions() -> dict:
+    return {
+        "purpose": jev_client.choice(
+            "What best describes the purpose of this activity?",
+            {
+                "training": "Structured training / intervals",
+                "endurance": "Long endurance ride",
+                "commute": "Commute / transport",
+                "recovery": "Easy recovery spin",
+                "race": "Race / event",
+                "social": "Social / group ride",
+            },
+        ),
+    }
+
+
+def build_activity_tags(result: jev_client.JevResult, name_hash: str, model: str) -> dict:
+    """Map a ``JevResult`` to the activity ``context['tags']`` payload."""
+    tags: dict = {
+        "source": "jev",
+        "model": model,
+        "resolved_model": result.model,
+        "computed_at": result.computed_at,
+        "name_hash": name_hash,
+    }
+    purpose = result.answers.get("purpose")
+    if (
+        purpose is not None
+        and purpose.choice
+        and (purpose.confidence or 0) >= CHOICE_MIN_CONFIDENCE
+    ):
+        tags["purpose"] = purpose.choice
+        tags["purpose_confidence"] = round(purpose.confidence or 0, 3)
+    return tags
+
+
+async def tag_activity(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    activity: Activity,
+) -> bool:
+    """Tag an activity's name with a purpose label into ``context['tags']``.
+
+    Returns True when the stored tags changed. Never raises.
+    """
+    name = (activity.name or "").strip()
+    if not name or not jev_client.is_configured():
+        return False
+
+    ctx = dict(activity.context or {})
+    existing = ctx.get("tags") or {}
+    name_hash = _note_hash(name)
+    if (
+        existing.get("name_hash") == name_hash
+        and existing.get("model") == get_settings().jev_model
+    ):
+        return False
+
+    try:
+        result = await jev_client.decide(
+            {"name": name, "sport_type": activity.sport_type},
+            _activity_questions(),
+            user_id=user_id,
+        )
+    except Exception as e:
+        logger.warning("Jev activity tagging failed for %s: %s", activity.id, e)
+        return False
+
+    if result is None:
+        return False
+
+    ctx["tags"] = build_activity_tags(result, name_hash, get_settings().jev_model)
+    activity.context = ctx
+    return True
+
+
 async def backfill_free_text_tags(db: AsyncSession, user_id: uuid.UUID) -> int:
-    """Tag all of a user's notes-bearing sessions (idempotent). Returns count."""
+    """Tag all of a user's free-text (sessions + activity names). Idempotent."""
     if not jev_client.is_configured():
         return 0
 
+    tagged = 0
     result = await db.execute(
         select(LiftingSession).where(
             LiftingSession.user_id == user_id,
@@ -170,8 +248,19 @@ async def backfill_free_text_tags(db: AsyncSession, user_id: uuid.UUID) -> int:
             LiftingSession.notes != "",
         )
     )
-    tagged = 0
     for session in result.scalars():
         if await tag_lifting_session(db, user_id, session):
             tagged += 1
+
+    act_result = await db.execute(
+        select(Activity).where(
+            Activity.user_id == user_id,
+            Activity.name.isnot(None),
+            Activity.name != "",
+        )
+    )
+    for activity in act_result.scalars():
+        if await tag_activity(db, user_id, activity):
+            tagged += 1
+
     return tagged

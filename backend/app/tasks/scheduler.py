@@ -1271,6 +1271,7 @@ def backfill_free_text_tags() -> dict:
 
     from app.database import task_session
     from app.integrations import jev_client
+    from app.models.activity import Activity
     from app.models.lifting import LiftingSession
 
     if not jev_client.is_configured():
@@ -1288,7 +1289,13 @@ def backfill_free_text_tags() -> dict:
                 )
                 .distinct()
             )
-            user_ids = [r for (r,) in result.all()]
+            user_ids = {r for (r,) in result.all()}
+            act_result = await db.execute(
+                select(Activity.user_id)
+                .where(Activity.name.isnot(None), Activity.name != "")
+                .distinct()
+            )
+            user_ids |= {r for (r,) in act_result.all()}
 
             total_tagged = 0
             done = 0

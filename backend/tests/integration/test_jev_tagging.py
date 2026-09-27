@@ -114,3 +114,49 @@ class TestHealthCrossCheck:
         result = await analyze_injury_risk(db_session, test_user.id)
         assert result is not None
         assert "Free-text pain mentions" not in result["evidence"]
+
+
+class TestActivityTagging:
+    async def test_stores_purpose_in_context(self, db_session, test_user, monkeypatch):
+        from datetime import UTC, datetime
+
+        from app.models.activity import Activity
+
+        monkeypatch.setattr(jev_client, "is_configured", lambda: True)
+
+        async def fake_decide(state, questions, **kwargs):
+            return JevResult(
+                answers={
+                    "purpose": JevAnswer("choice", choice="endurance", confidence=0.8)
+                },
+                model="jev-test",
+                computed_at="2026-09-27T00:00:00Z",
+            )
+
+        monkeypatch.setattr(jev_client, "decide", fake_decide)
+
+        activity = Activity(
+            user_id=test_user.id,
+            source="strava",
+            sport_type="cycling",
+            name="Long Sunday Ride",
+            start_date=datetime(2026, 9, 27, 9, tzinfo=UTC),
+        )
+        db_session.add(activity)
+        await db_session.flush()
+
+        assert await jev_tagging.tag_activity(db_session, test_user.id, activity)
+        assert activity.context["tags"]["purpose"] == "endurance"
+        # Idempotent for the same name + model.
+        assert not await jev_tagging.tag_activity(db_session, test_user.id, activity)
+
+
+def test_build_activity_tags_confidence_floor():
+    result = JevResult(
+        answers={"purpose": JevAnswer("choice", choice="race", confidence=0.4)},
+        model="jev-test",
+        computed_at="z",
+    )
+    tags = jev_tagging.build_activity_tags(result, "h", "jev-latest")
+    assert "purpose" not in tags  # below the 0.60 confidence floor
+    assert tags["source"] == "jev" and tags["model"] == "jev-latest"
