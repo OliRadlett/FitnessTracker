@@ -658,14 +658,18 @@ async def link_activities_to_plan_days(
                     a
                     for a in activities_by_date.get(day.day_date, [])
                     if a.id not in used_activity_ids
+                    # Only cycling activities may satisfy a cycle day (SCI-06);
+                    # otherwise a same-day run/lift gets linked and shown as the
+                    # planned ride.
+                    and _activity_sport_matches_day(a, day)
                 ]
                 if candidates:
                     day.activity_id = candidates[0].id
                     used_activity_ids.add(candidates[0].id)
                     linked += 1
-                    if _activity_sport_matches_day(candidates[0], day):
-                        day.completed = True
-                        completed_updates += 1
+                    # Candidates are pre-filtered by sport, so the day matches.
+                    day.completed = True
+                    completed_updates += 1
                     # Copy route: plan → activity
                     if (
                         candidates[0].route_id is None
