@@ -77,8 +77,9 @@ Complete the real whole-bar labels (88 of 248 frames already done) and retrain â
 the `barbell` class becomes reliable on real footage, and its box centre is the
 bar centre in **any** view. `scripts/prefill_barbell.py` seeds the pass (keeps the
 88 human boxes, adds 103 detector suggestions, leaves 57 to draw) and the
-correction runs in `scripts/label_server.py` (`--data <data>/frames --labels
-<data>/labels.barbell.jsonl`, Barbell = **B**). Then retrain.
+correction runs in `scripts/label_server.py` (`--data <data> --labels
+<data>/labels.barbell.jsonl`, Barbell = **B**; `--data` is the labels root, not
+the frames dir â€” the tool requests `/frames/frames/<name>`). Then retrain.
 
 **C. Body-frame / metric 3D (deepest).**
 MediaPipe **world landmarks** already give a metric 3D body frame (used by
