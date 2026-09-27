@@ -164,6 +164,13 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.classify_route_terrain",
         "schedule": crontab(hour=2, minute=30, day_of_week=6),
     },
+    # Phase 2 — map-match routes to the OSM road graph + embed, weekly
+    # (Sunday 2:50 AM UTC, before the similarity graph task consumes them).
+    "map-match-routes": {
+        "task": "app.tasks.scheduler.map_match_routes",
+        "schedule": crontab(hour=2, minute=50, day_of_week=0),
+        "options": {"expires": 7200},
+    },
     # Recompute the route similarity graph + auto-merge dups weekly
     # (Sunday 3:05 AM UTC, after quality, before segment recompute).
     "recompute-route-similarity": {
@@ -1240,6 +1247,79 @@ def backfill_activity_context() -> dict:
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
 
 
+@celery_app.task(name="app.tasks.scheduler.map_match_routes")
+def map_match_routes() -> dict:
+    """Map-match routes to the OSM road graph + compute embeddings (Phase 2).
+
+    Runs weekly (Sunday 2:50 AM UTC, before ``recompute_route_similarity``). For
+    each user with ≥2 routes: snap polylines to the regional OSM graph via Modal
+    (graceful no-op when Modal/OSM is unconfigured), persist ``road_match`` +
+    embedding features, then train the embedding metric from the accumulated
+    merge decisions.
+    """
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.config import get_settings
+    from app.database import task_session
+    from app.integrations.route_road_graph import match_routes_to_roads_on_modal
+    from app.models.route import Route
+    from app.services.polyline_utils import decode_polyline
+    from app.services.road_matching import (
+        store_road_matches,
+        train_metric_from_history,
+    )
+
+    async def _run():
+        settings = get_settings()
+        if not settings.road_match_enabled:
+            return {"skipped": "road_match_disabled"}
+
+        async with task_session() as db:
+            result = await db.execute(
+                select(Route.user_id)
+                .group_by(Route.user_id)
+                .having(func.count(Route.id) >= 2)
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            users_done = 0
+            matched = 0
+
+            for user_id in user_ids:
+                try:
+                    routes = (
+                        await db.execute(
+                            select(Route).where(Route.user_id == user_id)
+                        )
+                    ).scalars().all()
+                    routes_data = [
+                        {"id": str(r.id), "polyline": decode_polyline(r.encoded_polyline)}
+                        for r in routes
+                    ]
+                    matches = match_routes_to_roads_on_modal(
+                        routes_data,
+                        settings.osm_region,
+                        search_radius_m=settings.road_match_search_radius_m,
+                        max_snap_m=settings.road_match_max_snap_m,
+                    )
+                    if matches:
+                        matched += store_road_matches(db, routes, matches)
+                        await train_metric_from_history(db, user_id)
+                    await db.commit()
+                    users_done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Road matching failed for user {user_id}: {e}", exc_info=True
+                    )
+                    await db.rollback()
+
+            return {"users_processed": users_done, "routes_matched": matched}
+
+    return asyncio.run(_run_task_guarded("map_match_routes", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.recompute_route_similarity")
 def recompute_route_similarity() -> dict:
     """Recompute the route similarity graph and auto-merge high-confidence dups.
@@ -1263,6 +1343,8 @@ def recompute_route_similarity() -> dict:
     )
     from app.models.route import Route, RouteSimilarity
     from app.services.polyline_utils import decode_polyline
+    from app.services.road_matching import load_metric, road_signals
+    from app.services.route_matching import score_route_pair
     from app.services.route_service import merge_routes
 
     async def _run():
@@ -1306,6 +1388,32 @@ def recompute_route_similarity() -> dict:
                         gate=gate,
                     )
                     pairs = graph.get("pairs", [])
+
+                    # Phase 2 — re-blend matched pairs with the road edge Jaccard
+                    # and route-embedding similarity when available.
+                    by_id = {str(r.id): r for r in routes}
+                    points_by_id = {d["id"]: d["polyline"] for d in routes_data}
+                    metric = await load_metric(db, user_id)
+                    for p in pairs:
+                        a = by_id.get(p["a"])
+                        b = by_id.get(p["b"])
+                        if a is None or b is None:
+                            continue
+                        rj, es = road_signals(a, b, metric)
+                        if rj is None and es is None:
+                            continue
+                        bd = score_route_pair(
+                            points_by_id[p["a"]],
+                            points_by_id[p["b"]],
+                            length_a=a.distance_meters,
+                            length_b=b.distance_meters,
+                            auto_threshold=auto,
+                            review_floor=review,
+                            gate=gate,
+                            road_jaccard=rj,
+                            embedding_similarity=es,
+                        )
+                        p.update(bd.to_dict())
 
                     # Refresh the cached graph for this user.
                     await db.execute(

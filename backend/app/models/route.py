@@ -53,6 +53,10 @@ class Route(Base):
         Float, nullable=True, index=True
     )
     terrain_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Phase 2 — OSM road-graph map-match (edge set + coverage) and route embedding.
+    road_match: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    road_embedding: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    road_match_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Wahoo push state — id of the route uploaded to the user's Wahoo library
     wahoo_route_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wahoo_route_pushed_at: Mapped[datetime | None] = mapped_column(
@@ -163,6 +167,30 @@ class RouteSimilarity(Base):
     tier: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
     breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RouteMatchMetric(Base):
+    """Per-user learned diagonal metric for route embeddings (Phase 2).
+
+    Weights are trained self-supervised on the merge decisions the app
+    accumulates (auto-tier ``route_similarity`` pairs as positives, sampled
+    dissimilar pairs as negatives).
+    """
+
+    __tablename__ = "route_match_metric"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    weights: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    n_positives: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_negatives: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    trained_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 

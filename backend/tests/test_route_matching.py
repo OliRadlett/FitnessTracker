@@ -171,3 +171,33 @@ def test_drop_jitter_removes_stationary_points():
     pts = [(_LAT0, 0.0), (_LAT0, 1e-7), (_LAT0, 2e-7), (_LAT0, _east_deg(100))]
     kept = drop_jitter(pts, min_move_m=3.0)
     assert len(kept) < len(pts)
+
+
+# ── Phase 2: road-anchored signal ────────────────────────────────────────────
+
+
+def test_road_jaccard_is_recorded_and_blended():
+    pts = _line(30.0, step_m=40.0)
+    geo = score_route_pair(pts, pts)
+    road = score_route_pair(pts, pts, road_jaccard=0.5)
+    assert road.road_jaccard == 0.5
+    # 0.7 * geographic + 0.3 * 0.5
+    assert abs(road.total - (0.7 * geo.total + 0.3 * 0.5)) < 1e-4
+
+
+def test_high_road_jaccard_relaxes_coverage_gate():
+    # Two routes that only partially overlap geometrically but share roads.
+    a = _line(30.0, step_m=40.0)
+    b = a[: len(a) // 2]  # sub-section → coverage gate would reject
+    assert not score_route_pair(a, b).matched
+    relaxed = score_route_pair(a, b, road_jaccard=0.95)
+    assert relaxed.road_jaccard == 0.95
+    assert relaxed.total > 0.0  # gate passed
+
+
+def test_road_signal_does_not_override_reversed():
+    pts = _line(20.0, step_m=40.0)
+    bd = score_route_pair(pts, list(reversed(pts)), road_jaccard=1.0)
+    assert bd.reversed
+    assert bd.total == 0.0
+

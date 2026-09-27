@@ -109,6 +109,7 @@ class RouteRead(BaseModel):
     is_favorite: bool = False
     quality_score: float | None = None
     terrain_classification: dict | None = None
+    road_match: dict | None = None  # Phase 2 — OSM edge set + coverage
     sources: list[RouteSourceRead] = []
     tags: list[RouteTagRead] = []
     created_at: datetime
