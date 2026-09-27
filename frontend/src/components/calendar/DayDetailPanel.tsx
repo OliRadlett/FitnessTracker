@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import type {
   ActivityCalendarEntry,
   Activity,
@@ -169,7 +169,7 @@ export function DayDetailPanel({
   const formatTime = (iso?: string) => {
     if (!iso) return '\u2014';
     try {
-      return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return new Date(iso).toLocaleTimeString(getActiveLocale(), { hour: '2-digit', minute: '2-digit' });
     } catch { return '\u2014'; }
   };
 

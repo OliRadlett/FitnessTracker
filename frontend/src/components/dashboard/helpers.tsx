@@ -8,7 +8,7 @@ import type {
 } from '@/lib/api';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 
 export function ActivityRow({ activity }: { activity: Activity }) {
   return (
@@ -23,7 +23,7 @@ export function ActivityRow({ activity }: { activity: Activity }) {
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground truncate">{activity.name}</p>
           <p className="text-xs text-muted">
-            {new Date(activity.start_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            {new Date(activity.start_date).toLocaleDateString(getActiveLocale(), { weekday: 'short', month: 'short', day: 'numeric' })}
           </p>
         </div>
       </div>
@@ -48,7 +48,7 @@ export function SessionRow({ session }: { session: LiftingSession }) {
       <div>
         <p className="text-sm font-medium text-foreground">{session.focus || 'General'}</p>
         <p className="text-xs text-muted">
-          {new Date(session.session_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+          {new Date(session.session_date).toLocaleDateString(getActiveLocale(), { weekday: 'short', month: 'short', day: 'numeric' })}
         </p>
       </div>
       <div className="text-right">

@@ -7,6 +7,8 @@
 
 import React from 'react';
 
+import { getActiveLocale } from './utils';
+
 /* ── Markdown-like renderer ─────────────────────────────────────────────── */
 
 /** Render inline bold (**text**) */
@@ -118,5 +120,5 @@ export function relativeTime(dateStr: string): string {
   if (diffHrs < 24) return `${diffHrs}h ago`;
   const diffDays = Math.floor(diffHrs / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return new Date(dateStr).toLocaleDateString(getActiveLocale(), { month: 'short', day: 'numeric' });
 }

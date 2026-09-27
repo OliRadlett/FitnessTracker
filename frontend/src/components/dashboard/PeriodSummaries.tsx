@@ -6,6 +6,7 @@
 
 import React from 'react';
 import type { MonthlySummaryItem, YearlySummary } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -32,7 +33,7 @@ function MonthCard({ month, prevMonth }: { month: MonthlySummaryItem; prevMonth:
     <Card key={month.month}>
       <CardHeader>
         <div className="flex items-center justify-between w-full">
-          <CardTitle>{new Date(month.month + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</CardTitle>
+          <CardTitle>{new Date(month.month + '-01').toLocaleDateString(getActiveLocale(), { month: 'long', year: 'numeric' })}</CardTitle>
           {month.pr_count > 0 && (
             <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
               🏆 {month.pr_count} PR{month.pr_count > 1 ? 's' : ''}
@@ -222,7 +223,7 @@ export function YearHighlights({ yearlySummary }: { yearlySummary: YearlySummary
           <div className="bg-surface rounded-xl border border-surface-light/50 p-4">
             <p className="text-xs font-medium text-muted uppercase tracking-wider mb-1">🏆 Best Month (TSS)</p>
             <p className="text-lg font-bold text-yellow-400">
-              {new Date(yearlySummary.highlights.best_month_tss + '-01').toLocaleDateString(undefined, { month: 'long' })}
+              {new Date(yearlySummary.highlights.best_month_tss + '-01').toLocaleDateString(getActiveLocale(), { month: 'long' })}
             </p>
             <p className="text-xs text-muted">{yearlySummary.highlights.best_month_tss_value.toFixed(0)} TSS</p>
           </div>

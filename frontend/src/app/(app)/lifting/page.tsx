@@ -32,7 +32,7 @@ import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSe
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, getActiveLocale } from '@/lib/utils';
 import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
@@ -46,7 +46,7 @@ import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 function formatSessionTimeRange(startedAt?: string | null, endedAt?: string | null, durationSeconds?: number | null): string {
   if (!startedAt) return '';
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleTimeString(getActiveLocale(), { hour: '2-digit', minute: '2-digit' });
   let range = fmt(startedAt);
   if (endedAt) range += ` – ${fmt(endedAt)}`;
   const duration =
@@ -535,11 +535,11 @@ export default function LiftingPage() {
         );
         if (unmatched.length === 0 || whoopBannerSnoozed) return null;
         const latest = unmatched[0];
-        const start = new Date(latest.started_at!).toLocaleTimeString([], {
+        const start = new Date(latest.started_at!).toLocaleTimeString(getActiveLocale(), {
           hour: '2-digit',
           minute: '2-digit',
         });
-        const end = new Date(latest.ended_at!).toLocaleTimeString([], {
+        const end = new Date(latest.ended_at!).toLocaleTimeString(getActiveLocale(), {
           hour: '2-digit',
           minute: '2-digit',
         });
