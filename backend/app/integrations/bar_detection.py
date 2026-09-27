@@ -381,9 +381,13 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
                      if d["label"] in ("plate", "barbell")]
             if not cands:
                 continue
-            # Reference point (F1, 3/4 support): a plate box is at the bar's
-            # *end*, so prefer the whole-bar box, else the midpoint of the two
-            # plates (the bar centre), and only fall back to a single plate.
+            # Reference point (F1, 3/4 support). Measured against the human
+            # plate-pair midpoint (scripts/measure_bar_centre.py): the two-plate
+            # midpoint is near-exact (0.002 normalised) while a whole-bar AABB
+            # centre -- even a *human* one -- is ~20x worse (0.043), because an
+            # axis-aligned box around an angled bar+plates is not symmetric about
+            # the bar's midpoint. So the plate pair wins whenever both plates are
+            # visible; the whole-bar box is only a fallback.
             bars = [d for d in cands if d["label"] == "barbell"]
             plates = sorted((d for d in cands if d["label"] == "plate"),
                             key=lambda d: d["confidence"], reverse=True)
@@ -392,10 +396,7 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
                     _PLATE_PAIR_MIN_SEP:
                 pair = (plates[0], plates[1])
 
-            if bars:
-                ref = max(bars, key=lambda d: d["confidence"])
-                basis = "barbell"
-            elif pair is not None:
+            if pair is not None:
                 ref = {
                     "x": (pair[0]["x"] + pair[1]["x"]) / 2,
                     "y": (pair[0]["y"] + pair[1]["y"]) / 2,
@@ -403,6 +404,9 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
                                       pair[1]["confidence"]),
                 }
                 basis = "plate_pair"
+            elif bars:
+                ref = max(bars, key=lambda d: d["confidence"])
+                basis = "barbell"
             else:
                 ref = plates[0] if plates else max(
                     cands, key=lambda d: d["confidence"])
