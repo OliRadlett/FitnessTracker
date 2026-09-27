@@ -247,7 +247,7 @@ export function WorkoutPlanner({
   planId?: string | null;
   planDays?: TrainingPlanDay[];
 }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedZone, setSelectedZone] = useState<string>('z2');
   const [duration, setDuration] = useState<number>(60);
@@ -260,6 +260,7 @@ export function WorkoutPlanner({
   const { data: zonesData, isLoading: zonesLoading, isError: zonesIsError, error: zonesErrorObj } = useQuery<WorkoutZonesResponse>({
     queryKey: ['workout-zones'],
     queryFn: () => authFetch<WorkoutZonesResponse>('/api/v1/workout-planner/zones'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 

@@ -34,7 +34,7 @@ const FOCUS_OPTIONS = ['squat', 'bench', 'deadlift', 'overhead_press', 'accessor
 
 export default function LiveLiftPage() {
   usePageTitle('Live Lift');
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const live = useLiveSession(authFetch);
   const queryClient = useQueryClient();
 
@@ -42,16 +42,19 @@ export default function LiveLiftPage() {
   const { data: sessions } = useQuery({
     queryKey: ['lifting-sessions'],
     queryFn: () => getLiftingSessions(authFetch),
+    enabled: !!token,
     staleTime: 60_000,
   });
   const { data: prs } = useQuery({
     queryKey: ['personal-records'],
     queryFn: () => getPersonalRecords(authFetch),
+    enabled: !!token,
     staleTime: 60_000,
   });
   const { data: templates } = useQuery({
     queryKey: ['warmup-templates'],
     queryFn: () => getWarmupTemplates(authFetch),
+    enabled: !!token,
     staleTime: 300_000,
   });
   // Recovery feeds a suggested rest length (suggestion only — no enforcement).
@@ -59,7 +62,7 @@ export default function LiveLiftPage() {
     queryKey: ['readiness'],
     queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
     staleTime: 5 * 60_000,
-    enabled: !!live.state,
+    enabled: !!live.state && !!token,
   });
 
   // An orphaned server-side session that never finished (e.g. a previous tab
@@ -70,7 +73,7 @@ export default function LiveLiftPage() {
     queryKey: ['lifting-active-session'],
     queryFn: () => getActiveLiftingSession(authFetch),
     staleTime: 60_000,
-    enabled: !live.state && !!live.hydrated,
+    enabled: !live.state && !!live.hydrated && !!token,
   });
   const [remoteCleanupState, setRemoteCleanupState] = useState<'idle' | 'cleaning' | 'error'>('idle');
   const handleCleanupRemoteActive = async () => {
@@ -112,7 +115,7 @@ export default function LiveLiftPage() {
       return day ? { planName: plan.name, planDay: day } : null;
     },
     staleTime: 10 * 60_000,
-    enabled: !live.state && !!live.hydrated,
+    enabled: !live.state && !!live.hydrated && !!token,
   });
   const [planPreset, setPlanPreset] = useState<{
     planName: string;

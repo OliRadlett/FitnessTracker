@@ -922,18 +922,19 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
 
   const { data: warmupTemplates } = useQuery({
     queryKey: ['warmup-templates'],
     queryFn: () => getWarmupTemplates(authFetch),
+    enabled: !!token,
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: liftingSessions } = useQuery({
     queryKey: ['lifting-sessions'],
     queryFn: () => getLiftingSessions(authFetch),
-    enabled: isStrength,
+    enabled: isStrength && !!token,
     staleTime: 60 * 1000,
   });
 

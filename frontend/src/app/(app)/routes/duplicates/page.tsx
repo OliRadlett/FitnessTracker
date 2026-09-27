@@ -33,6 +33,7 @@ export default function DuplicatesPage() {
   const { data: pairs = [], isLoading, refetch } = useQuery({
     queryKey: ['route-duplicates'],
     queryFn: () => getDuplicateRoutes(token),
+    enabled: !!token,
     staleTime: 60_000,
   });
 
