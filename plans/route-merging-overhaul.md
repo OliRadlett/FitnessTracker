@@ -3,7 +3,7 @@
 > Status: **Phase 1a + 1b implemented** (2026-09-26) — pure engine + tests,
 > config tiers, non-destructive merge + merge log + undo, Modal similarity
 > graph + weekly Celery task, cache-backed duplicates/undo/similar APIs,
-> review-queue UX. Rebased onto `main` (migration **078**). Pending: Phase-2
+> review-queue UX. Rebased onto `main` (migration **079**). Pending: Phase-2
 > road snapping / embeddings.
 > Scope: replace the fragile 50-point shape sampler, make merges non-destructive,
 > and add a Modal-backed matcher that runs on the ambiguous cases.
@@ -112,9 +112,10 @@ Rewrite `route_service.merge_routes()`:
 
 ## 6. Schema / migrations
 
-Migration **`078`** (`down_revision = "077"`). Upstream 074–077 already landed
-Pmax, activity-weather columns, route_sources user-scoping and the
-`predicted_effort` drop, so this revision only adds the two new tables.
+Migration **`079`** (`down_revision = "078"`, the Wahoo-push revision).
+Upstream 074-078 already landed Pmax, activity-weather columns,
+route_sources user-scoping, the `predicted_effort` drop and Wahoo push, so
+this revision only adds the two new tables.
 
 - `route_merge_log` — `id`, `user_id`, `primary_route_id`, `merged_route_id`,
   `score`, `breakdown` JSONB, `snapshot` JSONB, `moved` JSONB, `created_at`,
@@ -159,7 +160,7 @@ Pmax, activity-weather columns, route_sources user-scoping and the
 ## 10. Phasing
 
 - **Phase 1a (done)**: pure engine + tests, config tiers, non-destructive merge +
-  merge log + undo, migration 078.
+  merge log + undo, migration 079.
 - **Phase 1b (done)**: Modal pair-scoring + similarity graph, weekly task,
   cache-backed duplicates endpoint, review-queue UX, merge undo API, Similar routes.
 - **Phase 2 (todo)**: OSM road-graph map-matching (platform-wide + merges) and
@@ -173,7 +174,7 @@ Pmax, activity-weather columns, route_sources user-scoping and the
 | Service | `backend/app/services/route_service.py` (`_compute_match_score`, `find_duplicate_route`, `merge_routes`, `undo_route_merge`, `find_potential_duplicates`) |
 | Modal | `backend/app/integrations/route_intelligence.py` (`compute_route_similarity_on_modal`, `_score_route_graph_modal`) |
 | Task | `backend/app/tasks/scheduler.py` (`recompute_route_similarity`, Sunday 03:05 UTC) |
-| Schema | `backend/app/models/route.py` (`RouteMergeLog`, `RouteSimilarity`), `backend/alembic/versions/078_route_merging_overhaul.py` |
+| Schema | `backend/app/models/route.py` (`RouteMergeLog`, `RouteSimilarity`), `backend/alembic/versions/079_route_merging_overhaul.py` |
 | API | `backend/app/api/routes.py` (`POST /merge` → `MergeResult`, `GET /merges`, `POST /merges/{log_id}/undo`, `GET /{route_id}/similar`), `backend/app/schemas/route.py` |
 | Frontend | `frontend/src/lib/api/routes.ts`, `types/routes.ts`, `app/(app)/routes/duplicates/page.tsx`, `components/routes/SimilarRoutesSection.tsx`, `components/routes/RouteDetailPanel.tsx` |
 
