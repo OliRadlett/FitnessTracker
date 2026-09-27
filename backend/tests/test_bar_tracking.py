@@ -117,3 +117,62 @@ class TestAnalyzeBarPath:
 
     def test_empty_inputs(self):
         assert bt.analyze_bar_path([], [], "Squat") is None
+
+
+class TestF1RealBarMetrics:
+    """bar-over-midfoot, J-curve (net lateral) and bar tilt (F1, needs T3)."""
+
+    def _lm_with_feet(self, midfoot_x=0.5, foot_len=0.1):
+        lm = _pose()
+        for h in (29, 30):  # heels
+            lm[h] = Lm(midfoot_x - foot_len / 2, 0.95)
+        for f in (31, 32):  # foot index
+            lm[f] = Lm(midfoot_x + foot_len / 2, 0.95)
+        return lm
+
+    def _reps(self, n):
+        return [{"rep_number": 1, "start_idx": 0, "end_idx": n - 1},
+                {"rep_number": 2, "start_idx": n, "end_idx": 2 * n - 1}]
+
+    def test_midfoot_from_heel_and_foot_index(self):
+        mf = bt._midfoot(self._lm_with_feet(0.4, 0.1))
+        assert mf is not None
+        assert mf[0] == pytest.approx(0.4)
+        assert mf[1] == pytest.approx(0.1)
+
+    def test_midfoot_none_without_foot_landmarks(self):
+        assert bt._midfoot([Lm() for _ in range(20)]) is None
+
+    def test_net_lateral_is_signed(self):
+        forward = [(0.5 + 0.03 * i / 9, 0.3 + 0.3 * i / 9) for i in range(10)]
+        assert bt._net_lateral(forward) > 0
+        assert bt._net_lateral(list(reversed(forward))) < 0
+
+    def test_bar_over_midfoot_reported(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        lms = [self._lm_with_feet(0.5, 0.1) for _ in range(2 * n)]
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat", landmarks=lms)
+        assert out["bar_over_midfoot"] == pytest.approx(0.0, abs=1e-6)
+        assert out["per_rep"][0]["bar_over_midfoot"] == pytest.approx(0.0, abs=1e-6)
+
+    def test_bar_over_midfoot_absent_without_landmarks(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat")
+        assert "bar_over_midfoot" not in out
+
+    def test_tilt_aggregated_from_detector_track(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        for p in track:
+            p["tilt_deg"] = 3.0
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat")
+        assert out["tilt_deg"] == pytest.approx(3.0)
+        assert out["tilt_frames"] == len(track)
+
+    def test_tilt_absent_when_track_has_none(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat")
+        assert "tilt_deg" not in out
