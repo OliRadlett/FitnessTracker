@@ -3986,23 +3986,23 @@ def process_lift_video(
                 # Generate presigned URLs for Modal to use
                 presigned_get = await create_presigned_get(video.r2_key)
 
+                # Derived artifacts are generated inside the Modal container, so
+                # their size is unknown here — do NOT declare one (a mismatched
+                # declared size makes R2 reject the PUT with 403).
                 presigned_put = await create_presigned_put(
                     video.user_id,
                     f"trimmed-{video.file_name}",
                     "video/mp4",
-                    video.size_bytes or 0,
                 )
                 presigned_overlay = await create_presigned_put(
                     video.user_id,
                     f"overlay-{video.file_name}",
                     "video/mp4",
-                    video.size_bytes or 0,
                 )
                 presigned_thumbs = await create_presigned_put(
                     video.user_id,
                     f"reps-{video.file_name}.jpg",
                     "image/jpeg",
-                    2 * 1024 * 1024,
                 )
                 # Compact per-frame pose track (T5) — powers the interactive
                 # viewer; ~0.5 MB JSON.
@@ -4010,7 +4010,6 @@ def process_lift_video(
                     video.user_id,
                     f"track-{video.file_name}.json",
                     "application/json",
-                    4 * 1024 * 1024,
                 )
 
                 # T3 learned detector: presign the ONNX model (an R2 key) so

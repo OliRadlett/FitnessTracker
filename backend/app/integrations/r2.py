@@ -62,9 +62,18 @@ def _safe_key_component(file_name: str) -> str:
 
 
 async def create_presigned_put(
-    user_id: uuid.UUID, file_name: str, content_type: str, size_bytes: int
+    user_id: uuid.UUID, file_name: str, content_type: str,
+    size_bytes: int | None = None,
 ) -> dict:
-    """Build a presigned PUT for a new video upload under `lift_videos/{user_id}/`."""
+    """Build a presigned PUT for a new video upload under `lift_videos/{user_id}/`.
+
+    ``size_bytes`` binds the declared length into the signature so a client
+    cannot presign for a small file then PUT a larger body (250 MB cap). Only
+    pass it when the size is known up front — i.e. the user's own upload.
+    Derived artifacts (trimmed/overlay/rep sprites/pose track) are produced in
+    the Modal container and their size is unknown here; binding a guessed size
+    makes R2 reject the mismatched PUT with **403** (regression from #104).
+    """
     client = _s3_client()
     settings = get_settings()
     # Random prefix avoids same-name upload collisions overwriting each other.
@@ -74,16 +83,16 @@ async def create_presigned_put(
         f"lift_videos/{user_id}"
         f"/{uuid.uuid4().hex[:12]}-{_safe_key_component(file_name)}"
     )
+    params = {
+        "Bucket": settings.r2_bucket,
+        "Key": key,
+        "ContentType": content_type,
+    }
+    if size_bytes:
+        params["ContentLength"] = size_bytes
     url = client.generate_presigned_url(
         ClientMethod="put_object",
-        Params={
-            "Bucket": settings.r2_bucket,
-            "Key": key,
-            "ContentType": content_type,
-            # Bind the declared size into the signature so a client can't
-            # presign for a small file then PUT a larger body (250 MB cap).
-            "ContentLength": size_bytes,
-        },
+        Params=params,
         ExpiresIn=3600,
     )
     return {"upload_url": url, "key": key, "fields": {}}
