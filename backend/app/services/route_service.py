@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
+from app.integrations import jev_client
 from app.models.route import Route, RouteMergeLog, RouteSource
 from app.services.polyline_utils import (
     decode_polyline,
@@ -963,6 +964,60 @@ async def undo_route_merge(
     return await get_route_by_id(db, new_id, user_id)
 
 
+# Jev route-pair arbitration (Phase 3). Only review-tier pairs are arbitrated;
+# the deterministic score/breakdown/tier are never changed.
+ROUTE_DIFFERENT_DROP_CONFIDENCE = 0.75
+
+
+async def _arbitrate_route_pair(a: Route, b: Route) -> jev_client.JevResult | None:
+    """Ask Jev whether two routes are the same. None when Jev is unset/errors."""
+    return await jev_client.decide(
+        {
+            "route_a": a.name,
+            "route_b": b.name,
+            "distance_a_km": round((a.distance_meters or 0) / 1000, 1),
+            "distance_b_km": round((b.distance_meters or 0) / 1000, 1),
+        },
+        {
+            "same": jev_client.choice(
+                "Are these two routes the same route?",
+                {
+                    "same": "The same route (naming/ordering differences only)",
+                    "different": "Clearly different routes",
+                    "unclear": "Cannot tell from the names",
+                },
+            )
+        },
+    )
+
+
+async def _apply_route_arbitration(pairs: list[dict]) -> list[dict]:
+    """Arbitrate review-tier pairs with Jev. No-op when Jev is unset.
+
+    - ``different`` at ≥ 0.75 confidence → dropped from the review queue.
+    - ``same`` / ``unclear`` → kept, annotated with ``jev_decision`` + confidence.
+    """
+    if not pairs or not jev_client.is_configured():
+        return pairs
+
+    out: list[dict] = []
+    for pair in pairs:
+        if pair.get("tier") != "review":
+            out.append(pair)
+            continue
+        result = await _arbitrate_route_pair(pair["route_a"], pair["route_b"])
+        if result is None:
+            out.append(pair)
+            continue
+        decision = result.choice("same")
+        ans = result.answers.get("same")
+        confidence = ans.confidence if ans else None
+        if decision == "different" and (confidence or 0) >= ROUTE_DIFFERENT_DROP_CONFIDENCE:
+            continue  # clearly different — leave the review queue
+        out.append({**pair, "jev_decision": decision, "jev_confidence": confidence})
+    return out
+
+
 async def find_potential_duplicates(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -1014,7 +1069,7 @@ async def find_potential_duplicates(
                 )
 
     potential.sort(key=lambda x: x["score"], reverse=True)
-    return potential
+    return await _apply_route_arbitration(potential)
 
 
 async def find_cached_duplicates(
@@ -1065,4 +1120,4 @@ async def find_cached_duplicates(
                 "requires_confirmation": row.tier != "auto",
             }
         )
-    return out
+    return await _apply_route_arbitration(out)
