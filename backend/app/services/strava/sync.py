@@ -263,6 +263,7 @@ async def sync_activities(
                 start_date,
                 duration_seconds,
                 distance_meters,
+                name=sa.get("name"),
             )
 
             if duplicate:
@@ -533,6 +534,7 @@ async def backfill_all_activities_stream(
                     start_date,
                     duration_seconds,
                     distance_meters,
+                    name=sa.get("name"),
                 )
 
                 if duplicate:

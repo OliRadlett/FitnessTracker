@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
+from app.integrations import jev_client
 from app.models.activity import Activity, ActivitySource
 from app.models.route import Route
 
@@ -138,6 +139,34 @@ def _compute_activity_match_score(
 # ── Duplicate detection ──────────────────────────────────────────────────────
 
 
+# Jev arbitration band (Phase 4). Scores within ±δ of the merge threshold are
+# ambiguous; a destructive merge then requires Jev ≥ MERGE_DUPLICATE_THRESHOLD
+# AND the numeric score ≥ the low edge. Unset/errored Jev → today's rule.
+MERGE_BAND_DELTA = 0.08
+MERGE_DUPLICATE_THRESHOLD = 0.80
+
+
+async def _arbitrate_duplicate(
+    name: str | None,
+    candidate: Activity,
+    sport_type: str,
+    duration_seconds: int | None,
+) -> float | None:
+    """Jev's P(same) for an ambiguous duplicate pair, or None if unset/no name."""
+    if not name or not jev_client.is_configured():
+        return None
+    res = await jev_client.decide(
+        {
+            "name_a": name,
+            "name_b": candidate.name,
+            "sport_type": sport_type,
+            "duration_seconds": duration_seconds,
+        },
+        {"same": jev_client.noul("Are these the same workout from two providers?")},
+    )
+    return res.noul("same") if res is not None else None
+
+
 async def find_duplicate_activity(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -145,6 +174,7 @@ async def find_duplicate_activity(
     start_date,
     duration_seconds: int | None = None,
     distance_meters: float | None = None,
+    name: str | None = None,
 ) -> Activity | None:
     """Find an existing activity that likely matches the given activity data.
 
@@ -184,14 +214,40 @@ async def find_duplicate_activity(
             best_score = score
             best_activity = candidate
 
-    if best_score >= threshold and best_activity is not None:
+    if best_activity is None:
+        return None
+
+    high = threshold + MERGE_BAND_DELTA
+    low = threshold - MERGE_BAND_DELTA
+
+    if best_score >= high:
         logger.info(
             f"Found duplicate activity '{best_activity.name}' (score {best_score:.2f})"
         )
         return best_activity
 
+    if best_score >= low:
+        # Ambiguous band — Jev arbitrates. A destructive merge requires BOTH
+        # Jev ≥ MERGE_DUPLICATE_THRESHOLD and the numeric score ≥ the low edge.
+        verdict = await _arbitrate_duplicate(
+            name, best_activity, sport_type, duration_seconds
+        )
+        if verdict is None:
+            if best_score >= threshold:  # Jev unset/errored → today's rule
+                logger.info(
+                    f"Found duplicate activity '{best_activity.name}' "
+                    f"(score {best_score:.2f})"
+                )
+                return best_activity
+        elif verdict >= MERGE_DUPLICATE_THRESHOLD and best_score >= low:
+            logger.info(
+                f"Jev-confirmed duplicate '{best_activity.name}' "
+                f"(score {best_score:.2f}, jev {verdict:.2f})"
+            )
+            return best_activity
+
     # Near-miss logging: score within 0.05 of threshold — likely false negative
-    if best_score >= threshold - 0.05 and best_activity is not None:
+    if best_score >= threshold - 0.05:
         logger.warning(
             f"Near-miss merge: '{best_activity.name}' scored {best_score:.2f} "
             f"(threshold {threshold:.2f}). Consider reviewing for false negative."
