@@ -56,15 +56,17 @@ class TestCreateVideoOwnership:
     async def test_owned_links_pass_to_r2_guard(
         self, client, test_user, test_lifting_session, test_personal_record
     ):
-        """Owned session + PR clear the ownership guards, then hit the 501
-        (R2 unconfigured in tests) — proving ownership itself does not block."""
+        """Owned session + PR clear the ownership guards — proving ownership
+        itself does not block. The outcome then depends on R2 config:
+        201 when configured, 501 when not (CI). Never 400/404."""
         payload = _payload(
             test_user.id,
             lifting_session_id=str(test_lifting_session.id),
             personal_record_id=str(test_personal_record.id),
         )
         resp = await client.post(f"{BASE}/", json=payload)
-        assert resp.status_code == 501
+        assert resp.status_code in (201, 501), resp.text
+        assert resp.status_code not in (400, 404)
 
     async def test_invalid_size_rejected_before_ownership(self, client, test_user):
         payload = _payload(test_user.id, size_bytes=0)
