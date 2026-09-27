@@ -23,6 +23,7 @@ import type {
   DeficiencyResponse,
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
+import { useToast } from '@/components/ui/Toast';
 import { getGreeting, getActiveLocale } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
@@ -36,6 +37,7 @@ export default function DashboardPage() {
   const { authFetch, token } = useAuthFetch();
   const { data: session } = useSession();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const currentYear = new Date().getFullYear();
   const [analysisResults, setAnalysisResults] = useState<HealthAnalysisResult[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -178,6 +180,7 @@ export default function DashboardPage() {
   const llmMutation = useMutation({
     mutationFn: () => authFetch<LlmAnalysis>('/api/v1/cycling/llm-analysis/on-demand', { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['llm-analysis'] }),
+    onError: (err) => toast.error(`Analysis request failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
   const analyzeMutation = useMutation({
