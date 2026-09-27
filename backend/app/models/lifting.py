@@ -13,7 +13,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -59,6 +59,10 @@ class LiftingSession(Base):
     # session write; backfilled weekly for older rows.
     estimated_tss: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Jev (TypeSafe) free-text tags derived from ``notes`` — {"source": "jev",
+    # "model", "computed_at", "note_hash", "pain_injury", "high_fatigue", ...}.
+    # Nullable; tagging is best-effort (see services/jev_tagging.py). Migration 081.
+    ai_tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Live-session tracking (set only by /lifting/live flow)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
