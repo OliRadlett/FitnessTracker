@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart } from '@/components/charts/Chart';
 import { useForecastChart } from '@/lib/projection';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { getActiveLocale } from '@/lib/utils';
 
 interface Vo2maxSectionProps {
   vo2max: Vo2maxResponse | undefined;
@@ -63,7 +64,7 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading
             </div>
             {vo2maxHistory && vo2maxHistory.data.length > 1 && (
               <div className="mt-2 text-xs text-muted">
-                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min ({new Date(vo2maxHistory.data[0].date).toLocaleDateString()} → {new Date(vo2maxHistory.data[vo2maxHistory.data.length - 1].date).toLocaleDateString()})
+                Trend: {vo2maxHistory.data[0].vo2max.toFixed(1)} → {vo2maxHistory.data[vo2maxHistory.data.length - 1].vo2max.toFixed(1)} ml/kg/min ({new Date(vo2maxHistory.data[0].date).toLocaleDateString(getActiveLocale())} → {new Date(vo2maxHistory.data[vo2maxHistory.data.length - 1].date).toLocaleDateString(getActiveLocale())})
               </div>
             )}
           </>

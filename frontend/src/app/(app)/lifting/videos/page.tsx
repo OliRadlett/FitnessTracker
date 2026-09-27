@@ -17,6 +17,7 @@ import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { getActiveLocale } from '@/lib/utils';
 
 export default function VideosPage() {
   usePageTitle('Videos');
@@ -314,7 +315,7 @@ export default function VideosPage() {
                 )}
 
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <span>{new Date(video.created_at).toLocaleDateString()}</span>
+                  <span>{new Date(video.created_at).toLocaleDateString(getActiveLocale())}</span>
                   {video.duration_seconds && (
                     <>
                       <span>·</span>

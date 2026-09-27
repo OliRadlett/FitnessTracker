@@ -3,6 +3,7 @@
 import React from 'react';
 import type { PowerModelResultsResponse } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getActiveLocale } from '@/lib/utils';
 
 interface PowerModelSectionProps {
   powerModel: PowerModelResultsResponse | undefined;
@@ -147,7 +148,7 @@ export function PowerModelSection({ powerModel, isLoading }: PowerModelSectionPr
       {/* Fitted At */}
       <div className="mt-3 text-xs text-muted">
         Last fitted: {powerModel.fitted_at
-          ? new Date(powerModel.fitted_at).toLocaleDateString()
+          ? new Date(powerModel.fitted_at).toLocaleDateString(getActiveLocale())
           : 'Never'}
       </div>
     </Card>

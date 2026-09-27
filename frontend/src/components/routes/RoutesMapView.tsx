@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { RouteSummary, HomeAreaHeatmapResponse } from '@/lib/api/types';
 import { useAuthFetch } from '@/lib/api';
 import { getHomeAreaHeatmap } from '@/lib/api/routes';
-import { formatDistance } from '@/lib/utils';
+import { formatDistance, getActiveLocale } from '@/lib/utils';
 import { computeDifficulty, fmtElevation } from '@/lib/routeUtils';
 import { MAP_ATTRIBUTION, MAP_MAX_ZOOM, MAP_TILE_URL } from '@/lib/mapTiles';
 import { useRoutesStore } from '@/lib/stores/routesStore';
@@ -170,7 +170,7 @@ export function RoutesMapView({
               `${diffLabel}` +
             `</span><br/>` +
             `<span style="color:#64748b;font-size:11px">${route.is_loop ? '🔄 Loop' : '➡️ Point-to-point'}</span>` +
-             `${route.last_ridden_date ? `<br/><span style="color:#fbbf24;font-size:11px">🚴 ${new Date(route.last_ridden_date).toLocaleDateString()}</span>` : ''}` +
+             `${route.last_ridden_date ? `<br/><span style="color:#fbbf24;font-size:11px">🚴 ${new Date(route.last_ridden_date).toLocaleDateString(getActiveLocale())}</span>` : ''}` +
            `<br/><label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;color:#cbd5e1;cursor:pointer;"><input type="checkbox" ${isCompareSelected ? 'checked' : ''} style="width:12px;height:12px;cursor:pointer;" readonly/> Compare</label>` +
            `</div>`,
          );

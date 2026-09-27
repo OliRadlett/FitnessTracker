@@ -3,6 +3,7 @@
 import React from 'react';
 import type { CrossDomainInsightsResponse } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getActiveLocale } from '@/lib/utils';
 
 interface CrossDomainInsightsCardProps {
   crossDomainInsights: CrossDomainInsightsResponse | undefined;
@@ -57,7 +58,7 @@ export function CrossDomainInsightsCard({
             {/* Analyzed At */}
             {insight.analyzed_at && (
               <div className="mt-2 text-xs text-muted">
-                Last analyzed: {new Date(insight.analyzed_at).toLocaleDateString()}
+                Last analyzed: {new Date(insight.analyzed_at).toLocaleDateString(getActiveLocale())}
               </div>
             )}
           </div>

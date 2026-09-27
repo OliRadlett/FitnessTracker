@@ -17,7 +17,7 @@ import {
 } from '@/lib/streams';
 import { Chart } from '@/components/charts/Chart';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 
 // Lazy-loaded: three.js stays out of the modal's (and first) bundle unless the
 // user opens the 3D view (§3.16 side-by-side replay).
@@ -247,12 +247,12 @@ export function CompareActivitiesModal({
           <div className="bg-surface-light/30 rounded-lg p-3">
             <p className="text-xs text-muted mb-1">Activity A</p>
             <p className="text-sm font-medium text-blue-400 truncate">{activityA.name}</p>
-            <p className="text-xs text-muted">{new Date(activityA.start_date).toLocaleDateString()}</p>
+            <p className="text-xs text-muted">{new Date(activityA.start_date).toLocaleDateString(getActiveLocale())}</p>
           </div>
           <div className="bg-surface-light/30 rounded-lg p-3">
             <p className="text-xs text-muted mb-1">Activity B</p>
             <p className="text-sm font-medium text-amber-400 truncate">{activityB.name}</p>
-            <p className="text-xs text-muted">{new Date(activityB.start_date).toLocaleDateString()}</p>
+            <p className="text-xs text-muted">{new Date(activityB.start_date).toLocaleDateString(getActiveLocale())}</p>
           </div>
         </div>
 

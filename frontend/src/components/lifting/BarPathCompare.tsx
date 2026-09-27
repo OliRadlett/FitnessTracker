@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { LiftVideo } from '@/lib/api';
 import { getVideoStreamUrl, useAuthFetch } from '@/lib/api';
 import { type PoseTrack, barPoint, parsePoseTrack } from '@/lib/pose/track';
+import { getActiveLocale } from '@/lib/utils';
 
 const COLOR_A = '#22c55e';
 const COLOR_B = '#3b82f6';
@@ -54,7 +55,7 @@ function normalize(pts: [number, number][]): [number, number][] {
 }
 
 function label(v: LiftVideo): string {
-  const date = new Date(v.created_at).toLocaleDateString();
+  const date = new Date(v.created_at).toLocaleDateString(getActiveLocale());
   return v.weight_kg ? `${date} · ${v.weight_kg} kg` : date;
 }
 

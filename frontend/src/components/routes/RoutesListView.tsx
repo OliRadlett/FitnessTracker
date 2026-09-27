@@ -6,7 +6,7 @@ import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { ProviderIcon, PROVIDER_COLORS } from '@/components/ui/ProviderBadge';
 import { QualityBadge } from '@/components/routes/QualityBadge';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
-import { formatDistance } from '@/lib/utils';
+import { formatDistance, getActiveLocale } from '@/lib/utils';
 import { useRoutesStore } from '@/lib/stores/routesStore';
 
 const RouteRow = ({
@@ -108,7 +108,7 @@ const RouteRow = ({
             )}
             {route.last_ridden_date && (
               <span className="text-xs text-accent">
-                🚴 {new Date(route.last_ridden_date).toLocaleDateString()}
+                🚴 {new Date(route.last_ridden_date).toLocaleDateString(getActiveLocale())}
               </span>
             )}
           </div>

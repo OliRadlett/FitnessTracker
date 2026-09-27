@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { RouteHistoryResponse } from '@/lib/api/types';
 import { SkeletonLine } from '@/components/ui/Skeleton';
-import { formatDistance, formatDuration } from '@/lib/utils';
+import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import Link from 'next/link';
 
 export function RouteHistorySection({ routeId }: { routeId: string }) {
@@ -54,7 +54,7 @@ export function RouteHistorySection({ routeId }: { routeId: string }) {
             </div>
             <div>
               <p className="text-sm text-foreground">
-                {new Date(history.personal_best.date).toLocaleDateString()}
+                {new Date(history.personal_best.date).toLocaleDateString(getActiveLocale())}
               </p>
               <p className="text-xs text-muted">PB Date</p>
             </div>
@@ -90,7 +90,7 @@ export function RouteHistorySection({ routeId }: { routeId: string }) {
                       className="hover:text-accent transition-colors"
                       title="View this ride in Activities"
                     >
-                      {new Date(ride.date).toLocaleDateString()}
+                      {new Date(ride.date).toLocaleDateString(getActiveLocale())}
                     </Link>
                   </td>
                   <td className="py-2 px-3 text-right text-muted">

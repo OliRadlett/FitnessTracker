@@ -9,6 +9,7 @@ import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { BarPathCompare } from '@/components/lifting/BarPathCompare';
+import { getActiveLocale } from '@/lib/utils';
 
 function parseJsonArray(value?: string | null): string[] {
   if (!value) return [];
@@ -77,8 +78,8 @@ export function VideoCompareModal({
         <Row label="Exercise" a={a.exercise_name ?? '—'} b={b.exercise_name ?? '—'} />
         <Row
           label="Date"
-          a={new Date(a.created_at).toLocaleDateString()}
-          b={new Date(b.created_at).toLocaleDateString()}
+          a={new Date(a.created_at).toLocaleDateString(getActiveLocale())}
+          b={new Date(b.created_at).toLocaleDateString(getActiveLocale())}
         />
         <Row
           label="Load"

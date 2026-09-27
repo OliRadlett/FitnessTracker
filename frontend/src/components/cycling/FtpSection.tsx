@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 import { useForecastChart } from '@/lib/projection';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
+import { getActiveLocale } from '@/lib/utils';
 
 interface FtpSectionProps {
   profile: CyclingProfile | undefined;
@@ -104,7 +105,7 @@ export function FtpSection({
               <tbody>
                 {ftpHistory.map((entry) => (
                   <tr key={entry.id} className="border-b border-surface-light/20 hover:bg-surface-light/20">
-                    <td className="py-2 text-foreground">{new Date(entry.effective_date).toLocaleDateString()}</td>
+                    <td className="py-2 text-foreground">{new Date(entry.effective_date).toLocaleDateString(getActiveLocale())}</td>
                     <td className="py-2 text-right text-yellow-400 font-mono">{entry.ftp_watts} W</td>
                     <td className="py-2">
                       <span className={`text-xs px-2 py-0.5 rounded ${
@@ -171,7 +172,7 @@ export function FtpSection({
                     )}
                     <td className="py-2 text-right text-muted text-xs">
                       {pb.date_achieved
-                        ? new Date(pb.date_achieved).toLocaleDateString()
+                        ? new Date(pb.date_achieved).toLocaleDateString(getActiveLocale())
                         : '—'}
                     </td>
                   </tr>
@@ -236,7 +237,7 @@ export function FtpSection({
                       )}
                     </td>
                     <td className="py-2 text-right text-muted text-xs">
-                      {new Date(pr.achieved_date).toLocaleDateString()}
+                      {new Date(pr.achieved_date).toLocaleDateString(getActiveLocale())}
                     </td>
                     <td className="py-2 text-right">
                       {pr.activity_id ? (

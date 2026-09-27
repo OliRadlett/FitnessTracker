@@ -3,6 +3,7 @@
 import React from 'react';
 import type { CyclingProfile } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getActiveLocale } from '@/lib/utils';
 
 interface IntelligenceStatusCardProps {
   profile: CyclingProfile | undefined;
@@ -66,7 +67,7 @@ export function IntelligenceStatusCard({ profile, isLoading }: IntelligenceStatu
             <div className="text-xs">
               {feature.fitted ? (
                 <span className="text-positive">
-                  ✓ {new Date(feature.fitted).toLocaleDateString()}
+                  ✓ {new Date(feature.fitted).toLocaleDateString(getActiveLocale())}
                 </span>
               ) : (
                 <span className="text-muted">Not yet fitted</span>

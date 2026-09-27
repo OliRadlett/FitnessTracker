@@ -11,6 +11,7 @@ import {
 } from '@/lib/api';
 import type { Segment, SegmentDetail } from '@/lib/api/types';
 import { SkeletonLine } from '@/components/ui/Skeleton';
+import { getActiveLocale } from '@/lib/utils';
 
 const CATEGORY_STYLES: Record<string, string> = {
   HC: 'bg-red-600/20 text-red-400 border-red-600/30',
@@ -222,7 +223,7 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
                           )}
                           {e.started_at && (
                             <span className="text-muted w-24 text-right hidden sm:inline">
-                              {new Date(e.started_at).toLocaleDateString()}
+                              {new Date(e.started_at).toLocaleDateString(getActiveLocale())}
                             </span>
                           )}
                         </div>
