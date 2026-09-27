@@ -10,7 +10,6 @@ import type { Activity, ActivityDetail } from '@/lib/api';
 import type { RouteHistoryResponse } from '@/lib/api/types/routes';
 import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
 import { buildRaceRides } from '@/lib/raceRides';
-import { getActiveLocale } from '@/lib/utils';
 import {
   ALTITUDE_STREAM_TYPES,
   CADENCE_STREAM_TYPES,
@@ -87,7 +86,7 @@ export function ReplayTheater({
         cadence: streamInput(detail.streams, ...CADENCE_STREAM_TYPES),
         maxSamples: 4000,
       }),
-      name: ride ? new Date(ride.date).toLocaleDateString(getActiveLocale()) : 'Ghost',
+      name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
     };
   }, [ghostDetail, ghostCandidates, ghostId]);
 
@@ -177,7 +176,7 @@ export function ReplayTheater({
                   : 'border-surface-light text-muted hover:border-accent/30'
               }`}
             >
-              {new Date(r.date).toLocaleDateString(getActiveLocale())}
+              {new Date(r.date).toLocaleDateString()}
               {r.average_power ? ` · ${Math.round(r.average_power)}W` : ''}
             </button>
           ))}
@@ -210,7 +209,7 @@ export function ReplayTheater({
             windDirection: activity.weather_wind_direction,
             precipitationMm: activity.weather_precipitation_mm,
           }}
-          canvasHeightClass="h-[68dvh]"
+          canvasHeightClass="h-[42dvh] sm:h-[68dvh]"
           theater
         />
       </div>
