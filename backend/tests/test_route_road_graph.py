@@ -16,6 +16,14 @@ def test_geofabrik_url_uses_the_path_slug():
     )
 
 
+def test_default_geofabrik_path_is_nested_under_europe():
+    # A top-level `great-britain` returns a 9 KB HTML error page; the real
+    # extract lives under `europe/`.
+    from app.integrations.route_road_graph import _DEFAULT_GEOFABRIK_PATH
+
+    assert _DEFAULT_GEOFABRIK_PATH.startswith("europe/")
+
+
 def test_geofabrik_url_strips_surrounding_slashes():
     assert (
         _geofabrik_url("/europe/united-kingdom/")
