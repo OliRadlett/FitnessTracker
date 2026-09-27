@@ -140,7 +140,14 @@ def _match_routes_road_modal(
     import sys
 
     sys.path.insert(0, "/root")
-    from road_graph import RoadEdge, RoadGraph, snap_polyline  # type: ignore
+    try:
+        from road_graph import RoadEdge, RoadGraph, snap_polyline  # type: ignore
+    except ModuleNotFoundError:  # local / tests: the module lives in the app
+        from app.services.road_graph import (  # type: ignore
+            RoadEdge,
+            RoadGraph,
+            snap_polyline,
+        )
 
     routes = _json.loads(routes_json)
     if not routes:
@@ -161,7 +168,10 @@ def _match_routes_road_modal(
     if os.path.exists(geojson_path):
         with open(geojson_path) as fh:
             gj = _json.load(fh)
-        from road_graph import roads_from_geojson  # type: ignore
+        try:
+            from road_graph import roads_from_geojson  # type: ignore
+        except ModuleNotFoundError:
+            from app.services.road_graph import roads_from_geojson  # type: ignore
 
         edges = roads_from_geojson(gj)
     elif os.path.exists(pbf_path):
@@ -198,6 +208,50 @@ def _match_routes_road_modal(
     return result
 
 
+def _build_road_graph_modal(
+    region: str,
+    bbox: tuple[float, float, float, float],
+    osm_dir: str = "/osm",
+) -> dict:
+    """Modal worker: parse the region PBF once and cache a road GeoJSON in the Volume.
+
+    Module-global (Modal rejects closures). Prefers a pre-clipped
+    ``{region}-roads.osm.pbf`` (from ``osmium extract``) so the parse is fast;
+    otherwise parses ``{region}-latest.osm.pbf``. Writes
+    ``{region}-roads.geojson`` and commits the Volume. Returns stats.
+    """
+    import json as _json
+    import os
+
+    clipped = os.path.join(osm_dir, f"{region}-roads.osm.pbf")
+    full = os.path.join(osm_dir, f"{region}-latest.osm.pbf")
+    pbf = clipped if os.path.exists(clipped) else full
+    if not os.path.exists(pbf):
+        return {"error": f"no PBF found for region {region}"}
+
+    edges = _build_edges_from_pbf(pbf, bbox)
+
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"way_id": key.split(":")[0], "name": name, "highway": highway},
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[pt[1], pt[0]] for pt in pts],
+            },
+        }
+        for (key, _u, _v, pts, name, highway) in edges
+    ]
+    dest = os.path.join(osm_dir, f"{region}-roads.geojson")
+    with open(dest, "w") as fh:
+        _json.dump({"type": "FeatureCollection", "features": features}, fh)
+
+    import modal
+
+    modal.Volume.from_name(_volume_name()).commit()
+    return {"pbf_used": os.path.basename(pbf), "edges": len(edges), "dest": dest}
+
+
 def _download_osm_region(region: str, geofabrik_path: str, osm_dir: str = "/osm") -> str:
     """Download a Geofabrik extract into the mounted Volume (one-off bootstrap).
 
@@ -220,6 +274,11 @@ def _download_osm_region(region: str, geofabrik_path: str, osm_dir: str = "/osm"
             )
         with open(dest, "wb") as fh:
             fh.writelines(resp.iter_bytes(1 << 20))
+
+    # Persist to the Volume (otherwise the write is discarded on exit).
+    import modal
+
+    modal.Volume.from_name(_volume_name()).commit()
     return dest
 
 
@@ -301,3 +360,43 @@ def bootstrap_osm_region_on_modal(region: str, geofabrik_path: str) -> str:
     )
     with app.run():
         return remote.remote(region, geofabrik_path)
+
+
+def build_road_graph_on_modal(
+    region: str,
+    bbox: tuple[float, float, float, float],
+    *,
+    geofabrik_path: str | None = None,
+) -> dict:
+    """Parse the region PBF once and cache a road GeoJSON in the OSM Volume.
+
+    ``bbox`` = ``(min_lat, min_lng, max_lat, max_lng)`` — pass the union bbox of
+    the user's routes so a pre-clipped extract can be fetched. When Modal/OSM is
+    unavailable it returns ``{}``; otherwise it writes ``{region}-roads.geojson``
+    (used by subsequent matcher runs) and returns stats. Run once before the
+    weekly matcher: ``python -m app.scripts.osm_bootstrap --build``.
+    """
+    import modal
+
+    if not _modal_configured():
+        return {}
+    from pathlib import Path
+
+    project_root = str(Path(__file__).resolve().parent.parent.parent)
+    image = _image(project_root)
+    volume = modal.Volume.from_name(_volume_name(), create_if_missing=True)
+    app = modal.App("fittrack-route-road-graph", image=image)
+    download = app.function(volumes={"/osm": volume}, timeout=3600, memory=4096)(
+        _download_osm_region
+    )
+    build = app.function(volumes={"/osm": volume}, timeout=3600, memory=16384)(
+        _build_road_graph_modal
+    )
+
+    with app.run():
+        if geofabrik_path:
+            try:
+                download.remote(region, geofabrik_path)
+            except Exception as e:
+                logger.warning(f"OSM clipped download skipped ({e})")
+        return build.remote(region, bbox)
