@@ -193,6 +193,10 @@ interface BarPath {
   efficiency?: number;
   drift_ratio?: number;
   consistency?: number;
+  bar_over_midfoot?: number;
+  tilt_deg?: number;
+  tilt_frames?: number;
+  net_lateral?: number;
   note?: string;
 }
 
@@ -200,6 +204,23 @@ function BarPathCard({ value }: { value: string | null | undefined }) {
   const data = parseJsonObject(value) as BarPath | null;
   if (!data || data.consistency == null) return null;
   const proxy = data.source === 'pose_proxy';
+
+  // F1 real-bar metrics — only shown when the detector track supplied them.
+  const extras: { label: string; value: string }[] = [];
+  if (data.bar_over_midfoot != null) {
+    const pct = data.bar_over_midfoot * 100;
+    extras.push({
+      label: 'Over midfoot',
+      value: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`,
+    });
+  }
+  if (data.tilt_deg != null) {
+    extras.push({ label: 'Bar tilt', value: `${data.tilt_deg.toFixed(1)}°` });
+  }
+  if (data.net_lateral != null) {
+    extras.push({ label: 'Net lateral', value: data.net_lateral.toFixed(2) });
+  }
+
   return (
     <Card className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -228,6 +249,16 @@ function BarPathCard({ value }: { value: string | null | undefined }) {
           </p>
         </div>
       </div>
+      {extras.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {extras.map((e) => (
+            <div key={e.label}>
+              <p className="text-[11px] text-muted uppercase">{e.label}</p>
+              <p className="text-lg font-semibold text-foreground">{e.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
       {data.note && <p className="text-[11px] text-muted">{data.note}</p>}
     </Card>
   );

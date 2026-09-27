@@ -373,6 +373,19 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
                 b = max(cands, key=lambda d: d["confidence"])
                 det[i] = {"x": b["x"], "y": b["y"],
                           "confidence": b["confidence"], "source": "detector"}
+                # Bar tilt (F1): the angle of the line through the two plate
+                # centres. Needs two clearly separated plates (a 3/4 view);
+                # in a pure side view they overlap and the angle is noise.
+                plates = [d for d in cands if d["label"] == "plate"]
+                if len(plates) >= 2:
+                    p1, p2 = sorted(plates, key=lambda d: d["confidence"],
+                                    reverse=True)[:2]
+                    if abs(p2["x"] - p1["x"]) > 0.02 or \
+                            abs(p2["y"] - p1["y"]) > 0.02:
+                        ang = float(np.degrees(np.arctan2(
+                            p2["y"] - p1["y"], p2["x"] - p1["x"])))
+                        ang = abs(ang) % 180.0
+                        det[i]["tilt_deg"] = round(min(ang, 180.0 - ang), 2)
         return det
 
     seed: tuple[float, float] | None = None
@@ -429,16 +442,19 @@ def _median_offset(det, landmarks, proxy_of):
             float(np.median([det[i]["confidence"] for i in pairs])), len(pairs))
 
 
-def _apply_offset(landmarks, proxy_of, offset, confidence) -> list:
+def _apply_offset(landmarks, proxy_of, offset, confidence, tilts=None) -> list:
     ox, oy = offset
     track: list = []
-    for lm in landmarks:
+    for i, lm in enumerate(landmarks):
         if lm is None:
             track.append(None)
             continue
         px, py = proxy_of(lm)
-        track.append({"x": round(px + ox, 4), "y": round(py + oy, 4),
-                      "confidence": round(confidence, 3), "source": "proxy_offset"})
+        entry = {"x": round(px + ox, 4), "y": round(py + oy, 4),
+                 "confidence": round(confidence, 3), "source": "proxy_offset"}
+        if tilts and i < len(tilts) and tilts[i] is not None:
+            entry["tilt_deg"] = tilts[i]
+        track.append(entry)
     return track
 
 
@@ -498,7 +514,13 @@ def bar_track_from_frame_paths(
 
     logger.info("Bar track: proxy + per-clip offset (hits %d -> %d)",
                 n_first, second[3] if second else 0)
-    return _apply_offset(landmarks, proxy_of, total, conf)
+    # Carry the per-frame bar tilt (from the two-plate angle) onto the track.
+    tilts: list = [None] * len(landmarks)
+    for i in range(min(len(landmarks), len(det2), len(det))):
+        src = det2[i] if det2[i] is not None else det[i]
+        if src is not None:
+            tilts[i] = src.get("tilt_deg")
+    return _apply_offset(landmarks, proxy_of, total, conf, tilts)
 
 
 # ── Seeded plate tracker (human-anchored bar path) ───────────────────────────
