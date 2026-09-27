@@ -357,6 +357,16 @@ def _fill_gaps_onnx(track: list) -> list:
     return track
 
 
+# Two plate boxes closer than this (normalised centre distance) are treated as
+# one plate seen twice, not the bar's two ends. Real 3/4 pairs measured a median
+# separation of 0.44 (min 0.14); overlaps in a side view fall well below.
+_PLATE_PAIR_MIN_SEP = 0.12
+
+
+def _centre_dist(a: dict, b: dict) -> float:
+    return float(np.hypot(a["x"] - b["x"], a["y"] - b["y"]))
+
+
 def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
     """Per-frame bar detection aligned to ``frame_paths`` (dict or ``None``)."""
     import cv2
@@ -369,23 +379,44 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
                 continue
             cands = [d for d in detect_bars_onnx(img, model_path)
                      if d["label"] in ("plate", "barbell")]
-            if cands:
-                b = max(cands, key=lambda d: d["confidence"])
-                det[i] = {"x": b["x"], "y": b["y"],
-                          "confidence": b["confidence"], "source": "detector"}
-                # Bar tilt (F1): the angle of the line through the two plate
-                # centres. Needs two clearly separated plates (a 3/4 view);
-                # in a pure side view they overlap and the angle is noise.
-                plates = [d for d in cands if d["label"] == "plate"]
-                if len(plates) >= 2:
-                    p1, p2 = sorted(plates, key=lambda d: d["confidence"],
-                                    reverse=True)[:2]
-                    if abs(p2["x"] - p1["x"]) > 0.02 or \
-                            abs(p2["y"] - p1["y"]) > 0.02:
-                        ang = float(np.degrees(np.arctan2(
-                            p2["y"] - p1["y"], p2["x"] - p1["x"])))
-                        ang = abs(ang) % 180.0
-                        det[i]["tilt_deg"] = round(min(ang, 180.0 - ang), 2)
+            if not cands:
+                continue
+            # Reference point (F1, 3/4 support): a plate box is at the bar's
+            # *end*, so prefer the whole-bar box, else the midpoint of the two
+            # plates (the bar centre), and only fall back to a single plate.
+            bars = [d for d in cands if d["label"] == "barbell"]
+            plates = sorted((d for d in cands if d["label"] == "plate"),
+                            key=lambda d: d["confidence"], reverse=True)
+            pair = None
+            if len(plates) >= 2 and _centre_dist(plates[0], plates[1]) >= \
+                    _PLATE_PAIR_MIN_SEP:
+                pair = (plates[0], plates[1])
+
+            if bars:
+                ref = max(bars, key=lambda d: d["confidence"])
+                basis = "barbell"
+            elif pair is not None:
+                ref = {
+                    "x": (pair[0]["x"] + pair[1]["x"]) / 2,
+                    "y": (pair[0]["y"] + pair[1]["y"]) / 2,
+                    "confidence": min(pair[0]["confidence"],
+                                      pair[1]["confidence"]),
+                }
+                basis = "plate_pair"
+            else:
+                ref = plates[0] if plates else max(
+                    cands, key=lambda d: d["confidence"])
+                basis = "plate"
+
+            det[i] = {"x": ref["x"], "y": ref["y"],
+                      "confidence": ref["confidence"], "source": "detector",
+                      "bar_basis": basis}
+            if pair is not None:
+                # Bar tilt: the angle of the line through the two plate centres.
+                ang = float(np.degrees(np.arctan2(
+                    pair[1]["y"] - pair[0]["y"], pair[1]["x"] - pair[0]["x"])))
+                ang = abs(ang) % 180.0
+                det[i]["tilt_deg"] = round(min(ang, 180.0 - ang), 2)
         return det
 
     seed: tuple[float, float] | None = None
@@ -442,7 +473,12 @@ def _median_offset(det, landmarks, proxy_of):
             float(np.median([det[i]["confidence"] for i in pairs])), len(pairs))
 
 
-def _apply_offset(landmarks, proxy_of, offset, confidence, tilts=None) -> list:
+def _apply_offset(landmarks, proxy_of, offset, confidence, extras=None) -> list:
+    """Offset-corrected proxy track, carrying per-frame detector extras.
+
+    ``extras[i]`` (optional) is merged into the entry — e.g. ``tilt_deg`` and
+    ``bar_basis`` from the frame's detection.
+    """
     ox, oy = offset
     track: list = []
     for i, lm in enumerate(landmarks):
@@ -452,8 +488,8 @@ def _apply_offset(landmarks, proxy_of, offset, confidence, tilts=None) -> list:
         px, py = proxy_of(lm)
         entry = {"x": round(px + ox, 4), "y": round(py + oy, 4),
                  "confidence": round(confidence, 3), "source": "proxy_offset"}
-        if tilts and i < len(tilts) and tilts[i] is not None:
-            entry["tilt_deg"] = tilts[i]
+        if extras and i < len(extras) and extras[i]:
+            entry.update(extras[i])
         track.append(entry)
     return track
 
@@ -514,13 +550,21 @@ def bar_track_from_frame_paths(
 
     logger.info("Bar track: proxy + per-clip offset (hits %d -> %d)",
                 n_first, second[3] if second else 0)
-    # Carry the per-frame bar tilt (from the two-plate angle) onto the track.
-    tilts: list = [None] * len(landmarks)
+    # Carry the per-frame detector extras (bar tilt + which box the bar
+    # position came from) onto the track.
+    extras: list = [None] * len(landmarks)
     for i in range(min(len(landmarks), len(det2), len(det))):
         src = det2[i] if det2[i] is not None else det[i]
-        if src is not None:
-            tilts[i] = src.get("tilt_deg")
-    return _apply_offset(landmarks, proxy_of, total, conf, tilts)
+        if src is None:
+            continue
+        e: dict = {}
+        if src.get("tilt_deg") is not None:
+            e["tilt_deg"] = src["tilt_deg"]
+        if src.get("bar_basis"):
+            e["bar_basis"] = src["bar_basis"]
+        if e:
+            extras[i] = e
+    return _apply_offset(landmarks, proxy_of, total, conf, extras)
 
 
 # ── Seeded plate tracker (human-anchored bar path) ───────────────────────────

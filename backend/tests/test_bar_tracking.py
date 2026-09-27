@@ -172,15 +172,48 @@ class TestF1RealBarMetrics:
         out = bt.analyze_bar_path(track, self._reps(n), "Squat", view="side")
         assert "bar_over_midfoot" not in out
 
-    def test_lateral_metrics_gated_to_side_view(self):
-        # In a 3/4 view horizontal image position conflates depth — omit them.
+    def test_three_quarter_without_bar_centre_omits_lateral(self):
+        # No resolved bar centre (single plate) -> horizontal is not attempted.
         n = 12
         track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        for p in track:
+            p["bar_basis"] = "plate"
         lms = [self._lm_with_feet(0.5, 0.1) for _ in range(2 * n)]
         out = bt.analyze_bar_path(track, self._reps(n), "Squat",
                                   landmarks=lms, view="three_quarter")
         assert "bar_over_midfoot" not in out
         assert "net_lateral" not in out
+
+    def test_three_quarter_lateral_when_bar_centre_resolved(self):
+        # Two plates give the bar centre -> approximate lateral metrics.
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        for p in track:
+            p["bar_basis"] = "plate_pair"
+        lms = [self._lm_with_feet(0.5, 0.1) for _ in range(2 * n)]
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat",
+                                  landmarks=lms, view="three_quarter")
+        assert out["lateral_basis"] == "three_quarter"
+        assert "bar_over_midfoot" in out
+        assert "net_lateral" in out
+        assert "3/4" in out["note"]
+
+    def test_side_view_lateral_basis_is_sagittal(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        lms = [self._lm_with_feet(0.5, 0.1) for _ in range(2 * n)]
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat",
+                                  landmarks=lms, view="side")
+        assert out["lateral_basis"] == "sagittal"
+
+    def test_three_quarter_tilt_allowed(self):
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        for p in track:
+            p["tilt_deg"] = 4.0
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat",
+                                  view="three_quarter")
+        assert out["tilt_deg"] == pytest.approx(4.0)
 
     def test_tilt_aggregated_from_detector_track(self):
         n = 12

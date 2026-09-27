@@ -1,6 +1,16 @@
 # Bar tracking in 3/4 views (F1 horizontal metrics)
 
 > Scoping doc, 2026-09-27. Parent: [lift-video-tracking-v2.md](lift-video-tracking-v2.md) (F1/T3).
+>
+> **Status: option A implemented (2026-09-27).** `_detections_per_frame` now
+> prefers the whole-bar box, else the **two-plate midpoint** (bar centre), else a
+> single plate, and carries `bar_basis` + `tilt_deg` onto the offset-corrected
+> track. `analyze_bar_path` enables the horizontal metrics for a 3/4 view when
+> most frames resolved the bar centre (pair-rate ≥ 0.5), flags them
+> `lateral_basis = "three_quarter"` (shown with a trailing `~` in the UI) and
+> explains them in the note. Validated on a real ¾ clip: **89% of resolved frames
+> gave `plate_pair`**. Residual perspective bias is still unquantified (see the
+> validation gap) — hence the approximate flag.
 
 ## Why this matters
 
