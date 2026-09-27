@@ -49,3 +49,17 @@ class TestRaceDayTsb:
         )
         assert result["race_day_tsb"] == pytest.approx(result["projection"][-1]["tsb"])
         assert result["projection"][-1]["date"] == date.today() + timedelta(days=14)
+
+    async def test_projection_excludes_today(
+        self, db_session, test_user, test_training_plan, test_event
+    ):
+        """Today is excluded — current CTL/ATL already include it, so
+        re-applying today's planned TSS would double-count."""
+        await _link_plan_to_event(db_session, test_training_plan, test_event)
+        result = await compute_tsb_projection(
+            db_session, test_user.id, test_training_plan.id, days_ahead=5
+        )
+        dates = [e["date"] for e in result["projection"]]
+        assert date.today() not in dates
+        assert dates[0] == date.today() + timedelta(days=1)
+        assert dates[-1] == date.today() + timedelta(days=5)
