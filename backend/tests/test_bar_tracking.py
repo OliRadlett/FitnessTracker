@@ -156,6 +156,14 @@ class TestF1RealBarMetrics:
         assert out["bar_over_midfoot"] == pytest.approx(0.0, abs=1e-6)
         assert out["per_rep"][0]["bar_over_midfoot"] == pytest.approx(0.0, abs=1e-6)
 
+    def test_tiny_foot_is_ignored(self):
+        # A barely-visible foot makes the ratio explode (a real clip read 4.7).
+        n = 12
+        track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
+        lms = [self._lm_with_feet(0.5, 0.01) for _ in range(2 * n)]
+        out = bt.analyze_bar_path(track, self._reps(n), "Squat", landmarks=lms)
+        assert "bar_over_midfoot" not in out
+
     def test_bar_over_midfoot_absent_without_landmarks(self):
         n = 12
         track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
