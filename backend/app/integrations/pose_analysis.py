@@ -1978,10 +1978,17 @@ def run_pose_analysis(
         if all(p.exists() for p in frame_paths):
             from app.integrations.bar_detection import bar_track_from_frame_paths
 
-            bar_track = bar_track_from_frame_paths(
-                frame_paths, [r["landmarks"] for r in records], exercise,
-                model_path=bar_detector_model or None,
-                presence=[r.get("presence") for r in records])
+            try:
+                bar_track = bar_track_from_frame_paths(
+                    frame_paths, [r["landmarks"] for r in records], exercise,
+                    model_path=bar_detector_model or None,
+                    presence=[r.get("presence") for r in records])
+            except Exception as e:
+                # A detector failure (e.g. onnxruntime missing from the Modal
+                # image, or a bad model) must NOT abort the whole pose analysis
+                # — that loses reps/form/velocity too. Degrade to the proxy.
+                logger.warning("Bar detection failed (%s); using pose proxy", e)
+                bar_track = None
     if bar_track is None:
         bar_track = bar_track_from_landmarks(
             landmarks, track.get("presence"), exercise)
