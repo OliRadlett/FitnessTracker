@@ -12,6 +12,7 @@ import type {
   SleepLogSummary,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import {
   format,
   startOfMonth,
@@ -196,10 +197,7 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">Calendar</h1>
-        <p className="text-muted">View your activities at a glance</p>
-      </div>
+      <PageHeader title="Calendar" subtitle="View your activities at a glance" />
 
       {/* Calendar Card */}
       <Card>

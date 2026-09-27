@@ -88,7 +88,7 @@
 | `Field` | Labelled form field — assigns `id`, wires `aria-describedby`/`aria-invalid`, renders hint/error |
 | `Toast` | App-wide toast system (`ToastProvider` mounted in `Providers`; `useToast().success/error/toast`). Success/info auto-dismiss, errors sticky |
 | `ConfirmDialog` | Accessible confirm dialog (built on `Modal`) for destructive actions — replaces native `confirm()` |
-| `ErrorState` | Query-error card (`role="alert"`) with Retry. Use for `isError` — never render "no data" for failures |
+| `ErrorState` | Query-error surface (`role="alert"`) with Retry, two variants: `variant="card"` (default, full card) and `variant="inline"` (thin top-of-page banner; when `onRetry` is omitted it defaults to `queryClient.invalidateQueries()`). Renders nothing when `show={false}`. Use for `isError` — never render "no data" for failures |
 | `AppIcon` | Lucide icon wrapper — consistent sizing, `aria-hidden` by default |
 
 ### `analysis/` — Shared analysis components
