@@ -206,14 +206,16 @@ class TestF1RealBarMetrics:
                                   landmarks=lms, view="side")
         assert out["lateral_basis"] == "sagittal"
 
-    def test_three_quarter_tilt_allowed(self):
+    def test_tilt_stays_frontal_only_in_three_quarter(self):
+        # The two plates sit at different depths in a 3/4 view, so the image
+        # line between them is perspective, not bar tilt (a real squat read 20°).
         n = 12
         track = _line(0.5, 0.3, 0.5, 0.6, n) + _line(0.5, 0.3, 0.5, 0.6, n)
         for p in track:
             p["tilt_deg"] = 4.0
         out = bt.analyze_bar_path(track, self._reps(n), "Squat",
                                   view="three_quarter")
-        assert out["tilt_deg"] == pytest.approx(4.0)
+        assert "tilt_deg" not in out
 
     def test_tilt_aggregated_from_detector_track(self):
         n = 12
