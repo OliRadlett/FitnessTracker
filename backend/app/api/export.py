@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -20,6 +21,23 @@ from app.services.auth import get_current_user
 from app.services.gpx import activity_to_gpx
 
 router = APIRouter()
+
+
+def content_disposition(filename: str) -> str:
+    """Build a safe ``Content-Disposition`` header value (RFC 6266 / 5987).
+
+    User-derived names (route / activity titles) can contain quotes, path
+    separators or control characters that would corrupt or inject the header.
+    The ASCII fallback strips those; ``filename*`` carries the full UTF-8 name.
+    """
+    from urllib.parse import quote
+
+    cleaned = re.sub(r'[\\/\r\n\t\x00-\x1f" ]', "_", filename).strip("_") or "download"
+    ascii_fallback = cleaned.encode("ascii", "replace").decode("ascii")
+    return (
+        f'attachment; filename="{ascii_fallback}"; '
+        f"filename*=UTF-8''{quote(cleaned)}"
+    )
 
 
 @router.get("/json")
@@ -209,15 +227,11 @@ async def export_activity_gpx(
 
         raise HTTPException(status_code=400, detail="Activity has no GPS data")
 
-    filename = (
-        activity.name.replace(" ", "_").replace("/", "_")
-        if activity.name
-        else "activity"
-    )
+    filename = f"{activity.name or 'activity'}.gpx"
     return StreamingResponse(
         iter([gpx_xml]),
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f"attachment; filename={filename}.gpx"},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
