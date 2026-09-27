@@ -6,6 +6,7 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
@@ -367,8 +368,27 @@ async def sync_activities(
                             resolution=resolution,
                         )
                         db.add(stream)
-            except Exception:
-                pass  # Streams are optional — don't fail the sync
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    # Activity genuinely has no streams (e.g. no HR/power) — expected.
+                    logger.debug(
+                        "No Strava streams for activity %s (404)",
+                        activity.provider_activity_id,
+                    )
+                else:
+                    logger.warning(
+                        "Strava stream fetch failed for activity %s: HTTP %s",
+                        activity.provider_activity_id,
+                        e.response.status_code,
+                    )
+            except Exception as e:
+                # Streams are optional — don't fail the whole sync — but never
+                # drop the failure silently (observability).
+                logger.warning(
+                    "Strava stream fetch failed for activity %s: %s",
+                    activity.provider_activity_id,
+                    e,
+                )
     await db.flush()
 
     # Auto-compute TSS for cycling activities if not provided by Strava

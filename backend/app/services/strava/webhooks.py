@@ -4,6 +4,7 @@ import logging
 import uuid
 from datetime import datetime
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,8 +139,18 @@ async def _handle_activity_create(
                 )
                 db.add(stream)
         await db.flush()
-    except Exception:
-        pass  # Streams are optional
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            logger.debug("No Strava streams for activity %s (404)", activity_id)
+        else:
+            logger.warning(
+                "Strava stream fetch failed for activity %s: HTTP %s",
+                activity_id,
+                e.response.status_code,
+            )
+    except Exception as e:
+        # Streams are optional — don't fail webhook processing — but log it.
+        logger.warning("Strava stream fetch failed for activity %s: %s", activity_id, e)
 
     # Auto-compute TSS for cycling activities
     from app.services.cycling import (
