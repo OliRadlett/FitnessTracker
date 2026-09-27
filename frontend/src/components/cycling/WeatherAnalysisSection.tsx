@@ -3,6 +3,7 @@
 import React from 'react';
 import type { WeatherAnalysisResponse } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getActiveLocale } from '@/lib/utils';
 
 interface WeatherAnalysisSectionProps {
   weatherAnalysis: WeatherAnalysisResponse | undefined;
@@ -165,7 +166,7 @@ export function WeatherAnalysisSection({ weatherAnalysis, isLoading }: WeatherAn
       {/* Analyzed At */}
       <div className="mt-3 text-xs text-muted">
         Last analyzed: {weatherAnalysis.analyzed_at
-          ? new Date(weatherAnalysis.analyzed_at).toLocaleDateString()
+          ? new Date(weatherAnalysis.analyzed_at).toLocaleDateString(getActiveLocale())
           : 'Never'}
       </div>
     </Card>

@@ -265,7 +265,7 @@ export function YearHighlights({ yearlySummary }: { yearlySummary: YearlySummary
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-muted">{new Date(pr.achieved_date).toLocaleDateString()}</p>
+                  <p className="text-xs text-muted">{new Date(pr.achieved_date).toLocaleDateString(getActiveLocale())}</p>
                   {pr.improvement_pct !== null && pr.improvement_pct !== undefined && (
                     <span className={`text-xs font-medium ${pr.improvement_pct >= 0 ? 'text-positive' : 'text-warning'}`}>
                       {pr.improvement_pct > 0 ? '+' : ''}{pr.improvement_pct}%

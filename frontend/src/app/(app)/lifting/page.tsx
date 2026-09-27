@@ -679,7 +679,7 @@ export default function LiftingPage() {
                          );
                        })()}
                      </div>
-                    <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString(getActiveLocale())}</p>
                     {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds) && (
                       <p className="text-xs text-muted">
                         🕐 {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds)}
@@ -716,7 +716,7 @@ export default function LiftingPage() {
                   <div>
                     <CardTitle>{sessionDetail.focus || 'Session Detail'}</CardTitle>
                     <p className="text-sm text-muted mt-1">
-                      {new Date(sessionDetail.session_date).toLocaleDateString()}
+                      {new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}
                       {formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds) &&
                         ` · 🕐 ${formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds)}`}
                       {sessionDetail.notes && ` · ${sessionDetail.notes}`}
@@ -934,7 +934,7 @@ export default function LiftingPage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted mt-2 text-center">
-                  {new Date(pr.achieved_date).toLocaleDateString()}
+                  {new Date(pr.achieved_date).toLocaleDateString(getActiveLocale())}
                 </p>
                  {pr.notes && <p className="text-xs text-accent mt-1 text-center">{pr.notes}</p>}
                  {(() => {

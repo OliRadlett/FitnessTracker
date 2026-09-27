@@ -202,7 +202,7 @@ export function ActivityCard({
             <span className="text-muted"> · {activity.name}</span>
           </p>
           <div className="flex gap-4 text-xs text-muted mt-0.5">
-            <span>{new Date(activity.linked_lifting_session.session_date).toLocaleDateString()}</span>
+            <span>{new Date(activity.linked_lifting_session.session_date).toLocaleDateString(getActiveLocale())}</span>
             <span>{activity.linked_lifting_session.set_count} sets</span>
             {activity.linked_lifting_session.total_volume_kg && (
               <span>{Math.round(activity.linked_lifting_session.total_volume_kg).toLocaleString()} kg volume</span>

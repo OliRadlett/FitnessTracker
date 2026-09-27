@@ -7,6 +7,7 @@ import type { LiftingSession, PersonalRecord } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { Spinner } from '@/components/ui/Spinner';
+import { getActiveLocale } from '@/lib/utils';
 
 const MAX_FILE_SIZE = 250 * 1024 * 1024;
 const ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
@@ -277,7 +278,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
             <option value="">None</option>
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.focus || 'General Session'} · {new Date(s.session_date).toLocaleDateString()}
+                {s.focus || 'General Session'} · {new Date(s.session_date).toLocaleDateString(getActiveLocale())}
               </option>
             ))}
           </select>

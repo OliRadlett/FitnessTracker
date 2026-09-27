@@ -1085,7 +1085,7 @@ function ExpandedPanel({
           {day.wahoo_pushed_at ? (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-                Pushed {new Date(day.wahoo_pushed_at).toLocaleDateString()}
+                Pushed {new Date(day.wahoo_pushed_at).toLocaleDateString(getActiveLocale())}
                 {day.wahoo_push_workout ? ' · workout' : ''}
                 {day.wahoo_route_id ? ' · route' : ''}
               </span>

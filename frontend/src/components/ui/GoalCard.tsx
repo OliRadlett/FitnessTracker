@@ -223,7 +223,7 @@ export function GoalCard({
       {goal.target_date && (
         <p className="text-xs text-muted">
           {isExpired ? 'Expired' : 'Due'}:{' '}
-          {new Date(goal.target_date).toLocaleDateString()}
+          {new Date(goal.target_date).toLocaleDateString(getActiveLocale())}
           {fromProjection ? (
             projection?.projection?.projected_date ? (
               <span className="ml-1">

@@ -8,6 +8,7 @@ import { listNotifications, markAllNotificationsRead, markNotificationRead } fro
 import type { AppNotification, NotificationType } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { relativeTime } from '@/lib/analysisRenderer';
 
@@ -34,12 +35,14 @@ export default function NotificationsPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const queryKey = ['notifications'] as const;
-  const { data: notifications = [], isLoading } = useQuery<AppNotification[]>({
+  const { data: notifications = [], isLoading, isError: notificationsError } = useQuery<AppNotification[]>({
     queryKey,
     queryFn: () => listNotifications(authFetch, 200),
     refetchInterval: 30_000,
     enabled: !!token,
   });
+
+  const hasQueryError = notificationsError;
 
   const noneRead = notifications.every((n) => n.read);
 
@@ -212,6 +215,8 @@ export default function NotificationsPage() {
             )}
           </div>
         </CardHeader>
+
+        <QueryErrorBanner show={hasQueryError} message="Notifications failed to load." />
 
         <div className="border-t border-surface-light/50">
           {isLoading && notifications.length === 0 && (
