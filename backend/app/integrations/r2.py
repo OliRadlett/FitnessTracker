@@ -80,6 +80,9 @@ async def create_presigned_put(
             "Bucket": settings.r2_bucket,
             "Key": key,
             "ContentType": content_type,
+            # Bind the declared size into the signature so a client can't
+            # presign for a small file then PUT a larger body (250 MB cap).
+            "ContentLength": size_bytes,
         },
         ExpiresIn=3600,
     )
