@@ -9,7 +9,7 @@
 | Activity merge (dedup) | [`merge_service.py`](../backend/app/services/merge_service.py) `_compute_activity_match_score()` | `0.55` (default, overridable via `ACTIVITY_MERGE_THRESHOLD`) | date 40%, sport 20%, duration 20%, distance 20% |
 | Activity↔Route link | [`merge_service.py`](../backend/app/services/merge_service.py) | `0.70` (default, overridable via `ACTIVITY_ROUTE_LINK_THRESHOLD`) | proximity + distance + shape |
 | Activity↔Lifting link | [`strava/linking.py`](../backend/app/services/strava/linking.py) `_match_score()` | `0.55` | date 50%, duration 20%, exercise overlap 30% |
-| Route dedup | [`route_service.py`](../backend/app/services/route_service.py) | `0.55` (default, overridable via `ROUTE_MATCH_THRESHOLD`) | proximity 20%, distance 20%, name 10%, shape 50% (+ early-exit guards) |
+| Route dedup | [`route_matching.py`](../backend/app/services/route_matching.py) + [`route_service.py`](../backend/app/services/route_service.py) | auto `0.82` / review `0.55` / gate `0.45` (overridable via `ROUTE_MATCH_AUTO_THRESHOLD` / `ROUTE_MATCH_THRESHOLD` / `ROUTE_MATCH_GATE`) | symmetric coverage 60% + discrete Fréchet 25% + endpoint 15%; reversed → 0; sub-sections rejected by `min(coverage)` |
 | PR detection | [`lifting.py`](../backend/app/services/lifting.py) `_check_and_record_pr()` | Brzycki: `weight × (36/(37-reps))` | Updated in-place (one PR per exercise) |
 | Exercise normalisation | [`exercise_db.py`](../backend/app/services/exercise_db.py) | — | Canonical names, aliases, categories |
 | Workout zone matching | [`workout_planner.py`](../backend/app/services/workout_planner.py) | TSB-based readiness | 5 zones from FTP/LTHR, route scoring: TSS 35%, duration 25%, power 25%, HR 15% |

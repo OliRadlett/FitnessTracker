@@ -90,6 +90,13 @@ class TrainingPlanDayRead(TrainingPlanDayBase):
     plan_id: uuid.UUID
     activity_id: uuid.UUID | None = None
     completed: bool = False
+    # Wahoo push state (server-managed via /days/{id}/push-to-wahoo)
+    wahoo_plan_id: int | None = None
+    wahoo_workout_id: int | None = None
+    wahoo_route_id: int | None = None
+    wahoo_pushed_at: datetime | None = None
+    wahoo_push_workout: bool = False
+    wahoo_push_route: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -396,6 +403,24 @@ class RefreshTargetsResponse(BaseModel):
 
 
 # ── FL2: missed-session reconciliation ──────────────────────────────────
+
+
+class WahooPushRequest(BaseModel):
+    """Which parts of a cycle day to push to Wahoo."""
+
+    push_workout: bool = True
+    push_route: bool = True
+
+
+class WahooPushResponse(BaseModel):
+    """Result of a push / remove operation against Wahoo."""
+
+    pushed_at: datetime | None = None
+    push_workout: bool = False
+    push_route: bool = False
+    wahoo_plan_id: int | None = None
+    wahoo_workout_id: int | None = None
+    wahoo_route_id: int | None = None
 
 
 class RescheduleDayRequest(BaseModel):

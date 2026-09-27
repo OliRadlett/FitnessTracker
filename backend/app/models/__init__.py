@@ -20,7 +20,12 @@ from app.models.llm_analysis import LlmAnalysis
 from app.models.notification import Notification
 from app.models.nutrition import RideFuelPlan
 from app.models.push import PushSubscription
-from app.models.route import Route, RouteSource
+from app.models.route import (
+    Route,
+    RouteMergeLog,
+    RouteSimilarity,
+    RouteSource,
+)
 from app.models.route_organize import (
     RouteCollection,
     RouteCollectionItem,
@@ -65,7 +70,9 @@ __all__ = [
     "Route",
     "RouteCollection",
     "RouteCollectionItem",
+    "RouteMergeLog",
     "RouteQuality",
+    "RouteSimilarity",
     "RouteSource",
     "RouteTag",
     "RouteTagging",

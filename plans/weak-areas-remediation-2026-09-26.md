@@ -10,9 +10,10 @@
 > #11/#12).
 >
 > **Docs reconciliation (same change)**: stale facts in `AGENTS.md`, `docs/BUGS.md`,
-> `docs/algorithms.md`, `docs/RUNNING.md` and the CODEMAPs (migration head `061`→`077`,
-> 42→43 tables, 32→43 charts, decoupling definition, missing Celery/video/spc/encryption rows)
-> were fixed on branch `docs/reconcile-2026-09-26`. Track 3's "Docs" row still has the
+> `docs/algorithms.md`, `docs/RUNNING.md` and the CODEMAPs (migration head `061`→`079`,
+> 42→45 tables, 32→43 charts, decoupling definition, missing Celery/video/spc/encryption rows)
+> were fixed on branch `docs/reconcile-2026-09-26`. That branch also fixed a **duplicate
+> Alembic revision** on `main` (see Track 1). Track 3's "Docs" row still has the
 > `docs/BUGS.md` BUG-071 proximity note outstanding.
 
 ## Executive summary
@@ -53,45 +54,31 @@ Six remediation tracks, sequenced so Track 1 unblocks the rest. Each is an indep
 
 ---
 
-## Track 1 — Unblock branch & migrations (P0, do first)
+## Track 1 — Unblock branch & migrations (P0) — mostly resolved
 
-**Problem**: local `main` is `63ef8d8`, but `origin/main` is `d12a718` (local is 3 ahead /
-17 behind). The uncommitted migrations are authored against a stale chain and cannot apply.
+**Update 2026-09-26 (later):** the previously-uncommitted in-flight work merged to
+`origin/main` while this audit ran — `#84` (Wahoo planned-workout push) and `#101`
+(route-merging overhaul). Those sessions renumbered their migrations to `078_add_wahoo_push.py`
+and `078_route_merging_overhaul.py`, but **both kept `revision = "078"` with
+`down_revision = "077"`** → `main` had two heads with the same revision id and
+`alembic upgrade head` fails ("revision 078 is present more than once").
 
-**Evidence**
-- `backend/alembic/versions/073_add_wahoo_push.py` → `down_revision = "072"`, but `072` does
-  not exist locally (`origin/main` has `072_standardise_per_arm_weights.py`).
-- `backend/alembic/versions/074_route_merging_overhaul.py` → `revision = "074"`, colliding
-  with `origin/main`'s `074_add_pmax_to_cycling_profiles.py`.
-- `074_route_merging_overhaul.py` duplicates `origin/main`'s
-  `076_scope_route_sources_to_user.py` (re-adds `route_sources.user_id` + a unique constraint
-  with a different name).
-- `backend/app/services/route_service.py:796` sets `primary.predicted_effort = None`, but
-  `origin/main`'s `077_drop_predicted_effort.py` drops that column.
-- `origin/main` chain head is `077_drop_predicted_effort.py`.
-- Local commits ahead (`63ef8d8`, `e4d7556`, `dbcbfb1`) are T3 bar-detector work that overlaps
-  `origin/main`'s `#99` "trained bar detector (T3)".
+**Fixed on branch `docs/reconcile-2026-09-26`:** `078_route_merging_overhaul.py` →
+`079_route_merging_overhaul.py` (`revision = "079"`, `down_revision = "078"`); chain is now
+`…077 → 078_add_wahoo_push → 079_route_merging_overhaul` (single head `079`). Doc head
+references updated to `079`.
 
-**Steps**
-- [ ] Confirm no other session is mid-git (`git status`; if the index shifts unexpectedly,
-      stop per AGENTS rule #2).
-- [ ] Back up in-flight files: `git stash push <specific files>` (never `git stash -u`) or
-      commit to a WIP branch. Treat `src/`, `bike_model/`, `bike_model_stock/`, `.vite/` at
-      repo root as accidental artifacts — verify then delete/gitignore.
-- [ ] `git fetch origin`; rebase local commits onto `origin/main`. Resolve conflicts between
-      the local T3 dataset/trainer commits and `#99` (likely complementary — keep both, or drop
-      the duplicate deliberately).
-- [ ] Renumber local migrations against the new head `077`:
-      `073_add_wahoo_push.py` → `078_add_wahoo_push.py` (`down_revision = "077"`);
-      `074_route_merging_overhaul.py` → `079_route_merging_overhaul.py` (`down_revision = "078"`).
-- [ ] Strip duplicate `route_sources` ops from `079` (already created by origin's `076`).
-- [ ] Delete the `predicted_effort` write at `route_service.py:796`.
-- [ ] Verify: `python fittrack.py exec backend alembic heads` (single head) →
-      `alembic upgrade head` → `alembic downgrade 077` → `alembic upgrade head`.
-- [ ] Re-run affected tests on a fresh test DB:
-      `$env:TEST_DATABASE_URL="postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"; python -m pytest backend/tests/ -q`
+**Still open**
+- Local `main` checkout (`63ef8d8`) is ~19 commits behind `origin/main` — fast-forward it
+  before any feature work.
+- The 3 local commits (`63ef8d8`, `e4d7556`, `dbcbfb1`, T3 bar-detector dataset/trainer) are
+  superseded by `origin/main`'s merged T3 work (`#99`) — verify and drop/rebase.
+- Repo-root artifacts (`src/`, `bike_model/`, `bike_model_stock/`, `.vite/`) still untracked —
+  verify then delete/gitignore.
+- Confirm `alembic heads` returns exactly one head after the `079` renumber, then
+  `alembic upgrade head` on a fresh DB.
 
-**Risk**: high. Stop and ask the user if the git index changes unexpectedly.
+**Risk**: medium now (the collision is fixed; remaining items are branch hygiene).
 
 ---
 

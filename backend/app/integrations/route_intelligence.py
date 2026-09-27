@@ -386,3 +386,176 @@ def classify_route_terrain(
     analyze_routes_on_modal() which runs in a container.
     """
     return _classify_terrain(elevation_profile, polyline)
+
+
+# ── Route similarity graph (Modal worker + public API) ───────────────────────
+
+
+def _score_route_graph_modal(
+    routes_json: str,
+    pairs_json: str,
+    auto_threshold: float,
+    review_floor: float,
+    gate: float,
+) -> dict:
+    """Modal remote worker: score route pairs with the shared pure engine.
+
+    Module-global (Modal rejects closures). ``route_matching`` is mounted into
+    the image at ``/root``; import it at call time so the client never needs the
+    module importable inside the bare container image. Returns only pairs at or
+    above the review floor, each with the full score breakdown.
+    """
+    import json as _json
+    import sys
+
+    sys.path.insert(0, "/root")
+    from route_matching import score_route_pair  # type: ignore[import-not-found]
+
+    routes = _json.loads(routes_json)
+    pairs = _json.loads(pairs_json)
+
+    out: list[dict] = []
+    for i, j in pairs:
+        a, b = routes[i], routes[j]
+        breakdown = score_route_pair(
+            a["polyline"],
+            b["polyline"],
+            length_a=a.get("distance_meters"),
+            length_b=b.get("distance_meters"),
+            auto_threshold=auto_threshold,
+            review_floor=review_floor,
+            gate=gate,
+        )
+        if breakdown.matched:
+            out.append({"a": a["id"], "b": b["id"], **breakdown.to_dict()})
+    return {"pairs": out}
+
+
+def _pairs_for_routes(n: int) -> list[list[int]]:
+    """All unordered index pairs ``[i, j]`` with ``i < j``."""
+    return [[i, j] for i in range(n) for j in range(i + 1, n)]
+
+
+def compute_route_similarity_locally(
+    routes_data: list[dict],
+    pairs: list[list[int]] | None = None,
+    *,
+    auto_threshold: float = 0.82,
+    review_floor: float = 0.55,
+    gate: float = 0.45,
+) -> dict:
+    """Local (non-Modal) similarity graph using the shared engine."""
+    from app.services.route_matching import score_route_pair
+
+    if pairs is None:
+        pairs = _pairs_for_routes(len(routes_data))
+
+    out: list[dict] = []
+    for i, j in pairs:
+        a, b = routes_data[i], routes_data[j]
+        breakdown = score_route_pair(
+            a["polyline"],
+            b["polyline"],
+            length_a=a.get("distance_meters"),
+            length_b=b.get("distance_meters"),
+            auto_threshold=auto_threshold,
+            review_floor=review_floor,
+            gate=gate,
+        )
+        if breakdown.matched:
+            out.append({"a": a["id"], "b": b["id"], **breakdown.to_dict()})
+    return {"pairs": out}
+
+
+def compute_route_similarity_on_modal(
+    routes_data: list[dict],
+    pairs: list[list[int]] | None = None,
+    *,
+    auto_threshold: float = 0.82,
+    review_floor: float = 0.55,
+    gate: float = 0.45,
+    chunk_pairs: int = 4000,
+    max_failures: int = 3,
+) -> dict:
+    """Compute a route similarity graph on Modal, falling back to local.
+
+    ``routes_data`` items: ``{id, polyline: [(lat, lng), ...], distance_meters}``.
+    ``pairs`` defaults to every unordered pair. Scoring is chunked; after
+    ``max_failures`` consecutive Modal errors the remaining chunks run locally
+    (RMI-13). Falls back entirely to local scoring when Modal is unconfigured.
+    """
+    import json as _json
+    from pathlib import Path
+
+    if pairs is None:
+        pairs = _pairs_for_routes(len(routes_data))
+    if not pairs:
+        return {"pairs": []}
+
+    if not _modal_configured():
+        return compute_route_similarity_locally(
+            routes_data,
+            pairs,
+            auto_threshold=auto_threshold,
+            review_floor=review_floor,
+            gate=gate,
+        )
+
+    import modal
+
+    rm_path = str(
+        Path(__file__).resolve().parent.parent / "services" / "route_matching.py"
+    )
+    image = modal.Image.debian_slim(python_version="3.12").add_local_file(
+        rm_path, "/root/route_matching.py"
+    )
+    app = modal.App("fittrack-route-similarity", image=image)
+    remote = app.function(timeout=600, memory=4096)(_score_route_graph_modal)
+
+    routes_json = _json.dumps(routes_data, default=str)
+    results: list[dict] = []
+    consecutive_failures = 0
+    degraded = False
+
+    chunks = [pairs[k : k + chunk_pairs] for k in range(0, len(pairs), chunk_pairs)]
+    with app.run():
+        for chunk in chunks:
+            if degraded:
+                break
+            try:
+                res = remote.remote(
+                    routes_json,
+                    _json.dumps(chunk),
+                    auto_threshold,
+                    review_floor,
+                    gate,
+                )
+                results.extend(res.get("pairs", []))
+                consecutive_failures = 0
+            except Exception as e:
+                consecutive_failures += 1
+                logger.warning(
+                    f"Modal route similarity chunk failed "
+                    f"({consecutive_failures}/{max_failures}): {e}"
+                )
+                if consecutive_failures >= max_failures:
+                    degraded = True
+
+    if degraded:
+        local = compute_route_similarity_locally(
+            routes_data,
+            pairs,
+            auto_threshold=auto_threshold,
+            review_floor=review_floor,
+            gate=gate,
+        )
+        seen = {(p["a"], p["b"]) for p in results}
+        for p in local["pairs"]:
+            if (p["a"], p["b"]) not in seen:
+                results.append(p)
+        logger.info(
+            f"Route similarity degraded to local "
+            f"(Modal results={len(seen)}, total={len(results)})"
+        )
+
+    return {"pairs": results}
