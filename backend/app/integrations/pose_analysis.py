@@ -1992,7 +1992,8 @@ def run_pose_analysis(
     if bar_track is None:
         bar_track = bar_track_from_landmarks(
             landmarks, track.get("presence"), exercise)
-    bar_path = analyze_bar_path(bar_track, reps, exercise, landmarks=landmarks)
+    bar_path = analyze_bar_path(
+        bar_track, reps, exercise, landmarks=landmarks, view=view)
     if bar_path:
         result["bar_path"] = bar_path
 
