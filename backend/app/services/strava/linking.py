@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.integrations import jev_client
 from app.models.activity import Activity
 from app.models.lifting import LiftingSession
 from app.services.lifting import (
@@ -139,6 +140,30 @@ def _match_score(
 # ── Linking logic ────────────────────────────────────────────────────────────
 
 MATCH_THRESHOLD = 0.55  # Minimum score to consider a match
+# Jev arbitration band (Phase 4). Scores within ±δ of the threshold are
+# ambiguous: Jev decides, unless it is unset (then the deterministic rule holds).
+LINK_BAND_DELTA = 0.08
+LINK_SAME_THRESHOLD = 0.75
+
+
+async def _arbitrate_link(activity: Activity, session: LiftingSession) -> float | None:
+    """Jev's P(same) for an ambiguous activity↔session pair, or None if unset."""
+    if not jev_client.is_configured():
+        return None
+    res = await jev_client.decide(
+        {
+            "activity_name": activity.name,
+            "session_focus": session.focus,
+            "session_program": session.program_name,
+            "session_notes": session.notes,
+        },
+        {
+            "same": jev_client.noul(
+                "Is this Strava strength activity the same session as this lifting log?"
+            )
+        },
+    )
+    return res.noul("same") if res is not None else None
 
 
 async def link_activity_to_lifting_sessions(
@@ -190,8 +215,16 @@ async def link_activity_to_lifting_sessions(
     scored.sort(key=lambda x: x[1], reverse=True)
 
     best_session, best_score = scored[0]
-    if best_score < MATCH_THRESHOLD:
+    if best_score < MATCH_THRESHOLD - LINK_BAND_DELTA:
         return None
+    if best_score < MATCH_THRESHOLD + LINK_BAND_DELTA:
+        # Ambiguous band — Jev decides. Unset/errored Jev → today's rule.
+        verdict = await _arbitrate_link(activity, best_session)
+        if verdict is None:
+            if best_score < MATCH_THRESHOLD:
+                return None
+        elif verdict < LINK_SAME_THRESHOLD:
+            return None
 
     # Link them
     best_session.activity_id = activity.id
