@@ -30,6 +30,16 @@ _GEOFABRIK = "https://download.geofabrik.de/{path}-latest.osm.pbf"
 _DEFAULT_VOLUME = "fittrack-osm"
 
 
+def _geofabrik_url(geofabrik_path: str) -> str:
+    """Build the Geofabrik download URL for a path slug (e.g. ``europe/united-kingdom``)."""
+    return _GEOFABRIK.format(path=geofabrik_path.strip("/"))
+
+
+def _dest_path(region: str, osm_dir: str = "/osm") -> str:
+    """Destination filename in the OSM volume for a logical region key."""
+    return f"{osm_dir.rstrip('/')}/{region}-latest.osm.pbf"
+
+
 def _modal_configured() -> bool:
     from app.config import get_settings
 
@@ -175,17 +185,26 @@ def _match_routes_road_modal(
     return result
 
 
-def _download_osm_region(region: str, path: str, osm_dir: str = "/osm") -> str:
-    """Download a Geofabrik extract into the mounted Volume (one-off bootstrap)."""
+def _download_osm_region(region: str, geofabrik_path: str, osm_dir: str = "/osm") -> str:
+    """Download a Geofabrik extract into the mounted Volume (one-off bootstrap).
+
+    ``geofabrik_path`` is the Geofabrik slug (e.g. ``europe/united-kingdom``); the
+    file is stored as ``{region}-latest.osm.pbf`` so the matcher can find it by
+    the logical region key. Raises a plain ``RuntimeError`` (picklable across the
+    Modal boundary) rather than httpx's ``HTTPStatusError``.
+    """
     import os
 
     import httpx
 
     os.makedirs(osm_dir, exist_ok=True)
-    dest = os.path.join(osm_dir, path)
-    url = _GEOFABRIK.format(path=path)
+    dest = _dest_path(region, osm_dir)
+    url = _geofabrik_url(geofabrik_path)
     with httpx.stream("GET", url, follow_redirects=True, timeout=600) as resp:
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"OSM download failed: HTTP {resp.status_code} for {url}"
+            )
         with open(dest, "wb") as fh:
             fh.writelines(resp.iter_bytes(1 << 20))
     return dest
@@ -267,6 +286,5 @@ def bootstrap_osm_region_on_modal(region: str, geofabrik_path: str) -> str:
     remote = app.function(volumes={"/osm": volume}, timeout=3600, memory=4096)(
         _download_osm_region
     )
-    filename = f"{region}-latest.osm.pbf"
     with app.run():
-        return remote.remote(region, filename)
+        return remote.remote(region, geofabrik_path)
