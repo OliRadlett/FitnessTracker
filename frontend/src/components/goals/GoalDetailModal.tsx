@@ -238,7 +238,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           </span>
           {goal.target_date && (
             <span className="text-muted">
-              Due {new Date(goal.target_date).toLocaleDateString()}
+              Due {new Date(goal.target_date).toLocaleDateString(getActiveLocale())}
             </span>
           )}
         </div>
@@ -268,7 +268,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                       borderRadius: '8px',
                       color: '#fff',
                     }}
-                    labelFormatter={(d) => new Date(String(d)).toLocaleDateString()}
+                    labelFormatter={(d) => new Date(String(d)).toLocaleDateString(getActiveLocale())}
                     formatter={(value: number | string, name: string) => [
                       `${Number(value).toFixed(1)}${unit ? ` ${unit}` : ''}`,
                       name === 'projected' ? 'Projection' : 'Value',
@@ -544,7 +544,7 @@ function ProjectionSection({ projection }: { projection: GoalProjectionResponse 
             <span className="text-xs text-muted">
               Projected to reach target:{' '}
               <span className="text-foreground font-medium">
-                {new Date(proj.projected_date).toLocaleDateString()}
+                {new Date(proj.projected_date).toLocaleDateString(getActiveLocale())}
               </span>{' '}
               ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
             </span>

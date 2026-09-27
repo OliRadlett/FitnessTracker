@@ -20,6 +20,7 @@ import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
 import type { LlmAnalysis } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 
 interface AthleteInsight {
   id: string;
@@ -337,7 +338,7 @@ function WhatIfLab() {
     if (w == null) return '—';
     if (w < 0) return '—';
     if (w === 0) return 'already there';
-    const date = new Date(Date.now() + w * 7 * 86400_000).toLocaleDateString();
+    const date = new Date(Date.now() + w * 7 * 86400_000).toLocaleDateString(getActiveLocale());
     return `~${w < 1 ? '<1' : Math.round(w)} wk (${date})`;
   };
 

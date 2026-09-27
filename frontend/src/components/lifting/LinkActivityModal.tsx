@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, LiftingSession } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, getActiveLocale } from '@/lib/utils';
 
 export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const { authFetch, token } = useAuthFetch();
@@ -58,7 +58,7 @@ export function LinkActivityModal({ sessionId, onClose }: { sessionId: string; o
                   <div>
                     <p className="text-sm font-medium text-foreground">{activity.name}</p>
                     <p className="text-xs text-muted">
-                      {new Date(activity.start_date).toLocaleString()} · {activity.sport_type}
+                      {new Date(activity.start_date).toLocaleString(getActiveLocale())} · {activity.sport_type}
                     </p>
                   </div>
                   <div className="text-right text-xs text-muted">
