@@ -1,7 +1,7 @@
 """Route merging overhaul: merge log + similarity cache.
 
 Revision ID: 079
-Revises: 078
+Revises: 078 (add_wahoo_push)
 Create Date: 2026-09-26
 
 Adds the audit trail for non-destructive route merges (`route_merge_log`) and
