@@ -307,6 +307,12 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=3, minute=0, day_of_week=6),
         "options": {"expires": 3600},
     },
+    # Unstick lift videos left in processing/queued (e.g. a deploy killed the worker)
+    "reap-stale-videos": {
+        "task": "app.tasks.scheduler.reap_stale_videos",
+        "schedule": crontab(minute=15),
+        "options": {"expires": 900},
+    },
 }
 
 
@@ -4211,6 +4217,57 @@ def process_lift_video(
                 return {"status": "failed", "error": str(e)}
 
     return asyncio.run(_run())
+
+
+# ── Stale lift-video reaper ───────────────────────────────────────────────────
+
+# A worker killed mid-task (a deploy recreates containers) can leave a video
+# stuck in processing/queued forever — one sat in `processing` for days after a
+# deploy. Re-queue once (transient failures recover); if it is still stuck on
+# the next pass, mark it failed so it stops occupying the queue and surfaces in
+# the UI with a reprocess action.
+@celery_app.task(name="app.tasks.scheduler.reap_stale_videos")
+def reap_stale_videos() -> dict:
+    """Unstick lift videos left in processing/queued (e.g. a deploy killed the worker)."""
+    return asyncio.run(_reap_stale_videos_async())
+
+
+async def _reap_stale_videos_async() -> dict:
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.lifting import LiftVideo
+    from app.services.video_lifecycle import (
+        STALE_VIDEO_MINUTES,
+        stale_reap_decision,
+    )
+
+    retried: list[str] = []
+    failed: list[str] = []
+    async with task_session() as db:
+        cutoff = datetime.now(UTC) - timedelta(minutes=STALE_VIDEO_MINUTES)
+        rows = (
+            await db.execute(
+                select(LiftVideo).where(
+                    LiftVideo.analysis_status.in_(("processing", "queued")),
+                    LiftVideo.updated_at < cutoff,
+                )
+            )
+        ).scalars().all()
+        for video in rows:
+            status, text = stale_reap_decision(video.analysis_text)
+            video.analysis_status = status
+            video.analysis_text = text
+            (failed if status == "failed" else retried).append(str(video.id))
+        await db.commit()
+
+    for video_id in retried:
+        process_lift_video.delay(video_id, force=True)
+    if retried or failed:
+        logger.warning("reap_stale_videos: retried=%s failed=%s", retried, failed)
+    return {"retried": retried, "failed": failed}
 
 
 # ── Weekly plan review (FL2) ──────────────────────────────────────────────

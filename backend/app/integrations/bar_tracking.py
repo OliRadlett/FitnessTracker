@@ -28,6 +28,10 @@ _SQUAT_FAMILY = ("Squat", "Front Squat", "Back Squat")
 _MIN_REP_POINTS = 4
 _CONSISTENCY_SAMPLES = 20
 
+# MediaPipe pose foot landmarks (heel, foot index) — used for the midfoot line.
+_HEEL_IDX = (29, 30)
+_FOOT_IDX = (31, 32)
+
 
 def _proxy_point(lm, exercise: str) -> tuple[float, float]:
     """Normalised bar-proxy point: shoulder mid for squats, wrist mid else."""
@@ -102,15 +106,57 @@ def _drift_ratio(pts: list[tuple[float, float]]) -> float | None:
     return horizontal / vertical
 
 
+def _midfoot(lm) -> tuple[float, float] | None:
+    """Midfoot x (image-normalised) + foot length, from the pose foot landmarks.
+
+    Midfoot = the midpoint of the heel and foot-index landmarks (the middle of
+    the foot), averaged over whichever feet are visible. Returns ``None`` when
+    no foot landmark is usable.
+    """
+    xs: list[float] = []
+    lengths: list[float] = []
+    for heel_i, foot_i in zip(_HEEL_IDX, _FOOT_IDX):
+        try:
+            heel, foot = lm[heel_i], lm[foot_i]
+        except (IndexError, TypeError):
+            continue
+        xs.extend((float(heel.x), float(foot.x)))
+        lengths.append(float(np.hypot(foot.x - heel.x, foot.y - heel.y)))
+    if not xs:
+        return None
+    return float(np.mean(xs)), float(np.mean(lengths))
+
+
+def _net_lateral(pts: list[tuple[float, float]]) -> float | None:
+    """Signed net horizontal travel / vertical travel (the J-curve's 'hook').
+
+    Positive = the bar ends to the +x side of where it started. A near-vertical
+    pull is ~0; a pronounced J shows the classic back-then-forward pair.
+    """
+    if len(pts) < _MIN_REP_POINTS:
+        return None
+    arr = np.asarray(pts, dtype=float)
+    vertical = float(arr[:, 1].max() - arr[:, 1].min())
+    if vertical <= 1e-9:
+        return None
+    return float(arr[-1, 0] - arr[0, 0]) / vertical
+
+
 def analyze_bar_path(
     bar_track: list,
     pose_reps: list[dict],
     exercise: str = "",
+    landmarks: list | None = None,
 ) -> dict | None:
     """Bar-path technique metrics over the detected reps.
 
     Returns ``None`` when fewer than 2 measurable reps exist. ``source`` and
     ``confidence`` describe the underlying track (proxy vs detector).
+
+    ``landmarks`` (pose frames, index-aligned with ``bar_track``) enables
+    **bar-over-midfoot**; the detector track carries an optional per-frame
+    ``tilt_deg`` for **bar tilt**. Both are omitted rather than guessed when
+    their inputs are unavailable.
     """
     if not bar_track or not pose_reps:
         return None
@@ -120,21 +166,44 @@ def analyze_bar_path(
     confs = [float(p["confidence"]) for p in bar_track if p]
     confidence = round(sum(confs) / len(confs), 3) if confs else 0.0
 
+    tilts = [abs(float(p["tilt_deg"])) for p in bar_track
+             if p and p.get("tilt_deg") is not None]
+    if tilts:
+        tilts = [min(t, 90.0) for t in tilts]
+
     per_rep: list[dict] = []
     rep_pts: list[list[tuple[float, float]]] = []
     for rep in pose_reps:
-        pts = _segment(bar_track, rep.get("start_idx", 0), rep.get("end_idx", 0))
+        start, end = rep.get("start_idx", 0), rep.get("end_idx", 0)
+        pts = _segment(bar_track, start, end)
         eff = _path_efficiency(pts)
         drift = _drift_ratio(pts)
         if eff is None or drift is None:
             continue
         arr = np.asarray(pts, dtype=float)
-        per_rep.append({
+        entry = {
             "rep_number": rep.get("rep_number"),
             "efficiency": round(eff, 3),
             "drift_ratio": round(drift, 3),
             "vertical_range": round(float(arr[:, 1].max() - arr[:, 1].min()), 4),
-        })
+        }
+        net = _net_lateral(pts)
+        if net is not None:
+            entry["net_lateral"] = round(net, 3)
+        # Bar-over-midfoot: mean signed horizontal offset from the midfoot,
+        # as a fraction of foot length (+ = bar toward the +x side).
+        if landmarks:
+            offs: list[float] = []
+            for i in range(max(0, start), min(len(bar_track), end) + 1):
+                if i >= len(landmarks) or bar_track[i] is None:
+                    continue
+                lm = landmarks[i]
+                mf = _midfoot(lm) if lm is not None else None
+                if mf and mf[1] > 1e-6:
+                    offs.append((float(bar_track[i]["x"]) - mf[0]) / mf[1])
+            if offs:
+                entry["bar_over_midfoot"] = round(float(np.mean(offs)), 3)
+        per_rep.append(entry)
         rep_pts.append(pts)
 
     if len(per_rep) < 2:
@@ -158,6 +227,10 @@ def analyze_bar_path(
     rms_dev = float(np.mean(diffs)) if diffs else 0.0
     consistency = round(max(0.0, 1.0 - rms_dev) * 100, 1)
 
+    net_laterals = [r["net_lateral"] for r in per_rep if "net_lateral" in r]
+    midfoot = [r["bar_over_midfoot"] for r in per_rep
+               if "bar_over_midfoot" in r]
+
     result = {
         "source": source,
         "confidence": confidence,
@@ -167,9 +240,16 @@ def analyze_bar_path(
         "consistency": consistency,
         "per_rep": per_rep,
     }
+    if net_laterals:
+        result["net_lateral"] = round(sum(net_laterals) / len(net_laterals), 3)
+    if midfoot:
+        result["bar_over_midfoot"] = round(sum(midfoot) / len(midfoot), 3)
+    if tilts:
+        result["tilt_deg"] = round(float(np.mean(tilts)), 2)
+        result["tilt_frames"] = len(tilts)
     if source == "pose_proxy":
         result["note"] = (
             "Proxy track (shoulder/wrist midpoint, not the bar) — lateral "
-            "drift/J-curve are indicative only until bar detection (T3)."
+            "drift/J-curve are indicative only. Bar tilt needs the detector."
         )
     return result
