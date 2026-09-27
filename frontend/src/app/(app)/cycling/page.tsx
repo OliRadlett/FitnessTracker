@@ -39,6 +39,7 @@ import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { formatTSB } from '@/lib/utils';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
@@ -510,18 +511,10 @@ export default function CyclingPage() {
       </div>
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      {hasQueryError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
-          <span>Some cycling data failed to load.</span>
-          <button
-            type="button"
-            onClick={() => queryClient.invalidateQueries()}
-            className="shrink-0 font-medium underline hover:no-underline"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some cycling data failed to load."
+      />
 
       {/* Profile Editor (collapsible — summary row, 1.8) */}
       <Card>

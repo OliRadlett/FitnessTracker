@@ -16,6 +16,7 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -180,18 +181,10 @@ export default function HealthPage() {
       </div>
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      {hasQueryError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
-          <span>Some health data failed to load.</span>
-          <button
-            type="button"
-            onClick={() => queryClient.invalidateQueries()}
-            className="shrink-0 font-medium underline hover:no-underline"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some health data failed to load."
+      />
 
       {/* ── Status Row ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
