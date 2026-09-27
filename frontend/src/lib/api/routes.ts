@@ -5,6 +5,9 @@ import type {
   RouteFilters,
   RouteSyncResult,
   DuplicatePair,
+  MergeResult,
+  RouteMergeLogEntry,
+  SimilarRoute,
   MergedRouteView,
   HomeAreaHeatmapResponse,
   RouteCollection,
@@ -53,11 +56,23 @@ export async function getDuplicateRoutes(token?: string): Promise<DuplicatePair[
   return apiFetch<DuplicatePair[]>('/api/v1/routes/duplicates', {}, token);
 }
 
-export async function mergeRoutes(primaryId: string, duplicateId: string, token?: string): Promise<RouteData> {
-  return apiFetch<RouteData>('/api/v1/routes/merge', {
+export async function mergeRoutes(primaryId: string, duplicateId: string, token?: string): Promise<MergeResult> {
+  return apiFetch<MergeResult>('/api/v1/routes/merge', {
     method: 'POST',
     body: JSON.stringify({ primary_route_id: primaryId, duplicate_route_id: duplicateId }),
   }, token);
+}
+
+export async function listRouteMerges(token?: string): Promise<RouteMergeLogEntry[]> {
+  return apiFetch<RouteMergeLogEntry[]>('/api/v1/routes/merges', {}, token);
+}
+
+export async function undoRouteMerge(logId: string, token?: string): Promise<RouteData> {
+  return apiFetch<RouteData>(`/api/v1/routes/merges/${logId}/undo`, { method: 'POST' }, token);
+}
+
+export async function getSimilarRoutes(routeId: string, token?: string): Promise<SimilarRoute[]> {
+  return apiFetch<SimilarRoute[]>(`/api/v1/routes/${routeId}/similar`, {}, token);
 }
 
 export async function autoMergeDuplicates(threshold: number = 0.90, token?: string): Promise<{ merged: number; threshold: number }> {

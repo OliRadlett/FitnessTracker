@@ -18,6 +18,7 @@ import { ElevationProfile } from '@/components/maps/ElevationProfile';
 import { SurfaceBreakdown } from '@/components/maps/SurfaceBreakdown';
 import { RouteHistorySection } from '@/components/routes/RouteHistorySection';
 import { SegmentsCard } from '@/components/routes/SegmentsCard';
+import { SimilarRoutesSection } from '@/components/routes/SimilarRoutesSection';
 import { computeDifficulty, DifficultyBadge, fmtElevation, fmtDurationShort } from '@/lib/routeUtils';
 import { formatDistance } from '@/lib/utils';
 import { X, Edit2, Download, Trash2, Star } from 'lucide-react';
@@ -288,6 +289,7 @@ export function RouteDetailPanel({ route, onClose, scrollable = true }: RouteDet
             {detailTab === 'overview' && (
               <div className="px-4 pb-4 space-y-4">
                 <EffortEstimateCard routeId={route.id} />
+                <SimilarRoutesSection routeId={route.id} />
               </div>
             )}
 

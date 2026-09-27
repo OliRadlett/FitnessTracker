@@ -105,6 +105,19 @@ class TrainingPlanDay(Base):
         nullable=True,
     )
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Wahoo push state — populated by services.wahoo_push
+    wahoo_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wahoo_workout_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wahoo_route_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wahoo_pushed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    wahoo_push_workout: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    wahoo_push_route: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
