@@ -721,6 +721,53 @@ export default function LiftingPage() {
                         ` · 🕐 ${formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds)}`}
                       {sessionDetail.notes && ` · ${sessionDetail.notes}`}
                     </p>
+                    {sessionDetail.ai_tags && (
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        {sessionDetail.ai_tags.outcome && (
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full bg-surface-light text-muted"
+                            title="Jev-inferred session outcome"
+                          >
+                            {sessionDetail.ai_tags.outcome}
+                          </span>
+                        )}
+                        {typeof sessionDetail.ai_tags.energy === 'number' && (
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full bg-surface-light text-muted"
+                            title="Jev-inferred energy (0 low – 2 high)"
+                          >
+                            energy {sessionDetail.ai_tags.energy}
+                          </span>
+                        )}
+                        {typeof sessionDetail.ai_tags.pain_injury === 'number' &&
+                          sessionDetail.ai_tags.pain_injury >= 0.5 && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning"
+                              title="Jev detected a pain/injury mention in the notes"
+                            >
+                              ⚠️ pain mention
+                            </span>
+                          )}
+                        {typeof sessionDetail.ai_tags.high_fatigue === 'number' &&
+                          sessionDetail.ai_tags.high_fatigue >= 0.5 && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning"
+                              title="Jev detected unusual fatigue in the notes"
+                            >
+                              fatigue
+                            </span>
+                          )}
+                        {typeof sessionDetail.ai_tags.pr_mention === 'number' &&
+                          sessionDetail.ai_tags.pr_mention >= 0.5 && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full bg-positive/15 text-positive"
+                              title="Jev detected a PR mention in the notes"
+                            >
+                              PR
+                            </span>
+                          )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button

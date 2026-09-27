@@ -188,6 +188,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.backfill_activity_context",
         "schedule": crontab(hour=3, minute=30, day_of_week=0),
     },
+    # Tag lifting-session notes with Jev (Phase 1). The inline post-write
+    # trigger covers most rows; this backfills anything missed. No-op without Jev.
+    "backfill-free-text-tags": {
+        "task": "app.tasks.scheduler.backfill_free_text_tags",
+        "schedule": crontab(hour=3, minute=45, day_of_week=0),
+    },
     # Fit personalized power models weekly (Sunday 5:30 AM UTC, post streams/FTP)
     "fit-personalized-power-models": {
         "task": "app.tasks.scheduler.fit_personalized_power_models",
@@ -1251,6 +1257,63 @@ def backfill_activity_context() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.backfill_free_text_tags")
+def backfill_free_text_tags() -> dict:
+    """Tag lifting-session free-text notes with Jev (Phase 1). Idempotent —
+    ``tag_lifting_session`` skips rows already tagged for the current note +
+    model. No-op (skips) when Jev is not configured.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.integrations import jev_client
+    from app.models.activity import Activity
+    from app.models.lifting import LiftingSession
+
+    if not jev_client.is_configured():
+        return {"skipped": True, "reason": "Jev not configured"}
+
+    async def _run():
+        from app.services.jev_tagging import backfill_free_text_tags as _backfill
+
+        async with task_session() as db:
+            result = await db.execute(
+                select(LiftingSession.user_id)
+                .where(
+                    LiftingSession.notes.isnot(None),
+                    LiftingSession.notes != "",
+                )
+                .distinct()
+            )
+            user_ids = {r for (r,) in result.all()}
+            act_result = await db.execute(
+                select(Activity.user_id)
+                .where(Activity.name.isnot(None), Activity.name != "")
+                .distinct()
+            )
+            user_ids |= {r for (r,) in act_result.all()}
+
+            total_tagged = 0
+            done = 0
+            for user_id in user_ids:
+                try:
+                    total_tagged += await _backfill(db, user_id)
+                    await db.commit()
+                    done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Jev tag backfill failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {"users_processed": done, "sessions_tagged": total_tagged}
+
+    return asyncio.run(_run_task_guarded("backfill_free_text_tags", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.map_match_routes")
