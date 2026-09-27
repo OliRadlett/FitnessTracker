@@ -87,6 +87,7 @@ async def _handle_activity_create(
         start_date,
         duration_seconds,
         distance_meters,
+        name=sa.get("name"),
     )
 
     if duplicate:

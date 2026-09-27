@@ -222,6 +222,7 @@ async def sync_wahoo_activities(
                 start_date,
                 int(duration_seconds) if duration_seconds else None,
                 safe_distance,
+                name=name,
             )
 
             new_data = {
