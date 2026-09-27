@@ -43,6 +43,11 @@ _MIN_FOOT_LEN = 0.04
 # the front/back where the two plates sit side by side.
 _SAGITTAL_VIEWS = ("side",)
 _FRONTAL_VIEWS = ("frontal", "front", "rear")
+_THREE_QUARTER_VIEWS = ("three_quarter",)
+# In a 3/4 view the horizontal metrics are only attempted when most frames
+# resolved the bar *centre* (whole-bar box or the two-plate midpoint) rather
+# than a single plate at the bar's end.
+_MIN_PAIR_RATE_3Q = 0.5
 
 
 def _proxy_point(lm, exercise: str) -> tuple[float, float]:
@@ -178,14 +183,26 @@ def analyze_bar_path(
 
     sagittal = view in _SAGITTAL_VIEWS
     frontal = view in _FRONTAL_VIEWS
+    three_q = view in _THREE_QUARTER_VIEWS
 
     sources = {p["source"] for p in bar_track if p}
     source = sources.pop() if len(sources) == 1 else "mixed"
     confs = [float(p["confidence"]) for p in bar_track if p]
     confidence = round(sum(confs) / len(confs), 3) if confs else 0.0
 
+    # How often the track located the bar *centre* (not a plate at its end).
+    known = [p for p in bar_track if p]
+    pair_rate = (
+        sum(1 for p in known
+            if p.get("bar_basis") in ("barbell", "plate_pair")) / len(known)
+        if known else 0.0
+    )
+    # 3/4 horizontal metrics are approximate (perspective) — only attempt them
+    # when the bar centre was actually resolved.
+    lateral_ok = sagittal or (three_q and pair_rate >= _MIN_PAIR_RATE_3Q)
+
     tilts = []
-    if frontal:
+    if frontal or three_q:
         tilts = [abs(float(p["tilt_deg"])) for p in bar_track
                  if p and p.get("tilt_deg") is not None]
         tilts = [min(t, 90.0) for t in tilts]
@@ -206,12 +223,12 @@ def analyze_bar_path(
             "drift_ratio": round(drift, 3),
             "vertical_range": round(float(arr[:, 1].max() - arr[:, 1].min()), 4),
         }
-        net = _net_lateral(pts) if sagittal else None
+        net = _net_lateral(pts) if lateral_ok else None
         if net is not None:
             entry["net_lateral"] = round(net, 3)
         # Bar-over-midfoot: mean signed horizontal offset from the midfoot,
         # as a fraction of foot length (+ = bar toward the +x side).
-        if sagittal and landmarks:
+        if lateral_ok and landmarks:
             offs: list[float] = []
             for i in range(max(0, start), min(len(bar_track), end) + 1):
                 if i >= len(landmarks) or bar_track[i] is None:
@@ -263,6 +280,9 @@ def analyze_bar_path(
         result["net_lateral"] = round(sum(net_laterals) / len(net_laterals), 3)
     if midfoot:
         result["bar_over_midfoot"] = round(sum(midfoot) / len(midfoot), 3)
+    if lateral_ok and (net_laterals or midfoot):
+        # Distinguishes exact (sagittal) from perspective-approximate (3/4).
+        result["lateral_basis"] = "sagittal" if sagittal else "three_quarter"
     if tilts:
         result["tilt_deg"] = round(float(np.mean(tilts)), 2)
         result["tilt_frames"] = len(tilts)
@@ -277,9 +297,14 @@ def analyze_bar_path(
             "Detector-tracked bar: vertical metrics are accurate; lateral ones "
             "follow the pose proxy."
         )
-    if not sagittal:
+    if three_q and lateral_ok:
+        notes.append(
+            "3/4 view: lateral metrics are approximate (bar centre taken from "
+            "the two plates)."
+        )
+    elif not lateral_ok:
         notes.append("Bar-over-midfoot / net lateral need a side view.")
-    if not frontal:
+    if not frontal and not three_q:
         notes.append("Bar tilt needs a front/back view.")
     if notes:
         result["note"] = " ".join(notes)

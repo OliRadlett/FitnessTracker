@@ -197,6 +197,7 @@ interface BarPath {
   tilt_deg?: number;
   tilt_frames?: number;
   net_lateral?: number;
+  lateral_basis?: string;
   note?: string;
 }
 
@@ -206,19 +207,21 @@ function BarPathCard({ value }: { value: string | null | undefined }) {
   const proxy = data.source === 'pose_proxy';
 
   // F1 real-bar metrics — only shown when the detector track supplied them.
+  // A trailing "~" flags the perspective-approximate 3/4-view values.
+  const approx = data.lateral_basis === 'three_quarter' ? '~' : '';
   const extras: { label: string; value: string }[] = [];
   if (data.bar_over_midfoot != null) {
     const pct = data.bar_over_midfoot * 100;
     extras.push({
-      label: 'Over midfoot',
+      label: `Over midfoot${approx}`,
       value: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`,
     });
   }
   if (data.tilt_deg != null) {
-    extras.push({ label: 'Bar tilt', value: `${data.tilt_deg.toFixed(1)}°` });
+    extras.push({ label: `Bar tilt${approx}`, value: `${data.tilt_deg.toFixed(1)}°` });
   }
   if (data.net_lateral != null) {
-    extras.push({ label: 'Net lateral', value: data.net_lateral.toFixed(2) });
+    extras.push({ label: `Net lateral${approx}`, value: data.net_lateral.toFixed(2) });
   }
 
   return (
