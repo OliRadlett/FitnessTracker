@@ -15,6 +15,7 @@ import {
 import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES } from '@/components/ui/GoalCard';
 import { Modal } from '@/components/ui/Modal';
 
@@ -256,7 +257,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
                     dataKey="date"
                     tick={{ fill: '#94a3b8', fontSize: 11 }}
                     tickFormatter={(d: string) =>
-                      new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                      new Date(d).toLocaleDateString(getActiveLocale(), { month: 'short', day: 'numeric' })
                     }
                   />
                   <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} domain={['auto', 'auto']} />

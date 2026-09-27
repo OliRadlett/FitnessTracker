@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { RouteData } from '@/lib/api/types';
-import { weatherEmoji } from '@/lib/utils';
+import { weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 
@@ -88,7 +88,7 @@ export function RouteWeatherCard({ route }: { route: RouteData }) {
                   }`}
                 >
                   <span className="text-muted w-20">
-                    {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short' })}
+                    {new Date(day.date).toLocaleDateString(getActiveLocale(), { weekday: 'short' })}
                   </span>
                   <span className="w-5 text-center">{weatherEmoji(day.conditions)}</span>
                   <span className="text-muted w-12 text-right">

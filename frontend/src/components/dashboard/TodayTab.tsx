@@ -36,7 +36,7 @@ import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { SleepDebtCard } from '@/components/health/SleepDebtCard';
 import { SleepConsistencyCard } from '@/components/health/SleepConsistencyCard';
 import { OptimalBedtimeCard } from '@/components/health/OptimalBedtimeCard';
-import { formatDistance, formatDuration, formatTSB } from '@/lib/utils';
+import { formatDistance, formatDuration, formatTSB, getActiveLocale } from '@/lib/utils';
 import { ListSkeleton } from '@/components/dashboard/helpers';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
@@ -459,7 +459,7 @@ export function TodayTab({
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
                       <p className="text-xs text-muted">
-                        {new Date(a.start_date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(a.start_date).toLocaleTimeString(getActiveLocale(), { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                   </div>

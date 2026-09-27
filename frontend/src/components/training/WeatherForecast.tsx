@@ -4,7 +4,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch, getForecast } from '@/lib/api';
 import type { ForecastDay } from '@/lib/api';
-import { weatherEmoji } from '@/lib/utils';
+import { weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 
 /**
@@ -22,7 +22,7 @@ function isPoorCyclingWeather(day: ForecastDay): boolean {
 }
 
 function weekdayShort(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(getActiveLocale(), { weekday: 'short' });
 }
 
 function DayChip({ day, best }: { day: ForecastDay; best: boolean }) {

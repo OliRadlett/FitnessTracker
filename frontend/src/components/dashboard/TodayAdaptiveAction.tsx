@@ -8,6 +8,7 @@ import type {
   AdaptiveAction,
   AdaptiveSuggestionsResponse,
 } from '@/lib/api';
+import { getActiveLocale } from '@/lib/utils';
 
 // Suggestion types that carry one-tap day-level actions (see backend
 // app/services/adaptive.py — derive_adaptive_advice + _actions_for).
@@ -32,7 +33,7 @@ function shortDateLabel(dateStr: string): string {
   // Noon anchor avoids TZ-day shifts for YYYY-MM-DD strings.
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(getActiveLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function suggestionCopy(type: string, isToday: boolean, dateLabel: string): string {

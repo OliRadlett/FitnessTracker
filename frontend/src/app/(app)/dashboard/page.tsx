@@ -24,7 +24,7 @@ import type {
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { useToast } from '@/components/ui/Toast';
-import { getGreeting } from '@/lib/utils';
+import { getGreeting, getActiveLocale } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
 import { TodayTab } from '@/components/dashboard/TodayTab';
@@ -259,7 +259,7 @@ export default function DashboardPage() {
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{getGreeting()} 👋</h1>
           <p className="text-muted mt-1 text-sm sm:text-base">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            {new Date().toLocaleDateString(getActiveLocale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-4 min-w-0">

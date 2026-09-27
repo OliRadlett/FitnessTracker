@@ -93,7 +93,7 @@ export function formatRelativeTime(dateStr?: string | null): string {
   if (diffHrs < 24) return `${diffHrs}h ago`;
   const diffDays = Math.floor(diffHrs / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return new Date(dateStr).toLocaleDateString(getActiveLocale(), { month: 'short', day: 'numeric' });
 }
 
 /** kilograms → "75.5 kg" / "166.4 lb" — honors active unit system. */
