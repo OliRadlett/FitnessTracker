@@ -164,6 +164,19 @@ export interface VideoProcessStatus {
   analysis_version?: number | null;
 }
 
+export interface JevTags {
+  source: string;
+  model: string;
+  computed_at: string;
+  note_hash?: string;
+  pain_injury?: number;
+  high_fatigue?: number;
+  pr_mention?: number;
+  outcome?: string;
+  outcome_confidence?: number;
+  energy?: number;
+}
+
 export interface LiftingSession {
   id: string;
   user_id: string;
@@ -175,6 +188,7 @@ export interface LiftingSession {
   total_volume_kg?: number;
   rpe_session?: number;
   notes?: string;
+  ai_tags?: JevTags | null;
   sets: LiftingSet[];
   linked_activity?: LinkedActivity | null;
   started_at?: string | null;

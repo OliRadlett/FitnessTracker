@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,7 @@ from app.schemas.lifting import (
     WarmupTemplateRead,
     WarmupTemplateUpdate,
 )
+from app.services import jev_tagging
 from app.services import lifting as lifting_service
 from app.services.auth import get_current_user
 from app.services.strava import link_all_unlinked_activities
@@ -44,11 +45,19 @@ router = APIRouter()
 )
 async def create_session(
     data: LiftingSessionCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     session = await lifting_service.create_session(db, current_user.id, data)
-    return LiftingSessionRead.model_validate(session)
+    response = LiftingSessionRead.model_validate(session)
+    session_id = session.id
+    # Commit so the best-effort Jev tagger (background) sees the row.
+    await db.commit()
+    background_tasks.add_task(
+        jev_tagging.tag_lifting_session_by_id, session_id, current_user.id
+    )
+    return response
 
 
 @router.get("/sessions")
@@ -124,6 +133,7 @@ async def get_session(
 async def update_session(
     session_id: uuid.UUID,
     data: LiftingSessionUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -132,7 +142,13 @@ async def update_session(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return LiftingSessionRead.model_validate(session)
+    response = LiftingSessionRead.model_validate(session)
+    sid = session.id
+    await db.commit()
+    background_tasks.add_task(
+        jev_tagging.tag_lifting_session_by_id, sid, current_user.id
+    )
+    return response
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

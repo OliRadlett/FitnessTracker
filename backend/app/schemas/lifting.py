@@ -101,7 +101,11 @@ class LiftingSessionRead(LiftingSessionBase):
     user_id: uuid.UUID
     activity_id: uuid.UUID | None = None
     total_volume_kg: float | None = None
-    estimated_tss: float | None = None  # B-31 duration×RPE load estimate
+    estimated_tss: float | None = None  # B-31 duration–RPE load estimate
+    # Jev (TypeSafe) free-text tags derived from `notes` (Phase 1) — nullable,
+    # best-effort. Shape: {source, model, computed_at, note_hash, pain_injury,
+    # high_fatigue, pr_mention, outcome, outcome_confidence, energy}.
+    ai_tags: dict | None = None
     sets: list[LiftingSetRead] = []
     linked_activity: LinkedActivityRead | None = None
     started_at: datetime | None = None

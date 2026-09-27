@@ -10,7 +10,7 @@ import statistics
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -547,6 +547,23 @@ async def analyze_injury_risk(
     score = volume_s * 0.55 + rest_s * 0.45
     severity = _classify_severity(score)
 
+    # Free-text cross-check (Jev, Phase 1): recent lifting notes that mention
+    # pain can only *escalate* an already-nonzero numeric signal — never create
+    # one alone (the score must already be ≥ 25). Bounded contribution.
+    flagged_pain = 0
+    if score >= 25:
+        pain_result = await db.execute(
+            select(func.count(LiftingSession.id)).where(
+                LiftingSession.user_id == user_id,
+                LiftingSession.session_date >= cutoff_14d,
+                cast(LiftingSession.ai_tags["pain_injury"].astext, Float) >= 0.70,
+            )
+        )
+        flagged_pain = int(pain_result.scalar() or 0)
+        if flagged_pain:
+            score = min(100.0, score + min(15.0, 5.0 * flagged_pain))
+            severity = _classify_severity(score)
+
     messages = {
         "none": "All clear — training volume is stable and rest days are adequate. No elevated injury risk detected.",
         "info": "Training volume has increased — monitor for soreness and fatigue.",
@@ -571,6 +588,10 @@ async def analyze_injury_risk(
         "Volume vs Average": f"{volume_change_pct:+.0f}%",
         "Composite Score": f"{score:.0f}/100",
     }
+    if flagged_pain:
+        evidence["Free-text pain mentions"] = (
+            f"⚠️ {flagged_pain} recent session(s) mention pain"
+        )
 
     return {
         "alert_type": "injury_risk",

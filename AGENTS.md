@@ -156,6 +156,7 @@ Modal serverless containers handle compute-heavy features that would be too expe
 | `recompute_route_similarity` | Weekly Sun 3:05AM | Modal similarity graph over each user's routes (local fallback) → caches `route_similarity` and non-destructively auto-merges `auto`-tier duplicates (audit-logged, undoable), re-blending road edge-Jaccard + embedding cosine when available. Runs before segment recompute so segments rebuild on merged routes |
 | `map_match_routes` | Weekly Sun 2:50AM | **Phase 2** — snaps route polylines to the regional OSM road graph via Modal (pyosmium; OSM extract cached in the `fittrack-osm` Modal Volume), stores `road_match` (edge set + coverage) and `road_embedding` features, then trains the per-user embedding metric from accumulated merge decisions. Graceful no-op when Modal/OSM unconfigured |
 | `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
+| `backfill_free_text_tags` | Weekly Sun 3:45AM | Tags `LiftingSession.notes` with Jev into `ai_tags`; no-op when Jev unset. Idempotent |
 | `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
 | `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
 | `aggregate_video_analyses_weekly` | Weekly Sun 7:30AM UTC | Per-exercise video aggregation + injury-risk flags + RPE calibration + lifting-TSS backfill (B-27/B-29/B-30) |
@@ -183,6 +184,7 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
 - **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
+- **Jev free-text tagging**: `TYPESAFE_API_KEY` enables TypeSafe Jev to tag `LiftingSession.notes` into `ai_tags` (optional — `services/jev_tagging` no-ops when unset; best-effort, never blocks a write). Backfilled weekly by `backfill_free_text_tags`. What is sent: [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md); plan: [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
 - **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation — never import `async_session_factory` directly in tasks
 
 ### Frontend
