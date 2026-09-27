@@ -46,7 +46,11 @@ export default function DashboardPage() {
 
   /* ── Queries ───────────────────────────────────────────────────────────── */
 
-  const { data: todaySummary, isLoading: todayLoading } = useQuery<TodaySummary>({
+  const {
+    data: todaySummary,
+    isLoading: todayLoading,
+    isError: todayError,
+  } = useQuery<TodaySummary>({
     queryKey: ['today-summary'],
     queryFn: () => authFetch<TodaySummary>('/api/v1/dashboard/today'),
     enabled: !!token,
@@ -54,7 +58,11 @@ export default function DashboardPage() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: summary, isLoading: summaryLoading } = useQuery<DashboardSummary>({
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    isError: summaryError,
+  } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: () => authFetch<DashboardSummary>('/api/v1/dashboard/summary'),
     enabled: !!token,
@@ -205,6 +213,7 @@ export default function DashboardPage() {
   const recentSessions = sessions?.slice(0, 5) ?? [];
   const hasReadiness = readiness && readiness.readiness !== 'unknown';
   const hasWhoop = whoopWeekly && whoopWeekly.days_with_data > 0;
+  const hasQueryError = todayError || summaryError;
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -250,6 +259,20 @@ export default function DashboardPage() {
             aria-label="Dismiss error"
           >
             ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Core query error banner ─────────────────────────────────────────── */}
+      {hasQueryError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
+          <span>Some dashboard data failed to load.</span>
+          <button
+            type="button"
+            onClick={() => queryClient.invalidateQueries()}
+            className="shrink-0 font-medium underline hover:no-underline"
+          >
+            Retry
           </button>
         </div>
       )}
