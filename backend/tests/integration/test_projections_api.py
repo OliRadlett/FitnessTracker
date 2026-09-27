@@ -138,5 +138,11 @@ class TestTsbProjectionEndpoint:
         assert "race_day_tsb" in data
         assert "freshness_assessment" in data
         assert isinstance(data["projection"], list)
-        # Should have 8 entries (today + 7 days)
-        assert len(data["projection"]) == 8
+        # 7 forward days — today is excluded (already reflected in current CTL/ATL)
+        assert len(data["projection"]) == 7
+        assert data["projection"][0]["date"] == (
+            date.today() + timedelta(days=1)
+        ).isoformat()
+        assert data["projection"][-1]["date"] == (
+            date.today() + timedelta(days=7)
+        ).isoformat()

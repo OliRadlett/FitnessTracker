@@ -683,8 +683,8 @@ async def compute_tsb_projection(
     """TSB projection for event-linked plans only.
 
     1. Load plan, validate ownership, check event_id is set (else 400)
-    2. Get current CTL/ATL from training_load service
-    3. Get planned TSS for next N days from TrainingPlanDay
+    2. Get current CTL/ATL from training_load service (through today)
+    3. Get planned TSS from TrainingPlanDay for the N days from tomorrow
     4. Run tsb_projection
     5. Compute race-day TSB (entry at the event date when inside the
        projected window, else the last projected day)
@@ -729,24 +729,27 @@ async def compute_tsb_projection(
             current_atl = last["atl"]
             current_tsb = last["tsb"]
 
-    # 3. Get planned TSS for next N days
+    # 3. Get planned TSS from tomorrow onward. Today is deliberately excluded:
+    # current_ctl/current_atl were computed through today, so re-applying
+    # today's planned TSS would double-count it.
     result = await db.execute(
         select(TrainingPlanDay.day_date, TrainingPlanDay.planned_tss)
         .where(
             TrainingPlanDay.plan_id == plan_id,
-            TrainingPlanDay.day_date >= today,
+            TrainingPlanDay.day_date > today,
             TrainingPlanDay.day_date <= today + timedelta(days=days_ahead),
         )
         .order_by(TrainingPlanDay.day_date.asc())
     )
     planned_rows = result.all()
 
-    # Build a full date range, filling gaps with None (rest assumption)
+    # Build a full date range (tomorrow .. today + days_ahead), filling gaps
+    # with None (rest assumption).
     planned_tss_map: dict[date, float | None] = {
         row[0]: float(row[1]) if row[1] is not None else None for row in planned_rows
     }
     planned_tss_per_day: list[tuple[date, float | None]] = []
-    for i in range(days_ahead + 1):
+    for i in range(1, days_ahead + 1):
         d = today + timedelta(days=i)
         planned_tss_per_day.append((d, planned_tss_map.get(d)))
 

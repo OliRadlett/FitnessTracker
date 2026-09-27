@@ -563,7 +563,9 @@ def derive_adaptive_advice(
                 }
             )
 
-        else:
+        elif active_alerts == 0:
+            # Never advise adding load while health alerts are unresolved — the
+            # health axis already leads with "rest / resolve first".
             axes.append(
                 {
                     "key": "load",
