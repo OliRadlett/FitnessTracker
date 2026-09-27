@@ -24,7 +24,7 @@ import type {
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { useToast } from '@/components/ui/Toast';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { getGreeting, getActiveLocale } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
@@ -265,7 +265,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      <QueryErrorBanner
+      <ErrorState variant="inline"
         show={hasQueryError}
         message="Some dashboard data failed to load."
       />

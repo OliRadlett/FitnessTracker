@@ -39,7 +39,8 @@ import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { formatTSB } from '@/lib/utils';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
@@ -482,10 +483,7 @@ export default function CyclingPage() {
   // ── Loading state ───────────────────────────────────────────────────────
   if (profileLoading) {    return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
-          <p className="text-muted">Power analysis, training load, and cycling metrics</p>
-        </div>
+        <PageHeader title="Cycling" subtitle="Power analysis, training load, and cycling metrics" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
@@ -505,13 +503,10 @@ export default function CyclingPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
-        <p className="text-muted">Power analysis, training load, and cycling metrics</p>
-      </div>
+      <PageHeader title="Cycling" subtitle="Power analysis, training load, and cycling metrics" />
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      <QueryErrorBanner
+      <ErrorState variant="inline"
         show={hasQueryError}
         message="Some cycling data failed to load."
       />

@@ -6,7 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
 import { deleteLiftVideo, processLiftVideo } from '@/lib/api/lifting';
 import { Card } from '@/components/ui/Card';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { useToast } from '@/components/ui/Toast';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
@@ -149,7 +149,7 @@ export default function VideosPage() {
         </div>
       </div>
 
-      <QueryErrorBanner show={hasQueryError} message="Videos failed to load." />
+      <ErrorState variant="inline" show={hasQueryError} message="Videos failed to load." />
 
       {tab === 'progress' ? (
         <VideoProgressTab initialExercise={exerciseFilter} />

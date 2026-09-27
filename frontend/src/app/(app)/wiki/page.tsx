@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Changelog } from '@/components/ui/Changelog';
 import { usePageTitle } from '@/lib/usePageTitle';
 
@@ -212,12 +213,10 @@ export default function WikiPage() {
       {/* ── Main content ──────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-10 pb-20">
         {/* Page heading */}
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">FitTrack Wiki</h1>
-          <p className="text-muted">
-            Everything you need to know about your fitness tracker — from getting started to the science behind the numbers.
-          </p>
-        </div>
+        <PageHeader
+          title="FitTrack Wiki"
+          subtitle="Everything you need to know about your fitness tracker — from getting started to the science behind the numbers."
+        />
 
         {/* ─── 1. Overview ──────────────────────────────────────── */}
         <section id="overview">

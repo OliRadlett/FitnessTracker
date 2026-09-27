@@ -17,6 +17,7 @@ import type {
   ChartData,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
@@ -258,10 +259,10 @@ export default function TrainingPage() {
   return (
     <div className="space-y-8">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">📋 Training Plans</h1>
-        <p className="text-muted mt-1">Plan your training blocks, manage events, and track periodization.</p>
-      </div>
+      <PageHeader
+        title="📋 Training Plans"
+        subtitle="Plan your training blocks, manage events, and track periodization."
+      />
 
       {/* Error banner */}
       {actionError && (
