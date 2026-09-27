@@ -39,6 +39,7 @@ import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { formatTSB } from '@/lib/utils';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 
 export default function CyclingPage() {
   usePageTitle('Cycling');
@@ -112,14 +113,18 @@ export default function CyclingPage() {
   }, []);
 
   // ── Queries ─────────────────────────────────────────────────────────────
-  const { data: profile, isLoading: profileLoading } = useQuery<CyclingProfile>({
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    isError: profileError,
+  } = useQuery<CyclingProfile>({
     queryKey: ['cycling-profile'],
     queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
     staleTime: 300_000,
     enabled: !!token,
   });
 
-  const { data: metrics } = useQuery<CyclingMetricsSummary>({
+  const { data: metrics, isError: metricsError } = useQuery<CyclingMetricsSummary>({
     queryKey: ['cycling-metrics'],
     queryFn: () => authFetch<CyclingMetricsSummary>('/api/v1/cycling/metrics-summary'),
     staleTime: 120_000,
@@ -496,6 +501,7 @@ export default function CyclingPage() {
   }
 
   const currentLoad = trainingLoad?.data?.[trainingLoad.data.length - 1];
+  const hasQueryError = profileError || metricsError;
 
   return (
     <div className="space-y-8">
@@ -503,6 +509,12 @@ export default function CyclingPage() {
         <h1 className="text-3xl font-bold text-foreground mb-2">Cycling</h1>
         <p className="text-muted">Power analysis, training load, and cycling metrics</p>
       </div>
+
+      {/* ── Core query error banner ─────────────────────────────────────────── */}
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some cycling data failed to load."
+      />
 
       {/* Profile Editor (collapsible — summary row, 1.8) */}
       <Card>

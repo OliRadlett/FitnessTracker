@@ -22,6 +22,7 @@ import { DomainIcon } from '@/components/ui/DomainIcon';
 import { RestDayBanner } from '@/components/dashboard/RestDayBanner';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
 import { Badge } from '@/components/ui/Badge';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -59,13 +60,13 @@ export default function TodayBriefPage() {
   usePageTitle('Today');
   const { authFetch, token } = useAuthFetch();
 
-  const { data: todaySummary } = useQuery<TodaySummary>({
+  const { data: todaySummary, isError: todayError } = useQuery<TodaySummary>({
     queryKey: ['dashboard', 'today'],
     queryFn: () => authFetch<TodaySummary>('/api/v1/dashboard/today'),
     staleTime: 60_000,
     enabled: !!token,
   });
-  const { data: readiness } = useQuery<ReadinessResponse>({
+  const { data: readiness, isError: readinessError } = useQuery<ReadinessResponse>({
     queryKey: ['readiness'],
     queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
     staleTime: 60_000,
@@ -116,6 +117,7 @@ export default function TodayBriefPage() {
   const style = VERDICT_STYLE[verdict.verdict];
   const topInsight = pickTopInsight(insights ?? [], sleepDebt?.debt_hours ?? null);
   const todayWx = forecast?.days?.[0];
+  const hasQueryError = todayError || readinessError;
 
   if (!token) {
     return (
@@ -133,6 +135,11 @@ export default function TodayBriefPage() {
           One verdict, the plan, the weather, and your sharpest insight. Experimental — tell us if it earns the bookmark.
         </p>
       </div>
+
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some of today's data failed to load."
+      />
 
       {/* 1 — Verdict: one shared component with the Dashboard (3.1).
           Falls back to the local verdict card until the backend ships

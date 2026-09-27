@@ -16,6 +16,7 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -46,7 +47,7 @@ export default function HealthPage() {
 
   const chartOptions = { staleTime: 300_000 } as const;
 
-  const { data: readiness } = useQuery<ReadinessResponse>({
+  const { data: readiness, isError: readinessError } = useQuery<ReadinessResponse>({
     queryKey: ['readiness'],
     queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
     staleTime: 300_000,
@@ -140,7 +141,11 @@ export default function HealthPage() {
   });
 
   // ── Health alert history ─────────────────────────────────────────────────
-  const { data: alerts, isLoading: alertsLoading } = useQuery<HealthAlert[]>({
+  const {
+    data: alerts,
+    isLoading: alertsLoading,
+    isError: alertsError,
+  } = useQuery<HealthAlert[]>({
     queryKey: ['health-alerts', alertTab],
     queryFn: () =>
       authFetch<HealthAlert[]>(
@@ -164,6 +169,7 @@ export default function HealthPage() {
   });
 
   const sleepingLoading = !sleepConsistency && !sleepDebt && !optimalBedtime;
+  const hasQueryError = readinessError || alertsError;
 
   return (
     <div className="space-y-8">
@@ -173,6 +179,12 @@ export default function HealthPage() {
           Recovery, sleep, trends, and health alerts — powered by Whoop.
         </p>
       </div>
+
+      {/* ── Core query error banner ─────────────────────────────────────────── */}
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some health data failed to load."
+      />
 
       {/* ── Status Row ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

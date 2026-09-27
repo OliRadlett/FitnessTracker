@@ -36,6 +36,14 @@ _FOOT_IDX = (31, 32)
 # clip read 4.7 foot-lengths because the feet were barely in frame).
 _MIN_FOOT_LEN = 0.04
 
+# View gating (F1). Horizontal *image* position is only a real-world horizontal
+# in a sagittal (side) view — in a 3/4 view it conflates depth, and the
+# detector's box is the plate at the bar's *end*, not the bar centre. Bar tilt
+# (one plate higher) is conversely a frontal-plane property, only visible from
+# the front/back where the two plates sit side by side.
+_SAGITTAL_VIEWS = ("side",)
+_FRONTAL_VIEWS = ("frontal", "front", "rear")
+
 
 def _proxy_point(lm, exercise: str) -> tuple[float, float]:
     """Normalised bar-proxy point: shoulder mid for squats, wrist mid else."""
@@ -151,28 +159,35 @@ def analyze_bar_path(
     pose_reps: list[dict],
     exercise: str = "",
     landmarks: list | None = None,
+    view: str = "",
 ) -> dict | None:
     """Bar-path technique metrics over the detected reps.
 
     Returns ``None`` when fewer than 2 measurable reps exist. ``source`` and
     ``confidence`` describe the underlying track (proxy vs detector).
 
-    ``landmarks`` (pose frames, index-aligned with ``bar_track``) enables
-    **bar-over-midfoot**; the detector track carries an optional per-frame
-    ``tilt_deg`` for **bar tilt**. Both are omitted rather than guessed when
-    their inputs are unavailable.
+    The *horizontal* metrics are only meaningful in the view they are defined
+    for, so they are gated on ``view`` and omitted (never guessed) otherwise:
+    **bar-over-midfoot** and **net lateral (J-curve)** need a sagittal view,
+    **bar tilt** needs a frontal view. ``landmarks`` (index-aligned with
+    ``bar_track``) supplies the midfoot; the detector track carries the
+    optional per-frame ``tilt_deg``.
     """
     if not bar_track or not pose_reps:
         return None
+
+    sagittal = view in _SAGITTAL_VIEWS
+    frontal = view in _FRONTAL_VIEWS
 
     sources = {p["source"] for p in bar_track if p}
     source = sources.pop() if len(sources) == 1 else "mixed"
     confs = [float(p["confidence"]) for p in bar_track if p]
     confidence = round(sum(confs) / len(confs), 3) if confs else 0.0
 
-    tilts = [abs(float(p["tilt_deg"])) for p in bar_track
-             if p and p.get("tilt_deg") is not None]
-    if tilts:
+    tilts = []
+    if frontal:
+        tilts = [abs(float(p["tilt_deg"])) for p in bar_track
+                 if p and p.get("tilt_deg") is not None]
         tilts = [min(t, 90.0) for t in tilts]
 
     per_rep: list[dict] = []
@@ -191,12 +206,12 @@ def analyze_bar_path(
             "drift_ratio": round(drift, 3),
             "vertical_range": round(float(arr[:, 1].max() - arr[:, 1].min()), 4),
         }
-        net = _net_lateral(pts)
+        net = _net_lateral(pts) if sagittal else None
         if net is not None:
             entry["net_lateral"] = round(net, 3)
         # Bar-over-midfoot: mean signed horizontal offset from the midfoot,
         # as a fraction of foot length (+ = bar toward the +x side).
-        if landmarks:
+        if sagittal and landmarks:
             offs: list[float] = []
             for i in range(max(0, start), min(len(bar_track), end) + 1):
                 if i >= len(landmarks) or bar_track[i] is None:
@@ -251,15 +266,21 @@ def analyze_bar_path(
     if tilts:
         result["tilt_deg"] = round(float(np.mean(tilts)), 2)
         result["tilt_frames"] = len(tilts)
+    notes: list[str] = []
     if source == "pose_proxy":
-        result["note"] = (
-            "Proxy track (shoulder/wrist midpoint, not the bar) — lateral "
-            "drift/J-curve are indicative only. Bar tilt needs the detector."
+        notes.append(
+            "Proxy track (shoulder/wrist midpoint, not the bar) — vertical "
+            "metrics only."
         )
     elif source == "proxy_offset":
-        result["note"] = (
-            "Detector-tracked bar: the absolute offset is corrected, but the "
-            "lateral motion still follows the pose proxy, so net lateral is "
-            "indicative; bar tilt comes from the real plates."
+        notes.append(
+            "Detector-tracked bar: vertical metrics are accurate; lateral ones "
+            "follow the pose proxy."
         )
+    if not sagittal:
+        notes.append("Bar-over-midfoot / net lateral need a side view.")
+    if not frontal:
+        notes.append("Bar tilt needs a front/back view.")
+    if notes:
+        result["note"] = " ".join(notes)
     return result

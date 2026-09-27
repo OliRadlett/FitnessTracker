@@ -24,6 +24,7 @@ import type {
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { useToast } from '@/components/ui/Toast';
+import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
 import { getGreeting, getActiveLocale } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
@@ -264,18 +265,10 @@ export default function DashboardPage() {
       )}
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      {hasQueryError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
-          <span>Some dashboard data failed to load.</span>
-          <button
-            type="button"
-            onClick={() => queryClient.invalidateQueries()}
-            className="shrink-0 font-medium underline hover:no-underline"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <QueryErrorBanner
+        show={hasQueryError}
+        message="Some dashboard data failed to load."
+      />
 
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-4 min-w-0">
