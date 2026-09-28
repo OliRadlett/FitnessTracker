@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import type { DuplicatePair, RouteData } from '@/lib/api/types';
+import type { DuplicatePair, RouteData, RouteMergeLogEntry } from '@/lib/api/types';
 import {
   getDuplicateRoutes,
   autoMergeDuplicates,
   mergeRoutes,
   undoRouteMerge,
+  listRouteMerges,
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -24,6 +25,8 @@ import {
   MapPin,
   ChevronDown,
   ChevronRight,
+  History,
+  Undo2,
 } from 'lucide-react';
 import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
 
@@ -72,9 +75,17 @@ export default function DuplicatesPage() {
       setLastMergeLogId(null);
       setUndoMessage('Merge undone — the route was restored.');
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['route-merges'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
     onError: (err) => toast.error(`Undo merge failed: ${(err as Error)?.message || 'please try again.'}`),
+  });
+
+  const { data: merges = [] } = useQuery({
+    queryKey: ['route-merges'],
+    queryFn: () => listRouteMerges(token),
+    enabled: !!token,
+    staleTime: 30_000,
   });
 
   const handleAutoMerge = () => {
@@ -267,6 +278,102 @@ export default function DuplicatesPage() {
             )}
           </div>
         )}
+
+        {merges.length > 0 && (
+          <MergeHistorySection
+            merges={merges}
+            onUndo={(logId) => undoMutation.mutate(logId)}
+            undoing={undoMutation.isPending}
+            undoMessage={undoMessage}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MergeHistorySection({
+  merges,
+  onUndo,
+  undoing,
+  undoMessage,
+}: {
+  merges: RouteMergeLogEntry[];
+  onUndo: (logId: string) => void;
+  undoing: boolean;
+  undoMessage: string | null;
+}) {
+  const active = merges.filter((m) => !m.undone_at);
+  const undone = merges.filter((m) => m.undone_at);
+
+  return (
+    <div className="mt-10">
+      <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+        <History className="w-5 h-5 text-muted" />
+        Merge history
+      </h2>
+
+      {undoMessage && <p className="mb-3 text-sm text-positive">{undoMessage}</p>}
+
+      <div className="space-y-2">
+        {active.length === 0 && undone.length > 0 && (
+          <p className="text-sm text-muted">No active merges — all have been undone.</p>
+        )}
+
+        {active.map((m) => (
+          <Card key={m.id}>
+            <div className="p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-foreground truncate">
+                  <span className="font-medium">{m.primary_name}</span>
+                  <span className="text-muted"> absorbed </span>
+                  <span className="text-muted line-through">{m.merged_name}</span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  <Badge variant="muted" className="text-xs">
+                    {Math.round(m.score * 100)}% match
+                  </Badge>
+                  {m.created_at && (
+                    <span>{new Date(m.created_at).toLocaleString()}</span>
+                  )}
+                  {!m.primary_exists && (
+                    <span className="text-warning">
+                      primary since merged/removed — restore may not be possible
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => onUndo(m.id)}
+                disabled={undoing || !m.primary_exists}
+                title={
+                  m.primary_exists
+                    ? 'Restore the merged-away route'
+                    : 'The primary route no longer exists'
+                }
+                className="shrink-0 px-3 py-1.5 text-sm bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <Undo2 className="w-4 h-4" />
+                {undoing ? 'Undoing…' : 'Undo'}
+              </button>
+            </div>
+          </Card>
+        ))}
+
+        {undone.map((m) => (
+          <Card key={m.id}>
+            <div className="p-3 flex items-center justify-between gap-3 opacity-60">
+              <div className="text-sm text-muted truncate">
+                <span className="line-through">{m.primary_name}</span>
+                <span> / </span>
+                <span className="line-through">{m.merged_name}</span>
+              </div>
+              <Badge variant="muted" className="text-xs shrink-0">
+                Undone
+              </Badge>
+            </div>
+          </Card>
+        ))}
       </div>
     </div>
   );
