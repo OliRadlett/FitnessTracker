@@ -42,7 +42,7 @@ def route_features(route: Route) -> list[float]:
         edge_set=road.get("edge_set"),
         names=road.get("names"),
         elevation_profile=route.elevation_profile,
-        elevation_gain_meters=route.elevation_gain_meters,
+        elevation_gain_m=route.elevation_gain_meters,
         terrain_type=_terrain_type(route),
     )
 
