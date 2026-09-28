@@ -1769,7 +1769,7 @@ export function Replay3D({
         let attribution: string;
         try {
           const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
-          const res = await fetchTerrariumTerrain(coords, { maxTiles: 36, maxGridPoints: 110000, signal: controller.signal });
+          const res = await fetchTerrariumTerrain(coords, { maxTiles: 48, maxGridPoints: 131072, signal: controller.signal });
           gridSpec = res.grid;
           heights = res.heights;
           attribution = TERRARIUM_ATTRIBUTION;
