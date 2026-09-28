@@ -128,6 +128,39 @@ def test_jaccard_empty_is_zero():
     assert edge_jaccard([], ["a"]) == 0.0
 
 
+def test_index_is_built_once_across_snaps(monkeypatch):
+    """Regression: snap_polyline rebuilt the spatial index on every call.
+
+    On a 3.2 M-edge graph that cost ~12 s per route (~72% of snap time) and blew
+    the Modal timeout. The index must be built once and reused.
+    """
+    graph = _graph_two_rows()
+    calls = {"n": 0}
+    original = graph.build_index
+
+    def _counting_build():
+        calls["n"] += 1
+        original()
+
+    monkeypatch.setattr(graph, "build_index", _counting_build)
+
+    for _ in range(5):
+        snap_polyline(_route_along_row(_LAT0, 0, 3), graph)
+
+    assert calls["n"] == 1, f"index built {calls['n']} times (expected 1)"
+
+
+def test_index_reused_across_different_routes():
+    """Two snaps over one graph share the index (lazy build on first use)."""
+    graph = _graph_two_rows()
+    assert graph._built is False
+    snap_polyline(_route_along_row(_LAT0, 0, 3), graph)
+    assert graph._built is True
+    grid_id = id(graph._grid)
+    snap_polyline(_route_along_row(_LAT0, 3, 6), graph)
+    assert id(graph._grid) == grid_id
+
+
 def test_roads_from_geojson_roundtrip_and_snapping():
     from app.services.road_graph import roads_from_geojson
 
