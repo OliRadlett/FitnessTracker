@@ -26,6 +26,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { sportLabel } from '@/lib/sportUtils';
 import {
@@ -129,12 +130,10 @@ export default function TodayBriefPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Today&apos;s Brief</h1>
-        <p className="text-xs text-muted mt-0.5">
-          One verdict, the plan, the weather, and your sharpest insight. Experimental — tell us if it earns the bookmark.
-        </p>
-      </div>
+      <PageHeader
+        title="Today's Brief"
+        subtitle="One verdict, the plan, the weather, and your sharpest insight. Experimental — tell us if it earns the bookmark."
+      />
 
       <ErrorState variant="inline"
         show={hasQueryError}

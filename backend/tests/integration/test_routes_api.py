@@ -140,3 +140,54 @@ class TestRouteHistory:
         """History for nonexistent route returns 404."""
         resp = await client.get(f"/api/v1/routes/{uuid.uuid4()}/history")
         assert resp.status_code == 404
+
+
+class TestDuplicatesQueue:
+    """GET /api/v1/routes/duplicates — the review queue.
+
+    Regression: the cached-duplicates path loaded routes with only
+    `selectinload(Route.sources)`, but `RouteRead` also reads `.tags` (a lazy
+    viewonly relationship) → MissingGreenlet → HTTP 500 once the
+    `route_similarity` cache was populated.
+    """
+
+    async def test_duplicates_returns_200_when_cache_populated(
+        self, client, db_session, test_user, test_route
+    ):
+        from app.models.route import RouteSimilarity
+        from app.services.route_service import create_route
+
+        other = await create_route(
+            db_session,
+            test_user.id,
+            "Second",
+            "cycling",
+            40_000.0,
+            test_route.encoded_polyline,
+        )
+        db_session.add(
+            RouteSimilarity(
+                user_id=test_user.id,
+                route_a_id=test_route.id,
+                route_b_id=other.id,
+                score=0.7,
+                tier="review",
+                breakdown={"total": 0.7, "tier": "review"},
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/routes/duplicates")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        # RouteRead must serialise cleanly, including tags.
+        assert "tags" in data[0]["route_a"]
+
+    async def test_duplicates_without_cache_returns_200(self, client, test_route):
+        """The local-scan fallback path must also not 500 (empty cache)."""
+        resp = await client.get("/api/v1/routes/duplicates")
+        assert resp.status_code == 200, resp.text
+        assert isinstance(resp.json(), list)
+

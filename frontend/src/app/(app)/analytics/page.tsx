@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { AiAnalysisCard } from '@/components/analysis/AiAnalysisCard';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
@@ -214,22 +215,24 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Analytics</h1>
-          <p className="text-xs text-muted mt-0.5">
+      <PageHeader
+        title="Analytics"
+        subtitle={
+          <>
             Observed patterns in your own data — associations, not advice. Recomputed nightly.
             {dataUpdatedAt > 0 && ` · Fetched ${relativeTime(new Date(dataUpdatedAt).toISOString())}`}
-          </p>
-        </div>
-        <button
-          onClick={() => recompute.mutate()}
-          disabled={recompute.isPending}
-          className="px-3 py-1.5 text-xs rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50"
-        >
-          {recompute.isPending ? 'Computing…' : '↻ Recompute now'}
-        </button>
-      </div>
+          </>
+        }
+        actions={
+          <button
+            onClick={() => recompute.mutate()}
+            disabled={recompute.isPending}
+            className="px-3 py-1.5 text-xs rounded-lg bg-accent text-white font-medium hover:bg-accent/80 disabled:opacity-50"
+          >
+            {recompute.isPending ? 'Computing…' : '↻ Recompute now'}
+          </button>
+        }
+      />
 
       {recompute.isError && (
         <p className="text-xs text-warning">
