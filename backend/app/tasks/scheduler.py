@@ -3416,7 +3416,9 @@ def aggregate_video_analyses_weekly() -> dict:
                     exercises += await aggregate_video_analyses(db, user.id)
                     injury_flags += await flag_injury_risks(db, user.id)
                     calibrations += await recalibrate_rpe(db, user.id)
-                    tss_backfilled += await backfill_lifting_tss(db, user.id)
+                    # force=True: the value is derived from sets and bodyweight,
+                    # both of which change after the fact (B2).
+                    tss_backfilled += await backfill_lifting_tss(db, user.id, force=True)
                     computed += 1
                 except Exception as e:
                     failed += 1
