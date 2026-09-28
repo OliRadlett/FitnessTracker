@@ -8,11 +8,12 @@
 // localStorage (`fittrack-onboarding-done`) so no server migration is needed;
 // the wizard never blocks but is soft-suggested until dismissed.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
+import { Field } from '@/components/ui/Field';
 import { useAuthFetch, Connection } from '@/lib/api';
 import { getGoalMetrics, createGoal } from '@/lib/api/goals';
 import type { MetricInfo } from '@/lib/api/types/training';
@@ -348,23 +349,23 @@ export function OnboardingWizard() {
               These power accuracy features (zones, FTP, projections, weather) — you can leave them
               blank and fill in later.
             </p>
-            <Field label="FTP (watts)">
+            <Field label="FTP (watts)" htmlFor="onboarding-ftp">
               <input
                 type="number" inputMode="decimal" value={ftp} onChange={(e) => setFtp(e.target.value)}
                 placeholder="e.g. 250" className={inputCls}
               />
             </Field>
-            <Field label={units.isImperial ? 'Weight (lb)' : 'Weight (kg)'}>
+            <Field label={units.isImperial ? 'Weight (lb)' : 'Weight (kg)'} htmlFor="onboarding-weight">
               <input
                 type="number" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)}
                 placeholder={units.isImperial ? 'e.g. 165' : 'e.g. 75'} className={inputCls}
               />
             </Field>
             <div className="flex gap-3">
-              <Field label="Home latitude">
+              <Field label="Home latitude" htmlFor="onboarding-home-lat">
                 <input type="text" inputMode="decimal" value={homeLat} onChange={(e) => setHomeLat(e.target.value)} placeholder="51.5074" className={inputCls} />
               </Field>
-              <Field label="Home longitude">
+              <Field label="Home longitude" htmlFor="onboarding-home-lng">
                 <input type="text" inputMode="decimal" value={homeLng} onChange={(e) => setHomeLng(e.target.value)} placeholder="-0.1278" className={inputCls} />
               </Field>
             </div>
@@ -385,7 +386,7 @@ export function OnboardingWizard() {
             <p className="text-sm text-muted">
               Set an optional first goal. You can skip or add more later in Goals.
             </p>
-            <Field label="Metric">
+            <Field label="Metric" htmlFor="onboarding-metric">
               <select
                 value={metricKey} onChange={(e) => setMetricKey(e.target.value)} className={`${inputCls} appearance-none`}
               >
@@ -395,7 +396,7 @@ export function OnboardingWizard() {
                 ))}
               </select>
             </Field>
-            <Field label="Target value">
+            <Field label="Target value" htmlFor="onboarding-target">
               <input type="number" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 1000" className={inputCls} />
             </Field>
             {goalMsg && <p className="text-xs text-muted">{goalMsg}</p>}
@@ -443,15 +444,6 @@ export function OnboardingToggle() {
 
 const inputCls =
   'w-full px-3 py-2 text-sm bg-background border border-surface-light rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-accent';
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-xs text-muted mb-1">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 function PillGroup({
   value,
