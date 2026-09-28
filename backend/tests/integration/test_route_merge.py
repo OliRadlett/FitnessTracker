@@ -282,3 +282,24 @@ async def test_train_metric_from_merge_history(db_session, test_user):
     assert row.n_positives == 4
     assert row.n_negatives >= 3
 
+
+async def test_merge_log_captures_names_for_history(db_session, test_user):
+    """The log snapshot must carry the merged route's name + primary name so the
+    merge-history UI can render a readable entry after the duplicate is gone."""
+    fam = await _build_route_family(db_session, test_user)
+    primary, dup = fam["primary"], fam["dup"]
+
+    await merge_routes(db_session, primary.id, dup.id, test_user.id, score=0.9)
+
+    log = (
+        await db_session.execute(
+            select(RouteMergeLog).where(RouteMergeLog.primary_route_id == primary.id)
+        )
+    ).scalar_one()
+    assert (log.snapshot or {})["name"] == "Dup"
+    # The primary still exists, so its live name is available too.
+    still = (
+        await db_session.execute(select(Route).where(Route.id == primary.id))
+    ).scalar_one()
+    assert still.name == "Primary"
+

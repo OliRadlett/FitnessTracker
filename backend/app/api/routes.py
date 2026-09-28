@@ -928,7 +928,13 @@ async def list_route_merges(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List recent route merges (undo available while ``undone_at`` is null)."""
+    """List recent route merges (undo available while ``undone_at`` is null).
+
+    Enriched with route names so the UI can show a readable merge history:
+    the primary name from the live route (or the duplicate's snapshot name if
+    the primary was later merged away), and the merged-away route's name from
+    the snapshot.
+    """
     logs = (
         await db.execute(
             select(RouteMergeLog)
@@ -937,17 +943,37 @@ async def list_route_merges(
             .limit(limit)
         )
     ).scalars().all()
-    return [
-        {
-            "id": str(log.id),
-            "primary_route_id": str(log.primary_route_id),
-            "merged_route_id": str(log.merged_route_id),
-            "score": log.score,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-            "undone_at": log.undone_at.isoformat() if log.undone_at else None,
-        }
-        for log in logs
-    ]
+
+    # Resolve names for the still-present primaries in one query.
+    primary_ids = {log.primary_route_id for log in logs}
+    names: dict[uuid.UUID, str] = {}
+    if primary_ids:
+        for rid, name in (
+            await db.execute(
+                select(Route.id, Route.name).where(Route.id.in_(primary_ids))
+            )
+        ).all():
+            names[rid] = name
+
+    out = []
+    for log in logs:
+        snapshot = log.snapshot or {}
+        out.append(
+            {
+                "id": str(log.id),
+                "primary_route_id": str(log.primary_route_id),
+                "merged_route_id": str(log.merged_route_id),
+                "primary_name": names.get(log.primary_route_id)
+                or snapshot.get("name")
+                or "Unknown route",
+                "merged_name": snapshot.get("name") or "Removed route",
+                "primary_exists": log.primary_route_id in names,
+                "score": log.score,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "undone_at": log.undone_at.isoformat() if log.undone_at else None,
+            }
+        )
+    return out
 
 
 @router.post("/merges/{log_id}/undo", response_model=RouteRead)
