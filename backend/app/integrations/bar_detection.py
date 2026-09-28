@@ -394,6 +394,12 @@ def _fill_gaps_onnx(track: list) -> list:
 # separation of 0.44 (min 0.14); overlaps in a side view fall well below.
 _PLATE_PAIR_MIN_SEP = 0.12
 
+# A detection further than this (normalised distance) from the pose proxy has
+# locked onto the rack or the floor, not the bar. Applied to the *resolved* bar
+# centre so a plate pair spanning a wide bar is judged on its midpoint — a real
+# plate at the bar's end is legitimately far from the body's centreline.
+_MAX_PROXY_OFFSET = 0.35
+
 
 def _centre_dist(a: dict, b: dict) -> float:
     return float(np.hypot(a["x"] - b["x"], a["y"] - b["y"]))
@@ -409,6 +415,8 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
             img = cv2.imread(str(path))
             if img is None:
                 continue
+            lm_i = landmarks[i] if i < len(landmarks) else None
+            px_i = proxy_of(lm_i) if lm_i is not None else (0.0, 0.0)
             cands = [d for d in detect_bars_onnx(img, model_path)
                      if d["label"] in ("plate", "barbell")]
             if not cands:
@@ -447,6 +455,13 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
             det[i] = {"x": ref["x"], "y": ref["y"],
                       "confidence": ref["confidence"], "source": "detector",
                       "bar_basis": basis}
+            # Same rack/floor guard the classical path applies, on the resolved
+            # centre rather than each candidate box.
+            if lm_i is not None and np.hypot(
+                ref["x"] - px_i[0], ref["y"] - px_i[1]
+            ) > _MAX_PROXY_OFFSET:
+                det[i] = None
+                continue
             if pair is not None:
                 # Bar tilt: the angle of the line through the two plate centres.
                 ang = float(np.degrees(np.arctan2(
@@ -464,7 +479,7 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
         img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         hit = detect_bar_plate(img, seed or (px, py)) if img is not None else None
         # Reject a hit far from the pose proxy (locks onto the rack/floor).
-        if hit is not None and np.hypot(hit["x"] - px, hit["y"] - py) > 0.35:
+        if hit is not None and np.hypot(hit["x"] - px, hit["y"] - py) > _MAX_PROXY_OFFSET:
             hit = None
         # Temporal gate: the bar moves smoothly; a jump is a false positive.
         if hit is not None and seed is not None and np.hypot(
@@ -600,6 +615,16 @@ def bar_track_from_frame_paths(
             e["bar_basis"] = src["bar_basis"]
         if e:
             extras[i] = e
+    # The metric-3D lift needs the *detector's* bar centre for each frame, not
+    # the smoothed proxy: the track's ``x``/``y`` is a per-clip constant offset
+    # off the pose, which carries no absolute metric position. So keep the raw
+    # per-frame centre alongside it (see ``bar_tracking_3d.lift_bar_3d``, which
+    # refuses any frame that does not carry one).
+    for i in range(min(len(landmarks), len(det2), len(det))):
+        src = det2[i] if det2[i] is not None else det[i]
+        if src is None or extras[i] is None:
+            continue
+        extras[i] = {**extras[i], "bar_x": src["x"], "bar_y": src["y"]}
     return _apply_offset(landmarks, proxy_of, total, conf, extras)
 
 
