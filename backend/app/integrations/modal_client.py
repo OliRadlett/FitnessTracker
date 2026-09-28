@@ -99,6 +99,18 @@ def _get_modal_image(project_root: str | None = None):
                 f"{analysis_dir}/bar_detection.py",
                 "/root/app/integrations/bar_detection.py",
             )
+            # Metric 3D bar path (bar_tracking_3d + the per-clip focal it
+            # calibrates against). video_camera.py lives outside
+            # app/integrations, so it needs its own mount target.
+            image = image.add_local_file(
+                f"{analysis_dir}/bar_tracking_3d.py",
+                "/root/app/integrations/bar_tracking_3d.py",
+            )
+            services_dir = str(Path(project_root) / "app" / "services")
+            image = image.add_local_file(
+                f"{services_dir}/video_camera.py",
+                "/root/app/services/video_camera.py",
+            )
 
         _MODAL_IMAGE = image
     return _MODAL_IMAGE
@@ -133,6 +145,8 @@ def process_video_on_modal(
     r2_upload_key_track: str | None = None,
     bar_detection: bool = False,
     bar_detector_model_url: str | None = None,
+    focal_px: float | None = None,
+    lifter_height_m: float | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -163,6 +177,11 @@ def process_video_on_modal(
         User-declared camera angle (``side``/``back_left``/``back_right``/
         ``front``). Gates the sagittal-plane form rules; absent/unknown
         leaves them off.
+    focal_px:
+        The clip's focal length in pixels, from the container metadata (see
+        ``services/video_camera.py``). Together with ``lifter_height_m`` this is
+        what makes the metric 3D bar path possible; without either, the 2D bar
+        metrics are used unchanged.
 
     Returns
     -------
@@ -224,6 +243,8 @@ def process_video_on_modal(
         track_key: str = "",
         bar_detection: bool = False,
         bar_detector_model_url: str = "",
+        focal_px: float = 0.0,
+        lifter_height_m: float = 0.0,
     ) -> dict:
         import logging
         import subprocess
@@ -258,7 +279,10 @@ def process_video_on_modal(
             trimmed_path = Path(tmpdir) / "trimmed.mp4"
             input_path.write_bytes(video_bytes)
 
-            # ── Step 2: Get video duration ────────────────────────────────
+            # ── Step 2: Get video duration + per-clip camera ──────────────
+            # -show_streams as well as -show_format: the focal length lives in
+            # the video *stream*'s tag dict, and it is what the metric 3D bar
+            # path calibrates against (services/video_camera.py).
             probe = subprocess.run(
                 [
                     "ffprobe",
@@ -267,6 +291,7 @@ def process_video_on_modal(
                     "-print_format",
                     "json",
                     "-show_format",
+                    "-show_streams",
                     str(input_path),
                 ],
                 capture_output=True,
@@ -274,12 +299,50 @@ def process_video_on_modal(
                 timeout=30,
             )
             duration = 0.0
+            stream_tags: dict = {}
+            stream_w = stream_h = 0
             try:
                 probe_data = json.loads(probe.stdout)
                 duration = float(probe_data.get("format", {}).get("duration", 0))
-            except (json.JSONDecodeError, ValueError, KeyError):
+                for _s in probe_data.get("streams", []):
+                    if _s.get("codec_type") != "video":
+                        continue
+                    stream_tags = dict(_s.get("tags") or {})
+                    stream_w = int(_s.get("width") or 0)
+                    stream_h = int(_s.get("height") or 0)
+                    break
+            except (json.JSONDecodeError, ValueError, KeyError, TypeError):
                 pass
             _logger.info("Video duration: %.1fs", duration)
+
+            # Frame geometry as OpenCV *decodes* it. A portrait phone video
+            # stores 1920x1080 plus a rotation matrix, so ffprobe's width/height
+            # are the pre-rotation ones; the pose landmarks (and therefore the
+            # metric 3D lift) are in the decoded frame's space.
+            import cv2
+
+            _cap = cv2.VideoCapture(str(input_path))
+            dec_w = int(_cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            dec_h = int(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            _cap.release()
+            frame_w, frame_h = dec_w or stream_w, dec_h or stream_h
+
+            camera: dict = {"focal_px": float(focal_px or 0.0) or None}
+            try:
+                from app.services.video_camera import camera_info
+
+                camera = camera_info(stream_tags, frame_w, frame_h)
+                # An explicitly supplied focal wins: it was read from the same
+                # metadata but may have been persisted on an earlier run.
+                if focal_px:
+                    camera["focal_px"] = round(float(focal_px), 1)
+            except Exception as _e:  # pragma: no cover - mount/import guard
+                _logger.warning("Camera metadata unavailable: %s", _e)
+            _logger.info(
+                "Camera: %sx%s focal_px=%s equiv=%s",
+                frame_w, frame_h, camera.get("focal_px"),
+                camera.get("focal_equiv_mm"),
+            )
 
             # ── Step 3: Scene detection ───────────────────────────────────
             # Use ffmpeg scene filter to detect significant frame changes.
@@ -499,6 +562,10 @@ def process_video_on_modal(
             # scheduler can persist it and the UI can offer a manual override.
             full_result["lifter_selection"] = pose_track.get("lifter")
             full_result["n_person_tracks"] = len(pose_track.get("tracks") or [])
+            # The per-clip camera (focal, product) is a property of the *file*,
+            # not of the analysis depth — keep it either way so the scheduler can
+            # persist it and the next run need not re-probe.
+            full_result["camera"] = camera
             if depth == "full":
                 # 8a: Pose-based form + setup analysis
                 try:
@@ -518,6 +585,8 @@ def process_video_on_modal(
                         track=pose_track,
                         bar_detection=bar_detection,
                         bar_detector_model=_bar_model_path,
+                        camera=camera,
+                        lifter_height_m=float(lifter_height_m or 0.0) or None,
                     )
                     full_result.update(pose_result)
                     # Step 7 never sets reps (classification only) — take the
@@ -872,6 +941,9 @@ def process_video_on_modal(
                 "bar_path": full_result.get("bar_path"),
                 "lifter_selection": full_result.get("lifter_selection"),
                 "n_person_tracks": full_result.get("n_person_tracks"),
+                # Per-clip camera (focal, product) — the calibration the metric
+                # 3D bar path was computed against, kept for inspection.
+                "camera": full_result.get("camera"),
                 # Persisted pose track (T5)
                 "pose_track_r2_key": track_uploaded_key,
                 "analysis_version": analysis_version,
@@ -942,4 +1014,6 @@ def process_video_on_modal(
             r2_upload_key_track or "",
             bar_detection,
             bar_detector_model_url or "",
+            float(focal_px or 0.0),
+            float(lifter_height_m or 0.0),
         )

@@ -106,19 +106,56 @@ distance). Until both are pinned the axis values drift by ~2x and are not usable
 
 ## Next step
 
-1. **Calibration**: get the focal from the video/phone (or calibrate once against
-   a measured distance), and take the lifter's height as a per-clip input. Then
-   re-run — the vertical should land at ~1.3-1.5 m above the foot and the lateral
-   under ~100 mm.
-2. **Gate the plate detections** (reject a plate far from the pose proxy).
-3. Only then step 3 (the body-frame metric) + a UI pass.
+**Wiring done 2026-09-28** (branch `feature/metric-3d-bar-path`, scope: geometry +
+wiring, no UI):
+
+1. **Calibration** ✅ — `modal_client._process` probes `-show_streams`, reads the
+   focal via `services/video_camera.py` (with the **cv2-decoded** W/H — portrait
+   phone video stores 1920×1080 + a rotation matrix), and returns it as
+   `full_result["camera"]`; `scheduler.process_lift_video` passes the lifter's
+   height (`preferences.height_cm` → m, explicit `db.get` — no lazy load under
+   async) plus any previously stored focal, and persists `video.camera_json`
+   (migration `083`). `pose_analysis.run_pose_analysis(..., camera=,
+   lifter_height_m=)` fits → lifts → `analyze_bar_path_3d`, nested as
+   `bar_path["metric_3d"]` (2D shape untouched), with the record-aligned
+   landmark/world arrays and a `remap_reps` timestamp remap (reps are indexed
+   against the dense series, the track against the records subset).
+2. **Plate gating** ✅ — `_MAX_PROXY_OFFSET = 0.35` now applies to the **ONNX**
+   branch too (on the resolved centre, not each box), and the track carries the
+   raw per-frame `bar_x`/`bar_y` the 3D lift requires.
+3. **Body-frame metric** ✅ — `app/integrations/bar_tracking_3d.py` (pure NumPy:
+   `body_height_scale` / `fit_clip_camera` / `lift_bar_3d` / `analyze_bar_path_3d` /
+   `remap_reps`) + 35 synthetic-fixture tests, all green. Lateral axis = hip line
+   orthogonalised against heel→toe (the prototype's world-x version is degenerate
+   in side views).
+
+**Blocking finding: 0/33 fixture clips carry focal metadata.** Probed every
+`backend/tests/fixtures/videos/*.mp4` with ffprobe — all carry only
+`creation_time/language/handler_name` (`Messenger_*` only `language`). The
+container-tags path is wired end-to-end but will ~never fire on this user's
+footage, so `fit_clip_camera` correctly declines and the 3D metrics stay off.
+Before the UI pass, pick the focal source: (a) per-device default FOV in
+Settings, (b) one-off calibration against a known distance, or (c) the
+barbell itself (a 20 kg bar is 2.2 m — the one known-size object already
+in frame). Until then the vertical/lateral success check
+(~1.3–1.5 m above foot, lateral < ~100 mm) cannot run on real clips.
+
+Remaining: the UI pass (surface `metric_3d` + calibration), and the focal-source
+decision above.
+
+**Migration ordering (2026-09-29):** this work's migration is `083`, chained as
+`081 → 082 → 083`, because a concurrent session created
+`082_add_lift_video_exercise_variation.py` (`lift_videos.exercise_variation`,
+also `down_revision = "081"`) — two files claiming `082` breaks `alembic
+upgrade head` for everyone. This PR therefore depends on their `082` merging
+first (or being rebased the other way round if this lands first).
 
 ## Inputs
 
 | input | where it lives | status |
 |---|---|---|
 | **height** | `User.preferences.height_cm` (`services/preferences.py`) | ✅ added (Settings → "Lifter height") |
-| **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ helper added; needs wiring + per-video storage |
+| **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ wired end-to-end 2026-09-28 (probe → `camera_json`, migration `083`) — but **0/33 fixture clips carry focal tags**, so a focal source (device default / calibration / barbell-length) is still needed before real-clip numbers exist |
 | plate diameter | — | ❌ the detected "plate" is a stack; would need the load (`load_kg`) |
 | bar length | — | ❌ plate spacing depends on the load |
 

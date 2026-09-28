@@ -4106,6 +4106,36 @@ def process_lift_video(
                 except Exception as e:
                     logger.warning("Video load inference failed: %s", e)
 
+                # Metric 3D bar path calibration (plans/bar-tracking-3d.md).
+                # MediaPipe's world landmarks use an average-body prior, so the
+                # lifter's declared height is what makes them metric; without it
+                # every real-unit number is ~2x out and the module declines to
+                # run. A focal persisted on an earlier pass is reused so a
+                # reprocess does not need the metadata probe to succeed.
+                lifter_height_m = None
+                try:
+                    from app.models.user import User
+                    from app.services.preferences import get_preferences
+
+                    # Explicit load: the video row was fetched without its user
+                    # relationship, and lazy-loading it here would raise
+                    # MissingGreenlet under async SQLAlchemy.
+                    owner = await db.get(User, video.user_id)
+                    height_cm = (get_preferences(owner).height_cm
+                                 if owner is not None else None)
+                    if height_cm:
+                        lifter_height_m = float(height_cm) / 100.0
+                except Exception as e:
+                    logger.warning("Lifter height unavailable: %s", e)
+                prior_focal = None
+                try:
+                    prior_focal = (json.loads(video.camera_json)
+                                   or {}).get("focal_px")
+                except (TypeError, ValueError):
+                    pass
+                if prior_focal:
+                    logger.info("Reusing stored clip focal: %.1f px", prior_focal)
+
                 # Call Modal for processing
                 result = process_video_on_modal(
                     video_id=video_id,
@@ -4126,6 +4156,8 @@ def process_lift_video(
                     r2_presigned_put_track=presigned_track["upload_url"],
                     r2_upload_key_track=presigned_track["key"],
                     bar_detector_model_url=bar_detector_model_url,
+                    focal_px=prior_focal,
+                    lifter_height_m=lifter_height_m,
                 )
 
                 # Update video with results
@@ -4181,6 +4213,10 @@ def process_lift_video(
                 # ── Bar path (F1) ──────────────────────────────────────────
                 if result.get("bar_path") is not None:
                     video.bar_path_json = json.dumps(result["bar_path"])
+
+                # ── Per-clip camera (metric 3D bar path calibration) ───────
+                if result.get("camera") is not None:
+                    video.camera_json = json.dumps(result["camera"])
 
                 # ── Rest between reps (T6) ─────────────────────────────────
                 rest = result.get("rest")

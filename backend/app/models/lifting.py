@@ -315,7 +315,13 @@ class LiftVideo(Base):
     vbt_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Bar-path technique metrics (§3.18 / F1): efficiency, drift, consistency.
     # Pose-proxy today; the learned bar detector (T3) fills the same shape.
+    # ``metric_3d`` (plans/bar-tracking-3d.md) nests the real-unit metrics under
+    # the same key.
     bar_path_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-clip camera from the container metadata (focal_px, focal_equiv_mm,
+    # product, decoded frame size). The calibration the metric 3D bar path was
+    # computed against, kept so a surprising number can be traced to its lens.
+    camera_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Persisted pose track (T5) ──────────────────────────────────────────
     # Compact per-frame landmarks JSON in R2 — powers the interactive viewer
