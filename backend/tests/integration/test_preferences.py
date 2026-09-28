@@ -59,7 +59,19 @@ class TestPreferencesApi:
             "unit_system": "metric",
             "locale": "en-GB",
             "time_format": "24h",
+            "height_cm": None,
         }
+
+    async def test_height_cm_round_trips(self, client):
+        resp = await client.patch("/api/v1/user/preferences", json={"height_cm": 180.5})
+        assert resp.status_code == 200
+        assert resp.json()["height_cm"] == 180.5
+        again = await client.get("/api/v1/user/preferences")
+        assert again.json()["height_cm"] == 180.5
+
+    async def test_height_cm_out_of_range_returns_422(self, client):
+        resp = await client.patch("/api/v1/user/preferences", json={"height_cm": 400})
+        assert resp.status_code == 422
 
     async def test_patch_updates_and_round_trips(self, client):
         resp = await client.patch(
