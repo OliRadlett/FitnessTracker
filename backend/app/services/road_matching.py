@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.route_road_graph import ROAD_MATCH_VERSION
-from app.models.route import Route, RouteMatchMetric, RouteSimilarity
+from app.models.route import Route, RouteMatchMetric, RouteMergeLog
 from app.services.polyline_utils import decode_polyline
 from app.services.road_graph import edge_jaccard, snap_polyline
 from app.services.route_embedding import (
@@ -102,16 +102,37 @@ async def train_metric_from_history(
 ) -> Metric:
     """Train and persist the diagonal metric from accumulated merge decisions.
 
-    Positives = ``route_similarity`` rows the system auto-matched (tier
-    ``auto``); negatives = a sample of route pairs not in that set. Requires at
-    least 3 positives; otherwise the existing/uniform metric is kept.
+    Positives are the route **pairs the system actually merged** — both auto
+    (weekly task) and manual (review UI) — read from ``route_merge_log``. The
+    log stores both embeddings (the duplicate's in ``snapshot``, the primary's
+    in ``breakdown``) because the duplicate's Route row is deleted on merge, so
+    its embedding would otherwise be unrecoverable.
+
+    Earlier this sourced positives from ``route_similarity.tier == "auto"``,
+    which is always empty: auto-merged pairs are removed from that table when
+    the duplicate is deleted, so the metric could never train.
+
+    Negatives are sampled from live route pairs that were **not** merged.
+    Merge-mates (a primary and anything it absorbed) are excluded so the same
+    route's variants never become negatives. Requires ≥3 positives; otherwise
+    the existing/uniform metric is kept.
     """
-    rows = (
+    merge_rows = (
         await db.execute(
-            select(RouteSimilarity).where(RouteSimilarity.user_id == user_id)
+            select(RouteMergeLog).where(RouteMergeLog.user_id == user_id)
         )
     ).scalars().all()
-    auto_pairs = {(r.route_a_id, r.route_b_id) for r in rows if r.tier == "auto"}
+
+    positives: list[tuple[list[float], list[float]]] = []
+    merged_ids: set[uuid.UUID] = set()
+    for row in merge_rows:
+        dup_features = (row.snapshot or {}).get("road_embedding", {}) or {}
+        prim_features = (row.breakdown or {}).get("primary_embedding", {}) or {}
+        fa = dup_features.get("features")
+        fb = prim_features.get("features")
+        if fa and fb and len(fa) == len(fb):
+            positives.append((fa, fb))
+        merged_ids.add(row.merged_route_id)
 
     routes = (
         await db.execute(select(Route).where(Route.user_id == user_id))
@@ -121,24 +142,16 @@ async def train_metric_from_history(
         for r in routes
         if r.road_embedding and r.road_embedding.get("features")
     }
-    if len(features) < 4:
+    if len(features) < 4 or len(positives) < 3:
         return await load_metric(db, user_id)
 
-    positives = [
-        (features[a], features[b])
-        for (a, b) in auto_pairs
-        if a in features and b in features
-    ]
-    if len(positives) < 3:
-        return await load_metric(db, user_id)
-
-    pos_ids = auto_pairs
+    # Negatives: live pairs that were neither merged nor merge-mates. Any route
+    # that participated in a merge is excluded from the negative pool to avoid
+    # training against a route whose variant we deliberately absorbed.
     negatives: list[tuple[list[float], list[float]]] = []
-    ids = list(features.keys())
+    ids = [rid for rid in features if rid not in merged_ids]
     for i in range(len(ids)):
         for j in range(i + 1, len(ids)):
-            if (ids[i], ids[j]) in pos_ids or (ids[j], ids[i]) in pos_ids:
-                continue
             negatives.append((features[ids[i]], features[ids[j]]))
             if len(negatives) >= max_negatives:
                 break

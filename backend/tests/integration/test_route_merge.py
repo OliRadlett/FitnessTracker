@@ -211,3 +211,74 @@ async def test_undo_restores_route_and_children(db_session, test_user):
             select(RouteQuality).where(RouteQuality.route_id == dup.id)
         )
     ).scalar_one_or_none() is not None
+
+
+async def test_merge_log_stores_embeddings_for_metric_training(
+    db_session, test_user
+):
+    """The merge log must capture both embeddings, since the duplicate's Route
+    row (and therefore its embedding) is deleted on merge.
+
+    Regression: ``train_metric_from_history`` sourced positives from
+    ``route_similarity.tier == "auto"``, which is always empty because merged
+    pairs are removed from that table — so the metric never trained.
+    """
+    fam = await _build_route_family(db_session, test_user)
+    primary, dup = fam["primary"], fam["dup"]
+
+    prim_vec = [0.1] * 41
+    dup_vec = [0.2] * 41
+    primary.road_embedding = {"version": 1, "features": prim_vec}
+    dup.road_embedding = {"version": 1, "features": dup_vec}
+    await db_session.flush()
+
+    await merge_routes(db_session, primary.id, dup.id, test_user.id, score=0.9)
+
+    log = (
+        await db_session.execute(
+            select(RouteMergeLog).where(RouteMergeLog.primary_route_id == primary.id)
+        )
+    ).scalar_one()
+    assert (log.snapshot or {})["road_embedding"]["features"] == dup_vec
+    assert (log.breakdown or {})["primary_embedding"]["features"] == prim_vec
+
+
+async def test_train_metric_from_merge_history(db_session, test_user):
+    """End-to-end: merges recorded in the log yield a trained metric row."""
+    from app.models.route import RouteMatchMetric
+    from app.services.road_matching import train_metric_from_history
+
+    # 4 merges → ≥3 positives; plus several surviving routes as negatives.
+    for i in range(4):
+        enc = encode_polyline(_line(10.0 + i))
+        prim = await create_route(
+            db_session, test_user.id, f"P{i}", "cycling", 10_000.0, enc
+        )
+        dup = await create_route(
+            db_session, test_user.id, f"D{i}", "cycling", 10_000.0, enc
+        )
+        prim.road_embedding = {"version": 1, "features": [0.1] * 41}
+        dup.road_embedding = {"version": 1, "features": [0.15] * 41}
+        await db_session.flush()
+        await merge_routes(db_session, prim.id, dup.id, test_user.id, score=0.9)
+
+    # Surviving routes become the negative pool.
+    for i in range(6):
+        enc = encode_polyline(_line(50.0 + i))
+        r = await create_route(
+            db_session, test_user.id, f"N{i}", "cycling", 50_000.0, enc
+        )
+        r.road_embedding = {"version": 1, "features": [float(i) / 6.0] * 41}
+    await db_session.flush()
+
+    metric = await train_metric_from_history(db_session, test_user.id)
+    assert len(metric.weights) == 41
+
+    row = (
+        await db_session.execute(
+            select(RouteMatchMetric).where(RouteMatchMetric.user_id == test_user.id)
+        )
+    ).scalar_one()
+    assert row.n_positives == 4
+    assert row.n_negatives >= 3
+
