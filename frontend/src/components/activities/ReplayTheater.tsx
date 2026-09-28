@@ -94,11 +94,12 @@ export function ReplayTheater({
         power: streamInput(detail.streams, ...POWER_STREAM_TYPES),
         hr: streamInput(detail.streams, ...HEARTRATE_STREAM_TYPES),
         cadence: streamInput(detail.streams, ...CADENCE_STREAM_TYPES),
-      maxSamples: 4000,
-      activityDistanceMeters: ride?.distance_meters ?? undefined,
-      activityDurationSeconds: ride?.duration_seconds ?? undefined,
-    });
-    name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
+        maxSamples: 4000,
+        activityDistanceMeters: ride?.distance_meters ?? undefined,
+        activityDurationSeconds: ride?.duration_seconds ?? undefined,
+      }),
+      name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
+    };
   }, [ghostDetail, ghostCandidates, ghostId]);
 
   // ── "Race Yourself": fetch all rides on the route and build traces ─────
