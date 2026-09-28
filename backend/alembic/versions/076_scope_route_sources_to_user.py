@@ -23,6 +23,54 @@ down_revision = "075"
 branch_labels = None
 depends_on = None
 
+_USER_SCOPED_UC = "uq_route_source_provider_user"
+
+
+def _unique_constraints(table: str) -> dict[str, tuple[str, ...]]:
+    """Map each UNIQUE constraint on ``table`` to its ordered column list.
+
+    005 created the legacy constraint as a bare ``UNIQUE (provider,
+    provider_route_id)`` inside ``CREATE TABLE``, so PostgreSQL auto-named it
+    ``route_sources_provider_provider_route_id_key``. Databases created by
+    ``Base.metadata.create_all()`` instead carry the name this migration
+    assumed. Reading the real names is the only way to handle both.
+    """
+    rows = op.get_bind().execute(
+        sa.text(
+            """
+            SELECT c.conname,
+                   ARRAY(
+                       SELECT a.attname
+                       FROM unnest(c.conkey) AS k
+                       JOIN pg_attribute a
+                         ON a.attrelid = c.conrelid AND a.attnum = k
+                       ORDER BY k
+                   )
+            FROM pg_constraint c
+            WHERE c.conrelid = to_regclass(:table) AND c.contype = 'u'
+            """
+        ),
+        {"table": table},
+    ).all()
+    return {name: tuple(cols) for name, cols in rows}
+
+
+def _legacy_global_unique_names(
+    constraints: dict[str, tuple[str, ...]],
+) -> list[str]:
+    """Names of the global ``(provider, provider_route_id)`` constraints.
+
+    Pure so the regression stays testable: the constraint may be called
+    ``uq_route_source_provider`` (create_all databases) or
+    ``route_sources_provider_provider_route_id_key`` (migration-built
+    databases), and dropping a hard-coded name only works for the first.
+    """
+    return [
+        name
+        for name, cols in constraints.items()
+        if name != _USER_SCOPED_UC and set(cols) == {"provider", "provider_route_id"}
+    ]
+
 
 def upgrade() -> None:
     op.add_column(
@@ -48,18 +96,21 @@ def upgrade() -> None:
         ["id"],
         ondelete="CASCADE",
     )
-    op.drop_constraint("uq_route_source_provider", "route_sources", type_="unique")
-    op.create_unique_constraint(
-        "uq_route_source_provider_user",
-        "route_sources",
-        ["provider", "provider_route_id", "user_id"],
-    )
+    # Drop whichever global (provider, provider_route_id) constraint exists
+    # under whichever name it was created with.
+    for name in _legacy_global_unique_names(_unique_constraints("route_sources")):
+        op.drop_constraint(name, "route_sources", type_="unique")
+    if _USER_SCOPED_UC not in _unique_constraints("route_sources"):
+        op.create_unique_constraint(
+            _USER_SCOPED_UC,
+            "route_sources",
+            ["provider", "provider_route_id", "user_id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "uq_route_source_provider_user", "route_sources", type_="unique"
-    )
+    if _USER_SCOPED_UC in _unique_constraints("route_sources"):
+        op.drop_constraint(_USER_SCOPED_UC, "route_sources", type_="unique")
     op.create_unique_constraint(
         "uq_route_source_provider",
         "route_sources",

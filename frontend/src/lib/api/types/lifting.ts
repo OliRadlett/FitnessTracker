@@ -34,6 +34,7 @@ export interface LiftVideo {
     | null;
   analysis_text?: string | null;
   exercise_auto?: string | null;
+  exercise_variation?: string | null;
   reps_count?: number | null;
   weight_kg?: number | null;
   confidence?: number | null;
@@ -133,6 +134,7 @@ export interface VideoProcessStatus {
   video_id: string;
   analysis_status?: string | null;
   exercise_auto?: string | null;
+  exercise_variation?: string | null;
   reps_count?: number | null;
   weight_kg?: number | null;
   confidence?: number | null;
