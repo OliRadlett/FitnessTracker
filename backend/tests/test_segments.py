@@ -5,6 +5,11 @@ stream-window effort computation are covered here.
 """
 
 from app.services.segments import (
+    _activity_cumulative_distance,
+    _clean_distance_stream,
+    _resample_onto_axis,
+    _resolve_cumulative_distance,
+    _time_axis,
     climb_category,
     compute_effort_for_window,
     detect_climb_segments,
@@ -129,3 +134,204 @@ def test_window_effort_zero_or_short_distance():
         )
         is None
     )
+
+
+# ── Stream timebase (B4) ──────────────────────────────────────────────────
+#
+# Strava reports a per-stream `resolution` as the *string* "high"/"low", so
+# `ActivityStream.resolution` is NULL in the database and the old code assumed
+# 1 second per sample for everything. That is only true for the streams Strava
+# resamples; the ones it returns at the device's native rate
+# (`velocity_smooth`, `distance`) have GPS-dependent spacing, so both the
+# integrated distance and every duration derived from it were wrong.
+
+
+def test_time_axis_normalises_to_elapsed_seconds():
+    assert _time_axis({"time": [1_700_000_000, 1_700_000_001, 1_700_000_003]}) == [
+        0.0,
+        1.0,
+        3.0,
+    ]
+
+
+def test_time_axis_rejects_unusable_streams():
+    assert _time_axis({"time": []}) is None
+    assert _time_axis({"time": [5.0]}) is None  # single sample, no spacing
+    assert _time_axis({"time": [0.0, 0.0, 1.0]}) is None  # not increasing
+    assert _time_axis({"time": [0.0, 5.0, 1.0]}) is None  # goes backwards
+    assert _time_axis({"time": [0.0, None, 2.0]}) is None  # gap
+    assert _time_axis({"time": ["a", "b"]}) is None  # non-numeric
+    assert _time_axis({}) is None
+
+
+def test_velocity_integration_uses_real_timing_not_assumed_1s():
+    # 11 samples over 100 elapsed seconds: 10 m/s, but one sample every 10s.
+    # With the old dt=1 assumption this integrated to 100 m instead of 1000 m.
+    times = [float(i * 10) for i in range(11)]
+    cum = _activity_cumulative_distance([10.0] * 11, None, times)
+    assert cum[-1] == 1000.0
+
+
+def test_velocity_integration_falls_back_to_resolution_without_time():
+    cum = _activity_cumulative_distance([10.0] * 5, 2, None)
+    assert cum == [0.0, 20.0, 40.0, 60.0, 80.0]
+
+
+def test_velocity_integration_ignores_time_of_different_length():
+    # A 3-sample time stream can't timebase a 6-sample velocity stream.
+    cum = _activity_cumulative_distance([10.0] * 6, None, [0.0, 1.0, 2.0])
+    assert cum == [0.0, 10.0, 20.0, 30.0, 40.0, 50.0]
+
+
+def test_clean_distance_stream_holds_gaps_and_never_goes_backwards():
+    assert _clean_distance_stream([0, None, 10, 9, 20, "x", 30]) == [
+        0.0,
+        0.0,
+        10.0,
+        10.0,
+        20.0,
+        20.0,
+        30.0,
+    ]
+
+
+def test_clean_distance_stream_rejects_degenerate_input():
+    assert _clean_distance_stream([]) == []
+    assert _clean_distance_stream([0.0]) == []  # too short
+    assert _clean_distance_stream([0.0, 0.0]) == []  # no distance covered
+    assert _clean_distance_stream(["a", "b"]) == []
+
+
+def test_resample_onto_axis_interpolates_linearly():
+    # 5 native samples spanning 0..400 m, mapped onto a 9-sample 0..8 s axis:
+    # each native interval covers 2 s, so each axis second is 50 m.
+    out = _resample_onto_axis([0, 100, 200, 300, 400], [0, 1, 2, 3, 4, 5, 6, 7, 8])
+    assert len(out) == 9
+    assert out[0] == 0.0
+    assert out[-1] == 400.0
+    assert out[2] == 100.0  # exactly on a native sample
+    # Halfway between native samples 1 and 2 → 150 m.
+    assert abs(out[1] - 50.0) < 1e-6
+
+
+def test_resample_onto_axis_needs_two_samples():
+    assert _resample_onto_axis([1.0], [0, 1, 2]) == []
+    assert _resample_onto_axis([0, 1, 2], [0]) == []
+
+
+def test_resolve_prefers_distance_stream_over_velocity():
+    # Same ride, two sources. The distance stream is authoritative; the
+    # velocity integration would drift by 100 m over the recording.
+    times = [float(i) for i in range(11)]
+    streams = {
+        "time": times,
+        "distance": [float(i * 100) for i in range(11)],
+        "velocity_smooth": [9.0] * 11,
+        "watts": [250.0] * 11,
+    }
+    resolved = _resolve_cumulative_distance(streams)
+    assert resolved is not None
+    cum, elapsed = resolved
+    assert cum[-1] == 1000.0  # not 990.0 from the velocity path
+    assert elapsed == times
+
+
+def test_resolve_resamples_low_res_distance_onto_the_time_axis():
+    # Realistic: Strava returns `distance` at the device's native rate, which
+    # is far coarser than the 1s high-resolution streams.
+    times = [float(i) for i in range(101)]  # 1s, 101 samples
+    streams = {
+        "time": times,
+        "distance": [float(i * 10) for i in range(11)],  # every 10s, 11 samples
+        "watts": [200.0] * 101,
+    }
+    resolved = _resolve_cumulative_distance(streams)
+    assert resolved is not None
+    cum, elapsed = resolved
+    # Resampled onto the 101-sample axis so it indexes with watts/altitude.
+    assert len(cum) == 101
+    assert len(elapsed) == 101
+    assert cum[-1] == 100.0
+    assert cum[50] == 50.0  # linear: 5 m/s throughout
+
+
+def test_resolve_integrates_velocity_when_no_distance_stream():
+    # Pre-B4 activities, and every non-Strava source, have no distance stream.
+    streams = {
+        "time": [float(i) for i in range(6)],
+        "velocity_smooth": [5.0] * 6,
+        "heartrate": [150.0] * 6,
+    }
+    resolved = _resolve_cumulative_distance(streams)
+    assert resolved is not None
+    cum, elapsed = resolved
+    assert cum == [0.0, 5.0, 10.0, 15.0, 20.0, 25.0]
+    assert elapsed == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+
+
+def test_resolve_falls_back_to_velocity_when_distance_is_unusable():
+    streams = {
+        "time": [float(i) for i in range(6)],
+        "distance": [None, None, None, None, None, None],  # all nulls
+        "velocity_smooth": [5.0] * 6,
+    }
+    resolved = _resolve_cumulative_distance(streams)
+    assert resolved is not None
+    cum, _ = resolved
+    assert cum[-1] == 25.0
+
+
+def test_resolve_returns_none_without_any_distance_source():
+    assert _resolve_cumulative_distance({"heartrate": [150.0] * 10}) is None
+    assert _resolve_cumulative_distance({}) is None
+
+
+def test_resolve_without_time_stream_uses_recorded_resolution():
+    # Non-Strava sources may record a numeric seconds-per-sample and have no
+    # `time` stream; the old path must keep working.
+    streams = {"velocity_smooth": [4.0] * 5, "resolution": 5}
+    resolved = _resolve_cumulative_distance(streams)
+    assert resolved is not None
+    cum, elapsed = resolved
+    assert cum == [0.0, 20.0, 40.0, 60.0, 80.0]
+    assert elapsed == [0.0, 5.0, 10.0, 15.0, 20.0]
+
+
+def test_effort_window_uses_the_time_axis_for_duration_and_speed():
+    # 100 m per sample, one sample every 10 s → a genuine 10 m/s.
+    cum = [float(i * 100) for i in range(11)]
+    elapsed_axis = [float(i * 10) for i in range(11)]
+    eff = compute_effort_for_window(
+        cum_dist=cum,
+        dt=10.0,
+        segment={"start_dist": 0.0, "end_dist": 100.0, "distance_m": 100.0},
+        elapsed_axis=elapsed_axis,
+        power=[300.0] * 11,
+    )
+    assert eff is not None
+    assert eff["elapsed_seconds"] == 10.0
+    assert eff["avg_speed_mps"] == 10.0
+    assert eff["avg_power_watts"] == 300.0
+
+    # Same data with a hardcoded dt=1 (the pre-B4 assumption) reported 1 s
+    # and 100 m/s — the mis-timing is a 10x error, not a rounding detail.
+    wrong = compute_effort_for_window(
+        cum_dist=cum,
+        dt=1.0,
+        segment={"start_dist": 0.0, "end_dist": 100.0, "distance_m": 100.0},
+    )
+    assert wrong is not None
+    assert wrong["elapsed_seconds"] == 1.0
+    assert wrong["avg_speed_mps"] == 100.0
+
+
+def test_effort_window_falls_back_to_dt_for_a_mismatched_axis():
+    cum = [float(i) for i in range(51)]
+    eff = compute_effort_for_window(
+        cum_dist=cum,
+        dt=1.0,
+        segment={"start_dist": 0.0, "end_dist": 50.0, "distance_m": 50.0},
+        elapsed_axis=[0.0],  # wrong length → ignored
+    )
+    assert eff is not None
+    assert eff["elapsed_seconds"] == 50.0

@@ -12,6 +12,7 @@ Pure geometry functions (:func:`detect_climb_segments`,
 
 from __future__ import annotations
 
+import itertools
 import math
 import uuid
 from datetime import datetime, timedelta
@@ -276,24 +277,169 @@ def _segment_name(
 # ── Effort windowing ──────────────────────────────────────────────────────
 
 
-def _activity_cumulative_distance(
-    velocity_data: list, resolution: int | None
-) -> list[float]:
-    """Integrate a velocity stream into cumulative meters per sample.
+def _time_axis(streams: dict[str, list]) -> list[float] | None:
+    """Elapsed seconds for each sample index, from the absolute ``time`` stream.
 
-    Missing/zero velocity samples keep distance flat; ``resolution`` is the
-    seconds-per-point timebase.
+    Strava reports a per-stream ``resolution`` as the *string* ``"high"`` or
+    ``"low"``, which the stream importer can't turn into a number — so
+    ``ActivityStream.resolution`` is ``NULL`` and every consumer falls back to
+    "1 second per sample". That's wrong for the low-resolution streams Strava
+    returns at the device's native rate (``velocity_smooth``, ``distance``),
+    where spacing varies with the GPS.
+
+    The ``time`` stream is always high-resolution, so indexing into it gives
+    the real per-sample spacing. Returns ``None`` if ``time`` is absent or not
+    a usable, strictly increasing series.
     """
-    dt = float(resolution or 1)
+    raw = streams.get("time")
+    if not raw or len(raw) < 2:
+        return None
+    out: list[float] = []
+    for t in raw:
+        if not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(float(t)):
+            return None
+        out.append(float(t))
+    if any(b <= a for a, b in itertools.pairwise(out)):
+        return None
+    # Normalise to elapsed seconds from the first sample.
+    base = out[0]
+    return [t - base for t in out]
+
+
+def _resample_onto_axis(
+    values: list, axis: list[float]
+) -> list[float]:
+    """Resample ``values`` (evenly indexed over their own span) onto ``axis``.
+
+    Strava's low-resolution streams are one sample per native GPS point, with
+    no timestamps attached, so the only defensible mapping onto the
+    high-resolution time axis is proportional across the recording span.
+    Linear interpolation between the two surrounding samples.
+    """
+    vals = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v))]
+    if len(vals) < 2 or len(axis) < 2:
+        return []
+    span = axis[-1] - axis[0]
+    if span <= 0:
+        return []
+    n = len(vals) - 1
+    out: list[float] = []
+    for t in axis:
+        f = (t - axis[0]) / span * n
+        i = min(int(f), n - 1)
+        frac = f - i
+        out.append(float(vals[i]) + (float(vals[i + 1]) - float(vals[i])) * frac)
+    return out
+
+
+def _clean_distance_stream(distance_data: list) -> list[float]:
+    """Sanitise a cumulative-metres stream into a usable series.
+
+    The stream should be monotonic non-decreasing, but it can carry
+    ``null``/non-numeric entries and GPS noise occasionally produces a small
+    backwards step. Either would break :func:`_window_indices`, which assumes
+    a non-decreasing series, so hold the previous value across gaps and clamp
+    to the running max.
+
+    Returns ``[]`` when fewer than two usable samples remain.
+    """
+    if not distance_data:
+        return []
+    out: list[float] = []
+    last = 0.0
+    for v in distance_data:
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(float(v)):
+            out.append(last)  # null / non-numeric: hold position
+            continue
+        last = max(last, float(v))  # never go backwards
+        out.append(last)
+    if len(out) < 2 or out[-1] <= 0:
+        return []
+    return out
+
+
+def _activity_cumulative_distance(
+    velocity_data: list,
+    resolution: int | None,
+    time_data: list | None = None,
+) -> list[float]:
+    """Cumulative metres per sample, integrated from velocity.
+
+    Fallback for activities with no usable ``distance`` stream. The
+    seconds-per-sample timebase comes from the ``time`` stream when available;
+    otherwise the recorded ``resolution``, defaulting to 1s.
+
+    Missing/zero velocity samples keep distance flat.
+    """
     if not velocity_data:
         return []
+    axis = _time_axis({"time": time_data}) if time_data else None
+    if axis and len(axis) == len(velocity_data):
+        dt_list = [0.0] + [b - a for a, b in itertools.pairwise(axis)]
+    else:
+        dt = float(resolution or 1)
+        dt_list = [dt] * len(velocity_data)
     cum = [0.0]
-    for v in velocity_data[1:]:
-        if isinstance(v, (int, float)) and math.isfinite(float(v)):
-            cum.append(cum[-1] + float(v) * dt)
+    for i, v in enumerate(velocity_data[1:], start=1):
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+            cum.append(cum[-1] + float(v) * dt_list[i])
         else:
             cum.append(cum[-1])
     return cum
+
+
+def _resolve_cumulative_distance(
+    streams: dict[str, list],
+) -> tuple[list[float], list[float]] | None:
+    """Cumulative metres and elapsed seconds, both indexed per sample.
+
+    Preference order:
+
+    1. The real ``distance`` stream, resampled onto the high-resolution
+       ``time`` axis. This is the same quantity the route polyline is measured
+       in, so segment windows land on the intended stretch of road.
+    2. Velocity integrated over the real timebase.
+
+    Both are returned on the *same* index axis, because
+    :func:`compute_effort_for_window` slices ``power``/``heartrate``/``altitude``
+    with the indices found here — a mismatched axis would silently report the
+    wrong average and the wrong ``started_at``.
+
+    Returns ``None`` when no usable series can be built.
+    """
+    velocity = (
+        streams.get("velocity_smooth")
+        or streams.get("velocity")
+        or streams.get("speed")
+    )
+    distance = streams.get("distance")
+    time_data = streams.get("time")
+    axis = _time_axis(streams)
+
+    # Everything sliced by index alongside the cumulative series.
+    indexed = [
+        s
+        for s in (velocity, streams.get("power"), streams.get("watts"),
+                  streams.get("heartrate"), streams.get("altitude"))
+        if s
+    ]
+
+    if distance:
+        if axis and len(distance) != len(axis):
+            distance = _resample_onto_axis(distance, axis)
+            cum = _clean_distance_stream(distance)
+        else:
+            cum = _clean_distance_stream(distance)
+        if cum and (not axis or len(cum) == len(axis)):
+            # No time stream: fall back to the recorded timebase.
+            res = streams.get("resolution") or 1
+            elapsed = axis or [float(res) * i for i in range(len(cum))]
+            return cum, elapsed
+
+    cum = _activity_cumulative_distance(velocity, streams.get("resolution"), time_data)
+    if not cum:
+        return None
+    return cum, axis if axis and len(axis) == len(cum) else [float(streams.get("resolution") or 1) * i for i in range(len(cum))]
 
 
 def _window_indices(
@@ -341,12 +487,19 @@ def compute_effort_for_window(
     power: list | None = None,
     hr: list | None = None,
     altitude: list | None = None,
+    elapsed_axis: list[float] | None = None,
 ) -> dict | None:
     """Time/power/HR/speed/VAM for one ride pass over a segment window.
 
     ``segment`` is a detection dict from :func:`detect_climb_segments`.
     Falls back to ``None`` when the ride doesn't cover the segment window
     (alignment tolerance or ≥90% coverage).
+
+    ``elapsed_axis`` is the per-sample elapsed-seconds series from
+    :func:`_time_axis`, indexed the same way as ``cum_dist``. When supplied,
+    the window duration is read from it instead of ``(end-start) * dt`` — low
+    resolution streams don't have a uniform 1s spacing, so assuming one
+    skews both the time and the derived speed/VAM.
     """
     tol = max(MAX_ALIGNMENT_TOL_M, ALIGNMENT_TOL_FRACTION * segment["distance_m"])
     start_idx, end_idx = _window_indices(
@@ -359,7 +512,10 @@ def compute_effort_for_window(
     if covered < MIN_COVERAGE_FRACTION * segment["distance_m"]:
         return None
 
-    elapsed = (end_idx - start_idx) * dt
+    if elapsed_axis and len(elapsed_axis) == len(cum_dist):
+        elapsed = float(elapsed_axis[end_idx]) - float(elapsed_axis[start_idx])
+    else:
+        elapsed = (end_idx - start_idx) * dt
     # Power bucket-per-second, mimicking the power-curve logic: average the
     # per-sample values (watts are 1s samples at high resolution).
     avg_power = _mean(power[start_idx : end_idx + 1]) if power else None
@@ -463,18 +619,12 @@ async def sync_route_segments(
     ridden_activities = 0
     for activity in await _linked_activities(db, route_id):
         streams = _stream_map(activity.streams)
-        velocity = (
-            streams.get("velocity_smooth")
-            or streams.get("velocity")
-            or streams.get("speed")
-        )
-        res = streams.get("resolution") or 1
-        if not velocity:
+        resolved = _resolve_cumulative_distance(streams)
+        if resolved is None:
             continue
-        dt = float(res or 1)
-        cum = _activity_cumulative_distance(velocity, res)
-        if not cum:
-            continue
+        cum, elapsed_axis = resolved
+        # Nominal seconds-per-sample, only used if the time stream is unusable.
+        dt = elapsed_axis[1] - elapsed_axis[0] if len(elapsed_axis) > 1 else 1.0
 
         power = streams.get("watts") or streams.get("power")
         hr = streams.get("heartrate")
@@ -493,15 +643,17 @@ async def sync_route_segments(
                 power=power,
                 hr=hr,
                 altitude=altitude,
+                elapsed_axis=elapsed_axis,
             )
             if effort is None:
                 continue
             base = activity.start_date
-            started_at = (
-                base + timedelta(seconds=int(effort["start_idx"] * dt))
-                if base
-                else None
+            offset = (
+                elapsed_axis[effort["start_idx"]]
+                if effort["start_idx"] < len(elapsed_axis)
+                else effort["start_idx"] * dt
             )
+            started_at = base + timedelta(seconds=int(offset)) if base else None
             db.add(
                 SegmentEffort(
                     segment_id=seg.id,
