@@ -567,6 +567,16 @@ export function Replay3D({
   const linkRef = useRef(link);
   // Smoothed look target for follow cams (prevents jitter on heading changes).
   const lookTargetRef = useRef<THREE.Vector3 | null>(null);
+  // Cinematic auto-orbit state: orbit angle, radius, user-interaction timer, and
+  // a smoothed "auto" camera pose that eases in/out so manual drag feels native.
+  const orbitAutoRef = useRef({
+    angle: Math.PI * 0.25, // current orbit angle (radians around rider)
+    lastInteract: 0, // performance.now() of last user drag
+    enabled: true, // auto-orbit active (paused briefly after manual override)
+    bankAngle: 0, // smoothed camera roll (radians) for banking into turns
+  });
+  // Previous-frame heading for camera banking (yaw rate → roll).
+  const prevHeadingRef = useRef<THREE.Vector3 | null>(null);
   // Ride-time weather, read per-frame (wet road sheen + wind HUD).
   const wetnessRef = useRef(0);
   const windSpeedRef = useRef(0);
@@ -662,10 +672,17 @@ export function Replay3D({
     followPosRef.current = null;
     lookTargetRef.current = null;
     // Entering orbit from a follow cam: revolve around the rider, not the stale
-    // scene-centre target (which aimed the camera at a distant point).
+    // scene-centre target (which aimed the camera at a distant point). Seed the
+    // auto-orbit angle from the current camera position so it eases in smoothly.
     if (camMode === 'orbit') {
       const s = sceneRef.current;
-      if (s) s.controls.target.copy(s.rider.position);
+      if (s) {
+        s.controls.target.copy(s.rider.position);
+        const dx = s.camera.position.x - s.rider.position.x;
+        const dy = s.camera.position.y - s.rider.position.y;
+        orbitAutoRef.current.angle = Math.atan2(dy, dx);
+        orbitAutoRef.current.lastInteract = performance.now();
+      }
     }
   }, [camMode]);
 
@@ -883,6 +900,10 @@ export function Replay3D({
       TWO: THREE.TOUCH.DOLLY_PAN,
     };
     renderer.domElement.style.touchAction = 'none';
+
+    // Pause auto-orbit while the user drags, resume after a short idle.
+    const markInteract = () => { orbitAutoRef.current.lastInteract = performance.now(); };
+    controls.addEventListener('start', markInteract);
 
     // Home pose for the Reset-view button.
     const homePos = camera.position.clone();
@@ -1290,6 +1311,7 @@ export function Replay3D({
     let prevElapsed = 0;
     const tmpDesired = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
+    const _tmpAxis = new THREE.Vector3();
     const poseAt = (pts: ReplayPoint[], time: number, pos: THREE.Vector3, dir: THREE.Vector3) => {
       const i = nearestIndex(pts, time);
       const p0 = pts[i];
@@ -1453,7 +1475,77 @@ export function Replay3D({
         camera.up.copy(UP_Y);
         controls.enabled = true;
         rider.visible = true;
-        controls.update();
+
+        // ── Cinematic auto-orbit: a virtual drone circles the rider ─────────
+        // Orbit angle + radius adapt to ride speed, the camera looks slightly
+        // ahead into the direction of travel, and it eases back in after the
+        // user manually drags OrbitControls.
+        const auto = orbitAutoRef.current;
+        const idleFor = now - auto.lastInteract;
+        const RESUME_DELAY = 2500; // ms of idle before auto-orbit resumes
+        const RESUME_BLEND = 1500; // ms to ease from manual pose to auto
+
+        if (idleFor < RESUME_DELAY) {
+          // User recently drove the camera — let OrbitControls own the pose.
+          controls.update();
+        } else {
+          // Radius widens with speed (intimate when slow, sweeping when fast).
+          const radius = 26 + Math.min(42, riderPose.speed * 1.3);
+          // Spin rate also scales with speed — the drone keeps pace.
+          const spin = 0.1 + Math.min(0.35, riderPose.speed * 0.02);
+          auto.angle += dt * spin;
+
+          // Height: 3/4 view that rises with speed, plus a gentle vertical bob.
+          const bob = Math.sin(t * 0.55) * 2.5;
+          const height = 12 + Math.min(18, riderPose.speed * 0.45) + bob;
+
+          const cosA = Math.cos(auto.angle);
+          const sinA = Math.sin(auto.angle);
+          const desired = tmpDesired.set(
+            rider.position.x + cosA * radius,
+            rider.position.y + sinA * radius,
+            rider.position.z + height,
+          );
+
+          // Look ahead of the rider into their direction of travel.
+          const lookAhead = 6 + riderPose.speed * 0.35;
+          const lx = rider.position.x + riderDir.x * lookAhead;
+          const ly = rider.position.y + riderDir.y * lookAhead;
+          const lz = rider.position.z + 1.2;
+
+          // Ease from the manual resume point to the auto pose (no snap).
+          const blend = Math.min(1, (idleFor - RESUME_DELAY) / RESUME_BLEND);
+          const k = 0.02 + blend * 0.1; // stronger pull once fully resumed
+          camera.position.lerp(desired, k);
+
+          // Subtle speed-adaptive FOV — widens slightly at speed for motion feel.
+          const targetFov = 46 + Math.min(16, riderPose.speed * 0.28);
+          camera.fov += (targetFov - camera.fov) * 0.04;
+          camera.updateProjectionMatrix();
+
+          controls.target.set(lx, ly, lz);
+          camera.lookAt(lx, ly, lz);
+
+          // ── Camera banking: roll into turns for a drone-like feel ────────
+          // Yaw rate from heading change → bank angle. Cross product sign gives
+          // the turn direction (left/right). Smoothed so it doesn't jitter.
+          if (prevHeadingRef.current && riderDir.lengthSq() > 1e-9) {
+            const prev = prevHeadingRef.current;
+            // Horizontal-plane cross product (z component) → turn direction.
+            const turn = prev.x * riderDir.y - prev.y * riderDir.x;
+            const targetBank = Math.max(-0.35, Math.min(0.35, -turn * 8));
+            auto.bankAngle += (targetBank - auto.bankAngle) * Math.min(1, dt * 4);
+            // Roll camera.up around the look axis by the bank angle.
+            _tmpAxis.set(lx - camera.position.x, ly - camera.position.y, lz - camera.position.z).normalize();
+            camera.up.copy(UP_Y);
+            camera.up.applyAxisAngle(_tmpAxis, auto.bankAngle);
+          }
+          prevHeadingRef.current = prevHeadingRef.current?.copy(riderDir) ?? riderDir.clone();
+
+          // No controls.update() — it recomputes camera position from its
+          // internal spherical state and would override our pose. OrbitControls
+          // picks up the live camera position on the next user 'start' event.
+        }
       } else if (mode === 'cinematic' && directorPath.duration > 0) {
         // Cinematic director: wait for the terrain bed + imagery to settle,
         // then play a scripted flyover and hand off to chase.
