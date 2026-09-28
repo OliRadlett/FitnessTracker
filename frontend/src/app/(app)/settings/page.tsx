@@ -402,6 +402,28 @@ export default function SettingsPage() {
             />
           </PreferenceRow>
 
+          <PreferenceRow label="Lifter height (video 3D)">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={50}
+                max={260}
+                step={0.5}
+                value={units.preferences?.height_cm ?? ''}
+                onChange={(e) => {
+                  if (e.target.value === '') return;
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v >= 50 && v <= 260) {
+                    units.setPreference({ height_cm: v });
+                  }
+                }}
+                placeholder="cm"
+                className="w-24 rounded-md border border-surface-light bg-surface px-3 py-2 text-sm text-foreground"
+              />
+              <span className="text-sm text-muted">cm</span>
+            </div>
+          </PreferenceRow>
+
           <PreferenceRow label="Appearance (beta)">
             <PreferencePills
               value={theme}

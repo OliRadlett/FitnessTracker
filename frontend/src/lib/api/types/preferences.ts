@@ -6,6 +6,8 @@ export interface UserPreferences {
   unit_system: UnitSystem;
   locale: DateLocale;
   time_format: TimeFormat;
+  /** Lifter height in cm — the metric anchor for 3D video analysis. */
+  height_cm?: number | null;
 }
 
 export interface UserPreferencesUpdate extends Partial<UserPreferences> {}
