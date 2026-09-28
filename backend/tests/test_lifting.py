@@ -6,10 +6,13 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.lifting import (
+    LIFT_TSS_PER_VOLUME_LOAD,
     MAX_PLAUSIBLE_SESSION_DURATION_SECONDS,
     apply_strava_duration_fallback,
     brzycki_1rm,
     calculate_session_volume,
+    estimate_lifting_tss,
+    refresh_session_tss,
     session_duration_implausible,
     session_span_implausible,
 )
@@ -268,3 +271,161 @@ class TestWeightConvention:
         # Guards.
         assert looks_like_combined_weight("Hammer Curl", 0, 15.0) is False
         assert looks_like_combined_weight("Hammer Curl", 30.0, 0) is False
+
+
+def _set(weight: float, reps: int, rpe: float | None = None, warmup: bool = False):
+    return SimpleNamespace(
+        weight_kg=weight, reps=reps, rpe=rpe, is_warmup=warmup
+    )
+
+
+def _session(sets, *, duration: int | None = 3600, rpe_session=None):
+    return SimpleNamespace(
+        sets=sets, duration_seconds=duration, rpe_session=rpe_session,
+        estimated_tss=None,
+    )
+
+
+class TestLiftingTSS:
+    """B2: load is bodyweight-normalised tonnage × session RPE (Foster).
+
+    The old formula was `duration_min × avg_RPE / 7`, which rated a 3×3 at 200 kg
+    and a 3×3 at 40 kg identically — it never looked at the work done.
+    """
+
+    def test_heavier_session_at_the_same_rpe_loads_more(self):
+        """The defect this fixes: identical duration and RPE, different work."""
+        heavy = estimate_lifting_tss(
+            3600, [8.0] * 3, volume_kg=6000.0, bodyweight_kg=80.0
+        )
+        light = estimate_lifting_tss(
+            3600, [8.0] * 3, volume_kg=1200.0, bodyweight_kg=80.0
+        )
+        assert heavy == pytest.approx(84.0)  # 75 × 0.8 × 1.4
+        assert light == pytest.approx(16.8)  # 15 × 0.8 × 1.4
+        assert heavy > light * 4
+
+    def test_more_reps_at_the_same_weight_load_more(self):
+        five = estimate_lifting_tss(
+            3600, [8.0] * 5, volume_kg=2500.0, bodyweight_kg=100.0
+        )
+        three = estimate_lifting_tss(
+            3600, [8.0] * 3, volume_kg=1500.0, bodyweight_kg=100.0
+        )
+        assert five > three
+
+    def test_bodyweight_normalisation_makes_lifters_comparable(self):
+        """Same absolute tonnage, different lifter: a 120 kg lifter's session is
+        lighter *work*, and the metric has to say so."""
+        light_lifter = estimate_lifting_tss(
+            3600, [8.0] * 3, volume_kg=5000.0, bodyweight_kg=60.0
+        )
+        heavy_lifter = estimate_lifting_tss(
+            3600, [8.0] * 3, volume_kg=5000.0, bodyweight_kg=120.0
+        )
+        assert light_lifter == pytest.approx(93.3, abs=0.05)
+        assert heavy_lifter == pytest.approx(46.7, abs=0.05)
+        # Halving the bodyweight doubles the load for identical tonnage.
+        assert light_lifter / heavy_lifter == pytest.approx(2.0, rel=0.01)
+
+    def test_rpe_scales_the_load_linearly(self):
+        easy = estimate_lifting_tss(3600, [6.0] * 3, volume_kg=4000.0, bodyweight_kg=80.0)
+        hard = estimate_lifting_tss(3600, [9.0] * 3, volume_kg=4000.0, bodyweight_kg=80.0)
+        assert hard == pytest.approx(1.5 * easy)
+
+    def test_a_normalised_hour_lands_near_the_old_anchor(self):
+        """~60 TSS for an hour at RPE 7 — the anchor the old formula used, kept
+        so the shared load chart stays readable next to cycling TSS."""
+        tss = estimate_lifting_tss(
+            3600, [7.0] * 5, volume_kg=60 * 80.0, bodyweight_kg=80.0
+        )
+        assert tss == pytest.approx(60.0, abs=1.5)
+
+    def test_scale_constant_is_applied(self):
+        tss = estimate_lifting_tss(
+            3600, [10.0] * 3, volume_kg=1000.0, bodyweight_kg=100.0
+        )
+        assert tss == pytest.approx(10 * 1.0 * LIFT_TSS_PER_VOLUME_LOAD, abs=0.05)
+
+    # ── Fallbacks ───────────────────────────────────────────────────────────
+
+    def test_falls_back_to_duration_without_a_bodyweight(self):
+        """A user who has never weighed in still gets a number."""
+        assert estimate_lifting_tss(3600, [7.0] * 3, volume_kg=5000.0) == pytest.approx(60.0)
+
+    def test_falls_back_to_duration_with_no_logged_weight_and_no_bodyweight(self):
+        assert estimate_lifting_tss(3600, [7.0] * 3) == pytest.approx(60.0)
+
+    def test_falls_back_when_the_bodyweight_is_nonsense(self):
+        assert estimate_lifting_tss(
+            3600, [7.0] * 3, volume_kg=5000.0, bodyweight_kg=0.0
+        ) == pytest.approx(60.0)
+
+    def test_none_without_volume_or_a_duration(self):
+        # Volume present but no duration: volume alone is enough.
+        assert estimate_lifting_tss(
+            None, [7.0] * 3, volume_kg=5000.0, bodyweight_kg=80.0
+        ) == pytest.approx(61.2, abs=0.05)  # 62.5 × 0.7 × 1.4
+        # Neither: nothing to compute from.
+        assert estimate_lifting_tss(0, [7.0] * 3) is None
+        assert estimate_lifting_tss(None, [7.0] * 3) is None
+
+    def test_falls_back_when_there_are_no_working_sets(self):
+        """A session with a duration but no sets has no volume, so the old
+        estimate is the only signal available."""
+        assert estimate_lifting_tss(3600, [], volume_kg=0.0, bodyweight_kg=80.0) == pytest.approx(51.4, abs=0.1)
+
+    def test_rpe_falls_back_to_session_rpe_then_six(self):
+        without_set_rpes = estimate_lifting_tss(
+            3600, [None, None], 8.0, volume_kg=4000.0, bodyweight_kg=80.0
+        )
+        with_nothing = estimate_lifting_tss(
+            3600, [], None, volume_kg=4000.0, bodyweight_kg=80.0
+        )
+        assert without_set_rpes == pytest.approx(56.0)  # 50 × 0.8 × 1.4
+        assert with_nothing == pytest.approx(42.0)       # 50 × 0.6 × 1.4
+
+    # ── refresh_session_tss wiring ──────────────────────────────────────────
+
+    def test_refresh_uses_the_sets_volume(self):
+        session = _session([_set(100.0, 5, 8.0), _set(100.0, 5, 8.0)])
+        refresh_session_tss(session, bodyweight_kg=100.0)
+        assert session.estimated_tss == pytest.approx(1000 / 100 * 0.8 * 1.4)
+
+    def test_refresh_excludes_warmup_sets_from_volume(self):
+        """A warmup set is not work; including it inflated the old numbers."""
+        session = _session(
+            [_set(20.0, 10, 3.0, warmup=True), _set(100.0, 5, 8.0)]
+        )
+        refresh_session_tss(session, bodyweight_kg=100.0)
+        assert session.estimated_tss == pytest.approx(500 / 100 * 0.8 * 1.4)
+
+    def test_refresh_ignores_warmup_set_rpes(self):
+        session = _session(
+            [_set(20.0, 10, 3.0, warmup=True), _set(100.0, 5, 8.0)]
+        )
+        refresh_session_tss(session, bodyweight_kg=100.0)
+        with_warmup_rpe = session.estimated_tss
+        session.rpe_session = None
+        assert with_warmup_rpe == pytest.approx(5.6)
+
+    def test_refresh_with_no_bodyweight_uses_the_duration_fallback(self):
+        session = _session([_set(100.0, 5, 8.0)])
+        refresh_session_tss(session, bodyweight_kg=None)
+        assert session.estimated_tss == pytest.approx(3600 / 60 * 8 / 7, abs=0.05)
+
+    def test_refresh_agrees_with_the_canonical_volume_helper(self):
+        """The dict projection must not drift from `calculate_session_volume`."""
+        sets = [_set(60.0, 8, 7.0), _set(140.0, 3, 8.5), _set(10.0, 20, 2.0, warmup=True)]
+        session = _session(sets)
+        refresh_session_tss(session, bodyweight_kg=90.0)
+        volume = calculate_session_volume(
+            [
+                {"weight_kg": s.weight_kg, "reps": s.reps, "is_warmup": s.is_warmup}
+                for s in sets
+            ]
+        )
+        assert volume == pytest.approx(60 * 8 + 140 * 3)
+        assert session.estimated_tss == pytest.approx(
+            volume / 90.0 * (7.75 / 10) * LIFT_TSS_PER_VOLUME_LOAD, abs=0.05
+        )
