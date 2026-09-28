@@ -83,7 +83,7 @@
 | `DeficiencyCard` | Weakness/deficiency analysis card (`['deficiency']` query) — severity-grouped lifting/cycling weaknesses; rendered on dashboard WeeklyTab + lifting page. Moved from `dashboard/` |
 | `Button` / `IconButton` | Single button primitive — variants primary/secondary/tinted/ghost/danger/success, sizes sm/md/lg with 44px default, `loading` spinner slot. `IconButton` is 44×44 with required `aria-label` |
 | `Spinner` | Single loading spinner (`role="status"` + sr-only label). Prefer shape-matched `Skeleton*` for content areas |
-| `PageHeader` | Single page-header pattern (title + subtitle + actions + status). Replaces ad-hoc `<h1>` strings |
+| `PageHeader` | Single page-header pattern (title + subtitle + actions + status). Replaces ad-hoc `<h1>` strings. Note the scale: the `<h1>` is `text-2xl sm:text-3xl`, so adopting it on a `text-xl` page makes the title larger and on a `text-3xl` page slightly smaller on mobile. Adopted on: analytics, goals, segments, today. Still bespoke `<h1>`: activities, dashboard, lifting, lifting/live, lifting/videos, routes, routes/duplicates |
 | `SectionLabel` | Small-caps section label — the one allowed `uppercase` pattern |
 | `Stat` | Metric-stat pattern (label + tabular value + unit + delta). Content-only — wrap in `Card`/grid at the call site |
 | `Field` | Labelled form field — assigns `id`, wires `aria-describedby`/`aria-invalid`, renders hint/error |
