@@ -1038,7 +1038,7 @@ async def find_potential_duplicates(
     """
     result = await db.execute(
         select(Route)
-        .options(selectinload(Route.sources))
+        .options(selectinload(Route.sources), selectinload(Route.tags))
         .where(Route.user_id == user_id)
     )
     routes = list(result.scalars().all())
@@ -1107,7 +1107,7 @@ async def find_cached_duplicates(
     routes = (
         await db.execute(
             select(Route)
-            .options(selectinload(Route.sources))
+            .options(selectinload(Route.sources), selectinload(Route.tags))
             .where(Route.id.in_(route_ids))
         )
     ).scalars().all()
