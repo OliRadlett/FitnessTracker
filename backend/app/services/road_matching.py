@@ -102,15 +102,21 @@ async def train_metric_from_history(
 ) -> Metric:
     """Train and persist the diagonal metric from accumulated merge decisions.
 
-    Positives are the route **pairs the system actually merged** — both auto
-    (weekly task) and manual (review UI) — read from ``route_merge_log``. The
-    log stores both embeddings (the duplicate's in ``snapshot``, the primary's
-    in ``breakdown``) because the duplicate's Route row is deleted on merge, so
-    its embedding would otherwise be unrecoverable.
+    Positives are only the **``identical``** merges — route pairs the user
+    confirmed are the same route recorded twice. The log stores both embeddings
+    (the duplicate's in ``snapshot``, the primary's in ``breakdown``) because the
+    duplicate's Route row is deleted on merge, so its embedding would otherwise
+    be unrecoverable.
 
-    Earlier this sourced positives from ``route_similarity.tier == "auto"``,
-    which is always empty: auto-merged pairs are removed from that table when
-    the duplicate is deleted, so the metric could never train.
+    **``variant`` merges are deliberately excluded.** A variant merge ("same kind
+    of ride", e.g. 3 laps vs 5 laps of one circuit) is not evidence that two
+    routes are the same; training on it would widen matching and cause
+    over-merging. Unclassified (``merge_kind`` NULL) rows are skipped rather than
+    assumed identical, but still exclude their routes from the negative pool.
+
+    This supersedes the earlier ``route_similarity.tier == "auto"`` source, which
+    was always empty: auto-merged pairs are removed from that table when the
+    duplicate is deleted.
 
     Negatives are sampled from live route pairs that were **not** merged.
     Merge-mates (a primary and anything it absorbed) are excluded so the same
@@ -126,6 +132,13 @@ async def train_metric_from_history(
     positives: list[tuple[list[float], list[float]]] = []
     merged_ids: set[uuid.UUID] = set()
     for row in merge_rows:
+        # Only *identical* merges are duplicates worth learning from. A
+        # "variant" merge (same kind of ride, e.g. different lap counts of a
+        # circuit) must never teach the matcher that distinct routes match.
+        # Unclassified rows are skipped too — we do not assume identity.
+        if row.merge_kind != "identical":
+            merged_ids.add(row.merged_route_id)
+            continue
         dup_features = (row.snapshot or {}).get("road_embedding", {}) or {}
         prim_features = (row.breakdown or {}).get("primary_embedding", {}) or {}
         fa = dup_features.get("features")

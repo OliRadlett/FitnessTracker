@@ -18,7 +18,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -898,6 +898,7 @@ async def merge_routes(
         body.primary_route_id,
         body.duplicate_route_id,
         current_user.id,
+        merge_kind=body.merge_kind,
     )
     if not merged:
         raise HTTPException(status_code=404, detail="One or both routes not found")
@@ -969,11 +970,60 @@ async def list_route_merges(
                 "merged_name": snapshot.get("name") or "Removed route",
                 "primary_exists": log.primary_route_id in names,
                 "score": log.score,
+                "merge_kind": log.merge_kind,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
                 "undone_at": log.undone_at.isoformat() if log.undone_at else None,
             }
         )
     return out
+
+
+@router.patch("/merges/{log_id}", response_model=dict)
+async def classify_route_merge(
+    log_id: uuid.UUID,
+    merge_kind: str = Query(..., pattern="^(identical|variant|unclassified)$"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reclassify a merge as ``identical`` or ``variant`` (or ``unclassified``).
+
+    Only ``identical`` merges train the embedding metric; ``variant`` merges
+    (same kind of ride, e.g. different lap counts) are excluded so they never
+    teach the matcher that distinct routes are duplicates.
+    """
+    log = (
+        await db.execute(
+            select(RouteMergeLog).where(
+                RouteMergeLog.id == log_id, RouteMergeLog.user_id == current_user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if log is None:
+        raise HTTPException(status_code=404, detail="Merge not found")
+
+    log.merge_kind = None if merge_kind == "unclassified" else merge_kind
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return {"id": str(log.id), "merge_kind": log.merge_kind}
+
+
+@router.post("/merges/reset-classification", response_model=dict)
+async def reset_route_merge_classification(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear ``merge_kind`` on all of the user's merges so they can be re-judged.
+
+    Unclassified merges are excluded from metric training (never assumed
+    identical), so this safely stops existing merges influencing the model until
+    the user reclassifies them.
+    """
+    result = await db.execute(
+        update(RouteMergeLog)
+        .where(RouteMergeLog.user_id == current_user.id)
+        .values(merge_kind=None)
+    )
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return {"reset": result.rowcount or 0}
 
 
 @router.post("/merges/{log_id}/undo", response_model=RouteRead)

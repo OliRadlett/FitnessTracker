@@ -119,6 +119,11 @@ class RouteMergeLog(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Why the merge was made: "identical" (the same route recorded twice) or
+    # "variant" (same kind of ride — e.g. different lap counts of one circuit).
+    # Only `identical` merges train the embedding metric; variants must never
+    # teach the matcher that distinct routes are duplicates.
+    merge_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     moved: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
