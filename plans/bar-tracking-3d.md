@@ -157,7 +157,7 @@ first (or being rebased the other way round if this lands first).
 | **height** | `User.preferences.height_cm` (`services/preferences.py`) | ✅ added (Settings → "Lifter height") |
 | **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ wired end-to-end 2026-09-28 (probe → `camera_json`, migration `083`) — but **0/33 fixture clips carry focal tags**, so a focal source (device default / calibration / barbell-length) is still needed before real-clip numbers exist |
 | plate diameter | — | ❌ the detected "plate" is a stack; would need the load (`load_kg`) |
-| bar length | — | ❌ plate spacing depends on the load |
+| bar length | 2.2 m men's Olympic bar, via the barbell box's long axis | ✅ fallback built 2026-09-29 (`estimate_focal_from_bar`): per-frame closed-form `f = p·Δ/(L−p/s)` over barbell-box spans, clip median + MAD gate, frontal-gated, provenance in `calibration.focal_source`. Per-frame leverage is weak by construction (bar near the body plane, ~10-30x noise gain) — the median + spread gate is the estimate. Plate pairs can't calibrate (spacing is load-dependent) |
 
 **Why the focal is per clip, not a setting:** videos come from **different
 lenses** (main / ultra-wide / tele), so one number per user is wrong. Phone
