@@ -574,6 +574,7 @@ export function Replay3D({
     lastInteract: 0, // performance.now() of last user drag
     enabled: true, // auto-orbit active (paused briefly after manual override)
     bankAngle: 0, // smoothed camera roll (radians) for banking into turns
+    seeded: false, // true once the angle is set from a valid rider position
   });
   // Previous-frame heading for camera banking (yaw rate → roll).
   const prevHeadingRef = useRef<THREE.Vector3 | null>(null);
@@ -671,18 +672,13 @@ export function Replay3D({
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
     lookTargetRef.current = null;
-    // Entering orbit from a follow cam: revolve around the rider, not the stale
-    // scene-centre target (which aimed the camera at a distant point). Seed the
-    // auto-orbit angle from the current camera position so it eases in smoothly.
+    // Entering orbit: reset per-orbit state. The auto-orbit angle is seeded
+    // lazily on the first ready tick (rider position is only valid after poseAt
+    // runs in the RAF loop — reading it here would seed a bogus angle).
     if (camMode === 'orbit') {
-      const s = sceneRef.current;
-      if (s) {
-        s.controls.target.copy(s.rider.position);
-        const dx = s.camera.position.x - s.rider.position.x;
-        const dy = s.camera.position.y - s.rider.position.y;
-        orbitAutoRef.current.angle = Math.atan2(dy, dx);
-        orbitAutoRef.current.lastInteract = performance.now();
-      }
+      prevHeadingRef.current = null; // avoid bank spike from stale heading
+      orbitAutoRef.current.seeded = false;
+      orbitAutoRef.current.bankAngle = 0;
     }
   }, [camMode]);
 
@@ -1476,11 +1472,39 @@ export function Replay3D({
         controls.enabled = true;
         rider.visible = true;
 
-        // ── Cinematic auto-orbit: a virtual drone circles the rider ─────────
-        // Orbit angle + radius adapt to ride speed, the camera looks slightly
-        // ahead into the direction of travel, and it eases back in after the
-        // user manually drags OrbitControls.
-        const auto = orbitAutoRef.current;
+        // The scene is "camera-ready" once terrain has loaded (or is off/failed).
+        // Before that, hold the home pose — moving the camera over an empty or
+        // half-built scene looks broken and seeds a bogus orbit angle.
+        const terrainMesh = sceneRef.current?.terrain;
+        const terrainState = terrainStateRef.current;
+        const ready = terrainMesh || terrainState === 'off' || terrainState === 'failed';
+
+        if (!ready) {
+          // Terrain still loading — hold a static overview. Let the user manually
+          // orbit the empty scene; auto-orbit kicks in once terrain arrives.
+          // (No early return — the render + rAF scheduling below must still run.)
+          camera.position.copy(homePos);
+          camera.up.copy(UP_Y);
+          controls.target.copy(homeTarget);
+          controls.update();
+        } else {
+          // ── Cinematic auto-orbit: a virtual drone circles the rider ─────────
+          // Orbit angle + radius adapt to ride speed, the camera looks slightly
+          // ahead into the direction of travel, and it eases back in after the
+          // user manually drags OrbitControls.
+          const auto = orbitAutoRef.current;
+
+        // Lazy-seed the orbit angle from the current camera direction on the
+        // first ready tick (rider.position is only valid after poseAt ran).
+        if (!auto.seeded && riderPose.index >= 0) {
+          const dx = camera.position.x - rider.position.x;
+          const dy = camera.position.y - rider.position.y;
+          if (dx * dx + dy * dy > 1) {
+            auto.angle = Math.atan2(dy, dx);
+            auto.seeded = true;
+          }
+        }
+
         const idleFor = now - auto.lastInteract;
         const RESUME_DELAY = 2500; // ms of idle before auto-orbit resumes
         const RESUME_BLEND = 1500; // ms to ease from manual pose to auto
@@ -1488,7 +1512,7 @@ export function Replay3D({
         if (idleFor < RESUME_DELAY) {
           // User recently drove the camera — let OrbitControls own the pose.
           controls.update();
-        } else {
+        } else if (auto.seeded) {
           // Radius widens with speed (intimate when slow, sweeping when fast).
           const radius = 26 + Math.min(42, riderPose.speed * 1.3);
           // Spin rate also scales with speed — the drone keeps pace.
@@ -1546,6 +1570,7 @@ export function Replay3D({
           // internal spherical state and would override our pose. OrbitControls
           // picks up the live camera position on the next user 'start' event.
         }
+        } // end if (!ready) else
       } else if (mode === 'cinematic' && directorPath.duration > 0) {
         // Cinematic director: wait for the terrain bed + imagery to settle,
         // then play a scripted flyover and hand off to chase.
@@ -1686,12 +1711,14 @@ export function Replay3D({
         }
       }
       // Speed feel: widen the FOV slightly with speed (follow cams only —
-      // the cinematic director owns its own FOV).
-      const followMode = camModeRef.current !== 'orbit' && camModeRef.current !== 'cinematic';
-      const targetFov = followMode ? 55 + Math.min(1, riderPose.speed / 12) * 9 : 55;
-      if (Math.abs(camera.fov - targetFov) > 0.05) {
-        camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
-        camera.updateProjectionMatrix();
+      // the cinematic director and auto-orbit own their own FOV).
+      const fovOwnedByCam = camModeRef.current === 'cinematic' || camModeRef.current === 'orbit';
+      if (!fovOwnedByCam) {
+        const targetFov = 55 + Math.min(1, riderPose.speed / 12) * 9;
+        if (Math.abs(camera.fov - targetFov) > 0.05) {
+          camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
+          camera.updateProjectionMatrix();
+        }
       }
       sky.position.copy(camera.position);
       if (composer) composer.render();
