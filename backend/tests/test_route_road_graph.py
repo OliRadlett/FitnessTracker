@@ -88,3 +88,70 @@ def test_bbox_arg_parsing_rejects_malformed():
 
     assert _bbox_from_arg("1,2,3,4") == (1.0, 2.0, 3.0, 4.0)
 
+
+def test_two_pass_pbf_parse_only_resolves_wanted_nodes(monkeypatch):
+    """The two-pass parse must not build a global location index.
+
+    Pass 1 collects highway-way node refs; pass 2 resolves coordinates for those
+    ids only. Out-of-bbox coordinates are dropped when assembling edges.
+    """
+    import sys
+    import types
+
+    # Fake osmium: a SimpleHandler whose apply_file dispatches by handler type.
+    way_calls = {"n": 0}
+    node_calls = {"n": 0}
+
+    class _FakeSimpleHandler:
+        def apply_file(self, _path, locations=False, idx=None):
+            # A subclass defines either `way` or `node`.
+            if type(self).__name__ == "_WayCollector":
+                way_calls["n"] += 1
+                # Two highways: one in-bbox, one far away; plus a non-highway.
+                w = types.SimpleNamespace(
+                    id=10, tags={"highway": "residential", "name": "In Box"}
+                )
+                w.nodes = [
+                    types.SimpleNamespace(ref=1),
+                    types.SimpleNamespace(ref=2),
+                ]
+                self.way(w)
+                far = types.SimpleNamespace(
+                    id=11, tags={"highway": "residential", "name": "Far"}
+                )
+                far.nodes = [
+                    types.SimpleNamespace(ref=3),
+                    types.SimpleNamespace(ref=4),
+                ]
+                self.way(far)
+                skip = types.SimpleNamespace(id=12, tags={"building": "yes"})
+                skip.nodes = [types.SimpleNamespace(ref=5)]
+                self.way(skip)
+            elif type(self).__name__ == "_NodeCollector":
+                node_calls["n"] += 1
+                coords = {
+                    1: (55.0, -1.0),
+                    2: (55.0, -0.99),
+                    3: (80.0, 10.0),  # far outside any bbox
+                    4: (80.0, 10.01),
+                    5: (55.0, -1.0),  # referenced only by the non-highway way
+                }
+                for nid, (lat, lng) in coords.items():
+                    loc = types.SimpleNamespace(lat=lat, lon=lng)
+                    self.node(types.SimpleNamespace(id=nid, location=loc))
+
+    fake_osmium = types.ModuleType("osmium")
+    fake_osmium.SimpleHandler = _FakeSimpleHandler
+    monkeypatch.setitem(sys.modules, "osmium", fake_osmium)
+
+    from app.integrations.route_road_graph import _build_edges_from_pbf
+
+    # bbox around the in-box way only.
+    edges = _build_edges_from_pbf("ignored.pbf", (54.0, -2.0, 56.0, 0.0))
+
+    assert way_calls["n"] == 1 and node_calls["n"] == 1
+    # Only way 10 produced an edge (way 11 is out of bbox, way 12 not a highway).
+    assert [e[0] for e in edges] == ["10:1"]
+    assert edges[0][4] == "In Box"
+
+
