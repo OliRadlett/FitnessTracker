@@ -5976,6 +5976,8 @@ export interface components {
             analysis_text?: string | null;
             /** Exercise Auto */
             exercise_auto?: string | null;
+            /** Exercise Variation */
+            exercise_variation?: string | null;
             /** Reps Count */
             reps_count?: number | null;
             /** Weight Kg */
@@ -8886,6 +8888,8 @@ export interface components {
             analysis_status?: string | null;
             /** Exercise Auto */
             exercise_auto?: string | null;
+            /** Exercise Variation */
+            exercise_variation?: string | null;
             /** Reps Count */
             reps_count?: number | null;
             /** Weight Kg */

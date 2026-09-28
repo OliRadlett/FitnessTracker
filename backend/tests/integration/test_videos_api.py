@@ -72,3 +72,59 @@ class TestCreateVideoOwnership:
         payload = _payload(test_user.id, size_bytes=0)
         resp = await client.post(f"{BASE}/", json=payload)
         assert resp.status_code == 400
+
+
+class TestExerciseVariationSurfacing:
+    """The pose classifier's sub-style label must survive the round trip.
+
+    ``classify_exercise`` labels low/high bar, sumo/conventional and
+    push/strict press; the value used to be computed in ``pose_analysis`` and
+    dropped on the floor. It is now persisted by the processing task and
+    returned by the process-status endpoint.
+    """
+
+    async def _video(self, db_session, test_user, **overrides):
+        from app.models.lifting import LiftVideo
+
+        video = LiftVideo(
+            user_id=test_user.id,
+            r2_key=f"lift_videos/{test_user.id}/var-clip.mp4",
+            file_name="var-clip.mp4",
+            analysis_status="completed",
+            **overrides,
+        )
+        db_session.add(video)
+        await db_session.commit()
+        await db_session.refresh(video)
+        return video
+
+    async def test_process_status_returns_variation(
+        self, client, db_session, test_user
+    ):
+        video = await self._video(
+            db_session,
+            test_user,
+            exercise_auto="Squat",
+            exercise_variation="Low Bar Squat",
+        )
+        resp = await client.get(f"{BASE}/{video.id}/process-status")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["exercise_variation"] == "Low Bar Squat"
+        assert body["exercise_auto"] == "Squat"
+
+    async def test_variation_is_null_when_not_detected(
+        self, client, db_session, test_user
+    ):
+        video = await self._video(db_session, test_user, exercise_auto="Squat")
+        resp = await client.get(f"{BASE}/{video.id}/process-status")
+        assert resp.status_code == 200
+        assert resp.json()["exercise_variation"] is None
+
+    async def test_video_read_includes_variation(self, client, db_session, test_user):
+        video = await self._video(
+            db_session, test_user, exercise_variation="Sumo Deadlift"
+        )
+        resp = await client.get(f"{BASE}/{video.id}")
+        assert resp.status_code == 200
+        assert resp.json()["exercise_variation"] == "Sumo Deadlift"

@@ -29,7 +29,7 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 |---|------|----------|--------|
 | A1 | **`StatsView` is dead code** — monthly distance bars, sport pie, weekly TSS; never imported (activities page uses List/Week/Timeline/Patterns) | `frontend/src/components/activities/StatsView.tsx:18`; flagged in `frontend/src/CODEMAP.md:190` | Wire as an Activities "Stats" tab **or delete** |
 | A2 | **5 unused UI primitives** (0 imports each): `Field`, `PageHeader`, `SectionLabel`, `Stat`, `ErrorState`; `OnboardingWizard` duplicates `Field` locally | `frontend/src/components/ui/{Field,PageHeader,SectionLabel,Stat,ErrorState}.tsx` | Adopt or delete |
-| A3 | **Exercise variation computed then discarded** — `exercise_variation` (high/low-bar squat, sumo/conventional deadlift, push/strict press) set on the result, never persisted/returned/rendered | `backend/app/integrations/pose_analysis.py:1873` (only reference) | Add a column + expose in `process-status`/UI |
+| A3 | ~~**Exercise variation computed then discarded**~~ — **DONE** (migration `082`): `LiftVideo.exercise_variation` persisted, returned by `process-status` + `LiftVideoRead`, shown as a chip on the videos list | `backend/app/integrations/pose_analysis.py:1873` | ✅ Closed |
 | A4 | **Notification API is thin** — only `limit` + `unread_only`; no `type` filter, no general read filter, no pagination offset | `backend/app/api/notifications.py` (`list_notifications`) | Extend the contract (page is already rich) |
 | A5 | **JSON export drops newer tables** — omits `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `Segment`/`SegmentEffort`, `CrossDomainInsight`, `AthleteInsight`, `WarmupTemplate` | `backend/app/services/data_export.py` (import list) | Add them to the export model set |
 
@@ -58,6 +58,14 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 - **`prod` compose GHCR names** hardcoded + case-sensitive (`docker-compose.prod.yml`) — parameterise/source from env.
 - **`/health` + `/metrics` intentionally unauthenticated** — document as design.
 - **E2E depth**: specs are render-heavy; add mutation flows (live-lift create/log/finish, goal check-in, route tag + collection, GPX round-trip, deep links, notifications).
+
+---
+
+## F. Found while remediating (not in the original audit)
+
+| # | Item | Evidence | Action |
+|---|------|----------|--------|
+| F1 | **Migration 076 could not run on a migration-built database.** It dropped `uq_route_source_provider`, but `005` created that constraint unnamed, so Postgres named it `route_sources_provider_provider_route_id_key` — a name only `create_all()` databases ever had. `alembic upgrade head` failed with `UndefinedObjectError` on a **fresh** DB, so any new environment / DR restore / CI migrate-from-base was broken. (Production was unaffected only because its schema came from `create_all()`.) | `alembic/versions/005_add_routes.py:56`, `076_scope_route_sources_to_user.py:51` | ✅ **Fixed** — 076 now reads the real `pg_constraint` rows and drops whichever global unique constraint exists, under whatever name. Verified `upgrade head` → `downgrade 075` → `upgrade head` on a scratch DB. |
 
 ---
 

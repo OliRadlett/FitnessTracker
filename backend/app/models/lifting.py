@@ -288,6 +288,9 @@ class LiftVideo(Base):
     )
     analysis_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     exercise_auto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Auto-classifier's sub-style label ("Low Bar Squat", "Sumo Deadlift",
+    # "Push Press"). Computed by ``classify_exercise`` and previously discarded.
+    exercise_variation: Mapped[str | None] = mapped_column(String(50), nullable=True)
     reps_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
