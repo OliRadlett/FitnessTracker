@@ -319,6 +319,12 @@ def _build_road_graph_modal(
     with open(dest, "w") as fh:
         _json.dump({"type": "FeatureCollection", "features": features}, fh, separators=(",", ":"))
 
+    # Reclaim space: drop a bare ``{region}-latest.osm.pbf`` (a bad-slug HTML
+    # stub is < 1 MB; the matcher only trusts ``-roads.osm.pbf``).
+    stale = os.path.join(osm_dir, f"{region}-latest.osm.pbf")
+    if os.path.exists(stale) and os.path.getsize(stale) < 1_000_000:
+        os.remove(stale)
+
     import modal
 
     modal.Volume.from_name(vol_name).commit()
