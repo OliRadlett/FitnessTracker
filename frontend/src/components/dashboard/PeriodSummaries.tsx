@@ -8,6 +8,7 @@ import React from 'react';
 import type { MonthlySummaryItem, YearlySummary } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SectionLabel } from '@/components/ui/SectionLabel';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { MetricCard } from '@/components/ui/MetricCard';
@@ -116,7 +117,7 @@ export function MonthlySummarySection({
   }
   return (
     <div>
-      <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Monthly Summary</h2>
+      <SectionLabel>Monthly Summary</SectionLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {monthlySummary.map((month, i) => (
           <MonthCard
@@ -136,35 +137,36 @@ export function YearHeader({
   currentYear,
 }: Pick<PeriodSummaryProps, 'selectedYear' | 'setSelectedYear' | 'currentYear'>) {
   return (
-    <div className="flex items-center justify-between mb-3">
-      <h2 className="text-sm font-medium text-muted uppercase tracking-wider">
-        {selectedYear} Year in Review
-      </h2>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setSelectedYear((y) => y - 1)}
-          className="px-2 py-1 text-xs bg-surface-light hover:bg-surface text-muted rounded-lg transition-colors"
-        >
-          ← {selectedYear - 1}
-        </button>
-        {selectedYear < currentYear && (
+    <SectionLabel
+      action={
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setSelectedYear((y) => Math.min(y + 1, currentYear))}
+            onClick={() => setSelectedYear((y) => y - 1)}
             className="px-2 py-1 text-xs bg-surface-light hover:bg-surface text-muted rounded-lg transition-colors"
           >
-            {selectedYear + 1} →
+            ← {selectedYear - 1}
           </button>
-        )}
-        {selectedYear !== currentYear && (
-          <button
-            onClick={() => setSelectedYear(currentYear)}
-            className="px-2 py-1 text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors"
-          >
-            Current Year
-          </button>
-        )}
-      </div>
-    </div>
+          {selectedYear < currentYear && (
+            <button
+              onClick={() => setSelectedYear((y) => Math.min(y + 1, currentYear))}
+              className="px-2 py-1 text-xs bg-surface-light hover:bg-surface text-muted rounded-lg transition-colors"
+            >
+              {selectedYear + 1} →
+            </button>
+          )}
+          {selectedYear !== currentYear && (
+            <button
+              onClick={() => setSelectedYear(currentYear)}
+              className="px-2 py-1 text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors"
+            >
+              Current Year
+            </button>
+          )}
+        </div>
+      }
+    >
+      {selectedYear} Year in Review
+    </SectionLabel>
   );
 }
 
