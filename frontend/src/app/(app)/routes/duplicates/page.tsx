@@ -11,7 +11,7 @@ import {
   undoRouteMerge,
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
@@ -165,7 +165,7 @@ export default function DuplicatesPage() {
           </div>
         </div>
 
-        <QueryErrorBanner show={hasQueryError} message="Duplicate routes failed to load." />
+        <ErrorState variant="inline" show={hasQueryError} message="Duplicate routes failed to load." />
 
         {autoMergeMutation.isSuccess && autoMergeMutation.data && (
           <Card className="mb-4">

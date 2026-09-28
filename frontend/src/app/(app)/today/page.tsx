@@ -22,7 +22,7 @@ import { DomainIcon } from '@/components/ui/DomainIcon';
 import { RestDayBanner } from '@/components/dashboard/RestDayBanner';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
 import { Badge } from '@/components/ui/Badge';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -136,7 +136,7 @@ export default function TodayBriefPage() {
         </p>
       </div>
 
-      <QueryErrorBanner
+      <ErrorState variant="inline"
         show={hasQueryError}
         message="Some of today's data failed to load."
       />

@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { useAuthFetch, Connection } from '@/lib/api';
@@ -332,12 +333,9 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted mt-1">Manage your account and integrations</p>
-      </div>
+      <PageHeader title="Settings" subtitle="Manage your account and integrations" />
 
-      <QueryErrorBanner show={hasQueryError} message="Some settings failed to load." />
+      <ErrorState variant="inline" show={hasQueryError} message="Some settings failed to load." />
 
       {/* Profile */}
       <Card>
@@ -402,6 +400,28 @@ export default function SettingsPage() {
               ]}
               onChange={(v) => units.setPreference({ time_format: v as '24h' | '12h' })}
             />
+          </PreferenceRow>
+
+          <PreferenceRow label="Lifter height (video 3D)">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={50}
+                max={260}
+                step={0.5}
+                value={units.preferences?.height_cm ?? ''}
+                onChange={(e) => {
+                  if (e.target.value === '') return;
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v >= 50 && v <= 260) {
+                    units.setPreference({ height_cm: v });
+                  }
+                }}
+                placeholder="cm"
+                className="w-24 rounded-md border border-surface-light bg-surface px-3 py-2 text-sm text-foreground"
+              />
+              <span className="text-sm text-muted">cm</span>
+            </div>
           </PreferenceRow>
 
           <PreferenceRow label="Appearance (beta)">

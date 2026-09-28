@@ -7,15 +7,17 @@ Same pattern as `services/notifications.py` for notification toggles.
 from app.models.user import User
 from app.schemas.preferences import (
     LOCALES,
+    NUMERIC_PREFERENCES,
     TIME_FORMATS,
     UNIT_SYSTEMS,
     UserPreferences,
 )
 
-DEFAULT_PREFERENCES: dict[str, str] = {
+DEFAULT_PREFERENCES: dict[str, object] = {
     "unit_system": "metric",
     "locale": "en-GB",
     "time_format": "24h",
+    "height_cm": None,
 }
 
 _VALID: dict[str, tuple[str, ...]] = {
@@ -36,17 +38,34 @@ def get_preferences(user: User) -> UserPreferences:
 
 
 async def set_preferences(
-    db, user: User, updates: dict[str, str | None]
+    db, user: User, updates: dict[str, object]
 ) -> UserPreferences:
-    """Apply partial preference updates (validated per-field) and return the result."""
+    """Apply partial preference updates (validated per-field) and return the result.
+
+    Strings are checked against their allowed set, numerics against their
+    ``NUMERIC_PREFERENCES`` bounds. ``None`` means "not provided" (there is no
+    way to clear a value back to its default) — matching the existing UI-pref
+    contract.
+    """
     stored = user.preferences or {}
     for key, value in updates.items():
-        if value is None or key not in _VALID:
+        if value is None:
             continue
-        if value not in _VALID[key]:
-            raise ValueError(
-                f"Invalid {key!r}: {value!r} (expected one of {_VALID[key]})"
-            )
+        if key in _VALID:
+            if value not in _VALID[key]:
+                raise ValueError(
+                    f"Invalid {key!r}: {value!r} (expected one of {_VALID[key]})"
+                )
+        elif key in NUMERIC_PREFERENCES:
+            lo, hi = NUMERIC_PREFERENCES[key]
+            if not isinstance(value, int | float) or not lo <= float(value) <= hi:
+                raise ValueError(
+                    f"Invalid {key!r}: {value!r} (expected a number "
+                    f"between {lo} and {hi})"
+                )
+            value = float(value)
+        else:
+            continue
         stored[key] = value
     user.preferences = stored
     await db.flush()

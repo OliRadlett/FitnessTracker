@@ -16,7 +16,8 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -173,15 +174,13 @@ export default function HealthPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">🩺 Health</h1>
-        <p className="text-muted mt-1">
-          Recovery, sleep, trends, and health alerts — powered by Whoop.
-        </p>
-      </div>
+      <PageHeader
+        title="🩺 Health"
+        subtitle="Recovery, sleep, trends, and health alerts — powered by Whoop."
+      />
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
-      <QueryErrorBanner
+      <ErrorState variant="inline"
         show={hasQueryError}
         message="Some health data failed to load."
       />

@@ -8,7 +8,7 @@ import { listNotifications, markAllNotificationsRead, markNotificationRead } fro
 import type { AppNotification, NotificationType } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { QueryErrorBanner } from '@/components/ui/QueryErrorBanner';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { relativeTime } from '@/lib/analysisRenderer';
 
@@ -216,7 +216,7 @@ export default function NotificationsPage() {
           </div>
         </CardHeader>
 
-        <QueryErrorBanner show={hasQueryError} message="Notifications failed to load." />
+        <ErrorState variant="inline" show={hasQueryError} message="Notifications failed to load." />
 
         <div className="border-t border-surface-light/50">
           {isLoading && notifications.length === 0 && (
