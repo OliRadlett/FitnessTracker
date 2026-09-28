@@ -22,7 +22,17 @@ import {
 // three.js stays out of the activities bundle until the Theater opens.
 const Replay3D = dynamic(
   () => import('@/components/activities/Replay3D').then((mod) => mod.Replay3D),
-  { ssr: false, loading: () => <div className="h-full w-full animate-pulse bg-surface-light/20" /> },
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-surface/20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+          <p className="text-xs font-medium text-muted">Preparing 3D view…</p>
+        </div>
+      </div>
+    ),
+  },
 );
 
 /**
@@ -84,10 +94,11 @@ export function ReplayTheater({
         power: streamInput(detail.streams, ...POWER_STREAM_TYPES),
         hr: streamInput(detail.streams, ...HEARTRATE_STREAM_TYPES),
         cadence: streamInput(detail.streams, ...CADENCE_STREAM_TYPES),
-        maxSamples: 4000,
-      }),
-      name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
-    };
+      maxSamples: 4000,
+      activityDistanceMeters: ride?.distance_meters ?? undefined,
+      activityDurationSeconds: ride?.duration_seconds ?? undefined,
+    });
+    name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
   }, [ghostDetail, ghostCandidates, ghostId]);
 
   // ── "Race Yourself": fetch all rides on the route and build traces ─────

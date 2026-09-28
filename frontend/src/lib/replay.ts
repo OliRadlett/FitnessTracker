@@ -122,6 +122,10 @@ export interface ReplayBuildOptions {
   zScale?: number;
   /** max output samples (path decimation for the GPU) */
   maxSamples?: number;
+  /** activity distance (m) — correct total when the stream is truncated */
+  activityDistanceMeters?: number;
+  /** activity duration (s) — correct total when the stream is truncated */
+  activityDurationSeconds?: number;
 }
 
 export interface ReplayBuildResult {
@@ -172,7 +176,7 @@ export function buildReplay(
   const resid = opts.velocity?.resolution ?? 1;
   const sampleDist = cumulativeFromVelocity(velocity, resid);
 
-  const totalTime = velocity.length > 0 ? velocity.length * resid : 0;
+  let totalTime = velocity.length > 0 ? velocity.length * resid : 0;
   let totalDistance = sampleDist.length > 0 ? sampleDist[sampleDist.length - 1] : 0;
   if (totalDistance <= 0 && polyDist.length > 0) totalDistance = polyDist[polyDist.length - 1];
 
@@ -262,6 +266,46 @@ export function buildReplay(
 
   let maxSpeed = 0;
   for (const p of points) maxSpeed = Math.max(maxSpeed, p.speed);
+
+  // Truncated stream guard: Strava caps streams at ~10k samples. When the
+  // activity's recorded distance is provided and far exceeds what the stream
+  // covers, the stream was truncated — extend the replay along the remaining
+  // polyline at the average speed so the full path animates.
+  if (
+    opts.activityDistanceMeters &&
+    opts.activityDistanceMeters > totalDistance * 1.1 &&
+    polyDist.length > 0
+  ) {
+    const polyTotal = polyDist[polyDist.length - 1];
+    if (totalDistance < polyTotal) {
+      const last = points[points.length - 1];
+      const avgSpeed = points.reduce((s, p) => s + p.speed, 0) / points.length;
+      const speed = Math.max(last.speed, avgSpeed, 3);
+      const gapDist = polyTotal - last.distance;
+      const extraSamples = Math.min(200, Math.max(8, Math.ceil(gapDist / 50)));
+      for (let i = 1; i <= extraSamples; i++) {
+        const frac = i / extraSamples;
+        const d = last.distance + gapDist * frac;
+        const polyFrac = polylineFracAtDist(d);
+        points.push({
+          elapsed: last.elapsed + (gapDist * frac) / speed,
+          distance: d,
+          x: xs.length ? interp(xs, polyFrac) : 0,
+          y: ys.length ? interp(ys, polyFrac) : 0,
+          z: last.z,
+          speed,
+          power: null,
+          hr: null,
+          cadence: null,
+          grade: null,
+        });
+      }
+      totalDistance = polyTotal;
+      totalTime = points[points.length - 1].elapsed;
+      maxSpeed = Math.max(maxSpeed, speed);
+    }
+  }
+
   return {
     points,
     totalTime,
