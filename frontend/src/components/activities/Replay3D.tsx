@@ -1876,6 +1876,17 @@ export function Replay3D({
     imageryStateRef.current = imageryState;
   }, [imageryState]);
 
+  // Fetch with a hard timeout so a slow/hung network request can't pin the
+  // state in 'loading' forever. A timeout rejects with a plain Error (NOT
+  // AbortError) so the caller's catch falls through to setTerrainState('failed')
+  // — real signal aborts use AbortError and are ignored downstream.
+  const fetchWithTimeout = <T,>(p: Promise<T>, ms = 30000, signal?: AbortSignal): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), ms);
+      if (signal) signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+    });
+
   // ── Opt-in DEM terrain bed: high-res terrarium, Open-Meteo fallback ─────
   useEffect(() => {
     if (terrainState !== 'loading') return;
@@ -1893,7 +1904,10 @@ export function Replay3D({
         let attribution: string;
         try {
           const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
-          const res = await fetchTerrariumTerrain(coords, { maxTiles: 48, maxGridPoints: 131072, signal: controller.signal });
+          const res = await fetchWithTimeout(
+            fetchTerrariumTerrain(coords, { maxTiles: 48, maxGridPoints: 131072, signal: controller.signal }),
+            30000,
+          );
           gridSpec = res.grid;
           heights = res.heights;
           attribution = TERRARIUM_ATTRIBUTION;
@@ -1905,7 +1919,7 @@ export function Replay3D({
           ]);
           const g = computeGrid(coords);
           if (!g) throw new Error('no-grid');
-          const res = await fetchTerrainResult(g, controller.signal);
+          const res = await fetchWithTimeout(fetchTerrainResult(g, controller.signal), 30000);
           gridSpec = res.grid;
           heights = res.heights;
           attribution = 'Terrain © Open-Meteo — Copernicus DEM (GLO-90)';
@@ -1913,7 +1927,11 @@ export function Replay3D({
         if (cancelled) return;
         const { buildTerrainMesh, bilinearHeight } = await import('@/lib/route3d');
         const s = sceneRef.current;
-        if (!s) return;
+        if (!s) {
+          // Scene not built yet (effect ran before scene ready) — bail; the
+          // terrainEpoch bump when the scene finishes will re-trigger loading.
+          return;
+        }
         // Flat rides (no altitude stream) sit at z=0 — base the bed on the
         // DEM minimum so the path rests on the terrain instead of under it.
         const hasAlt = points.some((p) => p.z !== 0);
@@ -1976,6 +1994,9 @@ export function Replay3D({
         if (!live || cancelled) {
           geo.dispose();
           mat.dispose();
+          // Scene was torn down mid-fetch (unmount/rebuild). Mark failed so the
+          // user isn't stuck on an indefinite loading spinner with no feedback.
+          if (!cancelled) setTerrainState('failed');
           return;
         }
         if (live.terrain) {
@@ -2036,7 +2057,7 @@ export function Replay3D({
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
-        const drape = await fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal });
+        const drape = await fetchWithTimeout(fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal }), 30000);
         if (cancelled) return;
         const uv = new Float32Array(grid.rows * grid.cols * 2);
         for (let r = 0; r < grid.rows; r++) {
@@ -2053,6 +2074,7 @@ export function Replay3D({
         const live = sceneRef.current?.terrain;
         if (!live || cancelled) {
           tex.dispose();
+          if (!cancelled) setImageryState('failed');
           return;
         }
         // Satellite drape: lit material so it responds to the scene's day/night
