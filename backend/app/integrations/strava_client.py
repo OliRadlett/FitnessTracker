@@ -118,7 +118,15 @@ class StravaClient:
         activity_id: int,
         stream_types: list[str] | None = None,
     ) -> dict:
-        """Fetch time-series streams for a Strava activity."""
+        """Fetch time-series streams for a Strava activity.
+
+        ``distance`` is the cumulative-metres stream. It is what makes §3.13
+        segment alignment exact: integrating ``velocity_smooth`` accumulates
+        error over a long ride and drifts relative to the route polyline, so
+        the window can miss the alignment tolerance entirely. Older activities
+        already synced don't have it — every consumer falls back to
+        integrating velocity.
+        """
         if stream_types is None:
             stream_types = [
                 "time",
@@ -127,6 +135,7 @@ class StravaClient:
                 "cadence",
                 "altitude",
                 "velocity_smooth",
+                "distance",
             ]
 
         keys = ",".join(stream_types)
