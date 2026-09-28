@@ -1,11 +1,16 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import { listNotifications, markAllNotificationsRead, markNotificationRead } from '@/lib/api';
-import type { AppNotification, NotificationType } from '@/lib/api';
+import {
+  getNotificationSummary,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '@/lib/api';
+import type { AppNotification, NotificationSummary, NotificationType } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -34,29 +39,48 @@ export default function NotificationsPage() {
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const queryKey = ['notifications'] as const;
+  // Keys stay under the `['notifications']` prefix so an existing
+  // `invalidateQueries({ queryKey: ['notifications'] })` (EventResultPanel,
+  // the bell) still cascades to the page's list and summary.
+  const summaryKey = ['notifications', 'summary'] as const;
+
+  // Filters are applied server-side: filtering a 200-row client-side cap meant
+  // "unread" only ever searched the most recent 200 notifications.
+  const readParam = readFilter === 'all' ? undefined : readFilter === 'read';
+  const typeParam = typeFilter === 'all' ? undefined : typeFilter;
+  const listKey = ['notifications', readParam, typeParam] as const;
+
   const { data: notifications = [], isLoading, isError: notificationsError } = useQuery<AppNotification[]>({
-    queryKey,
-    queryFn: () => listNotifications(authFetch, 200),
+    queryKey: listKey,
+    queryFn: () =>
+      listNotifications(authFetch, { limit: 200, read: readParam, type: typeParam }),
+    refetchInterval: 30_000,
+    enabled: !!token,
+  });
+
+  // Whole-history counts drive the filter chips and the unread badge.
+  const { data: summary } = useQuery<NotificationSummary>({
+    queryKey: summaryKey,
+    queryFn: () => getNotificationSummary(authFetch),
     refetchInterval: 30_000,
     enabled: !!token,
   });
 
   const hasQueryError = notificationsError;
 
-  const noneRead = notifications.every((n) => n.read);
+  // Fall back to the loaded rows so the UI is still correct before / if the
+  // summary request fails — it is a different key and can fail on its own.
+  const unreadTotal = summary?.unread ?? notifications.filter((n) => !n.read).length;
+  const noneRead = unreadTotal === 0;
 
-  const filtered = useMemo(() => {
-    return notifications.filter((n) => {
-      if (readFilter === 'unread' && n.read) return false;
-      if (readFilter === 'read' && !n.read) return false;
-      if (typeFilter !== 'all' && n.type !== typeFilter) return false;
-      return true;
-    });
-  }, [notifications, readFilter, typeFilter]);
+  // The server already applied the filters, so the response is the filtered set.
+  const shown = notifications.slice(0, visibleLimit);
+  const hasMore = notifications.length > visibleLimit;
 
-  const shown = filtered.slice(0, visibleLimit);
-  const hasMore = filtered.length > visibleLimit;
+  // A new filter is a new result set — don't inherit the old "show more" depth.
+  useEffect(() => {
+    setVisibleLimit(PAGE_SIZE);
+  }, [readFilter, typeFilter]);
 
   // Group consecutive identical notifications (2.4) — e.g. five "Video
   // processed" rows collapse into one expandable group.
@@ -93,12 +117,14 @@ export default function NotificationsPage() {
     });
   }
 
+  // The list is refetched rather than patched in place: the rows are now the
+  // *server's* filtered set, so a row that just became read has to disappear
+  // from an "unread" filter — and appear in a "read" one.
   const markRead = useMutation({
     mutationFn: (id: string) => markNotificationRead(authFetch, id),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<AppNotification[]>(queryKey, (prev) =>
-        prev?.map((n) => (n.id === updated.id ? { ...n, read: true } : n)) ?? [],
-      );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listKey });
+      queryClient.invalidateQueries({ queryKey: summaryKey });
     },
     onError: (err: Error) => {
       console.error('[NotificationsPage] Mark read failed:', err);
@@ -108,20 +134,27 @@ export default function NotificationsPage() {
   const markAll = useMutation({
     mutationFn: () => markAllNotificationsRead(authFetch),
     onSuccess: () => {
-      queryClient.setQueryData<AppNotification[]>(queryKey, (prev) =>
-        prev?.map((n) => ({ ...n, read: true })) ?? [],
-      );
+      queryClient.invalidateQueries({ queryKey: listKey });
+      queryClient.invalidateQueries({ queryKey: summaryKey });
     },
     onError: (err: Error) => {
       console.error('[NotificationsPage] Mark all read failed:', err);
     },
   });
 
+  // Chip labels come from the summary (all history), not the loaded slice, so
+  // the menu doesn't lose types that fall outside the current page.
   const typeOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const n of notifications) counts.set(n.type, (counts.get(n.type) ?? 0) + 1);
-    return (Object.keys(TYPE_LABELS) as NotificationType[]).filter((t) => counts.has(t));
-  }, [notifications]);
+    const counts = summary?.by_type ?? {};
+    const known = new Set(Object.keys(TYPE_LABELS) as NotificationType[]);
+    const fromSummary = (Object.keys(counts) as NotificationType[]).filter(
+      (t) => counts[t] > 0 && known.has(t),
+    );
+    if (fromSummary.length) return fromSummary;
+    // Fallback while the summary is still loading.
+    const local = new Set(notifications.map((n) => n.type));
+    return (Object.keys(TYPE_LABELS) as NotificationType[]).filter((t) => local.has(t));
+  }, [summary, notifications]);
 
   function handleOpen(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id);
@@ -187,6 +220,10 @@ export default function NotificationsPage() {
                   }`}
                 >
                   {f.label}
+                  {/* Authoritative whole-history count, not the loaded page. */}
+                  {f.value === 'unread' && unreadTotal > 0 && (
+                    <span className="ml-1 tabular-nums opacity-70">{unreadTotal}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -222,11 +259,15 @@ export default function NotificationsPage() {
           {isLoading && notifications.length === 0 && (
             <p className="px-4 py-10 text-sm text-muted text-center">Loading…</p>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && notifications.length === 0 && (
             <div className="px-4 py-10 text-center">
               <p className="text-3xl mb-2" aria-hidden="true">📭</p>
               <p className="text-sm text-muted">
-                {notifications.length === 0 ? 'No notifications yet' : 'No notifications match the selected filters'}
+                {/* Distinguish "nothing ever" from "the filters hid everything";
+                    fall back to the loaded count if the summary request failed. */}
+                {(summary ? summary.total === 0 : notifications.length === 0)
+                  ? 'No notifications yet'
+                  : 'No notifications match the selected filters'}
               </p>
             </div>
           )}

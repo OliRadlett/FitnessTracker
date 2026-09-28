@@ -30,8 +30,8 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 | A1 | **`StatsView` is dead code** — monthly distance bars, sport pie, weekly TSS; never imported (activities page uses List/Week/Timeline/Patterns) | `frontend/src/components/activities/StatsView.tsx:18`; flagged in `frontend/src/CODEMAP.md:190` | Wire as an Activities "Stats" tab **or delete** |
 | A2 | **5 unused UI primitives** (0 imports each): `Field`, `PageHeader`, `SectionLabel`, `Stat`, `ErrorState`; `OnboardingWizard` duplicates `Field` locally | `frontend/src/components/ui/{Field,PageHeader,SectionLabel,Stat,ErrorState}.tsx` | Adopt or delete |
 | A3 | ~~**Exercise variation computed then discarded**~~ — **DONE** (migration `082`): `LiftVideo.exercise_variation` persisted, returned by `process-status` + `LiftVideoRead`, shown as a chip on the videos list | `backend/app/integrations/pose_analysis.py:1873` | ✅ Closed |
-| A4 | **Notification API is thin** — only `limit` + `unread_only`; no `type` filter, no general read filter, no pagination offset | `backend/app/api/notifications.py` (`list_notifications`) | Extend the contract (page is already rich) |
-| A5 | **JSON export drops newer tables** — omits `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `Segment`/`SegmentEffort`, `CrossDomainInsight`, `AthleteInsight`, `WarmupTemplate` | `backend/app/services/data_export.py` (import list) | Add them to the export model set |
+| A4 | ~~**Notification API is thin**~~ — **DONE**: `GET /` now takes `offset`, `read`, `type`; new `GET /summary` returns whole-history total/unread/per-type counts. Page + bell filter server-side and label from the summary instead of the loaded 200-row slice | `backend/app/api/notifications.py` (`list_notifications`) | ✅ Closed |
+| A5 | ~~**JSON export drops newer tables**~~ — **DONE**: export grew 24 → 30 collections (`lift_videos`, `lift_video_analyses`, `rpe_calibrations`, `cross_domain_insights`, `athlete_insights`, `segments` + nested `efforts`) | `backend/app/services/data_export.py` (import list) | ✅ Closed. Note: `WarmupTemplate` was *already* in the export — the audit row was wrong there. |
 
 ## B. Half-built features (one side missing)
 
@@ -65,6 +65,7 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 
 | # | Item | Evidence | Action |
 |---|------|----------|--------|
+| F2 | **`types/generated.ts` is ~1000 lines stale** — a full `npm run codegen` against a live backend produced +1005/−21, i.e. many endpoints added by other sessions never had their types regenerated. Not fixed here (a full regen is its own change and would collide with in-flight work). | verified by regenerating against a container running `origin/main` + this branch | Do a **dedicated regen-only PR**. Hand-added blocks in this PR were diffed byte-for-byte against real codegen output. |
 | F1 | **Migration 076 could not run on a migration-built database.** It dropped `uq_route_source_provider`, but `005` created that constraint unnamed, so Postgres named it `route_sources_provider_provider_route_id_key` — a name only `create_all()` databases ever had. `alembic upgrade head` failed with `UndefinedObjectError` on a **fresh** DB, so any new environment / DR restore / CI migrate-from-base was broken. (Production was unaffected only because its schema came from `create_all()`.) | `alembic/versions/005_add_routes.py:56`, `076_scope_route_sources_to_user.py:51` | ✅ **Fixed** — 076 now reads the real `pg_constraint` rows and drops whichever global unique constraint exists, under whatever name. Verified `upgrade head` → `downgrade 075` → `upgrade head` on a scratch DB. |
 
 ---

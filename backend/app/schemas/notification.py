@@ -20,6 +20,14 @@ class NotificationRead(BaseModel):
     payload: dict | None = None
 
 
+class NotificationSummary(BaseModel):
+    """Whole-history counts backing the notification filter chips / badge."""
+
+    total: int
+    unread: int
+    by_type: dict[str, int] = {}
+
+
 class NotificationPreferences(BaseModel):
     health_alert: bool
     pr: bool

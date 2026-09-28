@@ -4,8 +4,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import { listNotifications, markAllNotificationsRead, markNotificationRead } from '@/lib/api';
-import type { AppNotification } from '@/lib/api';
+import {
+  getNotificationSummary,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '@/lib/api';
+import type { AppNotification, NotificationSummary } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS } from '@/lib/notificationMeta';
 import { relativeTime } from '@/lib/analysisRenderer';
 
@@ -19,14 +24,25 @@ export function NotificationBell() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const queryKey = ['notifications'] as const;
+  const summaryKey = ['notifications', 'summary'] as const;
   const { data: notifications = [], isLoading } = useQuery<AppNotification[]>({
     queryKey,
-    queryFn: () => listNotifications(authFetch, 50),
+    queryFn: () => listNotifications(authFetch, { limit: 50 }),
     refetchInterval: 30_000,
     enabled: !!token,
   });
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // The badge is the whole-history unread count, not just what the dropdown
+  // happens to have loaded.
+  const { data: summary } = useQuery<NotificationSummary>({
+    queryKey: summaryKey,
+    queryFn: () => getNotificationSummary(authFetch),
+    refetchInterval: 30_000,
+    enabled: !!token,
+  });
+
+  const unreadCount =
+    summary?.unread ?? notifications.filter((n) => !n.read).length;
 
   const markRead = useMutation({
     mutationFn: (id: string) => markNotificationRead(authFetch, id),
@@ -34,6 +50,7 @@ export function NotificationBell() {
       queryClient.setQueryData<AppNotification[]>(queryKey, (prev) =>
         prev?.map((n) => (n.id === updated.id ? { ...n, read: true } : n)) ?? [],
       );
+      queryClient.invalidateQueries({ queryKey: summaryKey });
     },
     onError: (err: Error) => {
       console.error('[NotificationBell] Mark read failed:', err);
@@ -46,6 +63,7 @@ export function NotificationBell() {
       queryClient.setQueryData<AppNotification[]>(queryKey, (prev) =>
         prev?.map((n) => ({ ...n, read: true })) ?? [],
       );
+      queryClient.invalidateQueries({ queryKey: summaryKey });
     },
     onError: (err: Error) => {
       console.error('[NotificationBell] Mark all read failed:', err);
