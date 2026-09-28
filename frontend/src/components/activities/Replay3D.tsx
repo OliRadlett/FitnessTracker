@@ -492,6 +492,41 @@ export function Replay3D({
   const points = build.points;
   const totalTime = build.totalTime;
 
+  // ── Route extent: bounding box + principal direction (PCA on the path) ───
+  // Used by the orbit camera to frame an elliptical path that hugs the route
+  // shape instead of wasting half the view on a long thin out-and-back.
+  useEffect(() => {
+    const n = points.length;
+    if (n < 2) { routeExtentRef.current = null; return; }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let cx = 0, cy = 0;
+    for (const p of points) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      cx += p.x; cy += p.y;
+    }
+    cx /= n; cy /= n;
+    // Covariance (variance along x, y + covariance) → principal eigenvector.
+    let sxx = 0, syy = 0, sxy = 0;
+    for (const p of points) {
+      const dx = p.x - cx, dy = p.y - cy;
+      sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+    }
+    // Eigenvector of largest eigenvalue: angle of the route's long axis.
+    const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    // Extent projected onto the principal axes.
+    let ru = 0, rv = 0;
+    for (const p of points) {
+      const dx = p.x - cx, dy = p.y - cy;
+      const u = dx * Math.cos(theta) + dy * Math.sin(theta);
+      const v = -dx * Math.sin(theta) + dy * Math.cos(theta);
+      ru = Math.max(ru, Math.abs(u)); rv = Math.max(rv, Math.abs(v));
+    }
+    // Half-extents, clamped so a near-symmetric route still gets a circle.
+    const ru2 = Math.max(8, ru), rv2 = Math.max(8, rv);
+    routeExtentRef.current = { rx: ru2, ry: rv2, dirX: Math.cos(theta), dirY: Math.sin(theta) };
+  }, [points]);
+
   // Lite mode: auto-on for small screens (no MSAA, pixel ratio 1) unless forced.
   const liteMode = lite ?? (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
 
@@ -515,6 +550,10 @@ export function Replay3D({
   // Bumped whenever the scene is rebuilt so the terrain bed is re-attached.
   const [terrainEpoch, setTerrainEpoch] = useState(0);
   const [terrainAttribution, setTerrainAttribution] = useState<string>('');
+  // Tile-loading progress for the loading overlay (loaded/total), so the user
+  // sees real progress instead of an indeterminate spinner.
+  const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const loadProgressRef = useRef<{ loaded: number; total: number }>({ loaded: 0, total: 0 });
   const [imageryState, setImageryState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
     // Auto-load for the cinematic intro (satellite looks great from height);
     // reverted to 'off' at the chase hand-off. Compare modal (no terrain) and
@@ -578,6 +617,13 @@ export function Replay3D({
   });
   // Previous-frame heading for camera banking (yaw rate → roll).
   const prevHeadingRef = useRef<THREE.Vector3 | null>(null);
+  // Route extent for aspect-adaptive orbit framing: the route's bounding box
+  // (meters) and its principal direction, so the elliptical orbit fills the frame
+  // instead of wasting space on a long thin route.
+  const routeExtentRef = useRef<{ rx: number; ry: number; dirX: number; dirY: number } | null>(null);
+  // True for one tick after cinematic → orbit handoff, so the orbit eases in
+  // immediately instead of waiting out the resume delay.
+  const orbitJustHandedOffRef = useRef(false);
   // Ride-time weather, read per-frame (wet road sheen + wind HUD).
   const wetnessRef = useRef(0);
   const windSpeedRef = useRef(0);
@@ -1508,8 +1554,12 @@ export function Replay3D({
         const idleFor = now - auto.lastInteract;
         const RESUME_DELAY = 2500; // ms of idle before auto-orbit resumes
         const RESUME_BLEND = 1500; // ms to ease from manual pose to auto
+        // Cinematic just handed off to orbit — skip the resume delay so the
+        // camera keeps moving instead of freezing for 2.5s after the intro.
+        const handoffBoost = orbitJustHandedOffRef.current;
+        if (handoffBoost) orbitJustHandedOffRef.current = false;
 
-        if (idleFor < RESUME_DELAY) {
+        if (idleFor < RESUME_DELAY && !handoffBoost) {
           // User recently drove the camera — let OrbitControls own the pose.
           controls.update();
         } else if (auto.seeded) {
@@ -1523,11 +1573,24 @@ export function Replay3D({
           const bob = Math.sin(t * 0.55) * 2.5;
           const height = 12 + Math.min(18, riderPose.speed * 0.45) + bob;
 
-          const cosA = Math.cos(auto.angle);
-          const sinA = Math.sin(auto.angle);
+          // ── Aspect-adaptive elliptical orbit ──────────────────────────────
+          // A circular orbit wastes frame space on a long thin route. Use the
+          // route's principal-direction PCA to stretch the ellipse along the
+          // route's long axis, clamped so near-symmetric rides stay circular.
+          const extent = routeExtentRef.current;
+          let offX = radius, offY = radius; // default circular offset
+          if (extent) {
+            const ratio = Math.min(2.5, Math.max(0.4, extent.rx / (extent.ry || 1)));
+            const theta = Math.atan2(extent.dirY, extent.dirX);
+            // Ellipse in local frame, rotated to align long axis with route.
+            const lx = radius * ratio * Math.cos(auto.angle);
+            const ly = radius * Math.sin(auto.angle);
+            offX = lx * Math.cos(theta) - ly * Math.sin(theta);
+            offY = lx * Math.sin(theta) + ly * Math.cos(theta);
+          }
           const desired = tmpDesired.set(
-            rider.position.x + cosA * radius,
-            rider.position.y + sinA * radius,
+            rider.position.x + offX,
+            rider.position.y + offY,
             rider.position.z + height,
           );
 
@@ -1605,6 +1668,7 @@ export function Replay3D({
               cinematicImageryRef.current = false;
               setImageryState('off');
             }
+            orbitJustHandedOffRef.current = true; // skip resume delay on handoff
             setCamMode('orbit');
           }
         }
@@ -1887,6 +1951,18 @@ export function Replay3D({
       p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
     });
 
+  // Shared progress handler for tile fetches: updates a ref (read per-frame)
+  // and throttles React state to ~10fps so the overlay shows live progress.
+  const onTileProgress = (loaded: number, total: number) => {
+    loadProgressRef.current = { loaded, total };
+    setLoadProgress((prev) => {
+      if (!prev || prev.total !== total || loaded - prev.loaded >= Math.max(1, total / 20) || loaded === total) {
+        return { loaded, total };
+      }
+      return prev;
+    });
+  };
+
   // ── Opt-in DEM terrain bed: high-res terrarium, Open-Meteo fallback ─────
   useEffect(() => {
     if (terrainState !== 'loading') return;
@@ -1894,6 +1970,8 @@ export function Replay3D({
       setTerrainState('failed');
       return;
     }
+    setLoadProgress(null);
+    loadProgressRef.current = { loaded: 0, total: 0 };
     let cancelled = false;
     const controller = new AbortController();
     (async () => {
@@ -1905,7 +1983,12 @@ export function Replay3D({
         try {
           const { fetchTerrariumTerrain, TERRARIUM_ATTRIBUTION } = await import('@/lib/terrainTiles');
           const res = await fetchWithTimeout(
-            fetchTerrariumTerrain(coords, { maxTiles: 48, maxGridPoints: 131072, signal: controller.signal }),
+            fetchTerrariumTerrain(coords, {
+              maxTiles: 48,
+              maxGridPoints: 131072,
+              signal: controller.signal,
+              onProgress: onTileProgress,
+            }),
             30000,
           );
           gridSpec = res.grid;
@@ -2045,6 +2128,8 @@ export function Replay3D({
   // ── Optional satellite imagery drape over the terrain (Phase 3) ────────
   useEffect(() => {
     if (imageryState !== 'loading') return;
+    setLoadProgress(null);
+    loadProgressRef.current = { loaded: 0, total: 0 };
     let cancelled = false;
     const controller = new AbortController();
     (async () => {
@@ -2057,7 +2142,10 @@ export function Replay3D({
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
-        const drape = await fetchWithTimeout(fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal }), 30000);
+        const drape = await fetchWithTimeout(
+          fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal, onProgress: onTileProgress }),
+          30000,
+        );
         if (cancelled) return;
         const uv = new Float32Array(grid.rows * grid.cols * 2);
         for (let r = 0; r < grid.rows; r++) {
@@ -2422,12 +2510,32 @@ export function Replay3D({
           <div className="flex flex-col items-center gap-3">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
             <p className="text-xs font-medium text-muted">
-              {!sceneReady ? 'Preparing 3D view…' : terrainState === 'loading' ? 'Loading terrain…' : imageryState === 'loading' ? 'Loading satellite…' : ''}
+              {!sceneReady
+                ? 'Preparing 3D view…'
+                : terrainState === 'loading'
+                  ? loadProgress && loadProgress.total > 0
+                    ? `Loading terrain (${loadProgress.loaded}/${loadProgress.total} tiles)…`
+                    : 'Loading terrain…'
+                  : imageryState === 'loading'
+                    ? loadProgress && loadProgress.total > 0
+                      ? `Loading satellite (${loadProgress.loaded}/${loadProgress.total} tiles)…`
+                      : 'Loading satellite…'
+                    : ''}
             </p>
-            <div className="flex gap-1.5">
-              <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${terrainState === 'on' ? 'bg-accent' : terrainState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
-              <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${imageryState === 'on' ? 'bg-accent' : imageryState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
-            </div>
+            {/* Indeterminate spinner for prep; determinate progress bar for tiles */}
+            {loadProgress && loadProgress.total > 0 ? (
+              <div className="h-1 w-32 overflow-hidden rounded-full bg-surface-light">
+                <div
+                  className="h-full rounded-full bg-accent transition-[width] duration-150"
+                  style={{ width: `${Math.round((loadProgress.loaded / loadProgress.total) * 100)}%` }}
+                />
+              </div>
+            ) : (
+              <div className="flex gap-1.5">
+                <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${terrainState === 'on' ? 'bg-accent' : terrainState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
+                <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${imageryState === 'on' ? 'bg-accent' : imageryState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
+              </div>
+            )}
           </div>
         </div>
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">

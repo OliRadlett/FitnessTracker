@@ -48,7 +48,15 @@ function loadImage(url: string, signal?: AbortSignal): Promise<HTMLImageElement>
 /** Stitch the Esri tiles covering `grid`'s bbox into a single canvas. */
 export async function fetchImageryDrape(
   grid: RouteGrid,
-  { maxTiles = 64, signal }: { maxTiles?: number; signal?: AbortSignal } = {},
+  {
+    maxTiles = 64,
+    signal,
+    onProgress,
+  }: {
+    maxTiles?: number;
+    signal?: AbortSignal;
+    onProgress?: (loaded: number, total: number) => void;
+  } = {},
 ): Promise<ImageryDrape> {
   const lat1 = grid.lat0 + grid.latSpan;
   const lng1 = grid.lng0 + grid.lngSpan;
@@ -56,18 +64,22 @@ export async function fetchImageryDrape(
   const r = tileRangeForBbox(grid.lat0, grid.lng0, lat1, lng1, z);
   const cols = r.x1 - r.x0 + 1;
   const rows = r.y1 - r.y0 + 1;
+  const total = cols * rows;
   const canvas = document.createElement('canvas');
   canvas.width = cols * 256;
   canvas.height = rows * 256;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new ImageryError('no-2d-context');
 
+  let loaded = 0;
   const jobs: Promise<void>[] = [];
   for (let x = r.x0; x <= r.x1; x++) {
     for (let y = r.y0; y <= r.y1; y++) {
       jobs.push(
         loadImage(TILE_URL(z, x, y), signal).then((img) => {
           ctx.drawImage(img, (x - r.x0) * 256, (y - r.y0) * 256, 256, 256);
+          loaded++;
+          onProgress?.(loaded, total);
         }),
       );
     }
