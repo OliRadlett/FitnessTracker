@@ -150,21 +150,21 @@ function sampleTiles(tiles: Map<string, Float32Array>, z: number, lat: number, l
  */
 export async function fetchTerrariumTerrain(
   coords: [number, number][],
-  { maxTiles = 16, maxGridPoints = 65536, signal }: { maxTiles?: number; maxGridPoints?: number; signal?: AbortSignal } = {},
+  { maxTiles = 48, maxGridPoints = 131072, signal }: { maxTiles?: number; maxGridPoints?: number; signal?: AbortSignal } = {},
 ): Promise<TerrariumResult> {
   const spec = computeGrid(coords, { maxPoints: 200 });
   if (!spec) throw new TerrainTilesError('no-bbox');
   const { lat0, lng0, latSpan, lngSpan } = spec;
   const lat1 = lat0 + latSpan;
   const lng1 = lng0 + lngSpan;
-  const z = chooseZoom(lat0, lng0, lat1, lng1, maxTiles);
+  const z = chooseZoom(lat0, lng0, lat1, lng1, maxTiles, 8, 16);
 
   // aspect-correct dense grid, capped; both axes kept >= 8 so a narrow
   // out-and-back bbox doesn't collapse into a degenerate 2-wide strip.
   const midLat = (lat0 + lat1) / 2;
   const aspect = (lngSpan * Math.cos((midLat * Math.PI) / 180)) / (latSpan || 1e-6) || 1;
-  let cols = Math.max(8, Math.min(384, Math.round(Math.sqrt(maxGridPoints * aspect))));
-  let rows = Math.max(8, Math.min(384, Math.round(maxGridPoints / cols)));
+  let cols = Math.max(8, Math.min(512, Math.round(Math.sqrt(maxGridPoints * aspect))));
+  let rows = Math.max(8, Math.min(512, Math.round(maxGridPoints / cols)));
   while (cols * rows > maxGridPoints && (cols > 8 || rows > 8)) {
     if (cols >= rows) cols--;
     else rows--;

@@ -261,6 +261,13 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
 - **Weather rain** — camera-relative falling streaks when the ride weather is wet.
 - **Photo mode** — hides UI chrome for a clean view; Poster now renders at 2x.
 
+### Terrain & imagery upgrade (2026-09-28)
+- **Higher zoom**: terrarium DEM `maxTiles` 16 → 48, `maxGridPoints` 65K → 131K,
+  `maxZ` 15 → 16. Imagery `maxTiles` 16 → 64, `maxZ` 15 → 19. Denser grids and
+  sharper tiles — visibly finer relief in chase/cockpit views.
+- Terrain already had Lambert + per-vertex hillshade; the higher source resolution
+  now feeds through to the mesh.
+
 ### Remaining
 - Optional: wet-road sheen / wind sock, **segment racing** and **public share
   link** (both need backend/product scope).
