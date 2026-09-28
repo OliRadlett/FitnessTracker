@@ -14,6 +14,7 @@ import type {
   SleepLogSummary,
 } from '@/lib/api';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { SectionLabel } from '@/components/ui/SectionLabel';
 import {
   getSportEmoji,
   getSportTextColor,
@@ -48,9 +49,7 @@ function LiftingSessionDetail({
 
   return (
     <div className="mt-3 pt-3 border-t border-surface-light">
-      <div className="text-xs text-muted mb-2 font-medium uppercase tracking-wider">
-        Notes
-      </div>
+      <SectionLabel>Notes</SectionLabel>
       <textarea
         className="w-full bg-surface/80 border border-surface-light rounded-lg p-3 text-sm text-foreground placeholder-muted resize-none focus:outline-none focus:border-accent/50 transition-colors"
         rows={3}
@@ -497,9 +496,7 @@ export function DayDetailPanel({
             {/* Set details */}
             {session.sets.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs text-muted mb-2 font-medium uppercase tracking-wider">
-                  Exercises
-                </div>
+                <SectionLabel>Exercises</SectionLabel>
                 <div className="space-y-2">
                   {Object.entries(
                     session.sets.reduce(
