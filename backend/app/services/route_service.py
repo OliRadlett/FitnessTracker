@@ -662,7 +662,11 @@ async def merge_routes(
         "is_favorite": duplicate.is_favorite,
         "quality_score": duplicate.quality_score,
         "created_at": duplicate.created_at.isoformat() if duplicate.created_at else None,
+        # Phase 2: keep the embeddings so the learned metric can be trained on
+        # this decision later (the duplicate's Route row is deleted below).
+        "road_embedding": duplicate.road_embedding,
     }
+    primary_embedding = primary.road_embedding
 
     moved: dict[str, list[str]] = {
         "source_ids": [],
@@ -814,7 +818,12 @@ async def merge_routes(
                 primary_route_id=primary.id,
                 merged_route_id=duplicate.id,
                 score=score,
-                breakdown=breakdown,
+                breakdown={
+                    **(breakdown or {}),
+                    # Phase 2 training signal: the surviving primary's embedding
+                    # (the duplicate's is in `snapshot`).
+                    "primary_embedding": primary_embedding,
+                },
                 snapshot=snapshot,
                 moved=moved,
             )
