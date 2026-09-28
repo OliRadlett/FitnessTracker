@@ -274,6 +274,20 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
   the windowed draw (distant road projects into a band from a low camera).
 - Path centerline + segment zones also visible in drone/flyby (not just orbit).
 
+### Cinematic auto-orbit (2026-09-28)
+- Orbit mode is now an **active cinematic camera**, not passive OrbitControls:
+  a virtual drone circles the rider at a speed-adaptive radius, looking slightly
+  ahead into the direction of travel.
+- **Speed-reactive**: orbit radius widens (26→68 m), spin rate increases
+  (0.1→0.45 rad/s), camera height rises (12→30 m), and FOV broadens
+  (46→62°) with ride speed.
+- **Banking**: the camera rolls into turns (up to ±20°) from the yaw-rate of
+  the rider's heading — smoothed so it feels like a drone, not a rollercoaster.
+- **Gentle vertical bob** (±2.5 m sine) so the view breathes.
+- **Smooth resume**: manual drag pauses auto-orbit for 2.5 s, then eases back
+  in over 1.5 s (no snap). Seeds orbit angle from current camera direction on
+  mode enter so switching from chase/cockpit doesn't jump.
+
 ### Remaining
 - Optional: wet-road sheen / wind sock, **segment racing** and **public share
   link** (both need backend/product scope).
