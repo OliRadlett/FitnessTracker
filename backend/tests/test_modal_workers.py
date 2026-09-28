@@ -96,6 +96,14 @@ MOUNTED_MODULES = (
     "pose_track.py",
     "biomechanics.py",
     "bar_detection.py",
+    "bar_tracking_3d.py",
+)
+
+# Mounted modules that live outside ``app/integrations``, as
+# ``(mount source, module directory)`` relative to the backend root. These are
+# not on the ``MOUNTED_MODULES`` path walk, so they need their own resolution.
+MOUNTED_EXTRA = (
+    ("app/services/video_camera.py", "services"),
 )
 
 # Top-level import name -> pip package name, for third-party imports.
@@ -140,20 +148,59 @@ def test_mounted_modules_third_party_imports_are_installed():
         p.split(">=")[0].split("==")[0].split("<")[0].strip()
         for p in _MODAL_PIP_PACKAGES
     }
-    analysis_dir = Path(__file__).resolve().parent.parent / "app" / "integrations"
+    backend_root = Path(__file__).resolve().parent.parent
+    paths = [backend_root / "app" / "integrations" / n for n in MOUNTED_MODULES]
+    paths += [backend_root / sub / Path(rel).name for rel, sub in MOUNTED_EXTRA]
     missing: dict[str, set[str]] = {}
-    for name in MOUNTED_MODULES:
-        path = analysis_dir / name
+    for path in paths:
         if not path.exists():
             continue
         for imp in _third_party_imports(path):
             pkg = _IMPORT_TO_PIP.get(imp, imp)
             if pkg not in installed:
-                missing.setdefault(name, set()).add(imp)
+                missing.setdefault(path.name, set()).add(imp)
     assert not missing, (
         f"mounted modules import packages the Modal image does not install "
         f"(add them to _MODAL_PIP_PACKAGES): {missing}"
     )
+
+
+def test_mounted_modules_exist_and_are_referenced_by_the_image():
+    """Every module the pipeline imports must actually be mounted.
+
+    A module present in the repo but absent from the image only fails at call
+    time *inside* the container, with the rest of the analysis already lost
+    (pitfall #34 — this is how the `onnxruntime` and the pose/bar-tracking
+    imports each silently killed a whole video). This resolves the mount list
+    against the real files and against ``_get_modal_image``'s own targets.
+    """
+    from app.integrations import modal_client
+
+    src = Path(modal_client.__file__).read_text(encoding="utf-8")
+    backend_root = Path(__file__).resolve().parent.parent
+
+    for name in MOUNTED_MODULES:
+        path = backend_root / "app" / "integrations" / name
+        assert path.exists(), f"{name} is mounted but does not exist"
+        assert f"/root/app/integrations/{name}" in src, (
+            f"{name} is not mounted into the Modal image"
+        )
+    for rel, sub in MOUNTED_EXTRA:
+        path = backend_root / "app" / sub / Path(rel).name
+        assert path.exists(), f"{rel} is mounted but does not exist"
+        assert f"/root/app/{sub}/{path.name}" in src, (
+            f"{rel} is not mounted into the Modal image"
+        )
+
+
+def test_bar_tracking_3d_imports_only_installed_packages():
+    """``bar_tracking_3d`` must stay pure NumPy (it is mounted into the video
+    container alongside the heavy modules)."""
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "app" / "integrations" / "bar_tracking_3d.py"
+    )
+    assert _third_party_imports(path) <= {"numpy"}
 
 
 def test_modal_image_installs_onnxruntime():

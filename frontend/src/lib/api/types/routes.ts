@@ -203,6 +203,8 @@ export interface RouteMergeLogEntry {
   merged_name: string;
   primary_exists: boolean;
   score: number;
+  /** 'identical' (same route twice) | 'variant' (same kind of ride) | null */
+  merge_kind: 'identical' | 'variant' | null;
   created_at: string | null;
   undone_at: string | null;
 }

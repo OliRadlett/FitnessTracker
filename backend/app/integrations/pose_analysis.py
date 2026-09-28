@@ -1838,6 +1838,8 @@ def run_pose_analysis(
     track: dict | None = None,
     bar_detection: bool = False,
     bar_detector_model: str | None = None,
+    camera: dict | None = None,
+    lifter_height_m: float | None = None,
 ) -> dict:
     """Run the full local pose analysis pipeline. Returns a dict compatible
     with the existing run_full_analysis result format.
@@ -1847,6 +1849,10 @@ def run_pose_analysis(
 
     ``track`` optionally supplies an already-extracted ``extract_pose_track``
     result (2D + world landmarks), avoiding a second pose-extraction pass.
+
+    ``camera`` and ``lifter_height_m`` are the two calibration inputs the metric
+    3D bar path needs (``plans/bar-tracking-3d.md``). With either missing the 3D
+    metrics are simply not produced — the 2D ones are unaffected.
     """
     result = {}
 
@@ -1970,6 +1976,12 @@ def run_pose_analysis(
     use_detection = bar_detection or bool(bar_detector_model)
     bar_track = None
     records = (track.get("records") or []) if use_detection else []
+    # Index space for the bar track: the *records* series (the detector runs
+    # per saved frame), which is a strict subset of the dense `landmarks` the
+    # reps are indexed against. Kept so the 3D path below can be handed the
+    # matching landmark/world arrays instead of silently reading the wrong
+    # frames.
+    track_lms = track_wld = track_times = None
     if records:
         frame_dir = Path(tmpdir)
         frame_paths = [
@@ -1989,6 +2001,10 @@ def run_pose_analysis(
                 # — that loses reps/form/velocity too. Degrade to the proxy.
                 logger.warning("Bar detection failed (%s); using pose proxy", e)
                 bar_track = None
+        if bar_track is not None:
+            track_lms = [r.get("landmarks") for r in records]
+            track_wld = [r.get("world") for r in records]
+            track_times = [r.get("t") for r in records]
     if bar_track is None:
         bar_track = bar_track_from_landmarks(
             landmarks, track.get("presence"), exercise)
@@ -1996,6 +2012,43 @@ def run_pose_analysis(
         bar_track, reps, exercise, landmarks=landmarks, view=view)
     if bar_path:
         result["bar_path"] = bar_path
+
+    # Metric 3D bar path (`plans/bar-tracking-3d.md`). Nested under the 2D
+    # metrics so a consumer that only knows `bar_path` is unaffected. Needs the
+    # detector's per-frame bar centre (`bar_x`/`bar_y`), so it is skipped
+    # entirely on the pose-proxy fallback.
+    if bar_track and track_lms and any(
+        p and p.get("bar_x") is not None for p in bar_track
+    ):
+        try:
+            from app.integrations import bar_tracking_3d as b3
+
+            cam3d = b3.fit_clip_camera(
+                track_lms, track_wld,
+                (camera or {}).get("focal_px"),
+                (camera or {}).get("width"), (camera or {}).get("height"),
+                lifter_height_m,
+            )
+            if cam3d is not None:
+                track3d = b3.lift_bar_3d(
+                    track_lms, track_wld, bar_track, cam3d, exercise)
+                # Reps are indexed against the dense series, the track against
+                # the records — remap through the shared timestamps first.
+                reps3d = b3.remap_reps(reps, track_times)
+                m3d = b3.analyze_bar_path_3d(track3d, reps3d, cam3d, exercise)
+                if m3d:
+                    if result.get("bar_path") is None:
+                        result["bar_path"] = {"source": "metric_3d"}
+                    result["bar_path"]["metric_3d"] = m3d
+                    logger.info(
+                        "Metric 3D bar path: %.2f-%.2f m, lateral %.0f mm, "
+                        "%.2f m travelled (%d reps)",
+                        m3d["bar_height_bottom_m"], m3d["bar_height_top_m"],
+                        m3d["lateral_mm"], m3d["vertical_range_m"],
+                        m3d["n_reps"],
+                    )
+        except Exception as e:  # never fail the analysis over optional 3D
+            logger.warning("Metric 3D bar path unavailable: %s", e)
 
     # Setup analysis
     result["setup"] = analyze_setup(landmarks, timestamps, fps=10.0, exercise=exercise, view=view)
