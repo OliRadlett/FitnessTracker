@@ -491,3 +491,76 @@ async def test_ride_too_short_to_reach_the_climb_is_skipped(
     segments = await sync_route_segments(db_session, test_user.id, route.id)
     assert len(segments) == 1
     assert await _efforts_for(db_session, segments[0]) == []
+
+
+@pytest.mark.asyncio
+async def test_best_avg_power_includes_coasting(
+    db_session: AsyncSession, test_user: User
+):
+    """`best_avg_power_watts` is the max over efforts, so an average that dropped
+    zeros inflated the headline number on every segment.
+
+    This ride pedals 300 W partway up, then coasts the rest of the climb. The
+    honest window average is well under 300 W — reporting 300 W described only
+    the part where the rider was pedalling.
+    """
+    route = _climb_route(test_user)
+    db_session.add(route)
+    await db_session.flush()
+
+    n = _RIDE_SAMPLES
+    activity = Activity(
+        user_id=test_user.id,
+        route_id=route.id,
+        source="strava",
+        sport_type="cycling",
+        name="Coasting Climb",
+        start_date=_ACTIVITY_START,
+        duration_seconds=int(n * _RIDE_SECONDS),
+        distance_meters=n * _RIDE_METRES,
+    )
+    db_session.add(activity)
+    await db_session.flush()
+
+    # Pedal for the first 55% of the ride, coast after that. The climb window
+    # is samples 100..300, so it straddles the transition.
+    pedalling = int(n * 0.55)
+    power = [300.0] * pedalling + [0.0] * (n - pedalling)
+    for stream in [
+        ActivityStream(
+            activity_id=activity.id,
+            stream_type="time",
+            data={"data": [_BASE_EPOCH + i * _RIDE_SECONDS for i in range(n)]},
+        ),
+        ActivityStream(
+            activity_id=activity.id,
+            stream_type="distance",
+            data={"data": [i * _RIDE_METRES for i in range(n)]},
+        ),
+        ActivityStream(
+            activity_id=activity.id,
+            stream_type="watts",
+            data={"data": power},
+        ),
+    ]:
+        db_session.add(stream)
+    await db_session.flush()
+
+    segments = await sync_route_segments(db_session, test_user.id, route.id)
+    assert len(segments) == 1
+    seg = segments[0]
+    efforts = await _efforts_for(db_session, seg)
+    assert len(efforts) == 1
+
+    # Recompute the expectation from the window the service should have aligned:
+    # the climb runs 500 m → 1500 m at 5 m per sample.
+    start_idx = int(_CLIMB_START_M / _RIDE_METRES)
+    end_idx = int(_CLIMB_END_M / _RIDE_METRES)
+    window = power[start_idx : end_idx + 1]
+    assert window[-1] == 0.0, "the window must actually include the coasting"
+
+    expected = sum(window) / len(window)
+    assert efforts[0].avg_power_watts == pytest.approx(expected, abs=0.05)
+    # And the number shown on the segment card is not the pedalling power.
+    assert efforts[0].avg_power_watts < 300.0
+    assert seg.best_avg_power_watts == efforts[0].avg_power_watts

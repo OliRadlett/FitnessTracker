@@ -7,6 +7,7 @@ stream-window effort computation are covered here.
 from app.services.segments import (
     _activity_cumulative_distance,
     _clean_distance_stream,
+    _mean,
     _resample_onto_axis,
     _resolve_cumulative_distance,
     _time_axis,
@@ -335,3 +336,87 @@ def test_effort_window_falls_back_to_dt_for_a_mismatched_axis():
     )
     assert eff is not None
     assert eff["elapsed_seconds"] == 50.0
+
+
+# ── Averages within a window (B5) ────────────────────────────────────────
+#
+# `_mean` used to filter `v not in (0, None)` for every signal. For power that
+# silently discarded coasting, so a window ridden at 250 W with the last 20% of
+# it coasting reported 250 W instead of 200 W — and `best_avg_power_watts` is
+# the max over efforts, so the headline number was inflated too.
+
+
+def test_mean_keeps_zeros_by_default_so_coasting_counts():
+    # 8 samples at 250 W, 2 coasting → 200 W, not 250 W.
+    assert _mean([250.0] * 8 + [0.0] * 2) == 200.0
+
+
+def test_mean_can_drop_zeros_for_dropout_signals():
+    # Heart rate: a 0 is a dropped strap reading, not a measurement.
+    assert _mean([160.0, 0.0, 170.0], zero_is_dropout=True) == 165.0
+
+
+def test_mean_of_all_zeros_is_zero_not_none():
+    # A window ridden entirely coasting is a real 0 W, not "no data".
+    assert _mean([0.0] * 5) == 0.0
+
+
+def test_mean_drops_all_zeros_for_a_dropout_signal():
+    assert _mean([0.0, 0.0], zero_is_dropout=True) is None
+
+
+def test_mean_ignores_unusable_samples():
+    assert _mean([100.0, None, "x", float("nan"), float("inf"), 200.0]) == 150.0
+
+
+def test_mean_ignores_booleans():
+    # bool subclasses int; True must not be counted as 1 W.
+    assert _mean([True, False, 300.0]) == 300.0
+
+
+def test_mean_returns_none_when_nothing_is_usable():
+    assert _mean([]) is None
+    assert _mean([None, None]) is None
+    assert _mean(["a", "b"]) is None
+
+
+def _window_effort(power=None, hr=None):
+    """A 100 m window at 1 m/s with the given per-sample signals."""
+    return compute_effort_for_window(
+        cum_dist=[float(i) for i in range(101)],
+        dt=1.0,
+        segment={"start_dist": 0.0, "end_dist": 100.0, "distance_m": 100.0},
+        power=power,
+        hr=hr,
+    )
+
+
+def test_effort_window_averages_power_over_the_whole_window():
+    # The window spans indices 0..100, i.e. 101 samples: 80 at 300 W and 21
+    # coasting → 24000/101 = 237.6 W. Dropping the zeros reported 300 W.
+    power = [300.0] * 80 + [0.0] * 21
+    eff = _window_effort(power=power)
+    assert eff is not None
+    assert eff["avg_power_watts"] == 237.6
+
+
+def test_effort_window_reports_an_all_coasting_window_as_zero_watts():
+    eff = _window_effort(power=[0.0] * 101)
+    assert eff is not None
+    assert eff["avg_power_watts"] == 0.0
+
+
+def test_effort_window_excludes_hr_dropouts_but_keeps_coasting_power():
+    eff = _window_effort(
+        power=[300.0] * 80 + [0.0] * 21,
+        hr=[150.0] * 50 + [0.0] * 51,
+    )
+    assert eff is not None
+    assert eff["avg_power_watts"] == 237.6
+    assert eff["avg_hr"] == 150.0
+
+
+def test_effort_window_reports_no_hr_when_the_whole_window_dropped_out():
+    eff = _window_effort(hr=[0.0] * 101)
+    assert eff is not None
+    assert eff["avg_hr"] is None
