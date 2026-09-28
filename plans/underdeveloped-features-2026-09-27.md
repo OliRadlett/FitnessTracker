@@ -33,6 +33,7 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 | A4 | ~~**Notification API is thin**~~ — **DONE**: `GET /` now takes `offset`, `read`, `type`; new `GET /summary` returns whole-history total/unread/per-type counts. Page + bell filter server-side and label from the summary instead of the loaded 200-row slice | `backend/app/api/notifications.py` (`list_notifications`) | ✅ Closed |
 | A5 | ~~**JSON export drops newer tables**~~ — **DONE**: export grew 24 → 30 collections (`lift_videos`, `lift_video_analyses`, `rpe_calibrations`, `cross_domain_insights`, `athlete_insights`, `segments` + nested `efforts`) | `backend/app/services/data_export.py` (import list) | ✅ Closed. Note: `WarmupTemplate` was *already* in the export — the audit row was wrong there. |
 
+
 ## B. Half-built features (one side missing)
 
 | # | Item | Evidence | Missing |
