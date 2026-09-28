@@ -397,6 +397,31 @@ failure rates have no exporter signals yet (documented in `alerts.yml`).
 
 ---
 
+## Endpoint access policy (health & metrics)
+
+Two endpoints are **deliberately unauthenticated** — this is by design, not a
+regression to "fix":
+
+- `GET /health` — liveness probe (checks DB + Redis). Hit by the Caddy
+  healthcheck and infra uptime monitors, so it must answer with no session.
+- `GET /metrics` — Prometheus instrumentation (gated on `ENABLE_METRICS=true`).
+  Scraped by Prometheus over a private network / SSH tunnel only. Do **not**
+  place it behind the public Caddy vhost — Prometheus must reach it directly.
+
+Everything else is under `/api/v1/*` and **requires a JWT**. Every data-plane
+router is mounted with FastAPI's `get_current_user` dependency, so a request
+with no (or expired) bearer token gets `401` regardless of method or path.
+
+⚠️ `/api/v1/metrics` (the *health-data* readiness / sleep / weight / alerts
+router, tag `metrics`) is **not** the Prometheus endpoint — it lives under the
+`/api/v1/` auth guard and needs a valid token. Do not confuse the two:
+
+| Endpoint | Purpose | Auth |
+|----------|---------|------|
+| `/health` | Liveness (DB + Redis ping) | No — infra probe |
+| `/metrics` | Prometheus instrumentation | No — scrape target (private net only) |
+| `/api/v1/*` (incl. `/api/v1/metrics/*`) | All data-plane APIs | **Yes** — JWT |
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
