@@ -291,4 +291,34 @@ describe('replayDistanceAt', () => {
     expect(replayDistanceAt(pts, 999)).toBe(30);
     expect(replayDistanceAt([], 5)).toBe(0);
   });
+
+  describe('extendTruncatedStream', () => {
+    // A polyline spanning ~50 km (straight line east, 500 points ~100 m apart),
+    // driven by a short stream covering ~5 km — mimics a Strava-truncated stream.
+    const longPolyline = encodePoints(
+      Array.from({ length: 500 }, (_, i): [number, number] => [
+        51.5,
+        -0.13 + i * 0.0009,
+      ]),
+    );
+
+    it('extends the replay to the full polyline when the stream is truncated', () => {
+      const result = buildReplay({
+        polyline: longPolyline,
+        velocity: { values: Array.from({ length: 100 }, () => 5), resolution: 1 },
+        activityDistanceMeters: 50000,
+      });
+      // Stream covers ~500 m; extension walks the remaining polyline.
+      expect(result.totalDistance).toBeGreaterThan(25000);
+    });
+
+    it('does not extend when no activity distance is supplied', () => {
+      const result = buildReplay({
+        polyline: longPolyline,
+        velocity: { values: Array.from({ length: 100 }, () => 5), resolution: 1 },
+      });
+      // Without activity distance we trust the stream (~500 m).
+      expect(result.totalDistance).toBeLessThan(1000);
+    });
+  });
 });

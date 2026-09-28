@@ -56,7 +56,6 @@ import { CompareActivitiesModal } from '@/components/activities/CompareActivitie
 import { ReplayTheater } from '@/components/activities/ReplayTheater';
 import { TimelineView } from '@/components/activities/TimelineView';
 import { PatternsView } from '@/components/activities/PatternsView';
-import { StatsView } from '@/components/activities/StatsView';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -190,6 +189,8 @@ function ActivityExpanded({
       hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
       cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
       maxSamples: 4000,
+      activityDistanceMeters: activity.distance_meters ?? undefined,
+      activityDurationSeconds: activity.duration_seconds ?? undefined,
     });
   }, [activity, activityDetail, isCycling]);
 
@@ -407,7 +408,7 @@ export default function ActivitiesPage() {
   const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns' | 'stats'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns'>('list');
   const [allActivities, setAllActivities] = useState<Activity[] | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -696,7 +697,7 @@ export default function ActivitiesPage() {
   const hasActiveFilters = Object.keys(filters).length > 0 || searchText.trim() !== '' || sortIndex !== 0
     || advMinDist !== '' || advMaxDist !== '' || advMinDur !== '' || advMaxDur !== '' || advMinTss !== '' || advMaxTss !== '';
 
-  // Fetch a larger dataset for Timeline, Patterns & Stats views (last 6 months, up to 200 activities)
+  // Fetch a larger dataset for Timeline & Patterns views (last 6 months, up to 200 activities)
   const sixMonthsAgo = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -706,7 +707,7 @@ export default function ActivitiesPage() {
   const { data: statsActivities, isLoading: statsLoading } = useQuery<Activity[]>({
     queryKey: ['activities-stats'],
     queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=200&sort_by=start_date&sort_order=desc`),
-    enabled: (viewMode === 'timeline' || viewMode === 'patterns' || viewMode === 'stats') && !!token,
+    enabled: (viewMode === 'timeline' || viewMode === 'patterns') && !!token,
   });
 
   // Calendar data for timeline view (last 30 days by default)
@@ -801,7 +802,6 @@ export default function ActivitiesPage() {
               { value: 'week', label: 'Week' },
               { value: 'timeline', label: 'Timeline' },
               { value: 'patterns', label: 'Patterns' },
-              { value: 'stats', label: 'Stats' },
             ]}
           />
           <button
@@ -978,7 +978,7 @@ export default function ActivitiesPage() {
       </Card>
 
       {/* Summary Stats */}
-      {viewMode !== 'timeline' && viewMode !== 'patterns' && viewMode !== 'stats' && displayActivities.length > 0 && (
+      {viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && (
         <div className="space-y-2">
           <SummaryStatsBar
             activities={displayActivities}
@@ -1026,8 +1026,6 @@ export default function ActivitiesPage() {
             setViewMode('list');
           }}
         />
-      ) : viewMode === 'stats' ? (
-        <StatsView activities={statsActivities ?? []} isLoading={statsLoading} />
       ) : isLoading ? (
         <div className="space-y-3" aria-label="Loading activities">
           {Array.from({ length: 5 }).map((_, i) => (
