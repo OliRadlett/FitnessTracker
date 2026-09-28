@@ -3016,6 +3016,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notification Summary
+         * @description Total / unread counts and a per-type breakdown for the whole history.
+         *
+         *     Lets the UI label its filter chips and unread badge from the database
+         *     instead of from whatever slice of rows it happens to have loaded.
+         */
+        get: operations["notification_summary_api_v1_notifications_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/{notification_id}/read": {
         parameters: {
             query?: never;
@@ -6637,6 +6660,23 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * Notification Summary
+         * @description Whole-history counts backing the notification filter chips / badge.
+         */
+        NotificationSummary: {
+            /** Total */
+            total: number;
+            /** Unread */
+            unread: number;
+            /**
+             * By Type
+             * @default {}
+             */
+            by_type: {
+                [key: string]: number;
+            };
         };
         /** OAuthConnectionRead */
         OAuthConnectionRead: {
@@ -14594,7 +14634,12 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                offset?: number;
                 unread_only?: boolean;
+                /** @description Filter by read state */
+                read?: boolean | null;
+                /** @description Filter by a single notification type (e.g. `pr`) */
+                type?: string | null;
             };
             header?: never;
             path?: never;
@@ -14618,6 +14663,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    notification_summary_api_v1_notifications_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSummary"];
                 };
             };
         };

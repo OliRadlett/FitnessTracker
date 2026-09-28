@@ -9,7 +9,7 @@ user FK) is not part of anyone's personal data.
 
 import uuid
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -18,15 +18,19 @@ from sqlalchemy.inspection import inspect as sa_inspect
 from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity, ActivitySource, ActivityStream
+from app.models.athlete_insight import AthleteInsight
+from app.models.cross_domain import CrossDomainInsight
 from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
 from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.health_alert import HealthAlert
+from app.models.lift_video_analysis import LiftVideoAnalysis
 from app.models.lifting import (
     LiftingSession,
     LiftingSet,
+    LiftVideo,
     PersonalRecord,
     WarmupTemplate,
     WarmupTemplateStep,
@@ -37,6 +41,8 @@ from app.models.nutrition import RideFuelPlan
 from app.models.push import PushSubscription
 from app.models.route import Route, RouteSource
 from app.models.route_organize import RouteCollection, RouteCollectionItem, RouteTag
+from app.models.rpe_calibration import RpeCalibration
+from app.models.segment import Segment
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import OAuthConnection, User
@@ -81,7 +87,7 @@ async def _query_one(db: AsyncSession, model, user_id, *, load: Iterable = ()):
 
 async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, Any]:
     """Assemble the complete per-user export document."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(UTC).isoformat()
 
     activities = await _query_user_rows(
         db, Activity, user_id, load=(Activity.streams, Activity.sources)
@@ -162,6 +168,30 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
             _serialize_row(r)
             for r in await _query_user_rows(db, RouteCollection, user_id)
         ],
+        # ── strength-video + calibration data ──────────────────────────────
+        # These arrived after the first cut of the export and were silently
+        # dropped, so a GDPR export was missing every piece of video-derived
+        # personal data.
+        "lift_videos": [
+            _serialize_row(v) for v in await _query_user_rows(db, LiftVideo, user_id)
+        ],
+        "lift_video_analyses": [
+            _serialize_row(r)
+            for r in await _query_user_rows(db, LiftVideoAnalysis, user_id)
+        ],
+        "rpe_calibrations": [
+            _serialize_row(r)
+            for r in await _query_user_rows(db, RpeCalibration, user_id)
+        ],
+        # ── derived analytics ──────────────────────────────────────────────
+        "cross_domain_insights": [
+            _serialize_row(r)
+            for r in await _query_user_rows(db, CrossDomainInsight, user_id)
+        ],
+        "athlete_insights": [
+            _serialize_row(r)
+            for r in await _query_user_rows(db, AthleteInsight, user_id)
+        ],
         # ── one-to-one ────────────────────────────────────────────────────
         "cycling_profile": (
             _serialize_row(cycle)
@@ -202,6 +232,16 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
                 "collection_ids": [str(c.collection_id) for c in r.collection_items],
             }
             for r in routes
+        ],
+        # §3.13 climb segments. ``SegmentEffort`` has no user_id of its own —
+        # efforts belong to a user through their segment — so they ride along
+        # nested rather than being queried directly. ``route_id`` is a mapped
+        # column, so ``_serialize_row`` already includes it.
+        "segments": [
+            {**_serialize_row(s), "efforts": [_serialize_row(e) for e in s.efforts]}
+            for s in await _query_user_rows(
+                db, Segment, user_id, load=(Segment.efforts,)
+            )
         ],
     }
 

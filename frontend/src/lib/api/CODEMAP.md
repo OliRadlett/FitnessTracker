@@ -51,7 +51,7 @@ Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`
 | **`weather.ts`** | `/api/v1/weather/` | `getCurrentWeather`, `getForecast` | `CurrentWeather`, `ForecastResponse` |
 | **`projections.ts`** | `/api/v1/projections/` | `getGoalProjection` | `GoalProjectionResponse` |
 | **`exercises.ts`** | `/api/v1/lifting/exercises` | `searchExercises`, `createExercise`, `deleteExercise` | `ExerciseEntry`, `ExerciseDetail` |
-| **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationPreferences`, `NotificationPreferencesUpdate` |
+| **`notifications.ts`** | `/api/v1/notifications/` | `listNotifications` (filters applied server-side: `limit`/`offset`/`unreadOnly`/`read`/`type`), `getNotificationSummary` (`/summary` — whole-history total/unread/per-type counts), `markNotificationRead`, `markAllNotificationsRead`, `getNotificationPreferences`, `updateNotificationPreferences` | `AppNotification`, `NotificationSummary`, `NotificationPreferences`, `NotificationPreferencesUpdate`, `NotificationFilters` |
 | **`segments.ts`** | `/api/v1/segments`, `/api/v1/routes/{id}/segments` | `getSegments`, `getSegmentDetail`, `recomputeRouteSegments` (§3.13) | `SegmentRead`, `SegmentDetail` |
 | **`weight.ts`** | `/api/v1/metrics/weight` | `getWeightHistory`, `createWeightEntry`, `updateWeightEntry`, `deleteWeightEntry` (manual weigh-ins + body composition) | `WeightEntry`, `WeightHistoryResponse` |
 | **`search.ts`** | `/api/v1/search` | `globalSearch` (command-palette lookup) | cross-domain result types |
