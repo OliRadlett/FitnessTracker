@@ -199,6 +199,9 @@ export interface RouteMergeLogEntry {
   id: string;
   primary_route_id: string;
   merged_route_id: string;
+  primary_name: string;
+  merged_name: string;
+  primary_exists: boolean;
   score: number;
   created_at: string | null;
   undone_at: string | null;
