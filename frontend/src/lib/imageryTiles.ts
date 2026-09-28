@@ -48,11 +48,11 @@ function loadImage(url: string, signal?: AbortSignal): Promise<HTMLImageElement>
 /** Stitch the Esri tiles covering `grid`'s bbox into a single canvas. */
 export async function fetchImageryDrape(
   grid: RouteGrid,
-  { maxTiles = 16, signal }: { maxTiles?: number; signal?: AbortSignal } = {},
+  { maxTiles = 64, signal }: { maxTiles?: number; signal?: AbortSignal } = {},
 ): Promise<ImageryDrape> {
   const lat1 = grid.lat0 + grid.latSpan;
   const lng1 = grid.lng0 + grid.lngSpan;
-  const z = chooseZoom(grid.lat0, grid.lng0, lat1, lng1, maxTiles);
+  const z = chooseZoom(grid.lat0, grid.lng0, lat1, lng1, maxTiles, 8, 19);
   const r = tileRangeForBbox(grid.lat0, grid.lng0, lat1, lng1, z);
   const cols = r.x1 - r.x0 + 1;
   const rows = r.y1 - r.y0 + 1;
