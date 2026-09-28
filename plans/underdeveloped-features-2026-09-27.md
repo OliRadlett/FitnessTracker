@@ -29,9 +29,10 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 |---|------|----------|--------|
 | A1 | **`StatsView` is dead code** — monthly distance bars, sport pie, weekly TSS; never imported (activities page uses List/Week/Timeline/Patterns) | `frontend/src/components/activities/StatsView.tsx:18`; flagged in `frontend/src/CODEMAP.md:190` | Wire as an Activities "Stats" tab **or delete** |
 | A2 | **5 unused UI primitives** (0 imports each): `Field`, `PageHeader`, `SectionLabel`, `Stat`, `ErrorState`; `OnboardingWizard` duplicates `Field` locally | `frontend/src/components/ui/{Field,PageHeader,SectionLabel,Stat,ErrorState}.tsx` | Adopt or delete |
-| A3 | **Exercise variation computed then discarded** — `exercise_variation` (high/low-bar squat, sumo/conventional deadlift, push/strict press) set on the result, never persisted/returned/rendered | `backend/app/integrations/pose_analysis.py:1873` (only reference) | Add a column + expose in `process-status`/UI |
-| A4 | **Notification API is thin** — only `limit` + `unread_only`; no `type` filter, no general read filter, no pagination offset | `backend/app/api/notifications.py` (`list_notifications`) | Extend the contract (page is already rich) |
-| A5 | **JSON export drops newer tables** — omits `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `Segment`/`SegmentEffort`, `CrossDomainInsight`, `AthleteInsight`, `WarmupTemplate` | `backend/app/services/data_export.py` (import list) | Add them to the export model set |
+| A3 | ~~**Exercise variation computed then discarded**~~ — **DONE** (migration `082`): `LiftVideo.exercise_variation` persisted, returned by `process-status` + `LiftVideoRead`, shown as a chip on the videos list | `backend/app/integrations/pose_analysis.py:1873` | ✅ Closed |
+| A4 | ~~**Notification API is thin**~~ — **DONE**: `GET /` now takes `offset`, `read`, `type`; new `GET /summary` returns whole-history total/unread/per-type counts. Page + bell filter server-side and label from the summary instead of the loaded 200-row slice | `backend/app/api/notifications.py` (`list_notifications`) | ✅ Closed |
+| A5 | ~~**JSON export drops newer tables**~~ — **DONE**: export grew 24 → 30 collections (`lift_videos`, `lift_video_analyses`, `rpe_calibrations`, `cross_domain_insights`, `athlete_insights`, `segments` + nested `efforts`) | `backend/app/services/data_export.py` (import list) | ✅ Closed. Note: `WarmupTemplate` was *already* in the export — the audit row was wrong there. |
+
 
 ## B. Half-built features (one side missing)
 
@@ -40,14 +41,15 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 | B1 | **Form-based weakness detection** | Frontend ready: `frontend/src/lib/api/types/deficiency.ts` (`form_quality`), `DeficiencyCard` renders generically | Backend producer (Modal form analysis); `plans/modal-inference-expansion.md` item |
 | B2 | **Video-derived lifting TSS** | `backend/app/services/lifting.py:65-75` = duration×RPE only; `combined_training_load` chart exists | Velocity-loss/fatigue-based estimate (plan Phase 7) |
 | B3 | **Learned bar detector (T3)** | `backend/app/integrations/bar_detection.py` = Hough heuristic seeded by pose proxy; **off by default** (`config.py` `video_bar_detection_enabled=False`) | Real learned detector; bar-path truth is pose-proxy in prod |
-| B4 | **Segment distance alignment** | `backend/app/integrations/strava_client.py` never requests the `distance` stream; `services/segments.py` integrates velocity×resolution | Request/use the Strava `distance` stream (§3.13) |
+| B4 | ~~**Segment distance alignment**~~ — **DONE**: `distance` stream now requested and preferred; the timebase is derived from the `time` stream instead of a hardcoded 1 s/sample | `backend/app/services/segments.py` | ✅ Closed. The audit understated this: `ActivityStream.resolution` is `NULL` for *every* Strava stream (Strava sends `"high"`/`"low"`), so "velocity×resolution" was really "velocity×1s" applied to GPS-rate streams — a 10x-style error in every `elapsed_seconds` / `avg_speed_mps` / `effort_vam` / `started_at` ever written. Existing rows are stale; `recompute_ride_segments` (weekly Sun 3:15AM) will fix them |
+| B5 | **`_mean()` drops zeros from power/HR averages** — `services/segments.py` filters `v not in (0, None)`, so coasting and zero-HR samples are excluded, biasing `avg_power_watts` and `avg_hr` **upward** | `backend/app/services/segments.py` (`_mean`) | Not fixed here — it changes stored leaderboard values and is orthogonal to the alignment fix. Worth a decision: is "average power excluding zeros" intended? |
 
 ## C. Deferred / not built
 
 | # | Item | Evidence | Notes |
 |---|------|----------|-------|
 | C1 | **Warmup-effectiveness analysis** | Only `WarmupTemplate` CRUD exists; no adherence→working-set linkage | Explicitly deferred (`plans/backlog-2026-09-20.md`) |
-| C2 | **Cross-route climb clustering + leaderboard** | `integrations/segment_intelligence.py` clusters by gradient signature only; no geometry key (start/end snap + bearing). No global Segments page (`SegmentsCard` is route-only; `lib/api/segments.ts` already lists all) | Route-independent segments/PR leaderboard |
+| C2 | **Cross-route climb clustering + leaderboard** | `integrations/segment_intelligence.py` clusters by gradient signature only; no geometry key (start/end snap + bearing) | **Split.** ✅ **C2a — leaderboard: DONE.** New `/segments` page makes the all-routes view reachable (`GET /segments` with no `route_id` and `getSegmentDetail` were both built and tested but had no UI — segments only ever appeared inside a route detail panel). Grouped by route, route/category/ridden filters, `Stat` summary row. Shared `SegmentRow` extracted so the route-scoped card and the page can't drift. ❌ **C2b — geometry-key clustering: still open.** The page groups by route; it does not yet recognise that the same climb on two different routes is one climb. Needs a start/end snap + bearing key before a cross-route PR is meaningful |
 | C3 | **Synced 3D route compare** | `CompareRoutesModal` = two independent `Route3D`; activities compare already has a shared master clock | Parity gap with `CompareActivitiesModal` |
 | C4 | **New integrations** — Garmin Connect, TrainingPeaks, Zwift, Apple Health | `AGENTS.md` Planned | Needs OAuth app registration |
 | C5 | **Live-Lift supersets / reordering** | `plans/live-lift-reliability-audit-2026-09-20.md` deferred | Needs a grouping data model |
@@ -58,6 +60,15 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 - **`prod` compose GHCR names** hardcoded + case-sensitive (`docker-compose.prod.yml`) — parameterise/source from env.
 - **`/health` + `/metrics` intentionally unauthenticated** — document as design.
 - **E2E depth**: specs are render-heavy; add mutation flows (live-lift create/log/finish, goal check-in, route tag + collection, GPX round-trip, deep links, notifications).
+
+---
+
+## F. Found while remediating (not in the original audit)
+
+| # | Item | Evidence | Action |
+|---|------|----------|--------|
+| F2 | **`types/generated.ts` is ~1000 lines stale** — a full `npm run codegen` against a live backend produced +1005/−21, i.e. many endpoints added by other sessions never had their types regenerated. Not fixed here (a full regen is its own change and would collide with in-flight work). | verified by regenerating against a container running `origin/main` + this branch | Do a **dedicated regen-only PR**. Hand-added blocks in this PR were diffed byte-for-byte against real codegen output. |
+| F1 | **Migration 076 could not run on a migration-built database.** It dropped `uq_route_source_provider`, but `005` created that constraint unnamed, so Postgres named it `route_sources_provider_provider_route_id_key` — a name only `create_all()` databases ever had. `alembic upgrade head` failed with `UndefinedObjectError` on a **fresh** DB, so any new environment / DR restore / CI migrate-from-base was broken. (Production was unaffected only because its schema came from `create_all()`.) | `alembic/versions/005_add_routes.py:56`, `076_scope_route_sources_to_user.py:51` | ✅ **Fixed** — 076 now reads the real `pg_constraint` rows and drops whichever global unique constraint exists, under whatever name. Verified `upgrade head` → `downgrade 075` → `upgrade head` on a scratch DB. |
 
 ---
 

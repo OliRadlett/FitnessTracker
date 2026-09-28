@@ -4138,6 +4138,11 @@ def process_lift_video(
                 if result.get("exercise") and not video.exercise_name:
                     video.exercise_auto = result["exercise"]
 
+                # Sub-style label (low/high bar, sumo, push press) — only valid
+                # when the pose classifier chose the exercise itself.
+                if result.get("exercise_variation"):
+                    video.exercise_variation = result["exercise_variation"]
+
                 if result.get("reps"):
                     video.reps_count = result["reps"]
                 if result.get("weight_kg"):

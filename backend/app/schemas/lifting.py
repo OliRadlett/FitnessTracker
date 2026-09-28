@@ -391,6 +391,7 @@ class LiftVideoRead(LiftVideoBase):
     analysis_status: str | None = None
     analysis_text: str | None = None
     exercise_auto: str | None = None
+    exercise_variation: str | None = None
     reps_count: int | None = None
     weight_kg: float | None = None
     confidence: float | None = None
@@ -450,6 +451,7 @@ class VideoProcessStatus(BaseModel):
     video_id: uuid.UUID
     analysis_status: str | None = None
     exercise_auto: str | None = None
+    exercise_variation: str | None = None
     reps_count: int | None = None
     weight_kg: float | None = None
     confidence: float | None = None

@@ -31,6 +31,13 @@ export interface AppNotification {
   payload: Record<string, unknown> | null;
 }
 
+/** Whole-history counts from `GET /notifications/summary`. */
+export interface NotificationSummary {
+  total: number;
+  unread: number;
+  by_type: Record<string, number>;
+}
+
 export interface NotificationPreferences {
   health_alert: boolean;
   pr: boolean;

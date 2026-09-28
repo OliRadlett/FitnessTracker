@@ -296,6 +296,11 @@ export default function VideosPage() {
                         {video.exercise_auto}
                       </span>
                     )}
+                    {video.exercise_variation && (
+                      <span className="bg-surface-light px-1.5 py-0.5 rounded text-accent">
+                        {video.exercise_variation}
+                      </span>
+                    )}
                     {video.reps_count != null && video.reps_count > 0 && (
                       <span className="bg-surface-light px-1.5 py-0.5 rounded">
                         {video.reps_count} reps

@@ -145,11 +145,17 @@ def _match_routes_road_modal(
 
     sys.path.insert(0, "/root")
     try:
-        from road_graph import RoadEdge, RoadGraph, snap_polyline  # type: ignore
+        from road_graph import (  # type: ignore
+            RoadEdge,
+            RoadGraph,
+            haversine_distance,
+            snap_polyline,
+        )
     except ModuleNotFoundError:  # local / tests: the module lives in the app
         from app.services.road_graph import (  # type: ignore
             RoadEdge,
             RoadGraph,
+            haversine_distance,
             snap_polyline,
         )
 
@@ -166,19 +172,13 @@ def _match_routes_road_modal(
     bbox = (min(lats) - pad, min(lngs) - pad, max(lats) + pad, max(lngs) + pad)
 
     edges: list[RoadEdge] = []
+    clipped = os.path.join(osm_dir, f"{region}-roads.osm.pbf")
+    full = os.path.join(osm_dir, f"{region}-latest.osm.pbf")
     geojson_path = os.path.join(osm_dir, f"{region}-roads.geojson")
-    pbf_path = os.path.join(osm_dir, f"{region}-latest.osm.pbf")
+    pbf_path = clipped if os.path.exists(clipped) else full
 
-    if os.path.exists(geojson_path):
-        with open(geojson_path) as fh:
-            gj = _json.load(fh)
-        try:
-            from road_graph import roads_from_geojson  # type: ignore
-        except ModuleNotFoundError:
-            from app.services.road_graph import roads_from_geojson  # type: ignore
-
-        edges = roads_from_geojson(gj)
-    elif os.path.exists(pbf_path):
+    if os.path.exists(pbf_path):
+        # bbox-filtered at parse time — much lighter than a whole-cache JSON load.
         raw = _build_edges_from_pbf(pbf_path, bbox)
         edges = [
             RoadEdge(
@@ -187,13 +187,22 @@ def _match_routes_road_modal(
                 v=v,
                 polyline=pts,
                 length_m=sum(
-                    math.dist(pts[i - 1], pts[i]) for i in range(1, len(pts))
+                    haversine_distance(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])
+                    for i in range(1, len(pts))
                 ),
                 name=nm,
                 highway=hw,
             )
             for (k, u, v, pts, nm, hw) in raw
         ]
+    elif os.path.exists(geojson_path):
+        try:
+            from road_graph import roads_from_geojson  # type: ignore
+        except ModuleNotFoundError:
+            from app.services.road_graph import roads_from_geojson  # type: ignore
+
+        # Streamed + bbox-filtered: never materialise the whole cache.
+        edges = roads_from_geojson(path=geojson_path, bbox=bbox)
     else:
         return {}
 
@@ -242,7 +251,7 @@ def _build_road_graph_modal(
 
     # Trim to the padded bbox so the cache stays small (the PBF may be a whole
     # country); keep edges near the routes only.
-    pad = 0.05
+    pad = 0.02
     min_lat, min_lng, max_lat, max_lng = (
         bbox[0] - pad,
         bbox[1] - pad,

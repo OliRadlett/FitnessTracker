@@ -845,6 +845,10 @@ def process_video_on_modal(
                 "trim_start_sec": round(trim_start, 2),
                 "trim_end_sec": round(trim_end, 2),
                 "exercise": exercise,
+                # Pose sub-style label ("Low Bar Squat", "Sumo Deadlift"). Only
+                # set when the user didn't declare a different exercise, so
+                # surface it here or the scheduler silently persists nothing.
+                "exercise_variation": full_result.get("exercise_variation") or None,
                 "reps": reps,
                 "weight_kg": weight,
                 "confidence": confidence,

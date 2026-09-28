@@ -153,3 +153,39 @@ def test_roads_from_geojson_roundtrip_and_snapping():
     assert match.coverage > 0.99
     assert match.names == ["High Street"]
 
+
+def test_roads_from_geojson_path_streams_and_filters_bbox(tmp_path):
+    """The single-pass file loader must stream and drop out-of-bbox features."""
+    import json
+
+    from app.services.road_graph import roads_from_geojson
+
+    local = [[i * _EDGE_DEG / 10, _LAT0] for i in range(5)]
+    far = [[i * _EDGE_DEG / 10, _LAT0 + 1.0] for i in range(5)]  # ~111 km north
+    gj = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"way_id": 1, "name": "Local Rd", "highway": "residential"},
+                "geometry": {"type": "LineString", "coordinates": local},
+            },
+            {
+                "type": "Feature",
+                "properties": {"way_id": 2, "name": "Far Rd", "highway": "residential"},
+                "geometry": {"type": "LineString", "coordinates": far},
+            },
+        ],
+    }
+    path = tmp_path / "roads.geojson"
+    path.write_text(json.dumps(gj), encoding="utf-8")
+
+    # No bbox -> both features.
+    assert {e.name for e in roads_from_geojson(path=str(path))} == {"Local Rd", "Far Rd"}
+
+    # bbox around the local row only.
+    bbox = (_LAT0 - 0.01, -1.0, _LAT0 + 0.01, 1.0)
+    filtered = roads_from_geojson(path=str(path), bbox=bbox)
+    assert {e.name for e in filtered} == {"Local Rd"}
+
+

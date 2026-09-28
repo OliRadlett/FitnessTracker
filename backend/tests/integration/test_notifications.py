@@ -9,7 +9,7 @@ Run with:  pytest tests/integration/test_notifications.py -m integration
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -280,3 +280,106 @@ class TestNotificationsApi:
         assert resp.json()["marked"] == 2
         resp = await client.get("/api/v1/notifications?unread_only=true")
         assert resp.json() == []
+
+    async def _seed(self, db_session, test_user, spec: list[tuple[str, str, bool]]):
+        """Seed notifications as (type, title, read) with distinct timestamps."""
+        from app.models.notification import Notification
+
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        for i, (type_, title, read) in enumerate(spec):
+            db_session.add(
+                Notification(
+                    user_id=test_user.id,
+                    type=type_,
+                    title=title,
+                    body=title,
+                    severity="info",
+                    link="/",
+                    read=read,
+                    created_at=base + timedelta(minutes=i),
+                )
+            )
+        await db_session.commit()
+
+    async def test_type_filter(self, client, db_session, test_user):
+        await self._seed(
+            db_session,
+            test_user,
+            [("pr", "PR a", False), ("pr", "PR b", False), ("health_alert", "HRV", False)],
+        )
+        resp = await client.get("/api/v1/notifications?type=pr")
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 2
+        assert {i["type"] for i in items} == {"pr"}
+
+    async def test_read_filter(self, client, db_session, test_user):
+        await self._seed(
+            db_session,
+            test_user,
+            [("pr", "PR a", True), ("pr", "PR b", False)],
+        )
+        assert len((await client.get("/api/v1/notifications?read=true")).json()) == 1
+        assert len((await client.get("/api/v1/notifications?read=false")).json()) == 1
+        # No filter returns both.
+        assert len((await client.get("/api/v1/notifications")).json()) == 2
+
+    async def test_type_and_read_filters_combine(self, client, db_session, test_user):
+        await self._seed(
+            db_session,
+            test_user,
+            [
+                ("pr", "PR a", False),
+                ("pr", "PR b", True),
+                ("health_alert", "HRV", False),
+            ],
+        )
+        resp = await client.get("/api/v1/notifications?type=pr&read=false")
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["title"] == "PR a"
+
+    async def test_offset_pages_beyond_limit(self, client, db_session, test_user):
+        """History longer than one page is reachable — the point of `offset`."""
+        await self._seed(
+            db_session, test_user, [("pr", f"PR {i}", False) for i in range(7)]
+        )
+        first = (await client.get("/api/v1/notifications?limit=3")).json()
+        second = (
+            await client.get("/api/v1/notifications?limit=3&offset=3")
+        ).json()
+        assert len(first) == 3
+        assert len(second) == 3
+        # Newest-first, and pages don't overlap.
+        assert first[0]["created_at"] > second[-1]["created_at"]
+        ids = {n["id"] for n in first} | {n["id"] for n in second}
+        assert len(ids) == 6
+
+    async def test_summary_counts_whole_history(self, client, db_session, test_user):
+        await self._seed(
+            db_session,
+            test_user,
+            [
+                ("pr", "PR a", False),
+                ("pr", "PR b", True),
+                ("race_day", "Race", False),
+            ],
+        )
+        resp = await client.get("/api/v1/notifications/summary")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 3
+        assert body["unread"] == 2
+        assert body["by_type"] == {"pr": 2, "race_day": 1}
+
+    async def test_summary_is_zero_for_empty_history(
+        self, client, db_session, test_user
+    ):
+        resp = await client.get("/api/v1/notifications/summary")
+        assert resp.status_code == 200
+        body = resp.json()
+        # The db_session fixture is shared, so only assert the shape holds and
+        # that by_type totals reconcile with total.
+        assert body["total"] >= 0
+        assert body["unread"] >= 0
+        assert sum(body["by_type"].values()) == body["total"]

@@ -433,6 +433,7 @@ async def get_process_status(
         video_id=video.id,
         analysis_status=video.analysis_status,
         exercise_auto=video.exercise_auto,
+        exercise_variation=video.exercise_variation,
         reps_count=video.reps_count,
         weight_kg=video.weight_kg,
         confidence=video.confidence,
