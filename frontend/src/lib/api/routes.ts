@@ -56,15 +56,48 @@ export async function getDuplicateRoutes(token?: string): Promise<DuplicatePair[
   return apiFetch<DuplicatePair[]>('/api/v1/routes/duplicates', {}, token);
 }
 
-export async function mergeRoutes(primaryId: string, duplicateId: string, token?: string): Promise<MergeResult> {
+export async function mergeRoutes(
+  primaryId: string,
+  duplicateId: string,
+  token?: string,
+  mergeKind: 'identical' | 'variant' = 'identical',
+): Promise<MergeResult> {
   return apiFetch<MergeResult>('/api/v1/routes/merge', {
     method: 'POST',
-    body: JSON.stringify({ primary_route_id: primaryId, duplicate_route_id: duplicateId }),
+    body: JSON.stringify({
+      primary_route_id: primaryId,
+      duplicate_route_id: duplicateId,
+      merge_kind: mergeKind,
+    }),
   }, token);
 }
 
 export async function listRouteMerges(token?: string): Promise<RouteMergeLogEntry[]> {
   return apiFetch<RouteMergeLogEntry[]>('/api/v1/routes/merges', {}, token);
+}
+
+export type MergeKind = 'identical' | 'variant' | 'unclassified';
+
+export async function classifyRouteMerge(
+  logId: string,
+  mergeKind: MergeKind,
+  token?: string,
+): Promise<{ id: string; merge_kind: string | null }> {
+  return apiFetch<{ id: string; merge_kind: string | null }>(
+    `/api/v1/routes/merges/${logId}?merge_kind=${mergeKind}`,
+    { method: 'PATCH' },
+    token,
+  );
+}
+
+export async function resetRouteMergeClassification(
+  token?: string,
+): Promise<{ reset: number }> {
+  return apiFetch<{ reset: number }>(
+    '/api/v1/routes/merges/reset-classification',
+    { method: 'POST' },
+    token,
+  );
 }
 
 export async function undoRouteMerge(logId: string, token?: string): Promise<RouteData> {

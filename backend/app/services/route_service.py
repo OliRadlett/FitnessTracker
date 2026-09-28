@@ -615,6 +615,7 @@ async def merge_routes(
     score: float = 0.0,
     breakdown: dict | None = None,
     record_log: bool = True,
+    merge_kind: str | None = "identical",
 ) -> Route | None:
     """Merge two routes **non-destructively**.
 
@@ -818,6 +819,7 @@ async def merge_routes(
                 primary_route_id=primary.id,
                 merged_route_id=duplicate.id,
                 score=score,
+                merge_kind=merge_kind,
                 breakdown={
                     **(breakdown or {}),
                     # Phase 2 training signal: the surviving primary's embedding

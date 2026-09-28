@@ -196,6 +196,9 @@ class RouteListParams(BaseModel):
 class MergeRequest(BaseModel):
     primary_route_id: uuid.UUID
     duplicate_route_id: uuid.UUID
+    # "identical" (same route recorded twice) or "variant" (same kind of ride,
+    # e.g. different lap counts). Only identical trains the embedding metric.
+    merge_kind: str = "identical"
 
 
 class DuplicatePair(BaseModel):

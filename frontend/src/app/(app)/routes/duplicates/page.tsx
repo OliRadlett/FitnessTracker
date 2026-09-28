@@ -10,6 +10,9 @@ import {
   mergeRoutes,
   undoRouteMerge,
   listRouteMerges,
+  classifyRouteMerge,
+  resetRouteMergeClassification,
+  type MergeKind,
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -59,14 +62,42 @@ export default function DuplicatesPage() {
   });
 
   const manualMergeMutation = useMutation({
-    mutationFn: ({ a, b }: { a: string; b: string }) => mergeRoutes(a, b, token),
+    mutationFn: ({
+      a,
+      b,
+      mergeKind,
+    }: {
+      a: string;
+      b: string;
+      mergeKind: 'identical' | 'variant';
+    }) => mergeRoutes(a, b, token, mergeKind),
     onSuccess: (result) => {
       setLastMergeLogId(result.merge_log_id);
       setUndoMessage(null);
       queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['route-merges'] });
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
     onError: (err) => toast.error(`Merge failed: ${(err as Error)?.message || 'please try again.'}`),
+  });
+
+  const classifyMutation = useMutation({
+    mutationFn: ({ logId, kind }: { logId: string; kind: MergeKind }) =>
+      classifyRouteMerge(logId, kind, token),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['route-merges'] }),
+    onError: (err) => toast.error(`Couldn't update classification: ${(err as Error)?.message || 'try again.'}`),
+  });
+
+  const resetClassificationMutation = useMutation({
+    mutationFn: () => resetRouteMergeClassification(token),
+    onSuccess: (res) => {
+      setUndoMessage(
+        `Cleared classification on ${res.reset} merge${res.reset === 1 ? '' : 's'} — ` +
+          'they no longer influence training until you reclassify them.',
+      );
+      queryClient.invalidateQueries({ queryKey: ['route-merges'] });
+    },
+    onError: (err) => toast.error(`Reset failed: ${(err as Error)?.message || 'try again.'}`),
   });
 
   const undoMutation = useMutation({
@@ -111,8 +142,8 @@ export default function DuplicatesPage() {
     autoMergeMutation.mutate(0.4);
   };
 
-  const handleMergePair = (a: string, b: string) => {
-    manualMergeMutation.mutate({ a, b });
+  const handleMergePair = (a: string, b: string, mergeKind: 'identical' | 'variant') => {
+    manualMergeMutation.mutate({ a, b, mergeKind });
   };
 
   const handleDismissPair = (a: string, b: string) => {
@@ -283,7 +314,11 @@ export default function DuplicatesPage() {
           <MergeHistorySection
             merges={merges}
             onUndo={(logId) => undoMutation.mutate(logId)}
+            onClassify={(logId, kind) => classifyMutation.mutate({ logId, kind })}
+            onResetClassification={() => resetClassificationMutation.mutate()}
             undoing={undoMutation.isPending}
+            classifying={classifyMutation.isPending}
+            resetting={resetClassificationMutation.isPending}
             undoMessage={undoMessage}
           />
         )}
@@ -295,23 +330,54 @@ export default function DuplicatesPage() {
 function MergeHistorySection({
   merges,
   onUndo,
+  onClassify,
+  onResetClassification,
   undoing,
+  classifying,
+  resetting,
   undoMessage,
 }: {
   merges: RouteMergeLogEntry[];
   onUndo: (logId: string) => void;
+  onClassify: (logId: string, kind: MergeKind) => void;
+  onResetClassification: () => void;
   undoing: boolean;
+  classifying: boolean;
+  resetting: boolean;
   undoMessage: string | null;
 }) {
   const active = merges.filter((m) => !m.undone_at);
   const undone = merges.filter((m) => m.undone_at);
+  const unclassified = active.filter((m) => !m.merge_kind).length;
 
   return (
     <div className="mt-10">
-      <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-        <History className="w-5 h-5 text-muted" />
-        Merge history
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <History className="w-5 h-5 text-muted" />
+          Merge history
+        </h2>
+        {active.length > 0 && (
+          <button
+            onClick={onResetClassification}
+            disabled={resetting}
+            title="Clear the identical/variant label on all merges so you can re-judge them. Unclassified merges never train the matcher."
+            className="px-3 py-1.5 text-xs bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors disabled:opacity-50"
+          >
+            {resetting ? 'Resetting…' : 'Reset classification'}
+          </button>
+        )}
+      </div>
+
+      <p className="mb-3 text-xs text-muted">
+        A merge only teaches the matcher that two routes are the same when marked
+        <span className="text-foreground"> &ldquo;the same route twice&rdquo;</span>.
+        Mark loop/lap variants as <span className="text-foreground">&ldquo;same kind of ride&rdquo;</span>
+        {' '}so they stay merged but don&apos;t widen matching.
+        {unclassified > 0 && (
+          <span className="text-warning"> {unclassified} unclassified (not training).</span>
+        )}
+      </p>
 
       {undoMessage && <p className="mb-3 text-sm text-positive">{undoMessage}</p>}
 
@@ -322,40 +388,67 @@ function MergeHistorySection({
 
         {active.map((m) => (
           <Card key={m.id}>
-            <div className="p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm text-foreground truncate">
-                  <span className="font-medium">{m.primary_name}</span>
-                  <span className="text-muted"> absorbed </span>
-                  <span className="text-muted line-through">{m.merged_name}</span>
+            <div className="p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm text-foreground truncate">
+                    <span className="font-medium">{m.primary_name}</span>
+                    <span className="text-muted"> absorbed </span>
+                    <span className="text-muted line-through">{m.merged_name}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    <Badge variant="muted" className="text-xs">
+                      {Math.round(m.score * 100)}% match
+                    </Badge>
+                    {m.created_at && (
+                      <span>{new Date(m.created_at).toLocaleString()}</span>
+                    )}
+                    {!m.primary_exists && (
+                      <span className="text-warning">
+                        primary since merged/removed — restore may not be possible
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                  <Badge variant="muted" className="text-xs">
-                    {Math.round(m.score * 100)}% match
-                  </Badge>
-                  {m.created_at && (
-                    <span>{new Date(m.created_at).toLocaleString()}</span>
-                  )}
-                  {!m.primary_exists && (
-                    <span className="text-warning">
-                      primary since merged/removed — restore may not be possible
-                    </span>
-                  )}
-                </div>
+                <button
+                  onClick={() => onUndo(m.id)}
+                  disabled={undoing || !m.primary_exists}
+                  title={
+                    m.primary_exists
+                      ? 'Restore the merged-away route'
+                      : 'The primary route no longer exists'
+                  }
+                  className="shrink-0 px-3 py-1.5 text-sm bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  <Undo2 className="w-4 h-4" />
+                  {undoing ? 'Undoing…' : 'Undo'}
+                </button>
               </div>
-              <button
-                onClick={() => onUndo(m.id)}
-                disabled={undoing || !m.primary_exists}
-                title={
-                  m.primary_exists
-                    ? 'Restore the merged-away route'
-                    : 'The primary route no longer exists'
-                }
-                className="shrink-0 px-3 py-1.5 text-sm bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-              >
-                <Undo2 className="w-4 h-4" />
-                {undoing ? 'Undoing…' : 'Undo'}
-              </button>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted">Treated as:</span>
+                {(['identical', 'variant'] as const).map((kind) => (
+                  <label key={kind} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name={`hist-kind-${m.id}`}
+                      checked={m.merge_kind === kind}
+                      disabled={classifying}
+                      onChange={() => onClassify(m.id, kind)}
+                    />
+                    <span className={m.merge_kind === kind ? 'text-foreground' : 'text-muted'}>
+                      {kind === 'identical'
+                        ? 'the same route twice'
+                        : 'same kind of ride'}
+                    </span>
+                  </label>
+                ))}
+                {!m.merge_kind && (
+                  <Badge variant="muted" className="text-xs">
+                    unclassified · not training
+                  </Badge>
+                )}
+              </div>
             </div>
           </Card>
         ))}
@@ -386,13 +479,15 @@ function DuplicatePairCard({
   isMerging,
 }: {
   pair: DuplicatePair;
-  onMerge: (a: string, b: string) => void;
+  onMerge: (a: string, b: string, mergeKind: 'identical' | 'variant') => void;
   onDismiss: (a: string, b: string) => void;
   isMerging: boolean;
 }) {
   // Preview off by default so the queue stays scannable; opened on demand when
   // a pair needs a judgement call.
   const [showPreview, setShowPreview] = useState(false);
+  // Default to "same route twice" — the common case for a true duplicate.
+  const [mergeKind, setMergeKind] = useState<'identical' | 'variant'>('identical');
 
   return (
     <Card>
@@ -492,23 +587,54 @@ function DuplicatePairCard({
           )}
         </div>
 
-        <div className="mt-4 pt-3 border-t border-surface-light/30 flex justify-end gap-2">
-          <button
-            onClick={() => onMerge(pair.route_a.id, pair.route_b.id)}
-            disabled={isMerging}
-            className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-          >
-            <GitMerge className="w-4 h-4" />
-            {isMerging ? 'Merging...' : 'Merge (keep A)'}
-          </button>
-          <button
-            onClick={() => onMerge(pair.route_b.id, pair.route_a.id)}
-            disabled={isMerging}
-            className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-          >
-            <GitMerge className="w-4 h-4" />
-            {isMerging ? 'Merging...' : 'Merge (keep B)'}
-          </button>
+        {/* Why are these the same? Drives whether the merge trains the matcher. */}
+        <div className="mt-4 pt-3 border-t border-surface-light/30">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="text-muted">These routes are:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer min-h-[32px]">
+              <input
+                type="radio"
+                name={`kind-${pair.route_a.id}-${pair.route_b.id}`}
+                checked={mergeKind === 'identical'}
+                onChange={() => setMergeKind('identical')}
+              />
+              <span className="text-foreground">
+                the same route twice
+                <span className="text-muted"> (trains matching)</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer min-h-[32px]">
+              <input
+                type="radio"
+                name={`kind-${pair.route_a.id}-${pair.route_b.id}`}
+                checked={mergeKind === 'variant'}
+                onChange={() => setMergeKind('variant')}
+              />
+              <span className="text-foreground">
+                same kind of ride
+                <span className="text-muted"> (won&apos;t train matching)</span>
+              </span>
+            </label>
+          </div>
+
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              onClick={() => onMerge(pair.route_a.id, pair.route_b.id, mergeKind)}
+              disabled={isMerging}
+              className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+            >
+              <GitMerge className="w-4 h-4" />
+              {isMerging ? 'Merging...' : 'Merge (keep A)'}
+            </button>
+            <button
+              onClick={() => onMerge(pair.route_b.id, pair.route_a.id, mergeKind)}
+              disabled={isMerging}
+              className="px-3 py-1.5 text-sm bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+            >
+              <GitMerge className="w-4 h-4" />
+              {isMerging ? 'Merging...' : 'Merge (keep B)'}
+            </button>
+          </div>
         </div>
       </div>
     </Card>

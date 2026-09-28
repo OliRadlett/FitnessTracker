@@ -303,3 +303,79 @@ async def test_merge_log_captures_names_for_history(db_session, test_user):
     ).scalar_one()
     assert still.name == "Primary"
 
+
+async def test_variant_merges_never_train_the_metric(db_session, test_user):
+    """Regression: loop/lap variants must not be positives.
+
+    The user merged several loop variants (same kind of ride, different laps).
+    Training on those would teach the matcher that distinct routes are
+    duplicates and widen matching. Only `identical` merges train.
+    """
+    from app.models.route import RouteMatchMetric
+    from app.services.road_matching import train_metric_from_history
+
+    prim_vec, dup_vec = [0.1] * 41, [0.15] * 41
+
+    # 4 VARIANT merges: excluded from positives -> <3 positives -> no training.
+    for i in range(4):
+        enc = encode_polyline(_line(10.0 + i))
+        prim = await create_route(db_session, test_user.id, f"VP{i}", "cycling", 10_000.0, enc)
+        dup = await create_route(db_session, test_user.id, f"VD{i}", "cycling", 10_000.0, enc)
+        prim.road_embedding = {"version": 1, "features": prim_vec}
+        dup.road_embedding = {"version": 1, "features": dup_vec}
+        await db_session.flush()
+        await merge_routes(
+            db_session, prim.id, dup.id, test_user.id, score=0.9, merge_kind="variant"
+        )
+
+    # Surviving routes for a negative pool.
+    for i in range(6):
+        enc = encode_polyline(_line(50.0 + i))
+        r = await create_route(db_session, test_user.id, f"N{i}", "cycling", 50_000.0, enc)
+        r.road_embedding = {"version": 1, "features": [float(i) / 6.0] * 41}
+    await db_session.flush()
+
+    await train_metric_from_history(db_session, test_user.id)
+
+    # No metric row: variants produced zero training positives.
+    assert (
+        await db_session.execute(
+            select(RouteMatchMetric).where(RouteMatchMetric.user_id == test_user.id)
+        )
+    ).scalar_one_or_none() is None
+
+
+async def test_identical_merges_still_train(db_session, test_user):
+    """The counterpart: identical merges DO train (so the exclusion isn't overbroad)."""
+    from app.models.route import RouteMatchMetric
+    from app.services.road_matching import train_metric_from_history
+
+    prim_vec, dup_vec = [0.1] * 41, [0.15] * 41
+
+    for i in range(4):
+        enc = encode_polyline(_line(10.0 + i))
+        prim = await create_route(db_session, test_user.id, f"IP{i}", "cycling", 10_000.0, enc)
+        dup = await create_route(db_session, test_user.id, f"ID{i}", "cycling", 10_000.0, enc)
+        prim.road_embedding = {"version": 1, "features": prim_vec}
+        dup.road_embedding = {"version": 1, "features": dup_vec}
+        await db_session.flush()
+        await merge_routes(
+            db_session, prim.id, dup.id, test_user.id, score=0.9, merge_kind="identical"
+        )
+
+    for i in range(6):
+        enc = encode_polyline(_line(50.0 + i))
+        r = await create_route(db_session, test_user.id, f"M{i}", "cycling", 50_000.0, enc)
+        r.road_embedding = {"version": 1, "features": [float(i) / 6.0] * 41}
+    await db_session.flush()
+
+    await train_metric_from_history(db_session, test_user.id)
+
+    row = (
+        await db_session.execute(
+            select(RouteMatchMetric).where(RouteMatchMetric.user_id == test_user.id)
+        )
+    ).scalar_one()
+    assert row.n_positives == 4
+
+
