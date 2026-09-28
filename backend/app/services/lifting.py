@@ -55,51 +55,125 @@ def calculate_session_volume(sets: list[dict]) -> float:
     )
 
 
-# ── Lifting TSS estimate (B-31) ──────────────────────────────────────────────
-# Puts strength work on the same scale as cycling TSS so both can share one
-# load chart. duration_min × avg RPE / 7 ≈ 60 TSS for an hour at RPE 7 —
-# deliberately the same order as an endurance hour. An estimate, labelled so
-# everywhere it surfaces.
+# ── Lifting training load (B-31, formula revised for B2) ────────────────────
+# Puts strength work on the same scale as cycling TSS so both can share one load
+# chart. An estimate, labelled as one everywhere it surfaces.
+#
+# The original formula was `duration_min × avg_RPE / 7`. It rated a 3×3 at 200 kg
+# and a 3×3 at 40 kg identically — it never looked at the work actually done,
+# which is the entire point of a training-load metric.
+#
+# Foster's method: session load = tonnage × session RPE. Raw tonnage is not
+# comparable between a 60 kg lifter and a 120 kg one, so it is divided by
+# bodyweight first, giving a *volume load* in kg lifted per kg bodyweight. That
+# makes the metric scale-free, and it is what separates "an hour of heavy
+# singles" from "an hour of light technique work" — the case duration cannot see.
+#
+# LIFT_TSS_PER_VOLUME_LOAD maps volume load onto the TSS scale. It is a
+# *display-scale* constant, not a physiological claim, and it keeps the anchor
+# the old formula was built around: ~60 TSS for a one-hour session at RPE 7. A
+# bodyweight-normalised hour of moderate lifting moves roughly 60 × bodyweight
+# in tonnage (a volume load of ~60), and 60 × 0.7 × 1.4 ≈ 59.
+LIFT_TSS_PER_VOLUME_LOAD = 1.4
 
 
 def estimate_lifting_tss(
     duration_seconds: int | None,
     set_rpes: list[float | None],
     session_rpe: float | None = None,
+    *,
+    volume_kg: float | None = None,
+    bodyweight_kg: float | None = None,
 ) -> float | None:
-    """Duration×RPE training-load estimate, or None without a duration."""
+    """Training-load estimate: bodyweight-normalised tonnage × session RPE.
+
+    ``volume_kg`` and ``bodyweight_kg`` must both be present to use the volume
+    formula. When either is missing this falls back to the older
+    duration × RPE estimate, which is the weaker of the two but still better
+    than no number at all for a user who has never logged a weigh-in.
+
+    Returns ``None`` only when there is neither volume nor a usable duration.
+    """
+    vals = [r for r in set_rpes if r is not None]
+    avg_rpe = sum(vals) / len(vals) if vals else (session_rpe or 6.0)
+
+    if volume_kg and bodyweight_kg and bodyweight_kg > 0:
+        volume_load = volume_kg / bodyweight_kg
+        return round(volume_load * (avg_rpe / 10.0) * LIFT_TSS_PER_VOLUME_LOAD, 1)
+
     if not duration_seconds or duration_seconds <= 0:
         return None
-    vals = [r for r in set_rpes if r is not None]
-    avg = sum(vals) / len(vals) if vals else (session_rpe if session_rpe else 6.0)
-    return round(duration_seconds / 60 * avg / 7, 1)
+    return round(duration_seconds / 60 * avg_rpe / 7, 1)
 
 
-def refresh_session_tss(session: LiftingSession) -> None:
+def refresh_session_tss(
+    session: LiftingSession, bodyweight_kg: float | None = None
+) -> None:
     """Recompute ``estimated_tss`` from the session's current sets (in-memory)."""
-    rpes = [s.rpe for s in (session.sets or []) if not s.is_warmup]
+    sets = list(session.sets or [])
+    # Delegated to the canonical helper so the two definitions cannot drift.
+    volume = calculate_session_volume(
+        [
+            {"weight_kg": s.weight_kg, "reps": s.reps, "is_warmup": s.is_warmup}
+            for s in sets
+            if not s.is_warmup
+        ]
+    )
     session.estimated_tss = estimate_lifting_tss(
-        session.duration_seconds, rpes, session.rpe_session
+        session.duration_seconds,
+        [s.rpe for s in sets if not s.is_warmup],
+        session.rpe_session,
+        volume_kg=volume,
+        bodyweight_kg=bodyweight_kg,
     )
 
 
-async def backfill_lifting_tss(db: AsyncSession, user_id: uuid.UUID) -> int:
-    """Stamp ``estimated_tss`` on historical sessions missing it (B-31).
+async def latest_body_weight(db: AsyncSession, user_id: uuid.UUID) -> float | None:
+    """Most recent logged bodyweight, or ``None`` if the user has never weighed in.
 
-    Returns the number of sessions updated. Idempotent — skips rows that
-    already have a value and rows without a duration.
+    Volume load is bodyweight-normalised, so this is what stands between a user
+    with weigh-ins and the weaker duration-based fallback.
     """
+    from app.models.weight import WeightLog
+
     result = await db.execute(
-        select(LiftingSession).where(
-            LiftingSession.user_id == user_id,
+        select(WeightLog.weight_kilogram)
+        .where(WeightLog.user_id == user_id)
+        .order_by(WeightLog.date.desc())
+        .limit(1)
+    )
+    weight = result.scalar_one_or_none()
+    return float(weight) if weight and weight > 0 else None
+
+
+async def backfill_lifting_tss(
+    db: AsyncSession, user_id: uuid.UUID, *, force: bool = False
+) -> int:
+    """Recompute ``estimated_tss`` across the user's sessions.
+
+    Returns the number of sessions updated. By default only rows still missing a
+    value (or without a duration) are touched.
+
+    ``force=True`` recomputes every session. That is the standing behaviour the
+    weekly aggregation uses, and it is not just a one-off backfill: the value
+    depends on bodyweight, which drifts, and on the sets, which are edited
+    after the fact. Both are inputs the task can cheaply re-read, and the
+    metric is fully derived from them, so recomputing is idempotent.
+    """
+    query = select(LiftingSession).where(LiftingSession.user_id == user_id)
+    if not force:
+        query = query.where(
             LiftingSession.estimated_tss.is_(None),
             LiftingSession.duration_seconds.isnot(None),
         )
-    )
+    result = await db.execute(query)
     sessions = list(result.scalars().all())
+    if not sessions:
+        return 0
+    bodyweight = await latest_body_weight(db, user_id)
     for session in sessions:
         await db.refresh(session, ["sets"])
-        refresh_session_tss(session)
+        refresh_session_tss(session, bodyweight)
     await db.flush()
     return len(sessions)
 
@@ -336,7 +410,8 @@ async def update_session(
         if activity is not None:
             apply_strava_duration_fallback(session, activity)
 
-    refresh_session_tss(session)  # B-31: keep the load estimate current.
+    # B-31: keep the load estimate current.
+    refresh_session_tss(session, await latest_body_weight(db, session.user_id))
     await db.flush()
     # Re-fetch with relationships loaded to avoid MissingGreenlet on sets
     return await get_session(db, session.id, user_id)  # type: ignore[return-value]

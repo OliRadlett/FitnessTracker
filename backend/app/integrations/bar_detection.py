@@ -1,16 +1,48 @@
-"""Pose-seeded barbell plate detection (§3.18 / T3 v1).
+"""Barbell detection for the lift-video pipeline (§3.18 / T3).
 
-The pose proxy (shoulder/wrist midpoint) can't see the real bar. Plates are
-large, roughly circular, high-contrast objects, so a Hough-circle search
-**seeded near the pose bar point** finds the plate centre (= the bar) far more
-reliably than a global search. Candidates are scored by edge support, interior
-darkness (plates are darker than the wall/floor) and proximity to the seed;
-weak detections fall back to the pose proxy (never silently mixed).
+The pose proxy (shoulder/wrist midpoint) tracks bar *motion* accurately but sits
+at the wrong absolute position, so it can't tell you where the bar actually was.
+This module finds the bar visually and uses it to correct the proxy.
+
+**Two detectors, learned first.** ``model_path`` selects the trained YOLO
+detector (`yolov8n` exported to ONNX, trained on 232 human-annotated frames plus
+~1,500 synthetic, `scripts/train_bar_detector.py`). With no model configured the
+module falls back to a classical pose-seeded Hough/ellipse search, which is
+weak but needs no artifact.
+
+Measured against the human plate ground truth (`scripts/holdout_bar_detector.py`,
+232 human frames / 29 clips):
+
+| detector | bar-position error | note |
+|---|---|---|
+| pose proxy (no correction) | 0.259 | baseline |
+| proxy-seeded CoTracker3 | 0.250 | evaluated, **rejected** — ~4% better than the proxy |
+| classical Hough/ellipse | — | 18% detection rate (43/232) |
+| YOLO-World zero-shot | — | ~23% IoU; latches onto static equipment |
+| **trained ONNX detector** | **0.063** | **4.1x better than the proxy**, wins on 28/29 clips |
+
+Held-out human frames: recall@0.5 **0.971**. Clip-level holdout (6 clips the
+model never saw, retrained without them): recall@0.5 **1.000**, mean IoU
+**0.927**.
+
+**Detections are not used as the track directly.** Their per-frame error exceeds
+the proxy's, so ``bar_track_from_frame_paths`` instead extracts the *per-clip
+median bar-to-proxy offset* — a two-pass refinement, since the second pass is
+seeded by the corrected proxy — and applies that constant offset to the proxy's
+motion. Too few detections and it falls back to the raw proxy, never mixing the
+two per frame.
+
+Bar centre prefers the **two-plate midpoint**, which measures near-exact
+(0.002 normalised); a whole-bar axis-aligned box is ~20x worse (0.043) because a
+box around an angled bar is not symmetric about its midpoint. The box, then a
+single plate, are fallbacks. The plate-pair angle also yields ``tilt_deg``.
 
 Detector-agnostic contract: produces the same bar-track shape as
 ``bar_tracking.bar_track_from_landmarks`` with ``source="detector"``.
 
-Pure OpenCV + NumPy — no MediaPipe import.
+No MediaPipe import. The classical path is pure OpenCV + NumPy; the learned path
+additionally needs ``onnxruntime`` (installed in the Modal image — see
+``modal_client._MODAL_PIP_PACKAGES``).
 """
 
 from __future__ import annotations

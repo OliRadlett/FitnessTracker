@@ -210,7 +210,10 @@ def snap_polyline(
         if haversine_distance(filtered[-1][0], filtered[-1][1], p[0], p[1]) >= min_move_m:
             filtered.append(p)
 
-    graph.build_index()
+    # The index is built lazily by ``nearest_edges`` (guarded on ``_built``), so
+    # it is built once per graph and reused across every route — building it
+    # eagerly here rebuilt it per call (113 routes × ~12 s ≈ 23 min wasted on a
+    # 3.2 M-edge graph).
     ordered: list[int] = []
     snapped = 0
     prev_idx: int | None = None

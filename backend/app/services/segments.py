@@ -466,17 +466,32 @@ def _window_indices(
     return start_idx, end_idx
 
 
-def _mean(values: list, *, min_keep=0) -> float | None:
-    vals = [
-        float(v)
-        for v in values
-        if isinstance(v, (int, float))
-        and math.isfinite(float(v))
-        and v not in (0, None)
-    ]
-    if len(vals) < min_keep or not vals:
-        return None
-    return sum(vals) / len(vals)
+def _mean(values: list, *, zero_is_dropout: bool = False) -> float | None:
+    """Mean of the usable samples, or ``None`` when there are none.
+
+    ``None``, non-numeric and non-finite samples are always dropped. Whether a
+    ``0`` counts depends on the signal, which is why it's a parameter rather
+    than a blanket rule:
+
+    - **Power** — ``0 W`` is a real reading: coasting. Averaging over a window
+      that contains any coasting has to include those samples, or the average
+      describes only the parts where you were pedalling. Every climb window
+      contains a little, and short steep ones contain a lot.
+    - **Heart rate** — ``0`` is a dropped-strap reading, not a measurement, so
+      including it would drag the average toward zero.
+    """
+    vals: list[float] = []
+    for v in values:
+        # bool is an int subclass, so True would otherwise count as 1 W.
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            continue
+        fv = float(v)
+        if not math.isfinite(fv):
+            continue
+        if zero_is_dropout and fv <= 0:
+            continue
+        vals.append(fv)
+    return sum(vals) / len(vals) if vals else None
 
 
 def compute_effort_for_window(
@@ -516,10 +531,11 @@ def compute_effort_for_window(
         elapsed = float(elapsed_axis[end_idx]) - float(elapsed_axis[start_idx])
     else:
         elapsed = (end_idx - start_idx) * dt
-    # Power bucket-per-second, mimicking the power-curve logic: average the
-    # per-sample values (watts are 1s samples at high resolution).
+    # Average the per-sample values. Coasting (0 W) counts toward the power
+    # average; a 0 HR reading is a dropout and does not. Samples are near-uniform
+    # in time, so an unweighted mean is a good time-weighted mean.
     avg_power = _mean(power[start_idx : end_idx + 1]) if power else None
-    avg_hr = _mean(hr[start_idx : end_idx + 1]) if hr else None
+    avg_hr = _mean(hr[start_idx : end_idx + 1], zero_is_dropout=True) if hr else None
     avg_speed = covered / elapsed if elapsed > 0 else 0.0
     effort_vam = None
     if altitude is not None and elapsed > 0:
@@ -537,8 +553,10 @@ def compute_effort_for_window(
         "start_idx": start_idx,
         "end_idx": end_idx,
         "elapsed_seconds": round(elapsed, 1),
-        "avg_power_watts": round(avg_power, 1) if avg_power else None,
-        "avg_hr": round(avg_hr, 1) if avg_hr else None,
+        # `is not None`, not truthiness: a window ridden entirely coasting is a
+        # real 0 W, and reporting it as "no power data" loses the sample.
+        "avg_power_watts": round(avg_power, 1) if avg_power is not None else None,
+        "avg_hr": round(avg_hr, 1) if avg_hr is not None else None,
         "avg_speed_mps": round(avg_speed, 2),
         "effort_vam": effort_vam,
     }
