@@ -268,6 +268,12 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
 - Terrain already had Lambert + per-vertex hillshade; the higher source resolution
   now feeds through to the mesh.
 
+### Full-road render (2026-09-28)
+- Road ribbon now renders the **entire** course in orbit/cinematic/drone/flyby
+  modes (was a 160-seg window around the rider in all modes). Chase/cockpit keep
+  the windowed draw (distant road projects into a band from a low camera).
+- Path centerline + segment zones also visible in drone/flyby (not just orbit).
+
 ### Remaining
 - Optional: wet-road sheen / wind sock, **segment racing** and **public share
   link** (both need backend/product scope).

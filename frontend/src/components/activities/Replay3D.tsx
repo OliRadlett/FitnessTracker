@@ -1333,20 +1333,25 @@ export function Replay3D({
       }
       // Segments drawn = point index (points 0..i need i segments).
       trailGeo.instanceCount = Math.max(0, Math.min(riderPose.index, points.length - 1));
-      // Draw only a window of road around the rider — the full ribbon's distant
-      // leg projects into a band, but we keep a generous span so the road reads
-      // as a continuous route ahead and behind.
+      // Overview modes (orbit/cinematic): render the entire road so the full
+      // course is visible. Chase/cockpit: window around the rider — the distant
+      // leg projects into a band from a low camera, and the span is generous
+      // enough to read as continuous ahead and behind.
+      const camM = camModeRef.current;
+      const inOverview = camM === 'orbit' || camM === 'cinematic' || camM === 'drone' || camM === 'flyby';
       if (roadGeo) {
-        const W = 160;
-        const segStart = Math.max(0, riderPose.index - W);
-        const segEnd = Math.min(points.length - 2, riderPose.index + W);
-        roadGeo.setDrawRange(segStart * 6, Math.max(0, (segEnd - segStart + 1) * 6));
+        if (inOverview) {
+          roadGeo.setDrawRange(0, roadGeo.getIndex()!.count);
+        } else {
+          const W = 220;
+          const segStart = Math.max(0, riderPose.index - W);
+          const segEnd = Math.min(points.length - 2, riderPose.index + W);
+          roadGeo.setDrawRange(segStart * 6, Math.max(0, (segEnd - segStart + 1) * 6));
+        }
       }
-      // The full-route line (doubling back on an out-and-back) is visual noise
-      // from a low chase camera — show it only in the aerial orbit view.
-      pathLine.visible = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
-      // Segment zones + race traces + markers likewise: overview only.
-      const inOverview = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
+      // Full-route centerline: visible whenever the camera is high enough to
+      // read the whole course (not chase/cockpit, where it's visual noise).
+      pathLine.visible = inOverview;
       for (const z of zoneMeshes) z.mesh.visible = inOverview;
       for (const rl of raceLines) rl.line.visible = inOverview;
       // Race markers: orbit only (not during the cinematic intro — visual noise).
