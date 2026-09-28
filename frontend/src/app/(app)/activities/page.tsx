@@ -28,6 +28,7 @@ const RouteMap = dynamic(
   { ssr: false, loading: () => <div className="h-[250px] bg-surface-light/20 rounded-lg animate-pulse" /> },
 );
 import { Card } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
@@ -786,58 +787,58 @@ export default function ActivitiesPage() {
 
   return (
     <div className="space-y-6 min-w-0">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Activities</h1>
-          <p className="text-muted">Browse and analyze your fitness activities</p>
-        </div>
-        {/* View Toggle */}
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <SegmentedControl
-            ariaLabel="Activity view mode"
-            value={viewMode}
-            onChange={setViewMode}
-            options={[
-              { value: 'list', label: 'List' },
-              { value: 'week', label: 'Week' },
-              { value: 'timeline', label: 'Timeline' },
-              { value: 'patterns', label: 'Patterns' },
-            ]}
-          />
-          <button
-            onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
-            className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
-              selectMode
-                ? 'bg-accent/20 text-accent border-accent/30'
-                : 'text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50'
-            }`}
-          >
-            {selectMode ? 'Cancel' : 'Select'}
-          </button>
-          <div className="relative">
+      <PageHeader
+        title="Activities"
+        subtitle="Browse and analyze your fitness activities"
+        actions={
+          <>
+            {/* View Toggle */}
+            <SegmentedControl
+              ariaLabel="Activity view mode"
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { value: 'list', label: 'List' },
+                { value: 'week', label: 'Week' },
+                { value: 'timeline', label: 'Timeline' },
+                { value: 'patterns', label: 'Patterns' },
+              ]}
+            />
             <button
-              onClick={() => setShowImportMenu(!showImportMenu)}
-              className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50 transition-colors"
+              onClick={() => { setSelectMode(!selectMode); if (selectMode) setBulkSelected(new Set()); }}
+              className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                selectMode
+                  ? 'bg-accent/20 text-accent border-accent/30'
+                  : 'text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50'
+              }`}
             >
-              Import
+              {selectMode ? 'Cancel' : 'Select'}
             </button>
-            {showImportMenu && (
-              <div className="absolute right-0 mt-1 bg-surface border border-surface-light rounded-lg shadow-xl z-30 py-1 min-w-[140px]">
-                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
-                  {'\u{1F4C4}'} Import GPX
-                  <input ref={gpxInputRef} type="file" accept=".gpx" className="hidden" disabled={!!importLoading}
-                    onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'gpx'); setShowImportMenu(false); }} />
-                </label>
-                <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
-                  {'\u231A'} Import FIT
-                  <input ref={fitInputRef} type="file" accept=".fit" className="hidden" disabled={!!importLoading}
-                    onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'fit'); setShowImportMenu(false); }} />
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowImportMenu(!showImportMenu)}
+                className="min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border text-muted hover:text-foreground border-surface-light hover:bg-surface-light/50 transition-colors"
+              >
+                Import
+              </button>
+              {showImportMenu && (
+                <div className="absolute right-0 mt-1 bg-surface border border-surface-light rounded-lg shadow-xl z-30 py-1 min-w-[140px]">
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
+                    {'\u{1F4C4}'} Import GPX
+                    <input ref={gpxInputRef} type="file" accept=".gpx" className="hidden" disabled={!!importLoading}
+                      onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'gpx'); setShowImportMenu(false); }} />
+                  </label>
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface-light/50 cursor-pointer">
+                    {'\u231A'} Import FIT
+                    <input ref={fitInputRef} type="file" accept=".fit" className="hidden" disabled={!!importLoading}
+                      onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileImport(file, 'fit'); setShowImportMenu(false); }} />
+                  </label>
+                </div>
+              )}
+            </div>
+          </>
+        }
+      />
 
       {/* Import status banner */}
       {importMessage && (

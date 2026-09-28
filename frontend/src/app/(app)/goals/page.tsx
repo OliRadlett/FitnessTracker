@@ -10,6 +10,7 @@ import { GoalDetailModal } from '@/components/goals/GoalDetailModal';
 import { ProjectionCard } from '@/components/goals/ProjectionCard';
 import { useGoalProjections } from '@/components/goals/useGoalProjections';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
 
@@ -60,15 +61,17 @@ export default function GoalsPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-foreground">🎯 Goals</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          + New Goal
-        </button>
-      </div>
+      <PageHeader
+        title="🎯 Goals"
+        actions={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            + New Goal
+          </button>
+        }
+      />
 
       {/* ── Tabs ────────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">

@@ -20,6 +20,7 @@ import type {
   LiftVideo,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -481,28 +482,28 @@ export default function LiftingPage() {
       )}
 
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Lifting</h1>
-          <p className="text-muted">Track your strength training sessions</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => backfillMutation.mutate()}
-            disabled={backfillMutation.isPending}
-            className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
-            title="Auto-link Strava strength activities to lifting sessions"
-          >
-            {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
-          </button>
-          <button
-            onClick={() => setShowNewSession(!showNewSession)}
-            className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
-          >
-            {showNewSession ? 'Cancel' : '+ New Session'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Lifting"
+        subtitle="Track your strength training sessions"
+        actions={
+          <>
+            <button
+              onClick={() => backfillMutation.mutate()}
+              disabled={backfillMutation.isPending}
+              className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+              title="Auto-link Strava strength activities to lifting sessions"
+            >
+              {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
+            </button>
+            <button
+              onClick={() => setShowNewSession(!showNewSession)}
+              className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
+            >
+              {showNewSession ? 'Cancel' : '+ New Session'}
+            </button>
+          </>
+        }
+      />
 
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
