@@ -113,11 +113,22 @@ distance). Until both are pinned the axis values drift by ~2x and are not usable
 2. **Gate the plate detections** (reject a plate far from the pose proxy).
 3. Only then step 3 (the body-frame metric) + a UI pass.
 
-## Inputs we have / could get
+## Inputs
 
-- **height** — a profile field (only `sync_profile_reference_weight` exists today).
-- **focal / lens** — EXIF of the source video, or a manual "which lens" choice.
-- **plate diameter** — only useful if we resolve the **stack** (we know `load_kg`
-  per clip, so the stack is computable in principle).
-- **bar length** — ties the plate separation to the depth difference, but the
-  plate spacing depends on the load, so it is the least reliable.
+| input | where it lives | status |
+|---|---|---|
+| **height** | `User.preferences.height_cm` (`services/preferences.py`) | ✅ added (Settings → "Lifter height") |
+| **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ helper added; needs wiring + per-video storage |
+| plate diameter | — | ❌ the detected "plate" is a stack; would need the load (`load_kg`) |
+| bar length | — | ❌ plate spacing depends on the load |
+
+**Why the focal is per clip, not a setting:** videos come from **different
+lenses** (main / ultra-wide / tele), so one number per user is wrong. Phone
+containers carry the lens focal as a 35 mm equivalent
+(OnePlus: `com.oplus.lens.focal_length = 14.01`), which converts to pixels via
+`f_px = (diag_px / 2) / tan(FOV_diag / 2)`, `FOV_diag = 2·atan(43.266 / (2·f_eq))`
+→ **714 px** for the test clip (74° horizontal FOV, a plausible phone lens).
+
+**The pose cannot supply the focal.** Fitting a camera to MediaPipe's world
+landmarks returns a *confident but bogus* ~18° FOV (its world `z` is a learned
+body estimate, not a perspective measurement) — verified 2026-09-27.
