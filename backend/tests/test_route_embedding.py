@@ -84,3 +84,26 @@ def test_embed_is_unit_length():
 
 def test_l2_normalize_zero_vector_safe():
     assert l2_normalize([0.0, 0.0]) == [0.0, 0.0]
+
+
+def test_route_features_accepts_a_route_like_object():
+    """Regression: road_matching.route_features passed a kwarg build_features
+    doesn't accept (elevation_gain_meters vs elevation_gain_m), so every
+    Phase-2 matcher run rolled back after a successful Modal match."""
+    import types
+
+    from app.services.polyline_utils import encode_polyline
+    from app.services.road_matching import route_features
+
+    route = types.SimpleNamespace(
+        encoded_polyline=encode_polyline(_line(12.0)),
+        road_match={"edge_set": ["e1", "e2"], "names": ["High St"]},
+        elevation_profile={"distance": [0, 1000], "elevation": [10, 60]},
+        elevation_gain_meters=50.0,
+        terrain_classification={"terrain_type": "rolling"},
+    )
+
+    features = route_features(route)
+    assert len(features) == FEATURE_DIM
+    assert any(features)  # non-trivial
+
