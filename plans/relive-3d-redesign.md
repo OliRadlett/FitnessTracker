@@ -313,6 +313,29 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
   'failed' instead of hanging the spinner forever. Silent mid-fetch returns now
   mark 'failed' too.
 
+### Broadcast v2 — weather, speed streaks, DOF, dynamic camera (2026-09-29)
+- **Broadcast HUD**: a pro-cycling-broadcast-style overlay (toggleable) showing
+  speed (hero number), power with Coggan zone color, HR, cadence, grade, ride
+  progress bar, distance, and ghost delta. Compact single-line HUD remains as
+  the default; full HUD toggled via a "HUD" button.
+- **Weather particles**: replaced the basic rain LineSegments with a full GPU
+  particle system — rain streaks (additive-blended), snow (drifting points), and
+  haze. Particle count and opacity scale with precipitation intensity; wind
+  direction/speed tilt the fall. Camera-relative so weather is always visible.
+- **Speed streaks**: a pool of 400 points sampled along the rider's recent path,
+  spawning motion trails behind the bike. Density and length scale with speed
+  (invisible when crawling, dramatic sprint lines at pace). Color shifts from
+  cyan (cool) to orange (hot) with effort.
+- **Depth of field**: BokehPass added to the post-processing pipeline (RenderPass
+  → BokehPass → BloomPass → OutputPass). Focus distance tracks the rider; aperture
+  widens in orbit/cinematic (shallow, dramatic) and narrows in follow cams (deep,
+  so the road ahead stays readable).
+- **Dynamic auto-camera**: a new "auto" mode (now the default) that evaluates ride
+  context — grade, speed, power vs FTP, highlight proximity — and picks the best
+  camera angle: drone on climbs, flyby on descents, chase on sprints/fast
+  sections, orbit as the cinematic default. Hysteresis cooldown (4–6 s) prevents
+  rapid flipping.
+
 ### Remaining
 - Optional: wet-road sheen / wind sock, **segment racing** and **public share
   link** (both need backend/product scope).

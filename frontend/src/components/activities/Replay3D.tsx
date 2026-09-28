@@ -9,7 +9,9 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
 import type { ReplayBuildResult, ReplayColorMode, ReplayPoint } from '@/lib/replay';
 import { TOUR_PRESETS, powerZoneBounds, replayDistanceAt, replayMetricColor, replayMetricScale, replayMetricValue, timeFmt, tourRate } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
@@ -51,6 +53,14 @@ const ZONE_COLORS = ['#64748b', '#3b82f6', '#22c55e', '#eab308', '#f97316', '#ef
 
 const INTENSITY_GRADIENT = 'linear-gradient(to right, #3b82f6, #ef4444)';
 const GRADE_GRADIENT = `linear-gradient(to right, ${DESCENT_COLOR}, ${GRADE_RAMP.map(([, hex]) => hex).join(', ')})`;
+
+/** Coggan power-zone color for a given wattage (matches broadcast HUD power row). */
+function powerZoneColor(watts: number, ftpWatts?: number | null): string {
+  const zones = powerZoneBounds(ftpWatts ?? 200);
+  let z = 0;
+  while (z < zones.length && watts >= zones[z]) z++;
+  return ZONE_COLORS[Math.min(z, ZONE_COLORS.length - 1)];
+}
 
 function nearestIndex(points: ReplayPoint[], elapsed: number): number {
   let lo = 0;
@@ -541,7 +551,10 @@ export function Replay3D({
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 300));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' | 'cinematic'>('cinematic');
+  const [camMode, setCamMode] = useState<'auto' | 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' | 'cinematic'>('auto');
+  // Auto-camera state: the currently selected sub-mode and a cooldown timer so
+  // we don't flip cameras every frame.
+  const autoCamRef = useRef<{ mode: 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby'; until: number }>({ mode: 'orbit', until: 0 });
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
     if (!terrainDefault) return 'off';
@@ -567,6 +580,8 @@ export function Replay3D({
   const [tour, setTour] = useState(false);
   // Photo mode: hide the chrome for a clean view / capture.
   const [photo, setPhoto] = useState(false);
+  // Broadcast HUD: full ride-data overlay (pro cycling broadcast style).
+  const [showBroadcast, setShowBroadcast] = useState(false);
   // Day/night scrubber: hours offset from the ride's start time (re-lights).
   const [timeOffsetH, setTimeOffsetH] = useState(0);
   // Per-point DEM height so the road/bike follow the terrain bed instead of the
@@ -624,6 +639,8 @@ export function Replay3D({
   // True for one tick after cinematic → orbit handoff, so the orbit eases in
   // immediately instead of waiting out the resume delay.
   const orbitJustHandedOffRef = useRef(false);
+  // Current active highlight (read in the RAF tick for auto-camera context).
+  const activeHighlightRef = useRef<{ startElapsed: number; endElapsed: number; label: string; detail: string; kind: HighlightKind } | null>(null);
   // Ride-time weather, read per-frame (wet road sheen + wind HUD).
   const wetnessRef = useRef(0);
   const windSpeedRef = useRef(0);
@@ -864,29 +881,70 @@ export function Replay3D({
     scene.add(sky);
     scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.4, size * 3.2 * fogFarScale);
 
-    // Rain: short falling streaks in camera-relative space when it's raining.
-    let rain: THREE.LineSegments | null = null;
-    if (rainy) {
-      const N = 900;
-      const pos = new Float32Array(N * 6);
-      for (let i = 0; i < N; i++) {
-        const x = (Math.random() - 0.5) * 70;
-        const y = (Math.random() - 0.5) * 70;
-        const z = Math.random() * 40;
-        pos[i * 6] = x;
-        pos[i * 6 + 1] = y;
-        pos[i * 6 + 2] = z;
-        pos[i * 6 + 3] = x + 0.18;
-        pos[i * 6 + 4] = y;
-        pos[i * 6 + 5] = z - 0.9;
+    // ── Weather particles: rain streaks, snow, or clear ─────────────────────
+    // A GPU point/line system in camera-relative space. Intensity scales with
+    // precipitation; wind tilts the fall direction. Rain = streaks (LineSegments),
+    // snow = slow drifting points, dust/haze = sparse floating motes.
+    let weatherFx: THREE.Points | THREE.LineSegments | null = null;
+    const weatherType = snowy ? 'snow' : rainy ? 'rain' : foggy ? 'haze' : null;
+    const precipIntensity = Math.min(1, precip / 6 + (rainy ? 0.6 : snowy ? 0.5 : 0.2));
+    if (weatherType) {
+      if (weatherType === 'rain') {
+        const N = Math.round(1400 * precipIntensity);
+        const pos = new Float32Array(N * 6);
+        for (let i = 0; i < N; i++) {
+          const x = (Math.random() - 0.5) * 80;
+          const y = (Math.random() - 0.5) * 80;
+          const z = Math.random() * 50;
+          pos[i * 6] = x;
+          pos[i * 6 + 1] = y;
+          pos[i * 6 + 2] = z;
+          pos[i * 6 + 3] = x + 0.6;
+          pos[i * 6 + 4] = y;
+          pos[i * 6 + 5] = z - 2.2;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color: 0xc8daf0,
+          transparent: true,
+          opacity: 0.5 * precipIntensity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        weatherFx = new THREE.LineSegments(geo, mat);
+      } else {
+        // Snow or haze: soft drifting points.
+        const N = weatherType === 'snow' ? Math.round(1800 * precipIntensity) : 500;
+        const pos = new Float32Array(N * 3);
+        const sizes = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          pos[i * 3] = (Math.random() - 0.5) * 90;
+          pos[i * 3 + 1] = (Math.random() - 0.5) * 90;
+          pos[i * 3 + 2] = Math.random() * 55;
+          sizes[i] = weatherType === 'snow' ? 0.5 + Math.random() * 1.2 : 0.3 + Math.random() * 0.6;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        const mat = new THREE.PointsMaterial({
+          color: weatherType === 'snow' ? 0xffffff : 0x8a93a6,
+          size: 1.4,
+          sizeAttenuation: true,
+          transparent: true,
+          opacity: weatherType === 'snow' ? 0.85 * precipIntensity : 0.25,
+          depthWrite: false,
+          blending: weatherType === 'snow' ? THREE.NormalBlending : THREE.AdditiveBlending,
+        });
+        weatherFx = new THREE.Points(geo, mat);
       }
-      const rainGeo = new THREE.BufferGeometry();
-      rainGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const rainMat = new THREE.LineBasicMaterial({ color: 0xa8bcd4, transparent: true, opacity: 0.38 });
-      rain = new THREE.LineSegments(rainGeo, rainMat);
-      rain.frustumCulled = false;
-      scene.add(rain);
+      weatherFx.frustumCulled = false;
+      scene.add(weatherFx);
     }
+    // Wind vector (meteorological "from" → "to" direction) for tilting particles.
+    const windDeg = parseCardinal(windDirRef.current);
+    const windRad = ((windDeg + 180) % 360) * (Math.PI / 180);
+    const windVec = new THREE.Vector3(Math.sin(windRad), 0, 0).multiplyScalar(Math.min(8, (windSpeed ?? 0) * 0.15));
 
     const camera = new THREE.PerspectiveCamera(
       55,
@@ -895,16 +953,47 @@ export function Replay3D({
       size * 8
     );
 
-    // Post: bloom for the glowing effort-road / sun + final tone mapping.
+    // Post: depth of field → bloom → output. DOF focus tracks the rider so the
+    // bike stays sharp while the background melts into bokeh — a cinematic
+    // broadcast look. Aperture widens in orbit (shallow, dramatic) and narrows
+    // in follow cams (deep, so the road ahead stays readable).
     let composer: EffectComposer | null = null;
+    let dofPass: BokehPass | null = null;
     if (!liteMode) {
       composer = new EffectComposer(renderer);
       composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       composer.setSize(mount.clientWidth, mount.clientHeight);
       composer.addPass(new RenderPass(scene, camera));
+      dofPass = new BokehPass(scene, camera, { focus: 50, aperture: 0.0012, maxblur: 0.008 });
+      composer.addPass(dofPass);
       composer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth, mount.clientHeight), 0.6, 0.5, 0.8));
       composer.addPass(new OutputPass());
     }
+
+    // ── Speed streaks: motion particles trailing the bike ──────────────────
+    // A pool of points that stream backward from the rider along its recent
+    // path. Density and length scale with speed — barely visible when crawling,
+    // dramatic sprint lines at pace. Tinted by the current effort (power/HR).
+    const STREAK_COUNT = 400;
+    const streakPos = new Float32Array(STREAK_COUNT * 3);
+    const streakAlpha = new Float32Array(STREAK_COUNT);
+    const streakGeo = new THREE.BufferGeometry();
+    streakGeo.setAttribute('position', new THREE.BufferAttribute(streakPos, 3));
+    const streakMat = new THREE.PointsMaterial({
+      size: 0.9,
+      transparent: true,
+      opacity: 0.5,
+      vertexColors: false,
+      color: 0x38bdf8,
+      sizeAttenuation: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const streaks = new THREE.Points(streakGeo, streakMat);
+    streaks.frustumCulled = false;
+    scene.add(streaks);
+    // Ring buffer of recent rider positions for streak spawning.
+    const streakHistory: { x: number; y: number; z: number; speed: number }[] = [];
 
     // Cinematic director: a scripted camera path that plays on open / on demand,
     // then hands off to a normal follow cam.
@@ -1470,20 +1559,63 @@ export function Replay3D({
         dirLight.target.position.copy(rider.position);
         dirLight.target.updateMatrixWorld();
       }
-      // Rain streaks fall in camera-relative space.
-      if (rain) {
-        rain.position.copy(camera.position);
-        const arr = (rain.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
-        const fall = Math.min(0.1, dt) * 26;
-        for (let i = 0; i < arr.length; i += 6) {
-          arr[i + 2] -= fall;
-          arr[i + 5] -= fall;
-          if (arr[i + 5] < -20) {
-            arr[i + 2] += 40;
-            arr[i + 5] += 40;
+      // ── Weather particle animation (camera-relative) ─────────────────────
+      if (weatherFx) {
+        weatherFx.position.copy(camera.position);
+        const arr = (weatherFx.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+        const isStreaks = weatherFx instanceof THREE.LineSegments;
+        const fall = Math.min(0.1, dt) * (weatherType === 'rain' ? 34 : weatherType === 'snow' ? 4 : 2);
+        // Wind drift pushes particles horizontally as they fall.
+        const wx = windVec.x * Math.min(0.1, dt);
+        if (isStreaks) {
+          for (let i = 0; i < arr.length; i += 6) {
+            arr[i + 2] -= fall; arr[i + 5] -= fall;
+            arr[i] += wx; arr[i + 3] += wx;
+            if (arr[i + 5] < -25) { arr[i + 2] += 55; arr[i + 5] += 55; arr[i] = (Math.random() - 0.5) * 80; arr[i + 3] = arr[i] + 0.6; }
+          }
+        } else {
+          const drift = weatherType === 'snow' ? Math.sin(now / 700 + 0) * 0.3 : 0; // gentle sway
+          for (let i = 0; i < arr.length; i += 3) {
+            arr[i + 2] -= fall;
+            arr[i] += wx + drift; arr[i + 1] += Math.cos(now / 900 + i) * 0.02;
+            if (arr[i + 2] < -30) { arr[i + 2] += 60; arr[i] = (Math.random() - 0.5) * 90; arr[i + 1] = (Math.random() - 0.5) * 90; }
           }
         }
-        (rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        (weatherFx.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      }
+
+      // ── Speed streaks: spawn motion trails behind the bike ────────────────
+      const curSpeed = riderPose.speed;
+      streakHistory.push({ x: rider.position.x, y: rider.position.y, z: rider.position.z, speed: curSpeed });
+      if (streakHistory.length > 60) streakHistory.shift();
+      const streakIntensity = Math.min(1, curSpeed / 14); // fades in above ~14 m/s
+      if (streakIntensity > 0.05) {
+        // Sample positions along the recent path; place streak points between them.
+        const segs = Math.min(STREAK_COUNT, Math.floor(streakIntensity * STREAK_COUNT));
+        const histLen = streakHistory.length;
+        let si = 0;
+        for (let i = 0; i < segs; i++) {
+          const t = i / segs;
+          const idx = Math.floor(t * (histLen - 1));
+          const next = Math.min(histLen - 1, idx + 1);
+          const f = t * (histLen - 1) - idx;
+          const a = streakHistory[idx], b = streakHistory[next];
+          streakPos[si * 3] = a.x + (b.x - a.x) * f;
+          streakPos[si * 3 + 1] = a.y + (b.y - a.y) * f;
+          streakPos[si * 3 + 2] = a.z + (b.z - a.z) * f;
+          streakAlpha[si] = (1 - t) * streakIntensity;
+          si++;
+        }
+        // Zero out unused points (push them far away / invisible).
+        for (let i = si; i < STREAK_COUNT; i++) { streakPos[i * 3 + 2] = -9999; }
+        // Color shifts from cyan (cool) to orange (hot) with effort.
+        const effort = ftpWatts ? Math.min(1, (points[nearestIndex(points, t)].power ?? 0) / (ftpWatts * 1.5)) : curSpeed / 14;
+        streakMat.color.setHSL(0.55 - effort * 0.45, 0.9, 0.55);
+        streakMat.opacity = 0.25 + streakIntensity * 0.5;
+        (streakGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        streaks.visible = true;
+      } else {
+        streaks.visible = false;
       }
       // Wet road: darken + desaturate the asphalt and lift a faint sheen so a
       // rainy ride reads as slick. Dry → no change.
@@ -1512,7 +1644,39 @@ export function Replay3D({
         }
       }
 
-      const mode = camModeRef.current;
+      // ── Auto-camera: pick the best angle based on ride context ──────────
+      // Evaluates grade, speed, power, and highlight proximity to choose a
+      // sub-mode. Hysteresis via a cooldown so we don't flip every frame.
+      const pickAutoCamera = (): 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' => {
+        const idx = nearestIndex(points, t);
+        const p = points[idx];
+        const grade = p.grade ?? 0;
+        const speed = riderPose.speed;
+        const power = p.power;
+        // Highlight proximity: within 10s of a highlight start → drone to frame it.
+        const ah = activeHighlightRef.current;
+        const nearHighlight = ah && Math.abs(t - ah.startElapsed) < 10;
+        if (grade > 4) return 'drone'; // climbing — elevated view shows the effort
+        if (grade < -4) return 'flyby'; // descending — cinematic fly-by
+        if (ftpWatts && power && power > ftpWatts * 1.3) return 'chase'; // sprint — dramatic follow
+        if (speed > 16 && grade > 1) return 'chase'; // fast flat/rolling — chase
+        if (nearHighlight) return 'drone'; // approaching a feature — frame it
+        return 'orbit'; // default cinematic orbit
+      };
+
+      let mode = camModeRef.current;
+      if (mode === 'auto') {
+        const now2 = now;
+        const auto = autoCamRef.current;
+        if (now2 >= auto.until) {
+          const next = pickAutoCamera();
+          // Cooldown: 6s for orbit (stable), 4s for action cams.
+          auto.mode = next;
+          auto.until = now2 + (next === 'orbit' ? 6000 : 4000);
+        }
+        mode = auto.mode;
+      }
+
       if (mode === 'orbit') {
         camera.up.copy(UP_Y);
         controls.enabled = true;
@@ -1784,6 +1948,15 @@ export function Replay3D({
           camera.updateProjectionMatrix();
         }
       }
+      // ── Depth of field: focus tracks the rider, aperture by camera mode ──
+      if (dofPass) {
+        const targetFocus = camera.position.distanceTo(rider.position);
+        const u = dofPass.uniforms as Record<string, { value: number }>;
+        u['focus'].value += (targetFocus - u['focus'].value) * Math.min(1, dt * 6);
+        const orbitMode = camModeRef.current === 'orbit' || camModeRef.current === 'cinematic';
+        const targetAperture = orbitMode ? 0.0022 : 0.0008; // shallow in orbit, deep in follow
+        u['aperture'].value += (targetAperture - u['aperture'].value) * Math.min(1, dt * 3);
+      }
       sky.position.copy(camera.position);
       if (composer) composer.render();
       else renderer.render(scene, camera);
@@ -1867,8 +2040,10 @@ export function Replay3D({
       (sky.material as THREE.MeshBasicMaterial).map?.dispose();
       (sky.material as THREE.Material).dispose();
       composer?.dispose();
-      rain?.geometry.dispose();
-      (rain?.material as THREE.Material | undefined)?.dispose();
+      weatherFx?.geometry.dispose();
+      (weatherFx?.material as THREE.Material | undefined)?.dispose();
+      streaks.geometry.dispose();
+      (streaks.material as THREE.Material).dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
       sceneRef.current = null;
@@ -2396,6 +2571,9 @@ export function Replay3D({
     [tour, highlights, displayElapsed]
   );
   useEffect(() => {
+    activeHighlightRef.current = activeHighlight;
+  }, [activeHighlight]);
+  useEffect(() => {
     if (!tour || !activeHighlight) return;
     setCamMode(activeHighlight.kind === 'climb' ? 'drone' : 'chase');
   }, [tour, activeHighlight]);
@@ -2420,23 +2598,25 @@ export function Replay3D({
 
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 [.photo_&]:hidden">
         <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
-          {(['orbit', 'chase', 'drone', 'cockpit', 'flyby', 'cinematic'] as const).map((m) => (
+          {(['auto', 'orbit', 'chase', 'drone', 'cockpit', 'flyby', 'cinematic'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setCamMode(m)}
               aria-pressed={camMode === m}
               title={
-                m === 'orbit'
-                  ? 'Free orbit camera'
-                  : m === 'chase'
-                    ? 'Follow behind the rider'
-                    : m === 'drone'
-                      ? 'Elevated trailing drone'
-                      : m === 'cockpit'
-                        ? 'Rider point of view'
-                        : m === 'flyby'
-                          ? 'Cinematic fly-by orbit'
-                          : 'Cinematic director — scripted flyover then chase'
+                m === 'auto'
+                  ? 'Dynamic camera — picks the best angle for the terrain'
+                  : m === 'orbit'
+                    ? 'Free orbit camera'
+                    : m === 'chase'
+                      ? 'Follow behind the rider'
+                      : m === 'drone'
+                        ? 'Elevated trailing drone'
+                        : m === 'cockpit'
+                          ? 'Rider point of view'
+                          : m === 'flyby'
+                            ? 'Cinematic fly-by orbit'
+                            : 'Cinematic director — scripted flyover then chase'
               }
               className={`rounded px-2 py-1 min-h-[44px] sm:min-h-[36px] min-w-[44px] sm:min-w-[36px] text-[11px] capitalize transition-colors ${
                 camMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
@@ -2446,6 +2626,16 @@ export function Replay3D({
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setShowBroadcast((b) => !b)}
+          aria-pressed={showBroadcast}
+          title="Toggle broadcast HUD"
+          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
+            showBroadcast ? 'bg-accent/20 text-accent' : 'text-muted'
+          }`}
+        >
+          HUD
+        </button>
         {highlights.length > 0 && (
           <button
             onClick={() => setTour((t) => !t)}
@@ -2547,34 +2737,85 @@ export function Replay3D({
             <p className="text-[11px] text-foreground">{activeHighlight.detail}</p>
           </div>
         )}
-        {hud && (
-          <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground [.photo_&]:hidden">
-            {hud.kmh.toFixed(1)} km/h
-            {hud.power != null && <span className="text-blue-400"> · {Math.round(hud.power)} W</span>}
-            {hud.hr != null && <span className="text-amber-400"> · {Math.round(hud.hr)} bpm</span>}
-            {hud.cadence != null && <span className="text-violet-400"> · {Math.round(hud.cadence)} rpm</span>}
-            {hud.grade != null && (
-              <span className="text-emerald-400"> · {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}%</span>
-            )}
-            {windSpeedRef.current > 0 && (
-              <span className="text-sky-300" title={`Wind ${windSpeedRef.current} km/h ${windDirRef.current ?? ''}`}>
-                {' · '}
-                <span
-                  className="inline-block"
-                  style={{ transform: `rotate(${(parseCardinal(windDirRef.current) + 180) % 360}deg)` }}
-                >
-                  ↑
-                </span>
-                {Math.round(windSpeedRef.current)} km/h
-              </span>
-            )}
+        {/* ── Broadcast HUD: live ride data overlay ─────────────────────────── */}
+        {hud && showBroadcast && (
+          <div className="pointer-events-none absolute left-2 top-2 z-10 w-44 rounded-lg border border-surface-light/50 bg-surface/80 p-2 font-mono text-[10px] tabular-nums backdrop-blur-sm [.photo_&]:hidden">
+            {/* Header: ride name + camera mode */}
+            <div className="mb-1.5 flex items-center justify-between border-b border-surface-light/40 pb-1">
+              <span className="truncate text-[9px] font-semibold uppercase tracking-wide text-muted">{name}</span>
+              <span className="rounded bg-accent/20 px-1 text-[8px] text-accent">{camModeRef.current.toUpperCase()}</span>
+            </div>
+            {/* Speed — the hero number */}
+            <div className="mb-1 flex items-baseline gap-1">
+              <span className="text-lg font-bold leading-none text-foreground">{hud.kmh.toFixed(1)}</span>
+              <span className="text-[9px] text-muted">km/h</span>
+            </div>
+            {/* Metric rows */}
+            <div className="space-y-0.5">
+              {hud.power != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">PWR</span>
+                  <span className="font-semibold" style={{ color: powerZoneColor(hud.power, ftpWatts) }}>
+                    {Math.round(hud.power)} <span className="text-[8px] text-muted">W</span>
+                  </span>
+                </div>
+              )}
+              {hud.hr != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">HR</span>
+                  <span className="font-semibold text-rose-400">{Math.round(hud.hr)} <span className="text-[8px] text-muted">bpm</span></span>
+                </div>
+              )}
+              {hud.cadence != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">CAD</span>
+                  <span className="font-semibold text-violet-400">{Math.round(hud.cadence)} <span className="text-[8px] text-muted">rpm</span></span>
+                </div>
+              )}
+              {hud.grade != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">GRAD</span>
+                  <span className={hud.grade >= 0 ? 'font-semibold text-amber-400' : 'font-semibold text-sky-400'}>
+                    {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}<span className="text-[8px] text-muted">%</span>
+                  </span>
+                </div>
+              )}
+            </div>
+            {/* Progress bar through the ride */}
+            <div className="mt-1.5 border-t border-surface-light/40 pt-1">
+              <div className="flex items-center justify-between text-[8px] text-muted">
+                <span>{replayDistanceAt(points, displayElapsed).toFixed(1)} km</span>
+                <span>{timeFmt(displayElapsed)}</span>
+              </div>
+              <div className="mt-0.5 h-0.5 overflow-hidden rounded-full bg-surface-light">
+                <div className="h-full rounded-full bg-accent" style={{ width: `${(displayElapsed / totalTime) * 100}%` }} />
+              </div>
+            </div>
+            {/* Ghost delta */}
             {ghostDelta != null && (
-              <span className={ghostDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                {' · '}
+              <div className={`mt-1 text-right text-[9px] font-semibold ${ghostDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {ghostDelta >= 0 ? '+' : '−'}
                 {Math.abs(ghostDelta) >= 1000
                   ? `${(Math.abs(ghostDelta) / 1000).toFixed(2)} km`
                   : `${Math.round(Math.abs(ghostDelta))} m`}
+              </div>
+            )}
+          </div>
+        )}
+        {/* Compact HUD (top-right) when broadcast is off */}
+        {hud && !showBroadcast && (
+          <div className="pointer-events-none absolute right-1 top-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground [.photo_&]:hidden">
+            {hud.kmh.toFixed(1)} km/h
+            {hud.power != null && <span style={{ color: powerZoneColor(hud.power, ftpWatts) }}> · {Math.round(hud.power)} W</span>}
+            {hud.hr != null && <span className="text-rose-400"> · {Math.round(hud.hr)} bpm</span>}
+            {hud.cadence != null && <span className="text-violet-400"> · {Math.round(hud.cadence)} rpm</span>}
+            {hud.grade != null && (
+              <span className="text-emerald-400"> · {hud.grade >= 0 ? '+' : ''}{hud.grade.toFixed(1)}%</span>
+            )}
+            {ghostDelta != null && (
+              <span className={ghostDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                {' · '}{ghostDelta >= 0 ? '+' : '−'}
+                {Math.abs(ghostDelta) >= 1000 ? `${(Math.abs(ghostDelta) / 1000).toFixed(2)} km` : `${Math.round(Math.abs(ghostDelta))} m`}
               </span>
             )}
           </div>
