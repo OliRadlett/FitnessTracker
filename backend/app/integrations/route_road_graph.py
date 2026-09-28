@@ -63,67 +63,84 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
     """Parse highways from an OSM PBF within ``bbox`` → list of edge tuples.
 
     ``bbox`` = (min_lat, min_lng, max_lat, max_lng). Returns a list of
-    ``(key, u, v, [(lat, lng), ...], name, highway)``. Uses pyosmium's location
-    index so way node refs resolve to coordinates. Tries a disk-backed index
-    (bounded RAM) and falls back to the default in-memory index.
+    ``(key, u, v, [(lat, lng), ...], name, highway)``.
+
+    **Two passes** (this is the important part): resolving way node refs with
+    pyosmium's ``locations=True`` builds a node-location index over the *entire*
+    extract — including every node outside the bbox — which dominates the cost
+    (a whole-UK parse blew a 30 min Modal timeout). Instead:
+
+    1. Pass 1 streams ways (no locations) and collects the node ids referenced
+       by highway ways, plus a bbox skip using each way's ``nodes`` refs is not
+       possible without coords, so we keep every highway way's node ids (cheap:
+       ids are small ints).
+    2. Pass 2 streams nodes (no locations) and records coordinates **only** for
+       the collected ids.
+
+    Way geometry is then assembled from the resolved coordinates. No global
+    location index is built. ``osmium`` file passes are memory-bounded.
     """
     import osmium
 
     min_lat, min_lng, max_lat, max_lng = bbox
 
-    def _run(idx_value: str | None) -> list[tuple]:
-        out: list[tuple] = []
+    # ── Pass 1: highway ways + their node refs ──────────────────────────────
+    wanted_nodes: set[int] = set()
+    ways: list[tuple[int, str | None, str, list[int]]] = []
 
-        class _Handler(osmium.SimpleHandler):
-            def way(self, w):
-                highway = w.tags.get("highway")
-                if not highway:
-                    return
-                name = w.tags.get("name")
-                way_id = w.id
+    class _WayCollector(osmium.SimpleHandler):
+        def way(self, w):
+            highway = w.tags.get("highway")
+            if not highway:
+                return
+            refs = [n.ref for n in w.nodes]
+            if len(refs) < 2:
+                return
+            ways.append((w.id, w.tags.get("name"), highway, refs))
+            wanted_nodes.update(refs)
+
+    _WayCollector().apply_file(pbf_path)
+
+    if not ways:
+        return []
+
+    # ── Pass 2: coordinates for the referenced nodes only ───────────────────
+    coords: dict[int, tuple[float, float]] = {}
+
+    class _NodeCollector(osmium.SimpleHandler):
+        def node(self, n):
+            if n.id in wanted_nodes:
+                coords[n.id] = (n.location.lat, n.location.lon)
+
+    _NodeCollector().apply_file(pbf_path, locations=False)
+
+    # ── Assemble edges (bbox-filtered) ──────────────────────────────────────
+    out: list[tuple] = []
+    for way_id, name, highway, refs in ways:
+        prev = None
+        idx = 0
+        for ref in refs:
+            pt = coords.get(ref)
+            if pt is None:
                 prev = None
-                idx = 0
-                for node in w.nodes:
-                    loc = node.location
-                    if not loc.valid():
-                        prev = None
-                        continue
-                    pt = (loc.lat, loc.lon)
-                    if not (
-                        min_lat <= pt[0] <= max_lat and min_lng <= pt[1] <= max_lng
-                    ):
-                        prev = None
-                        continue
-                    if prev is not None:
-                        idx += 1
-                        out.append(
-                            (
-                                f"{way_id}:{idx}",
-                                f"{way_id}:{idx - 1}",
-                                f"{way_id}:{idx}",
-                                [prev, pt],
-                                name,
-                                highway,
-                            )
-                        )
-                    prev = pt
-
-        handler = _Handler()
-        if idx_value is None:
-            handler.apply_file(pbf_path, locations=True)
-        else:
-            handler.apply_file(pbf_path, locations=True, idx=idx_value)
-        return out
-
-    # One pass with locations applied on the fly (nodes precede ways in a PBF).
-    # Prefer the in-memory index (fast); fall back to a disk-backed one if RAM
-    # is insufficient. If the PBF is a pre-clipped ``{region}-roads.osm.pbf`` the
-    # in-memory index is small and this is quick.
-    try:
-        return _run(None)
-    except Exception as e:
-        logger.warning(f"OSM in-memory index unavailable ({e}); using disk-backed")
-        return _run("sparse_file_array,/tmp/fittrack_osm_nodes.idx")
+                continue
+            if not (min_lat <= pt[0] <= max_lat and min_lng <= pt[1] <= max_lng):
+                prev = None
+                continue
+            if prev is not None:
+                idx += 1
+                out.append(
+                    (
+                        f"{way_id}:{idx}",
+                        f"{way_id}:{idx - 1}",
+                        f"{way_id}:{idx}",
+                        [prev, pt],
+                        name,
+                        highway,
+                    )
+                )
+            prev = pt
+    return out
 
 
 def _match_routes_road_modal(
@@ -177,6 +194,9 @@ def _match_routes_road_modal(
     geojson_path = os.path.join(osm_dir, f"{region}-roads.geojson")
     pbf_path = clipped if os.path.exists(clipped) else full
 
+    import time as _time
+
+    t0 = _time.monotonic()
     if os.path.exists(pbf_path):
         # bbox-filtered at parse time — much lighter than a whole-cache JSON load.
         raw = _build_edges_from_pbf(pbf_path, bbox)
@@ -206,8 +226,11 @@ def _match_routes_road_modal(
     else:
         return {}
 
+    t_parse = _time.monotonic() - t0
+
     graph = RoadGraph(edges)
     graph.build_index()
+    t_index = _time.monotonic() - t0 - t_parse
 
     result: dict = {}
     for r in routes:
@@ -218,6 +241,10 @@ def _match_routes_road_modal(
             pts, graph, search_radius_m=search_radius_m, max_snap_m=max_snap_m
         )
         result[r["id"]] = match.to_dict()
+    logger.info(
+        f"OSM match timing: edges={len(edges)} parse={t_parse:.1f}s "
+        f"index={t_index:.1f}s total={_time.monotonic() - t0:.1f}s routes={len(result)}"
+    )
     return result
 
 
@@ -389,7 +416,7 @@ def match_routes_to_roads_on_modal(
     image = _image(project_root)
     volume = modal.Volume.from_name(_volume_name(), create_if_missing=True)
     app = modal.App("fittrack-route-road-graph", image=image)
-    remote = app.function(volumes={"/osm": volume}, timeout=1800, memory=16384)(
+    remote = app.function(volumes={"/osm": volume}, timeout=3300, memory=32768)(
         _match_routes_road_modal
     )
 
