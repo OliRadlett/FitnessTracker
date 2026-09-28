@@ -298,6 +298,21 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
 - Banking no longer spikes on orbit enter (previous heading reset).
 - Follow/cockpit FOV reset no longer fought orbit/cinematic FOV.
 
+### Orbit polish + loading progress (2026-09-28)
+- **Aspect-adaptive orbit framing**: PCA on the route path computes the principal
+  direction; the orbit ellipse is stretched along the route's long axis (ratio
+  clamped 0.4–2.5) so a long thin out-and-back fills the frame instead of wasting
+  half the view. Near-symmetric routes stay circular.
+- **Cinematic-to-orbit handoff**: a one-tick flag skips the 2.5 s resume delay
+  when cinematic hands control to orbit, so the camera keeps gliding instead of
+  freezing at the intro's end frame.
+- **Loading progress**: terrain and imagery tile fetches report incremental
+  progress (`onProgress(loaded, total)`); the overlay shows a determinate
+  progress bar + "12/16 tiles" instead of an indeterminate spinner. A 30 s fetch
+  timeout rejects with a plain Error (not AbortError) so failures surface as
+  'failed' instead of hanging the spinner forever. Silent mid-fetch returns now
+  mark 'failed' too.
+
 ### Remaining
 - Optional: wet-road sheen / wind sock, **segment racing** and **public share
   link** (both need backend/product scope).
