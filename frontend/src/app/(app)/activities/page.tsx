@@ -29,6 +29,7 @@ const RouteMap = dynamic(
 );
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { StatsView } from '@/components/activities/StatsView';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
@@ -62,6 +63,18 @@ import { PatternsView } from '@/components/activities/PatternsView';
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
+
+/**
+ * Cap on the 6-month window shared by the Timeline / Patterns / Stats views.
+ *
+ * `GET /activities` enforces `le=200` server-side, so this is the maximum
+ * obtainable in one request and cannot simply be raised. A heavy athlete
+ * (>~33 activities/month) therefore has the *oldest* months and weeks missing
+ * from the aggregates below, so Stats surfaces a truncation note instead of
+ * silently charting a partial window. The proper fix is server-side bucketing
+ * (monthly distance, sport counts, weekly TSS).
+ */
+const STATS_WINDOW_LIMIT = 200;
 
 const SORT_OPTIONS: { label: string; sort_by: string; sort_order: string }[] = [
   { label: 'Date (newest)', sort_by: 'start_date', sort_order: 'desc' },
@@ -409,7 +422,14 @@ export default function ActivitiesPage() {
   const { getParam, setParam } = useDeepLink();
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns' | 'stats'>('list');
+  /**
+   * Views that render the paginated `displayActivities` list. Timeline,
+   * Patterns and Stats aggregate their own 6-month window instead, so the
+   * summary bar, the aggregate summary query and the "load more" button are all
+   * meaningless for them.
+   */
+  const listBackedView = viewMode === 'list' || viewMode === 'week';
   const [allActivities, setAllActivities] = useState<Activity[] | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -633,7 +653,7 @@ export default function ActivitiesPage() {
   const { data: activitySummary } = useQuery<ActivitySummary>({
     queryKey: ['activity-summary', summaryParams],
     queryFn: () => authFetch<ActivitySummary>(`/api/v1/activities/summary${summaryParams ? `?${summaryParams}` : ''}`),
-    enabled: viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && !!token,
+    enabled: listBackedView && displayActivities.length > 0 && !!token,
   });
 
   // Deep-linked activity that isn't in the currently loaded list (e.g. opened
@@ -698,7 +718,8 @@ export default function ActivitiesPage() {
   const hasActiveFilters = Object.keys(filters).length > 0 || searchText.trim() !== '' || sortIndex !== 0
     || advMinDist !== '' || advMaxDist !== '' || advMinDur !== '' || advMaxDur !== '' || advMinTss !== '' || advMaxTss !== '';
 
-  // Fetch a larger dataset for Timeline & Patterns views (last 6 months, up to 200 activities)
+  // Fetch a larger dataset for the Timeline / Patterns / Stats views
+  // (last 6 months, capped at the endpoint's max of 200 — see STATS_WINDOW_LIMIT).
   const sixMonthsAgo = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -707,9 +728,16 @@ export default function ActivitiesPage() {
 
   const { data: statsActivities, isLoading: statsLoading } = useQuery<Activity[]>({
     queryKey: ['activities-stats'],
-    queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=200&sort_by=start_date&sort_order=desc`),
-    enabled: (viewMode === 'timeline' || viewMode === 'patterns') && !!token,
+    queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=${STATS_WINDOW_LIMIT}&sort_by=start_date&sort_order=desc`),
+    enabled:
+      (viewMode === 'timeline' ||
+        viewMode === 'patterns' ||
+        viewMode === 'stats') &&
+      !!token,
   });
+
+  /** The window came back full, so older months/weeks are missing from the aggregates. */
+  const statsWindowTruncated = (statsActivities?.length ?? 0) >= STATS_WINDOW_LIMIT;
 
   // Calendar data for timeline view (last 30 days by default)
   const thirtyDaysAgo = useMemo(() => {
@@ -802,6 +830,7 @@ export default function ActivitiesPage() {
                 { value: 'week', label: 'Week' },
                 { value: 'timeline', label: 'Timeline' },
                 { value: 'patterns', label: 'Patterns' },
+                { value: 'stats', label: 'Stats' },
               ]}
             />
             <button
@@ -979,7 +1008,7 @@ export default function ActivitiesPage() {
       </Card>
 
       {/* Summary Stats */}
-      {viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && (
+      {listBackedView && displayActivities.length > 0 && (
         <div className="space-y-2">
           <SummaryStatsBar
             activities={displayActivities}
@@ -1027,6 +1056,21 @@ export default function ActivitiesPage() {
             setViewMode('list');
           }}
         />
+      ) : viewMode === 'stats' ? (
+        <>
+          <StatsView
+            activities={statsActivities ?? []}
+            isLoading={statsLoading}
+          />
+          {statsWindowTruncated && (
+            <p className="text-xs text-warning mt-3">
+              The chart below covers the most recent {STATS_WINDOW_LIMIT} activities (the last
+              6 months). A heavier training load has more activities in that window than the
+              endpoint can return at once, so older months and weeks would be understated —
+              this view does not silently chart a partial window.
+            </p>
+          )}
+        </>
       ) : isLoading ? (
         <div className="space-y-3" aria-label="Loading activities">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -1083,7 +1127,7 @@ export default function ActivitiesPage() {
       )}
 
       {/* Load More */}
-      {!isLoading && viewMode !== 'timeline' && viewMode !== 'patterns' && displayActivities.length > 0 && hasMore && (
+      {!isLoading && listBackedView && displayActivities.length > 0 && hasMore && (
         <div className="text-center py-4">
           <button
             onClick={loadMore}

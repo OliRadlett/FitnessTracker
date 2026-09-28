@@ -22,7 +22,10 @@ import {
   RefreshCw,
   AlertTriangle,
   MapPin,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
+import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
 
 export default function DuplicatesPage() {
   const { token } = useAuthFetch();
@@ -280,6 +283,10 @@ function DuplicatePairCard({
   onDismiss: (a: string, b: string) => void;
   isMerging: boolean;
 }) {
+  // Preview off by default so the queue stays scannable; opened on demand when
+  // a pair needs a judgement call.
+  const [showPreview, setShowPreview] = useState(false);
+
   return (
     <Card>
       <div className="p-4">
@@ -344,6 +351,38 @@ function DuplicatePairCard({
             </h3>
             <RouteMiniStats route={pair.route_b} />
           </div>
+        </div>
+
+        {/* Overlay preview — the decisive tool for "same roads or not?" */}
+        <div className="mt-3">
+          <button
+            onClick={() => setShowPreview((v) => !v)}
+            aria-expanded={showPreview}
+            className="flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors min-h-[32px]"
+          >
+            {showPreview ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            {showPreview ? 'Hide map preview' : 'Show map preview (A vs B overlaid)'}
+          </button>
+
+          {showPreview && (
+            <div className="mt-2">
+              <CompareRoutesMap
+                encodedA={pair.route_a.encoded_polyline}
+                encodedB={pair.route_b.encoded_polyline}
+                labelA={pair.route_a.name}
+                labelB={pair.route_b.name}
+                className="h-[260px]"
+              />
+              <p className="mt-1 text-xs text-muted">
+                A is dashed blue, B is solid amber. Fully overlapping traces mean the
+                same roads; divergent sections are where they differ.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="mt-4 pt-3 border-t border-surface-light/30 flex justify-end gap-2">
