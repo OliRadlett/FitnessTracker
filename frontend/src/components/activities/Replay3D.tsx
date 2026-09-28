@@ -500,6 +500,9 @@ export function Replay3D({
 
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  // True from mount until the first scene frame renders (covers the WebGL
+  // setup gap where terrainState hasn't started loading yet).
+  const [sceneReady, setSceneReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 300));
   const [displayElapsed, setDisplayElapsed] = useState(0);
@@ -1307,6 +1310,7 @@ export function Replay3D({
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
+      if (!sceneReady) setSceneReady(true);
       const L = linkRef.current;
       if (L) {
         // Linked clock: the parent owns time; shorter rides freeze at their end.
@@ -2262,6 +2266,24 @@ export function Replay3D({
 
       <div className={`relative ${photo ? 'h-[80dvh]' : canvasHeightClass} w-full touch-none overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
+        {/* Loading overlay while terrain/imagery tiles fetch (fades in/out) */}
+        <div
+          className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[2px] transition-opacity duration-700 [.photo_&]:hidden ${
+            (!sceneReady || terrainState === 'loading' || imageryState === 'loading') && !failed ? 'opacity-100' : 'opacity-0'
+          }`}
+          aria-hidden={(!sceneReady || terrainState === 'loading' || imageryState === 'loading') && !failed ? undefined : true}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+            <p className="text-xs font-medium text-muted">
+              {!sceneReady ? 'Preparing 3D view…' : terrainState === 'loading' ? 'Loading terrain…' : imageryState === 'loading' ? 'Loading satellite…' : ''}
+            </p>
+            <div className="flex gap-1.5">
+              <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${terrainState === 'on' ? 'bg-accent' : terrainState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
+              <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${imageryState === 'on' ? 'bg-accent' : imageryState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
+            </div>
+          </div>
+        </div>
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">
           drag to orbit · pinch to zoom · space play · ←/→ seek · 1–5 cameras · click route to jump
         </div>
