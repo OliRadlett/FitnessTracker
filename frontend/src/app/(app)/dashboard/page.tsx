@@ -23,6 +23,7 @@ import type {
   DeficiencyResponse,
 } from '@/lib/api';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { getGreeting, getActiveLocale } from '@/lib/utils';
@@ -271,28 +272,26 @@ export default function DashboardPage() {
       />
 
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-4 min-w-0">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{getGreeting()} 👋</h1>
-          <p className="text-muted mt-1 text-sm sm:text-base">
-            {new Date().toLocaleDateString(getActiveLocale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-4 min-w-0">
-          <DashboardRefresh />
-          <WeatherWidget />
-          {hasReadiness && (
-            <ReadinessIndicator
-              recoveryScore={readiness.recovery_score ?? undefined}
-              readiness={readiness.readiness}
-              hrvMs={readiness.hrv_ms ?? undefined}
-              restingHr={readiness.resting_hr ?? undefined}
-              message={readiness.message}
-              compact
-            />
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title={<>{getGreeting()} 👋</>}
+        subtitle={new Date().toLocaleDateString(getActiveLocale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        actions={
+          <>
+            <DashboardRefresh />
+            <WeatherWidget />
+            {hasReadiness && (
+              <ReadinessIndicator
+                recoveryScore={readiness.recovery_score ?? undefined}
+                readiness={readiness.readiness}
+                hrvMs={readiness.hrv_ms ?? undefined}
+                restingHr={readiness.resting_hr ?? undefined}
+                message={readiness.message}
+                compact
+              />
+            )}
+          </>
+        }
+      />
 
       {/* ── Tab Navigation ───────────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">
