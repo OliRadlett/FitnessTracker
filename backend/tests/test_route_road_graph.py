@@ -36,41 +36,32 @@ def test_dest_path_is_region_keyed():
     assert _dest_path("great-britain", "/osm/") == "/osm/great-britain-latest.osm.pbf"
 
 
-def test_cached_geojson_is_preferred_over_pbf(tmp_path):
-    """When {region}-roads.geojson exists the matcher must not parse the PBF."""
+def test_pbf_is_preferred_over_geojson(tmp_path):
+    """The bbox-filtered PBF parse must win over the whole-GeoJSON path.
+
+    Loading the whole GeoJSON into memory is what made the Modal worker time
+    out — the PBF path filters by bbox at parse time, so it is preferred.
+    """
     import json
     import os
 
     from app.integrations import route_road_graph as mod
 
     region = "unit-test"
-    geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"way_id": 1, "name": "Test St", "highway": "residential"},
-                "geometry": {
-                    "type": "LineString",
-                    "coordinates": [[-1.0, 55.0], [-0.999, 55.0], [-0.998, 55.0]],
-                },
-            }
-        ],
-    }
     with open(os.path.join(tmp_path, f"{region}-roads.geojson"), "w") as fh:
-        json.dump(geojson, fh)
-    # A PBF path that would be parsed if the GeoJSON were not preferred.
-    with open(os.path.join(tmp_path, f"{region}-latest.osm.pbf"), "wb") as fh:
+        json.dump({"type": "FeatureCollection", "features": []}, fh)
+    # A PBF path that must be chosen; stub the parser to prove it is used.
+    with open(os.path.join(tmp_path, f"{region}-roads.osm.pbf"), "wb") as fh:
         fh.write(b"not-a-real-pbf")
 
     calls = {"n": 0}
 
-    def _boom(*_a, **_k):
+    def _stub(_pbf, bbox):
         calls["n"] += 1
-        raise AssertionError("PBF parse must not run when GeoJSON exists")
+        return [("w1:0", "w1:0", "w1:1", [(55.0, -1.0), (55.0, -0.998)], "Test St", "residential")]
 
     original = mod._build_edges_from_pbf
-    mod._build_edges_from_pbf = _boom
+    mod._build_edges_from_pbf = _stub
     try:
         result = mod._match_routes_road_modal(
             json.dumps([{"id": "r1", "polyline": [[55.0, -1.0], [55.0, -0.998]]}]),
@@ -82,7 +73,7 @@ def test_cached_geojson_is_preferred_over_pbf(tmp_path):
     finally:
         mod._build_edges_from_pbf = original
 
-    assert calls["n"] == 0
+    assert calls["n"] == 1
     assert result["r1"]["coverage"] > 0.9
     assert result["r1"]["edge_set"]
 

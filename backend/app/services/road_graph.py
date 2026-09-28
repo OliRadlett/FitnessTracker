@@ -268,22 +268,89 @@ def edge_jaccard(a_edges: list[str], b_edges: list[str]) -> float:
     return inter / union if union else 0.0
 
 
-def roads_from_geojson(feature_collection: dict) -> list[RoadEdge]:
-    """Build :class:`RoadEdge` rows from a GeoJSON ``FeatureCollection``.
+def _iter_geojson_features(
+    path: str, bbox: tuple[float, float, float, float] | None = None
+):
+    """Stream ``LineString`` features from a GeoJSON file, optionally bbox-filtered.
 
-    Accepts ``LineString`` features (OSM-exported or Overpass ``out geom``),
-    splitting each into per-node-pair edges so only traversed segments count.
-    Properties read: ``way_id``/``id``/``@id``, ``name``, ``highway``. Pure and
-    dependency-free — used for local/tests and as a Modal data fallback.
+    Parsing the whole file into memory at once (``json.load``) is what made the
+    604 MB UK cache unusable in the Modal worker (3.2 M objects → 1800 s
+    timeout). This streams feature-by-feature and skips any feature whose bbox
+    does not intersect ``bbox`` = ``(min_lat, min_lng, max_lat, max_lng)``.
     """
-    edges: list[RoadEdge] = []
-    for feature in feature_collection.get("features", []):
-        geom = feature.get("geometry") or {}
+    import json
+
+    with open(path) as fh:
+        # Advance to the features array without materialising the whole document.
+        buf = ""
+        while '"features"' not in buf and len(buf) < 4096:
+            chunk = fh.read(4096)
+            if not chunk:
+                return
+            buf += chunk
+        start = buf.find("[")
+        if start == -1:
+            return
+        tail = buf[start + 1 :]
+
+        # Feed the remaining document through a raw decoder.
+        decoder = json.JSONDecoder()
+        stream = tail + fh.read()
+
+    pos = 0
+    n = len(stream)
+    while pos < n:
+        # Skip whitespace/commas.
+        while pos < n and stream[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= n or stream[pos] == "]":
+            return
+        try:
+            feature, end = decoder.raw_decode(stream, pos)
+        except JSONDecodeError:
+            return
+        pos = end
+        geom = (feature or {}).get("geometry") or {}
         if geom.get("type") != "LineString":
             continue
         coords = geom.get("coordinates") or []
         if len(coords) < 2:
             continue
+        if bbox is not None:
+            min_lat, min_lng, max_lat, max_lng = bbox
+            f_lat = (coords[0][1] + coords[-1][1]) / 2.0
+            f_lng = (coords[0][0] + coords[-1][0]) / 2.0
+            if not (
+                min_lat <= f_lat <= max_lat and min_lng <= f_lng <= max_lng
+            ):
+                continue
+        yield feature
+
+
+def roads_from_geojson(
+    feature_collection: dict | str | None = None,
+    *,
+    path: str | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> list[RoadEdge]:
+    """Build :class:`RoadEdge` rows from a GeoJSON ``FeatureCollection``.
+
+    Accepts an in-memory ``feature_collection`` **or** a file ``path`` (streamed,
+    recommended for large caches). ``bbox`` = ``(min_lat, min_lng, max_lat,
+    max_lng)`` keeps only features whose midpoint falls inside it. Accepts
+    ``LineString`` features (OSM-exported or Overpass ``out geom``), splitting
+    each into per-node-pair edges so only traversed segments count. Properties
+    read: ``way_id``/``id``/``@id``, ``name``, ``highway``.
+    """
+    if path is not None:
+        source = _iter_geojson_features(path, bbox)
+    else:
+        source = _iter_features_from_dict(feature_collection, bbox)
+
+    edges: list[RoadEdge] = []
+    for feature in source:
+        geom = feature.get("geometry") or {}
+        coords = geom.get("coordinates") or []
         props = feature.get("properties") or {}
         way_id = str(
             props.get("way_id") or props.get("id") or props.get("@id") or len(edges)
@@ -307,3 +374,25 @@ def roads_from_geojson(feature_collection: dict) -> list[RoadEdge]:
                 )
             )
     return edges
+
+
+def _iter_features_from_dict(
+    feature_collection: dict | None,
+    bbox: tuple[float, float, float, float] | None = None,
+):
+    if not feature_collection:
+        return
+    for feature in feature_collection.get("features", []):
+        geom = (feature or {}).get("geometry") or {}
+        if geom.get("type") != "LineString":
+            continue
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        if bbox is not None:
+            min_lat, min_lng, max_lat, max_lng = bbox
+            f_lat = (coords[0][1] + coords[-1][1]) / 2.0
+            f_lng = (coords[0][0] + coords[-1][0]) / 2.0
+            if not (min_lat <= f_lat <= max_lat and min_lng <= f_lng <= max_lng):
+                continue
+        yield feature
