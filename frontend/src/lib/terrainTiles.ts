@@ -150,7 +150,17 @@ function sampleTiles(tiles: Map<string, Float32Array>, z: number, lat: number, l
  */
 export async function fetchTerrariumTerrain(
   coords: [number, number][],
-  { maxTiles = 48, maxGridPoints = 131072, signal }: { maxTiles?: number; maxGridPoints?: number; signal?: AbortSignal } = {},
+  {
+    maxTiles = 48,
+    maxGridPoints = 131072,
+    signal,
+    onProgress,
+  }: {
+    maxTiles?: number;
+    maxGridPoints?: number;
+    signal?: AbortSignal;
+    onProgress?: (loaded: number, total: number) => void;
+  } = {},
 ): Promise<TerrariumResult> {
   const spec = computeGrid(coords, { maxPoints: 200 });
   if (!spec) throw new TerrainTilesError('no-bbox');
@@ -173,13 +183,17 @@ export async function fetchTerrariumTerrain(
   const lngs = linspace(lng0, lng1, cols);
 
   const range = tileRangeForBbox(lat0, lng0, lat1, lng1, z);
+  const total = (range.x1 - range.x0 + 1) * (range.y1 - range.y0 + 1);
   const tiles = new Map<string, Float32Array>();
+  let loaded = 0;
   const jobs: Promise<void>[] = [];
   for (let x = range.x0; x <= range.x1; x++) {
     for (let y = range.y0; y <= range.y1; y++) {
       jobs.push(
         loadTile(z, x, y, signal).then((h) => {
           tiles.set(`${x}/${y}`, h);
+          loaded++;
+          onProgress?.(loaded, total);
         }),
       );
     }
