@@ -143,6 +143,17 @@ in frame). Until then the vertical/lateral success check
 Remaining: the UI pass (surface `metric_3d` + calibration), and the focal-source
 decision above.
 
+**Per-video lens picker (2026-09-29, branch `feature/video-lens-picker`)** —
+chosen over the per-device default: the uploader knows the lens per clip, so
+no guessing across clips. `LiftVideo.camera_lens` (`main`/`ultra_wide`/
+`telephoto`, migration `086`, set in the uploader + edit modal) maps to
+nominal OnePlus 11 focals in `video_camera.focal_px_for_lens` (1222/713/2444
+px @1080×1920, scaled by frame size). Precedence: container tags > stored
+clip focal > declared lens > barbell estimate; source echoed in
+`calibration.focal_source`. Phone-model lookup DB rejected (phone/lens not
+auto-detectable, EIS biases tables); global default rejected (guesses across
+clips).
+
 **Migration ordering (2026-09-29):** this work's migration is `084`, chained as
 `082 → 083 → 084`. It collided *twice* in sequence — first with a concurrent
 session's `082` (resolved by renumbering to `083`), then with their

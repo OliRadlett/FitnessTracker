@@ -371,6 +371,7 @@ class LiftVideoBase(BaseModel):
     notes: str | None = None
     expected_reps: int | None = None
     camera_view: str | None = None
+    camera_lens: str | None = None
     weight_kg: float | None = None
 
 

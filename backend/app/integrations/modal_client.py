@@ -147,6 +147,7 @@ def process_video_on_modal(
     bar_detector_model_url: str | None = None,
     focal_px: float | None = None,
     lifter_height_m: float | None = None,
+    camera_lens: str | None = None,
 ) -> dict:
     """Dispatch video processing to Modal and return the result.
 
@@ -182,6 +183,11 @@ def process_video_on_modal(
         ``services/video_camera.py``). Together with ``lifter_height_m`` this is
         what makes the metric 3D bar path possible; without either, the 2D bar
         metrics are used unchanged.
+    camera_lens:
+        User-declared phone lens for the clip (``main``/``ultra_wide``/
+        ``telephoto``, chosen in the uploader). Nominal focal via
+        ``video_camera.focal_px_for_lens`` — used only when neither the
+        container tags nor ``focal_px`` supply one.
 
     Returns
     -------
@@ -245,6 +251,7 @@ def process_video_on_modal(
         bar_detector_model_url: str = "",
         focal_px: float = 0.0,
         lifter_height_m: float = 0.0,
+        camera_lens: str = "",
     ) -> dict:
         import logging
         import subprocess
@@ -329,19 +336,28 @@ def process_video_on_modal(
 
             camera: dict = {"focal_px": float(focal_px or 0.0) or None}
             try:
-                from app.services.video_camera import camera_info
+                from app.services.video_camera import camera_info, focal_px_for_lens
 
                 camera = camera_info(stream_tags, frame_w, frame_h)
-                # An explicitly supplied focal wins: it was read from the same
-                # metadata but may have been persisted on an earlier run.
-                if focal_px:
+                # Precedence: fresh container tags, then the stored clip focal
+                # (same measurement, earlier run), then the declared lens.
+                if camera.get("focal_px"):
+                    camera["focal_source"] = "tags"
+                elif focal_px:
                     camera["focal_px"] = round(float(focal_px), 1)
+                    camera["focal_source"] = "clip"
+                else:
+                    lens_focal = focal_px_for_lens(
+                        camera_lens or None, frame_w, frame_h)
+                    if lens_focal:
+                        camera["focal_px"] = round(lens_focal, 1)
+                        camera["focal_source"] = "user_lens"
             except Exception as _e:  # pragma: no cover - mount/import guard
                 _logger.warning("Camera metadata unavailable: %s", _e)
             _logger.info(
-                "Camera: %sx%s focal_px=%s equiv=%s",
+                "Camera: %sx%s focal_px=%s equiv=%s source=%s",
                 frame_w, frame_h, camera.get("focal_px"),
-                camera.get("focal_equiv_mm"),
+                camera.get("focal_equiv_mm"), camera.get("focal_source"),
             )
 
             # ── Step 3: Scene detection ───────────────────────────────────
@@ -1016,4 +1032,5 @@ def process_video_on_modal(
             bar_detector_model_url or "",
             float(focal_px or 0.0),
             float(lifter_height_m or 0.0),
+            camera_lens or "",
         )

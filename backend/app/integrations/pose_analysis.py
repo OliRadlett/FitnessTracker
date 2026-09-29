@@ -2073,7 +2073,11 @@ def run_pose_analysis(
                 lifter_height_m,
             )
             if cam3d is not None:
-                cam3d["focal_source"] = focal_source or "tags"
+                # Provenance: the container's resolution wins (tags > clip >
+                # user_lens); the barbell fallback below only names itself.
+                cam3d["focal_source"] = (
+                    (camera or {}).get("focal_source") or focal_source or "tags"
+                )
                 if fest is not None:
                     cam3d["focal_spread"] = fest["spread"]
                 track3d = b3.lift_bar_3d(

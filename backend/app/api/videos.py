@@ -129,6 +129,14 @@ async def create_video(
     ).scalar_one_or_none() is None:
         raise HTTPException(404, "Personal record not found")
 
+    if payload.camera_lens:
+        from app.services.video_camera import CAMERA_LENSES
+
+        if payload.camera_lens not in CAMERA_LENSES:
+            raise HTTPException(
+                400, f"camera_lens must be one of {list(CAMERA_LENSES)}"
+            )
+
     if not _s3_configured():
         raise HTTPException(501, "R2 storage is not configured on this instance")
 
@@ -167,6 +175,7 @@ async def create_video(
         if payload.expected_reps is not None
         else (linked_set.reps if linked_set else None),
         camera_view=payload.camera_view,
+        camera_lens=payload.camera_lens,
         weight_kg=payload.weight_kg
         if payload.weight_kg is not None
         else (linked_set.weight_kg if linked_set else None),
@@ -526,6 +535,9 @@ class VideoPatchRequest(BaseModel):
     notes: str | None = None
     # User corrections to auto-detected fields (Phase 4 correction loop):
     camera_view: str | None = None
+    # Which phone lens filmed the clip (main / ultra_wide / telephoto).
+    # Nominal focals live in services/video_camera.py; "" clears to None.
+    camera_lens: str | None = None
     weight_kg: float | None = None
     reps_count: int | None = None
     # Manual lifter override (T1): track id from the last run's
@@ -567,6 +579,15 @@ async def update_video(
     if payload.camera_view is not None:
         # "" (Not sure) normalises to None -> sagittal rules stay off.
         video.camera_view = payload.camera_view or None
+    if payload.camera_lens is not None:
+        from app.services.video_camera import CAMERA_LENSES
+
+        lens = payload.camera_lens or None
+        if lens is not None and lens not in CAMERA_LENSES:
+            raise HTTPException(
+                400, f"camera_lens must be one of {list(CAMERA_LENSES)}"
+            )
+        video.camera_lens = lens
     if payload.weight_kg is not None:
         if payload.weight_kg < 0:
             raise HTTPException(400, "weight_kg must be >= 0")

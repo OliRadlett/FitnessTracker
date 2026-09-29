@@ -33,6 +33,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const [expectedReps, setExpectedReps] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [cameraView, setCameraView] = useState('');
+  const [cameraLens, setCameraLens] = useState('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [setId, setSetId] = useState('');
@@ -48,6 +49,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       setExpectedReps('');
       setWeightKg('');
       setCameraView('');
+      setCameraLens('');
       setNotes('');
       setSessionId('');
       setSetId('');
@@ -98,6 +100,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
       expected_reps: expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
       weight_kg: weightKg === '' ? null : Math.max(0, parseFloat(weightKg) || 0),
       camera_view: cameraView || null,
+      camera_lens: cameraLens || null,
       notes: notes || null,
       lifting_session_id: sessionId || null,
       lifting_set_id: setId || null,
@@ -261,6 +264,26 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           <p className="text-[11px] text-muted mt-1">
             Side-on is best: it unlocks torso-lean and squat-depth checks. Other
             angles still get rep, tempo and velocity analysis.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">
+            Camera lens <span className="text-muted/70">(for 3D bar metrics)</span>
+          </label>
+          <select
+            value={cameraLens}
+            onChange={(e) => setCameraLens(e.target.value)}
+            className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Not sure</option>
+            <option value="main">Main (24 mm)</option>
+            <option value="ultra_wide">Ultra-wide (14 mm)</option>
+            <option value="telephoto">Telephoto 2× (48 mm)</option>
+          </select>
+          <p className="text-[11px] text-muted mt-1">
+            Which phone lens filmed this — the fallback focal length when the
+            clip carries no lens metadata (most clips).
           </p>
         </div>
 

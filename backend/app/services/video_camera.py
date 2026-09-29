@@ -31,6 +31,17 @@ FOCAL_EQUIV_KEYS = (
 PRODUCT_KEYS = ("com.oplus.product.model", "com.xiaomi.product.model")
 LENS_KEYS = ("com.oplus.lens.model", "com.vivo.lens.model")
 
+# Declared phone-lens values (per-video `LiftVideo.camera_lens`, chosen in
+# the uploader). Nominal 35 mm-equivalent focals for the OnePlus 11
+# (main 24 mm / ultra-wide 14 mm / tele 48 mm — verified 2026-09-29).
+# A single-user app can carry its owner's phone here; anything else needs
+# the container tags or the barbell fallback. `focal_px_for_lens` converts
+# to pixels for the decoded frame size; EIS crop is NOT corrected (adds
+# ~10-20% over nominal — the calibration echo carries the source so a
+# surprising number can be traced).
+CAMERA_LENSES = ("main", "ultra_wide", "telephoto")
+_LENS_FOCAL_EQUIV_MM = {"main": 24.0, "ultra_wide": 14.0, "telephoto": 48.0}
+
 
 def _as_float(value: object) -> float | None:
     try:
@@ -58,6 +69,15 @@ def focal_equiv_mm(tags: dict) -> float | None:
     return None
 
 
+def _focal_px(f_equiv_mm: float, width: int, height: int) -> float | None:
+    """35 mm-equivalent focal to pixels for a ``width`` x ``height`` frame."""
+    if f_equiv_mm is None or width <= 0 or height <= 0:
+        return None
+    fov_diag = 2.0 * math.atan(FULL_FRAME_DIAGONAL_MM / (2.0 * f_equiv_mm))
+    diag_px = math.hypot(width, height)
+    return (diag_px / 2.0) / math.tan(fov_diag / 2.0)
+
+
 def focal_px_from_tags(tags: dict, width: int, height: int) -> float | None:
     """Focal length in pixels for a ``width`` x ``height`` frame.
 
@@ -65,11 +85,9 @@ def focal_px_from_tags(tags: dict, width: int, height: int) -> float | None:
     default FOV rather than guessing from the pose.
     """
     f_equiv = focal_equiv_mm(tags)
-    if f_equiv is None or width <= 0 or height <= 0:
+    if f_equiv is None:
         return None
-    fov_diag = 2.0 * math.atan(FULL_FRAME_DIAGONAL_MM / (2.0 * f_equiv))
-    diag_px = math.hypot(width, height)
-    return (diag_px / 2.0) / math.tan(fov_diag / 2.0)
+    return _focal_px(f_equiv, width, height)
 
 
 def camera_info(tags: dict, width: int, height: int) -> dict:
@@ -84,3 +102,19 @@ def camera_info(tags: dict, width: int, height: int) -> dict:
         "width": width,
         "height": height,
     }
+
+
+def focal_px_for_lens(
+    lens: str | None, width: int, height: int
+) -> float | None:
+    """Nominal focal in pixels for a user-declared phone lens.
+
+    ``None`` for anything outside ``CAMERA_LENSES`` — callers treat that as
+    "no declared lens" and fall through to the next focal source, never as
+    an error. Scales with frame size so other resolutions and the front
+    camera stay proportional.
+    """
+    f_equiv = _LENS_FOCAL_EQUIV_MM.get(lens or "")
+    if f_equiv is None:
+        return None
+    return _focal_px(f_equiv, width, height)

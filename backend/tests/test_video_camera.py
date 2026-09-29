@@ -5,9 +5,11 @@ import math
 import pytest
 
 from app.services.video_camera import (
+    CAMERA_LENSES,
     FULL_FRAME_DIAGONAL_MM,
     camera_info,
     focal_equiv_mm,
+    focal_px_for_lens,
     focal_px_from_tags,
 )
 
@@ -72,3 +74,29 @@ class TestCameraInfo:
 
     def test_full_frame_diagonal_constant(self):
         assert FULL_FRAME_DIAGONAL_MM == pytest.approx(43.266)
+
+
+class TestFocalPxForLens:
+    def test_declared_lenses(self):
+        assert CAMERA_LENSES == ("main", "ultra_wide", "telephoto")
+
+    def test_oneplus_11_nominals(self):
+        """14/24/48 mm equiv on a 1080x1920 decoded frame."""
+        assert focal_px_for_lens("ultra_wide", 1080, 1920) == pytest.approx(
+            712.8, rel=1e-3)
+        assert focal_px_for_lens("main", 1080, 1920) == pytest.approx(
+            1222.0, rel=1e-3)
+        assert focal_px_for_lens("telephoto", 1080, 1920) == pytest.approx(
+            2443.9, rel=1e-3)
+
+    def test_scales_with_frame_size(self):
+        f1 = focal_px_for_lens("ultra_wide", 1080, 1920)
+        f2 = focal_px_for_lens("ultra_wide", 2160, 3840)
+        assert f2 == pytest.approx(2.0 * f1, rel=1e-9)
+
+    def test_unknown_lens_is_none_not_error(self):
+        """Callers fall through to the next focal source."""
+        assert focal_px_for_lens("bogus", 1080, 1920) is None
+        assert focal_px_for_lens(None, 1080, 1920) is None
+        assert focal_px_for_lens("", 1080, 1920) is None
+        assert focal_px_for_lens("main", 0, 1920) is None

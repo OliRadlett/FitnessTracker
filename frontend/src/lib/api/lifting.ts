@@ -7,6 +7,7 @@ import type {
   UpdateSessionPayload,
   WarmupTemplate,
   LiftVideo,
+  CameraLens,
   VideoUploadRequest,
   VideoUploadResponse,
   VideoStreamUrl,
@@ -41,6 +42,7 @@ export interface UpdateLiftVideoPayload {
   expected_reps?: number | null;
   notes?: string | null;
   camera_view?: string | null;
+  camera_lens?: CameraLens | string | null;
   weight_kg?: number | null;
   reps_count?: number | null;
   lifter_track_id?: number | null;
