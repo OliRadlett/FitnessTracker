@@ -52,8 +52,8 @@ async def create_session(
     session = await lifting_service.create_session(db, current_user.id, data)
     response = LiftingSessionRead.model_validate(session)
     session_id = session.id
-    # Commit so the best-effort Jev tagger (background) sees the row.
-    await db.commit()
+    # No explicit commit: get_db commits at teardown, before BackgroundTasks
+    # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, session_id, current_user.id
     )
@@ -144,7 +144,8 @@ async def update_session(
         raise HTTPException(status_code=404, detail="Session not found")
     response = LiftingSessionRead.model_validate(session)
     sid = session.id
-    await db.commit()
+    # No explicit commit: get_db commits at teardown, before BackgroundTasks
+    # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, sid, current_user.id
     )
