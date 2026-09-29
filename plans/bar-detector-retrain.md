@@ -147,43 +147,20 @@ estimator kept as cross-check/provenance for clips where it fires.
 Filming guidance still stands for estimator-friendly clips (bench ¾,
 larger Δ): front-ish view, plates >4% of frame height, both unoccluded.
 
-## First real metric_3d (2026-09-29) 🎯
+## Full-clip proof with fixed axes (2026-09-29) ✅ partial
 
-Both frontal Sunday clips reprocessed with lens=ultra_wide + height 185 →
-`metric_3d` present on both, n=8 reps, 71/72 frames:
+Both frontals reprocessed on the deployed axis-hardened code (PR #192):
+front-back −802/−740 → **−483/−465** (−40%), lateral 197/202 → **98/108**
+(−50%). Vertical stable ±1 cm, form/velocity identical, no regressions.
+`focal_source` now reads `clip` (stored probe correctly reused over the
+lens nominal — precedence chain working).
 
-| metric | clip 1 | clip 2 | verdict |
-|---|---|---|---|
-| focal | 712.8 px (`user_lens`) | 712.8 px | ✅ EXACT OnePlus UW nominal — the whole chain calibrates |
-| subject distance | 2.32 m | 2.33 m | ✅ plausible, agree |
-| bar top / bottom | 1.448 / 1.179 m | 1.430 / 1.157 m | ✅ top = 78% of 1.85 m lifter, anatomically exact; agree ±2 cm |
-| vertical range | 0.269 m | 0.273 m | plausible (10/90 band) |
-| front-back | −802 / −740 mm | — | ❌ suspect: 74 cm off midfoot is unphysical for a squat |
-| lateral | 197 / 202 mm | — | ❌ suspect: 20 cm persistent asymmetry is unphysical |
-
-Diagnosis (measured on the 511-frame persisted track): fwd.y median 0.26
-(feet don't share image-y in world estimates) → ~340 mm of bar height
-leaking into fb; per-frame axes thrash (fwd.x p10/p90 0.22–0.55); foot
-world-z swings p10 −0.34 m. **Fix committed (branch
-`feature/video-lens-picker`)**: force fwd horizontal (feet share the ground
-plane), clip-level axes from median positions, median-of-4 midfoot origin.
-Synthetic tests prove the leak is gone (tilted-feet fb delta <20 mm, was
-~650 mm class); all 52 pre-existing tests pass unchanged. Old-vs-new on a
-clean 2-rep window agrees exactly (both fine there) — the −740 mm likely
-came from dirty walkout reps, which the fix specifically hardens. Full-clip
-reprocess with fixed code is the pending proof. Lateral (~200 mm) is NOT
-explained by axes (stable lat ≈ [0.91, 0.06, 0.4]) — stance asymmetry vs
-pose-x error still open; needs a symmetric-stance clip to disambiguate.
-
-Reprocessed both frontal Sunday clips on the deployed pipeline (new code +
-v2 model + height 185). No `metric_3d` — expected (no pair centres, no
-barbell spans on these clips) — but every link verified live:
-`camera_json` persisted (`focal_px: null`, no lens tags — the 0/33 finding
-holds on real uploads); frame geometry stored as decoded **1080×1920**
-(the portrait-rotation handling works); `analysis_version` bumped; decline
-came purely from detector availability with height set. The chain is proven
-end to end except the estimator firing, which awaits validatable footage
-(above).
+The fix removed the predicted ~340 mm y-leak; residual fb (−470 mm) is
+still above the plausibility band with unknown mechanism (not the y-leak;
+anchor-vs-feet world-z bias or axis x-tilt suspected). Lateral halved but
+~100 mm remains borderline (stance asymmetry not ruled out). Next:
+per-frame forensics on the persisted track, or accept vertical + calibration
+as the shippable core with horizontals flagged approximate.
 
 ## Device facts (user-confirmed 2026-09-29)
 
