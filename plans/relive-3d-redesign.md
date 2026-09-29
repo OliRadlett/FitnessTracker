@@ -1,7 +1,7 @@
 # Relive — 3D Ride Viewer Redesign
 
 > **Status**: In progress — Phase 0 done, Phase 1 underway (2026-09-24).
-> **Supersedes**: `plans/archive/3d-ride-view-enhancements.md` (Phases A–E shipped the
+> **Supersedes**: the archived `3d-ride-view-enhancements.md` (Phases A–E shipped the
 > technical scaffold; this plan replaces the *experience*).
 > **Parent spec**: `plans/future-enhancements.md` §3.16.
 > **Files**: `frontend/src/components/activities/Replay3D.tsx`,
