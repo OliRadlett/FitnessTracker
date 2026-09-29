@@ -143,6 +143,13 @@ in frame). Until then the vertical/lateral success check
 Remaining: the UI pass (surface `metric_3d` + calibration), and the focal-source
 decision above.
 
+**UI pass done 2026-09-29 (branch `feature/metric-3d-ui`)**: `Metric3DSection`
+inside `BarPathCard` (`VideoAnalysisPanel.tsx`) — Top/Bottom/Travelled in m,
+front-back + lateral in mm flagged `~` (world-z limits, with footnote),
+calibration line (focal px + source + distance + reps), `3D` badge. Renders
+only when `metric_3d` exists; 2D card untouched otherwise. Covered by
+`bar-path-3d.test.tsx` with real production numbers.
+
 **Per-video lens picker (2026-09-29, branch `feature/video-lens-picker`)** —
 chosen over the per-device default: the uploader knows the lens per clip, so
 no guessing across clips. `LiftVideo.camera_lens` (`main`/`ultra_wide`/
