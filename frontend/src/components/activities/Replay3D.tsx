@@ -1932,6 +1932,7 @@ export function Replay3D({
         const lookK = lookLag > 20 ? 1 : 1 - Math.exp(-dt * 8);
         lookTargetRef.current.lerp(tmpLook, lookK);
         camera.lookAt(lookTargetRef.current);
+        }
       }
       // Keep the camera above the terrain bed so follow cams can't clip through
       // hills (the DEM y is only known here via the mesh's stored grid).
