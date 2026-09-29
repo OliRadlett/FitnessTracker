@@ -57,7 +57,7 @@ quick wins (A) are low-risk and remove the most visible smell; B–C are larger.
 
 ## D. Ops / hygiene
 - **Secret rotation** (BUG-045): Komoot/Gemini/`SECRET_KEY`/NextAuth.
-- **`prod` compose GHCR names** hardcoded + case-sensitive (`docker-compose.prod.yml`) — parameterise/source from env.
+- ~~**`prod` compose GHCR names** hardcoded + case-sensitive (`docker-compose.prod.yml`)~~ — **DONE**: already parameterised via `GHCR_OWNER`/`GHCR_REPO`/`IMAGE_TAG` (lowercase defaults) in `docker-compose.prod.yml` (B-32); `python fittrack.py --prod` sources them from env. No code change required — audit row was stale.
 - ~~**`/health` + `/metrics` intentionally unauthenticated** — **DONE**: documented as design~~ — `docs/DEPLOY.md` "Endpoint access policy" section (CWE-307-style "don't fix" note): `/health` (liveness, Caddy probe) and `/metrics` (Prometheus, `ENABLE_METRICS`-gated, private-net scrape only) are deliberately session-less; every other `/api/v1/*` route is JWT-protected. Warns against conflating `/metrics` (no auth) with `/api/v1/metrics/*` (auth). (#183)
 - **E2E depth**: specs are render-heavy; add mutation flows (live-lift create/log/finish, goal check-in, route tag + collection, GPX round-trip, deep links, notifications).
 
