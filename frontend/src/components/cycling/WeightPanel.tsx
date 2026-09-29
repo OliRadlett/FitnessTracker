@@ -46,7 +46,7 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; date: string; weight: string } | null>(null);
   const toast = useToast();
 
-  const { data: history, isLoading } = useQuery({
+  const { data: history, isLoading, isError, refetch } = useQuery({
     queryKey: WEIGHT_QUERY_KEY,
     queryFn: () => getWeightHistory(authFetch, days),
     enabled: !!token,
@@ -248,6 +248,19 @@ export function WeightPanel({ days = 90, compact = false }: WeightPanelProps) {
 
       {!compact && (
         <div className="max-h-72 overflow-y-auto">
+          {isError && (
+            <div className="px-4 py-2">
+              <p className="text-xs text-warning mb-1" role="alert">
+                Couldn&apos;t load weight history.
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="text-xs text-accent hover:text-accent/80 underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {isLoading && entries.length === 0 && (
             <p className="px-4 py-6 text-sm text-muted text-center">Loading…</p>
           )}
