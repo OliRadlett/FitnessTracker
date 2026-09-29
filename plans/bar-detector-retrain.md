@@ -157,10 +157,12 @@ lens nominal — precedence chain working).
 
 The fix removed the predicted ~340 mm y-leak; residual fb (−470 mm) is
 still above the plausibility band with unknown mechanism (not the y-leak;
-anchor-vs-feet world-z bias or axis x-tilt suspected). Lateral halved but
-~100 mm remains borderline (stance asymmetry not ruled out). Next:
-per-frame forensics on the persisted track, or accept vertical + calibration
-as the shippable core with horizontals flagged approximate.
+anchor-vs-feet world-z bias or axis x-tilt suspected). Ablation on the real
+track attributes −352 mm to the axes fix (y-zero + clip stability) and
+−19 mm to the median origin. Lateral halved but ~100 mm remains borderline
+(stance asymmetry not ruled out). Next: per-frame forensics on the
+persisted track, or accept vertical + calibration as the shippable core
+with horizontals flagged approximate.
 
 ## Device facts (user-confirmed 2026-09-29)
 
