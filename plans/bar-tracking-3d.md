@@ -115,7 +115,7 @@ wiring, no UI):
    `full_result["camera"]`; `scheduler.process_lift_video` passes the lifter's
    height (`preferences.height_cm` → m, explicit `db.get` — no lazy load under
    async) plus any previously stored focal, and persists `video.camera_json`
-   (migration `083`). `pose_analysis.run_pose_analysis(..., camera=,
+   (migration `084`). `pose_analysis.run_pose_analysis(..., camera=,
    lifter_height_m=)` fits → lifts → `analyze_bar_path_3d`, nested as
    `bar_path["metric_3d"]` (2D shape untouched), with the record-aligned
    landmark/world arrays and a `remap_reps` timestamp remap (reps are indexed
@@ -143,21 +143,22 @@ in frame). Until then the vertical/lateral success check
 Remaining: the UI pass (surface `metric_3d` + calibration), and the focal-source
 decision above.
 
-**Migration ordering (2026-09-29):** this work's migration is `083`, chained as
-`081 → 082 → 083`, because a concurrent session created
-`082_add_lift_video_exercise_variation.py` (`lift_videos.exercise_variation`,
-also `down_revision = "081"`) — two files claiming `082` breaks `alembic
-upgrade head` for everyone. This PR therefore depends on their `082` merging
-first (or being rebased the other way round if this lands first).
+**Migration ordering (2026-09-29):** this work's migration is `084`, chained as
+`082 → 083 → 084`. It collided *twice* in sequence — first with a concurrent
+session's `082` (resolved by renumbering to `083`), then with their
+`083_route_merge_kind.py` (renumbered to `084`). Two files claiming one number
+breaks `alembic upgrade head` for everyone plus the chain-linearity CI test,
+so concurrent sessions must coordinate migration numbers (or rebase onto main
+and renumber before opening the PR).
 
 ## Inputs
 
 | input | where it lives | status |
 |---|---|---|
 | **height** | `User.preferences.height_cm` (`services/preferences.py`) | ✅ added (Settings → "Lifter height") |
-| **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ wired end-to-end 2026-09-28 (probe → `camera_json`, migration `083`) — but **0/33 fixture clips carry focal tags**, so a focal source (device default / calibration / barbell-length) is still needed before real-clip numbers exist |
+| **focal** | **per clip**, from the container metadata (`services/video_camera.py`) | ✅ wired end-to-end (probe → `camera_json`, migration `084`) — but **0/33 fixture clips carry focal tags**, with the barbell-length fallback below as the working source |
 | plate diameter | — | ❌ the detected "plate" is a stack; would need the load (`load_kg`) |
-| bar length | — | ❌ plate spacing depends on the load |
+| bar length | 2.2 m men's Olympic bar, via the barbell box's long axis | ✅ fallback built 2026-09-29 (`estimate_focal_from_bar`): per-frame closed-form `f = p·Δ/(L−p/s)` over barbell-box spans, clip median + MAD gate, frontal-gated, provenance in `calibration.focal_source`. Per-frame leverage is weak by construction (bar near the body plane, ~10-30x noise gain) — the median + spread gate is the estimate. Plate pairs can't calibrate (spacing is load-dependent) |
 
 **Why the focal is per clip, not a setting:** videos come from **different
 lenses** (main / ultra-wide / tele), so one number per user is wrong. Phone

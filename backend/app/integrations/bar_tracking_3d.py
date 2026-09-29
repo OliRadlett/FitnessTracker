@@ -89,6 +89,26 @@ _END_QUANTILE = 0.25
 _MIN_CAMERA_FRAMES = 5
 _MIN_REP_POINTS = 4
 _MIN_3D_REPS = 2
+# A standard men's Olympic barbell is 2.20 m long (women's 2.01 m — passed as
+# ``bar_length_m`` where the exercise context makes it the better assumption).
+# The bar is the one known-size object already in frame, so its projected
+# length is the fallback focal reference when the container carries no lens
+# tags (which, measured 2026-09-29, is all 33 fixture clips).
+_BAR_LENGTH_M = 2.20
+# The solver's depth leverage is the bar's offset from the body plane: a bar
+# *in* the plane carries no depth information at all, and near it the
+# noise amplification (~Z/offset) explodes. Frames inside this are skipped.
+_MIN_DEPTH_OFFSET_M = 0.10
+# The bar must read as a bar: much longer across than tall. An end-on (or
+# steeply foreshortened) bar images ~square, and its "length" says nothing
+# about the focal — those frames are skipped, not corrected.
+_MIN_BAR_ASPECT = 4.0
+# Clip-level gates for the focal estimate: enough independent frames, a tight
+# enough consensus, and a physically plausible phone lens.
+_MIN_FOCAL_FRAMES = 10
+_FOCAL_SPREAD_LIMIT = 0.25
+_FOCAL_RANGE_PX = (300.0, 3000.0)
+_FOCAL_MAD_FLOOR_PX = 40.0
 # Slack when matching a rep window against frame timestamps. Both series come
 # from the same ``frame_times`` list, so this only absorbs float round-trips.
 _TIME_EPS = 1e-6
@@ -148,6 +168,57 @@ def body_height_scale(world, lifter_height_m: float | None) -> float:
     return float(lifter_height_m) / measured if measured > 1e-6 else 1.0
 
 
+def fit_clip_scale(
+    landmarks: list,
+    world: list,
+    width: float | None,
+    height: float | None,
+    lifter_height_m: float | None,
+) -> dict | None:
+    """Focal-free part of the camera fit: pixels-per-metre from the body.
+
+    The weak-perspective scale (``px_per_m``) is identified by the pose alone —
+    only the *absolute* depth (``subject_distance_m``) needs the focal. The
+    barbell-length fallback (``estimate_focal_from_bar``) consumes this scale,
+    so it lives on its own rather than behind the focal gate in
+    :func:`fit_clip_camera`.
+    """
+    if not lifter_height_m or float(lifter_height_m) <= 0:
+        return None
+    if not width or not height or float(width) <= 0 or float(height) <= 0:
+        return None
+
+    hscale = body_height_scale(world, float(lifter_height_m))
+    px_scale = np.array([float(width), float(height)], dtype=float)
+
+    scales: list[float] = []
+    for i, lm in enumerate(landmarks):
+        wl = world[i] if i < len(world) else None
+        if lm is None or wl is None:
+            continue
+        s = _px_per_m(_xy(lm) * px_scale, _xyz(wl) * hscale, _ORIGIN)
+        if s > 1.0:
+            scales.append(s)
+    if len(scales) < _MIN_CAMERA_FRAMES:
+        logger.info(
+            "Metric 3D bar path: only %d usable frames to fit the camera",
+            len(scales),
+        )
+        return None
+
+    arr = np.asarray(scales, dtype=float)
+    px_per_m = float(np.median(arr))
+    if px_per_m <= 1.0:
+        return None
+    p10, p90 = (float(v) for v in np.percentile(arr, [10, 90]))
+    return {
+        "height_scale": round(hscale, 4),
+        "px_per_m": round(px_per_m, 1),
+        "scale_spread": round((p90 - p10) / px_per_m, 3),
+        "n_frames": len(scales),
+    }
+
+
 def fit_clip_camera(
     landmarks: list,
     world: list,
@@ -179,30 +250,12 @@ def fit_clip_camera(
     if not width or not height or float(width) <= 0 or float(height) <= 0:
         return None
 
+    scale = fit_clip_scale(landmarks, world, width, height, lifter_height_m)
+    if scale is None:
+        return None
+
     f = float(focal_px)
-    hscale = body_height_scale(world, float(lifter_height_m))
-    px_scale = np.array([float(width), float(height)], dtype=float)
-
-    scales: list[float] = []
-    for i, lm in enumerate(landmarks):
-        wl = world[i] if i < len(world) else None
-        if lm is None or wl is None:
-            continue
-        s = _px_per_m(_xy(lm) * px_scale, _xyz(wl) * hscale, _ORIGIN)
-        if s > 1.0:
-            scales.append(s)
-    if len(scales) < _MIN_CAMERA_FRAMES:
-        logger.info(
-            "Metric 3D bar path: only %d usable frames to fit the camera",
-            len(scales),
-        )
-        return None
-
-    arr = np.asarray(scales, dtype=float)
-    px_per_m = float(np.median(arr))
-    if px_per_m <= 1.0:
-        return None
-    p10, p90 = (float(v) for v in np.percentile(arr, [10, 90]))
+    px_per_m = float(scale["px_per_m"])
     return {
         "focal_px": round(f, 1),
         "width": int(width),
@@ -212,12 +265,142 @@ def fit_clip_camera(
         # directly in the lateral metric.
         "cx": float(width) / 2.0,
         "cy": float(height) / 2.0,
-        "height_scale": round(hscale, 4),
-        "px_per_m": round(px_per_m, 1),
+        "height_scale": scale["height_scale"],
+        "px_per_m": scale["px_per_m"],
         "subject_distance_m": round(f / px_per_m, 2),
-        "scale_spread": round((p90 - p10) / px_per_m, 3),
+        "scale_spread": scale["scale_spread"],
         "lifter_height_m": round(float(lifter_height_m), 3),
-        "n_frames": len(scales),
+        "n_frames": scale["n_frames"],
+    }
+
+
+def bar_span_px(
+    box_w: float | None, box_h: float | None, frame_width: float
+) -> float | None:
+    """Long-axis pixel extent of a barbell box, or ``None`` when unusable.
+
+    The box is axis-aligned, so for a level bar the long axis *is* the bar's
+    projected length. The aspect gate drops end-on / steeply foreshortened
+    bars whose "length" carries no focal information (a side-view deadlift
+    bar images near-square). ``box_w``/``box_h`` are normalised; the span is
+    returned in pixels.
+    """
+    if box_w is None or box_h is None or not frame_width or frame_width <= 0:
+        return None
+    w, h = float(box_w), float(box_h)
+    if w <= 0 or h <= 0:
+        return None
+    if max(w, h) / min(w, h) < _MIN_BAR_ASPECT:
+        return None
+    return max(w, h) * float(frame_width)
+
+
+def bar_depth_offsets(world: list, exercise: str = "") -> list:
+    """Per-frame depth of the joint the bar is held at, in (uncalibrated) metres.
+
+    The same anchor the 3D lift uses — shoulders for a squat, wrists
+    otherwise — as a hip-centred world-z series. The caller multiplies by the
+    clip's ``height_scale``; kept separate so the estimator stays unit-explicit
+    about what is calibrated and what is not. ``None`` where the frame has no
+    world landmarks.
+    """
+    anchor = _SHOULDER if exercise in _SQUAT_FAMILY else _WRIST
+    out: list = []
+    for wl in world or []:
+        if wl is None:
+            out.append(None)
+            continue
+        try:
+            xyz = _xyz(wl)
+            out.append(float(np.mean(xyz[list(anchor), 2])))
+        except (IndexError, TypeError, ValueError):
+            out.append(None)
+    return out
+
+
+def _focal_per_frame(
+    span_px: float, delta_m: float, px_per_m: float, length_m: float
+) -> float | None:
+    """Closed-form focal from one frame's bar span.
+
+    The bar images ``span_px`` long at depth ``Z + delta`` while the body fits
+    ``px_per_m = f / Z``: eliminating ``Z`` gives ``f = p·Δ / (L − p/s)``.
+    Returns ``None`` when the geometry is degenerate (bar in the body plane)
+    or inconsistent (the span disagrees in sign with the offset, or implies a
+    non-phone lens) rather than a wild number.
+    """
+    if not (span_px > 0 and px_per_m > 0 and length_m > 0):
+        return None
+    if abs(delta_m) < _MIN_DEPTH_OFFSET_M:
+        return None
+    denom = length_m - span_px / px_per_m
+    # A consistent frame has numerator and denominator alike in sign (a nearer
+    # bar images longer than the body scale predicts, and vice versa).
+    if denom == 0 or (span_px * delta_m > 0) != (denom > 0):
+        return None
+    f = span_px * delta_m / denom
+    if not (_FOCAL_RANGE_PX[0] <= f <= _FOCAL_RANGE_PX[1]):
+        return None
+    return f
+
+
+def estimate_focal_from_bar(
+    spans_px: list,
+    deltas_m: list,
+    px_per_m: float,
+    length_m: float = _BAR_LENGTH_M,
+) -> dict | None:
+    """Clip-level focal from the barbell's known length (fallback source).
+
+    ``spans_px``/``deltas_m`` are per-frame parallel lists (``None``-tolerant):
+    the barbell box's long-axis extent in pixels and the bar anchor's signed
+    depth offset from the body plane in *calibrated* metres. Each frame solves
+    in closed form; the clip takes the median, MAD-gated like the rep metrics,
+    and declines unless enough frames agree tightly. Returns
+    ``{"focal_px", "n_frames", "spread", "bar_length_m"}`` or ``None``.
+
+    Per-frame leverage is weak by construction (the bar sits near the body
+    plane, so ``Z/offset`` amplifies box noise ~10-30x) — the median over a
+    clip is the estimate, and ``spread`` says whether to trust it.
+    """
+    if not px_per_m or px_per_m <= 0 or not length_m or length_m <= 0:
+        return None
+    fs: list[float] = []
+    for span, delta in zip(spans_px or [], deltas_m or []):
+        if span is None or delta is None:
+            continue
+        try:
+            f = _focal_per_frame(
+                float(span), float(delta), float(px_per_m), float(length_m)
+            )
+        except (TypeError, ValueError):
+            continue
+        if f is not None:
+            fs.append(f)
+    if len(fs) < _MIN_FOCAL_FRAMES:
+        logger.info(
+            "Metric 3D bar path: only %d usable barbell frames for the focal",
+            len(fs),
+        )
+        return None
+
+    arr = np.asarray(fs, dtype=float)
+    med = float(np.median(arr))
+    mad = max(_FOCAL_MAD_FLOOR_PX, 1.4826 * float(np.median(np.abs(arr - med))))
+    keep = arr[np.abs(arr - med) <= _MAD_LIMIT * mad]
+    if len(keep) < _MIN_FOCAL_FRAMES:
+        return None
+    p10, p90 = (float(v) for v in np.percentile(keep, [10, 90]))
+    med = float(np.median(keep))
+    spread = (p90 - p10) / med if med > 0 else float("inf")
+    if spread > _FOCAL_SPREAD_LIMIT:
+        logger.info("Metric 3D bar path: barbell focal spread %.2f — declining", spread)
+        return None
+    return {
+        "focal_px": round(med, 1),
+        "n_frames": len(keep),
+        "spread": round(spread, 3),
+        "bar_length_m": round(float(length_m), 2),
     }
 
 
@@ -487,6 +670,11 @@ def analyze_bar_path_3d(
     if camera:
         result["calibration"] = {
             "focal_px": camera.get("focal_px"),
+            # Where the focal came from: container tags or the barbell-length
+            # fallback (``estimate_focal_from_bar``). A barbell focal carries
+            # the estimator's own spread for inspection.
+            "focal_source": camera.get("focal_source", "tags"),
+            "focal_spread": camera.get("focal_spread"),
             "subject_distance_m": camera.get("subject_distance_m"),
             "px_per_m": camera.get("px_per_m"),
             "lifter_height_m": camera.get("lifter_height_m"),

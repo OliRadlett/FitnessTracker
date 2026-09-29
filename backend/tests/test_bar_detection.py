@@ -80,6 +80,67 @@ class TestEdgeAndDarkness:
         assert bd._edge_support(img, 400, 300, 120) == 0.0
 
 
+class TestBarbellSpan:
+    def _cands(self):
+        return [
+            {
+                "label": "plate",
+                "x": 0.3,
+                "y": 0.5,
+                "w": 0.06,
+                "h": 0.10,
+                "confidence": 0.95,
+            },
+            {
+                "label": "barbell",
+                "x": 0.5,
+                "y": 0.5,
+                "w": 0.50,
+                "h": 0.06,
+                "confidence": 0.80,
+            },
+            {
+                "label": "barbell",
+                "x": 0.5,
+                "y": 0.5,
+                "w": 0.40,
+                "h": 0.05,
+                "confidence": 0.60,
+            },
+        ]
+
+    def test_picks_the_best_barbell_box(self):
+        assert bd._barbell_span(self._cands()) == (0.50, 0.06)
+
+    def test_no_barbell_box_is_none(self):
+        cands = [c for c in self._cands() if c["label"] != "barbell"]
+        assert bd._barbell_span(cands) is None
+        assert bd._barbell_span([]) is None
+
+    def test_degenerate_boxes_are_none(self):
+        assert (
+            bd._barbell_span(
+                [
+                    {
+                        "label": "barbell",
+                        "x": 0.5,
+                        "y": 0.5,
+                        "w": 0.0,
+                        "h": 0.06,
+                        "confidence": 0.9,
+                    }
+                ]
+            )
+            is None
+        )
+        assert (
+            bd._barbell_span(
+                [{"label": "barbell", "x": 0.5, "y": 0.5, "confidence": 0.9}]
+            )
+            is None
+        )
+
+
 class TestSeededPlateTracker:
     def test_tracks_a_moving_patch_from_the_seed(self, tmp_path):
         rng = np.random.default_rng(0)

@@ -6,8 +6,8 @@ world landmarks need the lifter's height to be metric. Storing the camera
 alongside the analysis means a surprising bar height can be traced to the lens
 it was measured through.
 
-Revision ID: 083
-Revises: 082
+Revision ID: 084
+Revises: 083
 Create Date: 2026-09-28
 """
 
@@ -15,8 +15,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "083"
-down_revision = "082"
+revision = "084"
+down_revision = "083"
 branch_labels = None
 depends_on = None
 
