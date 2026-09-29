@@ -66,6 +66,34 @@ class TestCreateLiftingSession:
         assert resp.json()["sets"] == []
 
 
+class TestSessionWriteSingleCommit:
+    """BUG-015: create/update rely on get_db's teardown commit (no explicit
+    commit in the endpoint) — the write plus background Jev scheduling must
+    still succeed end to end."""
+
+    async def test_create_then_update_round_trip(self, client):
+        create = await client.post(
+            "/api/v1/lifting/sessions",
+            json={
+                "session_date": "2026-08-20",
+                "focus": "squat",
+                "notes": "pilot",
+            },
+        )
+        assert create.status_code == 201
+        session_id = create.json()["id"]
+
+        update = await client.patch(
+            f"/api/v1/lifting/sessions/{session_id}",
+            json={"notes": "pilot-updated", "rpe_session": 7.0},
+        )
+        assert update.status_code == 200
+        body = update.json()
+        assert body["id"] == session_id
+        assert body["notes"] == "pilot-updated"
+        assert body["rpe_session"] == 7.0
+
+
 # ── List sessions ─────────────────────────────────────────────────────────
 
 
