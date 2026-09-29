@@ -405,6 +405,27 @@ def _centre_dist(a: dict, b: dict) -> float:
     return float(np.hypot(a["x"] - b["x"], a["y"] - b["y"]))
 
 
+def _barbell_span(cands: list) -> tuple[float, float] | None:
+    """Normalised ``(w, h)`` of the best-confidence ``barbell`` box, if any.
+
+    Pure (no cv2): the barbell-length focal fallback
+    (``bar_tracking_3d.estimate_focal_from_bar``) needs the box extent even on
+    frames where the plate pair wins the bar *centre*, so this is recorded
+    independently of which basis ``ref`` above resolves to.
+    """
+    bars = [d for d in cands if d.get("label") == "barbell"]
+    if not bars:
+        return None
+    best = max(bars, key=lambda d: d.get("confidence", 0.0))
+    try:
+        w, h = float(best["w"]), float(best["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return (w, h)
+
+
 def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
     """Per-frame bar detection aligned to ``frame_paths`` (dict or ``None``)."""
     import cv2
@@ -455,6 +476,13 @@ def _detections_per_frame(frame_paths, landmarks, proxy_of, model_path):
             det[i] = {"x": ref["x"], "y": ref["y"],
                       "confidence": ref["confidence"], "source": "detector",
                       "bar_basis": basis}
+            # The barbell box extent is the barbell-length focal fallback's
+            # ruler — keep it whenever a barbell box fired, even when the
+            # plate pair wins the centre (the common frontal case).
+            span = _barbell_span(cands)
+            if span is not None:
+                det[i]["barbell_w"] = round(span[0], 4)
+                det[i]["barbell_h"] = round(span[1], 4)
             # Same rack/floor guard the classical path applies, on the resolved
             # centre rather than each candidate box.
             if lm_i is not None and np.hypot(
@@ -613,6 +641,9 @@ def bar_track_from_frame_paths(
             e["tilt_deg"] = src["tilt_deg"]
         if src.get("bar_basis"):
             e["bar_basis"] = src["bar_basis"]
+        if src.get("barbell_w") is not None and src.get("barbell_h") is not None:
+            e["barbell_w"] = src["barbell_w"]
+            e["barbell_h"] = src["barbell_h"]
         if e:
             extras[i] = e
     # The metric-3D lift needs the *detector's* bar centre for each frame, not

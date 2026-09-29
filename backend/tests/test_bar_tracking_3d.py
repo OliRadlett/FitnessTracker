@@ -549,3 +549,122 @@ class TestEndToEnd:
         assert out["n_frames"] == 16
         # The fit self-checks: it must recover the camera it was handed.
         assert out["calibration"]["subject_distance_m"] == pytest.approx(Z, rel=0.02)
+
+
+class TestFitClipScale:
+    def test_scale_without_focal(self):
+        """The pixels-per-metre is identified by the pose alone."""
+        scale = b3.fit_clip_scale(
+            [IMAGE] * 10, [_world_frame(WORLD)] * 10, W, H, LIFTER_HEIGHT_M
+        )
+        assert scale is not None
+        assert scale["px_per_m"] == pytest.approx(F / Z, rel=0.02)
+        assert scale["height_scale"] == pytest.approx(1.0, rel=1e-3)
+        assert "focal_px" not in scale
+
+    def test_still_needs_height_and_size(self):
+        lms, wld = [IMAGE] * 10, [_world_frame(WORLD)] * 10
+        assert b3.fit_clip_scale(lms, wld, W, H, None) is None
+        assert b3.fit_clip_scale(lms, wld, 0, H, LIFTER_HEIGHT_M) is None
+        assert b3.fit_clip_scale(lms[:2], wld[:2], W, H, LIFTER_HEIGHT_M) is None
+
+
+class TestBarSpanPx:
+    def test_long_axis_in_pixels(self):
+        # A frontal barbell box: half the frame wide, thin.
+        assert b3.bar_span_px(0.50, 0.06, W) == pytest.approx(540.0)
+
+    def test_end_on_bar_is_dropped(self):
+        """A near-square box is an end-on bar — no length information."""
+        assert b3.bar_span_px(0.10, 0.06, W) is None
+
+    def test_missing_inputs_are_none(self):
+        assert b3.bar_span_px(None, 0.06, W) is None
+        assert b3.bar_span_px(0.50, 0.06, 0) is None
+
+
+class TestBarDepthOffsets:
+    def test_squat_anchors_at_the_shoulders(self):
+        offs = b3.bar_depth_offsets([_world_frame(WORLD)], "Back Squat")
+        # Shoulders sit at z = 0.0 in the fixture body.
+        assert offs == pytest.approx([0.0])
+
+    def test_press_anchors_at_the_wrists(self):
+        offs = b3.bar_depth_offsets([_world_frame(WORLD)], "Bench Press")
+        # Wrists sit 0.06 m toward the camera in the fixture body.
+        assert offs == pytest.approx([0.06])
+
+    def test_missing_frames_are_none(self):
+        assert b3.bar_depth_offsets([None], "Back Squat") == [None]
+
+
+class TestEstimateFocalFromBar:
+    # The same synthetic camera as the rest of the file: F=800, Z=3.0, so a
+    # 2.2 m bar at depth Z+0.25 images 800*2.2/3.25 = 541.5 px with a body
+    # scale of 800/3 = 266.7 px/m.
+    S = F / Z
+    P = F * 2.2 / (Z + 0.25)
+
+    def _clip(self, n=12, span=None, delta=0.25):
+        return ([span if span is not None else self.P] * n, [delta] * n)
+
+    def test_recovers_the_focal_exactly(self):
+        spans, deltas = self._clip()
+        out = b3.estimate_focal_from_bar(spans, deltas, self.S)
+        assert out is not None
+        assert out["focal_px"] == pytest.approx(F, rel=1e-6)
+        assert out["n_frames"] == 12
+        assert out["bar_length_m"] == 2.2
+
+    def test_nearer_bar_gives_the_same_focal(self):
+        """Sign symmetry: a bar 0.25 m nearer the camera must agree."""
+        p = F * 2.2 / (Z - 0.25)
+        out = b3.estimate_focal_from_bar([p] * 12, [-0.25] * 12, self.S)
+        assert out["focal_px"] == pytest.approx(F, rel=1e-6)
+
+    def test_survives_realistic_box_jitter(self):
+        """3 px box noise + 2 cm anchor noise: the clip median must hold."""
+        import random
+
+        rnd = random.Random(7)
+        spans = [self.P + rnd.uniform(-3.0, 3.0) for _ in range(40)]
+        deltas = [0.25 + rnd.uniform(-0.02, 0.02) for _ in range(40)]
+        out = b3.estimate_focal_from_bar(spans, deltas, self.S)
+        assert out is not None
+        assert out["focal_px"] == pytest.approx(F, rel=0.15)
+        assert out["spread"] <= 0.25
+
+    def test_bar_in_the_body_plane_declines(self):
+        """No depth leverage, no estimate — however many frames."""
+        spans, _ = self._clip(n=40)
+        assert b3.estimate_focal_from_bar(spans, [0.05] * 40, self.S) is None
+
+    def test_too_few_frames_declines(self):
+        spans, deltas = self._clip(n=5)
+        assert b3.estimate_focal_from_bar(spans, deltas, self.S) is None
+
+    def test_foreshortened_bar_declines(self):
+        """A 30-degree out-of-plane bar images short: per-frame focals fall
+        below any phone lens and are dropped, leaving nothing to aggregate."""
+        p = self.P * 0.866
+        assert b3.estimate_focal_from_bar([p] * 12, [0.25] * 12, self.S) is None
+
+    def test_wild_frames_are_rejected_not_averaged(self):
+        spans, deltas = self._clip(n=12)
+        spans[3] = spans[3] * 2.0  # a rack upright caught as "barbell"
+        out = b3.estimate_focal_from_bar(spans, deltas, self.S)
+        assert out is not None
+        assert out["focal_px"] == pytest.approx(F, rel=0.05)
+        assert out["n_frames"] == 11
+
+    def test_tolerates_missing_frames(self):
+        spans, deltas = self._clip(n=12)
+        spans[2] = None
+        deltas[5] = None
+        out = b3.estimate_focal_from_bar(spans, deltas, self.S)
+        assert out is not None
+        assert out["n_frames"] == 10
+
+    def test_needs_a_scale(self):
+        spans, deltas = self._clip()
+        assert b3.estimate_focal_from_bar(spans, deltas, 0.0) is None

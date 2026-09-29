@@ -2022,14 +2022,60 @@ def run_pose_analysis(
     ):
         try:
             from app.integrations import bar_tracking_3d as b3
+            from app.integrations.bar_tracking import _FRONTAL_VIEWS
 
+            cam_info = camera or {}
+            width, height = cam_info.get("width"), cam_info.get("height")
+            focal = cam_info.get("focal_px")
+            focal_source = "tags" if focal else None
+            fest = None
+            # Fallback focal: the barbell's known length (2.2 m). The container
+            # tags are absent on real footage (0/33 fixture clips), so without
+            # this the 3D path never runs. Frontal-only: the bar must read as a
+            # bar (long across, not end-on) for its length to mean anything.
+            if (not focal and lifter_height_m and width and height
+                    and bar_track):
+                frontal = view in _FRONTAL_VIEWS
+                if not frontal and view in (None, "", "unknown"):
+                    try:
+                        frontal = (detect_camera_view(track_lms).get("view")
+                                   == "frontal")
+                    except Exception:
+                        frontal = False
+                if frontal:
+                    scale = b3.fit_clip_scale(track_lms, track_wld, width,
+                                              height, lifter_height_m)
+                    if scale is not None:
+                        hscale = float(scale["height_scale"])
+                        spans = [
+                            b3.bar_span_px(
+                                p.get("barbell_w"), p.get("barbell_h"), width)
+                            if p else None
+                            for p in bar_track
+                        ]
+                        deltas = [
+                            None if d is None else d * hscale
+                            for d in b3.bar_depth_offsets(track_wld, exercise)
+                        ]
+                        fest = b3.estimate_focal_from_bar(
+                            spans, deltas, float(scale["px_per_m"]))
+                        if fest is not None:
+                            focal = fest["focal_px"]
+                            focal_source = "barbell"
+                            logger.info(
+                                "Metric 3D bar path: barbell focal %.0f px "
+                                "(%d frames, spread %.2f)",
+                                focal, fest["n_frames"], fest["spread"],
+                            )
             cam3d = b3.fit_clip_camera(
                 track_lms, track_wld,
-                (camera or {}).get("focal_px"),
-                (camera or {}).get("width"), (camera or {}).get("height"),
+                focal, width, height,
                 lifter_height_m,
             )
             if cam3d is not None:
+                cam3d["focal_source"] = focal_source or "tags"
+                if fest is not None:
+                    cam3d["focal_spread"] = fest["spread"]
                 track3d = b3.lift_bar_3d(
                     track_lms, track_wld, bar_track, cam3d, exercise)
                 # Reps are indexed against the dense series, the track against
