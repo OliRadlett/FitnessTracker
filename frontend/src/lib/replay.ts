@@ -39,12 +39,16 @@ export interface StreamInput {
 
 /** local equirectangular projection of lat/lng pairs around their centroid */
 export function projectPolyline(
-  coords: [number, number][]
+  coords: [number, number][],
+  origin?: { lat0: number; lng0: number }
 ): { xs: number[]; ys: number[]; lat0: number; lng0: number } {
   const n = coords.length;
-  if (n === 0) return { xs: [], ys: [], lat0: 0, lng0: 0 };
-  const lat0 = coords.reduce((s, c) => s + c[0], 0) / n;
-  const lng0 = coords.reduce((s, c) => s + c[1], 0) / n;
+  if (n === 0) {
+    return { xs: [], ys: [], lat0: origin?.lat0 ?? 0, lng0: origin?.lng0 ?? 0 };
+  }
+  // An explicit origin (ghost/race alignment) overrides the ride's own centroid.
+  const lat0 = origin?.lat0 ?? coords.reduce((s, c) => s + c[0], 0) / n;
+  const lng0 = origin?.lng0 ?? coords.reduce((s, c) => s + c[1], 0) / n;
   const mPerDegLng = M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180);
   const xs = coords.map(([, lng]) => (lng - lng0) * mPerDegLng);
   const ys = coords.map(([lat]) => (lat - lat0) * M_PER_DEG_LAT);
@@ -126,6 +130,18 @@ export interface ReplayBuildOptions {
   activityDistanceMeters?: number;
   /** activity duration (s) — correct total when the stream is truncated */
   activityDurationSeconds?: number;
+  /**
+   * Force the projection origin instead of the ride's own centroid. Lets a
+   * secondary ride (ghost / race opponent) be rendered in the main ride's
+   * metric frame, so it sits at its true geographic offset rather than
+   * collapsing onto the origin.
+   */
+  frame?: { lat0: number; lng0: number };
+  /**
+   * Reuse another build's vertical base + exaggeration, so two rides in a
+   * shared `frame` are directly comparable in z as well as x/y.
+   */
+  altBase?: { altMin: number; zScale: number };
 }
 
 export interface ReplayBuildResult {
@@ -169,7 +185,7 @@ export function buildReplay(
   opts: ReplayBuildOptions
 ): ReplayBuildResult {
   const coords = decodePolyline(opts.polyline);
-  const { xs, ys, lat0, lng0 } = projectPolyline(coords);
+  const { xs, ys, lat0, lng0 } = projectPolyline(coords, opts.frame);
   const polyDist = cumulativePolyline(coords, xs, ys);
 
   const velocity = opts.velocity?.values ?? [];
@@ -209,6 +225,9 @@ export function buildReplay(
   if (altMin === Infinity) altMin = 0;
   if (altMax === -Infinity) altMax = 0;
   const altSpan = alts.length ? altMax - altMin : 0;
+  // A shared `altBase` pins the vertical base + exaggeration to another build
+  // so rides in a shared `frame` are directly comparable in z too.
+  if (opts.altBase) altMin = opts.altBase.altMin;
   // xs is the projected polyline of ALL coords — can be 100k+ for very long
   // routes. Loop to avoid spread stack overflow.
   let xsMin = Infinity, xsMax = -Infinity;
@@ -217,6 +236,7 @@ export function buildReplay(
   // Cinematic exaggeration: modest (≤3×) so a chase camera isn't buried by
   // the vertical profile. The raw profile still drives `grade`.
   const zScale =
+    opts.altBase?.zScale ??
     opts.zScale ??
     (altSpan > 0 ? Math.min(3, Math.max(1.5, extentX / (altSpan || 1) * 0.12)) : 1);
   // Smooth the vertical profile (moving average) so barometric noise doesn't

@@ -1,7 +1,7 @@
 """Reclassify mislabelled activities + add road_match columns to activities.
 
-Revision ID: 086
-Revises: 085
+Revision ID: 087
+Revises: 086
 Create Date: 2026-09-29
 
 Part A — Activity road-match columns:
@@ -48,8 +48,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "086"
-down_revision = "085"
+revision = "087"
+down_revision = "086"
 branch_labels = None
 depends_on = None
 
