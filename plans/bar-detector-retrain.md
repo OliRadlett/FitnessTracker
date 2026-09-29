@@ -134,11 +134,18 @@ explains the missing pairs. Consequence: the 3D-validation reprocesses now
 running will almost certainly come back 2D-only (no pair centres, no barbell
 spans) — correct declining, not a failure.
 
-**How to film a 3D-validatable set**: front view, close enough that each
-plate exceeds ~4% of frame height (the <1% bucket recalls 0.03), both plates
-unoccluded, dark solid-color plates if available, lifter height set (done:
-185 cm). A single 8-rep frontal set filmed this way is the remaining
-real-clip validation.
+**Why the estimator still declines (measured 2026-09-29)**: on the
+frontal canary's persisted pose track (511 frames), shoulder world-z median
+is **0.016 m** — only 13.9% of frames clear the 0.10 m depth floor, below
+the 10-frame minimum. The bar sits in the body plane on a frontal squat, so
+there is no depth leverage to solve from; the decline is correct, not a
+bug. Detector, spans, height, geometry all verified working — the focal is
+the sole missing input on typical footage. This promotes the per-user
+default focal (below) from fallback to primary source, with the barbell
+estimator kept as cross-check/provenance for clips where it fires.
+
+Filming guidance still stands for estimator-friendly clips (bench ¾,
+larger Δ): front-ish view, plates >4% of frame height, both unoccluded.
 
 ## Live pipeline verification (2026-09-29)
 
@@ -190,7 +197,17 @@ metrics (10 cm on 175 cm ≈ 6%).
   1. Prompt when missing: video page banner / deep-analysis CTA ("set your
      height to enable 3D bar metrics") when `height_cm` is unset. Small
      frontend addition; the backend already threads the value end to end.
-  2. Keep the server-side bounds (already in `NUMERIC_PREFERENCES`); sanity
+  2. **Per-user default focal (new primary source)**: a `focal_px`
+     preference (300–3000 px, so EIS-cropped values fit) used when container
+     tags are absent — which is every real clip measured. Pre-fill 702 for
+     the OnePlus 11 ultra-wide (14 mm equiv on 1080×1920); the barbell
+     estimator cross-checks it whenever it fires (flag >30% disagreement
+     in the calibration echo). Plumbing already exists end to end
+     (scheduler `focal_px` → modal override → `camera` → fit); missing
+     pieces are the preference field + Settings row + scheduler fallback
+     read. Accuracy ~10–20% (EIS) → metric errors of the same order:
+     useful, flagged as approximate via `focal_source`.
+  3. Keep the server-side height bounds (already in `NUMERIC_PREFERENCES`); sanity
      log the resulting `height_scale` in the calibration echo (already
      echoed — a scale far from 1.0 on a real clip means a wrong height).
   3. Acceptance for this half: the canary reprocesses (below) run with a
