@@ -78,18 +78,21 @@ def route_to_gpx(route: Route) -> str:
 def activity_to_gpx(activity) -> str | None:
     """Generate a GPX 1.1 XML string from an Activity object.
 
-    Uses the activity's raw_data to extract the summary_polyline.
-    Returns None if no GPS data is available.
+    Uses the activity's raw_data and provider sources to extract the
+    summary_polyline. Returns None if no GPS data is available.
     """
-    if not activity.raw_data:
-        return None
+    from app.services.polyline_utils import (
+        decode_polyline as _decode,
+    )
+    from app.services.polyline_utils import (
+        extract_activity_polyline,
+    )
 
-    map_data = activity.raw_data.get("map", {})
-    polyline = map_data.get("summary_polyline") or map_data.get("polyline")
+    polyline = extract_activity_polyline(activity)
     if not polyline:
         return None
 
-    points = decode_polyline(polyline)
+    points = _decode(polyline)
     if not points:
         return None
 
