@@ -172,6 +172,17 @@ detector side (per-class conf strategy or retrain emphasis on barbell), NOT
 more geometry. Do not lower the shared 0.35 centre threshold to feed it —
 that changes shipped F1 metrics.
 
+**Root cause found (2026-09-29): synthetic overfit.** Split eval — SYN
+train images 70/79 = 0.89 vs REAL train images 2/10 = 0.20 @0.35; the train
+mix was 63% synthetic (1500/2394), so the model keys on clean renders and
+barely sees real plates, including its own real training frames. Supporting:
+threshold sweep is flat 0.05–0.25 (bimodal scores — no operating point exists,
+tuning is futile); small plates (<1% of frame) recall 0.03; exotic exclusion
+(Log/Atlas/Messenger) barely moves the needle (0.26 fair). Fix = retrain
+real-heavy (real majority, the 248 post-training human frames as hard
+examples, barbell-class emphasis, dark/noisy/small-plate augmentation) —
+*not* thresholds, *not* geometry.
+
 ## Inputs
 
 | input | where it lives | status |
