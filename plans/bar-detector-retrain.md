@@ -96,16 +96,14 @@ ONNX (opset 12, `nms=True`) → `fetch`. Keep yolov8n — the container's
 latency profile is characterized for it, and the failure is data, not
 capacity (it memorized training data fine: 0.77 blended).
 
-**Run status**: v2 trained/deployed/canaried 2026-09-29 (plates 0.97–1.00,
-frontal barbell 1.00 on human frames, pair-centre error 0.016→0.002, live
-on R2 as `models/bar_detector.onnx`, v1 backed up). **v3 running**: round-2
-labels done (16/27 bright frames, 31 human plates + 16 human barbells, 0
-bad boxes; 11 skipped per the 5–10-per-clip guidance) → dataset
-`labels/bar_dataset_v3` (3827/354, ~69% real) → retrain launched (T4/60ep,
-output `bar_detector_v3.onnx`, production key untouched). Same acceptance
-gates on completion, plus bright-clip pair/barbell rates. Rollback =
-re-upload v1 bytes.
-Remaining: canary reprocesses (2026-09-29, running — see below) + watch week.
+**Run status**: v2 trained/deployed/canaried 2026-09-29, then **superseded
+the same day**: round-2 bright labels (16/27) → v3 (3827/354) → acceptance
+PASSED (plates 1.00, frontal barbell 1.00, pair-centre error 0.002→0.001,
+bright working set: barbell 100% @0.93 med conf, pairs 98%, aspect med
+14.2) → **deployed** (`models/bar_detector.onnx` = v3, v2 backed up at
+`models/bar_detector-v2.onnx`). Canary re-running on the 2 frontal Sunday
+clips — pair centres + barbell spans expected this time, i.e. the first
+real `metric_3d`. Rollback = re-upload v2 bytes.
 
 ## Canary (2026-09-29 — complete, no regression)
 
