@@ -351,6 +351,63 @@ class TestLiftBar3D:
         assert out["front_back_mm"] == pytest.approx(0.0, abs=1.0)
 
 
+class TestBodyAxesRobustness:
+    def test_fwd_is_horizontal_despite_tilted_feet(self):
+        """Toes 10 cm above the heels must not tilt the sagittal axis."""
+        tilted = WORLD.copy()
+        tilted[[31, 32], 1] += 0.10
+        fwd, _ = b3._body_axes(tilted)
+        assert fwd[1] == pytest.approx(0.0, abs=1e-9)
+
+    def test_height_does_not_leak_into_front_back(self):
+        """The ~340 mm leak measured on real footage (fwd.y 0.26)."""
+        tilted = WORLD.copy()
+        tilted[[31, 32], 1] += 0.10
+        flat = b3.lift_bar_3d(
+            [_image(WORLD)], [_world_frame(WORLD)], [_bar_at()],
+            _camera(), "Back Squat")[0]
+        lean = b3.lift_bar_3d(
+            [_image(tilted)], [_world_frame(tilted)], [_bar_at()],
+            _camera(), "Back Squat")[0]
+        assert lean["front_back_mm"] == pytest.approx(
+            flat["front_back_mm"], abs=20.0)
+        # ...but the origin genuinely tracks the foot: toes 10 cm up moves
+        # the midfoot midpoint up 5 cm, so the bar reads 5 cm higher.
+        assert lean["height_m"] == pytest.approx(
+            flat["height_m"] + 0.05, abs=0.01)
+
+    def test_wild_foot_landmark_does_not_move_the_midfoot(self):
+        """One occluded heel 0.5 m off must not drag the origin."""
+        wild = WORLD.copy()
+        wild[29, 0] -= 0.50
+        clean = b3.lift_bar_3d(
+            [_image(WORLD)], [_world_frame(WORLD)], [_bar_at()],
+            _camera(), "Back Squat")[0]
+        noisy = b3.lift_bar_3d(
+            [_image(wild)], [_world_frame(wild)], [_bar_at()],
+            _camera(), "Back Squat")[0]
+        assert noisy["lateral_mm"] == pytest.approx(
+            clean["lateral_mm"], abs=5.0)
+        assert noisy["front_back_mm"] == pytest.approx(
+            clean["front_back_mm"], abs=5.0)
+
+    def test_clip_axes_from_median_positions(self):
+        tilted = WORLD.copy()
+        tilted[[31, 32], 1] += 0.10
+        axes = b3.clip_body_axes([_world_frame(WORLD), _world_frame(tilted)])
+        assert axes is not None
+        fwd, lat = axes
+        assert fwd[1] == pytest.approx(0.0, abs=1e-9)
+        # Same body → same axes as the per-frame version.
+        f0, l0 = b3._body_axes(WORLD)
+        assert list(fwd) == pytest.approx(list(f0))
+        assert list(lat) == pytest.approx(list(l0))
+
+    def test_clip_axes_needs_a_frame(self):
+        assert b3.clip_body_axes([]) is None
+        assert b3.clip_body_axes([None, None]) is None
+
+
 class TestRemapReps:
     # The pose runs at 10 fps, so the dense series is 0.1 s per frame and a
     # ~1.4 s rep spans ~15 frames. Two reps, at 1.0-2.4 s and 3.0-4.4 s.
