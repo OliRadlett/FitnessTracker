@@ -154,6 +154,24 @@ came purely from detector availability with height set. The chain is proven
 end to end except the estimator firing, which awaits validatable footage
 (above).
 
+## Device facts (user-confirmed 2026-09-29)
+
+- **Phone/lens**: OnePlus 11 ultra-wide (IMX581, **14 mm equiv**, 115° FOV),
+  front-but-slight-angle. Nominal focal on 1080×1920: diag 2203 px,
+  f = 1101.5 / tan(57.5°) ≈ **702 px**.
+- **No container tags even here**: the Sunday OnePlus clips carry only
+  `creation_time/language/handler_name` — the tag path is dead for this
+  phone too, not just old fixtures.
+- **Plates are calibrated 450 mm** (red/blue powerlifting discs). Diameter
+  is therefore exact, promoting the plate-diameter ruler from "assumed" to
+  a viable second source later — box height ≈ 450 mm for any level bar.
+- **Bias directions for the estimator**: UW barrel distortion compresses
+  edge spans → estimates skew LOW; slight-angle foreshortening (cosθ)
+  also skews low by a few %. EIS crop is scale-consistent (no bias — it
+  just raises the true f being estimated). Sanity band for a barbell focal
+  on this setup: **~550–900 px**; anything far outside means a bad solve,
+  not a weird lens.
+
 ## Lifter height (the second calibration input)
 
 The 3D path needs TWO absolute inputs, and this plan has so far only chased
