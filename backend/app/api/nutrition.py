@@ -80,12 +80,16 @@ async def read_plan_for_activity(
     """Get the fuel plan for an activity (null if none exists)."""
     try:
         plan = await get_plan_for_activity(db, current_user.id, activity_id)
-    except Exception:
+        if not plan:
+            return None
+        return _with_schedule(plan)
+    except HTTPException:
+        raise
+    except Exception as e:
         logger.exception("Failed to load fuel plan for activity %s", activity_id)
-        raise HTTPException(status_code=500, detail="Failed to load fuel plan")
-    if not plan:
-        return None
-    return _with_schedule(plan)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load fuel plan ({type(e).__name__})"
+        )
 
 
 @router.patch("/fuel-plan/{plan_id}", response_model=RideFuelPlanRead)
