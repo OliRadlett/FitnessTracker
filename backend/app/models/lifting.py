@@ -276,6 +276,10 @@ class LiftVideo(Base):
     # Sagittal-plane form rules (torso lean, hip-vs-knee depth) are only valid
     # on a side view, so this gates them. NULL => rules stay off (safe).
     camera_view: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Which phone lens filmed the clip (main / ultra_wide / telephoto),
+    # declared per video in the uploader. Nominal focal per lens lives in
+    # services/video_camera.py; used only when container tags are absent.
+    camera_lens: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Video processing (§1.1 trim + classify via Modal + Gemini Vision)
     trimmed_r2_key: Mapped[str | None] = mapped_column(String(255), nullable=True)

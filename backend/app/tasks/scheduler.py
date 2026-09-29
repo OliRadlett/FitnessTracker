@@ -4135,6 +4135,9 @@ def process_lift_video(
                     pass
                 if prior_focal:
                     logger.info("Reusing stored clip focal: %.1f px", prior_focal)
+                if video.camera_lens:
+                    logger.info(
+                        "Clip declares lens %s (uploader)", video.camera_lens)
 
                 # Call Modal for processing
                 result = process_video_on_modal(
@@ -4158,6 +4161,7 @@ def process_lift_video(
                     bar_detector_model_url=bar_detector_model_url,
                     focal_px=prior_focal,
                     lifter_height_m=lifter_height_m,
+                    camera_lens=video.camera_lens,
                 )
 
                 # Update video with results
