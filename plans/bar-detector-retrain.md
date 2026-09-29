@@ -54,12 +54,14 @@ container-code changes) that fires on real phone footage.
   would qualify too, but the only Messenger clips on file are both
   strongman — excluded above. Revisit when barbell Messenger footage
   exists.)
-- **Curated 2026-09-29** (`labels/bars/frames_hard/`, gitignored): 20 spread
-  frames from the dark-gym squat `49403afc`, labeling live on :8766 into
-  `labels_hard.corrected.jsonl`. Two Messenger clips were extracted then
-  **removed** — both are strongman (Log Press, Atlas Stone), excluded by the
-  rule above. All training prerequisites verified present (Modal tokens, R2
-  creds, `VIDEO_BAR_DETECTOR_MODEL`).
+- **Curated 2026-09-29, round 2 (bright gym)**: the two Sunday frontal
+  squats ARE valid barbell footage — v2 fires person@0.95 + near plate@0.81
+  but systematically misses the far edge-on plate and the thin bar, so no
+  pairs and no spans. 27 working-set frames extracted to `frames_hard/`
+  (`*_bright_*.jpg`, 10 pre-filled v2 boxes), labeling live on **:8767**
+  into `labels_hard2.corrected.jsonl`. These cover the user's actual gym
+  (bright, calibrated colored plates) — the distribution the retrain must
+  handle first. Round 1 (:8766, dark gym) stays up.
 - **Label every visible barbell regardless of angle.** Training value and
   calibration value are different things: an angled barbell box teaches the
   detector the class across views (recall is the crisis — 0-4%), even though
