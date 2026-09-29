@@ -99,6 +99,10 @@ bike_model/fork_quads.obj
 graphify-out/*
 !graphify-out/graph.json
 
+# OpenCode npm artifacts inside .opencode/ (superpowers/impeccable installs)
+.opencod/node_modules/
+.opencod/package*.json
+
 # Bike model stock (intermediate OBJ exports)
 bike_model_stock/pipeline/obj_export/
 bike_model_stock/bike_combined_textured.obj

@@ -167,6 +167,41 @@ describe('buildReplay', () => {
     expect(result.points.length).toBeGreaterThan(0);
     expect(result.zScale).toBeGreaterThan(1);
   });
+
+  it('shares a projection frame when one is passed (ghost/race alignment)', () => {
+    const main = buildReplay({
+      polyline,
+      velocity: { values: [0, 5, 5, 5, 5, 5, 5] },
+      altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
+    });
+    // A ride 1° east has its own centroid ~70 km away — but forced into the
+    // main frame it renders at the true geographic offset, not at the origin.
+    const eastPolyline = encodePoints([
+      [51.5, 0.9],
+      [51.51008, 0.9],
+    ]);
+    const solo = buildReplay({
+      polyline: eastPolyline,
+      velocity: { values: [0, 5, 5, 5, 5, 5, 5] },
+      altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
+    });
+    expect(Math.abs(solo.points[0].x)).toBeLessThan(100);
+    const shared = buildReplay({
+      polyline: eastPolyline,
+      velocity: { values: [0, 5, 5, 5, 5, 5, 5] },
+      altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
+      frame: { lat0: main.lat0, lng0: main.lng0 },
+      altBase: { altMin: main.altMin, zScale: main.zScale },
+    });
+    expect(shared.lat0).toBeCloseTo(main.lat0, 9);
+    expect(shared.lng0).toBeCloseTo(main.lng0, 9);
+    expect(shared.altMin).toBe(main.altMin);
+    expect(shared.zScale).toBe(main.zScale);
+    // ~1° lng at 51.5°N ≈ 70 km east of the main frame origin.
+    expect(shared.points[0].x).toBeGreaterThan(60000);
+    // Same altitude profile in the same vertical base → same z.
+    expect(shared.points[6].z).toBeCloseTo(main.points[6].z, 6);
+  });
 });
 
 describe('replay metric colours', () => {
