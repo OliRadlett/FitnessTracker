@@ -60,6 +60,14 @@ container-code changes) that fires on real phone footage.
   **removed** — both are strongman (Log Press, Atlas Stone), excluded by the
   rule above. All training prerequisites verified present (Modal tokens, R2
   creds, `VIDEO_BAR_DETECTOR_MODEL`).
+- **Labeling is live**: `scripts/label_server.py` running on port **8766**
+  (8765 was taken) with `--labels labels_hard.jsonl --out
+  labels_hard.corrected.jsonl` — 20 records, 1 pre-filled model box ≥0.15
+  (the frames are hard; the labeler draws nearly everything). Open
+  http://localhost:8766, draw plate + barbell boxes (person optional),
+  Enter confirms & advances. Edits land straight in
+  `labels_hard.corrected.jsonl` — the existing labels files are untouched.
+  When all 20 show ✓, the prepare/train chain below is unblocked.
 - **Synthetic as augmentation**, regenerated toward failure modes if cheap:
   dark/exposure/noise/compression, small scales. Clean renders taught the
   current model the wrong lesson; do not repeat a clean-majority mix.
