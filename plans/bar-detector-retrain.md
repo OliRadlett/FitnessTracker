@@ -39,12 +39,27 @@ container-code changes) that fires on real phone footage.
 
 ## Data recipe
 
+- **No strongman, ever**: Log Press, Atlas Stone and similar implements are
+  outliers with non-barbell geometry — training on them pulls the decision
+  boundary away from plates/bars and confuses the system. Exclude them from
+  train AND val (they are already excluded from the honest eval subset).
+  This is a standing rule, not a judgment call per round.
 - **Real majority** (invert the current 63%-synthetic mix; target ≤25%
-  synthetic): all existing human frames (232 + new labels below).
+  synthetic): all existing human barbell-lift frames (232 + new labels
+  below).
 - **Mine the failures**: the 24 frontal barbell misses (`eval_front.py`
-  output) + dark-gym + Messenger-recompressed + small-plate (<1% of frame,
-  recall 0.03) frames go in as hard examples. Small plates need dedicated
-  coverage — they are the worst bucket and the most common in wide shots.
+  output) + dark-gym + small-plate (<1% of frame, recall 0.03) frames go in
+  as hard examples. Small plates need dedicated coverage — they are the
+  worst bucket and the most common in wide shots. (Recompression artifacts
+  would qualify too, but the only Messenger clips on file are both
+  strongman — excluded above. Revisit when barbell Messenger footage
+  exists.)
+- **Curated 2026-09-29** (`labels/bars/frames_hard/`, gitignored, awaiting
+  human labels in `labels.barbell.jsonl` schema): 20 spread frames from the
+  dark-gym squat `49403afc`. Two Messenger clips were extracted then
+  **removed** — both are strongman (Log Press, Atlas Stone), excluded by the
+  rule above. All training prerequisites verified present (Modal tokens, R2
+  creds, `VIDEO_BAR_DETECTOR_MODEL`).
 - **Synthetic as augmentation**, regenerated toward failure modes if cheap:
   dark/exposure/noise/compression, small scales. Clean renders taught the
   current model the wrong lesson; do not repeat a clean-majority mix.
@@ -62,6 +77,34 @@ Same as the 25/09 run unless the recipe forces otherwise:
 ONNX (opset 12, `nms=True`) → `fetch`. Keep yolov8n — the container's
 latency profile is characterized for it, and the failure is data, not
 capacity (it memorized training data fine: 0.77 blended).
+
+## Lifter height (the second calibration input)
+
+The 3D path needs TWO absolute inputs, and this plan has so far only chased
+one. The focal (above) sets depth; the lifter's height sets scale —
+MediaPipe's world landmarks use an average-body prior that read 0.87 m on a
+real ~1.5 m lifter, so without a true height every metric number is ~2x out
+and `fit_clip_camera` correctly declines. Height error maps ~1:1 into the
+metrics (10 cm on 175 cm ≈ 6%).
+
+- **Today**: `preferences.height_cm` (Settings → Lifter height, validated
+  50–260 cm), passed by the scheduler into the Modal worker. No prompt
+  exists — the field is optional and usually unset, so the 3D path will keep
+  declining on height even with a perfect detector.
+- **Do NOT estimate height from video**: there is no absolute reference in
+  frame, and any estimate would be circular with the scale it calibrates.
+  It must be user-supplied, once per user (not per clip).
+- **Actions**:
+  1. Prompt when missing: video page banner / deep-analysis CTA ("set your
+     height to enable 3D bar metrics") when `height_cm` is unset. Small
+     frontend addition; the backend already threads the value end to end.
+  2. Keep the server-side bounds (already in `NUMERIC_PREFERENCES`); sanity
+     log the resulting `height_scale` in the calibration echo (already
+     echoed — a scale far from 1.0 on a real clip means a wrong height).
+  3. Acceptance for this half: the canary reprocesses (below) run with a
+     real height set, so the reported numbers test the full chain.
+- **Out of scope**: auto-detection, per-clip overrides, unit conversion
+  (Settings already handles metric/imperial at the edge).
 
 ## Deployment & rollback
 
