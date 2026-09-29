@@ -96,11 +96,15 @@ capacity (it memorized training data fine: 0.77 blended).
 
 **Run status 2026-09-29**: dataset `labels/bar_dataset_v2` prepared locally
 (3660 train / 351 val, ~67% real-effective via `--real-repeat 12`; original
-`bar_dataset` untouched). Retrain launched on Modal T4, 60 epochs, output
-key `bar_detector_v2.onnx` (production key untouched). On completion:
-fetch → run the acceptance eval (criteria above, incl. the 248 held-out
-frames + F1 end-to-end benchmark) → versioned R2 upload → canary
-reprocesses → watch week. Rollback = repoint at the previous key.
+`bar_dataset` untouched). Retrained on Modal T4, 60 epochs → acceptance eval
+PASSED: plates 0.97–1.00 (was 0.13–0.29), frontal barbell 1.00 (was 0.00),
+pair-centre error 0.016→0.002 over 43→189 frames (no F1 regression —
+strict improvement). **Deployed**: `models/bar_detector.onnx` on R2 is now
+v2 (12,294,424 bytes, verified); v1 preserved at
+`models/bar_detector-v1.onnx`, local `labels/bar_detector.onnx` untouched;
+no config change needed (same key). Rollback = re-upload v1 bytes.
+Remaining: canary reprocesses (one frontal squat → expect `metric_3d` with
+`focal_source: "barbell"`; one 3/4 → detector centres) + watch week.
 
 ## Lifter height (the second calibration input)
 
