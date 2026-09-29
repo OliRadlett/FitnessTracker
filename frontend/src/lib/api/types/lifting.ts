@@ -4,6 +4,8 @@ import type { LinkedActivity } from './activity';
 
 // ─── Strength Videos (§1.1, R2 uploads only) ──────────────────────────────────
 
+export type CameraLens = 'main' | 'ultra_wide' | 'telephoto';
+
 export interface LiftVideo {
   id: string;
   user_id: string;
@@ -19,6 +21,8 @@ export interface LiftVideo {
   notes?: string | null;
   expected_reps?: number | null;
   camera_view?: 'side' | 'back_left' | 'back_right' | 'front' | null;
+  /** Which phone lens filmed the clip — nominal focal for 3D video analysis. */
+  camera_lens?: CameraLens | null;
   created_at: string;
   updated_at: string;
   // Video processing fields

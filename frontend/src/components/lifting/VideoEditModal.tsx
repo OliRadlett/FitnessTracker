@@ -30,6 +30,7 @@ export function VideoEditModal({
   const [repsCount, setRepsCount] = useState(video.reps_count?.toString() ?? '');
   const [weightKg, setWeightKg] = useState(video.weight_kg?.toString() ?? '');
   const [cameraView, setCameraView] = useState(video.camera_view ?? '');
+  const [cameraLens, setCameraLens] = useState(video.camera_lens ?? '');
   const [notes, setNotes] = useState(video.notes ?? '');
 
   const mutation = useMutation({
@@ -42,6 +43,7 @@ export function VideoEditModal({
           repsCount === '' ? null : Math.max(0, parseInt(repsCount, 10) || 0),
         weight_kg: weightKg === '' ? null : Math.max(0, parseFloat(weightKg) || 0),
         camera_view: cameraView || null,
+        camera_lens: cameraLens || null,
         notes: notes.trim() || null,
       }),
     onSuccess: () => {
@@ -120,6 +122,20 @@ export function VideoEditModal({
             <option value="back_left">Behind, left</option>
             <option value="back_right">Behind, right</option>
             <option value="front">Front-facing</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm text-muted mb-1">Camera lens</label>
+          <select
+            value={cameraLens}
+            onChange={(e) => setCameraLens(e.target.value)}
+            className={FIELD}
+          >
+            <option value="">Not sure</option>
+            <option value="main">Main (24 mm)</option>
+            <option value="ultra_wide">Ultra-wide (14 mm)</option>
+            <option value="telephoto">Telephoto 2× (48 mm)</option>
           </select>
         </div>
 
