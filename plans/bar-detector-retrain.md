@@ -140,6 +140,18 @@ unoccluded, dark solid-color plates if available, lifter height set (done:
 185 cm). A single 8-rep frontal set filmed this way is the remaining
 real-clip validation.
 
+## Live pipeline verification (2026-09-29)
+
+Reprocessed both frontal Sunday clips on the deployed pipeline (new code +
+v2 model + height 185). No `metric_3d` — expected (no pair centres, no
+barbell spans on these clips) — but every link verified live:
+`camera_json` persisted (`focal_px: null`, no lens tags — the 0/33 finding
+holds on real uploads); frame geometry stored as decoded **1080×1920**
+(the portrait-rotation handling works); `analysis_version` bumped; decline
+came purely from detector availability with height set. The chain is proven
+end to end except the estimator firing, which awaits validatable footage
+(above).
+
 ## Lifter height (the second calibration input)
 
 The 3D path needs TWO absolute inputs, and this plan has so far only chased
