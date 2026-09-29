@@ -105,19 +105,26 @@ v2 (12,294,424 bytes, verified); v1 preserved at
 no config change needed (same key). Rollback = re-upload v1 bytes.
 Remaining: canary reprocesses (2026-09-29, running — see below) + watch week.
 
-## Canary (2026-09-29)
+## Canary (2026-09-29 — complete, no regression)
 
 3 Sunday uploads picked from R2 (user confirmed 1 side + 2 frontal; DB
 `camera_view` agrees): `ae3d3db5` side, `03dd05f1` + `deb347fc` front, all
 Back Squat × 8, completed under v1 (form 90.6/98.8/98.8; before-state
 `bar_path` saved to temp). Re-enqueued on prod via
-`send_task(process_lift_video)`.
+`send_task(process_lift_video)` — prod runs pre-#179 pipeline code, so this
+canaried the **v2 model through the old pipeline** (F1 centres, form,
+velocity).
 
-Scope note: prod runs pre-#179 pipeline code, so this canaries the **v2
-model through the old pipeline** (F1 centres, form, velocity) — `metric_3d`
-needs a prod deploy of main and is explicitly out of scope here. Compare
-after: `bar_path` efficiency/drift/net_lateral + form/velocity vs before;
-a shifted centre bias would show as systematic drift changes.
+Result after reprocessing (all completed, ~13 min): **nothing broke.**
+Form scores, reps, efficiency, drift, consistency, velocity identical;
+per-rep vertical ranges identical to 4 decimals. Diffs confined to:
+(a) detection-confidence bookkeeping (0.75→0.68, 0.86→0.70 — not a metric);
+(b) one tilt frame lost on a frontal (5.46°→none); (c) absolute
+bar-over-midfoot on the side clip shifted ~0.15 foot-lengths with identical
+motion — plausibly improved localization from far more detections,
+unprovable without GT for these clips.
+
+Watch week ongoing: `reap_stale_videos` rate + F1 distributions.
 
 ## Lifter height (the second calibration input)
 
