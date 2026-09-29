@@ -103,8 +103,21 @@ strict improvement). **Deployed**: `models/bar_detector.onnx` on R2 is now
 v2 (12,294,424 bytes, verified); v1 preserved at
 `models/bar_detector-v1.onnx`, local `labels/bar_detector.onnx` untouched;
 no config change needed (same key). Rollback = re-upload v1 bytes.
-Remaining: canary reprocesses (one frontal squat → expect `metric_3d` with
-`focal_source: "barbell"`; one 3/4 → detector centres) + watch week.
+Remaining: canary reprocesses (2026-09-29, running — see below) + watch week.
+
+## Canary (2026-09-29)
+
+3 Sunday uploads picked from R2 (user confirmed 1 side + 2 frontal; DB
+`camera_view` agrees): `ae3d3db5` side, `03dd05f1` + `deb347fc` front, all
+Back Squat × 8, completed under v1 (form 90.6/98.8/98.8; before-state
+`bar_path` saved to temp). Re-enqueued on prod via
+`send_task(process_lift_video)`.
+
+Scope note: prod runs pre-#179 pipeline code, so this canaries the **v2
+model through the old pipeline** (F1 centres, form, velocity) — `metric_3d`
+needs a prod deploy of main and is explicitly out of scope here. Compare
+after: `bar_path` efficiency/drift/net_lateral + form/velocity vs before;
+a shifted centre bias would show as systematic drift changes.
 
 ## Lifter height (the second calibration input)
 
