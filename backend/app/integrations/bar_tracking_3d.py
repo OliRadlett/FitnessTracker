@@ -448,6 +448,25 @@ def remap_reps(pose_reps: list, rep_times: list) -> list:
     return out
 
 
+def _median_point(xyz: np.ndarray, idxs) -> np.ndarray:
+    """Robust midpoint of landmark rows (median, not mean).
+
+    Used with 4+ rows (e.g. all foot landmarks for the midfoot origin), where
+    a median survives the single wild landmark occlusions produce. Note this
+    is meaningless over exactly two rows (median of two is their mean) — the
+    heel/toe *pair* midpoints below stay means; their spike-robustness comes
+    from `clip_body_axes` instead, which medians positions across frames
+    before differencing. Measured on real footage: foot world-z swings p10
+    −0.34 m while the hips sit rock-solid.
+    """
+    return np.median(xyz[list(idxs)], axis=0)
+
+
+def _foot_points(xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Heel and toe midpoints (means of their pairs)."""
+    return xyz[list(_HEEL)].mean(axis=0), xyz[list(_FOOT_INDEX)].mean(axis=0)
+
+
 def _body_axes(xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Unit sagittal (fwd) and medio-lateral (lat) axes of the lifter.
 
@@ -466,10 +485,44 @@ def _body_axes(xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     Taking the lateral axis from the world x axis instead (as the prototype
     did) is degenerate in a side view — the axis it orthogonalises *is* the
     front-back one there, so the cross product vanishes.
+
+    The fwd axis is forced horizontal (``y = 0``): both feet share the ground
+    plane, so any vertical component is pose noise — and it is expensive
+    noise, because ``front_back_mm`` dot-products the offset (whose y is the
+    ~1.3 m bar height) against it. Measured on a real frontal squat: median
+    fwd.y 0.26, i.e. ~340 mm of height leaking into front-back.
     """
-    fwd = _unit(xyz[list(_FOOT_INDEX)].mean(axis=0) - xyz[list(_HEEL)].mean(axis=0))
+    heel, toe = _foot_points(xyz)
+    fwd = _unit(toe - heel)
+    fwd[1] = 0.0
+    fwd = _unit(fwd)
     lat = _unit(xyz[_HIP[0]] - xyz[_HIP[1]])
     return fwd, _unit(lat - fwd * float(fwd @ lat))
+
+
+def clip_body_axes(world: list) -> tuple[np.ndarray, np.ndarray] | None:
+    """One body frame per clip, from median landmark positions.
+
+    Per-frame axes thrash (real frontal squat: fwd.x p10/p90 0.22–0.55), and
+    every wobble lands directly in that frame's millimetres. The lifter's
+    orientation barely moves within a trimmed set, so a single clip-level
+    frame is steadier; ``None`` when no usable frame exists (callers fall
+    back to per-frame axes).
+    """
+    pts = []
+    for wl in world or []:
+        if wl is None:
+            continue
+        try:
+            pts.append(_xyz(wl))
+        except (IndexError, TypeError, ValueError):
+            continue
+    if not pts:
+        return None
+    try:
+        return _body_axes(np.median(np.stack(pts), axis=0))
+    except (IndexError, TypeError, ValueError):
+        return None
 
 
 def lift_bar_3d(
@@ -500,6 +553,10 @@ def lift_bar_3d(
     # The bar is rigidly coupled to the joint it is actually held at: the
     # shoulders in a squat (bar on the back), the wrists everywhere else.
     anchor = _SHOULDER if exercise in _SQUAT_FAMILY else _WRIST
+    # One body frame per clip (see clip_body_axes); per-frame axes thrash and
+    # every wobble lands in that frame's millimetres. Falls back to per-frame
+    # axes when the clip has no usable frame at all.
+    clip_axes = clip_body_axes(world)
 
     out: list = []
     for i, p in enumerate(track):
@@ -544,18 +601,19 @@ def lift_bar_3d(
         )
         # The world landmarks are hip-centred *and* axis-aligned with the
         # camera, so a world offset from the hips is already a camera offset.
-        # (Index with a *list*: a numpy tuple index is multi-axis, not a row
-        # selection.)
+        # Median over all four foot landmarks: robust to the single wild
+        # point occlusions produce (a mean lets one bad toe drag the origin
+        # ~8 cm). (Index with a *list*: a numpy tuple index is multi-axis,
+        # not a row selection.)
         midfoot_cam = hip_cam + (
-            _mid(
-                xyz[list(_HEEL)].mean(axis=0),
-                xyz[list(_FOOT_INDEX)].mean(axis=0),
-            )
-            - hip
+            _median_point(xyz, (*_HEEL, *_FOOT_INDEX)) - hip
         )
 
         off = bar - midfoot_cam
-        fwd, lat = _body_axes(xyz)
+        if clip_axes is not None:
+            fwd, lat = clip_axes
+        else:
+            fwd, lat = _body_axes(xyz)
         # Camera +y points down the image, so height above the midfoot is -dy.
         height_m = -float(off[1])
         fb_mm = 1000.0 * float(off @ fwd)
