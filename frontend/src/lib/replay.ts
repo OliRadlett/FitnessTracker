@@ -202,9 +202,18 @@ export function buildReplay(
 
   // Altitude min for z-normalisation.
   const alts = altByDist.filter((v): v is number => v != null);
-  const altMin = alts.length ? Math.min(...alts) : 0;
-  const altSpan = alts.length ? Math.max(...alts) - altMin : 0;
-  const extentX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  // Loop-based extrema — `Math.min(...alts)` overflows the call stack on
+  // rides with 50k+ resampled altitude values (long gravel/gran fondos).
+  let altMin = Infinity, altMax = -Infinity;
+  for (const a of alts) { if (a < altMin) altMin = a; if (a > altMax) altMax = a; }
+  if (altMin === Infinity) altMin = 0;
+  if (altMax === -Infinity) altMax = 0;
+  const altSpan = alts.length ? altMax - altMin : 0;
+  // xs is the projected polyline of ALL coords — can be 100k+ for very long
+  // routes. Loop to avoid spread stack overflow.
+  let xsMin = Infinity, xsMax = -Infinity;
+  for (const x of xs) { if (x < xsMin) xsMin = x; if (x > xsMax) xsMax = x; }
+  const extentX = xs.length ? xsMax - xsMin : 0;
   // Cinematic exaggeration: modest (≤3×) so a chase camera isn't buried by
   // the vertical profile. The raw profile still drives `grade`.
   const zScale =

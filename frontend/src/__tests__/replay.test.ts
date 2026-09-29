@@ -155,6 +155,18 @@ describe('buildReplay', () => {
     });
     expect(result.points.length).toBeLessThanOrEqual(2);
   });
+
+  it('handles 50k+ altitude samples without stack overflow (Math.min spread guard)', () => {
+    // The old code used `Math.min(...alts)` which throws RangeError on
+    // large arrays (V8 arg limit ~125k). buildReplay must use a loop.
+    const result = buildReplay({
+      polyline,
+      velocity: { values: Array.from({ length: 50000 }, (_, i) => 5 + (i % 3) * 0.1) },
+      altitude: { values: Array.from({ length: 50000 }, (_, i) => 10 + Math.sin(i * 0.001) * 500) },
+    });
+    expect(result.points.length).toBeGreaterThan(0);
+    expect(result.zScale).toBeGreaterThan(1);
+  });
 });
 
 describe('replay metric colours', () => {

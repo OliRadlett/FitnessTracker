@@ -866,12 +866,20 @@ export function Replay3D({
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
 
-    const minX = Math.min(...points.map((p) => p.x));
-    const maxX = Math.max(...points.map((p) => p.x));
-    const minY = Math.min(...points.map((p) => p.y));
-    const maxY = Math.max(...points.map((p) => p.y));
-    const minZ = Math.min(...points.map((p) => p.z));
-    const maxZ = Math.max(...points.map((p) => p.z));
+    // Loop-based extrema — `Math.min(...points.map(...))` overflows the call
+    // stack on rides with 10k+ samples (long cycling/gravel events).
+    let minX = points[0].x, maxX = points[0].x;
+    let minY = points[0].y, maxY = points[0].y;
+    let minZ = points[0].z, maxZ = points[0].z;
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i];
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+      if (p.z < minZ) minZ = p.z;
+      if (p.z > maxZ) maxZ = p.z;
+    }
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 100);
@@ -2194,7 +2202,11 @@ export function Replay3D({
         // DEM minimum so the path rests on the terrain instead of under it.
         const hasAlt = points.some((p) => p.z !== 0);
         const finite = heights.filter(Number.isFinite);
-        const demMin = finite.length ? Math.min(...finite) : 0;
+        // Loop-based extrema — `Math.min(...finite)` overflows the call stack
+        // when the DEM grid has 100k+ samples (maxGridPoints = 131072).
+        let demMin = Infinity;
+        for (const h of finite) { if (h < demMin) demMin = h; }
+        if (demMin === Infinity) demMin = 0;
         // Drape: pick a baseline DEM height and render the bed as
         // (dem − base)·zScale. Compute the same for every path point so the road
         // + bike sit exactly on the bed (falling back to the raw z where the DEM
@@ -2292,6 +2304,11 @@ export function Replay3D({
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         setTerrainState('failed');
+        // Terrain failure also fails imagery — otherwise the imagery effect
+        // stays stuck on 'loading' (no mesh to drape onto, no terrainEpoch
+        // re-bump via the drapeZ→scene effect chain) and the loading overlay
+        // never clears.
+        if (imageryStateRef.current === 'loading') setImageryState('failed');
       }
     })();
     return () => {
