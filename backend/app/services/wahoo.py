@@ -290,6 +290,7 @@ async def sync_wahoo_activities(
 
             new_data = {
                 "name": name,
+                "sport_type": sport_type,
                 "duration_seconds": int(duration_seconds) if duration_seconds else None,
                 "distance_meters": safe_distance,
                 "elevation_gain_meters": elevation_gain,

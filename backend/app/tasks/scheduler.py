@@ -171,6 +171,14 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=2, minute=50, day_of_week=0),
         "options": {"expires": 7200},
     },
+    # Phase 2 — map-match activities to the OSM road graph (Sunday 3:00 AM UTC,
+    # after route matching so the OSM graph + road cache are ready). Edge sets
+    # enable section-repeat / lap detection across rides.
+    "map-match-activities": {
+        "task": "app.tasks.scheduler.map_match_activities",
+        "schedule": crontab(hour=3, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
+    },
     # Recompute the route similarity graph + auto-merge dups weekly
     # (Sunday 3:05 AM UTC, after quality, before segment recompute).
     "recompute-route-similarity": {
@@ -1387,6 +1395,109 @@ def map_match_routes() -> dict:
             return {"users_processed": users_done, "routes_matched": matched}
 
     return asyncio.run(_run_task_guarded("map_match_routes", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.map_match_activities")
+def map_match_activities() -> dict:
+    """Map-match activities to the OSM road graph (Phase 2).
+
+    Runs weekly (Sunday 3:00 AM UTC, after route map-matching so the OSM graph
+    and road GeoJSON cache are ready). For each user with ≥1 GPS sport activity
+    that has an extractable polyline and hasn't been road-matched yet, snap the
+    polyline to the regional OSM graph via Modal (graceful no-op when Modal/OSM
+    is unconfigured), persist ``road_match`` + ``road_embedding``.
+
+    Activities with no polyline are skipped (e.g. zero-distance Wahoo indoor
+    sessions, mislabelled strength rows that are now filtered). Only cycling,
+    walking, and hiking activities are matched — swimming/strength have no
+    GPS geometry.
+
+    The edge-set data enables section-repeat / lap detection by comparing
+    ordered edge sequences across rides, rather than relying on decimated
+    polylines.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.config import get_settings
+    from app.database import task_session
+    from app.integrations.route_road_graph import match_activities_to_roads_on_modal
+    from app.models.activity import Activity
+    from app.services.polyline_utils import decode_polyline, extract_activity_polyline
+    from app.services.road_matching import store_activity_road_matches
+
+    async def _run():
+        settings = get_settings()
+        if not settings.road_match_enabled:
+            return {"skipped": "road_match_disabled"}
+
+        async with task_session() as db:
+            # Users who have GPS-sport activities needing a road match.
+            result = await db.execute(
+                select(Activity.user_id)
+                .where(
+                    Activity.sport_type.in_(["cycling", "walking", "hiking"]),
+                    Activity.road_match_version.is_(None),
+                )
+                .distinct()
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            users_done = 0
+            matched = 0
+
+            for user_id in user_ids:
+                try:
+                    activities_result = await db.execute(
+                        select(Activity)
+                        .options(selectinload(Activity.sources))
+                        .where(
+                            Activity.user_id == user_id,
+                            Activity.sport_type.in_(["cycling", "walking", "hiking"]),
+                            Activity.road_match_version.is_(None),
+                        )
+                    )
+                    activities = list(activities_result.scalars().all())
+
+                    # Only activities with extractable GPS polylines are matchable.
+                    activities_data = []
+                    matchable = []
+                    for a in activities:
+                        poly = extract_activity_polyline(a)
+                        if poly:
+                            activities_data.append(
+                                {"id": str(a.id), "polyline": decode_polyline(poly)}
+                            )
+                            matchable.append(a)
+
+                    if not activities_data:
+                        continue
+
+                    matches = match_activities_to_roads_on_modal(
+                        activities_data,
+                        settings.osm_region,
+                        search_radius_m=settings.road_match_search_radius_m,
+                        max_snap_m=settings.road_match_max_snap_m,
+                    )
+                    if matches:
+                        matched += store_activity_road_matches(db, matchable, matches)
+                    await db.commit()
+                    users_done += 1
+                except Exception as e:
+                    logger.error(
+                        f"Activity road matching failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "users_processed": users_done,
+                "activities_matched": matched,
+            }
+
+    return asyncio.run(_run_task_guarded("map_match_activities", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.recompute_route_similarity")
