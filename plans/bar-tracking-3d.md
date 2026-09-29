@@ -151,6 +151,27 @@ breaks `alembic upgrade head` for everyone plus the chain-linearity CI test,
 so concurrent sessions must coordinate migration numbers (or rebase onto main
 and renumber before opening the PR).
 
+## Validation on real footage (2026-09-29, PR #182 merged)
+
+Method: local ONNX inference (`labels/bar_detector.onnx`, the 25/09 retrain)
+on fixture frames + the 248 human frames (`labels/bars/labels.barbell.jsonl`,
+labeled 27/09 — *after* training, so a genuine generalization test).
+
+| Ruler | Human availability | Model recall | Verdict |
+|---|---|---|---|
+| Barbell box (2.2 m) | front 75% of frames, ¾ 86% | **0–4%** frontal even @conf 0.05 (1/24 boxes); 3% ¾ @0.35 | **dead** — the class barely fires, so the estimator declines everywhere |
+| Plate box (pair centre) | ¾ ~1.9 plates/frame | 14–29% @0.35 (vs 0.73 on train images) | weak — the whole 3D path (centres first) is clip-dependent |
+
+Human barbell aspects confirm the gates (front median 20.5, 100% pass ≥4;
+side median 1.2, 0% pass — correctly dropped), and the train-sample control
+(0.77 overall, barbell 5/5) proves the artifact is healthy: the gap is
+generalization to these clips, not a broken file. The estimator itself is
+exact on synthetic geometry and robust to ±3 px box noise (tested) — it is
+correct code waiting on detector availability. Next leverage point is the
+detector side (per-class conf strategy or retrain emphasis on barbell), NOT
+more geometry. Do not lower the shared 0.35 centre threshold to feed it —
+that changes shipped F1 metrics.
+
 ## Inputs
 
 | input | where it lives | status |
