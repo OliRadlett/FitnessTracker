@@ -57,11 +57,15 @@ def _build_linked_session_summary(
 
 
 def _extract_encoded_polyline(activity: Activity) -> str | None:
-    """Extract encoded polyline from activity raw_data (Strava map.summary_polyline)."""
-    if not activity.raw_data:
-        return None
-    map_data = activity.raw_data.get("map", {})
-    return map_data.get("summary_polyline") or map_data.get("polyline") or None
+    """Extract an activity's encoded polyline (raw_data, then provider sources).
+
+    Delegates to the shared extractor — ``raw_data`` alone is stale for rides
+    merged from a different provider (see
+    :func:`app.services.polyline_utils.extract_activity_polyline`).
+    """
+    from app.services.polyline_utils import extract_activity_polyline
+
+    return extract_activity_polyline(activity)
 
 
 def _enrich_activity_read(

@@ -325,3 +325,62 @@ def extract_elevation_profile_from_komoot_trackpoints(
         return None
 
     return {"distance": distances, "elevation": elevations}
+
+
+# ── Activity polyline extraction ─────────────────────────────────────────────
+
+
+def extract_activity_polyline(
+    activity,
+    sources=None,
+) -> str | None:
+    """Return an activity's encoded polyline, checking its provider sources too.
+
+    ``activities.raw_data`` is NOT a reliable geometry source: ``merge_activity``
+    keeps the primary row's ``raw_data`` while reassigning ``source`` to the
+    winning provider, so a ride first created from a Wahoo payload and later
+    enriched by Strava keeps the geometry-less Wahoo payload. The polyline then
+    lives only in ``activity_sources.raw_data['map']['summary_polyline']``.
+
+    Reading only ``activity.raw_data`` therefore silently failed for every such
+    ride — breaking route linking, the UI map, GPX export and route seeding.
+
+    ``sources`` may be passed pre-fetched (e.g. an eager-loaded
+    ``activity.sources``) to avoid an N+1 query; when omitted, ``activity.sources``
+    is used if already loaded, else nothing is queried (callers that need the
+    source fallback should pass it explicitly or eager-load the relationship).
+
+    Prefers a source that actually carries a non-empty polyline, because an
+    activity can have several sources (and even two from the same provider)
+    where only one holds geometry.
+    """
+    def _from_raw(raw) -> str | None:
+        if not raw:
+            return None
+        map_data = raw.get("map") or {}
+        poly = map_data.get("summary_polyline") or map_data.get("polyline")
+        if poly:
+            return poly
+        # Some providers store it at the top level.
+        return raw.get("summary_polyline") or None
+
+    # 1. The activity row's own raw_data (correct for most Strava rides).
+    poly = _from_raw(getattr(activity, "raw_data", None))
+    if poly:
+        return poly
+
+    # 2. Fall back to provider sources — prefer strava, then any with geometry.
+    if sources is None:
+        sources = getattr(activity, "sources", None)
+    if not sources:
+        return None
+
+    ordered = sorted(
+        sources,
+        key=lambda s: 0 if getattr(s, "provider", None) == "strava" else 1,
+    )
+    for source in ordered:
+        poly = _from_raw(getattr(source, "raw_data", None))
+        if poly:
+            return poly
+    return None

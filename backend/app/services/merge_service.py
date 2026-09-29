@@ -345,11 +345,15 @@ async def merge_activity(
 
 
 def _extract_activity_polyline(activity: Activity) -> str | None:
-    """Extract encoded polyline from activity raw_data (Strava map.summary_polyline)."""
-    if not activity.raw_data:
-        return None
-    map_data = activity.raw_data.get("map", {})
-    return map_data.get("summary_polyline") or map_data.get("polyline") or None
+    """Extract an activity's encoded polyline (raw_data, then provider sources).
+
+    Delegates to the shared extractor — see
+    :func:`app.services.polyline_utils.extract_activity_polyline` for why
+    ``raw_data`` alone is not enough.
+    """
+    from app.services.polyline_utils import extract_activity_polyline
+
+    return extract_activity_polyline(activity)
 
 
 async def link_activity_to_route(
@@ -453,7 +457,9 @@ async def backfill_activity_route_links(
     Returns the number of new links created.
     """
     result = await db.execute(
-        select(Activity).where(
+        select(Activity)
+        .options(selectinload(Activity.sources))
+        .where(
             Activity.user_id == user_id,
             Activity.route_id.is_(None),
             Activity.sport_type.in_(["cycling", "running", "walking", "hiking"]),

@@ -1051,16 +1051,15 @@ async def sync_strava_routes(
             Activity.user_id == user_id,
             Activity.sport_type == "cycling",
             Activity.source == "strava",
-            Activity.raw_data.isnot(None),
         )
+        .options(selectinload(Activity.sources))
     )
     activities = list(result.scalars().all())
 
+    from app.services.polyline_utils import extract_activity_polyline
+
     for activity in activities:
-        if not activity.raw_data:
-            continue
-        map_data = activity.raw_data.get("map", {})
-        polyline = map_data.get("polyline") or map_data.get("summary_polyline", "")
+        polyline = extract_activity_polyline(activity)
         if not polyline:
             continue
 

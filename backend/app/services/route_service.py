@@ -666,6 +666,9 @@ async def merge_routes(
         # Phase 2: keep the embeddings so the learned metric can be trained on
         # this decision later (the duplicate's Route row is deleted below).
         "road_embedding": duplicate.road_embedding,
+        # Also keep the OSM match so undo restores it rather than losing it.
+        "road_match": duplicate.road_match,
+        "road_match_version": duplicate.road_match_version,
     }
     primary_embedding = primary.road_embedding
 
@@ -800,9 +803,24 @@ async def merge_routes(
     dup_points = _safe_decode(duplicate.encoded_polyline)
     prim_points = _safe_decode(primary.encoded_polyline)
     if len(dup_points) > len(prim_points):
+        # Adopt the duplicate's geometry AND its geometry-derived metadata.
+        # Taking only the polyline left the primary internally inconsistent —
+        # e.g. a closed-loop polyline paired with `is_loop=False` and start/end
+        # coords hundreds of metres apart, which no task recomputes.
         primary.encoded_polyline = duplicate.encoded_polyline
+        primary.is_loop = duplicate.is_loop
+        primary.start_lat = duplicate.start_lat
+        primary.start_lng = duplicate.start_lng
+        primary.end_lat = duplicate.end_lat
+        primary.end_lng = duplicate.end_lng
+        if duplicate.distance_meters:
+            primary.distance_meters = duplicate.distance_meters
         if duplicate.elevation_profile:
             primary.elevation_profile = duplicate.elevation_profile
+        # The adopted geometry invalidates the primary's own road match.
+        primary.road_match = None
+        primary.road_embedding = None
+        primary.road_match_version = None
     if not primary.surface_profile and duplicate.surface_profile:
         primary.surface_profile = duplicate.surface_profile
     primary.is_favorite = primary.is_favorite or duplicate.is_favorite
@@ -899,6 +917,11 @@ async def undo_route_merge(
         is_loop=snapshot.get("is_loop", False),
         is_favorite=snapshot.get("is_favorite", False),
         quality_score=snapshot.get("quality_score"),
+        # Restore the Phase-2 caches captured at merge time (they are lost when
+        # the route row is deleted, so a plain recreate would drop them).
+        road_embedding=snapshot.get("road_embedding"),
+        road_match=snapshot.get("road_match"),
+        road_match_version=snapshot.get("road_match_version"),
     )
     db.add(route)
     await db.flush()
