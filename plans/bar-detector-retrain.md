@@ -54,12 +54,20 @@ container-code changes) that fires on real phone footage.
   would qualify too, but the only Messenger clips on file are both
   strongman — excluded above. Revisit when barbell Messenger footage
   exists.)
-- **Curated 2026-09-29** (`labels/bars/frames_hard/`, gitignored, awaiting
-  human labels in `labels.barbell.jsonl` schema): 20 spread frames from the
-  dark-gym squat `49403afc`. Two Messenger clips were extracted then
+- **Curated 2026-09-29** (`labels/bars/frames_hard/`, gitignored): 20 spread
+  frames from the dark-gym squat `49403afc`, labeling live on :8766 into
+  `labels_hard.corrected.jsonl`. Two Messenger clips were extracted then
   **removed** — both are strongman (Log Press, Atlas Stone), excluded by the
   rule above. All training prerequisites verified present (Modal tokens, R2
   creds, `VIDEO_BAR_DETECTOR_MODEL`).
+- **Label every visible barbell regardless of angle.** Training value and
+  calibration value are different things: an angled barbell box teaches the
+  detector the class across views (recall is the crisis — 0-4%), even though
+  that same box will never feed the focal estimator (the aspect ≥4 gate
+  drops foreshortened bars by design) and shouldn't be trusted as a centre
+  (AABB of an angled bar is ~20x worse than the pair midpoint). Tight,
+  honest boxes; never skip a visible bar because it looks unhelpful
+  downstream — the gates, not the labeler, decide use.
 - **Labeling is live**: `scripts/label_server.py` running on port **8766**
   (8765 was taken) with `--labels labels_hard.jsonl --out
   labels_hard.corrected.jsonl` — 20 records, 1 pre-filled model box ≥0.15
