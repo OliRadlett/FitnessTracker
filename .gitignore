@@ -95,6 +95,10 @@ bike_model/valid_test.py
 bike_model/rim_quads.obj
 bike_model/fork_quads.obj
 
+# Graphify knowledge graph output (keep graph.json, ignore generated artifacts)
+graphify-out/*
+!graphify-out/graph.json
+
 # Bike model stock (intermediate OBJ exports)
 bike_model_stock/pipeline/obj_export/
 bike_model_stock/bike_combined_textured.obj
