@@ -615,10 +615,15 @@ async def link_activities_to_plan_days(
     cutoff = today - timedelta(days=LINK_LOOKBACK_DAYS)
 
     # Activities in the window, grouped by calendar date.
+    # Exclude standalone Wahoo activities: those are enrich-only in this app
+    # (Strava is the source of truth), and legacy backfill rows carry a wrong
+    # sport_type — a Wahoo "Walk" stored as "cycling" could otherwise be linked
+    # to a planned cycle day and marked complete (BUG-034 pattern).
     act_result = await db.execute(
         select(Activity)
         .where(
             Activity.user_id == user_id,
+            Activity.source != "wahoo",
             Activity.start_date
             >= datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=UTC),
         )

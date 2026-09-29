@@ -28,6 +28,55 @@ from app.utils import safe_float as _safe_float
 
 # ── Sport type mapping ───────────────────────────────────────────────────────
 
+# Wahoo's `GET /v1/workouts` item carries an integer `workout_type_id`, NOT a
+# string `workout_type`/`sport_type`. Reading the absent string field silently
+# defaulted every workout to "cycling" (BUG: 130 walks/golf stored as rides).
+# Ids per the Wahoo Cloud API enum.
+_WAHOO_WORKOUT_TYPE_ID_MAP: dict[int, str] = {
+    # Cycling
+    0: "cycling",
+    11: "cycling",
+    12: "cycling",  # BIKING_INDOOR
+    13: "cycling",  # BIKING_MOUNTAIN
+    14: "cycling",
+    15: "cycling",
+    16: "cycling",
+    17: "cycling",
+    49: "cycling",
+    61: "cycling",
+    64: "cycling",
+    68: "cycling",
+    70: "cycling",
+    # Walking / hiking
+    6: "walking",
+    7: "walking",
+    8: "walking",
+    56: "walking",
+    9: "hiking",
+    10: "hiking",
+    # Running
+    1: "running",
+    3: "running",
+    4: "running",
+    5: "running",
+    67: "running",
+    71: "running",
+    # Swimming
+    25: "swimming",
+    26: "swimming",
+    # Strength / gym
+    20: "strength",
+    22: "strength",
+    42: "strength",
+    43: "strength",
+    44: "strength",
+    66: "strength",
+    69: "strength",
+    # Other
+    46: "golf",
+}
+
+# Legacy string map — kept for callers/tests that still pass a string.
 _WAHOO_SPORT_TYPE_MAP: dict[str, str] = {
     "cycling": "cycling",
     "biking": "cycling",
@@ -43,14 +92,23 @@ _WAHOO_SPORT_TYPE_MAP: dict[str, str] = {
     "fitness": "strength",
     "strength_training": "strength",
     "gym": "strength",
+    "golf": "golf",
 }
 
 
-def _map_wahoo_sport_type(wahoo_type: str | None) -> str:
-    """Map Wahoo workout type to internal sport type."""
+def _map_wahoo_sport_type(wahoo_type: str | int | None) -> str:
+    """Map a Wahoo workout type to an internal sport type.
+
+    Accepts either the integer ``workout_type_id`` (what the API actually
+    returns) or a legacy string. Unknown ids/strings fall back to ``"other"``
+    rather than ``"cycling"`` — guessing cycling is what mislabelled 130
+    walks/golf as rides.
+    """
+    if isinstance(wahoo_type, int):
+        return _WAHOO_WORKOUT_TYPE_ID_MAP.get(wahoo_type, "other")
     if not wahoo_type:
-        return "cycling"  # Wahoo is primarily cycling
-    return _WAHOO_SPORT_TYPE_MAP.get(wahoo_type.lower(), wahoo_type.lower())
+        return "other"
+    return _WAHOO_SPORT_TYPE_MAP.get(str(wahoo_type).lower(), "other")
 
 
 async def get_wahoo_connection(
@@ -159,11 +217,15 @@ async def sync_wahoo_activities(
             if existing_source_result.scalar_one_or_none():
                 continue
 
-            # Parse workout data
+            # Parse workout data.
+            # ⚠️ Wahoo's item carries an integer `workout_type_id` (no string
+            # `workout_type`/`sport_type`) and nests ALL metrics in
+            # `workout_summary` (which is null for third-party-app recordings).
+            # Reading the absent top-level fields defaulted every workout to
+            # "cycling" with a NULL distance and no power/HR/elevation.
             name = workout.get("name", "Wahoo Workout")
-            sport_type = _map_wahoo_sport_type(
-                workout.get("workout_type") or workout.get("sport_type")
-            )
+            sport_type = _map_wahoo_sport_type(workout.get("workout_type_id"))
+            summary = workout.get("workout_summary") or {}
 
             # Parse start date — Wahoo may use "starts" or "start_date"
             starts_raw = (
@@ -180,38 +242,39 @@ async def sync_wahoo_activities(
             else:
                 start_date = starts_raw
 
-            # Duration — Wahoo may use "duration" (seconds) or "minutes"
-            duration_seconds = workout.get("duration") or workout.get("moving_time")
+            # Duration: top-level `minutes`; richer seconds in the summary.
+            duration_seconds = _safe_float(summary.get("duration_active_accum"))
             if not duration_seconds:
                 minutes = workout.get("minutes")
                 if minutes:
                     duration_seconds = int(float(minutes) * 60)
 
-            # Distance in meters
-            distance_meters = workout.get("distance") or workout.get("distance_meters")
+            # Distance lives only in the summary (metres, as a string).
+            distance_meters = _safe_float(summary.get("distance_accum"))
 
-            # Power data
-            average_power = _safe_float(
-                workout.get("average_power") or workout.get("avg_power")
-            )
-            normalized_power = _safe_float(
-                workout.get("normalized_power") or workout.get("weighted_average_power")
-            )
+            # Power data (summary only; all values are JSON strings).
+            average_power = _safe_float(summary.get("power_avg"))
+            normalized_power = _safe_float(summary.get("power_bike_np_last"))
+            wahoo_tss = _safe_float(summary.get("power_bike_tss_last"))
 
-            # HR data
-            average_heartrate = _safe_float(
-                workout.get("average_heartrate") or workout.get("avg_heartrate")
-            )
-            max_heartrate = _safe_float(workout.get("max_heartrate"))
+            # HR data (summary only; Wahoo exposes no max HR).
+            average_heartrate = _safe_float(summary.get("heart_rate_avg"))
+            max_heartrate = None
 
-            # Other metrics
-            elevation_gain = _safe_float(
-                workout.get("elevation_gain") or workout.get("total_elevation_gain")
-            )
-            average_speed = _safe_float(
-                workout.get("average_speed") or workout.get("avg_speed")
-            )
-            calories = _safe_float(workout.get("calories") or workout.get("kcal"))
+            # Other metrics (summary only).
+            elevation_gain = _safe_float(summary.get("ascent_accum"))
+            average_speed = _safe_float(summary.get("speed_avg"))
+            calories = _safe_float(summary.get("calories_accum"))
+
+            # Match on the *Wahoo-reported* sport type. Unknown types map to
+            # "other", which won't sport-match anything — better to skip than to
+            # mis-enrich (the old "cycling" default matched walks onto rides).
+            if sport_type == "other":
+                logger.debug(
+                    f"Skipping Wahoo workout {workout_id} ({name}): "
+                    f"unmapped workout_type_id={workout.get('workout_type_id')}"
+                )
+                continue
 
             # Use merge engine to detect duplicates from other providers
             safe_distance = _safe_float(distance_meters)
@@ -236,6 +299,9 @@ async def sync_wahoo_activities(
                 "normalized_power": normalized_power,
                 "average_speed": average_speed,
                 "calories": calories,
+                # Wahoo's own TSS (from the summary) — a provider value, so
+                # merge_activity tags tss_source="provider" when it lands.
+                "tss": wahoo_tss,
             }
 
             if duplicate:
