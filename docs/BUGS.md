@@ -453,7 +453,7 @@
 - **Status:** INVESTIGATING (latent defects fixed)
 - **File:** `frontend/src/components/cycling/FuelPlanCard.tsx`, `backend/app/api/nutrition.py`
 - **Issue:** GET /fuel-plan/activity/{id} consistently errors. Root cause unclear from static analysis — needs live diagnosis (possible missing migration, auth edge, or serialization issue). Latent defects fixed: actuals clearing now works (empty string → null), regenerate/delete buttons added, error message now shows actual error detail, FuelPlanCard consolidated to use API helpers.
-- **Fix:** Added error logging to backend endpoint, improved frontend error display, fixed actuals clearing semantics, added regenerate/delete UI.
+- **Fix:** Added error logging to backend endpoint, improved frontend error display, fixed actuals clearing semantics, added regenerate/delete UI. `read_plan_for_activity` now also covers serialization in the logged try block, re-raises HTTPException untouched, and surfaces the exception type in the 500 detail (shown by FuelPlanCard) so the next live repro identifies DB vs serialization failure.
 
 ### BUG-069: Surface Data Never Populated
 - **Status:** FIXED
