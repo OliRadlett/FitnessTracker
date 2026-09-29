@@ -94,6 +94,14 @@ ONNX (opset 12, `nms=True`) → `fetch`. Keep yolov8n — the container's
 latency profile is characterized for it, and the failure is data, not
 capacity (it memorized training data fine: 0.77 blended).
 
+**Run status 2026-09-29**: dataset `labels/bar_dataset_v2` prepared locally
+(3660 train / 351 val, ~67% real-effective via `--real-repeat 12`; original
+`bar_dataset` untouched). Retrain launched on Modal T4, 60 epochs, output
+key `bar_detector_v2.onnx` (production key untouched). On completion:
+fetch → run the acceptance eval (criteria above, incl. the 248 held-out
+frames + F1 end-to-end benchmark) → versioned R2 upload → canary
+reprocesses → watch week. Rollback = repoint at the previous key.
+
 ## Lifter height (the second calibration input)
 
 The 3D path needs TWO absolute inputs, and this plan has so far only chased
