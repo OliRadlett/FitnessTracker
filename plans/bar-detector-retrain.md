@@ -155,14 +155,17 @@ front-back −802/−740 → **−483/−465** (−40%), lateral 197/202 → **9
 `focal_source` now reads `clip` (stored probe correctly reused over the
 lens nominal — precedence chain working).
 
-The fix removed the predicted ~340 mm y-leak; residual fb (−470 mm) is
-still above the plausibility band with unknown mechanism (not the y-leak;
-anchor-vs-feet world-z bias or axis x-tilt suspected). Ablation on the real
-track attributes −352 mm to the axes fix (y-zero + clip stability) and
-−19 mm to the median origin. Lateral halved but ~100 mm remains borderline
-(stance asymmetry not ruled out). Next: per-frame forensics on the
-persisted track, or accept vertical + calibration as the shippable core
-with horizontals flagged approximate.
+The fix removed the predicted ~340 mm y-leak; ablation attributes −352 mm
+to the axes fix and −19 mm to the median origin. Then falsified:
+**clip-constant depth REJECTED** — same fb median/spread as per-frame depth,
+but bar height regressed 108 mm (the weak-perspective fit usefully tracks
+crouch deformation; freezing depth breaks it). Per-frame fb scatter stays
+wide (p10 −536 / p90 +31): the residual is dominated by the depth term
+(off.z ≈ +0.2–0.3 m from hips-back squat geometry), pointing at
+torso-inclination world-z error — unproven. Lateral halved but ~100 mm
+remains borderline (stance asymmetry not ruled out). Next: accept vertical
++ calibration as the shippable core with horizontals flagged approximate,
+or characterize the depth term.
 
 ## Device facts (user-confirmed 2026-09-29)
 
