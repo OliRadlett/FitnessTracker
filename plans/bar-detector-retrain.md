@@ -126,6 +126,20 @@ unprovable without GT for these clips.
 
 Watch week ongoing: `reap_stale_videos` rate + F1 distributions.
 
+**v2 availability on these exact clips (measured 2026-09-29, pre-reprocess)**:
+singles ~30–50% of frames, pairs ~1%, barbell boxes 0/200 — the bright-gym
+red/blue plates fire far less than the dark-gym black bumpers the model
+trained on (front-human recall was 1.00). One-sided firing (near plate only)
+explains the missing pairs. Consequence: the 3D-validation reprocesses now
+running will almost certainly come back 2D-only (no pair centres, no barbell
+spans) — correct declining, not a failure.
+
+**How to film a 3D-validatable set**: front view, close enough that each
+plate exceeds ~4% of frame height (the <1% bucket recalls 0.03), both plates
+unoccluded, dark solid-color plates if available, lifter height set (done:
+185 cm). A single 8-rep frontal set filmed this way is the remaining
+real-clip validation.
+
 ## Lifter height (the second calibration input)
 
 The 3D path needs TWO absolute inputs, and this plan has so far only chased
