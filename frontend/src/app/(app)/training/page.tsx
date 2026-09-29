@@ -24,6 +24,7 @@ import { WeeklyView } from '@/components/training/WeeklyView';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
+import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-light/20 text-muted border-muted/30',
@@ -446,15 +447,21 @@ export default function TrainingPage() {
                     </p>
                   )}
                   <EventResultPanel event={evt} />
-                  <div className="mt-2">
-                    <button
-                      onClick={() => downloadEventReport(evt.id)}
-                      disabled={exportingEventId === evt.id}
-                      className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
-                    >
-                      {exportingEventId === evt.id ? 'Preparing…' : '📄 Export Prep PDF'}
-                    </button>
-                  </div>
+                   <div className="mt-2">
+                     <button
+                       onClick={() => downloadEventReport(evt.id)}
+                       disabled={exportingEventId === evt.id}
+                       className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
+                     >
+                       {exportingEventId === evt.id ? 'Preparing…' : '📄 Export Prep PDF'}
+                     </button>
+                   </div>
+                   {/* Show AI race prep analysis for upcoming events */}
+                   {evt.days_until > 0 && evt.event_type === 'race' && (
+                     <div className="mt-2">
+                       <EventAiAnalysisCard eventId={evt.id} />
+                     </div>
+                   )}
                 </div>
               ))}
             </div>

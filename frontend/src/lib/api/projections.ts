@@ -3,7 +3,7 @@
 // Follows the codebase "inline authFetch" pattern: each function takes the
 // `authFetch` returned by `useAuthFetch()` as its first argument so pages can
 // call them directly inside React Query `queryFn`.
-import type { GoalProjectionResponse } from './types';
+import type { GoalProjectionResponse, TsbProjectionResponse } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
 
@@ -13,4 +13,15 @@ export async function getGoalProjection(
   goalId: string,
 ): Promise<GoalProjectionResponse> {
   return authFetch<GoalProjectionResponse>(`/api/v1/projections/goal/${goalId}`);
+}
+
+/** GET /api/v1/projections/tsb/{planId}?days=N — TSB projection for event-linked plans. */
+export async function getTsbProjection(
+  authFetch: AuthFetch,
+  planId: string,
+  days: number = 14,
+): Promise<TsbProjectionResponse> {
+  return authFetch<TsbProjectionResponse>(
+    `/api/v1/projections/tsb/${planId}?days=${days}`
+  );
 }

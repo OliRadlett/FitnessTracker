@@ -72,11 +72,12 @@ const FOCUS_OPTIONS = [
 ] as const;
 
 const TEMPLATE_OPTIONS = [
-  { value: 'base', label: 'Base — Steady foundation' },
   { value: 'build', label: 'Build — Progressive overload' },
+  { value: 'base', label: 'Base — Steady foundation' },
   { value: 'peak', label: 'Peak — High intensity' },
   { value: 'taper', label: 'Taper — Pre-event reduction' },
   { value: 'recovery', label: 'Recovery — Active rest' },
+  { value: 'strength', label: 'Strength — Progressive overload (sets/reps/RPE)' },
 ] as const;
 
 const STATUS_COLORS: Record<string, string> = {
@@ -385,23 +386,106 @@ function EmptyState({
               className={inputCls}
             />
           </div>
-          <div>
-            <label className={labelCls}>Base Weekly TSS</label>
-            <input
-              type="number"
-              min={50}
-              max={1500}
-              step={25}
-              value={templateForm.base_tss}
-              onChange={(e) =>
-                setTemplateForm((f) => ({
-                  ...f,
-                  base_tss: parseFloat(e.target.value) || 300,
-                }))
-              }
-              className={inputCls}
-            />
-          </div>
+          {/* Strength plan options — shown only for strength template */}
+          {templateForm.template_type === 'strength' && (
+            <>
+              <div className="md:col-span-2">
+                <label className={labelCls}>Starting RPE</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={10}
+                  step={0.5}
+                  value={templateForm.strength_start_rpe ?? ''}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_rpe: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                    }))
+                  }
+                  placeholder="e.g. 7.0"
+                  className={inputCls}
+                />
+                <p className="text-[10px] text-muted mt-0.5">
+                  Starting RPE for main lifts. A 5/3/1-style progressive
+                  overload template will increase weekly if not overridden.
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>Starting Sets</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={templateForm.strength_start_sets ?? ''}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_sets: e.target.value === '' ? undefined : parseInt(e.target.value),
+                    }))
+                  }
+                  placeholder="e.g. 4"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Starting Reps</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={templateForm.strength_start_reps ?? ''}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_reps: e.target.value === '' ? undefined : parseInt(e.target.value),
+                    }))
+                  }
+                  placeholder="e.g. 8"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Starting Weight (kg)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={2.5}
+                  value={templateForm.strength_start_weight_kg ?? ''}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_weight_kg: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                    }))
+                  }
+                  placeholder="e.g. 100"
+                  className={inputCls}
+                />
+                <p className="text-[10px] text-muted mt-0.5">
+                  Leave blank to auto-detect from recent session history.
+                </p>
+              </div>
+            </>
+          )}
+          {templateForm.template_type !== 'strength' && (
+            <div>
+              <label className={labelCls}>Base Weekly TSS</label>
+              <input
+                type="number"
+                min={50}
+                max={1500}
+                step={25}
+                value={templateForm.base_tss ?? 300}
+                onChange={(e) =>
+                  setTemplateForm((f) => ({
+                    ...f,
+                    base_tss: parseFloat(e.target.value) || 300,
+                  }))
+                }
+                className={inputCls}
+              />
+            </div>
+          )}
           <div>
             <label className={labelCls}>Taper for Event (optional)</label>
             <select

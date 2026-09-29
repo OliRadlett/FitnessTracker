@@ -653,6 +653,12 @@ async def link_activities_to_plan_days(
     completed_updates = 0
     for plan in plans:
         for day in plan.days:
+            if day.sport == "rest":
+                # Auto-complete past rest days — "doing nothing" is correct behavior.
+                if day.day_date < today and not day.completed:
+                    day.completed = True
+                    completed_updates += 1
+                continue
             if day.sport == "cycle" and day.activity_id is None:
                 candidates = [
                     a

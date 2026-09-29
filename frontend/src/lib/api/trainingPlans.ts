@@ -4,6 +4,7 @@ import type {
   UpdateTrainingPlanDayPayload,
   TrainingPlanDay,
   AdaptiveSuggestionsResponse,
+  StrengthPlanSuggestionsResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -41,11 +42,19 @@ export async function updatePlanDay(
 
 /** §3.11 — adaptive weekly suggestions with optional one-tap apply actions. */
 export async function getAdaptiveSuggestions(
-  authFetch: AuthFetch,
-  planId: string
+  authFetch: AuthFetch, planId: string
 ): Promise<AdaptiveSuggestionsResponse> {
   return authFetch<AdaptiveSuggestionsResponse>(
     `/api/v1/training-plans/${planId}/suggestions`
+  );
+}
+
+/** Smart strength suggestions — weight updates based on prior-week conformity. */
+export async function getStrengthSuggestions(
+  authFetch: AuthFetch, planId: string
+): Promise<StrengthPlanSuggestionsResponse> {
+  return authFetch<StrengthPlanSuggestionsResponse>(
+    `/api/v1/training-plans/${planId}/strength-suggestions`
   );
 }
 

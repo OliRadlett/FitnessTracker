@@ -13,7 +13,7 @@
  * which saves the FULL days array. These two views never share save state.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -22,14 +22,13 @@ import type {
   UpdateTrainingPlanDayPayload,
   Event,
 } from '@/lib/api';
-import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities } from '@/lib/api';
-import { apiFetch } from '@/lib/api/fetch';
-import type { TsbProjectionResponse } from '@/lib/api';
+import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, getTsbProjection, getStrengthSuggestions } from '@/lib/api';
 import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
+import { StrengthSuggestionsCard } from './StrengthSuggestionsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -203,6 +202,16 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   const realCurrentWeek = getCurrentRealWeek(plan);
   const todayStr = toDateStr(new Date());
 
+  // Sync to the real current week whenever the plan itself changes
+  // (e.g. user picks a different plan or the plan is re-fetched after an edit
+  // in the sibling PlanBuilder tab).
+  useEffect(() => {
+    setCurrentWeek((prev) => {
+      const target = getCurrentRealWeek(plan);
+      return prev === target ? prev : target;
+    });
+  }, [plan.id]);
+
   // ── Query ───────────────────────────────────────────────────────────────
   const weekQuery = useQuery({
     queryKey: ['plan-week', plan.id, currentWeek],
@@ -223,14 +232,17 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
   // Phase 7 — TSB projection for event-linked plans.
   const tsbProjectionQuery = useQuery({
     queryKey: ['tsb-projection', plan.id],
-    queryFn: () =>
-      apiFetch<TsbProjectionResponse>(
-        `/api/v1/projections/tsb/${plan.id}?days=14`,
-        {},
-        token,
-      ),
+    queryFn: () => getTsbProjection(authFetch, plan.id, 14),
     staleTime: 5 * 60_000,
     enabled: !!token && !!plan.event_id,
+  });
+
+  // Phase 5A+ — Smart strength suggestions (weight updates based on RPE).
+  const strengthSuggestionsQuery = useQuery({
+    queryKey: ['strength-suggestions', plan.id],
+    queryFn: () => getStrengthSuggestions(authFetch, plan.id),
+    staleTime: 5 * 60_000,
+    enabled: !!token && plan.plan_type === 'strength' && !plan.event_id,
   });
 
   const invalidateWeeks = () => {
@@ -465,6 +477,20 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
 
       {/* Adaptive suggestions card (§3.11) */}
       <AdaptiveSuggestionsCard planId={plan.id} />
+
+      {/* Smart strength suggestions (RPE-based weight updates for big 3) */}
+      {strengthSuggestionsQuery.data && (
+        <StrengthSuggestionsCard
+          data={strengthSuggestionsQuery.data}
+          onApplyDay={(dayId, exercises) => {
+            updatePlanDay(authFetch, plan.id, dayId, {
+              planned_exercises: exercises,
+            })
+              .then(() => invalidateWeeks())
+              .catch((err) => console.error('[WeeklyView] Apply strength suggestion failed:', err));
+          }}
+        />
+      )}
 
       {/* TSB projection strip (Phase 7) — event-linked plans only */}
       {tsbProjectionQuery.data && (() => {
