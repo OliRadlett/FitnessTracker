@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.route_road_graph import ROAD_MATCH_VERSION
+from app.models.activity import Activity
 from app.models.route import Route, RouteMatchMetric, RouteMergeLog
 from app.services.polyline_utils import decode_polyline
 from app.services.road_graph import edge_jaccard, snap_polyline
@@ -60,6 +61,33 @@ def store_road_matches(db: AsyncSession, routes: list[Route], matches: dict) -> 
         route.road_embedding = {
             "version": ROAD_MATCH_VERSION,
             "features": route_features(route),
+        }
+        stored += 1
+    return stored
+
+
+def store_activity_road_matches(
+    db: AsyncSession, activities: list[Activity], matches: dict
+) -> int:
+    """Persist Modal road matches onto activities. Returns count.
+
+    Mirrors :func:`store_road_matches` for routes. The activity's
+    ``road_match`` stores the OSM edge set (with coverage, names, version)
+    so rides can be compared edge-to-edge for section-repeat / lap detection.
+    The ``road_embedding`` stores a compact summary for the similarity graph.
+    """
+    stored = 0
+    for activity in activities:
+        match = matches.get(str(activity.id))
+        if not match:
+            continue
+        match = {**match, "version": ROAD_MATCH_VERSION}
+        activity.road_match = match
+        activity.road_match_version = ROAD_MATCH_VERSION
+        edge_set = match.get("edge_set")
+        activity.road_embedding = {
+            "version": ROAD_MATCH_VERSION,
+            "edge_set_size": len(edge_set) if edge_set else 0,
         }
         stored += 1
     return stored
@@ -212,6 +240,7 @@ __all__ = [
     "route_features",
     "snap_polyline",
     "snap_routes_locally",
+    "store_activity_road_matches",
     "store_road_matches",
     "train_metric_from_history",
 ]

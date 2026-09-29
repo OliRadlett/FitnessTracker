@@ -47,6 +47,9 @@
       "description": "OpenCode TUI configuration, commands, skills, agents, and workflows"
     }
   },
+  "plugins": [
+    "C:\\Users\\oradl\\.config\\opencode\\node_modules\\superpowers"
+  ],
   "model": "openrouter/poolside/laguna-s-2.1:free",
   "agent": {
     "plan": {

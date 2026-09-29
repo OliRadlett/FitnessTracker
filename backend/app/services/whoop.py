@@ -999,6 +999,7 @@ async def sync_whoop_workouts(
         if duplicate:
             # Build enrichment data — Whoop has no GPS/power/distance
             new_data = {
+                "sport_type": sport_type,
                 "average_heartrate": float(avg_hr) if avg_hr else None,
                 "max_heartrate": float(max_hr) if max_hr else None,
                 "calories": float(calories) if calories else None,
@@ -1775,6 +1776,7 @@ async def backfill_whoop_data(
 
         if duplicate:
             new_data = {
+                "sport_type": sport_type,
                 "average_heartrate": float(avg_hr) if avg_hr else None,
                 "max_heartrate": float(max_hr) if max_hr else None,
                 "calories": float(calories_w) if calories_w else None,

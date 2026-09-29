@@ -273,6 +273,11 @@ _MERGE_FIELDS = [
     "tss",
     "calories",
     "rpe",
+    # sport_type reconciles mislabelled rows — e.g. a Wahoo backfill that
+    # defaulted to "cycling" gets corrected when Strava (higher priority)
+    # merges in the true type. Same rule: empty fills regardless, higher
+    # priority overwrites. Lower-priority sources (whoop) never override.
+    "sport_type",
 ]
 
 
@@ -292,7 +297,11 @@ async def merge_activity(
 
     1. Creates an ActivitySource record for the new provider.
     2. Updates primary activity fields when the new provider has higher priority
-       and the primary field is None (or the new provider outranks the primary source).
+       and the primary field is None (or the new provider outranks the primary
+       source). Includes ``sport_type`` reconciliation: a mislabelled row from
+       a lower-priority provider (e.g. Wahoo defaulting to cycling) is corrected
+       when a higher-priority provider (e.g. Strava) supplies the right type.
+       Lower-priority providers never override an existing sport_type.
 
     Returns the newly created ActivitySource.
     """

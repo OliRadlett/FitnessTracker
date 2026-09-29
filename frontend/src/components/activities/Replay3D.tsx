@@ -866,12 +866,20 @@ export function Replay3D({
     const grid = new THREE.GridHelper(2, 24, 0x334155, 0x1e293b);
     scene.add(grid);
 
-    const minX = Math.min(...points.map((p) => p.x));
-    const maxX = Math.max(...points.map((p) => p.x));
-    const minY = Math.min(...points.map((p) => p.y));
-    const maxY = Math.max(...points.map((p) => p.y));
-    const minZ = Math.min(...points.map((p) => p.z));
-    const maxZ = Math.max(...points.map((p) => p.z));
+    // Loop-based extrema — `Math.min(...points.map(...))` overflows the call
+    // stack on rides with 10k+ samples (long cycling/gravel events).
+    let minX = points[0].x, maxX = points[0].x;
+    let minY = points[0].y, maxY = points[0].y;
+    let minZ = points[0].z, maxZ = points[0].z;
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i];
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+      if (p.z < minZ) minZ = p.z;
+      if (p.z > maxZ) maxZ = p.z;
+    }
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 100);
@@ -1012,6 +1020,8 @@ export function Replay3D({
     // Aerial 3/4 default view — flat courses read as a course, not an edge.
     const baseZ = Math.max(minZ - size * 0.05, 0);
     camera.position.set(cx + size * 0.45, cy - size * 0.85, baseZ + size * 1.6);
+    camera.up.set(0, 0, 1); // Z-up — the scene is Z-up (Z = altitude); using Y-up
+    // would make terrain appear edge-on (sideways) during the loading hold.
     camera.lookAt(cx, cy, minZ + (maxZ - minZ) * 0.5);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -1678,7 +1688,7 @@ export function Replay3D({
       }
 
       if (mode === 'orbit') {
-        camera.up.copy(UP_Y);
+        camera.up.copy(UP_Z);
         controls.enabled = true;
         rider.visible = true;
 
@@ -1690,11 +1700,10 @@ export function Replay3D({
         const ready = terrainMesh || terrainState === 'off' || terrainState === 'failed';
 
         if (!ready) {
-          // Terrain still loading — hold a static overview. Let the user manually
-          // orbit the empty scene; auto-orbit kicks in once terrain arrives.
-          // (No early return — the render + rAF scheduling below must still run.)
+          // Terrain still loading — hold a static overview with proper Z-up
+          // orientation. auto-orbit kicks in once terrain arrives.
           camera.position.copy(homePos);
-          camera.up.copy(UP_Y);
+          camera.up.copy(UP_Z);
           controls.target.copy(homeTarget);
           controls.update();
         } else {
@@ -1809,8 +1818,8 @@ export function Replay3D({
           cinematicStart = performance.now();
         }
         if (cinematicStart < 0) {
-          // Not ready yet — hold a static overview shot (orbit home pose).
-          camera.up.copy(UP_Y);
+          // Not ready yet — hold a static overview shot with Z-up orientation.
+          camera.up.copy(UP_Z);
           camera.position.copy(homePos);
           camera.fov = 55;
           camera.updateProjectionMatrix();
@@ -1838,9 +1847,18 @@ export function Replay3D({
         }
       } else {
         // Follow cams drive the camera directly; OrbitControls stays out.
-        controls.enabled = false;
-        camera.up.copy(UP_Z);
-        rider.visible = mode !== 'cockpit';
+        // Hold the home pose until terrain is ready — following the rider over
+        // an empty grid makes the camera snap to (0,0,0) and spin sideways.
+        const terrainMesh = sceneRef.current?.terrain;
+        const terrainState = terrainStateRef.current;
+        const ready = terrainMesh || terrainState === 'off' || terrainState === 'failed';
+        if (!ready) {
+          camera.position.copy(homePos);
+          camera.up.copy(UP_Z);
+          controls.target.copy(homeTarget);
+          controls.update();
+          rider.visible = true;
+        } else {
         if (mode === 'chase') {
           // Close chase: ~7 m behind, ~2.6 m up, eyes on the road ahead.
           const dist = 7;
@@ -1914,6 +1932,7 @@ export function Replay3D({
         const lookK = lookLag > 20 ? 1 : 1 - Math.exp(-dt * 8);
         lookTargetRef.current.lerp(tmpLook, lookK);
         camera.lookAt(lookTargetRef.current);
+        }
       }
       // Keep the camera above the terrain bed so follow cams can't clip through
       // hills (the DEM y is only known here via the mesh's stored grid).
@@ -2194,7 +2213,11 @@ export function Replay3D({
         // DEM minimum so the path rests on the terrain instead of under it.
         const hasAlt = points.some((p) => p.z !== 0);
         const finite = heights.filter(Number.isFinite);
-        const demMin = finite.length ? Math.min(...finite) : 0;
+        // Loop-based extrema — `Math.min(...finite)` overflows the call stack
+        // when the DEM grid has 100k+ samples (maxGridPoints = 131072).
+        let demMin = Infinity;
+        for (const h of finite) { if (h < demMin) demMin = h; }
+        if (demMin === Infinity) demMin = 0;
         // Drape: pick a baseline DEM height and render the bed as
         // (dem − base)·zScale. Compute the same for every path point so the road
         // + bike sit exactly on the bed (falling back to the raw z where the DEM
@@ -2292,6 +2315,11 @@ export function Replay3D({
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         setTerrainState('failed');
+        // Terrain failure also fails imagery — otherwise the imagery effect
+        // stays stuck on 'loading' (no mesh to drape onto, no terrainEpoch
+        // re-bump via the drapeZ→scene effect chain) and the loading overlay
+        // never clears.
+        if (imageryStateRef.current === 'loading') setImageryState('failed');
       }
     })();
     return () => {
@@ -2405,7 +2433,7 @@ export function Replay3D({
     const s = sceneRef.current;
     if (!s?.home) return;
     setCamMode('orbit');
-    s.camera.up.set(0, 1, 0);
+    s.camera.up.set(0, 0, 1);
     s.camera.position.copy(s.home.pos);
     s.controls.target.copy(s.home.target);
     s.controls.update();

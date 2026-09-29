@@ -186,8 +186,7 @@ Instrumentator(
 ).instrument(app).expose(app, endpoint="/metrics")
 
 # ── API routers ─────────────────────────────────────────────────────
-# All routes are versioned under /api/v1/. See docs/api-versioning.md
-# for the versioning and deprecation policy.
+# All routes are versioned under /api/v1/. There is no /api/v2/.
 # Import and include routers
 from app.api.account import router as account_router
 from app.api.activities import router as activities_router

@@ -447,6 +447,30 @@ def match_routes_to_roads_on_modal(
         return {}
 
 
+def match_activities_to_roads_on_modal(
+    activities_data: list[dict],
+    region: str,
+    *,
+    search_radius_m: float = 40.0,
+    max_snap_m: float = 60.0,
+) -> dict:
+    """Map-match activities to the regional OSM road graph on Modal.
+
+    ``activities_data`` items: ``{id, polyline: [(lat, lng), ...]}``. Returns
+    ``{activity_id: road_match}`` or ``{}`` when Modal/OSM data is unavailable.
+
+    Reuses the same generic Modal worker (``_match_routes_road_modal``) — it
+    accepts any ``{id, polyline}`` payload and returns ``{id: road_match}``,
+    so routes and activities share one code path.
+    """
+    return match_routes_to_roads_on_modal(
+        activities_data,
+        region,
+        search_radius_m=search_radius_m,
+        max_snap_m=max_snap_m,
+    )
+
+
 def bootstrap_osm_region_on_modal(region: str, geofabrik_path: str) -> str:
     """Download a Geofabrik extract (``geofabrik_path`` e.g. ``europe/united-kingdom``)
     into the OSM Volume for ``region``. Run once before the weekly task.

@@ -100,6 +100,11 @@ class Activity(Base):
     # full analyze_ride + stream recompute per request. See services/activity_context.py.
     # Intentionally NOT a relationship with computed columns — plain JSONB cache.
     context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Phase 2 — OSM road-graph edge set (coverage, names, version) + embedding
+    # features for section-repeat / lap detection. Mirrors Route.road_match.
+    road_match: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    road_embedding: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    road_match_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
