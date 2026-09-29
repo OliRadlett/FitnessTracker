@@ -199,9 +199,41 @@ interface BarPath {
   net_lateral?: number;
   lateral_basis?: string;
   note?: string;
+  metric_3d?: Metric3D | null;
 }
 
-function BarPathCard({ value }: { value: string | null | undefined }) {
+interface Metric3DCalibration {
+  focal_px?: number;
+  focal_source?: string;
+  focal_spread?: number;
+  subject_distance_m?: number;
+  px_per_m?: number;
+  lifter_height_m?: number;
+  height_scale?: number;
+  scale_spread?: number;
+}
+
+interface Metric3D {
+  n_reps?: number;
+  n_frames?: number;
+  bar_height_top_m?: number;
+  bar_height_bottom_m?: number;
+  vertical_range_m?: number;
+  front_back_mm?: number;
+  lateral_mm?: number;
+  net_lateral_mm?: number;
+  calibration?: Metric3DCalibration | null;
+  note?: string;
+}
+
+const FOCAL_SOURCE_LABELS: Record<string, string> = {
+  tags: 'container',
+  clip: 'stored',
+  user_lens: 'lens',
+  barbell: 'barbell',
+};
+
+export function BarPathCard({ value }: { value: string | null | undefined }) {
   const data = parseJsonObject(value) as BarPath | null;
   if (!data || data.consistency == null) return null;
   const proxy = data.source === 'pose_proxy';
@@ -262,8 +294,85 @@ function BarPathCard({ value }: { value: string | null | undefined }) {
           ))}
         </div>
       )}
+      {data.metric_3d != null && <Metric3DSection value={data.metric_3d} />}
       {data.note && <p className="text-[11px] text-muted">{data.note}</p>}
     </Card>
+  );
+}
+
+function Metric3DSection({ value }: { value: Metric3D }) {
+  const m = value;
+  if (m.bar_height_top_m == null || m.bar_height_bottom_m == null) return null;
+  const cal = m.calibration ?? {};
+  const focalSrc = cal.focal_source != null
+    ? (FOCAL_SOURCE_LABELS[cal.focal_source] ?? cal.focal_source)
+    : null;
+  // Horizontals lean on pose world-z (a learned estimate, not a perspective
+  // measurement), so they ship flagged approximate — vertical is the trusted
+  // axis. Same "~" convention as the 3/4-view 2D metrics above.
+  const horiz: { label: string; value: string }[] = [];
+  if (m.front_back_mm != null) {
+    horiz.push({
+      label: 'Front-back ~',
+      value: `~${Math.round(m.front_back_mm)} mm`,
+    });
+  }
+  if (m.lateral_mm != null) {
+    horiz.push({
+      label: 'Lateral ~',
+      value: `~${Math.round(m.lateral_mm)} mm`,
+    });
+  }
+
+  return (
+    <div className="space-y-2 border-t border-surface-light pt-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">Bar height (3D)</p>
+        <Badge variant="default">3D</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <p className="text-[11px] text-muted uppercase">Top</p>
+          <p className="text-lg font-semibold text-foreground">
+            {m.bar_height_top_m.toFixed(2)} m
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted uppercase">Bottom</p>
+          <p className="text-lg font-semibold text-foreground">
+            {m.bar_height_bottom_m.toFixed(2)} m
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] text-muted uppercase">Travelled</p>
+          <p className="text-lg font-semibold text-foreground">
+            {m.vertical_range_m != null ? `${m.vertical_range_m.toFixed(2)} m` : '—'}
+          </p>
+        </div>
+      </div>
+      {horiz.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {horiz.map((e) => (
+            <div key={e.label}>
+              <p className="text-[11px] text-muted uppercase">{e.label}</p>
+              <p className="text-lg font-semibold text-foreground">{e.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {(cal.focal_px != null || cal.subject_distance_m != null) && (
+        <p className="text-[11px] text-muted">
+          {cal.focal_px != null && <>f {Math.round(cal.focal_px)} px</>}
+          {focalSrc != null && <> ({focalSrc})</>}
+          {cal.subject_distance_m != null && <> · {cal.subject_distance_m.toFixed(1)} m</>}
+          {m.n_reps != null && <> · {m.n_reps} reps</>}
+        </p>
+      )}
+      {m.note && <p className="text-[11px] text-muted">{m.note}</p>}
+      <p className="text-[11px] text-muted">
+        Horizontal 3D numbers are approximate — vertical is the trusted axis.
+      </p>
+    </div>
   );
 }
 
