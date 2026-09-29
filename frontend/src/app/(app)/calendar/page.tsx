@@ -119,7 +119,7 @@ export default function CalendarPage() {
     };
   }, [currentMonth]);
 
-  const { data: calendarData, isLoading } = useQuery<CalendarDayData>({
+  const { data: calendarData, isLoading, isError, refetch } = useQuery<CalendarDayData>({
     queryKey: ['activities-calendar', fetchStart, fetchEnd],
     queryFn: () =>
       authFetch<CalendarDayData>(
@@ -293,6 +293,18 @@ export default function CalendarPage() {
                 />
               ))}
             </div>
+          </div>
+        ) : isError ? (
+          <div className="px-4 pb-4">
+            <p className="text-sm text-warning" role="alert">
+              Couldn't load calendar data —{' '}
+              <button
+                onClick={() => refetch()}
+                className="underline text-accent hover:text-accent/80"
+              >
+                retry
+              </button>
+            </p>
           </div>
         ) : (
           <div className="px-4 pb-4">
