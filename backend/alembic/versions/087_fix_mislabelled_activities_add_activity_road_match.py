@@ -45,6 +45,7 @@ Part B — Reclassify mislabelled sport_type:
 """
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -56,8 +57,10 @@ depends_on = None
 
 def upgrade() -> None:
     # ── Part A: road_match columns on activities ─────────────────────────────
-    op.add_column("activities", sa.Column("road_match", sa.JSONB(), nullable=True))
-    op.add_column("activities", sa.Column("road_embedding", sa.JSONB(), nullable=True))
+    op.add_column("activities", sa.Column("road_match", postgresql.JSONB(), nullable=True))
+    op.add_column(
+        "activities", sa.Column("road_embedding", postgresql.JSONB(), nullable=True)
+    )
     op.add_column(
         "activities", sa.Column("road_match_version", sa.Integer(), nullable=True)
     )
