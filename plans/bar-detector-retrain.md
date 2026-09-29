@@ -147,7 +147,28 @@ estimator kept as cross-check/provenance for clips where it fires.
 Filming guidance still stands for estimator-friendly clips (bench ¾,
 larger Δ): front-ish view, plates >4% of frame height, both unoccluded.
 
-## Live pipeline verification (2026-09-29)
+## First real metric_3d (2026-09-29) 🎯
+
+Both frontal Sunday clips reprocessed with lens=ultra_wide + height 185 →
+`metric_3d` present on both, n=8 reps, 71/72 frames:
+
+| metric | clip 1 | clip 2 | verdict |
+|---|---|---|---|
+| focal | 712.8 px (`user_lens`) | 712.8 px | ✅ EXACT OnePlus UW nominal — the whole chain calibrates |
+| subject distance | 2.32 m | 2.33 m | ✅ plausible, agree |
+| bar top / bottom | 1.448 / 1.179 m | 1.430 / 1.157 m | ✅ top = 78% of 1.85 m lifter, anatomically exact; agree ±2 cm |
+| vertical range | 0.269 m | 0.273 m | plausible (10/90 band) |
+| front-back | −802 / −740 mm | — | ❌ suspect: 74 cm off midfoot is unphysical for a squat |
+| lateral | 197 / 202 mm | — | ❌ suspect: 20 cm persistent asymmetry is unphysical |
+
+Diagnosis: vertical is image-driven (robust); both horizontals lean on
+MediaPipe **world-z**, already documented as a learned estimate, not a
+perspective measurement. fb axis in a front view IS the z axis, and lateral
+is orthogonalized against it — noisy z leaks into both. So: trust the
+vertical + calibration today; the horizontals need either pose-z
+plausibility filtering or per-axis uncertainty before they are presentable.
+This does not implicate the geometry (exact on synthetic ground truth) or
+the calibration (nominal recovered exactly) — it bounds them.
 
 Reprocessed both frontal Sunday clips on the deployed pipeline (new code +
 v2 model + height 185). No `metric_3d` — expected (no pair centres, no
