@@ -161,14 +161,19 @@ Both frontal Sunday clips reprocessed with lens=ultra_wide + height 185 →
 | front-back | −802 / −740 mm | — | ❌ suspect: 74 cm off midfoot is unphysical for a squat |
 | lateral | 197 / 202 mm | — | ❌ suspect: 20 cm persistent asymmetry is unphysical |
 
-Diagnosis: vertical is image-driven (robust); both horizontals lean on
-MediaPipe **world-z**, already documented as a learned estimate, not a
-perspective measurement. fb axis in a front view IS the z axis, and lateral
-is orthogonalized against it — noisy z leaks into both. So: trust the
-vertical + calibration today; the horizontals need either pose-z
-plausibility filtering or per-axis uncertainty before they are presentable.
-This does not implicate the geometry (exact on synthetic ground truth) or
-the calibration (nominal recovered exactly) — it bounds them.
+Diagnosis (measured on the 511-frame persisted track): fwd.y median 0.26
+(feet don't share image-y in world estimates) → ~340 mm of bar height
+leaking into fb; per-frame axes thrash (fwd.x p10/p90 0.22–0.55); foot
+world-z swings p10 −0.34 m. **Fix committed (branch
+`feature/video-lens-picker`)**: force fwd horizontal (feet share the ground
+plane), clip-level axes from median positions, median-of-4 midfoot origin.
+Synthetic tests prove the leak is gone (tilted-feet fb delta <20 mm, was
+~650 mm class); all 52 pre-existing tests pass unchanged. Old-vs-new on a
+clean 2-rep window agrees exactly (both fine there) — the −740 mm likely
+came from dirty walkout reps, which the fix specifically hardens. Full-clip
+reprocess with fixed code is the pending proof. Lateral (~200 mm) is NOT
+explained by axes (stable lat ≈ [0.91, 0.06, 0.4]) — stance asymmetry vs
+pose-x error still open; needs a symmetric-stance clip to disambiguate.
 
 Reprocessed both frontal Sunday clips on the deployed pipeline (new code +
 v2 model + height 185). No `metric_3d` — expected (no pair centres, no
