@@ -22,8 +22,12 @@ FitTrack uses OpenCode as its primary AI coding assistant. The TUI (Terminal Use
 
 - **6 subagents** for specialized tasks
 - **9 custom commands** for repetitive workflows
-  - **5 skills** for complex feature additions
-- **3 plugins** for permission management and TUI enhancements
+  - **5 domain-specific skills** for FitTrack features (`add-chart`, `add-ai-analysis`, `add-integration`, `finalise`, `ssh-production-debugger`)
+- **14 Superpowers skills** for SDLC methodology (brainstorming to TDD to subagent development to code review to branch finishing)
+- **`graphify` skill** — local codebase knowledge graph (10,317 nodes, 27,069 edges)
+- **`impeccable` skill** — 61-rule frontend design anti-pattern detector (ready for UI redesign)
+- **3 TUI plugins** for permission management and progress tracking
+- **1 Superpowers plugin** (OpenCode V2 `plugins` config)
 - **11 references** for context awareness
 
 ### Quick Start
@@ -68,6 +72,9 @@ Main configuration file with references, permissions, and tool settings.
   "watcher": {
     "ignore": ["node_modules/**", "dist/**", ".git/**", "backups/**"]
   },
+  "plugins": [
+    "C:\\Users\\oradl\\.config\\opencode\\node_modules\\superpowers"
+  ],
   "permission": {
     "websearch": "allow",
     "webfetch": "allow",
@@ -92,6 +99,7 @@ Main configuration file with references, permissions, and tool settings.
 - `snapshot: true` — Enables undo/redo for file changes
 - `compaction` — Auto-compacts long sessions, prunes old tool outputs
 - `formatter` — Ruff for Python formatting
+- `plugins` — V2 plugin array: Superpowers (absolute path)
 - `permission.bash` — Auto-allows common dev commands (python fittrack.py, docker compose, npm, npx, pip, alembic, ruff, uvicorn, git), prompts for others
 - `permission.websearch`/`webfetch` — Globally allowed for all modes (used by `@ask` for external research)
 
@@ -241,14 +249,16 @@ Skills are reusable instruction sets for complex tasks. Located in `.opencode/sk
 - Pitfalls: redirect_uri, token refresh, encrypted tokens
 
 ### `finalise`
-**Purpose**: End-of-work checklist — commit, push, PR, and deploy.
+**Purpose**: End-of-work checklist — commit, push, PR, and deploy, now with Superpowers integration.
 **When to use**: Finishing a feature or set of changes.
 **Covers**:
-- Pre-commit checks: lint, typecheck, tests, migration verification
-- Git discipline: status review, staging only session files
-- Commit + push + PR creation
-- Release deploy: merge main → prod, monitor CI
-- Pitfalls: concurrent git sessions, CI queue delays, stale test images
+- **Phase 1**: Pre-commit checks (lint, typecheck, tests, migration verification)
+- **Phase 2**: Pre-PR code review (from Superpowers `requesting-code-review`) — severity-tiered checklist
+- **Phase 2b**: Verification before completion (from Superpowers `verification-before-completion`)
+- **Phase 3**: Review, stage, commit (docs in same commit)
+- **Phase 4**: Push, create PR, monitor CI (may queue 50+ min)
+- **Phase 5**: Release deploy — merge `main → prod`, monitor deployment
+- Pitfalls: concurrent git sessions, CI queue delays, stale test images, dev mount gaps
 
 ### `ssh-production-debugger`
 **Purpose**: Debug production issues via SSH.
@@ -328,6 +338,44 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 
 ---
 
+### Superpowers Skills (installed via npm at `.config/opencode/node_modules/superpowers/`)
+
+FitTrack uses Superpowers (v6.x) as its primary SDLC methodology. The
+`using-superpowers` bootstrap is injected at session start.
+
+**Core workflow skills:**
+
+| Skill | When to use | Replaces |
+|-------|-------------|----------|
+| `brainstorming` | Before any creative work | Informal design discussion |
+| `writing-plans` | Before touching code on multi-step tasks | `/add-endpoint`, `/add-page` wizards |
+| `test-driven-development` | Before writing implementation code | FitTrack's testing discipline |
+| `subagent-driven-development` | Executing implementation plans | Manual `@backend`/`@frontend` dispatch |
+| `executing-plans` | Inline plan execution | Direct implementation in current session |
+| `systematic-debugging` | Bug, test failure, unexpected behavior | `@debugger` (enhances it) |
+| `dispatching-parallel-agents` | 2+ independent tasks | Manual parallel subagent dispatch |
+| `requesting-code-review` | Before merging or major milestones | Manual pre-PR review |
+| `receiving-code-review` | When receiving review feedback | Manual review response |
+| `finishing-a-development-branch` | After implementation complete | Overlaps with `finalise` decision matrix |
+| `verification-before-completion` | About to claim work is done | `finalise` Phase 1 verification |
+| `using-git-worktrees` | Starting isolated feature work | Manual git worktree workflow |
+| `diagnosing-superpowers` | Superpowers session went wrong | Diagnostic tool |
+| `writing-skills` | Creating/editing skills | Meta-skill |
+
+> **Note**: FitTrack retains its domain-specific `add-*` skills and `finalise`
+> because they encode project-specific conventions. Superpowers' `writing-plans`
+> step is prepended to each `add-*` workflow for formal specification.
+
+### `graphify`
+**Purpose**: Knowledge graph for the codebase (local tree-sitter parsing, zero API cost for code).
+**Usage**: `/graphify .` to build, `graphify query "<q>"` for scoped answers, `graphify update .` to refresh.
+**Output**: `graphify-out/` (graph.json kept, graph.html + GRAPH_REPORT.md generated)
+
+### `impeccable`
+**Purpose**: 61-rule frontend design anti-pattern detector.
+**Usage**: `/impeccable init` (first-time setup), `/impeccable audit`, `/impeccable critique`, `/impeccable polish`.
+**Status**: Installed, ready for UI redesign (see `plans/relive-3d-redesign.md`).
+
 ## Plugins
 
 ### `permission-promoter`
@@ -379,6 +427,17 @@ The headline line is deliberately progress-focused — it does not mirror every 
 1. Discovers sessions via `client.session.list()`, filters by non-empty `state.session.permission(id)` / `state.session.question(id)`
 2. Reconciles instantly on `permission.*` / `question.*` / `session.*` bus events (`api.event.on`), plus a 20s safety interval
 3. Hides rows for the displayed session (its blockers already show in the Progress widget)
+
+---
+
+### `superpowers` (V2 plugin)
+**Purpose**: Registers all 14 Superpowers SDLC skills.
+**Location**: `C:\Users\oradl\.config\opencode\node_modules\superpowers`
+**How it works**: Injects the `using-superpowers` bootstrap at session start.
+
+### `graphify` (V1-compatible hook)
+**Purpose**: Injects a reminder to consult the knowledge graph before grepping.
+**Location**: `.opencode/plugins/graphify.js`
 
 ---
 
@@ -616,13 +675,13 @@ fitness-tracker/
 │   │   ├── migrate.md
 │   │   ├── status.md
 │   │   └── test.md
-│   ├── skills/                # 5 skill definitions
+│   ├── skills/                # 17+ skills (5 FitTrack + 14 Superpowers + graphify + impeccable)
 │   │   ├── add-ai-analysis/
 │   │   ├── add-chart/
 │   │   ├── add-integration/
 │   │   ├── finalise/
 │   │   └── ssh-production-debugger/
-│   └── plugins/               # 3 plugins
+│   └── plugins/               # 4 plugins (3 TUI + 1 graphify hook)
 │       ├── permission-promoter.js
 │       ├── agent-progress.tsx
 │       └── agent-waiting.tsx
@@ -641,3 +700,10 @@ fitness-tracker/
 - [Skills](https://opencode.ai/docs/skills)
 - [Plugins](https://opencode.ai/docs/plugins)
 - [Permissions](https://opencode.ai/docs/permissions)
+
+### Installed Tools
+
+- [Superpowers](https://github.com/obra/superpowers) — SDLC methodology plugin with 14 skills.
+- [Graphify](https://github.com/Graphify-Labs/graphify) — Codebase knowledge graph. `pip install graphifyy`.
+- [Impeccable](https://github.com/pbakaus/impeccable) — Frontend design anti-pattern detector (61 rules).
+- [Awesome Claude Skills](https://github.com/ComposioHQ/awesome-claude-skills) — Reference directory (not installed).

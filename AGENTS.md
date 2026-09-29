@@ -1,6 +1,6 @@
 # FitTrack — Agent Context Guide
 
-> **Rule**: Update this file when changing the codebase. This file has grown beyond the original 10KB guideline — keep new additions concise and prefer CODEMAP files for detailed reference. If significantly expanding, consider moving content to `docs/`.
+> **Rule**: Update this file when changing the codebase. Keep additions concise; prefer CODEMAP files for detail. Move feature status to `plans/*.md`.
 
 ## Context Routing
 
@@ -10,13 +10,14 @@ Read only the sections relevant to your task:
 |-----------|--------------|
 | Backend API/service | Architecture, Conventions>Backend, Database, Critical Pitfalls |
 | Frontend component/page | Architecture, Conventions>Frontend, Critical Pitfalls |
-| Integration/sync | Architecture, Key Algorithms, Celery Tasks, Critical Pitfalls |
+| Integration/sync | Architecture, Key Algorithms, Conventions>Backend, Critical Pitfalls |
 | Database/model | Database, Conventions>Backend, Critical Pitfalls |
 | Debugging | Critical Pitfalls, Development Lessons, Agent Efficiency Rules |
 | Production issues (SSH) | Critical Pitfalls, Agent Efficiency Rules (use `@production` agent) |
-| New feature planning | Overview, Architecture, Planned/Incomplete |
-| Running any command/tests | @running (docs/RUNNING.md) |
-| OpenCode TUI/config | @opencode (docs/OPENCODE.md) |
+| New feature planning | Overview, Architecture, `plans/*.md` |
+| Running any command/tests | @running (`docs/RUNNING.md`) |
+| OpenCode TUI/config | @opencode (`docs/OPENCODE.md`) |
+| Historical bug reference | `docs/BUGS.md` (active bugs only; fixed bugs archived in `docs/BUGS-archive.md`) |
 
 ## Agent Efficiency Rules
 
@@ -47,6 +48,9 @@ Delegate to specialized agents when the task clearly fits their domain:
 | OAuth/integration/sync issues | `@sync-engineer` | "Whoop token refresh is broken — check @backend/app/services/whoop.py and @backend/app/integrations/whoop_client.py" |
 | Production issues (SSH) | `@production` | "Users reporting 500 errors — check backend logs on the Droplet and verify DB connectivity" |
 | Q&A / code explanation | `@ask` | "Explain the token refresh flow in @backend/app/services/connection_health.py" |
+| Adding a new AI analysis endpoint | `@add-ai-analysis` | "Add a Gemini-powered analysis endpoint for cycling power distribution" |
+| Adding a new chart | `@add-chart` | "Add a VO2max trend chart to the cycling page" |
+| Adding a new integration | `@add-integration` | "Add a Garmin Connect OAuth integration" |
 
 **When NOT to delegate**: Quick single-file edits, AGENTS.md updates, config changes, or tasks under 3 tool calls. Just do it directly.
 
@@ -65,7 +69,7 @@ FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates St
 2. **Services** (`services/`) — Business logic, accept `(db: AsyncSession, user_id, ...)`
 3. **Models** (`models/`) — SQLAlchemy 2.0 ORM with `Mapped` annotations, UUID PKs, inherit from `Base`
 
-**Frontend** (`frontend/src/`): Next.js App Router, all pages `'use client'`, React Query, `useAuthFetch` hook for JWT-injected fetch. See [`api/fetch.ts`](frontend/src/lib/api/fetch.ts:84). API client split by domain in `api/` with barrel at `api/index.ts`.
+**Frontend** (`frontend/src/`): Next.js App Router, all pages `'use client'`, React Query, `useAuthFetch` hook for JWT-injected fetch. API client split by domain in `lib/api/` with barrel at `index.ts`. See [`api/CODEMAP.md`](frontend/src/lib/api/CODEMAP.md).
 
 ### CODEMAP Files
 
@@ -75,6 +79,7 @@ Quick reference maps in each package — use these for orientation before readin
 - [`backend/app/schemas/CODEMAP.md`](backend/app/schemas/CODEMAP.md) — Pydantic schemas
 - [`backend/app/services/CODEMAP.md`](backend/app/services/CODEMAP.md) — Service functions
 - [`frontend/src/CODEMAP.md`](frontend/src/CODEMAP.md) — Pages, components, API clients, patterns
+- [`frontend/src/lib/api/CODEMAP.md`](frontend/src/lib/api/CODEMAP.md) — API client modules + lifting utilities
 
 ### Authentication (two systems bridged)
 
@@ -84,11 +89,9 @@ Quick reference maps in each package — use these for orientation before readin
 
 ## Key Algorithms & Thresholds
 
-See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption).
+See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, FFT, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
 
 ## Database (45 tables, UUID PKs)
-
-**Relationships (compact)**:
 
 | Parent | Children | Link |
 |--------|----------|------|
@@ -97,79 +100,25 @@ See [`docs/algorithms.md`](docs/algorithms.md) for full details on scoring algor
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
 | `LiftingSession` | `LiftingSet` | has many |
-| `Route` | `RouteSource` | has many |
+| `Route` | `RouteSource`, `RouteTag` (via `RouteTagging`), `Segment`, `RouteQuality` | has many / one |
+| `RouteCollection` | `RouteCollectionItem` | has many (manual + smart JSON rules) |
 | `WarmupTemplate` | `WarmupTemplateStep` | has many |
 | `TrainingPlan` | `TrainingPlanDay` | has many |
 | `Goal` | `GoalCheckIn` | has many |
-| `User` | `RideFuelPlan` | has many |
-| `User` | `CachedWeather` | has many |
-| `Route` | `RouteTag` | has many (via `RouteTagging` secondary) |
-| `Route` | `Segment` (§3.13 climb) | has many; `Segment` | `SegmentEffort` has many |
-| `RouteCollection` | `RouteCollectionItem` | has many (collections are manual + smart rules JSONB) |
-| `Route` | `RouteQuality` | has one (computed nightly; also has `quality_score` denormalized on Route) |
-| `User` | `StravaWebhookEvent` | has many (async queue for webhook processing)
+| `User` | `StravaWebhookEvent` | has many (async webhook queue) |
 
 ## Modal Intelligence Platform
 
-Modal serverless containers handle compute-heavy features that would be too expensive for the Celery worker. All Modal functions follow the same pattern: data flows in via JSON arguments, pure computation runs in the container, results flow back. No DB credentials in Modal containers — all DB I/O happens in Celery tasks or API endpoints.
+Serverless containers handle compute-heavy features. Data flows in via JSON args, pure computation runs, results flow back. **No DB credentials in Modal containers** — all DB I/O happens in Celery tasks or API endpoints. See `docs/algorithms.md` for modal-specific algorithms. Config: `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` in `.env` (Modal endpoints return 501 when unset).
 
-| Integration | File | Purpose |
-|------------|------|---------|
-| Video processing | `app/integrations/modal_client.py` | ffmpeg + Gemini Vision for lifting video analysis |
-| Route intelligence | `app/integrations/route_intelligence.py` | Terrain classification (flat/rolling/hilly/mountainous) incl. legacy Komoot profile alignment; route **similarity graph** (`compute_route_similarity_on_modal`) using the shared `route_matching` engine (mounted into the Modal image) |
-| Route road graph | `app/integrations/route_road_graph.py` | **Phase 2** — OSM road-graph map-matching in Modal (pyosmium + `fittrack-osm` Volume); snaps polylines to `road_graph.py` (mounted). Local pure engines: `app/services/road_graph.py`, `app/services/route_embedding.py`, glue in `app/services/road_matching.py`. Bootstrap: `python -m app.scripts.osm_bootstrap` |
-| Power models | `app/integrations/power_models.py` | 3-param critical power fitting (Morton CP/W'/Pmax — bounded at sprint durations; 2-param fallback returns 60s+ curve only), personalized VO2max from power-HR regression, adaptive CTL/ATL time constant fitting |
-| Weather analysis | `app/integrations/weather_analysis.py` | Weather-performance correlation, personalized weather coefficients, decoupling vs temperature analysis |
-| Segment intelligence | `app/integrations/segment_intelligence.py` | Gaussian-smoothed climb detection, DBSCAN segment clustering, personal difficulty prediction |
-| Cross-domain analysis | `app/integrations/cross_domain.py` | Sleep-performance prediction, cross-sport fatigue correlation, post-race retrospective |
-
-**Config**: `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` in `.env`. When unset, Modal endpoints return 501.
-
-## Celery Tasks
-
-| Task | Schedule | Notes |
-|------|----------|-------|
-| `sync_all_strava_activities` | 30 min | Incremental via `last_synced_at` watermark (−24h overlap). Also syncs Wahoo, backfills route links |
-| `sync_all_whoop_data` | 30 min | Incremental via watermark. Cycles, recovery, sleep, workouts, weight. Recovery second-pass bounded to incremental window (start → today) |
-| `sync_all_withings_data` | 30 min | Incremental via watermark (−24h overlap). Scale weigh-ins → `WeightLog` (`source="withings"`) with BIA body composition; needs `WITHINGS_CLIENT_ID/SECRET` |
-| `generate_health_alerts` | Daily 6AM UTC | HRV/sleep decline, respiratory rate elevation |
-| `compute_athlete_insights_nightly` | Daily 3AM UTC | Deterministic athlete-model insights (Feature 3/B-15) — six observed-coefficient insights upserted per user via `services/analytics.py` |
-| `refresh_weather_forecasts` | Daily 5AM UTC | Open-Meteo forecast cache per user home location. Also tags recent activities with historical weather after Strava sync |
-| `record_goal_checkins` | Weekly Mon 6AM UTC | Snapshots every active goal into `goal_checkins` (source auto, skips goals already checked in today). Also fires `goal_milestone` notifications on 50/75/100% crossings |
-| `weekly_plan_review` | Weekly Mon 6:15AM | Fires a `plan_review` notification per user with an active plan (FL2) |
-| `send_weekly_digest` | Weekly Mon 8AM | Weekly summary / `streak_milestone` / `deload_started` notifications (B-22) |
-| `send_plan_reminders` | Daily 7AM UTC | Fires a `plan_reminder` notification per user when today's active plan has a non-rest session (dedup per date) |
-| `send_event_day_notifications` | Daily 6:30AM UTC | Fires a `race_day` notification per user with an event today (dedup per event id) |
-| `send_event_countdown_notifications` | Daily 6:45AM UTC | `event_countdown` (1–7 days out, deduped per day), `taper_start`, and bad-weather `ride_weather` notifications |
-| `cleanup_old_data` | Weekly Sun 3AM | Stream cleanup disabled — streams retained indefinitely |
-| `sync_all_routes` | 2 hours | All providers with dedup. Komoot synced once (global creds), not per-user |
-| `auto_estimate_ftp_weekly` | Weekly Sun 4AM | For users with `auto_estimate_ftp=True` |
-| `check_stale_ftp` | Weekly Sun 4:15AM | Notifies `ftp_stale` on >10% / >20 W divergence or a missing FTP for `auto_estimate_ftp=False` profiles |
-| `check_cycling_prs_weekly` | Weekly Sun 4:30AM | Records lifetime cycling power PRs (`CyclingPowerRecord`) |
-| `fit_personalized_power_models` | Weekly Sun 5:30AM | Fits CP/W'/Pmax (Morton 3-param), personalized VO2max from power-HR regression, adaptive CTL/ATL time constants via Modal |
-| `analyze_weather_performance_weekly` | Weekly Sun 6AM | Analyzes weather-performance correlations via Modal: power vs temp, wind penalties, decoupling thresholds, personalized insights |
-| `analyze_segments_intelligence_weekly` | Weekly Sun 6:15AM | Clusters segments by gradient signature via DBSCAN, classifies climb types, predicts personal VAM/power/difficulty |
-| `analyze_cross_domain_weekly` | Weekly Sun 7AM | Cross-domain correlation: sleep-performance, lifting-cycling fatigue, race retrospective |
-| `recompute_ride_segments` | Weekly Sun 3:15AM | Rebuilds §3.13 climb segments + segment efforts/PRs for all cycling routes |
-| `classify_route_terrain` | Weekly Sat 2:30AM | Classifies terrain (flat/rolling/hilly/mountainous) for routes with elevation profiles. Uses Modal when configured, falls back to local |
-| `compute_route_quality_scores` | Weekly Sun 3AM | Recomputes route quality scores for all routes |
-| `recompute_route_similarity` | Weekly Sun 3:05AM | Modal similarity graph over each user's routes (local fallback) → caches `route_similarity` and non-destructively auto-merges `auto`-tier duplicates (audit-logged, undoable), re-blending road edge-Jaccard + embedding cosine when available. Runs before segment recompute so segments rebuild on merged routes |
-| `map_match_routes` | Weekly Sun 2:50AM | **Phase 2** — snaps route polylines to the regional OSM road graph via Modal (pyosmium; OSM extract cached in the `fittrack-osm` Modal Volume), stores `road_match` (edge set + coverage) and `road_embedding` features, then trains the per-user embedding metric from accumulated merge decisions. Graceful no-op when Modal/OSM unconfigured |
-| `backfill_activity_context` | Weekly Sun 3:30AM | §1.3 — precomputes `Activity.context` ride analytics for cycling activities missing it (rows predating sync-time compute or later stream backfills) |
-| `backfill_free_text_tags` | Weekly Sun 3:45AM | Tags `LiftingSession.notes` with Jev into `ai_tags`; no-op when Jev unset. Idempotent |
-| `backup_database` | Weekly Sun 2AM | pg_dump to BACKUP_DIR, cleanup >30 days |
-| `weekly_llm_analysis` | Weekly Sun 5AM UTC | Gemini API analysis of cycling stats. Skips if `GEMINI_API_KEY` not set |
-| `aggregate_video_analyses_weekly` | Weekly Sun 7:30AM UTC | Per-exercise video aggregation + injury-risk flags + RPE calibration + lifting-TSS backfill (B-27/B-29/B-30) |
-| `reap_stale_videos` | Hourly :15 | Re-queues lift videos left in `processing`/`queued` >45 min (a deploy killing the worker leaves them stuck), once; still stale on the next pass → `failed`. Policy in `services/video_lifecycle.py` |
-| `backfill_streams_for_all_activities` | Weekly Sat 3AM UTC | Backfills missing activity streams for all cycling activities |
-| `process_strava_webhook_events` | 5 min | Drains the `strava_webhook_events` queue oldest-first, with attempts/error tracking and retry-then-fail |
-| `reconcile_strava_activities` | Weekly Sun 4:30AM UTC | Heals drift (missed deletes/renames) against the Strava list within a bounded recent window |
-
-All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session()`) to avoid asyncpg cross-loop pool conflicts. Per-user failures are isolated via `await db.rollback()` in except blocks; successful users are committed immediately so watermarks survive mid-task crashes. The 4 sync tasks (`sync_all_strava_activities`, `sync_all_whoop_data`, `sync_all_routes`, `backfill_streams_*`) run under a task-level Redis lock (`_run_task_guarded`, fail-open on Redis outage) with Celery `expires` on their beat entries, and each per-user section acquires `sync:{user}:{provider}` so manual syncs and beat runs can't overlap.
-
-## Connection Health (BUG-072)
-
-`OAuthConnection` tracks `status` (`active`/`needs_reauth`), `consecutive_failures`, `last_error_at`, `last_error`, `last_refreshed_at`. Token refresh is centralized in `app/services/connection_health.py::refresh_connection()`: `SELECT … FOR UPDATE` row-lock, immediate commit of rotated tokens, typed error classification (`app/integrations/errors.py` — `PermanentAuthError` marks `needs_reauth`, `TransientSyncError` counts failures). Sync loops skip `needs_reauth` connections. The OAuth callback resets status to `active`. The UI surfaces this via Settings badges/reconnect + a global `SyncHealthBanner`.
+| Worker file | Purpose | Beat task |
+|------------|---------|-----------|
+| `route_intelligence.py` | Terrain classification + similarity graph | Saturday `classify_route_terrain` |
+| `route_road_graph.py` | OSM road-graph map-matching (Phase 2) | Sunday `map_match_routes` |
+| `power_models.py` | CP/W'/Pmax + personalized VO2max + adaptive CTL/ATL | Sunday `fit_personalized_power_models` |
+| `weather_analysis.py` | Weather-performance correlation | Sunday `analyze_weather_performance_weekly` |
+| `segment_intelligence.py` | Climb detection + DBSCAN clustering | Sunday `analyze_segments_intelligence_weekly` |
+| `cross_domain.py` | Sleep-performance + cross-sport + race retrospective | Sunday `analyze_cross_domain_weekly` |
 
 ## Conventions
 
@@ -180,70 +129,45 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 - **No raw SQL**: Use SQLAlchemy `select()` constructs
 - **Service signature**: `(db: AsyncSession, user_id: UUID, ...)` — services don't use FastAPI DI
 - **Structured logging**: JSON in production, human-readable in debug. Correlation IDs via middleware.
-- **Rate limiting**: auth/`/sync-user` requests go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), shared across workers, fail-open on Redis outage). A slowapi `Limiter` is instantiated but **not** registered as middleware, so no global per-IP cap is actually enforced (SEC-03).
-- **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 - **Encryption**: [`EncryptedString`](backend/app/services/encryption.py) TypeDecorator for OAuth tokens
-- **LLM analysis**: `GEMINI_API_KEY` config for Gemini-powered cycling analysis (optional — task skips gracefully if unset)
-- **Jev decision layer**: `TYPESAFE_API_KEY` enables TypeSafe Jev (optional — every call site no-ops when unset; best-effort, never blocks a write). Phases: (1) tag `LiftingSession.notes` → `ai_tags`; (2) tag `Activity.name` → `Activity.context['tags']` purpose; (3) arbitrate the route-duplicate **review tier** (`route_service._apply_route_arbitration`); (4) arbitrate the ambiguous activity↔lifting-session match band (`strava/linking._arbitrate_link`). Weekly backfill: `backfill_free_text_tags`. What is sent: [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md); plan: [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
-- **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation — never import `async_session_factory` directly in tasks
+- **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation
+- **Whoop API reference**: https://developer.whoop.com (not vendored locally)
+- **Jev decision layer**: `TYPESAFE_API_KEY` enables TypeSafe Jev. See [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md) + [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
+- **Rate limiting**: auth/`/sync-user` go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), fail-open on Redis outage). slowapi `Limiter` instantiated but **not** registered as middleware (SEC-03).
+- **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 
 ### Frontend
 - **Client-side rendering**: All pages `'use client'` with React Query
 - **Query keys**: `['lifting-sessions']`, `['activities', filters]`, etc. — string arrays, domain-prefixed
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
 - **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`, `routes/`, `goals/`, `dashboard/`, `health/`, `calendar/`, `activities/`, `settings/`, `sync/`
-- **Responsive sidebar**: Mobile hamburger menu via SidebarProvider context
-- **Responsive mobile**: Grids use `grid-cols-1 sm:grid-cols-N` pattern; `pt-20`/`pb-24` clearance for fixed hamburger + bottom tab bar (`MobileBottomNav` in `Sidebar.tsx`); calendar has mobile agenda view (`md:hidden`); header/tab/filter buttons use `min-h-[44px]`; Routes sidebar is desktop-only with a mobile `Organize` drawer
-- **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm). Use instead of hand-rolling modals
-- **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only
+- **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm)
+- **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only. **API calls must be network-only** (not cached).
 - **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages
-- **File uploads**: [`apiUpload`](frontend/src/lib/api/fetch.ts) for multipart/form-data (GPX, FIT imports)
-- **Adding a new page**: Create `app/(app)/yourpage/page.tsx` (`'use client'`), add nav item in [`Sidebar.tsx`](frontend/src/components/Sidebar.tsx:8), add API client in `lib/api/`
-- **Adding a new API client**: Create `lib/api/yourDomain.ts`, export functions using `useAuthFetch`, add barrel export in `lib/api/index.ts`
-- **Auth flow**: `jwt` callback calls `POST /api/v1/auth/sync-user` → `token.backendToken` → `session()` callback copies to `session.backendToken` → [`useAuthFetch`](frontend/src/lib/api/fetch.ts:84) injects Bearer header
-- **Local dev OAuth**: browse `https://dev.oliradlett.co.uk/fittrack` (hosts file → 127.0.0.1). Backed by gitignored `infra/Caddyfile.local` + `docker-compose.override.yml` (local TLS via Caddy internal CA, root cert installed in Windows store). Strava suffix-matches its single callback domain so one app serves dev + prod. Start the stack via `python fittrack.py up` — a bare `docker compose up` omits `docker-compose.dev.yml`, producing a mount-less frontend that serves stale chunks
 
 ## Critical Pitfalls
 
-1. **Celery tasks must use `asyncio.run()`** with a fresh DB session — workers are synchronous
-2. **NextAuth `jwt` callback token sync timing**: The `jwt` callback in `frontend/src/lib/auth.ts` calls `POST /api/v1/auth/sync-user` to mint backend JWTs. It uses a backoff (`SYNC_RETRY_BACKOFF_S = 3600s`) so a failing backend isn't hammered on every session check. If sync fails, `token.backendToken` stays stale/expired, causing every API call to 401 until the next retry window (up to 1 hour). The `signIn` callback only checks the email allowlist — it does NOT call sync-user.
+1. **Celery tasks must use `asyncio.run()`** with a fresh DB session via `task_session()` — workers are synchronous
+2. **NextAuth `jwt` callback token sync timing**: Calls `POST /api/v1/auth/sync-user` with a backoff (`SYNC_RETRY_BACKOFF_S = 3600s`). If sync fails, `token.backendToken` stays stale → every API call 401s until the next retry window (up to 1 hour). The `signIn` callback only checks the email allowlist — it does NOT call sync-user.
 3. **`docker compose exec` doesn't work**: Use `python fittrack.py exec backend <command>`
 4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
 5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
-6. **Wahoo API returns dict-wrapped responses**: Always check `isinstance(response, dict)` and unwrap
-7. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/fittrack*` → frontend (with `/api/auth*` redirected to `/fittrack` for NextAuth basePath), `/api/v1/*` → backend, `/health` → backend
-8. **Alembic numbering**: Revisions are sequential `"001"`→head (`079`). ⚠️ Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"` (chain is 002→004→005, intact; do NOT rename the file). Trust `revision`/`down_revision` headers, not filenames
-9. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
-10. **fitparse/reportlab/boto3**: New dependencies — rebuild backend container after adding
-11. **`fittrack.py` dev mode only**: Uses `docker-compose.dev.yml` for hot-reload frontend. Use `--prod` flag for production overrides (GHCR images, no dev command)
-12. **Caddyfile has no `tls internal`**: Caddy auto-detects localhost → self-signed, real domains → Let's Encrypt. Do NOT add `tls internal` — deploy workflow resets this file every push
-13. **`GEMINI_API_KEY` optional**: The weekly LLM analysis task skips gracefully if the key is not set. On-demand analysis returns 400 if key is missing.
-14. **`INTERNAL_API_SECRET` required**: Set in `.env` to protect `/sync-user` endpoint. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
-15. **Frontend Dockerfile ENTRYPOINT**: `node:20-slim` has `docker-entrypoint.sh` that mangles exec-form CMD. The Dockerfile overrides with `ENTRYPOINT ["node", "server.js"]` + `CMD []`. Do NOT revert to `CMD ["node", "server.js"]` without the ENTRYPOINT override.
-16. **`downloadRouteGpx()` uses relative URL**: Was using `NEXT_PUBLIC_API_URL` — fixed to use relative URL like other API clients. Verified at `frontend/src/lib/api/routes.ts:73`.
-17. **Recharts `<Brush>` with category XAxis**: Always pass `ariaLabel`, explicit `startIndex`/`endIndex`, and `tickFormatter` to `<Brush>`. Without these, Recharts renders literal "undefined" labels and NaN geometry. See `Chart.tsx:renderBrush()`.
-18. **Live-sync idempotency contract**: The live lift tracker relies on backend dedupe — `POST /sessions` collapses duplicates by `live_key`; `POST .../sets` returns the existing row for a repeated `(session_id, client_id)`. The frontend must always send these keys (`useLiveSession.ts`) and map real set ids from create responses (never fake "synced" markers — undo must delete remotely). Migration `034`.
-19. **Dev compose mounts only `backend/app` + `backend/alembic`**: `tests/` is baked into the image, so `fittrack.py exec backend pytest tests/...` runs stale tests after editing them. Rebuild the image or run pytest from the host with `TEST_DATABASE_URL=postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test`.
-20. **SSE backfill sessions own their commits**: The Strava/Whoop backfill endpoints create their session via `async_session_factory()` (never `get_db`), so anything only `flush()`ed is rolled back when the endpoint closes it. The generators must `await db.commit()` explicitly (Whoop per-chunk, Strava at the end) — see BUG-073/074.
-21. **Token refresh commits immediately**: `refresh_connection()` commits rotated tokens/health state on its own so a later per-user rollback can't discard them. It also `SELECT … FOR UPDATE`s the row — don't "optimise" that away or strict-rotation providers (Wahoo) can invalidate the loser's refresh token.
-22. **Webhook POSTs are queued, not processed**: `POST /webhooks/strava` only HMAC-verifies (empty secret → 503) and persists to `strava_webhook_events`; the `process_strava_webhook_events` Celery task drains the queue. Add new event handling in `app/services/strava/webhook_queue.py`, not inline in the API handler.
-23. **ServiceWorker must not cache API responses**: The SW's `fetch` handler was caching API GETs and returning `undefined` when network failed (no cached entry), causing "non-Response value 'undefined'" errors. API calls are authenticated/user-specific. Fix: use `event.respondWith(fetch(request))` network-only for `/api/v1/` paths. Always return a `Response` object (e.g. `new Response(null, { status: 503 })`) in `.catch()` — never `undefined`. Bump `CACHE_NAME` to force SW update on deployed fixes.
-24. **React Query `enabled: !!token` required for auth queries**: Queries that need a JWT will fire before `session.backendToken` is ready, causing 401s that SWs swallow into silent failures. Always add `enabled: !!token` to `useQuery` calls that pass a token to the API.
-25. **Remove IntersectionObserver for essential queries**: Lazy-loading via `enabled: visibleSections.has('powerCurve')` causes intermittent data not loading (observer race conditions, scroll timing). Only use it for genuinely optional/expired data (VO2max, FTP history). Core power data, daily TSS, and weight trends should load eagerly.
-26. **Schema field changes require 3-layer updates**: Adding a field to a Pydantic summary schema requires changes in: (1) the schema class `app/schemas/`, (2) the API endpoint's manual model construction in `app/api/`, and (3) the frontend type interface in `src/lib/api/types/`. If the endpoint uses `.model_validate()` no API change needed, but manual construction does.
-27. **Whoop dates must use local bedtime, not UTC wake-up**: Whoop API returns cycle/sleep timestamps in UTC with a `timezone_offset` field. The correct date is `cycle.start + timezone_offset` (local bedtime), NOT `cycle.end` in UTC (which shifts +1 day) or `cycle.start` in UTC (wrong for cycles crossing UTC midnight). See `_local_date_from_utc()` in `app/services/whoop.py`.
-28. **FastAPI route ordering — dynamic `/{route_id}` before static routes causes 422**: A `GET /{route_id}` route registered before `GET /tags` shadows it — FastAPI matches `/tags` to `/{route_id}` with `route_id="tags"`, which fails UUID conversion → 422. Always register all static single-segment routes (`/tags`, `/collections`, `/quality`, `/duplicates`) before any `/{param}` dynamic route in the same router.
-29. **Trailing-slash redirect + SW**: List endpoints at `@router.get("/")` with prefix `/api/v1/<resource>` create paths with trailing slashes (e.g. `/api/v1/routes/`). A request to `/api/v1/routes` (no slash) gets a 308 redirect. The SW's `fetch(request)` can fail following redirects in some browsers (NetworkError). Either use the trailing slash in the frontend client or add `.catch()` to the SW pass-through.
-30. **New models must be registered in `app/models/__init__.py`**: A model class that isn't imported into `app/models/__init__.py` is invisible to `Base.metadata.create_all()`, so its table is never created in the test fixture / fresh DB → `UndefinedTableError` at runtime. This silently passes when a full migration runs but breaks `create_all`-based tests. This bit both `Exercise` (exercise.py) and `LiftVideo` (lifting.py, §1.1). Always add the model to the `__init__` import **and** to `__all__`.
-31. **Live Lift `mergeWithStorage` invariants**: `flush()` snapshots state, then after each successful network call folds progress into the freshest localStorage via `mergeWithStorage(working, processedDeletes)`. Two invariants must hold: (a) remote ids already deleted by this flush (`processedDeletes`) must be excluded from the merged `pendingDeletes`, otherwise every completed delete is re-queued from the not-yet-updated storage and re-issued forever (404 → stuck finish, BUG-089); (b) if `stored.startedAt !== working.startedAt` the snapshot is stale (session discarded/replaced/resumed mid-flush) — return `null` to abort, never `working`, or the old session clobbers the new one (BUG-090). Step 3 treats `DELETE` 404 as success (row already gone); `apiFetch` attaches `err.status` for this. Regression tests: `frontend/src/__tests__/live-session-sync.test.tsx`.
-32. **Modals must portal to `document.body`, never render inside `<main>`**: `Modal` sets `<main inert>` while open — any dialog rendered inside `<main>` becomes inert too (all clicks/inputs dead: no scroll, broken forms, dead X button). Always `createPortal(dialog, document.body)`. Scroll-lock must cover `<main>` (the real `overflow-y-auto` scroll container), not just `body`. See `frontend/src/components/ui/Modal.tsx`.
-
-33. **Modal remote workers must import only stdlib at module scope**: each compute integration (`power_models`, `weather_analysis`, `segment_intelligence`, `cross_domain`, `route_intelligence`) decorates a module-global worker, and Modal imports that whole module inside a bare `debian_slim` image (+`numpy` for power/route only). An `app.config` import at module scope drags in `pydantic_settings`, which isn't installed → every container crash-loops with `ModuleNotFoundError` and the job silently produces nothing (all 5 weekly jobs were dead for weeks). Keep app/config imports inside functions (`_modal_configured`). Guarded by `tests/test_modal_workers.py::test_worker_modules_import_without_config_or_pydantic`.
-34. **Every module a Modal function imports must be mounted into its image**: `_get_modal_image` (`modal_client.py`) `add_local_file`s each analysis module to `/root/app/integrations/`. `pose_analysis.py` now imports `person_tracking.py` (multi-person lifter selection, T1) and `bar_tracking.py` (bar-path metrics, F1) — all must be mounted or the container raises `ImportError` and every video fails. Add new integration modules to that mount list, not just the imports. Add any **new third-party runtime dep** of a mounted module to `_MODAL_PIP_PACKAGES` — a missing dep only fails at call time in the container (`onnxruntime` cost every pose analysis; 2026-09-27). Guarded by `tests/test_modal_workers.py::test_mounted_modules_third_party_imports_are_installed`.
-35. **Lift-video multi-person is BENCH-ONLY and on by default** (`VIDEO_MULTI_POSE_ENABLED=true`): `extract_pose_track(num_poses=…)` tracks each person and `select_lifter` picks the lifter (coverage + movement + bench posture prior + optional bar coupling). Validated on real footage: with `num_poses=1` MediaPipe tracked the upright **spotter** for 375/375 frames (0 horizontal) on a bench, while `num_poses=2` + posture prior picked the horizontal lifter. For every other lift multi-pose **fragments** the track and regresses analysis (a clean 150 kg squat read 100 at 1 vs 75 at 2), so `modal_client._process` gates it to `route_exercise(user_ex)=="Bench Press"`. `reselect_lifter()` re-picks once the exercise is known. See [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md).
-36. **`extract_pose_track` lists are index-aligned**: `world` is `None`-padded to the same length as `landmarks`/`timestamps` (a missing world frame used to shift every later index). `bar_velocity_from_world` interpolates `None` frames via `_world_signal`; consumers must guard on `any(w is not None for w in world)`, never `if world:`.
-37. **Lift-video Modal worker stays CPU-only; don't raise `VIDEO_POSE_FPS` without an eval**: benchmarked on the real Modal path (8-rep squat) — the pipeline is CPU-bound (ffmpeg decode + OpenCV overlay render), so a GPU worker (L4/T4) is no faster than CPU (88–155 s vs 92 s), and the MediaPipe GPU delegate produced **non-reproducible** peak velocity across worker types (0.41 on L4 vs 0.209 on T4 for the same clip). Keep `VIDEO_MODAL_GPU=""` + `VIDEO_POSE_FPS=10`. `detect_reps_from_pose` now scales its frame windows by `fps` (was silently 10 fps-only — a 30 fps track smoothed ~3× less and dropped reps 8→7), so raising fps is *safe for rep count* but needs a full eval (rep MAE + velocity) first.
-38. **Bilateral weights are per-arm, always**: dumbbell / dual-handle-cable moves log ONE implement (`PER_ARM_EXERCISES` + `weight_convention()` in `exercise_db.py`, migration 072 fixed history). Ambiguous generics (`Bicep Curl`, `Shrug`) stay `total`. New bilateral exercises go in the set, not in ad-hoc halving.
+6. **Alembic numbering**: Revisions are sequential `"001"`→head. Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"`. Trust `revision`/`down_revision` headers, not filenames
+7. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
+8. **Token refresh commits immediately**: `refresh_connection()` commits rotated tokens/health state on its own so a later per-user rollback can't discard them. It also `SELECT … FOR UPDATE`s the row — don't "optimise" that away
+9. **Webhook POSTs are queued, not processed**: `POST /webhooks/strava` only HMAC-verifies (empty secret → 503) and persists to `strava_webhook_events`; the `process_strava_webhook_events` Celery task drains the queue. Add new event handling in `app/services/strava/webhook_queue.py`, not inline
+10. **ServiceWorker must not cache API responses**: Use `event.respondWith(fetch(request))` network-only for `/api/v1/` paths. Always return a `Response` object in `.catch()` — never `undefined`. Bump `CACHE_NAME` to force SW update on fixes
+11. **React Query `enabled: !!token` required for auth queries**: Without this, queries fire before `session.backendToken` is ready, causing 401s that SWs swallow
+12. **Remove IntersectionObserver for essential queries**: Lazy-loading via `enabled: visibleSections.has('powerCurve')` causes intermittent data not loading. Core power data, daily TSS, and weight trends should load eagerly
+13. **FastAPI route ordering**: Register static single-segment routes (`/tags`, `/collections`, `/quality`, `/duplicates`) **before** any `/{param}` dynamic route in the same router, else `422`
+14. **New models must be registered in `app/models/__init__.py`**: A model class not imported into `__init__.py` is invisible to `Base.metadata.create_all()` → `UndefinedTableError` at runtime. Add to both the import **and** `__all__`
+15. **Modals must portal to `document.body`**: `Modal` sets `<main inert>` while open — rendering a dialog inside `<main>` makes it inert too (clicks/inputs dead). Always `createPortal(dialog, document.body)`
+16. **Modal remote workers must import only stdlib at module scope**: Each compute integration decorates a module-global worker; Modal imports the whole module in a bare image. An `app.config` import at module scope drags in `pydantic_settings` (not installed) → crash-loop. Keep app/config imports inside functions (`_modal_configured`). Guarded by `tests/test_modal_workers.py::test_worker_modules_import_without_config_or_pydantic`
+17. **Modal module mounting**: Every module a Modal function imports must be mounted into its image via `_get_modal_image` `add_local_file`s in `modal_client.py`
+18. **`extract_pose_track` lists are index-aligned**: `world` is `None`-padded to match `landmarks`/`timestamps`. Never use `if world:` — guard on `any(w is not None for w in world)`
+19. **Bilateral weights are per-arm, always**: Dumbbell/dual-handle-cable moves log ONE implement (`PER_ARM_EXERCISES` + `weight_convention()` in `exercise_db.py`, migration 072). New bilateral exercises go in the set, not ad-hoc halving
+20. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/fittrack*` → frontend (with `/api/auth*` redirected to `/fittrack` for NextAuth basePath), `/api/v1/*` → backend, `/health` → backend
+21. **Purge migrations must use provenance, not a mutable field**: Migration 085 deleted legacy Wahoo rows by filtering on `activities.source = 'wahoo'`, but rows that had already been merged with Strava had `source` flipped to `'strava'` — so 28 mislabelled rows survived. Filter on `EXISTS (FROM activity_sources WHERE provider = 'wahoo')` instead — migration 087 does exactly that, fixing the 28 survivors forward (085 is already applied to `prod`, so editing it would be a no-op). Migration 087 also added `sport_type` to `_MERGE_FIELDS` so a higher-priority provider (Strava) correcting a lower-priority one (Wahoo) happens at sync time, not just in a one-off migration.
 
 ## Development Lessons
 
@@ -252,42 +176,22 @@ All tasks use `asyncio.run()` with a fresh engine per invocation (`task_session(
 3. **Check logs after sync/service changes**: `python fittrack.py logs backend --tail 30`
 4. **Quick backend checks**: `python fittrack.py exec backend python -c "from app.models.activity import Activity; print(Activity.__table__.columns.keys())"`
 5. **OAuth callbacks need `user_id`**: Callback runs server-side without session — look up user explicitly via JWT state parameter
-6. **Stash other sessions' files before branch switches**: Before `git checkout` to another branch, run `git status`. If another session's files are modified, `git stash push <specific_files` (not `git stash -u`) to preserve them. Never commit files you didn't modify in this session.
+6. **Stash other sessions' files before branch switches**: `git stash push <specific_files>` (not `git stash -u`)
 
-## Planned / Incomplete
+## Active Planning
 
-- **Push planned cycle + route to Wahoo computer** — **implemented** (migration `078`). Pushes a cycle `TrainingPlanDay` to Wahoo as a scheduled structured workout +/o its route, so it appears on the ELEMNT. Backend: `services/wahoo_push.py` (orchestration), `services/wahoo_plan_file.py` (`plan.json` builder), `services/fit_course.py` (hand-rolled FIT course encoder), `wahoo_client` write methods; API `POST/DELETE /training-plans/{plan_id}/days/{day_id}/push-to-wahoo`. Frontend: `WahooPushModal` (workout/route checkboxes) via `WeeklyView` expanded panel. `wahoo_*` state columns on `training_plan_days` + `routes`. ⚠️ Requires write OAuth scopes (`plans_write workouts_write routes_write`) — OAuth scopes updated, but **existing connections must reconnect**; 403 → reconnect prompt. Design doc: [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md).
-- **Strength-video R2 uploads** — **fully implemented, R2-only** (presigned PUT/GET/delete, CORS bootstrap via `python -m app.scripts.r2_bootstrap`, boto3 dep; URL/embed mode removed 2026-09-09, migration 048). User must create a Cloudflare R2 bucket + token and populate the `R2_*` env vars. Walkthrough: [`docs/R2_SETUP.md`](docs/R2_SETUP.md). Until then upload endpoints return 501.
-- **Lift-video tracking v2 (§3.18)**: In progress — [plan](plans/lift-video-tracking-v2.md). T0 done (per-frame records + `world`/`landmarks` alignment fix). T1 done + validated on real footage: pure multi-person tracker + lifter selection (`app/integrations/person_tracking.py`) with manual override (`lifter_selected`/`lifter_selection_json`, migration 068, PATCH `lifter_track_id`, "who's lifting?" UI); bench-only gate (`VIDEO_MULTI_POSE_ENABLED`, default on). F1 core: bar-path metrics (`app/integrations/bar_tracking.py`, `bar_path_json`, migration 069) from the pose-proxy track (detector-agnostic; T3 will supply a real bar track). F3 core: sticking-point detection (`_sticking_point` in `bar_velocity_from_world`, stored per-rep in `rep_timing_json`, "Stick" column in the UI). T2: benchmarked — GPU **not** adopted (CPU-bound pipeline; GPU-delegate velocity non-reproducible across worker types), `detect_reps_from_pose` made fps-robust, squat lean threshold 10→30°. T5: persisted pose track (`app/integrations/pose_track.py`, `pose_track_r2_key`/`analysis_version`, migration 070, `stream-url?variant=track`). F2 core: interactive `PoseCanvas` (2D skeleton + bar-path trail) and `Pose3D` (three.js 3D skeleton from world landmarks, PiP), both synced to the playhead via `lib/pose/track.ts` and toggles in `VideoEmbed`. F2 remainder (velocity graph, per-rep chapters) done. **T3 (2026-09-25)**: zero-shot (YOLO-World), classical (Hough + `detect_bar_ellipse`), and CoTracker3 propagation were all evaluated and **rejected** against the 232-frame human plate set (YOLO-World latches onto static equipment; CoTracker is only ~4% better than the pose proxy across 29 clips); the per-clip offset correction is kept. Retrained: `train_bar_detector.py prepare` (232 human frames + 1,500 synthetic → 2,394/349) + `train --epochs 60` (Modal T4, yolov8n→ONNX). Results: frame-level held-out recall@0.5 0.971; **clip-level holdout (`holdout_bar_detector.py`) recall 1.000 / IoU 0.927 on 6 unseen clips**; **end-to-end bar-position error 0.063 vs 0.259 for the pose proxy (4.1×, beats the proxy on 28/29 clips)**. vs classical 18% and YOLO-World zero-shot ~23% IoU. **Deployed** (ONNX on R2 at `models/bar_detector.onnx`; `VIDEO_BAR_DETECTOR_MODEL` set in prod). **F1 real-bar metrics**: efficiency/drift/consistency everywhere; **bar-over-midfoot + net lateral** need a side view, **bar tilt** a front/back view; **3/4 views** (~71% of clips) use the two-plate midpoint as the bar centre (option A, [plan](plans/bar-tracking-three-quarter.md)) and are flagged perspective-approximate (`lateral_basis`). Two robustness guards from the deploy: the Modal-image dep test (pitfall #34) and the hourly `reap_stale_videos` reaper.
-- **Metric 3D bar path** ([plan](plans/bar-tracking-3d.md), merged #179 + #182; follow-up `feature/video-lens-picker`): geometry + wiring done, no UI. Pure-NumPy `app/integrations/bar_tracking_3d.py` nested as `bar_path["metric_3d"]`; focal probed per clip → `LiftVideo.camera_json` (migration `084`); ONNX detections gated + carry raw `bar_x`/`bar_y` + `barbell_w/h`. **Focal sources** (precedence tags > clip > lens > barbell): tags absent on real footage, so `LiftVideo.camera_lens` (migration `086`, uploader + edit modal) maps to nominal OnePlus 11 focals (1222/713/2444) with `focal_source` provenance; barbell-length fallback when it fires.
-- **Komoot client rework**: Done — Basic Auth fallback, v007 API (was Phase 7, archived)
-- **New integrations**: Garmin Connect, TrainingPeaks, Zwift, Apple Health — requires OAuth app registration
-- **Pace Zones for Running**: Jack Daniels model — skipped (user only cycles)
-- **Activities page overhaul**: Complete — Phase A (context endpoint + enriched cards + connections), Timeline tab, Patterns tab, reverse links done. **Phase B done (§1.2, 2026-09-08)** — `?include_context=true` serves the §1.3 cached `ride_context` inline (zero extra queries; load position stays on-demand).
-- **Background activity analysis** — **done (§1.3, 2026-09-08)**: ride analytics (zones, decoupling, climbing, top speed, TSS breakdown) precomputed at Strava sync time + weekly `backfill_activity_context` into `Activity.context`; `/activities/{id}/context` reads the cache (recomputes if FTP changed). Load position (ATL/CTL/TSB) deliberately stays on-demand (moving window)
-- **Route matching Phase 2 (OSM road graph + embeddings)** — **built** (`plans/route-matching-phase2.md`): weekly `map_match_routes` snaps routes to the regional OSM graph (Modal + pyosmium + `fittrack-osm` Volume) → `Route.road_match` / `road_embedding`, and trains a per-user metric (`RouteMatchMetric`). Requires a one-off `python -m app.scripts.osm_bootstrap europe/united-kingdom great-britain`; until then matching stays Phase-1 geometric. **Merges carry a `merge_kind`** (`identical` / `variant`, migration 083): only `identical` merges train the metric — variant merges (e.g. loop/lap variants) stay merged but are excluded so they never widen matching. Laps/loop-variant identity is designed in [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md). Ordered-HMM navigation-grade matching deferred.
-- **Routes redesign (Phase 8A complete)**: Tags, collections, quality scoring, effort estimation, weather for routes, smart collections. [Full plan](plans/routes-redesign.md). **Phase 8B: Route intelligence done** — terrain classification (flat/rolling/hilly/mountainous), smart collection rules for terrain type. [Modal expansion plan](plans/archive/modal-expansion.md). (Fréchet matching + kNN effort prediction removed 2026-09-25, never consumed.) Phases 3-4: calendar planner integration, social popularity, full E2E tests.
-- **Modal Intelligence Platform — COMPLETE**: All 5 phases implemented. Route intelligence (terrain classification), power models (CP/W'/Pmax Morton 3-param, personalized VO2max, adaptive CTL/ATL), weather-performance correlation, segment intelligence (DBSCAN clustering, climb classification, difficulty prediction), cross-domain analysis (sleep-performance, cross-sport fatigue, race retrospective). Weekly Celery tasks via Modal + stored results in DB. (Dead Fréchet-similarity/kNN-effort branches removed 2026-09-25 — effort estimation is physics-based via `/routes/{id}/effort-estimate`.)
-- **Full E2E tests**: Playwright login flow, activity sync, lifting session creation, **routes page** (tagging, collection creation, GPX upload, effort estimate)
-- **3D visualisations (§3.16)**: Done; **Relive redesign 2026-09-24** — full-screen Theater overlay (launcher on the activities page, `?replay=<id>` deep link), real bike model (`lib/bike`, 150K tris / 2.27MB meshopt GLB via `npm run bike:optimize`), road ribbon + effort colouring (`lib/road`), gradient sky/fog/ACES + time-of-day lighting (`lib/sky`, `lib/sun`), chase/drone/cockpit cameras, highlight auto-tour (`lib/highlights`), ghost racing, poster/clip export. **2026-09-25 polish**: terrarium terrain on by default + optional Esri satellite drape (`lib/imageryTiles`), real shadows + bloom (`EffectComposer`), course profile scrubber, on-road highlight markers, weather-driven sky/fog (from `Activity.weather_*`), keyboard shortcuts (space / arrows / 1-4), offline harness at `/fittrack/dev/replay` (fixtures gitignored). **2026-09-28-29**: cinematic auto-orbit (speed-adaptive, banking, aspect-adaptive framing via PCA), broadcast HUD, weather particles (rain/snow/haze), speed streaks, depth-of-field (BokehPass), dynamic auto-camera. See `plans/relive-3d-redesign.md`. Ride-replay fly-through (three.js `Replay3D` + `lib/replay`) **and** the 3D route view (three.js `Route3D` + `lib/route3d` draping the route over a keyless terrarium DEM (`lib/terrainTiles`, AWS Open Data) — free, keyless; toggle in RouteDetailPanel Map & Profile). Side-by-side **synced** 3D comparison in the compare modals still deferred — see the archived plan (`plans/archive/3d-ride-view-enhancements.md`)
-- **Frontend component tests**: Vitest + RTL infrastructure exists (`vitest.config.ts`, tests in `src/__tests__/`). Expand coverage for charts, pages, API clients.
-- See [`plans/archive/audit-changelog-2026-08-18.md`](plans/archive/audit-changelog-2026-08-18.md) for full debugging reference
+Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md).
 
 ## Git & Deployment Strategy
 
-**Model: `main` is the trunk, `prod` deploys.** All features/fixes land on `main`; `prod` is the single branch that auto-deploys (GitHub Actions `Deploy` workflow, triggered when CI completes on `prod`). `main` is merged into `prod` **only** to ship a release.
+**Model**: `main` is the trunk, `prod` deploys. All features/fixes land on `main`; `prod` auto-deploys via GitHub Actions. `main` is merged into `prod` **only** to ship a release.
 
-**Rules (these prevent the history mess from Aug 2026):**
-
-1. **Feature branches PR into `main`, never directly into `prod`.** `prod` only ever receives merges of `main`. Direct `feature → prod` merges (PRs #2/#4/#5) created diverging topologies that are painful to reconcile.
-2. **Deploy = merge `main` into `prod` and push.** That single push triggers CI on `prod` → the `Deploy` workflow builds GHCR images and redeploys the Droplet. Do not merge directly to `prod` for anything other than a release.
-3. **Keep `main` and `prod` content-identical between releases.** After a release, `main` and `prod` should have the same tree (`git diff origin/main origin/prod` empty). If they drift, reconcile before the next release — the drift compounds.
-4. **Prefer squash or simple merge commits over long chains of interleaved merges.** Avoid merge commits that only re-merge already-merged content (e.g. `Merge sync-hardening into main` followed by `Merge main into prod` where both carry the same feature commits).
-5. **Before pushing a release, check the delta**: `git log --oneline origin/main..origin/prod` and `git diff --stat origin/main origin/prod` — the diff should be exactly the intended release content, nothing else.
-6. **CI (`test.yml`) runs on `push`/`pull_request` for `[main, prod]`.** If CI on a `prod` push is stuck `queued` (GitHub Actions runner availability), the deploy is blocked — do not try to force it; monitor `gh run watch <id>` or the Actions tab. (Aug 2026: runners queued 50+ min intermittently.)
-7. **`prod` is a release branch, not a working branch.** Never commit directly to it. Commit locally, PR into `main`, then merge `main` → `prod` to ship.
-8. **Fetch before pull/merge**: `git pull` fails when the working tree has uncommitted changes (yours or another session's). Before fetching or pulling, run `git status` and `git fetch origin` first. If another session's files appear as modified, stash only those files (`git stash push <file1> <file2>`) before rebasing/merging, then `git stash pop` afterwards. Never `git stash --include-untracked` blindly — untracked files may belong to a running task in another session.
-9. **Always switch back to `main` after a deploy.** After merging `main` into `prod` and pushing, immediately `git checkout main && git pull origin main`. Staying on `prod` invites accidental commits to the release branch. The only legitimate reason to be on `prod` is during the brief merge+push window.
+1. **Feature branches PR into `main`**, never directly into `prod`.
+2. **Deploy = merge `main` into `prod` and push.** Triggers CI → Deploy workflow → GHCR images → Droplet.
+3. **Keep `main` and `prod` content-identical** between releases.
+4. **Before pushing a release**: `git log --oneline origin/main..origin/prod` + `git diff --stat origin/main origin/prod`.
+5. **`prod` is a release branch, not a working branch.** Commit locally, PR into `main`, then merge `main` → `prod` to ship.
+6. After deploying: `git checkout main && git pull origin main`.
 
 ## Quick Reference
 
@@ -303,13 +207,26 @@ python fittrack.py migrate         # Apply migrations
 
 Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.
 
-**Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers that delegate to `python fittrack.py`. DEPLOY.md uses these shell scripts for production commands; both are functionally equivalent.
+**Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers. See [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## OpenCode TUI Tips
 
-- **Paste on Windows**: `Ctrl+V` works — bound explicitly to Windows Terminal's paste action (`{ "id": "Terminal.PasteFromClipboard", "keys": ["ctrl+v", "ctrl+shift+v"] }` in settings.json). WT's paste inserts clipboard text via bracketed paste, which opencode handles. Do NOT unbind ctrl+v — passing the raw key through to opencode does not work. Alternatively, use the OpenCode Desktop app.
-- **Multiline input**: Use `Shift+Enter` (requires Windows Terminal config — already set up).
+- **Paste on Windows**: `Ctrl+V` works — bound to Windows Terminal's paste action.
+- **Multiline input**: Use `Shift+Enter` (requires Windows Terminal config).
 - **File references**: Use `@filename` to include file context in prompts.
 - **Quick commands**: Use `!command` to run shell commands and include output.
 - **Plan mode**: Press `Tab` to switch to Plan mode for analysis without changes.
-- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, `@production`, or `@ask` in prompts to delegate to specialized agents.
+- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, `@production`, or `@ask`.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

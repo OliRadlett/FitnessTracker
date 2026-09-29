@@ -270,6 +270,7 @@ async def sync_activities(
                 # Merge into the existing activity
                 new_data = {
                     "name": sa.get("name"),
+                    "sport_type": sport_type,
                     "duration_seconds": duration_seconds,
                     "distance_meters": _safe_float(distance_meters),
                     "elevation_gain_meters": _safe_float(
@@ -540,6 +541,7 @@ async def backfill_all_activities_stream(
                 if duplicate:
                     new_data = {
                         "name": sa.get("name"),
+                        "sport_type": sport_type,
                         "duration_seconds": duration_seconds,
                         "distance_meters": _safe_float(distance_meters),
                         "elevation_gain_meters": _safe_float(

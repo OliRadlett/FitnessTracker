@@ -1,12 +1,18 @@
 ---
 name: finalise
-description: Use when finishing a feature or set of changes — runs the full pre-commit, commit, push, PR, and deploy workflow for FitTrack. Covers lint, typecheck, tests, migration verification, git discipline, squash merge guidance, and CI monitoring.
+description: Use when finishing a feature or set of changes — runs the full pre-commit, commit, push, PR, and deploy workflow for FitTrack. Covers lint, typecheck, tests, migration verification, git discipline, squash merge guidance, CI monitoring, and pre-PR code review. Integrates Superpowers' requesting-code-review, verification-before-completion, and finishing-a-development-branch decision framework.
 ---
 
 # Finalise — Commit, Push, PR, Deploy
 
-The end-of-work checklist: verify, commit, push, create a PR, and (when ready)
-deploy to production.  Run this skill by saying *"@finalise guide me"* or
+> **Design**: This skill integrates Superpowers' `requesting-code-review`
+> (Phase 2), `verification-before-completion` (Phase 2b), and the merge/PR/
+> deploy decision matrix from `finishing-a-development-branch` (Phase 4-5).
+> FitTrack-specific concerns (migration verification, concurrent git sessions,
+> `prod` deploy, CI monitoring) are preserved.
+
+The end-of-work checklist: verify, do a pre-PR review, commit, push, create a PR,
+and (when ready) deploy to production.  Run this skill by saying *"@finalise guide me"* or
 *"@finalise"* after finishing code changes.
 
 ## Git Model (quick recap)
@@ -16,8 +22,8 @@ deploy to production.  Run this skill by saying *"@finalise guide me"* or
   passes on a push to `prod`.
 - **Deploy = merge `main` into `prod` and push.**  Never commit directly to
   `prod`; never merge a feature branch into `prod` bypassing `main`.
-- All changes must go through a feature branch → PR into `main` → (later)
-  `main` → `prod` release merge.
+- All changes must go through a feature branch to PR into `main` to (later)
+  `main` to `prod` release merge.
 
 ## Phase 1 — Pre-Commit Checks
 
@@ -69,7 +75,53 @@ If files you didn't stage appear staged, or your staged files disappear,
 **another session is manipulating git** — stop all git operations immediately
 and ask the user to confirm the other session is done.
 
-## Phase 2 — Review & Stage
+## Phase 2 — Pre-PR Code Review (Superpowers: `requesting-code-review`)
+
+Before staging, run a structured review against the plan. Use the
+`requesting-code-review` skill for the checklist, or follow this condensed version:
+
+**Severity tiers:**
+- **Critical** (blocks merge): security regressions, data-loss paths, broken
+  migrations, auth bypass, race conditions across git sessions (AGENTS.md Rule #2)
+- **Warning** (defer or address): missing edge-case handling, test gaps, stale
+  docs (AGENTS.md Rule #9), TODO comments left in code
+- **Info** (nice to have): naming suggestions, minor refactors
+
+**Checklist:**
+1. Does the change follow the 3-layer architecture (API to Services to Models)?
+2. Are new models registered in `app/models/__init__.py` (Pitfall #14)?
+3. Are FastAPI routes ordered with static before dynamic (Pitfall #13)?
+4. Did AGENTS.md / CODEMAP.md / docs get updated in the same commit (Rule #9)?
+5. Are Celery tasks using `task_session()` if new (AGENTS.md, Conventions > Backend)?
+6. Are modal workers importing only stdlib at module scope (Pitfall #16)?
+
+Critical issues block. Warnings can be carried as TODOs in the PR description.
+
+## Phase 2b — Verify Before Completion (Superpowers: `verification-before-completion`)
+
+Before claiming work is done, run the verification commands and confirm output:
+
+```bash
+# Backend: lint + typecheck + tests
+ruff check backend/ && ruff format --check backend/
+python -m pytest backend/tests/ -x -q --tb=short
+
+# Frontend: typecheck + lint + build
+cd frontend
+npx tsc --noEmit
+npm run lint
+npm run build
+
+# Migrations (if models changed)
+cd ..
+python fittrack.py exec backend alembic current
+```
+
+Only proceed to commit if the commands exit 0 and the output matches expectations.
+If the stack is running locally: `python fittrack.py exec backend pytest tests/`
+(but see Phase 1 pitfall #5 about dev mounts).
+
+## Phase 3 — Review, Stage & Commit
 
 ```bash
 git status           # see what changed
@@ -83,14 +135,12 @@ git add <specific files>
 # Do NOT use `git add .` if other sessions may have uncommitted changes
 ```
 
-## Phase 3 — Commit
-
 Write a concise commit message matching repo style:
 
 ```
 feat(conformity): sport-aware deviation text for strength sessions
 
-- _deviation_text now accepts sport param; "You rode" → "Session was" for
+- _deviation_text now accepts sport param; "You rode" became "Session was" for
   strength duration deviations
 - RPE deviation shows absolute points instead of misleading percentage
 - Exercises metric no longer displays counts as percentages
