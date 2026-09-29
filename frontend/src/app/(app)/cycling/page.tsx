@@ -49,62 +49,14 @@ export default function CyclingPage() {
   const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
 
-  // ── Below-the-fold section visibility ───────────────────────────────────
+  // Section anchor refs (used as scroll-to anchors in the JSX below).
+  // Core power queries (FTP / VO2max / decoupling) now fire eagerly on mount —
+  // the IntersectionObserver visibility gate was removed so core data can no
+  // longer fail to load (AGATES #12). powerCurveRef was already a plain anchor.
   const powerCurveRef = useRef<HTMLDivElement>(null);
   const vo2maxRef = useRef<HTMLDivElement>(null);
   const decouplingRef = useRef<HTMLDivElement>(null);
   const ftpRef = useRef<HTMLDivElement>(null);
-  const [visibleSections, setVisibleSections] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    // NOTE: powerCurve has no observer entry — its queries are eager (P1-2).
-    // The powerCurveRef div below is a plain anchor.
-    const sections = [
-      { ref: vo2maxRef, name: 'vo2max' },
-      { ref: decouplingRef, name: 'decoupling' },
-      { ref: ftpRef, name: 'ftp' },
-    ];
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        setVisibleSections((prev) => {
-          const next = new Set(prev);
-          for (const entry of entries) {
-            const section = sections.find((s) => s.ref.current === entry.target);
-            if (section) {
-              if (entry.isIntersecting) {
-                next.add(section.name);
-              }
-            }
-          }
-          // Only update if something changed
-          if (next.size !== prev.size || [...next].some((s) => !prev.has(s))) {
-            return next;
-          }
-          return prev;
-        });
-      },
-      { rootMargin: '200px' } // Start loading 200px before visible
-    );
-
-    for (const { ref } of sections) {
-      if (ref.current) observer.observe(ref.current);
-    }
-    // Fallback: if sections never intersect (short page, hidden ancestor,
-    // no-IO environment), enable them anyway so queries still fire (P1-2).
-    const fallback = setTimeout(() => {
-      setVisibleSections((prev) => {
-        if (prev.size === sections.length) return prev;
-        const next = new Set(prev);
-        for (const s of sections) next.add(s.name);
-        return next;
-      });
-    }, 3000);
-    return () => {
-      observer.disconnect();
-      clearTimeout(fallback);
-    };
-  }, []);
 
   // Cleanup timeouts on unmount (BUG-026)
   useEffect(() => {
@@ -237,21 +189,21 @@ export default function CyclingPage() {
   const { data: lifetimePBs } = useQuery<LifetimePBsResponse>({
     queryKey: ['lifetime-pbs'],
     queryFn: () => authFetch<LifetimePBsResponse>('/api/v1/cycling/lifetime-pbs'),
-    enabled: !!token && visibleSections.has('ftp'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 
   const { data: ftpHistory } = useQuery<FtpHistoryEntry[]>({
     queryKey: ['ftp-history'],
     queryFn: () => authFetch<FtpHistoryEntry[]>('/api/v1/cycling/ftp-history'),
-    enabled: !!token && visibleSections.has('ftp'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 
   const { data: chartFtpHistory } = useQuery<ChartData>({
     queryKey: ['chart-ftp-history'],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/ftp_history'),
-    enabled: !!token && visibleSections.has('ftp'),
+    enabled: !!token,
     staleTime: 300_000,
   });
 
@@ -272,35 +224,35 @@ export default function CyclingPage() {
   const { data: vo2max, isLoading: vo2maxLoading } = useQuery<Vo2maxResponse>({
     queryKey: ['vo2max'],
     queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
-    enabled: !!token && visibleSections.has('vo2max'),
+    enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
     queryKey: ['vo2max-history'],
     queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
-    enabled: !!token && visibleSections.has('vo2max'),
+    enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
     queryKey: ['chart-vo2max-trend', 12],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
-    enabled: !!token && visibleSections.has('vo2max'),
+    enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
     queryKey: ['decoupling-history'],
     queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
-    enabled: !!token && visibleSections.has('decoupling'),
+    enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
     queryKey: ['chart-decoupling-trend', 90],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
-    enabled: !!token && visibleSections.has('decoupling'),
+    enabled: !!token,
     staleTime: 600_000,
   });
 
