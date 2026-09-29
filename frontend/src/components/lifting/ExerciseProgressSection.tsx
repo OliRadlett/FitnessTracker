@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
 
 export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSession[] }) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const [selectedExercise, setSelectedExercise] = useState('');
   const [weeks, setWeeks] = useState(12);
 
@@ -32,7 +32,7 @@ export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSessio
     queryFn: () => authFetch<ChartData>(
       `/api/v1/charts/exercise_progress?exercise_name=${encodeURIComponent(effectiveExercise)}&weeks=${weeks}`
     ),
-    enabled: !!effectiveExercise,
+    enabled: !!effectiveExercise && !!token,
   });
 
   if (exerciseList.length === 0) return null;
