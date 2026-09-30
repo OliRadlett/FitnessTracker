@@ -370,7 +370,13 @@ ufw enable
 
 ---
 
-## Monitoring (B-33, optional)
+## Monitoring (B-33, optional — **NOT currently enabled in production**)
+
+> ⚠️ Verified 2026-09-30 against the live Droplet: this is **not running**.
+> `ENABLE_METRICS` is unset, `/metrics` 404s, and the Prometheus/Alertmanager
+> containers do not exist. Steps 2–4 below are still required, and step 3 alone
+> is not enough — the Alertmanager receiver is `log-only`, so a firing alert
+> prints to container logs and pages nobody. See BUG-071.
 
 Prometheus scrapes the backend `/metrics` endpoint with three alerts
 (backend down, 5xx rate, p95 latency); Grafana dashboard JSON is provided
@@ -395,6 +401,17 @@ The default alert receiver only logs — wire a Slack webhook or SMTP in
 `alertmanager.yml` before relying on paging. Celery queue depth and per-task
 failure rates have no exporter signals yet (documented in `alerts.yml`).
 
+⚠️ **Confirmed 2026-09-30: the flag is NOT set on the Droplet, and Prometheus
+is not running.** The alert rules below are therefore inert — they are not
+misconfigured, they are simply not being evaluated. Note that
+`should_respect_env_var=True` in `backend/app/main.py` disables the
+instrumentator *entirely* when the var is unset (an empty `/metrics` body),
+rather than exposing ungrouped labels — easy to misread as a broken matcher.
+The `status="5xx"` selector is correct: `should_group_status_codes` defaults
+to `True` in prometheus-fastapi-instrumentator 8.1.0 and `main.py` does not
+override it, so 500s are grouped as `5xx`. See BUG-071 for the full chain and
+the ordered fix.
+
 ---
 
 ## Endpoint access policy (health & metrics)
@@ -402,8 +419,10 @@ failure rates have no exporter signals yet (documented in `alerts.yml`).
 Two endpoints are **deliberately unauthenticated** — this is by design, not a
 regression to "fix":
 
-- `GET /health` — liveness probe (checks DB + Redis). Hit by the Caddy
-  healthcheck and infra uptime monitors, so it must answer with no session.
+- `GET /health` — liveness probe (checks DB + Redis, and reports whether
+  startup migrations succeeded). Hit by the Caddy healthcheck and infra uptime
+  monitors, so it must answer with no session. Keep it that way: if it ever
+  starts returning 401, every monitor silently loses visibility into the app.
 - `GET /metrics` — Prometheus instrumentation (gated on `ENABLE_METRICS=true`).
   Scraped by Prometheus over a private network / SSH tunnel only. Do **not**
   place it behind the public Caddy vhost — Prometheus must reach it directly.
@@ -418,13 +437,35 @@ router, tag `metrics`) is **not** the Prometheus endpoint — it lives under the
 
 | Endpoint | Purpose | Auth |
 |----------|---------|------|
-| `/health` | Liveness (DB + Redis ping) | No — infra probe |
+| `/health` | Liveness (DB + Redis ping) + migration status | No — infra probe |
 | `/metrics` | Prometheus instrumentation | No — scrape target (private net only) |
 | `/api/v1/*` (incl. `/api/v1/metrics/*`) | All data-plane APIs | **Yes** — JWT |
+
+⚠️ **`/health` returning `200` does not mean the app works.** It only proves
+that `SELECT 1` and a Redis `PING` succeeded. During the migration 087 incident
+it reported `{"status":"ok"}` while every Activity query returned 500 — the
+startup handler catches alembic errors and continues (`backend/app/main.py`),
+and the old schema still answers trivial queries. See BUG-069 and BUG-070 in
+`docs/BUGS.md`. After any deploy that runs a migration, confirm the revision
+actually advanced rather than trusting the health check:
+
+```bash
+./start.sh --prod exec backend alembic current   # must show (head)
+```
+
+🚨 **There is currently no alerting in production at all.** As of 2026-09-30:
+`ENABLE_METRICS` is not set on the Droplet, so `/metrics` returns 404, and the
+Prometheus/Alertmanager containers have never been started. Monitoring is an
+opt-in overlay and `deploy.yml` does not bring it up. Treat this section as
+setup instructions to follow, **not** a description of the current live state —
+until all four steps in BUG-071 are done, assume nothing pages you.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
+|---------|-------|-----|
+| `/health` returns 200 but pages 500 | Alembic failed at startup — old schema, new code | `./start.sh --prod exec backend alembic current`, then check CI logs for the migration traceback (BUG-069) |
+| No request lines in backend logs | uvicorn access logging is off in prod | Known gap — see BUG-070 |
 |---------|-------|-----|
 | `502 Bad Gateway` from Caddy | Backend/frontend not ready | `./start.sh --prod logs backend frontend` |
 | `SSL certificate error` | DNS not propagated | Wait 5 min, verify A record |
