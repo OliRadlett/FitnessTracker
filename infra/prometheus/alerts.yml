@@ -6,6 +6,11 @@
 # depth, per-task failure rates, Redis memory. If those get exporters, add:
 #   - CeleryTaskFailures (celery_task_failed_total rate by task)
 #   - RedisQueueBacklog (redis_stream_length / celery queue length)
+#
+# ⚠️ Every rule below requires ENABLE_METRICS=true on the Droplet. Without it
+# the instrumentator exposes nothing and all three rules sit permanently
+# silent — which is how a full outage with a green /health (BUG-069) went
+# unnoticed. Verify the flag is set; do not assume this file is being watched.
 
 groups:
   - name: fittrack
