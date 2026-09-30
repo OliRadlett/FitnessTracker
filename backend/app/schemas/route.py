@@ -225,11 +225,22 @@ class OrphanReviewRow(BaseModel):
 
     orphan_id: uuid.UUID
     orphan_name: str
+    # Required, unlike the road_match-derived numbers: `has_geometry=False`
+    # means no OSM edge set to *compare*, not no shape to *show*. The trace
+    # is still what tells the user whether this deserves a manual road match
+    # rather than a dismissal.
+    orphan_polyline: str
+    orphan_distance_m: float
     # Null when the orphan has no road_match: it cannot be scored at all,
     # which is a different state from "scored as distinct".
     has_geometry: bool = False
     live_id: uuid.UUID | None = None
     live_name: str | None = None
+    # Nullable because 11 of 67 orphans have no candidate at all. An
+    # overlay with one line is not a comparison, so the UI omits the map
+    # rather than drawing half of it.
+    live_polyline: str | None = None
+    live_distance_m: float | None = None
     containment: float = 0.0
     jaccard: float = 0.0
     bucket: str = "unscorable"  # near_certain | likely | ambiguous | distinct | unscorable
