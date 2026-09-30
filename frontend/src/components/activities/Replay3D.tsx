@@ -1180,6 +1180,10 @@ export function Replay3D({
       roadGeo.setAttribute('position', new THREE.BufferAttribute(roadData.positions, 3));
       roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadData.uvs, 2));
       roadGeo.setIndex(new THREE.BufferAttribute(roadData.indices, 1));
+      // Smooth vertex normals so the Lambert ribbon shades with slope/aspect.
+      // Without these the shader reads a zero normal (flat, wrong brightness)
+      // and shadow reception breaks.
+      roadGeo.computeVertexNormals();
       if (roadData.colors) roadGeo.setAttribute('color', new THREE.BufferAttribute(roadData.colors, 3));
       roadTex = createRoadTexture();
       roadMat = new THREE.MeshLambertMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });

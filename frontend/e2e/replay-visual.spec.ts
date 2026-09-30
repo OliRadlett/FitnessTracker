@@ -42,7 +42,7 @@ const FIXTURES = {
   night: VISUAL_NIGHT,
 } as const;
 
-async function gotoHarness(page: Page, fixture: keyof typeof FIXTURES) {
+async function gotoHarness(page: Page, fixture: keyof typeof FIXTURES, cam: 'chase' | 'cockpit' = 'chase') {
   // Satellite off: Esri tiles are slow and non-deterministic; terrain stays on.
   await page.addInitScript(() => {
     window.localStorage?.setItem('relive:imagery', 'off');
@@ -66,12 +66,12 @@ async function gotoHarness(page: Page, fixture: keyof typeof FIXTURES) {
   // WebGL canvas must exist (SwiftShader in headless chromium).
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
   mark('canvas visible');
-  // Park the camera in chase BEFORE terrain lands: the auto-orbit drifts with
-  // wall-clock time, so orbit screenshots can never match run to run. Chase
-  // converges from the fixed home pose to a static frame at t=0 (not playing).
-  // Button labels render lowercase ({m} = 'chase'), so match case-sensitively.
-  await page.getByRole('button', { name: 'chase', exact: true }).click({ timeout: 30_000 });
-  mark('chase clicked');
+  // Park the camera in a follow mode BEFORE terrain lands: the auto-orbit drifts
+  // with wall-clock time, so orbit screenshots can never match run to run.
+  // Follow cams converge from the fixed home pose to a static frame at t=0
+  // (not playing). Button labels render lowercase, so match case-sensitively.
+  await page.getByRole('button', { name: cam, exact: true }).click({ timeout: 30_000 });
+  mark(`${cam} clicked`);
   // Tile-loading overlay clears (aria-hidden flips to true) once terrain is on.
   await expect(page.getByTestId('replay-loading-overlay')).toHaveAttribute('aria-hidden', 'true', {
     timeout: 100_000,
@@ -119,6 +119,14 @@ test.describe('replay visual baselines', () => {
   test('flat rainy ride, full composer', async ({ page }) => {
     await gotoHarness(page, 'flat');
     await expect(page).toHaveScreenshot('replay-flat-rainy-full.png', {
+      maxDiffPixelRatio: 0.05,
+      animations: 'disabled',
+    });
+  });
+
+  test('hilly ride from the cockpit, full composer', async ({ page }) => {
+    await gotoHarness(page, 'hilly', 'cockpit');
+    await expect(page).toHaveScreenshot('replay-cockpit-full.png', {
       maxDiffPixelRatio: 0.05,
       animations: 'disabled',
     });
