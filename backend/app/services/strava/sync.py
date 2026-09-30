@@ -15,6 +15,7 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+from app.services.route_quarantine import active_routes_clause
 from app.services.sport_filter import is_allowed_sport
 
 logger = logging.getLogger(__name__)
@@ -763,8 +764,11 @@ async def backfill_all_activities_stream(
         for s in unlinked_sessions:
             sessions_by_date[s.session_date].append(s)
 
-        # 4. Batch-fetch all user routes (for route matching)
-        route_result = await db.execute(select(Route).where(Route.user_id == user_id))
+        # 4. Batch-fetch all user routes (for route matching), excluding
+        # quarantined ones — see app/services/route_quarantine.py.
+        route_result = await db.execute(
+            select(Route).where(Route.user_id == user_id, active_routes_clause())
+        )
         all_routes = list(route_result.scalars().all())
 
         # 5. Link activities using pre-fetched data (no per-activity DB queries)

@@ -24,6 +24,7 @@ from app.services.route_embedding import (
     embedding_similarity,
     train_metric,
 )
+from app.services.route_quarantine import active_routes_clause
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +176,13 @@ async def train_metric_from_history(
             positives.append((fa, fb))
         merged_ids.add(row.merged_route_id)
 
+    # Quarantined routes stay out of the metric entirely. They would land
+    # in the negatives pool below, teaching the matcher that real courses
+    # are dissimilar to each other. See app/services/route_quarantine.py.
     routes = (
-        await db.execute(select(Route).where(Route.user_id == user_id))
+        await db.execute(
+            select(Route).where(Route.user_id == user_id, active_routes_clause())
+        )
     ).scalars().all()
     features = {
         r.id: r.road_embedding.get("features")

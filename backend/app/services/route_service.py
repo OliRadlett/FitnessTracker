@@ -21,6 +21,7 @@ from app.services.route_matching import (
     cheap_candidate,
     score_route_pair,
 )
+from app.services.route_quarantine import active_routes_clause
 
 logger = logging.getLogger(__name__)
 
@@ -224,11 +225,12 @@ async def find_duplicate_route(
     if threshold is None:
         threshold = settings.route_match_auto_threshold
 
-    # Fetch all user routes (typically < 1000 per user)
+    # Fetch all user routes (typically < 1000 per user), excluding
+    # quarantined ones — see app/services/route_quarantine.py.
     result = await db.execute(
         select(Route)
         .options(selectinload(Route.sources))
-        .where(Route.user_id == user_id)
+        .where(Route.user_id == user_id, active_routes_clause())
     )
     existing_routes = list(result.scalars().all())
 
