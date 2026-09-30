@@ -11,10 +11,10 @@
 - **Fix:** Rename file to `004_add_pr_notes.py` to match revision ID, or create a stub `003` migration.
 
 ### BUG-015: Double-Commit Anti-Pattern
-- **Status:** DEFERRED (25 files — high regression risk)
-- **Files:** `backend/app/database.py:28-36` + 34 API endpoint files
-- **Issue:** `get_db()` auto-commits after endpoint yields. 34+ endpoints also call `await db.commit()` explicitly, causing two commits per request. If the first commit succeeds but something fails before `get_db`'s commit, behavior is unpredictable.
-- **Fix:** Remove explicit `await db.commit()` from endpoints and let `get_db` handle all commits. Or remove auto-commit from `get_db` and use explicit commits everywhere.
+- **Status:** FIXED (2026-09-30 — one documented carve-out remains)
+- **Files:** `backend/app/database.py:28-36` + `backend/app/api/webhooks.py:105`
+- **Issue:** `get_db()` auto-commits after endpoint yields. 34+ endpoints also called `await db.commit()` explicitly, causing two commits per request.
+- **Fix:** Removed explicit commits across all endpoints (pilot #196 + follow-ups). The sole remainder is the Strava webhook receiver, which uses a manually-created `async_session_factory()` session (not `get_db`) and must durably queue one row before returning 200 — documented carve-out in code.
 
 ### BUG-025: OAuth `redirect_uri` Constructed Client-Side
 - **Status:** DEFERRED (needs architecture change)
