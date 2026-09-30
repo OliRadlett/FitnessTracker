@@ -48,8 +48,20 @@ async def strava_webhook_challenge(
 
     Strava sends a GET request with a challenge to verify the endpoint.
     We must echo back the challenge if the verify token matches.
+
+    SEC-05: fails closed. An unconfigured ``strava_verify_token`` rejects every
+    challenge (including an empty presented token, which would otherwise match
+    an unset config), so an unconfigured deployment cannot be claimed.
     """
-    if hub_mode == "subscribe" and hub_verify_token == settings.strava_verify_token:
+    if not settings.strava_verify_token:
+        raise HTTPException(
+            status_code=503, detail="Webhook challenge verification not configured"
+        )
+    if (
+        hub_mode == "subscribe"
+        and hub_verify_token
+        and hmac.compare_digest(hub_verify_token, settings.strava_verify_token)
+    ):
         return {"hub.challenge": hub_challenge}
     raise HTTPException(status_code=403, detail="Verification failed")
 
