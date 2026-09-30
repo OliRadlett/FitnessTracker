@@ -1,8 +1,19 @@
 # Ride / Course Split — Linkage Model Redesign
 
-> Status: **in progress** (2026-09-29).
+> Status: **Phases 0–4 complete** (2026-09-30). Ph. 5 dropped — see §10.
 
-## Executive summary — what changed today
+## Executive summary — what changed
+
+| Task | Result |
+|---|---|
+| Re-export full dataset (routes + activities) | ✅ 108 routes, 201 cycling activities, 185 with a road match |
+| Road-match every activity | ✅ `map_match_activities` populated 358 rows; 347 usable (`coverage > 0`) |
+| Fix 28 mislabelled activities | ✅ migrations 087 + 090, both live on `prod` |
+| Activity road-match columns | ✅ migration 087; `Activity.road_match` / `road_embedding` / `road_match_version` |
+| Sport allowlist; purge untracked sports | ✅ #203; 307 rows purged, gated at ingestion |
+| Ph. 3 — orphan quarantine | ✅ #205; 67 of 108 routes quarantined, sweep run on `prod` |
+| Ph. 4 — course identity (§4 detour test) | ✅ #208 merged; **not released to `prod`** — see §10 |
+| Ph. 5 — lap-aware history | ❌ **dropped** — the merge already collapsed the lap twins |
 
 | Task | Result |
 |---|---|
@@ -217,10 +228,18 @@ Ordered by dependency. Ph. 0 unblocks everything else.
 ## 7. Open questions
 
 1. **Orphaned routes**: archive vs keep as courses vs re-link? (Ph. 3 — user input.)
+   The sweep has quarantined all 67; the decision is still open. `rank_recovery_candidates()`
+   scores each against its best live route, and the ranking shows 3 near-certain
+   duplicates (containment ≥ 0.98), 12 likely, 13 ambiguous, 28 probably distinct.
+   11 have no `road_match` and cannot be scored.
 2. **Tolerance control**: is the system default (§4) acceptable as the PR-fairness
-   boundary until adjustable tolerance ships?
+   boundary until adjustable tolerance ships? — **answered for now**: the spine
+   threshold was calibrated down 0.90 → 0.75 against real data (§10), and the detour
+   budget is a module constant. Neither is user-adjustable yet.
 3. **Wahoo ingestion**: is capturing GPS from Wahoo in scope as a prerequisite,
    or should those rides remain permanently linked-by-distance-and-flagged?
+   — **moot**: Wahoo rows are purged and the allowlist blocks new ones, so the
+   question no longer applies.
 
 ## 8. Relationship to the merge system
 
@@ -237,3 +256,75 @@ plan:
   supply per merge.
 - The user's existing 6 merges were largely loop variants and should be reset and
   re-judged via the merge-history UI once deployed.
+
+## 9. What the real data changed
+
+Everything below was measured on production data after `road_match` was
+populated, and contradicts assumptions this document made in §1.
+
+**§1's evidence is stale.** It describes 348 rides / 82 routes / 170
+unlinked / 44 orphans. After the sport purge: **201 cycling activities,
+185 linked (92%)**, 108 routes of which **67 are orphans (62%)**. Ph. 1
+and Ph. 2 are effectively complete — a sync closed the linking backlog on
+its own, and the 15 unlinked activities have no polyline at all.
+
+**Containment cannot serve as an identity test on its own.** Across the
+67 orphans, five scored containment 0.750 against the same course with
+Jaccard of 0.023–0.175 — they share a handful of edges with a much larger
+route. The top candidate scored containment **1.000** with Jaccard
+**0.300**: an orphan entirely inside a live route is a *lap of a longer
+course*, not the same course. `containment()` uses `min(|A|,|B|)`, so it
+is symmetric in a way that makes short-vs-long indistinguishable. The
+usable signal is the **pair** — high containment *and* meaningful Jaccard.
+
+**The §4 spine threshold of 0.90 was wrong.** Measured against 45 control
+rides on Course 42de2b16 (best-of-5 reference traces, since riders take
+two ways):
+
+| threshold | controls kept | known outlier |
+|---|---|---|
+| ≥ 0.90 | 35/45 — strands 10 genuine rides | rejected (0.593) |
+| ≥ 0.75 | **45/45** | rejected (0.593) |
+
+**The §4 detour test was the missing half, and it is decisive.** The
+10 Aug 2026 ride is linked to that course but makes an ~8 km excursion to
+Cramond. Containment scored it 0.633 — the *median* of the 45 legitimate
+rides — so no containment threshold separates it. The detour test measures
+**8,336 m against a 2,071 m budget** and rejects it four times over. 11
+of 12 controls pass with runs of 0–827 m.
+
+**Route 42de2b16 is one course, correctly merged, with real variants.** 4
+street names appear in all 46 rides; 10 way ids are shared by all 46; and
+every ride has a close partner (nearest-neighbour containment min 0.633,
+median 0.830, zero loners). But all 46 have distinct branch signatures —
+160 ways are used by exactly one ride. That is the "variants" case §2
+describes, and it justifies merging them into one Course.
+
+**One GPS sport remains.** After the purge, `cycling` is the only sport
+with geometry (185 of 201; `strength` has none). Any finding that depended
+on separating cycling from walking — including the original reason shape
+classification looked blocked — can no longer be reproduced with the data
+on hand.
+
+## 10. Status and what is not done
+
+**`#208` (the detour test) is merged to `main` but deliberately not
+released.** `score_route_pair` is called by both route deduplication and
+activity linking, so the gate affects real linkage, and no threshold has
+been validated against more than one course. Release is a judgement call,
+not an oversight.
+
+**Ph. 5 (lap-aware history) is dropped.** The original merge already
+collapsed the lap twins: the course's max distance ratio is now **1.54**,
+not the ×1.997 / ×2.000 / ×4.001 the plan was built around. There are no
+lap variants left to model.
+
+**Shape classification is not built, and should not be yet.** The earlier
+blocker — no geometric threshold separates courses from non-courses,
+because the path network is multi-use — was measured against walking
+activities that no longer exist. Re-deriving the negative population would
+mean re-introducing them, so tuning against it now would be tuning against
+a problem that may not exist.
+
+**Auto-merge is off.** No threshold is validated; everything stays
+review-only, per the §2 decision.
