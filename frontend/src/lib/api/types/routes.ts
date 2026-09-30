@@ -195,6 +195,39 @@ export interface MergeResult {
   merge_log_id: string | null;
 }
 
+/**
+ * One quarantined route awaiting a decision, with its best live match.
+ *
+ * `containment` and `jaccard` are both reported and deliberately NOT
+ * collapsed into one score: they disagree exactly where it matters. An
+ * orphan lying entirely inside a larger live route scores containment
+ * 1.000 but low Jaccard — it is a lap of a longer course, not a
+ * duplicate — and a single blended number would hide that.
+ */
+export type OrphanBucket =
+  | 'near_certain'
+  | 'likely'
+  | 'ambiguous'
+  | 'distinct'
+  | 'unscorable';
+
+export interface OrphanReviewRow {
+  orphan_id: string;
+  orphan_name: string;
+  /** False when the route has no road_match and cannot be scored at all. */
+  has_geometry: boolean;
+  live_id: string | null;
+  live_name: string | null;
+  containment: number;
+  jaccard: number;
+  bucket: OrphanBucket;
+}
+
+export interface OrphanReviewResponse {
+  rows: OrphanReviewRow[];
+  counts: Record<string, number>;
+}
+
 export interface RouteMergeLogEntry {
   id: string;
   primary_route_id: string;

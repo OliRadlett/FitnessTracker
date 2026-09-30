@@ -71,6 +71,15 @@ class Route(Base):
     quarantined_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set when the user has reviewed a quarantined route and rejected it.
+    # Separate from quarantined_at because "excluded from matching" and
+    # "already looked at" are different facts: with only one column a
+    # dismissed route is indistinguishable from one never reviewed, so the
+    # review queue never empties. A dismissed route can still be restored
+    # without losing the fact that it was judged and rejected.
+    dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -213,6 +213,33 @@ class DuplicatePair(BaseModel):
     jev_confidence: float | None = None
 
 
+class OrphanReviewRow(BaseModel):
+    """One quarantined route awaiting a decision, with its best match.
+
+    ``containment`` and ``jaccard`` are both reported and deliberately not
+    collapsed into a single score: they disagree exactly where it matters.
+    An orphan entirely inside a larger live route scores containment 1.000
+    but low Jaccard — it is a lap of a longer course, not a duplicate — and
+    a single blended number would hide that.
+    """
+
+    orphan_id: uuid.UUID
+    orphan_name: str
+    # Null when the orphan has no road_match: it cannot be scored at all,
+    # which is a different state from "scored as distinct".
+    has_geometry: bool = False
+    live_id: uuid.UUID | None = None
+    live_name: str | None = None
+    containment: float = 0.0
+    jaccard: float = 0.0
+    bucket: str = "unscorable"  # near_certain | likely | ambiguous | distinct | unscorable
+
+
+class OrphanReviewResponse(BaseModel):
+    rows: list[OrphanReviewRow]
+    counts: dict[str, int]
+
+
 class MergeResult(BaseModel):
     """Result of a merge — includes the audit-log id for undo."""
 
