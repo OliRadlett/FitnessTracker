@@ -7,10 +7,16 @@
 #   - CeleryTaskFailures (celery_task_failed_total rate by task)
 #   - RedisQueueBacklog (redis_stream_length / celery queue length)
 #
-# ⚠️ Every rule below requires ENABLE_METRICS=true on the Droplet. Without it
-# the instrumentator exposes nothing and all three rules sit permanently
-# silent — which is how a full outage with a green /health (BUG-069) went
-# unnoticed. Verify the flag is set; do not assume this file is being watched.
+# ⚠️ NOT RUNNING IN PRODUCTION (verified 2026-09-30). ENABLE_METRICS is unset
+# on the Droplet so the instrumentator exposes nothing, and the prometheus /
+# alertmanager containers have never been started — these rules are not being
+# evaluated at all. The selectors below are correct and need no changes; see
+# BUG-071 in docs/BUGS.md for the ordered bring-up steps.
+#
+# Note when testing: with ENABLE_METRICS unset, /metrics returns an empty body
+# (the instrumentator is disabled wholesale), which looks like broken selectors
+# but is not. should_group_status_codes defaults to True in
+# prometheus-fastapi-instrumentator 8.1.0, so status="5xx" does match.
 
 groups:
   - name: fittrack

@@ -370,7 +370,13 @@ ufw enable
 
 ---
 
-## Monitoring (B-33, optional)
+## Monitoring (B-33, optional — **NOT currently enabled in production**)
+
+> ⚠️ Verified 2026-09-30 against the live Droplet: this is **not running**.
+> `ENABLE_METRICS` is unset, `/metrics` 404s, and the Prometheus/Alertmanager
+> containers do not exist. Steps 2–4 below are still required, and step 3 alone
+> is not enough — the Alertmanager receiver is `log-only`, so a firing alert
+> prints to container logs and pages nobody. See BUG-071.
 
 Prometheus scrapes the backend `/metrics` endpoint with three alerts
 (backend down, 5xx rate, p95 latency); Grafana dashboard JSON is provided
@@ -395,12 +401,16 @@ The default alert receiver only logs — wire a Slack webhook or SMTP in
 `alertmanager.yml` before relying on paging. Celery queue depth and per-task
 failure rates have no exporter signals yet (documented in `alerts.yml`).
 
-⚠️ **Confirm `ENABLE_METRICS=true` is actually set on the Droplet before
-assuming 5xx alerting covers you.** The instrumentation is gated on it
-(`should_respect_env_var=True` in `backend/app/main.py`), so with the flag
-absent the 5xx alert has no signal to fire on — and a documented-but-disabled
-monitor fails the same way a false-green health check did. The 087 incident
-would have been caught by a 5xx alert; nothing confirmed one was watching.
+⚠️ **Confirmed 2026-09-30: the flag is NOT set on the Droplet, and Prometheus
+is not running.** The alert rules below are therefore inert — they are not
+misconfigured, they are simply not being evaluated. Note that
+`should_respect_env_var=True` in `backend/app/main.py` disables the
+instrumentator *entirely* when the var is unset (an empty `/metrics` body),
+rather than exposing ungrouped labels — easy to misread as a broken matcher.
+The `status="5xx"` selector is correct: `should_group_status_codes` defaults
+to `True` in prometheus-fastapi-instrumentator 8.1.0 and `main.py` does not
+override it, so 500s are grouped as `5xx`. See BUG-071 for the full chain and
+the ordered fix.
 
 ---
 
@@ -442,6 +452,13 @@ actually advanced rather than trusting the health check:
 ```bash
 ./start.sh --prod exec backend alembic current   # must show (head)
 ```
+
+🚨 **There is currently no alerting in production at all.** As of 2026-09-30:
+`ENABLE_METRICS` is not set on the Droplet, so `/metrics` returns 404, and the
+Prometheus/Alertmanager containers have never been started. Monitoring is an
+opt-in overlay and `deploy.yml` does not bring it up. Treat this section as
+setup instructions to follow, **not** a description of the current live state —
+until all four steps in BUG-071 are done, assume nothing pages you.
 
 ## Troubleshooting
 

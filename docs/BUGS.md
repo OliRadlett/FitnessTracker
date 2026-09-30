@@ -1,6 +1,6 @@
 # FitTrack Bug Report — Active Bugs
 
-> **Updated**: 2026-09-30 | Total tracked: 100 | **Open: 7** | Fixed: 82 (archived, see `BUGS-archive.md` and git history)
+> **Updated**: 2026-09-30 | Total tracked: 101 | **Open: 8** | Fixed: 82 (archived, see `BUGS-archive.md` and git history)
 
 ## Open Bugs
 
@@ -48,7 +48,7 @@
 - **Fix:** Two independent changes; neither alone is sufficient.
   1. Make the migration outcome *observable*. Record the result in a module-level `MIGRATION_STATE` dict (`{"ok": bool, "error": str | None, "revision": str | None}`) set inside the existing `try`/`except` in `lifespan`. Do **not** re-raise — failing startup on any migration error turns a partial deploy into a crash-loop that hides the original error, which is what `restart: unless-stopped` would turn into.
   2. Have `/health` report it. Add a `migrations` key to both the ok and degraded payloads (`"ok"`, or `"failed: <last line of stderr>"`) and return `503` when the migration did not succeed. Keep `/health` unauthenticated — required by Caddy and the `infra/` monitors (see `docs/DEPLOY.md` "Endpoint access policy") — but truncate the error to a single line so an alembic traceback cannot flood the response body.
-  3. Separately, make sure something alerts. Prometheus already has a 5xx-rate rule (`infra/prometheus/alerts.yml`) that would have caught this, but only once `ENABLE_METRICS=true` is set on the Droplet. Verify that flag is actually set: monitoring that is documented but not enabled is the same false-green failure in a different costume.
+  3. Separately, make sure something alerts. Prometheus has a 5xx-rate rule (`infra/prometheus/alerts.yml`) whose matcher is correct — see BUG-071 for the verified reason — but **no alerting exists in production at all right now**. Monitoring is an opt-in overlay that has never been brought up.
 
 ### BUG-070: No Access Logs in Production — 500s Are Unauditable
 - **Status:** DOCUMENTED (found during the 087 deploy failure, 2026-09-29)
@@ -56,3 +56,17 @@
 - **Issue:** Neither uvicorn invocation passes `--access-log`. `docker-compose.prod.yml:40` runs `uvicorn app.main:app --host 0.0.0.0 --port 8000`, and the image `CMD` matches. The backend log on the Droplet totalled **6 lines** — no request or response lines at all.
 - **Impact:** Combined with BUG-069, a 500 loop is nearly invisible in the logs. Post-incident verification of the 087 outage rested on the verification agent issuing its own requests; the container had been recreated and the failed deploy's logs were gone, so the original 500s could not be audited. Note that uvicorn access logging appears to be off by default in this setup rather than deliberately disabled — worth confirming before treating the current state as intentional.
 - **Fix:** Add `--access-log` to the prod `command:` in `docker-compose.prod.yml`. Prefer structured output over uvicorn's plain-text access lines: the project already emits JSON in production and attaches correlation IDs via middleware, so route through the existing logger rather than adding a second, differently-formatted stream. If plain `--access-log` is the lower-risk first step, enable it and note the format split as follow-up. Watch the backend's `mem_limit: 250m` after enabling — access logs are write-bound and should not move it, but verify.
+
+### BUG-071: No Metrics and No Alerting in Production — Monitoring Is an Opt-In Overlay Never Brought Up
+- **Status:** DOCUMENTED (confirmed against the live Droplet, 2026-09-30)
+- **File:** `infra/prometheus/`, `docker-compose.monitoring.yml`, `infra/alertmanager/alertmanager.yml`, `backend/app/main.py:183-186`
+- **Issue:** All three links in the alerting chain are missing in production. (1) `ENABLE_METRICS` is **absent** from the Droplet `.env` — the backend container's full environment was dumped and it is not there, despite `docs/DEPLOY.md` documenting it. (2) Consequently `/metrics` returns **HTTP 404** (confirmed on both `127.0.0.1:8000` and `http://backend:8000/metrics` from the caddy container): `should_respect_env_var=True` means the route is never even registered when the var is unset. (3) Prometheus and Alertmanager **do not exist at all** — no containers, no systemd units, nothing listening on 9090/9093. Monitoring is an opt-in overlay (`docker-compose.monitoring.yml`, whose own header says "not part of the default stack") requiring a manual three-file compose command, and `.github/workflows/deploy.yml` contains no reference to it, so it has never been started and would not survive a redeploy if it were.
+- **Impact:** Production has **no alerting whatsoever**. This is worse than "monitoring is misconfigured" — nothing would have woken anyone for the 087 outage, and nothing will for the next one. `docs/DEPLOY.md` and `alerts.yml` both read as though alerting is in place, which is the more dangerous failure: the false-green `/health` (BUG-069) plus an absent Prometheus means a complete outage is invisible from every angle at once.
+- **Fix:** In order — steps 3 and 4 are what make it real; doing only step 2 leaves you silently un-alerted.
+  1. Add `ENABLE_METRICS=true` to the Droplet `.env`. This reaches the container (the backend service uses `env_file: .env`) and a `docker compose up -d backend` recreate picks it up. Consistent with the existing SEC-01 loopback-only policy, so no auth work needed.
+  2. Bring up the overlay **and add it to `deploy.yml`**, or the containers will be torn down on the next deploy:
+     `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d prometheus alertmanager`
+  3. Wire a real Alertmanager receiver. `infra/alertmanager/alertmanager.yml` is `receiver: 'log-only'` with a `TODO: add Slack api_url (or SMTP)` — a firing alert currently only prints to container logs. Do not treat `severity: critical` as paging until a real receiver is configured. There is also no Grafana container despite `infra/grafana/` existing.
+  4. Consider a smoke test that asserts `/metrics` returns exposition text with a non-zero `http_requests_total`, so the chain is verified by CI or a post-deploy step rather than assumed.
+
+- **Non-bug, verified — do not "fix" this:** the `status="5xx"` matcher in `alerts.yml` is **correct**. `should_group_status_codes` defaults to `True` in `prometheus-fastapi-instrumentator` 8.1.0 and `main.py` never overrides it, so status labels are grouped. Verified empirically: a request returning 500 produces `http_requests_total{handler="…",method="GET",status="5xx"} 1.0` and a 200 produces `status="2xx"`. Note the trap — with `ENABLE_METRICS` unset the instrumentator records *nothing at all* (an empty exposition, not ungrouped labels), which can easily be misread as "the matcher is broken".
