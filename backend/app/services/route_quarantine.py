@@ -336,7 +336,13 @@ async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
     quarantined = (
         (
             await db.execute(
-                select(Route.id, Route.name, Route.road_match).where(
+                select(
+                    Route.id,
+                    Route.name,
+                    Route.road_match,
+                    Route.encoded_polyline,
+                    Route.distance_meters,
+                ).where(
                     Route.user_id == user_id,
                     Route.quarantined_at.isnot(None),
                     Route.dismissed_at.is_(None),
@@ -364,7 +370,13 @@ async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
         for r in live
     ]
     orphan_sets = [
-        {"id": r.id, "name": r.name, "ways": way_ids_from_road_match(r.road_match)}
+        {
+            "id": r.id,
+            "name": r.name,
+            "polyline": r.encoded_polyline,
+            "distance_m": r.distance_meters,
+            "ways": way_ids_from_road_match(r.road_match),
+        }
         for r in quarantined
     ]
 
@@ -373,6 +385,31 @@ async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
         row["orphan_id"]: row for row in rank_recovery_candidates(scorable, live_sets)
     }
 
+    # Fetch candidate geometry only for the live routes that actually won a
+    # match. Selecting it in the query above would put every live route's
+    # polyline on the wire — ~80 routes of geometry to use roughly 56 of.
+    matched_ids = {row["live_id"] for row in ranked.values() if row["live_id"]}
+    candidate_geometry: dict = {}
+    if matched_ids:
+        matched = (
+            (
+                await db.execute(
+                    select(
+                        Route.id,
+                        Route.encoded_polyline,
+                        Route.distance_meters,
+                    ).where(
+                        Route.id.in_(matched_ids),
+                        Route.user_id == user_id,
+                    )
+                )
+            )
+            .all()
+        )
+        candidate_geometry = {
+            m.id: (m.encoded_polyline, m.distance_meters) for m in matched
+        }
+
     out: list[dict] = []
     for orphan in orphan_sets:
         match = ranked.get(orphan["id"])
@@ -380,13 +417,20 @@ async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
         has_candidate = bool(match and match["live_id"])
         cont = match["containment"] if match else 0.0
         jac = match["jaccard"] if match else 0.0
+        poly, dist = (
+            candidate_geometry.get(match["live_id"], (None, None)) if match else (None, None)
+        )
         out.append(
             {
                 "orphan_id": orphan["id"],
                 "orphan_name": orphan["name"],
+                "orphan_polyline": orphan["polyline"],
+                "orphan_distance_m": orphan["distance_m"],
                 "has_geometry": has_geometry,
                 "live_id": match["live_id"] if match else None,
                 "live_name": match["live_name"] if match else None,
+                "live_polyline": poly,
+                "live_distance_m": dist,
                 "containment": round(cont, 4),
                 "jaccard": round(jac, 4),
                 "bucket": review_row_bucket(
