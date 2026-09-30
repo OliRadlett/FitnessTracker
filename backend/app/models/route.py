@@ -62,6 +62,15 @@ class Route(Base):
     wahoo_route_pushed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set when the route is excluded from matching because nothing has ever
+    # been linked to it (merge residue / absorbed lap-variant twin). NULL means
+    # "never quarantined"; the value is the audit of when it was set aside, so
+    # it is a timestamp rather than a boolean — re-sweeping must not overwrite
+    # the original date. Display paths deliberately do not filter on this: a
+    # quarantined route is still the user's route.
+    quarantined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

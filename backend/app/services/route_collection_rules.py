@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.route import Route
+from app.services.route_quarantine import active_routes_clause
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,16 @@ async def evaluate_smart_collection(
 
     rules = collection.rules or {}
     if not rules:
-        # Empty rules = all routes match (like a "All Routes" collection)
-        result = await db.execute(select(Route).where(Route.user_id == user_id))
+        # Empty rules = all routes match (like a "All Routes" collection).
+        # Quarantined routes are excluded: a smart collection is a matching
+        # surface, and a route nothing has been ridden on is merge residue,
+        # not a course the user curates. See app/services/route_quarantine.py.
+        result = await db.execute(
+            select(Route).where(Route.user_id == user_id, active_routes_clause())
+        )
         return list(result.scalars().all())
 
-    query = select(Route).where(Route.user_id == user_id)
+    query = select(Route).where(Route.user_id == user_id, active_routes_clause())
 
     # Apply each rule
     if rules.get("surface_type"):

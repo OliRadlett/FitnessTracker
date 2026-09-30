@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.integrations import jev_client
 from app.models.activity import Activity, ActivitySource
 from app.models.route import Route
+from app.services.route_quarantine import active_routes_clause
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +405,11 @@ async def link_activity_to_route(
 
     # Fetch all user routes (or use pre-fetched list)
     if routes is None:
-        result = await db.execute(select(Route).where(Route.user_id == activity.user_id))
+        result = await db.execute(
+            select(Route).where(
+                Route.user_id == activity.user_id, active_routes_clause()
+            )
+        )
         routes = list(result.scalars().all())
 
     if not routes:
@@ -477,7 +482,9 @@ async def backfill_activity_route_links(
     activities = list(result.scalars().all())
 
     # Pre-fetch routes once to avoid N+1 queries
-    routes_result = await db.execute(select(Route).where(Route.user_id == user_id))
+    routes_result = await db.execute(
+        select(Route).where(Route.user_id == user_id, active_routes_clause())
+    )
     routes = list(routes_result.scalars().all())
 
     linked_count = 0
