@@ -47,8 +47,20 @@ function makeFixture(opts: {
   rainy: boolean;
   /** ride start time (ISO) — drives the scene's time-of-day lighting */
   startDate?: string;
+  /** route origin. Hilly fixtures live in the Lakes (Scafell, real 100–700 m
+      relief) so hypsometric tint has something to show; flat stays in London. */
+  baseLat?: number;
+  baseLng?: number;
+  /** barometric profile base + amplitude — kept near real DEM relief so the
+      exaggeration factor stays natural instead of maxing out */
+  altBase?: number;
+  altAmp?: number;
 }): SyntheticFixture {
   const n = 400;
+  const baseLat = opts.baseLat ?? 51.5;
+  const baseLng = opts.baseLng ?? -0.1;
+  const altBase = opts.altBase ?? 60;
+  const altAmp = opts.altAmp ?? (opts.hilly ? 18 : 0);
   const pts: Array<[number, number]> = [];
   const alt: number[] = [];
   const vel: number[] = [];
@@ -57,9 +69,9 @@ function makeFixture(opts: {
   const cadence: number[] = [];
   for (let i = 0; i < n; i++) {
     const f = i / (n - 1);
-    // ~2.5 km route near 51.5N (golden-hour start, like prod data).
-    pts.push([51.5 + Math.sin(f * Math.PI * 4) * 0.002 + f * 0.004, -0.1 + f * 0.03]);
-    alt.push(opts.hilly ? 60 + Math.sin(f * Math.PI * 6) * 18 : 60);
+    // ~2.5 km route (golden-hour default start, like prod data).
+    pts.push([baseLat + Math.sin(f * Math.PI * 4) * 0.002 + f * 0.004, baseLng + f * 0.03]);
+    alt.push(altBase + Math.sin(f * Math.PI * 6) * altAmp);
     vel.push(8);
     power.push(150 + Math.sin(f * Math.PI * 6) * 60);
     hr.push(140 + Math.sin(f * Math.PI * 2) * 12);
@@ -97,19 +109,23 @@ function makeFixture(opts: {
   };
 }
 
-export const VISUAL_HILLY = makeFixture({ id: 'visual-hilly', hilly: true, rainy: false });
+const LAKES = { baseLat: 54.44, baseLng: -3.23, altBase: 150, altAmp: 250 };
+
+export const VISUAL_HILLY = makeFixture({ id: 'visual-hilly', hilly: true, rainy: false, ...LAKES });
 export const VISUAL_FLAT_RAINY = makeFixture({ id: 'visual-flat-rainy', hilly: false, rainy: true });
-// Same hilly route at solar noon (≈39° elevation, full day look) and deep
+// Same hilly route at solar noon (≈36° elevation, full day look) and deep
 // night — the Phase 2 time-of-day baselines.
 export const VISUAL_DAY = makeFixture({
   id: 'visual-day',
   hilly: true,
   rainy: false,
   startDate: '2026-09-22T12:00:00+00:00',
+  ...LAKES,
 });
 export const VISUAL_NIGHT = makeFixture({
   id: 'visual-night',
   hilly: true,
   rainy: false,
   startDate: '2026-09-22T23:30:00+00:00',
+  ...LAKES,
 });

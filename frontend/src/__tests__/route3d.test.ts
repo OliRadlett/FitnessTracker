@@ -7,6 +7,7 @@ import {
   MAX_GRID_POINTS,
   bilinearHeight,
   buildRoute3D,
+  buildTerrainMesh,
   computeGrid,
   elevationColor,
   gradeColor,
@@ -16,6 +17,7 @@ import {
   slopeColor,
   steepestKm,
 } from '@/lib/route3d';
+import type { RouteGrid } from '@/lib/route3d';
 
 // A 1 km north-south hill at 5% grade: 50 m gain over 0.00898° of latitude.
 const hill: [number, number][] = [
@@ -150,6 +152,71 @@ describe('buildRoute3D', () => {
   it('keeps full resolution below maxPathSamples', () => {
     const build = buildRoute3D({ coords: hill, elevations: hillElevations, maxPathSamples: 1000 });
     expect(build.path.length).toBe(2);
+  });
+
+  it('tints lowland green and high alpine grey-white (absolute hypsometry)', () => {
+    const grid: RouteGrid = {
+      cols: 4,
+      rows: 4,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.01,
+      lngSpan: 0.01,
+      lats: [51.5, 51.51, 51.52, 51.53],
+      lngs: [-0.1, -0.09, -0.08, -0.07],
+    };
+    const opts = { lat0: 51.5, lng0: -0.1, altMin: 0, zScale: 1 };
+    const low = buildTerrainMesh(grid, new Array(16).fill(60), opts);
+    // Interior vertex (r=1, c=1): green dominates, red stays low.
+    const li = (1 * 4 + 1) * 3;
+    expect(low.colors[li + 1]).toBeGreaterThan(low.colors[li]);
+    expect(low.colors[li]).toBeLessThan(0.35);
+    const high = buildTerrainMesh(grid, new Array(16).fill(2000), opts);
+    const hi = (1 * 4 + 1) * 3;
+    // Greyish: all channels up, spread narrow.
+    expect(Math.min(high.colors[hi], high.colors[hi + 1], high.colors[hi + 2])).toBeGreaterThan(0.3);
+    expect(
+      Math.max(high.colors[hi], high.colors[hi + 1], high.colors[hi + 2]) -
+        Math.min(high.colors[hi], high.colors[hi + 1], high.colors[hi + 2]),
+    ).toBeLessThan(0.2);
+  });
+
+  it('tints the same elevation identically regardless of neighbours (no local normalisation)', () => {
+    const grid: RouteGrid = {
+      cols: 5,
+      rows: 5,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.01,
+      lngSpan: 0.01,
+      lats: [51.5, 51.51, 51.52, 51.53, 51.54],
+      lngs: [-0.1, -0.09, -0.08, -0.07, -0.06],
+    };
+    const opts = { lat0: 51.5, lng0: -0.1, altMin: 0, zScale: 1 };
+    const flat = buildTerrainMesh(grid, new Array(25).fill(120), opts);
+    const varied = buildTerrainMesh(
+      grid,
+      Array.from({ length: 25 }, (_, i) => (i === 12 ? 120 : i * 40)),
+      opts,
+    );
+    const ci = 12 * 3;
+    expect(Array.from(varied.colors.slice(ci, ci + 3))).toEqual(Array.from(flat.colors.slice(ci, ci + 3)));
+  });
+
+  it('renders below-sea-level cells as water, not land', () => {
+    const grid: RouteGrid = {
+      cols: 4,
+      rows: 4,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.01,
+      lngSpan: 0.01,
+      lats: [51.5, 51.51, 51.52, 51.53],
+      lngs: [-0.1, -0.09, -0.08, -0.07],
+    };
+    const res = buildTerrainMesh(grid, new Array(16).fill(-5), { lat0: 51.5, lng0: -0.1, altMin: 0, zScale: 1 });
+    const i = (1 * 4 + 1) * 3;
+    expect(res.colors[i + 2]).toBeGreaterThan(res.colors[i]);
   });
 
   it('builds a terrain bed when a DEM grid is supplied', () => {

@@ -127,6 +127,56 @@ async function loadTile(z: number, x: number, y: number, signal?: AbortSignal): 
   return out;
 }
 
+/**
+ * Diffuse valid heights into small void regions, in place. Each pass fills
+ * invalid cells touching a valid one (reads come from the previous pass, so
+ * `maxPasses` bounds the fill radius). Oceans survive — only speckle near
+ * valid data fills. Pure.
+ */
+export function diffuseVoids(
+  heights: number[],
+  okMask: Uint8Array,
+  cols: number,
+  rows: number,
+  maxPasses = 8,
+): void {
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    const prevH = heights.slice();
+    const prevOk = Uint8Array.from(okMask);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (prevOk[i]) continue;
+        let sum = 0;
+        let n = 0;
+        if (c > 0 && prevOk[i - 1]) {
+          sum += prevH[i - 1];
+          n++;
+        }
+        if (c < cols - 1 && prevOk[i + 1]) {
+          sum += prevH[i + 1];
+          n++;
+        }
+        if (r > 0 && prevOk[i - cols]) {
+          sum += prevH[i - cols];
+          n++;
+        }
+        if (r < rows - 1 && prevOk[i + cols]) {
+          sum += prevH[i + cols];
+          n++;
+        }
+        if (n > 0) {
+          heights[i] = sum / n;
+          okMask[i] = 1;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+}
+
 /** bilinear sample of the stitched tiles at a lat/lng (clamped to the tile edge) */
 function sampleTiles(tiles: Map<string, Float32Array>, z: number, lat: number, lng: number): number {
   const { x, y } = lngLatToPixel(lat, lng, z);
@@ -208,17 +258,22 @@ export async function fetchTerrariumTerrain(
   await Promise.all(jobs);
 
   // Sanitise: terrarium writes 32767 for void/nodata — never let that spike the mesh.
+  // Small void speckles diffuse from valid neighbours; large void areas survive
+  // the capped passes and stay shoreline (oceans must not become land).
   let valid = 0;
   const heights = new Array<number>(rows * cols);
+  const okMask = new Uint8Array(rows * cols);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const h = sampleTiles(tiles, z, lats[r], lngs[c]);
       const ok = Number.isFinite(h) && h > -1000 && h < 8000;
       heights[r * cols + c] = ok ? h : 0;
+      okMask[r * cols + c] = ok ? 1 : 0;
       if (ok) valid++;
     }
   }
   if (valid === 0) throw new TerrainTilesError('no-valid-heights');
+  diffuseVoids(heights, okMask, cols, rows);
 
   return {
     grid: { cols, rows, lat0, lng0, latSpan, lngSpan, lats, lngs },

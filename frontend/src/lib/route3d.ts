@@ -252,37 +252,13 @@ export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, 
   return Number.isFinite(v) ? v : null;
 }
 
-/** terrain mesh vertex data from the DEM grid, in the path's projection frame */
-/** per-vertex surface normal (metres) from neighbour height differences */
-function terrainNormalAt(
-  heights: number[],
-  cols: number,
-  rows: number,
-  r: number,
-  c: number,
-  lngStepM: number,
-  latStepM: number,
-): [number, number, number] {
-  const base = heights[r * cols + c];
-  const at = (rr: number, cc: number) => {
-    const v = heights[rr * cols + cc];
-    return Number.isFinite(v) ? v : base;
-  };
-  const hL = at(r, Math.max(0, c - 1));
-  const hR = at(r, Math.min(cols - 1, c + 1));
-  const hD = at(Math.max(0, r - 1), c);
-  const hU = at(Math.min(rows - 1, r + 1), c);
-  return [-(hR - hL) / (2 * lngStepM), -(hU - hD) / (2 * latStepM), 1];
-}
-
-/** Lambert diffuse vs a warm, elevated sun. Returns ~0.4..1.0. */
-function terrainLambert(n: [number, number, number]): number {
-  const nlen = Math.hypot(n[0], n[1], n[2]) || 1;
-  // sun dir (normalised): from front-right, elevated
-  const sx = 0.45, sy = 0.5, sz = 0.95;
-  const slen = Math.hypot(sx, sy, sz);
-  return Math.max(0.4, ((n[0] * sx + n[1] * sy + n[2] * sz) / (nlen * slen)) * 0.6 + 0.4);
-}
+/**
+ * Absolute hypsometric ceiling (m): terrain tint maps 0..HYPSO_MAX_M onto
+ * ELEVATION_RAMP so altitude reads the same on every ride — green lowlands,
+ * brown hills, white peaks — instead of stretching the full ramp over whatever
+ * local relief a grid happens to have (snow on a 60 m hill).
+ */
+export const HYPSO_MAX_M = 2500;
 
 export function buildTerrainMesh(
   grid: RouteGrid,
@@ -296,18 +272,6 @@ export function buildTerrainMesh(
   const colors = new Float32Array(count * 3);
   const sea = opts.seaLevelM ?? 0;
 
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const h of heights) {
-    if (Number.isFinite(h)) {
-      if (h < lo) lo = h;
-      if (h > hi) hi = h;
-    }
-  }
-  const span = hi - lo || 1;
-
-  const latStepM = (lats[1] - lats[0]) * M_PER_DEG_LAT || 1;
-  const lngStepM = (lngs[1] - lngs[0]) * mPerDegLng || 1;
   // Fade the outer ~6% of the grid to black so the terrain slab's hard edge
   // dissolves into the horizon instead of ending abruptly.
   const fadeDepth = Math.max(1, Math.min(rows, cols) * 0.06);
@@ -319,7 +283,9 @@ export function buildTerrainMesh(
     for (let c = 0; c < cols; c++) {
       const idx = (r * cols + c) * 3;
       const h = heights[r * cols + c];
-      const hv = Number.isFinite(h) ? h : lo;
+      // Non-finite samples fall back to sea level (shoreline) so one bad
+      // sample can never poison positions with NaN.
+      const hv = Number.isFinite(h) ? h : sea;
       positions[idx] = (lngs[c] - opts.lng0) * mPerDegLng;
       positions[idx + 1] = (lats[r] - opts.lat0) * M_PER_DEG_LAT;
       positions[idx + 2] = (hv - opts.altMin) * opts.zScale;
@@ -337,12 +303,14 @@ export function buildTerrainMesh(
         colors[idx + 1] = wg * k;
         colors[idx + 2] = wb * k;
       } else {
-        const t = (hv - lo) / span;
+        // Absolute elevation tint: comparable across rides, honest on flats.
+        const t = Math.max(0, Math.min(1, hv / HYPSO_MAX_M));
         const raw = rampColor(ELEVATION_RAMP, t);
-        const n = terrainNormalAt(heights, cols, rows, r, c, lngStepM, latStepM);
-        const lambert = terrainLambert(n);
+        // No baked sun shading: the bed's MeshLambertMaterial is lit by the
+        // scene's actual sun, so relief follows time-of-day instead of fighting
+        // it with a second, fixed light. Edge fade only.
         const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
-        const k = lambert * edge;
+        const k = edge;
         // Blend the hypsometric ramp over a warm earth base, then shade.
         colors[idx] = (raw[0] * 0.7 + GROUND[0] * 0.3) * k;
         colors[idx + 1] = (raw[1] * 0.7 + GROUND[1] * 0.3) * k;
