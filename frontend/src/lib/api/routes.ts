@@ -6,6 +6,7 @@ import type {
   RouteSyncResult,
   DuplicatePair,
   MergeResult,
+  OrphanReviewResponse,
   RouteMergeLogEntry,
   SimilarRoute,
   MergedRouteView,
@@ -74,6 +75,41 @@ export async function mergeRoutes(
 
 export async function listRouteMerges(token?: string): Promise<RouteMergeLogEntry[]> {
   return apiFetch<RouteMergeLogEntry[]>('/api/v1/routes/merges', {}, token);
+}
+
+// ─── Orphan review ────────────────────────────────────────────────────────────
+
+export async function getOrphanCandidates(
+  token?: string,
+): Promise<OrphanReviewResponse> {
+  return apiFetch<OrphanReviewResponse>('/api/v1/routes/orphans', {}, token);
+}
+
+/** Reject a quarantined route. It stays quarantined, but leaves the queue. */
+export async function dismissOrphan(
+  routeId: string,
+  token?: string,
+): Promise<{ id: string; dismissed: boolean }> {
+  return apiFetch<{ id: string; dismissed: boolean }>(
+    `/api/v1/routes/orphans/${routeId}/dismiss`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+/**
+ * Keep a quarantined route: un-quarantine it so matching can use it again.
+ * Also clears any earlier dismissal.
+ */
+export async function keepOrphan(
+  routeId: string,
+  token?: string,
+): Promise<{ id: string; quarantined_at: string | null; dismissed: boolean }> {
+  return apiFetch<{ id: string; quarantined_at: string | null; dismissed: boolean }>(
+    `/api/v1/routes/orphans/${routeId}/keep`,
+    { method: 'POST' },
+    token,
+  );
 }
 
 export type MergeKind = 'identical' | 'variant' | 'unclassified';

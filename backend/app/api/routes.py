@@ -49,6 +49,8 @@ from app.schemas.route import (
     MergeManyRequest,
     MergeRequest,
     MergeResult,
+    OrphanReviewResponse,
+    OrphanReviewRow,
     RiddenSegment,
     RouteCollectionCreate,
     RouteCollectionRead,
@@ -67,7 +69,7 @@ from app.schemas.route import (
     RouteUpdate,
 )
 from app.schemas.segment import SegmentRead, SegmentRecomputeResponse
-from app.services import route_service
+from app.services import route_quarantine, route_service
 from app.services import segments as segment_service
 from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
@@ -825,6 +827,76 @@ async def create_route(
     return RouteRead.model_validate(route)
 
 
+# ─── Orphan review ────────────────────────────────────────────────────────────
+# Registered HERE, above every dynamic /{route_id} handler, per Pitfall #13.
+# FastAPI matches in registration order, so a static path like /orphans
+# declared further down the file would be claimed by PATCH /{route_id} and
+# 422 on UUID validation instead of returning the review queue.
+
+
+@router.get("/orphans", response_model=OrphanReviewResponse)
+async def list_orphan_candidates(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Quarantined routes awaiting a decision, best match first.
+
+    Every quarantined route with no linked activity shows up here with its
+    best live match, so the user judges duplicates in one place instead of
+    hunting for them. Dismissed routes are excluded — a judgement already
+    made is not re-proposed on the next sweep.
+
+    Both similarity numbers are returned rather than one blended score:
+    they disagree exactly where it matters (see ``OrphanReviewRow``).
+    """
+    rows = await route_quarantine.list_review_queue(db, current_user.id)
+    counts: dict[str, int] = {}
+    for r in rows:
+        counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
+    return OrphanReviewResponse(
+        rows=[OrphanReviewRow(**r) for r in rows], counts=counts
+    )
+
+
+@router.post("/orphans/{route_id}/dismiss", response_model=dict)
+async def dismiss_orphan(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a quarantined route: stays quarantined, leaves the queue.
+
+    Distinct from *merge* and from *keep*. The route keeps its data and can
+    be restored later; the point is that it is no longer re-proposed.
+    """
+    ok = await route_quarantine.dismiss_route(db, current_user.id, route_id)
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail="Route is not a quarantined route awaiting review",
+        )
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return {"id": str(route_id), "dismissed": True}
+
+
+@router.post("/orphans/{route_id}/keep", response_model=dict)
+async def keep_orphan(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Keep a quarantined route: un-quarantine it so matching can use it.
+
+    Also clears any earlier dismissal, because keeping the route retracts
+    a previous judgement rather than adding a second one.
+    """
+    ok = await route_quarantine.keep_route(db, current_user.id, route_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Route not found")
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return {"id": str(route_id), "quarantined_at": None, "dismissed": False}
+
+
 @router.patch("/{route_id}", response_model=RouteRead)
 async def update_route(
     route_id: uuid.UUID,
@@ -1448,6 +1520,8 @@ async def sync_routes(
 # /duplicates).  FastAPI matches routes in registration order, so a /{route_id}
 # route registered before /tags would shadow it — "tags" is not a valid UUID,
 # resulting in a 422 ValidationError instead of routing to the intended handler.
+# `/orphans` is declared much earlier in the file for exactly this reason — see
+# the note above its handler.
 
 
 @router.get("/{route_id}", response_model=RouteRead)
