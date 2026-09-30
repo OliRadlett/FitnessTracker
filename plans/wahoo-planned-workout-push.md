@@ -28,6 +28,30 @@ Shipped as described below. Notable decisions taken during implementation:
   as 0=indoor / 1=outdoor; auto-push scheduling and unpush-of-unused-plans are
   not implemented.
 
+## Wahoo scopes — approved vs. actually used
+
+The Wahoo app is approved for **12 scopes**. The OAuth flow requests all 12
+(exact match required), but only 7 are exercised by code today. The unused
+ones are recorded here as candidate feature hooks.
+
+| Scope | Used? | Notes / potential feature |
+|-------|:-----:|---------------------------|
+| `user_read` | ✅ | `GET /v1/user` — connection health, athlete identity. |
+| `workouts_read` | ✅ | Completed workouts sync (`sync_wahoo_activities`). |
+| `workouts_write` | ✅ | Push scheduled workout instances (`POST /v1/workouts`). |
+| `plans_read` | ✅ | Plan lookup by `external_id` (idempotent push). |
+| `plans_write` | ✅ | Upload/update structured workouts (`POST /v1/plans`). |
+| `routes_read` | ✅ | Route sync (`sync_wahoo_routes`). |
+| `routes_write` | ✅ | Push FIT courses (`POST /v1/routes`). |
+| `offline_data` | ❌ | Wahoo's refresh-token scope. Requested but not yet consumed — the natural basis for unattended/background push (phase 4 auto-push), and required if Wahoo enforces refresh rotation. |
+| `power_zones_read` | ❌ | Read the athlete's Wahoo power zones. Candidate: reconcile with FitTrack FTP / `WORKOUT_ZONES` so pushed workouts match the device's own zone model, and detect FTP drift. |
+| `power_zones_write` | ❌ | Write power zones (`PUT /v1/power_zones`). Candidate: push FTP to Wahoo automatically when the weekly auto-estimate or an FL1 test changes it, so the head unit and FitTrack agree without manual entry. |
+| `user_write` | ❌ | Update the Wahoo user profile. Candidate: sync weight / body metrics or home location so the Wahoo app's own calculations (calories, W/kg) match FitTrack. |
+| `email` | ❌ | Email address on the Wahoo profile. Candidate: account-linking guard — assert the connected Wahoo account is the intended one during reconnect. |
+
+> When a feature starts using one of these, update this table so it doesn't
+> drift back to "unused".
+
 ## 1. Goal / UX
 
 On a cycle day in the training-plan **This Week** view, the user opens the day
@@ -46,7 +70,12 @@ outside it.
 
 Manual, per-day push only. No automatic/nightly push in v1.
 
-## 2. Current state (what already exists)
+## 2. Pre-implementation state (snapshot at plan-writing time)
+
+> Historical. The rows marked **No** below were gaps at the time this plan was
+> written; they are now implemented — see the Implementation summary above and
+> §5.7. Kept for the reasoning behind the design, not as a description of the
+> current codebase.
 
 | Need | Exists? | Where |
 |------|---------|-------|
@@ -59,7 +88,7 @@ Manual, per-day push only. No automatic/nightly push in v1.
 | Wahoo **write** (plans/workouts/routes) | **No** | — |
 | Structured `plan.json` builder | **No** | — |
 | FIT course encoder (for route upload) | **No** | only `fitparse` (read-only) is a dependency |
-| Write OAuth scopes | **No** | scope is `user_read workouts_read routes_read` (`backend/app/services/auth.py:90`) |
+| Write OAuth scopes | **No** | scope was read-only; the approved set is now listed in the scope table at the top of this doc |
 
 ## 3. Wahoo API contract (verified against cloud-api.wahooligan.com)
 
@@ -260,8 +289,9 @@ Remember pitfall #26: manual construction in the API needs the new fields.
 
 ### 5.7 OAuth scope migration
 
-- Update `auth.py:90` scopes to
-  `user_read workouts_read workouts_write routes_read routes_write plans_read plans_write`.
+- Request the **full approved scope set** in `auth.py` and in
+  `WahooClient.get_authorize_url()` (the two lists must stay in sync — see the
+  scope table at the top of this doc for the current set and which are unused).
 - The Wahoo developer app must have these scopes enabled/approved (portal).
 - **Existing connections won't have write scopes** — they are not retroactively
   granted. The push endpoint's 403 must carry a clear "Reconnect Wahoo to grant
