@@ -159,7 +159,11 @@ KOMOOT_PASSWORD=
 KOMOOT_USER_ID=
 
 # ─── Strava Webhook (optional) ───────────────────────────
-STRAVA_VERIFY_TOKEN=fittrack_strava_webhook
+# Must be a real secret (e.g. `openssl rand -base64 48`) and must match the
+# token configured in the Strava webhook subscription. Left empty, the
+# subscription challenge endpoint fails closed with 503 (SEC-05) — an
+# unset/guessable value would let anyone claim your subscription.
+STRAVA_VERIFY_TOKEN=
 ```
 
 Generate secrets with:

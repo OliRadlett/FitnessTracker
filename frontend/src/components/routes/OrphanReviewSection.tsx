@@ -14,7 +14,18 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useToast } from '@/components/ui/Toast';
-import { GitMerge, X, Undo2, AlertTriangle, MapPin } from 'lucide-react';
+import { formatDistance } from '@/lib/utils';
+import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
+import { RouteMap } from '@/components/maps/RouteMap';
+import {
+  GitMerge,
+  X,
+  Undo2,
+  AlertTriangle,
+  MapPin,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 
 const BUCKET_LABEL: Record<OrphanBucket, string> = {
   near_certain: 'Near-certain match',
@@ -64,7 +75,12 @@ function OrphanRow({
   busy: boolean;
 }) {
   const [showWhy, setShowWhy] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const isLap = row.containment >= 0.9 && row.jaccard < 0.5;
+  // An overlay with one line is not a comparison. 11 of 67 orphans have no
+  // candidate at all, and drawing a single trace next to "no candidate"
+  // invites the reader to compare it against nothing.
+  const canCompare = Boolean(row.live_polyline && row.orphan_polyline);
 
   return (
     <div className="border-t border-border py-4 first:border-t-0">
@@ -72,9 +88,19 @@ function OrphanRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate font-medium text-text">{row.orphan_name}</span>
+            <span className="font-mono text-xs text-muted">
+              {formatDistance(row.orphan_distance_m)}
+            </span>
             <span className="text-muted">→</span>
             {row.live_name ? (
-              <span className="truncate font-medium text-text">{row.live_name}</span>
+              <>
+                <span className="truncate font-medium text-text">{row.live_name}</span>
+                {row.live_distance_m != null && (
+                  <span className="font-mono text-xs text-muted">
+                    {formatDistance(row.live_distance_m)}
+                  </span>
+                )}
+              </>
             ) : (
               <span className="flex items-center gap-1 text-sm text-muted">
                 <AlertTriangle className="h-3.5 w-3.5" />
@@ -128,6 +154,71 @@ function OrphanRow({
               other.
             </p>
           )}
+
+          {/* The overlay is the decisive tool. The two numbers above say how
+              much they overlap; only the map shows whether the shorter one
+              stops partway or retraces the whole loop. */}
+          <div className="mt-2">
+            {canCompare ? (
+              <>
+                <button
+                  onClick={() => setShowMap((v) => !v)}
+                  aria-expanded={showMap}
+                  className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+                >
+                  {showMap ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  {showMap ? 'Hide map' : 'Show map (overlaid)'}
+                </button>
+
+                {showMap && (
+                  <div className="mt-2">
+                    <CompareRoutesMap
+                      encodedA={row.orphan_polyline}
+                      encodedB={row.live_polyline as string}
+                      labelA={row.orphan_name}
+                      labelB={row.live_name ?? ''}
+                      className="h-[260px]"
+                    />
+                    <p className="mt-1 text-xs text-muted">
+                      {row.orphan_name} is dashed blue; {row.live_name} is solid amber.
+                      Where amber is left uncovered, the blue route continues alone —
+                      that is what separates a lap from a duplicate.
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* No candidate, so there is nothing to overlay against. Still
+                 worth drawing on its own: it is how you judge whether this
+                 deserves a manual road match rather than a dismissal. */
+              <button
+                onClick={() => setShowMap((v) => !v)}
+                aria-expanded={showMap}
+                className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+              >
+                {showMap ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                {showMap ? 'Hide map' : 'Show map (no candidate to compare)'}
+              </button>
+            )}
+
+            {showMap && !canCompare && (
+              <div className="mt-2">
+                <RouteMap
+                  encodedPolyline={row.orphan_polyline}
+                  className="h-[260px]"
+                  isLoop={false}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">

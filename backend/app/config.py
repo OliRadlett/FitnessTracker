@@ -62,8 +62,13 @@ class Settings(BaseSettings):
     komoot_password: str = ""
     komoot_user_id: str = ""  # Numeric Komoot user ID (auto-detected if not set)
 
-    # Strava Webhook
-    strava_verify_token: str = "fittrack_strava_webhook"
+    # Strava Webhook — the subscription challenge echoes hub.challenge back to
+    # whoever presents a matching hub.verify_token, so this must be a real
+    # secret (SEC-05). It intentionally defaults to EMPTY: a shipped default
+    # would be published in the repo, letting anyone claim the subscription.
+    # Empty also fails closed — the challenge endpoint rejects, it never
+    # matches on "". Set STRAVA_VERIFY_TOKEN to enable the challenge.
+    strava_verify_token: str = ""
 
     # Cloudflare R2 (S3-compatible) for §1.1 strength-video uploads — optional.
     # When any of these is unset, `_s3_configured()` is False and the upload

@@ -214,10 +214,16 @@ export type OrphanBucket =
 export interface OrphanReviewRow {
   orphan_id: string;
   orphan_name: string;
+  /** Required: `has_geometry` is about the road_match, not the shape. */
+  orphan_polyline: string;
+  orphan_distance_m: number;
   /** False when the route has no road_match and cannot be scored at all. */
   has_geometry: boolean;
   live_id: string | null;
   live_name: string | null;
+  /** Null when there is no candidate; the map is omitted rather than half-drawn. */
+  live_polyline: string | null;
+  live_distance_m: number | null;
   containment: number;
   jaccard: number;
   bucket: OrphanBucket;
