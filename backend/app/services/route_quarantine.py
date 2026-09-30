@@ -40,6 +40,81 @@ logger = logging.getLogger(__name__)
 QUARANTINE_MIN_ACTIVITIES = 0
 
 
+# ── Orphan review queue ──────────────────────────────────────────────────────
+#
+# Quarantine says a route is excluded from matching. It does not say the
+# user has looked at it. These are different facts, and the review queue
+# needs both, or the same candidates are re-proposed on every sweep and
+# the queue never empties.
+
+# Ordered best-first; also the display order and the badge set.
+REVIEW_BUCKETS = ("near_certain", "likely", "ambiguous", "distinct", "unscorable")
+
+# Containment and Jaccard disagree, and the disagreement is the signal.
+#
+# `containment` is |A n B| / min(|A|,|B|), so an orphan lying entirely
+# inside a larger live route scores 1.000 — it is a *lap of a longer
+# course*, not a duplicate of it. Jaccard separates those: the lap's
+# intersection over union is low because the sizes differ.
+#
+# So the top bucket requires both. A pair with containment 1.000 and
+# Jaccard 0.30 is a lap, and calling that a near-certain merge is how a
+# longer course swallows a short one.
+_NEAR_CERTAIN_CONTAINMENT = 0.90
+_NEAR_CERTAIN_JACCARD = 0.50
+_LIKELY_CONTAINMENT = 0.70
+_LIKELY_JACCARD = 0.20
+_AMBIGUOUS_CONTAINMENT = 0.50
+
+
+def bucket_for(containment: float, jaccard: float) -> str:
+    """Which review bucket a *completed comparison* falls into.
+
+    Scores only — whether a comparison was possible at all is the caller's
+    judgement, via :func:`review_row_bucket`. That split matters because a
+    zero score is ambiguous on its own: it means either "these two share no
+    edges" (a real, informative result) or "there was nothing to compare
+    against". Reading the first as the second would badge 11 data-less
+    orphans as confidently distinct, behind a dismiss action nobody reads.
+    """
+    if (
+        containment >= _NEAR_CERTAIN_CONTAINMENT
+        and jaccard >= _NEAR_CERTAIN_JACCARD
+    ):
+        return "near_certain"
+    if containment >= _LIKELY_CONTAINMENT and jaccard >= _LIKELY_JACCARD:
+        return "likely"
+    if containment >= _AMBIGUOUS_CONTAINMENT:
+        return "ambiguous"
+    return "distinct"
+
+
+def review_row_bucket(
+    *, has_geometry: bool, has_candidate: bool, containment: float, jaccard: float
+) -> str:
+    """The bucket for one review row: data availability, then score.
+
+    ``unscorable`` means *no comparison was possible* — either the orphan
+    has no ``road_match`` at all, or there is no live route to compare it
+    against. It is deliberately distinct from a completed comparison that
+    scored zero: an orphan sharing no edges with its best candidate is a
+    real measurement, and calling it unscoreable would hide 28 genuinely
+    distinct routes behind "cannot compare".
+    """
+    if not has_geometry or not has_candidate:
+        return "unscorable"
+    return bucket_for(containment, jaccard)
+
+
+def review_sort_key(containment: float, jaccard: float, has_geometry: bool):
+    """Deterministic best-first ordering for the review queue.
+
+    Unscoreable rows sort last whatever their numbers, so the ones a user
+    can act on are not buried under 11 rows that have no data.
+    """
+    return (0 if has_geometry else 1, -containment, -jaccard)
+
+
 def active_routes_clause():
     """SQL predicate for routes eligible to be matched against.
 
@@ -248,3 +323,116 @@ def rank_recovery_candidates(
         rows.append(best)
     rows.sort(key=lambda r: (-r["containment"], -r["jaccard"], str(r["orphan_name"])))
     return rows
+
+
+async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """Quarantined routes awaiting a decision, best match first.
+
+    Dismissed routes are excluded — a judgement the user already made is
+    not re-proposed on the next sweep. Unscoreable orphans (no
+    ``road_match``) are still listed, last and with a null best-match, so
+    the count the user sees matches the number that needs attention.
+    """
+    quarantined = (
+        (
+            await db.execute(
+                select(Route.id, Route.name, Route.road_match).where(
+                    Route.user_id == user_id,
+                    Route.quarantined_at.isnot(None),
+                    Route.dismissed_at.is_(None),
+                )
+            )
+        )
+        .all()
+    )
+    if not quarantined:
+        return []
+
+    live = (
+        (
+            await db.execute(
+                select(Route.id, Route.name, Route.road_match).where(
+                    Route.user_id == user_id, active_routes_clause()
+                )
+            )
+        )
+        .all()
+    )
+
+    live_sets = [
+        {"id": r.id, "name": r.name, "ways": way_ids_from_road_match(r.road_match)}
+        for r in live
+    ]
+    orphan_sets = [
+        {"id": r.id, "name": r.name, "ways": way_ids_from_road_match(r.road_match)}
+        for r in quarantined
+    ]
+
+    scorable = [o for o in orphan_sets if o["ways"]]
+    ranked = {
+        row["orphan_id"]: row for row in rank_recovery_candidates(scorable, live_sets)
+    }
+
+    out: list[dict] = []
+    for orphan in orphan_sets:
+        match = ranked.get(orphan["id"])
+        has_geometry = bool(orphan["ways"])
+        has_candidate = bool(match and match["live_id"])
+        cont = match["containment"] if match else 0.0
+        jac = match["jaccard"] if match else 0.0
+        out.append(
+            {
+                "orphan_id": orphan["id"],
+                "orphan_name": orphan["name"],
+                "has_geometry": has_geometry,
+                "live_id": match["live_id"] if match else None,
+                "live_name": match["live_name"] if match else None,
+                "containment": round(cont, 4),
+                "jaccard": round(jac, 4),
+                "bucket": review_row_bucket(
+                    has_geometry=has_geometry,
+                    has_candidate=has_candidate,
+                    containment=cont,
+                    jaccard=jac,
+                ),
+            }
+        )
+
+    out.sort(
+        key=lambda r: review_sort_key(
+            r["containment"], r["jaccard"], r["has_geometry"]
+        )
+    )
+    return out
+
+
+async def dismiss_route(db: AsyncSession, user_id: uuid.UUID, route_id: uuid.UUID) -> bool:
+    """Record "reviewed and rejected", keeping the route quarantined."""
+    result = await db.execute(
+        update(Route)
+        .where(
+            Route.id == route_id,
+            Route.user_id == user_id,
+            Route.quarantined_at.isnot(None),
+            Route.dismissed_at.is_(None),
+        )
+        .values(dismissed_at=func.now())
+    )
+    await db.flush()
+    return result.rowcount > 0
+
+
+async def keep_route(db: AsyncSession, user_id: uuid.UUID, route_id: uuid.UUID) -> bool:
+    """Un-quarantine, and clear any earlier dismissal.
+
+    One action, because "keep" means "this is a real route" — which also
+    retracts a previous judgement, so a route the user was wrong about
+    can be brought back without a second, separate call.
+    """
+    result = await db.execute(
+        update(Route)
+        .where(Route.id == route_id, Route.user_id == user_id)
+        .values(quarantined_at=None, dismissed_at=None)
+    )
+    await db.flush()
+    return result.rowcount > 0

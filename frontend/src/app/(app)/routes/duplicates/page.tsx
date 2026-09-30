@@ -32,6 +32,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
+import { OrphanReviewSection } from '@/components/routes/OrphanReviewSection';
 
 export default function DuplicatesPage() {
   const { token } = useAuthFetch();
@@ -211,6 +212,8 @@ export default function DuplicatesPage() {
         </div>
 
         <ErrorState variant="inline" show={hasQueryError} message="Duplicate routes failed to load." />
+
+        <OrphanReviewSection />
 
         {autoMergeMutation.isSuccess && autoMergeMutation.data && (
           <Card className="mb-4">
