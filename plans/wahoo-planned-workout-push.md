@@ -70,7 +70,12 @@ outside it.
 
 Manual, per-day push only. No automatic/nightly push in v1.
 
-## 2. Current state (what already exists)
+## 2. Pre-implementation state (snapshot at plan-writing time)
+
+> Historical. The rows marked **No** below were gaps at the time this plan was
+> written; they are now implemented — see the Implementation summary above and
+> §5.7. Kept for the reasoning behind the design, not as a description of the
+> current codebase.
 
 | Need | Exists? | Where |
 |------|---------|-------|
@@ -83,7 +88,7 @@ Manual, per-day push only. No automatic/nightly push in v1.
 | Wahoo **write** (plans/workouts/routes) | **No** | — |
 | Structured `plan.json` builder | **No** | — |
 | FIT course encoder (for route upload) | **No** | only `fitparse` (read-only) is a dependency |
-| Write OAuth scopes | **No** | scope is `user_read workouts_read routes_read` (`backend/app/services/auth.py:90`) |
+| Write OAuth scopes | **No** | scope was read-only; the approved set is now listed in the scope table at the top of this doc |
 
 ## 3. Wahoo API contract (verified against cloud-api.wahooligan.com)
 
@@ -284,8 +289,9 @@ Remember pitfall #26: manual construction in the API needs the new fields.
 
 ### 5.7 OAuth scope migration
 
-- Update `auth.py:90` scopes to
-  `user_read workouts_read workouts_write routes_read routes_write plans_read plans_write`.
+- Request the **full approved scope set** in `auth.py` and in
+  `WahooClient.get_authorize_url()` (the two lists must stay in sync — see the
+  scope table at the top of this doc for the current set and which are unused).
 - The Wahoo developer app must have these scopes enabled/approved (portal).
 - **Existing connections won't have write scopes** — they are not retroactively
   granted. The push endpoint's 403 must carry a clear "Reconnect Wahoo to grant
