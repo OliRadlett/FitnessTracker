@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   chooseZoom,
   lngLatToPixel,
+  TERRARIUM_MAX_ZOOM,
   terrariumDecode,
   tileRangeForBbox,
 } from '@/lib/terrainTiles';
@@ -45,5 +46,14 @@ describe('chooseZoom', () => {
     const small = chooseZoom(51.5, -0.13, 51.6, 0.0, 4);
     const big = chooseZoom(51.5, -0.13, 51.6, 0.0, 64);
     expect(big).toBeGreaterThanOrEqual(small);
+  });
+
+  it('never exceeds the terrarium dataset ceiling, even for tiny bboxes', () => {
+    // chooseZoom itself is generic, but the replay fetch path must cap at the
+    // dataset max — z16+ tiles 404 and a single miss fails the whole fetch.
+    // Tiny bbox (a 2 km ride) with a generous budget is the regression case.
+    const z = chooseZoom(51.5, -0.1, 51.52, -0.07, 48, 8, TERRARIUM_MAX_ZOOM);
+    expect(z).toBeLessThanOrEqual(TERRARIUM_MAX_ZOOM);
+    expect(TERRARIUM_MAX_ZOOM).toBe(15);
   });
 });

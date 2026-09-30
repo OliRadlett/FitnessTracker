@@ -33,6 +33,11 @@ interface Fixture {
   distance_meters: number;
   encoded_polyline: string;
   streams: ActivityStream[];
+  weather_conditions?: string | null;
+  weather_temperature?: number | null;
+  weather_wind_speed_kmh?: number | null;
+  weather_wind_direction?: string | null;
+  weather_precipitation_mm?: number | null;
 }
 
 const FIXTURE_NAMES = ['act1', 'act2'];
@@ -112,6 +117,13 @@ export default function DevReplayPage() {
           polyline={fixtures[idx].encoded_polyline}
           startDate={fixtures[idx].start_date}
           ghost={ghost}
+          weather={{
+            conditions: fixtures[idx].weather_conditions ?? null,
+            temperature: fixtures[idx].weather_temperature ?? null,
+            windSpeedKmh: fixtures[idx].weather_wind_speed_kmh ?? null,
+            windDirection: fixtures[idx].weather_wind_direction ?? null,
+            precipitationMm: fixtures[idx].weather_precipitation_mm ?? null,
+          }}
           canvasHeightClass="h-[calc(100dvh-7rem)]"
           theater
         />

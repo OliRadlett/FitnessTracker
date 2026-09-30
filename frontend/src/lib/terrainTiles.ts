@@ -16,6 +16,13 @@ import { computeGrid } from './route3d';
 const TILE_URL = (z: number, x: number, y: number) =>
   `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 
+/**
+ * Highest zoom the terrarium bucket serves (z0–15). Requesting z16+ 404s, and
+ * a single missing tile fails the whole fetch — small rides would pick z16
+ * and lose terrain 100% of the time, so never go above this.
+ */
+export const TERRARIUM_MAX_ZOOM = 15;
+
 export const TERRARIUM_ATTRIBUTION = 'Terrain © Mapzen / AWS Terrain Tiles (SRTM, UK LiDAR)';
 
 export class TerrainTilesError extends Error {}
@@ -167,7 +174,7 @@ export async function fetchTerrariumTerrain(
   const { lat0, lng0, latSpan, lngSpan } = spec;
   const lat1 = lat0 + latSpan;
   const lng1 = lng0 + lngSpan;
-  const z = chooseZoom(lat0, lng0, lat1, lng1, maxTiles, 8, 16);
+  const z = chooseZoom(lat0, lng0, lat1, lng1, maxTiles, 8, TERRARIUM_MAX_ZOOM);
 
   // aspect-correct dense grid, capped; both axes kept >= 8 so a narrow
   // out-and-back bbox doesn't collapse into a degenerate 2-wide strip.
