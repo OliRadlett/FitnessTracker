@@ -441,7 +441,35 @@ async def oauth_callback(
             error_msg = urllib.parse.quote(str(e))
             return RedirectResponse(url=f"{_frontend_url}/settings?error={error_msg}")
 
-    # For app auth providers (google, github), use the original flow
+    # For app auth providers (google, github), use the original flow.
+    #
+    # SEC-04: this callback is a public, unauthenticated GET, so an attacker can
+    # make a victim's browser hit it with an attacker-owned authorization code.
+    # Without state validation that mints a session for the *attacker's* account
+    # (login CSRF / account confusion). Require a single-use, provider-bound
+    # state token before exchanging the code — the same guarantee the
+    # fitness-integration branch above already enforces (SEC-02).
+    #
+    # Note: nothing currently mints state for google/github (``connect-state``
+    # rejects them, and NextAuth owns app sign-in via ``/sync-user``), so this
+    # branch is unreachable from the frontend and now fails closed. If the
+    # backend is ever made to own app sign-in, add an *unauthenticated*
+    # CSRF-state mint first — the state must not be bound to a user_id,
+    # because there is no user yet at that point.
+    state_user_id: uuid.UUID | None = None
+    if state:
+        try:
+            state_user_id = await consume_oauth_state_token(state, provider)
+        except Exception:
+            state_user_id = None  # state store unreachable → treat as invalid
+    if state_user_id is None:
+        _logger.warning(
+            "Rejected OAuth callback for provider=%s: missing/invalid state", provider
+        )
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired OAuth state. Please retry."
+        )
+
     try:
         user, is_new = await exchange_code_for_user(
             db, provider, code, token_exchange_redirect_uri

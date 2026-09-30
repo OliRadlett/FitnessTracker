@@ -5,7 +5,7 @@ from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
 from app.models.exercise import Exercise
-from app.models.goal import Goal
+from app.models.goal import Goal, GoalCheckIn
 from app.models.health_alert import HealthAlert
 from app.models.lift_video_analysis import LiftVideoAnalysis
 from app.models.lifting import (
@@ -57,6 +57,7 @@ __all__ = [
     "Exercise",
     "FtpHistory",
     "Goal",
+    "GoalCheckIn",
     "HealthAlert",
     "LiftVideo",
     "LiftVideoAnalysis",
