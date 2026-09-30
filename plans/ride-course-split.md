@@ -228,10 +228,16 @@ Ordered by dependency. Ph. 0 unblocks everything else.
 ## 7. Open questions
 
 1. **Orphaned routes**: archive vs keep as courses vs re-link? (Ph. 3 — user input.)
-   The sweep has quarantined all 67; the decision is still open. `rank_recovery_candidates()`
-   scores each against its best live route, and the ranking shows 3 near-certain
-   duplicates (containment ≥ 0.98), 12 likely, 13 ambiguous, 28 probably distinct.
-   11 have no `road_match` and cannot be scored.
+   — **now answerable in the UI.** The sweep quarantined all 67, and `#211`
+   added the approval surface this question needed: `GET /routes/orphans`
+   lists each quarantined route with its best match, and the review section on
+   `/routes/duplicates` offers **Duplicate** / **Variant** / **Keep** /
+   **Dismiss**. Merges go through the existing merge log, so they are
+   undoable; dismissals are durable, which is what lets the queue empty
+   (a second `dismissed_at` stamp, migration `091` — see §10).
+   Both similarity numbers are shown rather than one score, because
+   containment and Jaccard disagree exactly where it matters. The decision
+   itself is still the user's: the ranking is advisory only.
 2. **Tolerance control**: is the system default (§4) acceptable as the PR-fairness
    boundary until adjustable tolerance ships? — **answered for now**: the spine
    threshold was calibrated down 0.90 → 0.75 against real data (§10), and the detour
@@ -308,16 +314,37 @@ on hand.
 
 ## 10. Status and what is not done
 
-**`#208` (the detour test) is merged to `main` but deliberately not
-released.** `score_route_pair` is called by both route deduplication and
-activity linking, so the gate affects real linkage, and no threshold has
-been validated against more than one course. Release is a judgement call,
-not an oversight.
+**The detour test is released and live on `prod`.** `SPINE_MIN_COVERAGE`
+was calibrated 0.90 → 0.75 against Course 42de2b16 (at 0.90 only 35 of 45
+control rides passed and 10 genuine rides were stranded); the resulting
+budget is 2140 m for a 21.4 km course. This line previously said the gate
+was "deliberately not released" — that was stale, not a change of mind.
+
+**The orphan review queue is built (`#211`).** Quarantine alone could not
+express "the user has looked at this", so a rejected route was
+indistinguishable from one never reviewed and the queue would never empty.
+Three states, tracked as two columns:
+
+| `quarantined_at` | `dismissed_at` | meaning |
+|---|---|---|
+| NULL | NULL | active route |
+| set | NULL | quarantined, awaiting a decision |
+| set | set | reviewed and rejected — still quarantined, out of the queue |
+
+Two notes for whoever works through the 67: the 11 orphans with no
+`road_match` cannot be compared at all and are a different decision from the
+other 56; and "unscorable" means *no comparison was possible*, not
+"scored as distinct" — an orphan sharing no edges with its best candidate
+is a real result and is badged **distinct** instead.
 
 **Ph. 5 (lap-aware history) is dropped.** The original merge already
 collapsed the lap twins: the course's max distance ratio is now **1.54**,
 not the ×1.997 / ×2.000 / ×4.001 the plan was built around. There are no
-lap variants left to model.
+lap variants left to model. If it is ever revived, derive the threshold
+from the `merge_kind` decisions recorded in the review queue rather than
+from distance ratios — the distance-ratio assumption is exactly what the
+1.54 measurement contradicted, and the merge log is labelled data that
+already exists.
 
 **Shape classification is not built, and should not be yet.** The earlier
 blocker — no geometric threshold separates courses from non-courses,
