@@ -17,7 +17,8 @@ import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
-import { buildDirectorPath, samplePath } from '@/lib/director';
+import { buildDirectorPath, samplePath, seedOrbitShot, updateOrbitShot } from '@/lib/director';
+import type { OrbitShot } from '@/lib/director';
 import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlights';
 import { applyWeatherLight, daylightPhase, solarPosition, sunDirection, sunLightModel } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
@@ -636,12 +637,17 @@ export function Replay3D({
   const lookTargetRef = useRef<THREE.Vector3 | null>(null);
   // Cinematic auto-orbit state: orbit angle, radius, user-interaction timer, and
   // a smoothed "auto" camera pose that eases in/out so manual drag feels native.
-  const orbitAutoRef = useRef({
-    angle: Math.PI * 0.25, // current orbit angle (radians around rider)
-    lastInteract: 0, // performance.now() of last user drag
-    enabled: true, // auto-orbit active (paused briefly after manual override)
-    bankAngle: 0, // smoothed camera roll (radians) for banking into turns
-    seeded: false, // true once the angle is set from a valid rider position
+  const orbitAutoRef = useRef<{
+    lastInteract: number; // performance.now() of last user drag
+    enabled: boolean; // auto-orbit active (paused briefly after manual override)
+    bankAngle: number; // smoothed camera roll (radians) for banking into turns
+    /** shot director state; null until seeded from a valid rider position */
+    shot: OrbitShot | null;
+  }>({
+    lastInteract: 0,
+    enabled: true,
+    bankAngle: 0,
+    shot: null,
   });
   // Previous-frame heading for camera banking (yaw rate → roll).
   const prevHeadingRef = useRef<THREE.Vector3 | null>(null);
@@ -748,12 +754,12 @@ export function Replay3D({
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
     lookTargetRef.current = null;
-    // Entering orbit: reset per-orbit state. The auto-orbit angle is seeded
-    // lazily on the first ready tick (rider position is only valid after poseAt
-    // runs in the RAF loop — reading it here would seed a bogus angle).
+    // Entering orbit: reset per-orbit state. The shot is seeded lazily on the
+    // first ready tick (rider position is only valid after poseAt runs in the
+    // RAF loop — reading it here would seed a bogus angle).
     if (camMode === 'orbit') {
       prevHeadingRef.current = null; // avoid bank spike from stale heading
-      orbitAutoRef.current.seeded = false;
+      orbitAutoRef.current.shot = null;
       orbitAutoRef.current.bankAngle = 0;
     }
   }, [camMode]);
@@ -1722,17 +1728,6 @@ export function Replay3D({
           // user manually drags OrbitControls.
           const auto = orbitAutoRef.current;
 
-        // Lazy-seed the orbit angle from the current camera direction on the
-        // first ready tick (rider.position is only valid after poseAt ran).
-        if (!auto.seeded && riderPose.index >= 0) {
-          const dx = camera.position.x - rider.position.x;
-          const dy = camera.position.y - rider.position.y;
-          if (dx * dx + dy * dy > 1) {
-            auto.angle = Math.atan2(dy, dx);
-            auto.seeded = true;
-          }
-        }
-
         const idleFor = now - auto.lastInteract;
         const RESUME_DELAY = 2500; // ms of idle before auto-orbit resumes
         const RESUME_BLEND = 1500; // ms to ease from manual pose to auto
@@ -1743,13 +1738,25 @@ export function Replay3D({
 
         if (idleFor < RESUME_DELAY && !handoffBoost) {
           // User recently drove the camera — let OrbitControls own the pose.
+          // Forget the shot so resume re-seeds from the live pose (no snap).
           controls.update();
-        } else if (auto.seeded) {
+          auto.shot = null;
+        } else if (auto.shot || riderPose.index >= 0) {
+          // Seed the shot from the current camera direction on the first ready
+          // tick (rider.position is only valid after poseAt ran).
+          if (!auto.shot) {
+            const dx = camera.position.x - rider.position.x;
+            const dy = camera.position.y - rider.position.y;
+            if (dx * dx + dy * dy > 1) auto.shot = seedOrbitShot(now, Math.atan2(dy, dx));
+          }
+          if (!auto.shot) {
+            controls.update();
+          } else {
+          // Hold the composed shot; ease to a reframed angle when the hold
+          // expires — a virtual drone that reframes instead of spinning.
+          const orbitAngle = updateOrbitShot(auto.shot, now);
           // Radius widens with speed (intimate when slow, sweeping when fast).
           const radius = 26 + Math.min(42, riderPose.speed * 1.3);
-          // Spin rate also scales with speed — the drone keeps pace.
-          const spin = 0.1 + Math.min(0.35, riderPose.speed * 0.02);
-          auto.angle += dt * spin;
 
           // Height: 3/4 view that rises with speed, plus a gentle vertical bob.
           const bob = Math.sin(t * 0.55) * 2.5;
@@ -1765,8 +1772,8 @@ export function Replay3D({
             const ratio = Math.min(2.5, Math.max(0.4, extent.rx / (extent.ry || 1)));
             const theta = Math.atan2(extent.dirY, extent.dirX);
             // Ellipse in local frame, rotated to align long axis with route.
-            const lx = radius * ratio * Math.cos(auto.angle);
-            const ly = radius * Math.sin(auto.angle);
+            const lx = radius * ratio * Math.cos(orbitAngle);
+            const ly = radius * Math.sin(orbitAngle);
             offX = lx * Math.cos(theta) - ly * Math.sin(theta);
             offY = lx * Math.sin(theta) + ly * Math.cos(theta);
           }
@@ -1814,6 +1821,7 @@ export function Replay3D({
           // No controls.update() — it recomputes camera position from its
           // internal spherical state and would override our pose. OrbitControls
           // picks up the live camera position on the next user 'start' event.
+          }
         }
         } // end if (!ready) else
       } else if (mode === 'cinematic' && directorPath.duration > 0) {

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { buildDirectorPath, samplePath } from '@/lib/director';
+import {
+  ORBIT_HOLD_MS,
+  ORBIT_MOVE_MS,
+  ORBIT_REFRAME_RAD,
+  buildDirectorPath,
+  samplePath,
+  seedOrbitShot,
+  updateOrbitShot,
+} from '@/lib/director';
 import type { ReplayBuildResult, ReplayPoint } from '@/lib/replay';
 
 function stubBuild(): ReplayBuildResult {
@@ -66,5 +74,55 @@ describe('samplePath', () => {
       expect(Number.isFinite(d)).toBe(true);
       prev = s.position;
     }
+  });
+});
+
+describe('orbit shot director', () => {
+  it('holds the angle perfectly still for the hold window', () => {
+    const s = seedOrbitShot(1000, 0.5);
+    for (let t = 1000; t < 1000 + ORBIT_HOLD_MS; t += 16) {
+      expect(updateOrbitShot(s, t)).toBe(0.5);
+    }
+  });
+
+  it('eases monotonically to +60° over the move window, then holds again', () => {
+    const s = seedOrbitShot(0, 1.0);
+    // Exhaust the hold.
+    updateOrbitShot(s, ORBIT_HOLD_MS);
+    let prev = 1.0;
+    for (let t = ORBIT_HOLD_MS; t <= ORBIT_HOLD_MS + ORBIT_MOVE_MS; t += 50) {
+      const a = updateOrbitShot(s, t);
+      expect(a).toBeGreaterThanOrEqual(prev);
+      prev = a;
+    }
+    expect(updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS)).toBeCloseTo(1.0 + ORBIT_REFRAME_RAD, 6);
+    // Settles back into a hold at the new angle.
+    expect(updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS + 100)).toBeCloseTo(1.0 + ORBIT_REFRAME_RAD, 6);
+  });
+
+  it('alternates reframe direction so long-run drift cancels', () => {
+    // Step like real frames: one update call advances at most one transition.
+    const s = seedOrbitShot(0, 0);
+    const cycle = ORBIT_HOLD_MS + ORBIT_MOVE_MS;
+    let a = 0;
+    for (let t = 0; t <= cycle; t += 50) a = updateOrbitShot(s, t);
+    expect(a).toBeCloseTo(ORBIT_REFRAME_RAD, 6);
+    for (let t = cycle; t <= 2 * cycle; t += 50) a = updateOrbitShot(s, t);
+    expect(a).toBeCloseTo(0, 6);
+  });
+
+  it('keeps most frames static over a simulated minute (no continuous spin)', () => {
+    const s = seedOrbitShot(0, 0);
+    let staticFrames = 0;
+    let total = 0;
+    let prev = 0;
+    for (let t = 0; t < 60_000; t += 1000 / 60) {
+      const a = updateOrbitShot(s, t);
+      if (Math.abs(a - prev) < 1e-9) staticFrames++;
+      total++;
+      prev = a;
+    }
+    // Holds dominate: 7 s still per ~9.5 s cycle.
+    expect(staticFrames / total).toBeGreaterThan(0.6);
   });
 });

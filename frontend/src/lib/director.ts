@@ -124,6 +124,68 @@ export function buildDirectorPath(
   return { keyframes, duration: introSeconds };
 }
 
+/** Hold between orbit reframes (a composed static shot), in ms. */
+export const ORBIT_HOLD_MS = 7000;
+/** Ease duration of a reframe move, in ms. */
+export const ORBIT_MOVE_MS = 2500;
+/** Reframe step per move, radians (alternates direction). */
+export const ORBIT_REFRAME_RAD = Math.PI / 3;
+
+export interface OrbitShot {
+  /** current orbit angle, radians around the rider */
+  angle: number;
+  /** true = static shot, false = easing toward the next angle */
+  holding: boolean;
+  /** ms timestamp ending the current hold */
+  holdUntil: number;
+  /** reframe start angle */
+  fromAngle: number;
+  /** reframe target angle */
+  toAngle: number;
+  /** ms timestamp the current reframe began */
+  moveStart: number;
+  /** alternates each reframe so long-run drift cancels instead of circling */
+  dirSign: 1 | -1;
+}
+
+/** Start a fresh hold at `angle` (e.g. seeded from the live camera). Pure. */
+export function seedOrbitShot(nowMs: number, angle: number): OrbitShot {
+  return {
+    angle,
+    holding: true,
+    holdUntil: nowMs + ORBIT_HOLD_MS,
+    fromAngle: angle,
+    toAngle: angle,
+    moveStart: 0,
+    dirSign: 1,
+  };
+}
+
+/**
+ * Advance the orbit director to `nowMs`; returns the camera angle for this
+ * frame. Holds the composed shot, then eases to a reframed angle — a virtual
+ * drone that reframes instead of spinning forever. Mutates and returns state;
+ * call once per frame with a monotonic clock. Pure (no three/DOM).
+ */
+export function updateOrbitShot(s: OrbitShot, nowMs: number): number {
+  if (s.holding && nowMs >= s.holdUntil) {
+    s.holding = false;
+    s.fromAngle = s.angle;
+    s.toAngle = s.angle + s.dirSign * ORBIT_REFRAME_RAD;
+    s.dirSign = s.dirSign > 0 ? -1 : 1;
+    s.moveStart = nowMs;
+  }
+  if (s.holding) return s.angle;
+  const t = Math.max(0, Math.min(1, (nowMs - s.moveStart) / ORBIT_MOVE_MS));
+  const k = t * t * (3 - 2 * t); // smoothstep ease, no snap at either end
+  s.angle = s.fromAngle + (s.toAngle - s.fromAngle) * k;
+  if (t >= 1) {
+    s.holding = true;
+    s.holdUntil = nowMs + ORBIT_HOLD_MS;
+  }
+  return s.angle;
+}
+
 /** Sample a path at time t (clamped, with Catmull-Rom interpolation). */
 export function samplePath(path: DirectorPath, t: number): CameraSample {
   if (path.keyframes.length === 0) {
