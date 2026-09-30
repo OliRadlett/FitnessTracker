@@ -17,6 +17,7 @@ from app.services.polyline_utils import (
     wahoo_points_to_polyline,
 )
 from app.services.route_service import create_or_merge_route
+from app.services.sport_filter import is_allowed_sport
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +274,16 @@ async def sync_wahoo_activities(
                 logger.debug(
                     f"Skipping Wahoo workout {workout_id} ({name}): "
                     f"unmapped workout_type_id={workout.get('workout_type_id')}"
+                )
+                continue
+
+            # Sport policy gate. Before find_duplicate_activity, so a
+            # blocked sport cannot be merged onto an existing activity and
+            # rewrite its sport_type. See app/services/sport_filter.py.
+            if not is_allowed_sport(sport_type):
+                logger.info(
+                    f"Skipping Wahoo workout {workout_id} ({name}): "
+                    f"sport_type={sport_type!r} not in ALLOWED_SPORT_TYPES"
                 )
                 continue
 

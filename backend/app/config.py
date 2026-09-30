@@ -154,6 +154,11 @@ class Settings(BaseSettings):
         0.45  # hard gate — below this the composite score is forced to 0
     )
 
+    # Which sports are ingested. Comma-separated; empty means "allow all",
+    # so a blank value degrades open rather than silently stopping syncs.
+    # See app/services/sport_filter.py.
+    allowed_sport_types: str = "cycling,strength"
+
     # Phase 2 — OSM road-graph map-matching + route embeddings
     road_match_enabled: bool = True
     osm_region: str = "great-britain"  # logical region key for the cached OSM data

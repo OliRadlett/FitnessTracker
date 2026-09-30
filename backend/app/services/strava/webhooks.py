@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.user import OAuthConnection
+from app.services.sport_filter import is_allowed_sport
 from app.services.strava.linking import link_activity_to_lifting_sessions
 from app.services.strava.sync import (
     _create_activity_from_strava,
@@ -76,6 +77,18 @@ async def _handle_activity_create(
 
     start_date = datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00"))
     sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+
+    # Gate before duplicate detection, not just before create: a blocked
+    # sport that matched an existing activity would otherwise be merged
+    # onto it and rewrite its sport_type. See app/services/sport_filter.py.
+    if not is_allowed_sport(sport_type):
+        logger.info(
+            f"Skipping Strava webhook activity {activity_id} "
+            f"({sa.get('name', 'Untitled')}): sport_type={sport_type!r} "
+            f"not in ALLOWED_SPORT_TYPES"
+        )
+        return
+
     duration_seconds = int(sa.get("moving_time") or 0)
     distance_meters = sa.get("distance")
 
@@ -118,6 +131,11 @@ async def _handle_activity_create(
         activity = await _create_activity_from_strava(
             db, sa, connection.user_id, connection
         )
+        if activity is None:
+            # Sport outside ALLOWED_SPORT_TYPES. Unreachable via the guard
+            # above, but the helper can return None and dereferencing it
+            # on the next line would raise an opaque AttributeError.
+            return
 
     # Fetch and store streams
     try:

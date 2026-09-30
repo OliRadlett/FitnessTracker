@@ -15,6 +15,7 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+from app.services.sport_filter import is_allowed_sport
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,28 @@ async def _create_activity_from_strava(
     sa: dict,
     user_id: uuid.UUID,
     connection: OAuthConnection,
-) -> Activity:
-    """Create a new Activity from Strava API data and add an ActivitySource."""
+) -> Activity | None:
+    """Create a new Activity from Strava API data and add an ActivitySource.
+
+    Returns ``None`` when the sport is outside ``ALLOWED_SPORT_TYPES``, so
+    the caller skips the row entirely rather than storing a sport the
+    system does not track.
+    """
+    sport_type = _map_strava_type(sa.get("sport_type", sa.get("type", "Unknown")))
+    if not is_allowed_sport(sport_type):
+        logger.info(
+            f"Skipping Strava activity {sa.get('id')} "
+            f"({sa.get('name', 'Untitled')}): sport_type={sport_type!r} "
+            f"not in ALLOWED_SPORT_TYPES"
+        )
+        return None
+
     activity = Activity(
         user_id=user_id,
         connection_id=connection.id,
         source="strava",
         provider_activity_id=str(sa["id"]),
-        sport_type=_map_strava_type(sa.get("sport_type", sa.get("type", "Unknown"))),
+        sport_type=sport_type,
         name=sa.get("name", "Untitled"),
         start_date=datetime.fromisoformat(sa["start_date"].replace("Z", "+00:00")),
         duration_seconds=int(sa.get("moving_time") or 0),
@@ -252,6 +267,18 @@ async def sync_activities(
             sport_type = _map_strava_type(
                 sa.get("sport_type", sa.get("type", "Unknown"))
             )
+
+            # Gate before duplicate detection, not just before create: a
+            # blocked sport that matches an existing activity would
+            # otherwise be merged onto it and rewrite its sport_type.
+            if not is_allowed_sport(sport_type):
+                logger.info(
+                    f"Skipping Strava activity {provider_id} "
+                    f"({sa.get('name', 'Untitled')}): sport_type={sport_type!r} "
+                    f"not in ALLOWED_SPORT_TYPES"
+                )
+                continue
+
             duration_seconds = int(sa.get("moving_time") or 0)
             distance_meters = sa.get("distance")
 
@@ -299,7 +326,11 @@ async def sync_activities(
                 activity = await _create_activity_from_strava(
                     db, sa, user_id, connection
                 )
-                synced.append(activity)
+                # None means the sport is outside ALLOWED_SPORT_TYPES; the
+                # row was deliberately not created, so it must not be
+                # counted as synced.
+                if activity is not None:
+                    synced.append(activity)
 
         # A partial page means we've reached the oldest activity in the window.
         if len(strava_activities) < per_page:
@@ -525,6 +556,19 @@ async def backfill_all_activities_stream(
                 sport_type = _map_strava_type(
                     sa.get("sport_type", sa.get("type", "Unknown"))
                 )
+
+                # Gate before duplicate detection: see the equivalent guard
+                # in _sync_activities_page — a blocked sport must not be
+                # merged onto an existing activity.
+                if not is_allowed_sport(sport_type):
+                    logger.info(
+                        f"Skipping Strava activity {provider_id} "
+                        f"({sa.get('name', 'Untitled')}): "
+                        f"sport_type={sport_type!r} not in ALLOWED_SPORT_TYPES"
+                    )
+                    skipped_total += 1
+                    continue
+
                 duration_seconds = int(sa.get("moving_time") or 0)
                 distance_meters = sa.get("distance")
 
@@ -566,7 +610,7 @@ async def backfill_all_activities_stream(
                     activity = await _create_activity_from_strava(
                         db, sa, user_id, connection
                     )
-                    if sport_type == "cycling":
+                    if activity is not None and sport_type == "cycling":
                         synced_cycling.append((activity.id, int(provider_id)))
 
                 synced_total += 1
