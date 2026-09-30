@@ -62,10 +62,18 @@ class WahooClient:
         self.client_secret = settings.wahoo_client_secret
 
     def get_authorize_url(self, redirect_uri: str) -> str:
-        """Build Wahoo OAuth authorize URL."""
+        """Build Wahoo OAuth authorize URL.
+
+        Must mirror the scope set requested in ``services/auth.py`` and match
+        the scopes approved for the app in the Wahoo developer portal —
+        requesting an unapproved scope fails the authorize step.
+        """
         scopes = (
-            "user_read+workouts_read+workouts_write"
-            "+routes_read+routes_write+plans_read+plans_write"
+            "email+user_read+user_write"
+            "+power_zones_read+power_zones_write"
+            "+workouts_read+workouts_write"
+            "+plans_read+plans_write"
+            "+routes_read+routes_write+offline_data"
         )
         return (
             f"{WAHOO_AUTH_URL}?"

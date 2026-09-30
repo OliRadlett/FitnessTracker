@@ -28,6 +28,30 @@ Shipped as described below. Notable decisions taken during implementation:
   as 0=indoor / 1=outdoor; auto-push scheduling and unpush-of-unused-plans are
   not implemented.
 
+## Wahoo scopes — approved vs. actually used
+
+The Wahoo app is approved for **12 scopes**. The OAuth flow requests all 12
+(exact match required), but only 7 are exercised by code today. The unused
+ones are recorded here as candidate feature hooks.
+
+| Scope | Used? | Notes / potential feature |
+|-------|:-----:|---------------------------|
+| `user_read` | ✅ | `GET /v1/user` — connection health, athlete identity. |
+| `workouts_read` | ✅ | Completed workouts sync (`sync_wahoo_activities`). |
+| `workouts_write` | ✅ | Push scheduled workout instances (`POST /v1/workouts`). |
+| `plans_read` | ✅ | Plan lookup by `external_id` (idempotent push). |
+| `plans_write` | ✅ | Upload/update structured workouts (`POST /v1/plans`). |
+| `routes_read` | ✅ | Route sync (`sync_wahoo_routes`). |
+| `routes_write` | ✅ | Push FIT courses (`POST /v1/routes`). |
+| `offline_data` | ❌ | Wahoo's refresh-token scope. Requested but not yet consumed — the natural basis for unattended/background push (phase 4 auto-push), and required if Wahoo enforces refresh rotation. |
+| `power_zones_read` | ❌ | Read the athlete's Wahoo power zones. Candidate: reconcile with FitTrack FTP / `WORKOUT_ZONES` so pushed workouts match the device's own zone model, and detect FTP drift. |
+| `power_zones_write` | ❌ | Write power zones (`PUT /v1/power_zones`). Candidate: push FTP to Wahoo automatically when the weekly auto-estimate or an FL1 test changes it, so the head unit and FitTrack agree without manual entry. |
+| `user_write` | ❌ | Update the Wahoo user profile. Candidate: sync weight / body metrics or home location so the Wahoo app's own calculations (calories, W/kg) match FitTrack. |
+| `email` | ❌ | Email address on the Wahoo profile. Candidate: account-linking guard — assert the connected Wahoo account is the intended one during reconnect. |
+
+> When a feature starts using one of these, update this table so it doesn't
+> drift back to "unused".
+
 ## 1. Goal / UX
 
 On a cycle day in the training-plan **This Week** view, the user opens the day
