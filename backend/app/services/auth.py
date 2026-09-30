@@ -88,8 +88,11 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "client_id": lambda: settings.wahoo_client_id,
         "client_secret": lambda: settings.wahoo_client_secret,
         "scopes": (
-            "user_read workouts_read workouts_write "
-            "routes_read routes_write plans_read plans_write"
+            "email user_read user_write "
+            "power_zones_read power_zones_write "
+            "workouts_read workouts_write "
+            "plans_read plans_write "
+            "routes_read routes_write offline_data"
         ),
     },
     "whoop": {
