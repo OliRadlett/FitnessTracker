@@ -25,6 +25,7 @@ from app.integrations.whoop_client import whoop_client
 from app.models.daily_metric import DailyMetric
 from app.models.sleep import SleepLog
 from app.models.user import OAuthConnection
+from app.services.sport_filter import is_allowed_sport
 
 logger = logging.getLogger(__name__)
 
@@ -956,6 +957,16 @@ async def sync_whoop_workouts(
         sport_name = workout.get("sport_name")
         sport_type = _map_whoop_sport_type(sport_name)
 
+        # Sport policy gate, before find_duplicate_activity so a blocked
+        # sport cannot be merged onto an existing activity. See
+        # app/services/sport_filter.py.
+        if not is_allowed_sport(sport_type):
+            logger.info(
+                f"Skipping Whoop workout {workout_id}: sport_type={sport_type!r} "
+                f"not in ALLOWED_SPORT_TYPES"
+            )
+            continue
+
         # Parse start date
         start_str = workout.get("start")
         if not start_str:
@@ -1737,6 +1748,16 @@ async def backfill_whoop_data(
 
         sport_name = workout.get("sport_name")
         sport_type = _map_whoop_sport_type(sport_name)
+
+        # Sport policy gate, before find_duplicate_activity so a blocked
+        # sport cannot be merged onto an existing activity. See
+        # app/services/sport_filter.py.
+        if not is_allowed_sport(sport_type):
+            logger.info(
+                f"Skipping Whoop workout {workout_id}: sport_type={sport_type!r} "
+                f"not in ALLOWED_SPORT_TYPES"
+            )
+            continue
 
         start_str = workout.get("start")
         if not start_str:

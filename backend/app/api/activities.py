@@ -34,6 +34,7 @@ from app.schemas.activity import (
 )
 from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
+from app.services.sport_filter import allowed_sport_types, is_allowed_sport
 
 logger = logging.getLogger(__name__)
 
@@ -781,6 +782,16 @@ async def import_gpx(
 
     encoded_polyline = encode_polyline(points)
 
+    # Sport policy gate. See app/services/sport_filter.py.
+    if not is_allowed_sport(parsed["sport_type"]):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Sport {parsed['sport_type']!r} is not tracked. "
+                f"Allowed: {', '.join(sorted(allowed_sport_types())) or 'all'}"
+            ),
+        )
+
     activity = Activity(
         user_id=current_user.id,
         source="manual",
@@ -854,10 +865,21 @@ async def import_fit(
         if points:
             encoded_polyline = encode_polyline(points)
 
+    activity_sport = session.get("sport_type", "cycling")
+    # Sport policy gate. See app/services/sport_filter.py.
+    if not is_allowed_sport(activity_sport):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Sport {activity_sport!r} is not tracked. "
+                f"Allowed: {', '.join(sorted(allowed_sport_types())) or 'all'}"
+            ),
+        )
+
     activity = Activity(
         user_id=current_user.id,
         source="manual",
-        sport_type=session.get("sport_type", "cycling"),
+        sport_type=activity_sport,
         name=session.get("name", "Imported Activity"),
         start_date=session.get("start_time", datetime.now(UTC)),
         duration_seconds=session.get("duration_seconds"),
