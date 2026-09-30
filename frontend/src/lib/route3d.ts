@@ -227,6 +227,73 @@ export function gridSampleCoords(grid: RouteGrid): { lat: number[]; lng: number[
   return { lat, lng };
 }
 
+export interface DrapeResult {
+  /** DEM height under the route centroid (bed baseline reference) */
+  base: number;
+  /** bed vertical base: baseline + clearance so the bed never occludes the road */
+  altMin: number;
+  /** grid minimum (flat-ride bed base when no altitude stream exists) */
+  demMin: number;
+  /** per-point draped heights, or null for flat rides (caller keeps raw z) */
+  drape: number[] | null;
+}
+
+/** clearance (m) between the draped road and the terrain bed below it */
+export const DRAPE_CLEAR_M = 1.2;
+
+/**
+ * Drape a ride onto a DEM bed: pick a baseline DEM height and render every
+ * path point at (dem − base)·zScale, smoothed so DEM cliffs don't spike the
+ * road, falling back to the raw z where the DEM has no data. Flat rides (no
+ * altitude stream) return drape null. Pure.
+ */
+export function computeDrape(
+  points: Array<{ x: number; y: number; z: number }>,
+  heights: number[],
+  grid: RouteGrid,
+  frame: { lat0: number; lng0: number; zScale: number },
+): DrapeResult {
+  const hasAlt = points.some((p) => p.z !== 0);
+  const finite = heights.filter(Number.isFinite);
+  // Loop-based extrema — `Math.min(...finite)` overflows the call stack
+  // when the DEM grid has 100k+ samples (maxGridPoints = 131072).
+  let demMin = Infinity;
+  for (const h of finite) {
+    if (h < demMin) demMin = h;
+  }
+  if (demMin === Infinity) demMin = 0;
+  const mPerDegLng = M_PER_DEG_LAT * Math.cos((frame.lat0 * Math.PI) / 180);
+  const base = bilinearHeight(grid, heights, frame.lat0, frame.lng0) ?? demMin;
+  // Terrain sits a fixed clearance below the draped road (a coarse mesh
+  // still reads as ground while never occluding the ribbon).
+  const altMin = base + DRAPE_CLEAR_M;
+  // Per-point DEM, smoothed so DEM cliffs/noise don't spike the road.
+  let drape: number[] | null = null;
+  if (hasAlt) {
+    const dem = points.map((p) =>
+      bilinearHeight(grid, heights, frame.lat0 + p.y / M_PER_DEG_LAT, frame.lng0 + p.x / mPerDegLng),
+    );
+    const W = 4;
+    const smooth = dem.map((_, i) => {
+      let s = 0;
+      let c = 0;
+      for (let j = Math.max(0, i - W); j <= Math.min(dem.length - 1, i + W); j++) {
+        const v = dem[j];
+        if (v != null) {
+          s += v;
+          c++;
+        }
+      }
+      return c ? s / c : null;
+    });
+    drape = points.map((p, i) => {
+      const d = smooth[i];
+      return d == null ? p.z : (d - base) * frame.zScale;
+    });
+  }
+  return { base, altMin, demMin, drape };
+}
+
 /** bilinear sample of the DEM grid at an arbitrary lat/lng (null outside data) */
 export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, lng: number): number | null {
   const { cols, rows, lats, lngs } = grid;

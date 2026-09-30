@@ -17,8 +17,10 @@ import { decodePolyline } from '@/lib/polyline';
 import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/route3d';
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
-import { buildDirectorPath, samplePath, seedOrbitShot, updateOrbitShot } from '@/lib/director';
-import type { OrbitShot } from '@/lib/director';
+import { buildDirectorPath, pickAutoCameraMode, samplePath, seedOrbitShot, updateOrbitShot } from '@/lib/director';
+import type { OrbitShot, ReplayCamMode } from '@/lib/director';
+import { ReplayToolbar } from './ReplayToolbar';
+import { ReplayLoadingOverlay } from './ReplayLoadingOverlay';
 import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlights';
 import { applyWeatherLight, daylightPhase, solarPosition, sunDirection, sunLightModel } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
@@ -564,7 +566,7 @@ export function Replay3D({
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 300));
   const [displayElapsed, setDisplayElapsed] = useState(0);
-  const [camMode, setCamMode] = useState<'auto' | 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' | 'cinematic'>('auto');
+  const [camMode, setCamMode] = useState<ReplayCamMode>('auto');
   // Auto-camera state: the currently selected sub-mode and a cooldown timer so
   // we don't flip cameras every frame.
   const autoCamRef = useRef<{ mode: 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby'; until: number }>({ mode: 'orbit', until: 0 });
@@ -1668,23 +1670,20 @@ export function Replay3D({
       }
 
       // ── Auto-camera: pick the best angle based on ride context ──────────
-      // Evaluates grade, speed, power, and highlight proximity to choose a
-      // sub-mode. Hysteresis via a cooldown so we don't flip every frame.
-      const pickAutoCamera = (): 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby' => {
+      // Decision table lives in lib/director (pure + tested); the component
+      // supplies context. Hysteresis via a cooldown so we don't flip frames.
+      const pickAutoCamera = () => {
         const idx = nearestIndex(points, t);
         const p = points[idx];
-        const grade = p.grade ?? 0;
-        const speed = riderPose.speed;
-        const power = p.power;
         // Highlight proximity: within 10s of a highlight start → drone to frame it.
         const ah = activeHighlightRef.current;
-        const nearHighlight = ah && Math.abs(t - ah.startElapsed) < 10;
-        if (grade > 4) return 'drone'; // climbing — elevated view shows the effort
-        if (grade < -4) return 'flyby'; // descending — cinematic fly-by
-        if (ftpWatts && power && power > ftpWatts * 1.3) return 'chase'; // sprint — dramatic follow
-        if (speed > 16 && grade > 1) return 'chase'; // fast flat/rolling — chase
-        if (nearHighlight) return 'drone'; // approaching a feature — frame it
-        return 'orbit'; // default cinematic orbit
+        return pickAutoCameraMode({
+          grade: p.grade ?? 0,
+          speed: riderPose.speed,
+          power: p.power,
+          ftpWatts,
+          nearHighlight: !!ah && Math.abs(t - ah.startElapsed) < 10,
+        });
       };
 
       let mode = camModeRef.current;
@@ -2219,56 +2218,20 @@ export function Replay3D({
           attribution = 'Terrain © Open-Meteo — Copernicus DEM (GLO-90)';
         }
         if (cancelled) return;
-        const { buildTerrainMesh, bilinearHeight } = await import('@/lib/route3d');
+        const { buildTerrainMesh, computeDrape } = await import('@/lib/route3d');
         const s = sceneRef.current;
         if (!s) {
           // Scene not built yet (effect ran before scene ready) — bail; the
           // terrainEpoch bump when the scene finishes will re-trigger loading.
           return;
         }
-        // Flat rides (no altitude stream) sit at z=0 — base the bed on the
-        // DEM minimum so the path rests on the terrain instead of under it.
-        const hasAlt = points.some((p) => p.z !== 0);
-        const finite = heights.filter(Number.isFinite);
-        // Loop-based extrema — `Math.min(...finite)` overflows the call stack
-        // when the DEM grid has 100k+ samples (maxGridPoints = 131072).
-        let demMin = Infinity;
-        for (const h of finite) { if (h < demMin) demMin = h; }
-        if (demMin === Infinity) demMin = 0;
-        // Drape: pick a baseline DEM height and render the bed as
-        // (dem − base)·zScale. Compute the same for every path point so the road
-        // + bike sit exactly on the bed (falling back to the raw z where the DEM
-        // has no data). Terrain and road then share the frame exactly.
-        const mPerDegLng = 111320 * Math.cos((build.lat0 * Math.PI) / 180);
-        const base = bilinearHeight(gridSpec, heights, build.lat0, build.lng0) ?? demMin;
-        // Terrain sits a fixed clearance below the draped road (a coarse mesh
-        // still reads as ground while never occluding the ribbon).
-        const CLEAR_M = 1.2;
-        const altMin = base + CLEAR_M;
-        // Per-point DEM, smoothed so DEM cliffs/noise don't spike the road.
-        let drape: number[] | null = null;
-        if (hasAlt) {
-          const dem = points.map((p) =>
-            bilinearHeight(gridSpec, heights, build.lat0 + p.y / 111320, build.lng0 + p.x / mPerDegLng),
-          );
-          const W = 4;
-          const smooth = dem.map((_, i) => {
-            let s = 0;
-            let c = 0;
-            for (let j = Math.max(0, i - W); j <= Math.min(dem.length - 1, i + W); j++) {
-              const v = dem[j];
-              if (v != null) {
-                s += v;
-                c++;
-              }
-            }
-            return c ? s / c : null;
-          });
-          drape = points.map((p, i) => {
-            const d = smooth[i];
-            return d == null ? p.z : (d - base) * build.zScale;
-          });
-        }
+        // Drape the ride onto the DEM bed (pure helper — same frame for road,
+        // bike, ghost and markers). Flat rides keep raw z (drape null).
+        const { altMin, drape } = computeDrape(points, heights, gridSpec, {
+          lat0: build.lat0,
+          lng0: build.lng0,
+          zScale: build.zScale,
+        });
         const meshData = buildTerrainMesh(gridSpec, heights, {
           lat0: build.lat0,
           lng0: build.lng0,
@@ -2660,139 +2623,34 @@ export function Replay3D({
       </div>
       )}
 
-      <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 [.photo_&]:hidden">
-        <div className="flex items-center rounded border border-surface-light" role="group" aria-label="Camera mode">
-          {(['auto', 'orbit', 'chase', 'drone', 'cockpit', 'flyby', 'cinematic'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setCamMode(m)}
-              aria-pressed={camMode === m}
-              title={
-                m === 'auto'
-                  ? 'Dynamic camera — picks the best angle for the terrain'
-                  : m === 'orbit'
-                    ? 'Free orbit camera'
-                    : m === 'chase'
-                      ? 'Follow behind the rider'
-                      : m === 'drone'
-                        ? 'Elevated trailing drone'
-                        : m === 'cockpit'
-                          ? 'Rider point of view'
-                          : m === 'flyby'
-                            ? 'Cinematic fly-by orbit'
-                            : 'Cinematic director — scripted flyover then chase'
-              }
-              className={`rounded px-2 py-1 min-h-[44px] sm:min-h-[36px] min-w-[44px] sm:min-w-[36px] text-[11px] capitalize transition-colors ${
-                camMode === m ? 'bg-accent/20 text-accent' : 'text-muted hover:bg-surface-light/40'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => setShowBroadcast((b) => !b)}
-          aria-pressed={showBroadcast}
-          title="Toggle broadcast HUD"
-          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
-            showBroadcast ? 'bg-accent/20 text-accent' : 'text-muted'
-          }`}
-        >
-          HUD
-        </button>
-        {highlights.length > 0 && (
-          <button
-            onClick={() => setTour((t) => !t)}
-            aria-pressed={tour}
-            title="Cinematic tour of this ride's highlights"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
-              tour ? 'bg-accent/20 text-accent' : 'text-muted'
-            }`}
-          >
-            {tour ? 'Touring' : 'Tour'}
-          </button>
-        )}
-        {polyline && (
-          <button
-            onClick={toggleTerrain}
-            disabled={terrainState === 'loading'}
-            title="Drape over real DEM terrain"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
-              terrainState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
-            }`}
-          >
-            {terrainState === 'on' ? 'Terrain' : terrainState === 'loading' ? 'Loading…' : terrainState === 'failed' ? 'Retry' : 'Terrain'}
-          </button>
-        )}
-        {terrainState === 'on' && (
-          <button
-            onClick={toggleImagery}
-            disabled={imageryState === 'loading'}
-            title="Satellite imagery over the terrain"
-            className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 disabled:opacity-50 ${
-              imageryState === 'on' ? 'bg-accent/20 text-accent' : 'text-muted'
-            }`}
-          >
-            {imageryState === 'on' ? 'Satellite' : imageryState === 'loading' ? 'Loading…' : imageryState === 'failed' ? 'Retry' : 'Satellite'}
-          </button>
-        )}
-        <span className="flex-1" />
-        <button onClick={resetView} title="Reset to overview" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Reset</button>
-        <button onClick={takePoster} title="Download PNG poster" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Poster</button>
-        <button onClick={takeClip} title="Record 6s webm clip" className="rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] text-muted transition-colors hover:bg-surface-light/40">Clip</button>
-        <button
-          onClick={() => setPhoto((p) => !p)}
-          aria-pressed={photo}
-          title="Photo mode — hide UI for a clean capture"
-          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
-            photo ? 'bg-accent/20 text-accent' : 'text-muted'
-          }`}
-        >
-          {photo ? 'Exit' : 'Photo'}
-        </button>
-      </div>
-
+      <ReplayToolbar
+        camMode={camMode}
+        setCamMode={setCamMode}
+        showBroadcast={showBroadcast}
+        setShowBroadcast={setShowBroadcast}
+        tourAvailable={highlights.length > 0} // toolbar extracted
+        tour={tour}
+        setTour={setTour}
+        terrainToggleable={!!polyline}
+        terrainState={terrainState}
+        toggleTerrain={toggleTerrain}
+        imageryState={imageryState}
+        toggleImagery={toggleImagery}
+        resetView={resetView}
+        takePoster={takePoster}
+        takeClip={takeClip}
+        photo={photo}
+        setPhoto={setPhoto}
+      />
       <div className={`relative ${photo ? 'h-[80dvh]' : canvasHeightClass} w-full touch-none overflow-hidden rounded bg-gradient-to-b from-surface/20 to-transparent`}>
         <div ref={mountRef} className="absolute inset-0" />
-        {/* Loading overlay while terrain/imagery tiles fetch (fades in/out) */}
-        <div
-          data-testid="replay-loading-overlay"
-          className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[2px] transition-opacity duration-700 [.photo_&]:hidden ${
-            (!sceneReady || terrainState === 'loading' || imageryState === 'loading') && !failed ? 'opacity-100' : 'opacity-0'
-          }`}
-          aria-hidden={(!sceneReady || terrainState === 'loading' || imageryState === 'loading') && !failed ? undefined : true}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
-            <p className="text-xs font-medium text-muted">
-              {!sceneReady
-                ? 'Preparing 3D view…'
-                : terrainState === 'loading'
-                  ? loadProgress && loadProgress.total > 0
-                    ? `Loading terrain (${loadProgress.loaded}/${loadProgress.total} tiles)…`
-                    : 'Loading terrain…'
-                  : imageryState === 'loading'
-                    ? loadProgress && loadProgress.total > 0
-                      ? `Loading satellite (${loadProgress.loaded}/${loadProgress.total} tiles)…`
-                      : 'Loading satellite…'
-                    : ''}
-            </p>
-            {/* Indeterminate spinner for prep; determinate progress bar for tiles */}
-            {loadProgress && loadProgress.total > 0 ? (
-              <div className="h-1 w-32 overflow-hidden rounded-full bg-surface-light">
-                <div
-                  className="h-full rounded-full bg-accent transition-[width] duration-150"
-                  style={{ width: `${Math.round((loadProgress.loaded / loadProgress.total) * 100)}%` }}
-                />
-              </div>
-            ) : (
-              <div className="flex gap-1.5">
-                <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${terrainState === 'on' ? 'bg-accent' : terrainState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
-                <span className={`h-1 w-8 rounded-full transition-colors duration-300 ${imageryState === 'on' ? 'bg-accent' : imageryState === 'loading' ? 'bg-accent/50' : 'bg-surface-light'}`} />
-              </div>
-            )}
-          </div>
-        </div>
+        <ReplayLoadingOverlay
+          sceneReady={sceneReady}
+          terrainState={terrainState}
+          imageryState={imageryState}
+          failed={failed}
+          loadProgress={loadProgress}
+        />
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">
           drag to orbit · pinch to zoom · space play · ←/→ seek · 1–5 cameras · click route to jump
         </div>

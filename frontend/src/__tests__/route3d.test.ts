@@ -8,6 +8,7 @@ import {
   bilinearHeight,
   buildRoute3D,
   buildTerrainMesh,
+  computeDrape,
   computeGrid,
   elevationColor,
   gradeColor,
@@ -217,6 +218,54 @@ describe('buildRoute3D', () => {
     const res = buildTerrainMesh(grid, new Array(16).fill(-5), { lat0: 51.5, lng0: -0.1, altMin: 0, zScale: 1 });
     const i = (1 * 4 + 1) * 3;
     expect(res.colors[i + 2]).toBeGreaterThan(res.colors[i]);
+  });
+
+  it('drapes points onto the DEM with smoothing and raw-z fallback', () => {
+    const grid: RouteGrid = {
+      cols: 5,
+      rows: 5,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.04,
+      lngSpan: 0.04,
+      lats: [51.5, 51.51, 51.52, 51.53, 51.54],
+      lngs: [-0.1, -0.09, -0.08, -0.07, -0.06],
+    };
+    // Flat DEM at 100 m with void speckle: every draped point still lands at
+    // (100 − base) × zScale and no NaN leaks into the output.
+    const heights = new Array(25).fill(100);
+    heights[7] = NaN;
+    heights[18] = NaN;
+    const pts = [
+      { x: 0, y: 0, z: 5 },
+      { x: 100, y: 0, z: 6 },
+      { x: 200, y: 0, z: 7 },
+    ];
+    const res = computeDrape(pts, heights, grid, { lat0: 51.5, lng0: -0.1, zScale: 2 });
+    expect(res.drape).not.toBeNull();
+    expect(res.drape![0]).toBeCloseTo((100 - res.base) * 2, 6);
+    expect(res.altMin).toBeCloseTo(res.base + 1.2, 9);
+    for (const z of res.drape!) expect(Number.isFinite(z)).toBe(true);
+  });
+
+  it('returns null drape for flat rides', () => {
+    const grid: RouteGrid = {
+      cols: 5,
+      rows: 5,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.04,
+      lngSpan: 0.04,
+      lats: [51.5, 51.51, 51.52, 51.53, 51.54],
+      lngs: [-0.1, -0.09, -0.08, -0.07, -0.06],
+    };
+    const flat = [
+      { x: 0, y: 0, z: 0 },
+      { x: 100, y: 0, z: 0 },
+    ];
+    const res = computeDrape(flat, new Array(25).fill(100), grid, { lat0: 51.5, lng0: -0.1, zScale: 2 });
+    expect(res.drape).toBeNull();
+    expect(res.altMin).toBeCloseTo(res.base + 1.2, 9);
   });
 
   it('builds a terrain bed when a DEM grid is supplied', () => {

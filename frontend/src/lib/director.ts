@@ -186,6 +186,33 @@ export function updateOrbitShot(s: OrbitShot, nowMs: number): number {
   return s.angle;
 }
 
+/** Auto-camera sub-modes (cinematic intro excluded — it is scripted, not picked). */
+export type AutoCamMode = 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby';
+
+/** Full camera-mode selector state, including manual auto + scripted cinematic. */
+export type ReplayCamMode = 'auto' | AutoCamMode | 'cinematic';
+
+export interface AutoCamContext {
+  grade: number;
+  speed: number;
+  power: number | null;
+  ftpWatts?: number | null;
+  nearHighlight: boolean;
+}
+
+/**
+ * Pick the best follow angle from ride context. Pure — the component supplies
+ * the context, keeps the hysteresis cooldown, and drives the camera.
+ */
+export function pickAutoCameraMode(ctx: AutoCamContext): AutoCamMode {
+  if (ctx.grade > 4) return 'drone'; // climbing — elevated view shows the effort
+  if (ctx.grade < -4) return 'flyby'; // descending — cinematic fly-by
+  if (ctx.ftpWatts && ctx.power && ctx.power > ctx.ftpWatts * 1.3) return 'chase'; // sprint — dramatic follow
+  if (ctx.speed > 16 && ctx.grade > 1) return 'chase'; // fast flat/rolling — chase
+  if (ctx.nearHighlight) return 'drone'; // approaching a feature — frame it
+  return 'orbit'; // default cinematic orbit
+}
+
 /** Sample a path at time t (clamped, with Catmull-Rom interpolation). */
 export function samplePath(path: DirectorPath, t: number): CameraSample {
   if (path.keyframes.length === 0) {

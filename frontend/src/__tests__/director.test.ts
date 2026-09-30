@@ -4,6 +4,7 @@ import {
   ORBIT_MOVE_MS,
   ORBIT_REFRAME_RAD,
   buildDirectorPath,
+  pickAutoCameraMode,
   samplePath,
   seedOrbitShot,
   updateOrbitShot,
@@ -124,5 +125,23 @@ describe('orbit shot director', () => {
     }
     // Holds dominate: 7 s still per ~9.5 s cycle.
     expect(staticFrames / total).toBeGreaterThan(0.6);
+  });
+});
+
+describe('pickAutoCameraMode', () => {
+  it('picks drone for climbs, flyby for descents, chase for sprints', () => {
+    const base = { grade: 0, speed: 8, power: 150, ftpWatts: 200, nearHighlight: false };
+    expect(pickAutoCameraMode({ ...base, grade: 6 })).toBe('drone');
+    expect(pickAutoCameraMode({ ...base, grade: -6 })).toBe('flyby');
+    expect(pickAutoCameraMode({ ...base, power: 300 })).toBe('chase');
+    expect(pickAutoCameraMode({ ...base, speed: 18, grade: 2 })).toBe('chase');
+    expect(pickAutoCameraMode({ ...base, nearHighlight: true })).toBe('drone');
+    expect(pickAutoCameraMode(base)).toBe('orbit');
+  });
+
+  it('ignores the sprint rule without an FTP baseline', () => {
+    expect(pickAutoCameraMode({ grade: 0, speed: 8, power: 400, ftpWatts: null, nearHighlight: false })).toBe(
+      'orbit',
+    );
   });
 });
