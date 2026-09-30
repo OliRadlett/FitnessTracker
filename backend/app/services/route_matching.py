@@ -44,6 +44,12 @@ _W_ENDPOINT = 0.15
 # reversed Fréchet; below this ratio the route is treated as reversed.
 _REVERSED_RATIO = 0.8
 
+# Road/embedding signal at or above this is strong enough to stand in for
+# the geometric detour test: it says the two traverse the same OSM ways,
+# which the geometry-only detour test cannot distinguish from "extends
+# past the other end" when one route is a sub-section of the other.
+_ROAD_SIGNAL_EXEMPT = 0.90
+
 _LOOP_THRESHOLD_M = 200.0
 
 
@@ -273,6 +279,116 @@ def coverage(
     return covered / len(query)
 
 
+# ── Course identity: spine + detour (plans/ride-course-split.md §4) ───────────
+
+# §4: a single continuous divergence may be this long, or this fraction of
+# the course, whichever is LARGER. Scaling is proportional rather than
+# absolute because 2 km is a different ride on a 10 km loop and noise on a
+# 100 km ride.
+DEFAULT_DETOUR_KM = 2.0
+DETOUR_FRACTION = 0.10
+
+# §4: "at least ~90% of the ride's distance lies within ~50 m of the course".
+#
+# Calibrated DOWN from 0.90 to 0.75 against Course 42de2b16 (45 control
+# rides plus the one known outlier). Measured as *best-of-5 reference
+# traces*, because a single canonical trace is not a fair judge of a
+# course that riders take two ways:
+#
+#   coverage >= 0.90  keeps 35/45 controls   (10 legitimate rides rejected)
+#   coverage >= 0.75  keeps 45/45 controls, rejects the outlier (0.593)
+#
+# The gap is wide, so 0.75 sits far from both edges rather than balanced
+# between them. Rejecting a genuine ride is the worse error here: it
+# strands a real course member, which is harder to notice and to undo
+# than a missed match. Raise it once more courses exist to calibrate
+# against.
+SPINE_MIN_COVERAGE = 0.75
+
+
+def detour_budget_m(course_length_m: float) -> float:
+    """Longest tolerable single divergence, in metres."""
+    return max(
+        DEFAULT_DETOUR_KM * 1000.0, abs(course_length_m or 0.0) * DETOUR_FRACTION
+    )
+
+
+def longest_uncovered_run_m(
+    ride: list[tuple[float, float]],
+    course: list[tuple[float, float]],
+    tol_m: float,
+) -> float:
+    """Metres in the longest *continuous* stretch of ``ride`` off ``course``.
+
+    The complement of :func:`coverage`. Coverage answers "how much of the
+    ride is on the course"; this answers "how far does the worst single
+    departure go". Both are needed, because a ride can clear a lenient
+    coverage gate by sharing its first half and then leaving entirely.
+
+    Measured in metres rather than points: decoded polylines sample
+    unevenly, so a sparsely-sampled branch has few points but can be
+    kilometres long, and a point count would under-report exactly the
+    divergence that matters.
+
+    Consecutive uncovered points are summed by the distance between them,
+    which attributes the gap to the departure rather than to the course.
+    """
+    if not ride or not course:
+        return 0.0
+    cell_deg = tol_m / 110_000.0
+    grid = _grid(course, cell_deg)
+
+    def near(p: tuple[float, float]) -> bool:
+        cy = int(math.floor(p[0] / cell_deg))
+        cx = int(math.floor(p[1] / cell_deg))
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                for q in grid.get((cy + dy, cx + dx), ()):
+                    if haversine_distance(p[0], p[1], q[0], q[1]) <= tol_m:
+                        return True
+        return False
+
+    worst = 0.0
+    run = 0.0
+    prev: tuple[float, float] | None = None
+    for p in ride:
+        if near(p):
+            run = 0.0
+            prev = p
+            continue
+        if prev is not None:
+            run += haversine_distance(prev[0], prev[1], p[0], p[1])
+        prev = p
+        worst = max(worst, run)
+    return worst
+
+
+def passes_spine_test(
+    ride: list[tuple[float, float]],
+    course: list[tuple[float, float]],
+    min_coverage: float = SPINE_MIN_COVERAGE,
+    tol_m: float = 50.0,
+) -> bool:
+    """§4 test 1 — at least ``min_coverage`` of the ride lies on the course."""
+    return coverage(ride, course, tol_m) >= min_coverage
+
+
+def passes_detour_test(
+    ride: list[tuple[float, float]],
+    course: list[tuple[float, float]],
+    tol_m: float = 50.0,
+) -> bool:
+    """§4 test 2 — no single continuous divergence exceeds the budget.
+
+    The budget scales with course length, so a course of unknown length
+    falls back to the 2 km floor rather than to an unbounded allowance.
+    """
+    if not ride or not course:
+        return False
+    budget = detour_budget_m(polyline_length(course))
+    return longest_uncovered_run_m(ride, course, tol_m) <= budget
+
+
 # ── Score model ──────────────────────────────────────────────────────────────
 
 
@@ -297,6 +413,12 @@ class ScoreBreakdown:
     length_b_m: float
     road_jaccard: float | None = None  # Phase 2 — OSM edge-set similarity
     embedding_similarity: float | None = None  # Phase 2 — route embedding cosine
+    # §4 detour test — longest continuous divergence, the budget it was
+    # measured against, and the verdict. Carried on the breakdown so a
+    # rejected pair can say *why* rather than only returning a low score.
+    detour_m: float | None = None
+    detour_budget_m: float | None = None
+    detour_ok: bool | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -369,11 +491,20 @@ def score_route_pair(
     frechet_ceiling_m: float = DEFAULT_FRECHET_CEILING_M,
     road_jaccard: float | None = None,
     embedding_similarity: float | None = None,
+    detour_budget_km: float = DEFAULT_DETOUR_KM,
 ) -> ScoreBreakdown:
     """Score a candidate route pair. Returns a full :class:`ScoreBreakdown`.
 
     ``points_a`` / ``points_b`` are decoded ``(lat, lng)`` polylines. All
     thresholds are parameters so the engine stays config-free.
+
+    Applies §4's detour test as a **hard gate**: a pair whose worst single
+    continuous divergence exceeds the budget is not the same course, however
+    much the two shapes otherwise agree. Coverage alone cannot express
+    this — a ride that shares the first half and then leaves for 8 km still
+    scores 0.6, clearing a lenient coverage bar while being a different
+    ride. On Course 42de2b16 that is exactly the 10 Aug 2026 ride:
+    coverage 0.593, divergence 8,336 m against a 2,071 m budget.
     """
     if len(points_a) < 2 or len(points_b) < 2:
         return _empty_breakdown(
@@ -427,8 +558,30 @@ def score_route_pair(
     # traverse ~the same roads match even if raw GPS coverage is mediocre.
     effective_cov = max(min_cov, road_signal or 0.0)
 
+    # §4 detour test — the worst single departure of A from B, in metres,
+    # scaled to course length. Deliberately NOT symmetric: B is the course
+    # and A is the ride, and running it the other way asks how far the
+    # *course* strays from the ride. A ride covering only part of a course
+    # would then be penalised for the parts it never took — a 6.7 km lap of
+    # a 20 km course measures 13.3 km of "divergence" in that direction and
+    # is wrongly rejected. Only the ride-vs-course direction expresses
+    # "left the course and did not come back".
+    budget_m = max(detour_budget_km * 1000.0, min(la, lb) * DETOUR_FRACTION)
+    detour_m = longest_uncovered_run_m(a_dense, b_dense, tol_m)
+    # A strong road signal is direct evidence the two traverse the same
+    # OSM ways, which is exactly what the detour test cannot see: it
+    # compares geometry, and a route recorded only as a sub-section of a
+    # longer one has a large "divergence" that means "extends past the
+    # other end", not "left the course". So the road signal defuses the
+    # detour gate — same way it already relaxes the coverage gate.
+    #
+    # Without this, a partial route recording of a real course is rejected
+    # on geometry alone, which is the failure mode the road signal exists
+    # to prevent.
+    detour_ok = detour_m <= budget_m or (road_signal or 0.0) >= _ROAD_SIGNAL_EXEMPT
+
     # Hard gates.
-    if effective_cov < gate:
+    if effective_cov < gate or not detour_ok:
         bd = _empty_breakdown(la, lb)
         bd.coverage_ab = round(cov_ab, 4)
         bd.coverage_ba = round(cov_ba, 4)
@@ -439,6 +592,11 @@ def score_route_pair(
         bd.length_ratio = round(length_ratio, 4)
         bd.road_jaccard = road_signal
         bd.embedding_similarity = embedding_similarity
+        # Reported even when the coverage gate is what rejected the pair,
+        # so a rejected pair can say which gate fired and by how much.
+        bd.detour_m = round(detour_m, 1)
+        bd.detour_budget_m = round(budget_m, 1)
+        bd.detour_ok = detour_ok
         return bd
 
     total = (
@@ -481,6 +639,9 @@ def score_route_pair(
         length_b_m=round(lb, 1),
         road_jaccard=road_signal,
         embedding_similarity=embedding_similarity,
+        detour_m=round(detour_m, 1),
+        detour_budget_m=round(budget_m, 1),
+        detour_ok=detour_ok,
     )
 
 
