@@ -6,10 +6,9 @@ Needs numpy + opencv (the video venv / Modal image); skipped in CI.
 import sys
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
-cv2 = pytest.importorskip("cv2")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 

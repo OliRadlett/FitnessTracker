@@ -3,10 +3,9 @@
 Synthetic frames (a dark circle on a light field) — no mediapipe needed.
 """
 
+import cv2
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
-cv2 = pytest.importorskip("cv2")
 
 from app.integrations import bar_detection as bd
 

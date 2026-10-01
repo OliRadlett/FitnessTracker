@@ -4,9 +4,8 @@ Pure NumPy/standard library — no mediapipe needed, so these run anywhere
 numpy is installed.
 """
 
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
 
 from app.integrations import person_tracking as pt
 
