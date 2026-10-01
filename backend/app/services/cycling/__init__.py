@@ -43,6 +43,7 @@ from app.services.cycling.training_load import (
 from app.services.cycling.tss import (
     auto_compute_hr_tss_for_activity,
     auto_compute_tss_for_activity,
+    backfill_manual_activity_tss,
     calculate_hr_tss,
     calculate_intensity_factor,
     calculate_power_tss,

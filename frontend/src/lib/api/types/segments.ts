@@ -24,6 +24,13 @@ export interface Segment {
   effort_count: number;
   // Intelligence fields (fitted by Modal weekly task)
   cluster_id: number | null;
+  // Cross-route hill identity (plan §3). `null` until the weekly intelligence
+  // task has run at least once — "not clustered yet", not "no identity".
+  // `geo_cluster_size` > 1 means this row is one detection of a hill that also
+  // appears on other routes, which is what makes the merged leaderboard worth
+  // opening.
+  geo_cluster_id: string | null;
+  geo_cluster_size: number;
   climb_type: string | null;
   sustainedness: number | null;
   difficulty_score: number | null;
@@ -50,6 +57,24 @@ export interface SegmentEffort {
 
 export interface SegmentDetail {
   segment: Segment;
+  efforts: SegmentEffort[];
+}
+
+/**
+ * One physical hill, merged across every route it appears on (plan §3).
+ *
+ * `efforts` arrives ranked by **VAM**, not elapsed seconds. Different routes
+ * detect the same hill with slightly different windows (900 m vs 950 m
+ * depending on elevation sampling), so seconds are not comparable across
+ * members and ranking by them would report a "best" nobody rode. VAM is
+ * window-robust.
+ */
+export interface ClimbDetail {
+  geo_cluster_id: string;
+  /** Canonical: the most-ridden member's name. */
+  name: string;
+  route_count: number;
+  segments: Segment[];
   efforts: SegmentEffort[];
 }
 

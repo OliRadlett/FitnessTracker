@@ -274,16 +274,43 @@ export default function LiveLiftPage() {
       await live.discardSession();
       await queryClient.invalidateQueries({ queryKey: ['lifting-active-session'] });
     };
+    // A set the server rejected permanently cannot be fixed by retrying. Offer
+    // to drop it and save the rest, so one bad set no longer strands the whole
+    // session on a "Retry now" button that fails identically every time.
+    const failed = live.failedSets;
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
           <p className="text-foreground font-semibold">Finishing session…</p>
-          <p className="text-muted text-sm">
-            {live.isOffline
-              ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
-              : 'Waiting for the network to save your session.'}
-            {live.syncError && ' You can leave this page — it will resume automatically.'}
-          </p>
+          {failed.length > 0 ? (
+            <div className="space-y-2 text-left">
+              <p className="text-warning text-sm">
+                {failed.length === 1 ? '1 set could not be saved' : `${failed.length} sets could not be saved`}
+                . Everything else has been saved.
+              </p>
+              <ul className="space-y-1">
+                {failed.map((s) => (
+                  <li key={s.clientId} className="text-xs text-muted flex items-center gap-2">
+                    <span className="text-foreground font-medium">{s.exercise_name}</span>
+                    <span>— {s.failedReason}</span>
+                    <button
+                      onClick={() => live.removeSet(s.clientId)}
+                      className="text-accent underline ml-auto shrink-0"
+                    >
+                      Remove &amp; save the rest
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-muted text-sm">
+              {live.isOffline
+                ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
+                : 'Waiting for the network to save your session.'}
+              {live.syncError && ' You can leave this page — it will resume automatically.'}
+            </p>
+          )}
           <button
             onClick={live.retrySync}
             className="px-4 py-2 rounded-lg bg-accent text-background font-semibold"

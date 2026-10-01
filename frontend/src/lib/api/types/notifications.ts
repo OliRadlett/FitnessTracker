@@ -3,6 +3,10 @@
 export type NotificationType =
   | 'health_alert'
   | 'pr'
+  // A PR record being taken back (its set was deleted). Distinct from 'pr' so
+  // the reversal can be gated separately — and it must be visible, because the
+  // original announcement was pushed to the device and cannot be unsent.
+  | 'pr_revoked'
   | 'goal_milestone'
   | 'plan_reminder'
   | 'connection_reauth'

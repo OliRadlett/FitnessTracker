@@ -19,6 +19,7 @@ from app.schemas.dashboard import (
     WeeklyReport,
 )
 from app.services.auth import get_current_user
+from app.services.charts import ChartService
 
 router = APIRouter()
 
@@ -281,131 +282,16 @@ async def monthly_summary(
     for _ in range(months - 1):
         start_date = (start_date - timedelta(days=1)).replace(day=1)
 
-    # Lifting volume + sessions per month
-    result = await db.execute(
-        select(
-            func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
-            func.count(LiftingSession.id).label("sessions"),
-            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
-                "volume"
-            ),
-        )
-        .where(
-            LiftingSession.user_id == uid,
-            LiftingSession.session_date >= start_date,
-        )
-        .group_by("month")
-        .order_by("month")
+    # The month breakdown — grouping, the standalone-Wahoo exclusion, the PR
+    # merge across lifting and cycling power, and the dense fill of empty
+    # months — now lives in ChartService.monthly_breakdown, shared with the
+    # yearly summary. This endpoint previously held its own five hand-written
+    # copies of those queries; see the method's docstring for why they were
+    # consolidated.
+    breakdown = await ChartService(db).monthly_breakdown(
+        uid, start=start_date, end=today
     )
-    lifting_by_month: dict[str, dict] = {}
-    for row in result.all():
-        lifting_by_month[row.month] = {
-            "sessions": int(row.sessions),
-            "volume": _safe_agg(row.volume),
-        }
-
-    # Activity (cardio) stats per month — Strava as source of truth
-    result = await db.execute(
-        select(
-            func.to_char(Activity.start_date, "YYYY-MM").label("month"),
-            func.count(Activity.id).label("sessions"),
-            func.coalesce(func.sum(Activity.tss), 0.0).label("tss"),
-            func.coalesce(func.sum(Activity.distance_meters), 0.0).label("distance"),
-            func.coalesce(func.sum(Activity.duration_seconds), 0.0).label("time"),
-        )
-        .where(
-            Activity.user_id == uid,
-            Activity.source != "wahoo",
-            Activity.start_date >= start_date,
-        )
-        .group_by("month")
-        .order_by("month")
-    )
-    activity_by_month: dict[str, dict] = {}
-    for row in result.all():
-        activity_by_month[row.month] = {
-            "sessions": int(row.sessions),
-            "tss": _safe_agg(row.tss),
-            "distance": _safe_agg(row.distance),
-            "time": _safe_agg(row.time),
-        }
-
-    # PRs per month (lifting + cycling)
-    result = await db.execute(
-        select(
-            func.to_char(PersonalRecord.achieved_date, "YYYY-MM").label("month"),
-            func.count(PersonalRecord.id).label("prs"),
-        )
-        .where(
-            PersonalRecord.user_id == uid,
-            PersonalRecord.achieved_date >= start_date,
-        )
-        .group_by("month")
-    )
-    prs_by_month: dict[str, int] = {}
-    for row in result.all():
-        prs_by_month[row.month] = int(row.prs)
-
-    # Add cycling power PRs to monthly counts
-    result = await db.execute(
-        select(
-            func.to_char(CyclingPowerRecord.achieved_date, "YYYY-MM").label("month"),
-            func.count(CyclingPowerRecord.id).label("prs"),
-        )
-        .where(
-            CyclingPowerRecord.user_id == uid,
-            CyclingPowerRecord.achieved_date >= start_date,
-        )
-        .group_by("month")
-    )
-    for row in result.all():
-        prs_by_month[row.month] = prs_by_month.get(row.month, 0) + int(row.prs)
-
-    # Average recovery per month
-    result = await db.execute(
-        select(
-            func.to_char(DailyMetric.metric_date, "YYYY-MM").label("month"),
-            func.avg(DailyMetric.recovery_score).label("avg_recovery"),
-        )
-        .where(
-            DailyMetric.user_id == uid,
-            DailyMetric.metric_date >= start_date,
-            DailyMetric.recovery_score.isnot(None),
-        )
-        .group_by("month")
-    )
-    recovery_by_month: dict[str, float | None] = {}
-    for row in result.all():
-        safe = _safe_agg(row.avg_recovery, default=None)
-        recovery_by_month[row.month] = round(safe, 1) if safe is not None else None
-
-    # Build list of all months in the range
-    months_list: list[MonthlySummaryItem] = []
-    current = start_date
-    while current <= today:
-        month_key = current.strftime("%Y-%m")
-        lifting = lifting_by_month.get(month_key, {})
-        activity = activity_by_month.get(month_key, {})
-        months_list.append(
-            MonthlySummaryItem(
-                month=month_key,
-                total_tss=activity.get("tss", 0.0),
-                lifting_volume_kg=lifting.get("volume", 0.0),
-                total_distance_meters=activity.get("distance", 0.0),
-                total_time_seconds=activity.get("time", 0.0),
-                lifting_sessions=lifting.get("sessions", 0),
-                cardio_sessions=activity.get("sessions", 0),
-                pr_count=prs_by_month.get(month_key, 0),
-                avg_recovery=recovery_by_month.get(month_key),
-            )
-        )
-        # Advance to next month
-        if current.month == 12:
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
-
-    return months_list
+    return [MonthlySummaryItem(**row) for row in breakdown]
 
 
 @router.get("/streaks", response_model=TrainingStreaks)

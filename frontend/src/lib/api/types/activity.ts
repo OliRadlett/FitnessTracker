@@ -102,6 +102,49 @@ export interface ActivityStream {
   resolution?: number;
 }
 
+// ── Activity time series (GET /activities/timeseries) ─────────────────────────
+//
+// `buckets` is DENSE: the server returns every bucket in [start, end],
+// zero-filled. A zero therefore means "no training", which is true by
+// construction — there is no client-side bucket construction to reintroduce
+// the original defect where a row cap rendered as a training dip.
+
+export type TimeseriesBucketSize = 'day' | 'week' | 'month';
+
+export interface TimeseriesBucket {
+  bucket_start: string;
+  count: number;
+  distance_meters: number;
+  duration_seconds: number;
+  elevation_gain_meters: number;
+  tss: number;
+}
+
+export interface TimeseriesTotals {
+  count: number;
+  distance_meters: number;
+  duration_seconds: number;
+  elevation_gain_meters: number;
+  tss: number;
+}
+
+export interface SportCount {
+  sport_type: string | null;
+  count: number;
+}
+
+export interface TimeseriesResponse {
+  bucket: TimeseriesBucketSize;
+  start: string;
+  end: string;
+  /** False only when the server clamped the range to fit the bucket ceiling. */
+  complete: boolean;
+  clamped_to: string | null;
+  buckets: TimeseriesBucket[];
+  totals: TimeseriesTotals;
+  sport_breakdown: SportCount[];
+}
+
 export interface ActivityFilters {
   sport_type?: string;
   start_date_after?: string;
