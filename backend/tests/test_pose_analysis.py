@@ -10,9 +10,8 @@ the video venv:
 
 import math
 
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
 
 from app.integrations import pose_analysis as pa
 
