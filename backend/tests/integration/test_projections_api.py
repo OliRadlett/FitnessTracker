@@ -108,11 +108,20 @@ class TestMetricTrendEndpoint:
 class TestTsbProjectionEndpoint:
     """GET /api/v1/projections/tsb/{plan_id}."""
 
-    async def test_returns_400_for_non_event_plan(self, client, test_training_plan):
+    async def test_returns_projection_for_non_event_plan(self, client, test_training_plan):
+        """A plan with no event still projects.
+
+        This endpoint previously answered 400 for every non-event plan, which
+        confined TSB projection to race plans. Inverted deliberately: the gate
+        was a tested contract, so the reversal needs its own test rather than
+        the old one simply disappearing.
+        """
         plan_id = test_training_plan.id
         resp = await client.get(f"/api/v1/projections/tsb/{plan_id}")
-        assert resp.status_code == 400
-        assert "not linked to an event" in resp.json()["detail"]
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["event_date"] is None
+        assert len(body["projection"]) == 14
 
     async def test_returns_404_for_unknown_plan(self, client):
         resp = await client.get(f"/api/v1/projections/tsb/{uuid.uuid4()}")
