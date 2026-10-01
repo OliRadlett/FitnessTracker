@@ -923,6 +923,27 @@ async def import_fit(
             )
             db.add(stream)
 
+    # Auto-compute TSS so the imported ride counts for training load. Every
+    # provider sync does this (strava/sync.py, wahoo.py, strava/webhooks.py) and
+    # `backfill_lifting_tss` covers lifting, but nothing covered file imports:
+    # an imported activity kept tss=NULL, and load consumers skip null-tss rows
+    # (services/analytics.py), so the ride was invisible to weekly TSS, CTL/ATL
+    # and the recommendation engines despite parsing perfectly.
+    #
+    # Called unconditionally rather than behind `if profile.ftp_watts` as the
+    # sync paths do, so the HR fallback inside can engage when no FTP is set.
+    # The function itself early-returns when tss is already set, so this is
+    # idempotent. FIT's own normalized_power is preferred over a recomputation
+    # from samples (activity.normalized_power or activity.average_power).
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
+
+    profile = await get_or_create_cycling_profile(db, current_user.id)
+    await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
+    await db.flush()
+
     # Re-query with eager loading so _enrich_activity_read can access relationships
     result = await db.execute(
         select(Activity)

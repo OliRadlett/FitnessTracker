@@ -176,6 +176,46 @@ async def auto_compute_tss_for_activity(
     return None
 
 
+async def backfill_manual_activity_tss(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Compute TSS for imported activities that have none. Returns the count.
+
+    ``import_fit`` now computes TSS on write, but activities imported *before*
+    that landed are stranded with ``tss=NULL`` — and every load consumer skips
+    null-tss rows, so those rides contribute nothing to weekly TSS, CTL/ATL, or
+    the recommendation engines.
+
+    Scoped to ``source='manual'`` so it never touches provider-synced rows, and
+    to ``tss IS NULL`` so it is safe to re-run: ``auto_compute_tss_for_activity``
+    also early-returns on an already-set tss, so a scheduler repeat is a no-op
+    rather than a recompute-and-churn.
+    """
+    # Imported inside the function to match the other callers in this package
+    # (strava/sync.py, wahoo.py, strava/webhooks.py all import the profile
+    # helper lazily) and to keep tss.py free of a training_load dependency.
+    from app.services.cycling.training_load import get_or_create_cycling_profile
+
+    result = await db.execute(
+        select(Activity).where(
+            Activity.user_id == user_id,
+            Activity.source == "manual",
+            Activity.tss.is_(None),
+            Activity.start_date.is_not(None),
+        )
+    )
+    stranded = list(result.scalars().all())
+    if not stranded:
+        return 0
+
+    profile = await get_or_create_cycling_profile(db, user_id)
+    computed = 0
+    for activity in stranded:
+        if await auto_compute_tss_for_activity(db, activity, profile.ftp_watts):
+            computed += 1
+    if computed:
+        await db.flush()
+    return computed
+
+
 def infer_tss_source(
     activity: Activity, *, has_power_stream: bool = False
 ) -> str | None:

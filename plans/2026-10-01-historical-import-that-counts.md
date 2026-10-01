@@ -204,9 +204,20 @@ and key on provider identity rather than a value that later syncs will change.
 ### 3.3 Verify the FIT timestamp type, do not assume
 
 FIT timestamps are conceptually "milliseconds since the FIT epoch (1989-12-31)", but
-`fitdecode` applies its own conversion and may deliver `datetime`. A naive `int(...)` on a
+the decoder applies its own conversion and may deliver `datetime`. A naive `int(...)` on a
 `datetime` raises `TypeError` at import time — i.e. exactly when someone uploads their
 first historic file. Pin this with a parser test against a real FIT sample.
+
+> **Correction (Wave 0, verified in code):** the parser uses **`fitparse`**
+> (`services/fit_parser.py:7`), not `fitdecode` as originally assumed here. `fitparse`'s
+> `FitFile` exposes record `timestamp` as a `datetime`, so §2.4 needs an explicit
+> conversion to epoch seconds rather than a numeric read.
+>
+> **Also verified:** `fitparse` is a Cython package whose wheel **does not build on
+> Windows** (`[WinError 123]` from the vendored build step). CI is Linux and unaffected, but
+> a Windows dev checkout cannot import it — so any test of the import path must stub
+> `app.services.fit_parser` rather than exercise the real parser, or those tests cannot run
+> locally at all.
 
 ### 3.4 `time` stream must not be re-widened
 
