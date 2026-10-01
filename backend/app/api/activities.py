@@ -874,8 +874,34 @@ async def import_fit(
 
     Parses the FIT file, creates an Activity with session-level metrics
     and ActivityStream records for time-series data (HR, power, GPS, etc.).
+
+    A file that duplicates an existing import returns that activity rather than
+    creating a second row — see ``services/import_dedup.py``.
+    """
+    enriched, _created = await _import_fit(db, current_user, file)
+    return enriched
+
+
+async def _import_fit(
+    db: AsyncSession,
+    current_user: User,
+    file: UploadFile,
+) -> tuple[ActivityRead, bool]:
+    """Do the work behind ``POST /import-fit``.
+
+    Returns ``(activity, created)``. ``created`` is False when the file matched
+    an existing activity — exactly (same bytes) or fuzzily (the same ride
+    re-exported) — in which case an ``ActivitySource`` row records the file as
+    further provenance for it. Returning the flag rather than inferring it from
+    the response keeps "did this create a row?" answerable, which the bulk
+    endpoint needs to report honestly.
     """
     from app.services.fit_parser import parse_fit_file
+    from app.services.import_dedup import (
+        attach_import_source,
+        file_fingerprint,
+        find_duplicate,
+    )
     from app.services.polyline_utils import encode_polyline
 
     # BUG-017: Limit file size to 50MB
@@ -893,6 +919,33 @@ async def import_fit(
 
     session = parsed["session"]
     streams = parsed.get("streams", {})
+
+    # ── Duplicate detection ───────────────────────────────────────────────
+    #
+    # An imported activity carries no provider_activity_id, so before this
+    # there was nothing to deduplicate on: uploading the same file twice
+    # produced two rows and every load-bearing aggregate counted the ride
+    # twice. Two tiers — an exact content hash, then a fuzzy match for the
+    # same ride re-exported by different software.
+    fingerprint = file_fingerprint(raw)
+    duplicate = await find_duplicate(
+        db,
+        current_user.id,
+        fingerprint=fingerprint,
+        sport_type=session.get("sport_type", "cycling"),
+        start_date=session.get("start_time"),
+        duration_seconds=session.get("duration_seconds"),
+        distance_meters=session.get("distance_meters"),
+    )
+    if duplicate is not None:
+        if not duplicate.exact:
+            # Fuzzy: record the file as another source of the existing activity
+            # rather than creating a second row. Reversible, and it keeps the
+            # import visible as evidence instead of silently dropping it.
+            await attach_import_source(
+                db, duplicate.activity, fingerprint=fingerprint
+            )
+        return _enrich_activity_read(duplicate.activity), False
 
     # Build encoded polyline from GPS stream if available (filter out None values)
     gps_lats = streams.get("position_lat", [])
@@ -921,9 +974,14 @@ async def import_fit(
     activity = Activity(
         user_id=current_user.id,
         source="manual",
+        import_fingerprint=fingerprint,
         sport_type=activity_sport,
         name=session.get("name", "Imported Activity"),
-        start_date=session.get("start_time", datetime.now(UTC)),
+        # `or` rather than a dict default: a FIT file with no recorded start
+        # time yields an explicit None, which a default argument would let
+        # through to this NOT NULL column and 500 on. Fall back to now so the
+        # activity is still importable — the fuzzy tier simply cannot match it.
+        start_date=session.get("start_time") or datetime.now(UTC),
         duration_seconds=session.get("duration_seconds"),
         distance_meters=session.get("distance_meters"),
         elevation_gain_meters=session.get("elevation_gain_meters"),
@@ -998,7 +1056,102 @@ async def import_fit(
     )
     activity = result.scalar_one()
     enriched = _enrich_activity_read(activity)
-    return enriched
+    return enriched, True
+
+
+class BulkImportFileResult(BaseModel):
+    """Per-file outcome. A batch never fails as a unit."""
+
+    filename: str
+    status: Literal["created", "duplicate", "failed"]
+    activity_id: str | None = None
+    #: True when a fuzzy match attached this file to an existing activity
+    #: instead of creating a second row for the same ride.
+    attached_source: bool = False
+    error: str | None = None
+
+
+class BulkImportResponse(BaseModel):
+    created: int
+    duplicates: int
+    failed: int
+    results: list[BulkImportFileResult]
+
+
+# Bounded rather than unbounded: this endpoint is synchronous, and a single
+# user importing history does not need an async job with progress polling. The
+# per-file cap stops one request holding a worker open indefinitely.
+MAX_BULK_FILES = 20
+
+
+@router.post("/import-bulk", response_model=BulkImportResponse)
+async def import_bulk(
+    files: list[UploadFile] = File(..., description="Up to 20 FIT files"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import several FIT files, reporting each one's outcome independently.
+
+    ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+    handlers or it is shadowed and 422s (pitfall 13).
+
+    **Per-file commit is the whole point.** ``get_db`` commits once at the end
+    of the request, so a naive loop is all-or-nothing: one malformed file at
+    position 900 of 1000 would erase the 899 that succeeded. Each file is
+    committed on its own, and a failure is rolled back before the next file
+    starts, so one bad file cannot poison the session for the ones after it.
+
+    That means the batch is intentionally *not* atomic — which is why the
+    response is a per-file result array rather than a single success flag. The
+    user can see exactly what landed and retry only what failed.
+    """
+    if len(files) > MAX_BULK_FILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Too many files: {len(files)} (max {MAX_BULK_FILES})",
+        )
+
+    results: list[BulkImportFileResult] = []
+    for upload in files:
+        try:
+            enriched, created = await _import_fit(db, current_user, upload)
+            await db.commit()
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="created" if created else "duplicate",
+                    activity_id=str(enriched.id),
+                    attached_source=not created,
+                )
+            )
+        except HTTPException as exc:
+            # Roll back this file's partial work before the next one, so a
+            # failure cannot leave the session unusable.
+            await db.rollback()
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="failed",
+                    error=str(exc.detail),
+                )
+            )
+        except Exception as exc:
+            await db.rollback()
+            logger.warning("Bulk import failed for %s: %s", upload.filename, exc)
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="failed",
+                    error="could not be parsed or stored",
+                )
+            )
+
+    return BulkImportResponse(
+        created=sum(1 for r in results if r.status == "created"),
+        duplicates=sum(1 for r in results if r.status == "duplicate"),
+        failed=sum(1 for r in results if r.status == "failed"),
+        results=results,
+    )
 
 
 # ── Activity Analysis ────────────────────────────────────────────────────────

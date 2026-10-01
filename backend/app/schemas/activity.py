@@ -66,6 +66,10 @@ class ActivityRead(ActivityBase):
     id: uuid.UUID
     user_id: uuid.UUID
     connection_id: uuid.UUID | None = None
+    #: Content hash of the file this activity was imported from, or null for
+    #: anything that did not come from a file upload. Lets a client tell an
+    #: import apart from a provider-synced row and recognise a re-upload.
+    import_fingerprint: str | None = None
     route_id: uuid.UUID | None = None
     route_name: str | None = None
     provider_activity_id: str | None = None

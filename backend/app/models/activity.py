@@ -48,6 +48,14 @@ class Activity(Base):
         String(50), nullable=False
     )  # strava, wahoo, manual (primary source)
     provider_activity_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # sha256 of the uploaded file's bytes, for file imports only (migration
+    # 093). Content-derived rather than provider-derived, so unlike
+    # provider_activity_id a later sync cannot rewrite it. NULL for every
+    # provider-synced and hand-entered activity; the unique index over it is
+    # partial for that reason.
+    import_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     sport_type: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True
     )  # cycling, running, swimming, strength, powerlifting
