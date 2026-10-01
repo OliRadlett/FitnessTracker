@@ -4479,6 +4479,8 @@ def process_lift_video(
 @celery_app.task(name="app.tasks.scheduler.reap_stale_videos")
 def reap_stale_videos() -> dict:
     """Unstick lift videos left in processing/queued (e.g. a deploy killed the worker)."""
+    import asyncio
+
     return asyncio.run(_reap_stale_videos_async())
 
 
