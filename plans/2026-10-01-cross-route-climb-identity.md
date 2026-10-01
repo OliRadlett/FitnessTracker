@@ -135,10 +135,24 @@ The weekly task already selects every `Segment` for the user, so this adds no qu
   Service `get_climb_leaderboard(db, user_id, geo_cluster_id)` mirrors the existing
   `get_segment_leaderboard`: select members by `geo_cluster_id`, then their efforts with
   `selectinload(SegmentEffort.activity)`, ordered.
-- ⚠️ **Pitfall 13**: `geo_cluster_id` and `segment_id` are both UUIDs, so
-  `/climbs/{...}` **must be registered above** `/{segment_id}` in `api/segments.py` or the
-  dynamic route swallows it and the request 422s. A test asserting decorator *order*
-  (the lesson from the `/orphans` incident) — not one asserting the handler exists.
+- ⚠️ **Pitfall 13 — corrected during the build.** This section originally claimed
+  `/climbs/{geo_cluster_id}` "must be registered above `/{segment_id}` or the dynamic route
+  swallows it and the request 422s". **That is wrong for this route.** Pitfall 13 is about
+  *colliding path shapes*: `/tags` vs `/{param}` are both one segment, so registration order
+  decides. This route is two segments and the dynamic one is one:
+
+  ```
+  /{segment_id}            ->  ^/(?P<segment_id>[^/]+)$
+  /climbs/{geo_cluster_id} ->  ^/climbs/(?P<geo_cluster_id>[^/]+)$
+  ```
+
+  `[^/]+` cannot span a slash, so `/{segment_id}` is never a candidate for `/climbs/<uuid>`
+  and the order is irrelevant. Verified empirically by building a router in the wrong order
+  and getting a 200 from the specific handler. The build therefore asserts the **path
+  shape** rather than the decorator order, and adds a test showing the *single-segment*
+  variant (`GET /climbs`, no parameter) **is** shadowed — which is the shape the rule is
+  actually for. An ordering assertion here would have locked the over-caution in permanently
+  while checking nothing.
 
 ### 2.4 Carry-over across recompute (precondition)
 

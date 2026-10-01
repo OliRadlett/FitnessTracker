@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import { Stat } from '@/components/ui/Stat';
 import { SkeletonLine } from '@/components/ui/Skeleton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SegmentRow, fmtKm } from '@/components/routes/SegmentRow';
 
 /** Climbing category, steepest first — matches the Strava lettering. */
@@ -60,12 +61,86 @@ function groupByRoute(segments: Segment[]): RouteGroup[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+interface ClimbGroup {
+  /** `geo_cluster_id`, or a synthetic key for an unclustered segment. */
+  key: string;
+  /** The hill's display name: the most-ridden member's. */
+  name: string;
+  /** Steepest detection of the hill — the honest headline for a hill. */
+  representative: Segment;
+  segments: Segment[];
+  /** Summed across members: one hill ridden on 3 routes is 3 passes. */
+  totalPasses: number;
+  routeCount: number;
+}
+
+/**
+ * One row per physical hill, merged across routes.
+ *
+ * The whole point of `geo_cluster_id`: without it, the same hill on three routes
+ * is three rows with three PRs, and the rider's real best is invisible because
+ * the list is grouped by route.
+ *
+ * A segment with `geo_cluster_id === null` has not been clustered yet (the
+ * weekly intelligence task fills it), so it gets a synthetic key of its own id
+ * and stands alone. Silently merging those would invent a grouping that does not
+ * exist, and silently dropping them would hide climbs.
+ */
+function groupByClimb(segments: Segment[]): ClimbGroup[] {
+  const groups = new Map<string, ClimbGroup>();
+  for (const seg of segments) {
+    const key = seg.geo_cluster_id ?? seg.id;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        name: seg.name,
+        representative: seg,
+        segments: [],
+        totalPasses: 0,
+        routeCount: 0,
+      };
+      groups.set(key, group);
+    }
+    group.segments.push(seg);
+    group.totalPasses += seg.times_ridden;
+    group.routeCount = new Set(group.segments.map((s) => s.route_id)).size;
+    // Canonical name = most-ridden member, matching the backend's
+    // `canonical_climb_name`. Steepest detection as the row's representative,
+    // because two detections of one hill disagree slightly on length and the
+    // steeper reading is the one worth showing.
+    if (seg.times_ridden > group.representative.times_ridden) {
+      group.representative = seg;
+      group.name = seg.name;
+    }
+  }
+  return [...groups.values()]
+    .map((g) => ({
+      ...g,
+      representative: g.segments.reduce((best, s) =>
+        s.avg_gradient_pct > best.avg_gradient_pct ? s : best
+      ),
+      segments: [...g.segments].sort(compareSegments),
+    }))
+    .sort((a, b) => b.representative.avg_gradient_pct - a.representative.avg_gradient_pct);
+}
+
+const GROUPINGS = [
+  { value: 'climb', label: 'By hill' },
+  { value: 'route', label: 'By route' },
+] as const;
+
+type Grouping = (typeof GROUPINGS)[number]['value'];
+
 export default function SegmentsPage() {
   usePageTitle('Climb Segments');
   const { authFetch, token } = useAuthFetch();
   const [routeId, setRouteId] = useState<string>(ALL);
   const [category, setCategory] = useState<string>(ALL);
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  // Default to grouping by hill: the per-route view is the same hill repeated,
+  // which is what hid the rider's real best in the first place.
+  const [grouping, setGrouping] = useState<Grouping>('climb');
 
   const { data, isLoading, isError, refetch } = useQuery<Segment[]>({
     // One query for the whole set: the route list, the summary stats and the
@@ -97,7 +172,14 @@ export default function SegmentsPage() {
 
   // Group the *filtered* set so a category/ridden filter can't leave a stale
   // group heading behind with nothing under it.
-  const groups = useMemo(() => groupByRoute(filtered), [filtered]);
+  const routeGroups = useMemo(() => groupByRoute(filtered), [filtered]);
+  const climbGroups = useMemo(() => groupByClimb(filtered), [filtered]);
+
+  const sharedHillCount = useMemo(
+    () =>
+      climbGroups.filter((g) => g.routeCount > 1).length,
+    [climbGroups]
+  );
 
   const stats = useMemo(() => {
     const ridden = all.filter((s) => s.times_ridden > 0);
@@ -242,6 +324,22 @@ export default function SegmentsPage() {
             </button>
           ))}
         </div>
+
+        <div className="mt-3 pt-3 border-t border-surface-light/50">
+          <SegmentedControl
+            options={[...GROUPINGS]}
+            value={grouping}
+            onChange={setGrouping}
+            ariaLabel="Group climbs by hill or by route"
+          />
+          <p className="text-[11px] text-muted mt-2">
+            {grouping === 'climb'
+              ? sharedHillCount > 0
+                ? `One row per hill. ${sharedHillCount} of these appear on more than one route — open one to see every attempt merged.`
+                : 'One row per hill. Nothing is shared between routes yet; the weekly intelligence job fills that in.'
+              : 'One group per route. A hill on three routes appears three times, each with its own best.'}
+          </p>
+        </div>
       </Card>
 
       <Card>
@@ -264,9 +362,9 @@ export default function SegmentsPage() {
           </p>
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted">No climbs match the selected filters.</p>
-        ) : (
+        ) : grouping === 'route' ? (
           <div className="space-y-6">
-            {groups.map((group) => (
+            {routeGroups.map((group) => (
               <div key={group.routeId}>
                 <SectionLabel count={group.segments.length}>
                   {group.name}
@@ -278,6 +376,30 @@ export default function SegmentsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {climbGroups.map((group) => {
+              // Renders the most-ridden member's row, so the expanded panel and
+              // the per-route leaderboard both work exactly as they do in the
+              // route grouping. The summary line below carries what is merged.
+              const lead = group.segments.reduce((best, s) =>
+                s.times_ridden > best.times_ridden ? s : best
+              );
+              return (
+                <div key={group.key}>
+                  <SegmentRow segment={{ ...lead, geo_cluster_size: group.routeCount }} />
+                  {group.routeCount > 1 ? (
+                    <p className="text-[10px] text-muted px-3 pt-1 pb-2 -mt-1">
+                      Also detected on {group.routeCount - 1} other route
+                      {group.routeCount - 1 === 1 ? '' : 's'} ·{' '}
+                      {group.totalPasses} total pass
+                      {group.totalPasses === 1 ? '' : 'es'}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>

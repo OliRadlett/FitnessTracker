@@ -3,8 +3,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { getSegmentDetail, useAuthFetch } from '@/lib/api';
+import { getClimbDetail, getSegmentDetail, useAuthFetch } from '@/lib/api';
 import type { Segment } from '@/lib/api/types';
+import { SectionLabel } from '@/components/ui/SectionLabel';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import { getActiveLocale } from '@/lib/utils';
 
@@ -35,6 +36,38 @@ export function fmtKm(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
+/**
+ * Confidence as a word, not a number.
+ *
+ * `_predict_segment_effort` floors confidence at 0.2 and returns 0.2 whenever
+ * there are no similar efforts to borrow from — which is routine, not failure.
+ * Rendering "0.2" beside a prediction would read as "this prediction is broken"
+ * when it actually means "there was nothing to base it on". The number is kept
+ * out of the UI and only the band is shown.
+ */
+export function confidenceBand(confidence: number | null): {
+  label: string;
+  className: string;
+} | null {
+  if (confidence == null) return null;
+  if (confidence < 0.4) {
+    return {
+      label: 'low confidence',
+      className: 'text-muted',
+    };
+  }
+  if (confidence < 0.7) {
+    return {
+      label: 'medium confidence',
+      className: 'text-warning',
+    };
+  }
+  return {
+    label: 'high confidence',
+    className: 'text-positive',
+  };
+}
+
 /** Cat / climb-type / difficulty chips. */
 export function SegmentBadges({ seg }: { seg: Segment }) {
   const cat = seg.climb_category ? seg.climb_category.toUpperCase() : null;
@@ -56,7 +89,121 @@ export function SegmentBadges({ seg }: { seg: Segment }) {
           {seg.difficulty_score.toFixed(1)} diff
         </span>
       ) : null}
+      {/*
+        These three were computed by the weekly Modal task every Sunday and
+        stored, but never rendered anywhere — they matched only in the TS type
+        and a test fixture. They are the most useful thing the weekly job
+        produces, so they are surfaced here with the rest of the badges.
+      */}
+      {seg.sustainedness != null ? (
+        <span
+          className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-surface border-surface-light/60 text-muted"
+          title="Sustainedness — how evenly the gradient holds up through the climb"
+        >
+          sust {Math.round(seg.sustainedness * 100)}%
+        </span>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * The prediction line: expected time and VAM for this climb.
+ *
+ * Rendered only when a prediction exists, and always with a tilde — it is an
+ * expectation borrowed from similar climbs, not a measurement of this one.
+ */
+export function SegmentPrediction({ seg }: { seg: Segment }) {
+  const hasTime = seg.predicted_time_seconds != null;
+  const hasVam = seg.predicted_vam != null;
+  if (!hasTime && !hasVam) return null;
+  const band = confidenceBand(seg.prediction_confidence);
+
+  return (
+    <p className="text-[10px] text-muted mt-0.5">
+      {hasTime ? (
+        <span title="Predicted time for this climb">
+          pred {fmtSegTime(seg.predicted_time_seconds)}
+        </span>
+      ) : null}
+      {hasTime && hasVam ? ' · ' : null}
+      {hasVam && seg.predicted_vam != null ? (
+        <span title="Predicted vertical ascent rate">
+          ~{Math.round(seg.predicted_vam)} VAM
+        </span>
+      ) : null}
+      {band ? <span className={band.className}> · {band.label}</span> : null}
+    </p>
+  );
+}
+
+/**
+ * The merged leaderboard for one hill, across every route it appears on.
+ *
+ * Only mounted when `geo_cluster_size > 1` and the row is open — one request
+ * for the whole hill, not one per member segment.
+ */
+export function ClimbDetailPanel({ geoClusterId }: { geoClusterId: string }) {
+  const { authFetch, token } = useAuthFetch();
+
+  const { data, isLoading, isError } = useQuery({
+    // Domain-prefixed and keyed on the cluster, not a segment id (AGENTS
+    // pitfall 11 family: `enabled` gates on the token so the query does not fire
+    // before auth is ready and 401 into the void).
+    queryKey: ['climb-detail', geoClusterId],
+    queryFn: () => getClimbDetail(authFetch, geoClusterId),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  if (isLoading) return <SkeletonLine className="h-10 w-full" />;
+  if (isError) {
+    return <p className="text-xs text-muted py-1">Could not load this climb.</p>;
+  }
+  if (!data || data.efforts.length === 0) {
+    return (
+      <p className="text-xs text-muted py-1">
+        No efforts recorded for this climb yet.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-[10px] text-muted mb-1.5">
+        Merged across {data.route_count} route
+        {data.route_count === 1 ? '' : 's'} · ranked by VAM, since routes detect
+        the same hill with slightly different windows and elapsed seconds are
+        not comparable between them
+      </p>
+      {data.efforts.map((e, i) => (
+        <div
+          key={e.id}
+          className="flex items-center gap-3 py-1.5 text-xs border-b border-surface-light/40 last:border-0"
+        >
+          <span className="w-5 text-muted">{i + 1}</span>
+          <span className="flex-1 truncate text-foreground">
+            {e.activity_name ?? '—'}
+          </span>
+          {e.is_pr ? (
+            <span className="text-[10px] font-bold text-yellow-400">PR</span>
+          ) : null}
+          {/* Seconds are shown but explicitly labelled: they belong to this
+              route's detection window, not a shared one. */}
+          <span
+            className="text-muted tabular-nums"
+            title="Elapsed time for this route's detection window — not comparable across routes"
+          >
+            {fmtSegTime(e.elapsed_seconds)}
+          </span>
+          {(e.effort_vam ?? 0) > 0 ? (
+            <span className="text-muted tabular-nums w-16 text-right">
+              {Math.round(e.effort_vam ?? 0)} VAM
+            </span>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -79,6 +226,12 @@ export function SegmentRow({ segment }: { segment: Segment }) {
     staleTime: 300_000,
   });
 
+  // A hill seen on more than one route is worth opening as a hill; a hill seen
+  // on one route has nothing to merge, so the per-route leaderboard is the
+  // whole story and the panel would be a duplicate request.
+  const isSharedHill =
+    segment.geo_cluster_id != null && segment.geo_cluster_size > 1;
+
   return (
     <div className="rounded-lg bg-surface-light/40 border border-surface-light/60">
       <button
@@ -96,6 +249,7 @@ export function SegmentRow({ segment }: { segment: Segment }) {
             {fmtKm(segment.distance_m)} · {segment.avg_gradient_pct.toFixed(1)}% avg ·{' '}
             {segment.elevation_gain_m.toFixed(0)} m gain
           </p>
+          <SegmentPrediction seg={segment} />
         </div>
         <div className="text-right shrink-0">
           <p
@@ -154,6 +308,20 @@ export function SegmentRow({ segment }: { segment: Segment }) {
               No efforts recorded — link rides to this route to build the leaderboard.
             </p>
           )}
+        </div>
+      ) : null}
+
+      {/*
+        The merged view sits *below* the per-route leaderboard rather than
+        replacing it, because the two answer different questions: "how did I do
+        on this route's version of the hill" versus "what is my best on the hill
+        at all". Collapsing them into one list would hide the per-route context
+        that makes the merged number meaningful.
+      */}
+      {isSharedHill && open && segment.geo_cluster_id ? (
+        <div className="border-t border-surface-light/60 px-3 py-2">
+          <SectionLabel>Across every route</SectionLabel>
+          <ClimbDetailPanel geoClusterId={segment.geo_cluster_id} />
         </div>
       ) : null}
     </div>

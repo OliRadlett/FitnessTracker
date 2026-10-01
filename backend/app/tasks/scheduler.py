@@ -13,6 +13,7 @@ from celery.schedules import crontab
 
 from app.config import get_settings
 from app.integrations.resilience import ModalCircuitBreaker
+from app.services.geo_clusters import geo_cluster_segments
 
 logger = logging.getLogger(__name__)
 
@@ -2266,6 +2267,38 @@ def analyze_segments_intelligence_weekly() -> dict:
                         seg.predicted_power_watts = prediction.get("predicted_power_watts")
                         seg.prediction_confidence = prediction.get("confidence")
                         seg.intelligence_analyzed_at = datetime.now(UTC)
+
+                    # Cross-route hill identity, in the same transaction as the
+                    # writes above so the label and its inputs can never be
+                    # inconsistent with each other.
+                    #
+                    # Local and pure, not dispatched to Modal: it needs no
+                    # compute, and sending it to Modal would drag a module-scope
+                    # `app.config` import into the image (pitfall 16) plus the
+                    # `add_local_file` mounting (pitfall 17) for nothing. Note
+                    # this also finally *uses* the start/end coordinates that
+                    # were already being sent to Modal and discarded -- the
+                    # geographic identity is computed here because it is the one
+                    # clustering that has to see coordinates.
+                    #
+                    # `segments` is already every Segment for this user, so this
+                    # adds no query.
+                    geo = geo_cluster_segments(
+                        [
+                            {
+                                "id": s.id,
+                                "start_lat": s.start_lat,
+                                "start_lng": s.start_lng,
+                                "end_lat": s.end_lat,
+                                "end_lng": s.end_lng,
+                                "distance_m": s.distance_m,
+                                "avg_gradient_pct": s.avg_gradient_pct,
+                            }
+                            for s in segments
+                        ]
+                    )
+                    for seg in segments:
+                        seg.geo_cluster_id = geo.get(seg.id)
 
                     analyzed_count += 1
                     await db.commit()

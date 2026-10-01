@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.segment import (
+    ClimbDetail,
     SegmentDetail,
     SegmentEffortRead,
     SegmentRead,
@@ -18,7 +19,7 @@ from app.services.auth import get_current_user
 router = APIRouter()
 
 
-def _segment_read(seg) -> SegmentRead:
+def _segment_read(seg, *, geo_cluster_size: int = 1) -> SegmentRead:
     return SegmentRead(
         id=seg.id,
         route_id=seg.route_id,
@@ -42,6 +43,8 @@ def _segment_read(seg) -> SegmentRead:
         has_pr=seg.has_pr,
         effort_count=len(seg.efforts or []),
         cluster_id=seg.cluster_id,
+        geo_cluster_id=seg.geo_cluster_id,
+        geo_cluster_size=geo_cluster_size,
         climb_type=seg.climb_type,
         sustainedness=seg.sustainedness,
         difficulty_score=seg.difficulty_score,
@@ -77,7 +80,72 @@ async def list_segments(
 ):
     """All climb segments for the user (optionally for one route), PR-first."""
     segments = await segment_service.list_segments(db, current_user.id, route_id)
-    return [_segment_read(seg) for seg in segments]
+    # One grouped query for the whole user, not a count per segment: this is a
+    # list endpoint and the page renders every row, so counting in the loop
+    # would be an N+1. When `route_id` filters to one route, the counts are
+    # still computed across all of the user's routes -- a hill seen on three
+    # routes must report 3 here too, or the "also on N other routes" line would
+    # be wrong exactly when it is being shown.
+    sizes = await segment_service.geo_cluster_sizes(db, current_user.id)
+    return [
+        _segment_read(
+            seg,
+            geo_cluster_size=sizes.get(seg.geo_cluster_id, 1)
+            if seg.geo_cluster_id
+            else 1,
+        )
+        for seg in segments
+    ]
+
+
+@router.get("/climbs/{geo_cluster_id}", response_model=ClimbDetail)
+async def get_climb_detail(
+    geo_cluster_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One physical hill merged across every route it appears on.
+
+    Registered above ``/{segment_id}``, though **ordering is not what makes this
+    safe** and the spec's warning to the contrary was wrong.
+
+    Pitfall 13's rule (static single-segment routes must sit above a dynamic
+    one) is about *colliding path shapes*: ``/tags`` and ``/{param}`` are both
+    one segment, so whichever is registered first wins. This route is two
+    segments and the dynamic one is one::
+
+        /{segment_id}            ->  ^/(?P<segment_id>[^/]+)$
+        /climbs/{geo_cluster_id} ->  ^/climbs/(?P<geo_cluster_id>[^/]+)$
+
+    ``[^/]+`` cannot span a slash, so ``/{segment_id}`` is never a candidate
+    for ``/climbs/<uuid>``. The shape makes shadowing impossible whatever the
+    order.
+
+    It stays above for readability -- the specific route reading first is what a
+    reader expects -- and ``test_segment_geo_clusters.py`` asserts the *shape*
+    rather than the order, plus a test showing the single-segment variant
+    (``GET /climbs``, no parameter) really is shadowed. That is the case the rule
+    is actually for.
+    """
+    try:
+        members, efforts = await segment_service.get_climb_leaderboard(
+            db, current_user.id, geo_cluster_id
+        )
+    except LookupError as e:
+        # A hill owned by another user raises the same LookupError as one that
+        # does not exist, so this endpoint cannot be used to probe for ids.
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    sizes = await segment_service.geo_cluster_sizes(db, current_user.id)
+    size = sizes.get(geo_cluster_id, len(members))
+    reads = [_segment_read(seg, geo_cluster_size=size) for seg in members]
+    return ClimbDetail(
+        geo_cluster_id=geo_cluster_id,
+        name=segment_service.canonical_climb_name(members),
+        route_count=len({seg.route_id for seg in members}),
+        segments=reads,
+        efforts=[_effort_read(e) for e in efforts],
+    )
 
 
 @router.get("/{segment_id}", response_model=SegmentDetail)
