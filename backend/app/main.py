@@ -4,9 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.config import get_settings
@@ -18,13 +15,6 @@ settings = get_settings()
 # ── Logging ────────────────────────────────────────────────────────────
 setup_logging(debug=settings.debug)
 logger = logging.getLogger(__name__)
-
-# ── Rate limiting ──────────────────────────────────────────────────────
-# Global default: 100 requests/minute per IP
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["100/minute"],
-)
 
 
 @asynccontextmanager
@@ -71,10 +61,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Rate limiting middleware ───────────────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 # ── CORS ──────────────────────────────────────────────────────────────
 # CSRF protection is intentionally omitted.  The API uses JWT Bearer tokens
 # sent via the Authorization header (not cookies), so browsers do not attach
@@ -106,17 +92,20 @@ async def correlation_id_middleware(request: Request, call_next):
 
 # ── Stricter rate limit for auth/token endpoints (20 req/min) ─────────
 # Backed by Redis (services.cache.check_rate_limit) so the budget is shared
-# across workers rather than per-process in-memory (slowapi default).
+# across workers rather than per-process in-memory.
+# Keyed on the real client IP via the trusted proxy (see services.client_ip),
+# otherwise every request behind Caddy would share the proxy's bucket.
 
 
 @app.middleware("http")
 async def auth_rate_limit_middleware(request: Request, call_next):
     """Apply a stricter 20 req/min limit on auth/token endpoints."""
     from app.services.cache import check_rate_limit
+    from app.services.client_ip import get_client_ip
 
     if request.url.path.startswith("/api/v1/auth"):
         allowed = await check_rate_limit(
-            f"auth:{get_remote_address(request)}",
+            f"auth:{get_client_ip(request)}",
             limit=20,
             window_seconds=60,
         )

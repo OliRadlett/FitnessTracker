@@ -28,6 +28,14 @@ from app.services.route_quarantine import active_routes_clause
 
 logger = logging.getLogger(__name__)
 
+# Sentinel for "we looked and there is no geometry to match". Distinct from
+# NULL, which means "never attempted" and is what the weekly task selects.
+#
+# Zero is safe because ROAD_MATCH_VERSION is 1 and the column is only ever
+# compared against None anywhere in the codebase, so a sentinel row is
+# excluded from the retry set by simply being non-NULL.
+ROAD_MATCH_VERSION_NO_GEOMETRY = 0
+
 
 def _terrain_type(route: Route) -> str | None:
     tc = route.terrain_classification

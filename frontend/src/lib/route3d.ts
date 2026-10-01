@@ -227,6 +227,73 @@ export function gridSampleCoords(grid: RouteGrid): { lat: number[]; lng: number[
   return { lat, lng };
 }
 
+export interface DrapeResult {
+  /** DEM height under the route centroid (bed baseline reference) */
+  base: number;
+  /** bed vertical base: baseline + clearance so the bed never occludes the road */
+  altMin: number;
+  /** grid minimum (flat-ride bed base when no altitude stream exists) */
+  demMin: number;
+  /** per-point draped heights, or null for flat rides (caller keeps raw z) */
+  drape: number[] | null;
+}
+
+/** clearance (m) between the draped road and the terrain bed below it */
+export const DRAPE_CLEAR_M = 1.2;
+
+/**
+ * Drape a ride onto a DEM bed: pick a baseline DEM height and render every
+ * path point at (dem − base)·zScale, smoothed so DEM cliffs don't spike the
+ * road, falling back to the raw z where the DEM has no data. Flat rides (no
+ * altitude stream) return drape null. Pure.
+ */
+export function computeDrape(
+  points: Array<{ x: number; y: number; z: number }>,
+  heights: number[],
+  grid: RouteGrid,
+  frame: { lat0: number; lng0: number; zScale: number },
+): DrapeResult {
+  const hasAlt = points.some((p) => p.z !== 0);
+  const finite = heights.filter(Number.isFinite);
+  // Loop-based extrema — `Math.min(...finite)` overflows the call stack
+  // when the DEM grid has 100k+ samples (maxGridPoints = 131072).
+  let demMin = Infinity;
+  for (const h of finite) {
+    if (h < demMin) demMin = h;
+  }
+  if (demMin === Infinity) demMin = 0;
+  const mPerDegLng = M_PER_DEG_LAT * Math.cos((frame.lat0 * Math.PI) / 180);
+  const base = bilinearHeight(grid, heights, frame.lat0, frame.lng0) ?? demMin;
+  // Terrain sits a fixed clearance below the draped road (a coarse mesh
+  // still reads as ground while never occluding the ribbon).
+  const altMin = base + DRAPE_CLEAR_M;
+  // Per-point DEM, smoothed so DEM cliffs/noise don't spike the road.
+  let drape: number[] | null = null;
+  if (hasAlt) {
+    const dem = points.map((p) =>
+      bilinearHeight(grid, heights, frame.lat0 + p.y / M_PER_DEG_LAT, frame.lng0 + p.x / mPerDegLng),
+    );
+    const W = 4;
+    const smooth = dem.map((_, i) => {
+      let s = 0;
+      let c = 0;
+      for (let j = Math.max(0, i - W); j <= Math.min(dem.length - 1, i + W); j++) {
+        const v = dem[j];
+        if (v != null) {
+          s += v;
+          c++;
+        }
+      }
+      return c ? s / c : null;
+    });
+    drape = points.map((p, i) => {
+      const d = smooth[i];
+      return d == null ? p.z : (d - base) * frame.zScale;
+    });
+  }
+  return { base, altMin, demMin, drape };
+}
+
 /** bilinear sample of the DEM grid at an arbitrary lat/lng (null outside data) */
 export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, lng: number): number | null {
   const { cols, rows, lats, lngs } = grid;
@@ -252,37 +319,13 @@ export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, 
   return Number.isFinite(v) ? v : null;
 }
 
-/** terrain mesh vertex data from the DEM grid, in the path's projection frame */
-/** per-vertex surface normal (metres) from neighbour height differences */
-function terrainNormalAt(
-  heights: number[],
-  cols: number,
-  rows: number,
-  r: number,
-  c: number,
-  lngStepM: number,
-  latStepM: number,
-): [number, number, number] {
-  const base = heights[r * cols + c];
-  const at = (rr: number, cc: number) => {
-    const v = heights[rr * cols + cc];
-    return Number.isFinite(v) ? v : base;
-  };
-  const hL = at(r, Math.max(0, c - 1));
-  const hR = at(r, Math.min(cols - 1, c + 1));
-  const hD = at(Math.max(0, r - 1), c);
-  const hU = at(Math.min(rows - 1, r + 1), c);
-  return [-(hR - hL) / (2 * lngStepM), -(hU - hD) / (2 * latStepM), 1];
-}
-
-/** Lambert diffuse vs a warm, elevated sun. Returns ~0.4..1.0. */
-function terrainLambert(n: [number, number, number]): number {
-  const nlen = Math.hypot(n[0], n[1], n[2]) || 1;
-  // sun dir (normalised): from front-right, elevated
-  const sx = 0.45, sy = 0.5, sz = 0.95;
-  const slen = Math.hypot(sx, sy, sz);
-  return Math.max(0.4, ((n[0] * sx + n[1] * sy + n[2] * sz) / (nlen * slen)) * 0.6 + 0.4);
-}
+/**
+ * Absolute hypsometric ceiling (m): terrain tint maps 0..HYPSO_MAX_M onto
+ * ELEVATION_RAMP so altitude reads the same on every ride — green lowlands,
+ * brown hills, white peaks — instead of stretching the full ramp over whatever
+ * local relief a grid happens to have (snow on a 60 m hill).
+ */
+export const HYPSO_MAX_M = 2500;
 
 export function buildTerrainMesh(
   grid: RouteGrid,
@@ -296,18 +339,6 @@ export function buildTerrainMesh(
   const colors = new Float32Array(count * 3);
   const sea = opts.seaLevelM ?? 0;
 
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const h of heights) {
-    if (Number.isFinite(h)) {
-      if (h < lo) lo = h;
-      if (h > hi) hi = h;
-    }
-  }
-  const span = hi - lo || 1;
-
-  const latStepM = (lats[1] - lats[0]) * M_PER_DEG_LAT || 1;
-  const lngStepM = (lngs[1] - lngs[0]) * mPerDegLng || 1;
   // Fade the outer ~6% of the grid to black so the terrain slab's hard edge
   // dissolves into the horizon instead of ending abruptly.
   const fadeDepth = Math.max(1, Math.min(rows, cols) * 0.06);
@@ -319,7 +350,9 @@ export function buildTerrainMesh(
     for (let c = 0; c < cols; c++) {
       const idx = (r * cols + c) * 3;
       const h = heights[r * cols + c];
-      const hv = Number.isFinite(h) ? h : lo;
+      // Non-finite samples fall back to sea level (shoreline) so one bad
+      // sample can never poison positions with NaN.
+      const hv = Number.isFinite(h) ? h : sea;
       positions[idx] = (lngs[c] - opts.lng0) * mPerDegLng;
       positions[idx + 1] = (lats[r] - opts.lat0) * M_PER_DEG_LAT;
       positions[idx + 2] = (hv - opts.altMin) * opts.zScale;
@@ -337,12 +370,14 @@ export function buildTerrainMesh(
         colors[idx + 1] = wg * k;
         colors[idx + 2] = wb * k;
       } else {
-        const t = (hv - lo) / span;
+        // Absolute elevation tint: comparable across rides, honest on flats.
+        const t = Math.max(0, Math.min(1, hv / HYPSO_MAX_M));
         const raw = rampColor(ELEVATION_RAMP, t);
-        const n = terrainNormalAt(heights, cols, rows, r, c, lngStepM, latStepM);
-        const lambert = terrainLambert(n);
+        // No baked sun shading: the bed's MeshLambertMaterial is lit by the
+        // scene's actual sun, so relief follows time-of-day instead of fighting
+        // it with a second, fixed light. Edge fade only.
         const edge = Math.min(1, Math.min(r, rows - 1 - r, c, cols - 1 - c) / fadeDepth);
-        const k = lambert * edge;
+        const k = edge;
         // Blend the hypsometric ramp over a warm earth base, then shade.
         colors[idx] = (raw[0] * 0.7 + GROUND[0] * 0.3) * k;
         colors[idx + 1] = (raw[1] * 0.7 + GROUND[1] * 0.3) * k;

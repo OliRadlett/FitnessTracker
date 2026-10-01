@@ -3,8 +3,21 @@ name: CI
 on:
   push:
     branches: [main, prod]
+    # Docs-only pushes skip CI, so they also skip the Deploy that CI gates.
+    # A documentation fix otherwise costs a full image rebuild and a Droplet
+    # redeploy to ship nothing the server serves. `paths-ignore` skips a run
+    # only when *every* changed file matches, so any commit touching code,
+    # config or `.github/` still runs the full suite. Deliberately not added
+    # to `pull_request` below — the PR gate stays exhaustive.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'plans/**'
   pull_request:
     branches: [main, prod]
+  # Manual retry lever (Pitfall #27): a prod push that registers no CI run
+  # cannot be retried cleanly — dispatch CI on prod instead of a no-op commit.
+  workflow_dispatch:
 
 jobs:
   lint:

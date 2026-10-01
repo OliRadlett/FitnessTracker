@@ -1407,8 +1407,11 @@ def map_match_activities() -> dict:
     polyline to the regional OSM graph via Modal (graceful no-op when Modal/OSM
     is unconfigured), persist ``road_match`` + ``road_embedding``.
 
-    Activities with no polyline are skipped (e.g. zero-distance Wahoo indoor
-    sessions, mislabelled strength rows that are now filtered). Only cycling,
+    Activities with no polyline are stamped ``ROAD_MATCH_VERSION_NO_GEOMETRY``
+    (0) rather than left NULL, so the weekly selection stops re-picking them —
+    they have no geometry to gain, and the skip was previously silent and
+    permanent. A NULL ``road_match_version`` therefore always means "never
+    attempted". Undo resets it to NULL for the same reason. Only cycling,
     walking, and hiking activities are matched — swimming/strength have no
     GPS geometry.
 
@@ -1426,7 +1429,10 @@ def map_match_activities() -> dict:
     from app.integrations.route_road_graph import match_activities_to_roads_on_modal
     from app.models.activity import Activity
     from app.services.polyline_utils import decode_polyline, extract_activity_polyline
-    from app.services.road_matching import store_activity_road_matches
+    from app.services.road_matching import (
+        ROAD_MATCH_VERSION_NO_GEOMETRY,
+        store_activity_road_matches,
+    )
 
     async def _run():
         settings = get_settings()
@@ -1447,6 +1453,7 @@ def map_match_activities() -> dict:
 
             users_done = 0
             matched = 0
+            skipped = 0
 
             for user_id in user_ids:
                 try:
@@ -1464,6 +1471,7 @@ def map_match_activities() -> dict:
                     # Only activities with extractable GPS polylines are matchable.
                     activities_data = []
                     matchable = []
+                    unmatchable = []
                     for a in activities:
                         poly = extract_activity_polyline(a)
                         if poly:
@@ -1471,8 +1479,28 @@ def map_match_activities() -> dict:
                                 {"id": str(a.id), "polyline": decode_polyline(poly)}
                             )
                             matchable.append(a)
+                        else:
+                            unmatchable.append(a)
+
+                    # Stamp the ones with no geometry so the weekly SELECT
+                    # stops re-picking them. Leaving them NULL made this task
+                    # silently re-skip the same rows every week forever — on
+                    # production, 15 activities, indefinitely. Most are indoor
+                    # or trainer rides that Wahoo never recorded a distance
+                    # for, plus hand-entered Strava activities that carry an
+                    # empty summary_polyline.
+                    if unmatchable:
+                        for a in unmatchable:
+                            a.road_match_version = ROAD_MATCH_VERSION_NO_GEOMETRY
+                        skipped += len(unmatchable)
+                        logger.info(
+                            f"Marked {len(unmatchable)} activities as "
+                            "no-geometry for user "
+                            f"{user_id} (not retried)"
+                        )
 
                     if not activities_data:
+                        await db.commit()
                         continue
 
                     matches = match_activities_to_roads_on_modal(
@@ -1495,6 +1523,7 @@ def map_match_activities() -> dict:
             return {
                 "users_processed": users_done,
                 "activities_matched": matched,
+                "activities_skipped_no_geometry": skipped,
             }
 
     return asyncio.run(_run_task_guarded("map_match_activities", _run))

@@ -133,7 +133,7 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 - **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation
 - **Whoop API reference**: https://developer.whoop.com (not vendored locally)
 - **Jev decision layer**: `TYPESAFE_API_KEY` enables TypeSafe Jev. See [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md) + [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
-- **Rate limiting**: auth/`/sync-user` go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), fail-open on Redis outage). slowapi `Limiter` instantiated but **not** registered as middleware (SEC-03).
+- **Rate limiting**: auth/`/sync-user` go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), fail-open on Redis outage), keyed on the **real client IP** via [`get_client_ip`](backend/app/services/client_ip.py). `X-Forwarded-For` is honoured only when the immediate peer is a trusted proxy (`TRUSTED_PROXIES`, default loopback + private ranges) — the backend has no public port, so Caddy is always the peer.
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 
 ### Frontend
@@ -198,6 +198,7 @@ Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlo
 4. **Before pushing a release**: `git log --oneline origin/main..origin/prod` + `git diff --stat origin/main origin/prod`.
 5. **`prod` is a release branch, not a working branch.** Commit locally, PR into `main`, then merge `main` → `prod` to ship.
 6. After deploying: `git checkout main && git pull origin main`.
+7. **Local hooks**: `git config core.hooksPath .githooks` enables the committed `pre-commit` (ruff backend lint, fail-open without ruff) and `commit-msg` (conventional commits) hooks. CI remains the authority for typecheck/tests.
 
 ## Quick Reference
 

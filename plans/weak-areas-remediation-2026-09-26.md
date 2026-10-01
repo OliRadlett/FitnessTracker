@@ -1,217 +1,139 @@
 # Weak-Area Remediation Plan (2026-09-26)
 
-> **Status**: Planning — no code changed yet. Produced from a read-only survey of the
-> codebase, re-verification of the `docs/audits/*` findings against current source, and an
-> inspection of the in-flight uncommitted work.
+> **Status**: **Refreshed 2026-09-30** — this is now a *status record + remaining-work
+> list*, not a forward plan. The original 2026-09-26 survey is superseded by this
+> rewrite (its text remains in git history, and the rationale for every *still-open*
+> item is preserved below with current evidence).
 >
-> **Caveat**: the working tree is being actively edited by concurrent sessions. Line numbers
-> below may drift; re-confirm before editing. Several tracked files are modified and are
-> owned by other sessions — do not rewrite them in place without coordinating (AGENTS rules
-> #11/#12).
+> **Refresh method**: every item below was re-verified against code on `origin/main`
+> (`82a6416`, after PR #213 merged), not against the checkboxes in other `plans/*.md` —
+> those are frequently stale. Migration head at refresh time: **`091`**, single head, no
+> duplicate `revision` values.
 >
-> **Docs reconciliation (same change)**: stale facts in `AGENTS.md`, `docs/BUGS.md`,
-> `docs/algorithms.md`, `docs/RUNNING.md` and the CODEMAPs (migration head `061`→`079`,
-> 42→45 tables, 32→43 charts, decoupling definition, missing Celery/video/spc/encryption rows)
-> were fixed on branch `docs/reconcile-2026-09-26`. That branch also fixed a **duplicate
-> Alembic revision** on `main` (see Track 1). Track 3's "Docs" row still has the
-> `docs/BUGS.md` BUG-071 proximity note outstanding.
+> **Headline**: of the 45 tracked rows, **24 are fixed** and **21 remain**. Tracks 1, 2
+> and 6 are fully resolved. The remaining work is Track 3 ×8, Track 4 ×9, Track 5 ×4.
+> (S4 closed on 2026-10-01; other row statuses are as of 2026-09-30.)
+>
+> **Refreshing again?** Re-check the code, not this file. `git grep` for the item ID or
+> bug ID first — fixes carry an ID in a comment.
 
-## Executive summary
+## Remaining work (the only actionable part)
 
-The product is feature-rich. The weak areas are concentrated in **closing loops, verification,
-and hardening**, plus a set of **silent-failure bugs**. The single most immediate blocker is
-that the local branch is behind `origin/main` and its uncommitted migrations collide with
-already-merged ones.
+### Track 3 — silent correctness bugs (8 open)
 
-Six remediation tracks, sequenced so Track 1 unblocks the rest. Each is an independent branch
-+ PR into `main`.
+| ID | Defect | Evidence | Fix |
+|----|--------|----------|-----|
+| SCI-02 | Re-linking the **same** `event_id` re-applies the taper ramp, compounding the reduction | `services/training_plan.py:513` sets `plan.event_id` and tapers with no repeated-event guard | Early-return when `plan.event_id == event_id` |
+| SCI-07 | ACSM VO2max formula duplicated inline instead of shared | `services/cycling/vo2max.py:28` (`_acsm_vo2max`) vs `integrations/power_models.py:464-479` | Import the shared helper in `power_models.py` |
+| RMI-07 | Weather features passed to Modal as `None` for missing humidity/pressure/wind-direction | `tasks/scheduler.py:1986-1997` | Source the real fields, or drop rows missing them before the call |
+| RMI-08 | Cross-domain insights are appended, never upserted → duplicates accumulate per run | `tasks/scheduler.py:2660-2667` | Unique constraint on `(user, insight_type)` + `on_conflict_do_update` |
+| RMI-12 | `w_prime` bound is too loose (1–100 kJ) to be physiologically meaningful | `integrations/power_models.py:328` | Tighten to 5–40 kJ |
+| SYNC-11 | Wahoo route sync reports `merged_count` without ever incrementing it | `services/wahoo.py:403/517/526` | Increment when `create_or_merge_route` merges |
+| SYNC-12 | Whoop weigh-ins dated with server/UTC `date.today()` | `services/whoop.py:1295` | Convert to the user-local date |
+| SYNC-06/07/08 | Sync N+1s and a delete-in-loop | `services/strava/linking.py:271-274` (per-activity N+1); `services/strava/webhook_queue.py:178` (delete in loop). `sync.py:722` already bulk-prefetches — this row is the leftovers | Bulk-fetch linking candidates; one bulk delete in the queue |
 
-| Track | Theme | Blast radius | Priority |
-|-------|-------|--------------|----------|
-| 1 | Unblock branch & migrations | High (git + Alembic) | P0 |
-| 2 | Security quick wins | Medium | P0/P1 |
-| 3 | Silent correctness bugs | Medium | P1 |
-| 4 | In-flight work correctness | Medium | P1 |
-| 5 | Frontend reliability sweep | Low–Medium | P2 |
-| 6 | New feature (Jev decision layer / training-aid loops) | Medium | P2/P3 |
+### Track 4 — in-flight work correctness (9 open, none touched)
 
----
+All nine original items remain open; file references re-confirmed at refresh time.
 
-## Verification basis
+- [ ] `services/route_matching.py:260` — size the longitude cell by `cos(lat)` (currently `tol_m / 110_000` for both axes), so high-latitude matches are not missed; add a ~55°N test.
+- [ ] `tasks/scheduler.py:1563-1565` — pre-filter route pairs (bounding box / distance) before the O(n²) Fréchet sent to Modal.
+- [ ] `services/wahoo_push.py:174/211/249` — push re-creates on retry; make idempotent across partial failure. `integrations/wahoo_client.py:211/380` returns raw `resp.json()` without unwrapping nested `{plan:{id:…}}`, so IDs are lost.
+- [ ] `frontend/src/components/activities/Replay3D.tsx:1139` vs `:1523` — short rides are skipped when building markers but indexed by position at render, so `raceMarkers` misaligns.
+- [ ] `frontend/src/lib/raceRides.ts:128` — `buildReplay` is called with no shared `frame`, so `replay.ts:50-51` defaults each ride to its own centroid; the "distance-aligned" comment is wrong.
+- [ ] `frontend/src/components/activities/Replay3D.tsx:646-647/953/955` — wind refs are written during render but no wind HUD exists. Render it from state, or delete the refs.
+- [ ] `frontend/src/lib/lifting/useLiveSession.ts:364` — only HTTP 404 is treated as a terminal finish; any 4xx should be (extends BUG-098).
+- [ ] Dead code: `services/route_service.py:175` `score_route_breakdown`; `integrations/wahoo_client.py:22` `WAHOO_FAMILY_BIKING`, `:191` `find_plan_by_external_id`, `:377` `delete_route`.
+- [ ] Docs: `route_matching.py` + `recompute_route_similarity` are absent from AGENTS/CODEMAP, and `route_matching.py:36-41` weights (0.60/0.25/0.15) disagree with `plans/route-merging-overhaul.md:68/77` (0.45/0.40/0.15, gate 0.55, N=120).
 
-- `docs/audits/SYNTHESIS-2026-09-20.md` + 7 per-area audit files re-read and spot-checked
-  against current source. Findings whose defect is no longer present in code are marked
-  **FIXED** and omitted from the fix lists.
-- Confirmed still-open (spot-checked this session):
-  - `route_intelligence.py:182` reads `elevation_profile.get("elevation", [])` while
-    `komoot.py:267` writes `{"elevations": [...]}` → Komoot terrain permanently `unknown`.
-  - `auth.py:225-226` logs token-exchange status + full headers + `token_resp.text[:500]`.
-  - `api/videos.py:91` only checks `r2_key` is non-empty; no `lift_videos/{user_id}/` prefix
-    validation, and `lifting_session_id`/`personal_record_id` are trusted unchecked.
-- Confirmed already **FIXED** (do not redo): RMI-05 (`range(len(a))` at
-  `route_intelligence.py:148`), plus SEC-01/02/07, RMI-01/02/09, DATA-01, SYNC-01–05, AI-01/03,
-  SCI-04, UX-01/02/10.
+### Track 5 — frontend reliability (4 open)
 
----
-
-## Track 1 — Unblock branch & migrations (P0) — mostly resolved
-
-**Update 2026-09-26 (later):** the previously-uncommitted in-flight work merged to
-`origin/main` while this audit ran — `#84` (Wahoo planned-workout push) and `#101`
-(route-merging overhaul). Those sessions renumbered their migrations to `078_add_wahoo_push.py`
-and `078_route_merging_overhaul.py`, but **both kept `revision = "078"` with
-`down_revision = "077"`** → `main` had two heads with the same revision id and
-`alembic upgrade head` fails ("revision 078 is present more than once").
-
-**Fixed on branch `docs/reconcile-2026-09-26`:** `078_route_merging_overhaul.py` →
-`079_route_merging_overhaul.py` (`revision = "079"`, `down_revision = "078"`); chain is now
-`…077 → 078_add_wahoo_push → 079_route_merging_overhaul` (single head `079`). Doc head
-references updated to `079`.
-
-**Still open**
-- Local `main` checkout (`63ef8d8`) is ~19 commits behind `origin/main` — fast-forward it
-  before any feature work.
-- The 3 local commits (`63ef8d8`, `e4d7556`, `dbcbfb1`, T3 bar-detector dataset/trainer) are
-  superseded by `origin/main`'s merged T3 work (`#99`) — verify and drop/rebase.
-- Repo-root artifacts (`src/`, `bike_model/`, `bike_model_stock/`, `.vite/`) still untracked —
-  verify then delete/gitignore.
-- Confirm `alembic heads` returns exactly one head after the `079` renumber, then
-  `alembic upgrade head` on a fresh DB.
-
-**Risk**: medium now (the collision is fixed; remaining items are branch hygiene).
+- [ ] Locale: `toLocale*()` called with no locale in `ReplayTheater.tsx:101/191`, `Replay3D.tsx:2886/2910`, `routes/duplicates/page.tsx:407`. Pass `getActiveLocale()`.
+- [ ] Duplicated formatters still local to their callers: `formatStat` (`calendar/page.tsx:72`, `CalendarAgendaView.tsx:17`), `formatDuration` (`lifting/live/page.tsx:585`), `formatElevation` (`WorkoutPlanner.tsx:37`, `RoutePickerModal.tsx:24`), `formatDistance` (`RoutePickerModal.tsx:19`), `StatBadge` (`FuelPlanCard.tsx:15`, `RideAnalysisCard.tsx:20`, `LiftingAnalysisCard.tsx:19`). Move to `lib/utils.ts`.
+- [ ] A11y / portal: `DashboardRefresh.tsx:82` is 28 px (below the 44 px target); `lifting/live/page.tsx:637` (`FinishSheet`) and `MobileRouteDetailSheet.tsx:81` are inline fixed divs — portal them through `Modal`/`createPortal` (pitfall #15).
+- [ ] `lib/api/types/generated.ts` exists but is imported nowhere and has no CI drift guard. Either wire it as the type source of truth or delete it **with** a drift check. (The other dead-code names in the original row — `StatsView`, `ErrorState`, `Field`, `PageHeader`, `SectionLabel`, `Stat` — have since been **adopted**, see `plans/underdeveloped-features-2026-09-27.md` §A1/A2.)
 
 ---
 
-## Track 2 — Security quick wins (P0/P1)
+## Fixed (code-verified 2026-09-30)
 
-| # | Change | File(s) |
-|---|--------|---------|
-| S1 | Stop logging token headers/body; log status + provider only | `backend/app/services/auth.py:225-235` |
-| S2 | Validate `r2_key` starts with `lift_videos/{user_id}/` on create | `backend/app/api/videos.py:91`, `backend/app/integrations/r2.py` |
-| S3 | Ownership-check `lifting_session_id`/`personal_record_id` on video create | `backend/app/api/videos.py:131-134` |
-| S4 | Register `SlowAPIMiddleware` (or drop slowapi) and key auth limit on trusted `X-Forwarded-For` | `backend/app/main.py:75,119` |
-| S5 | Validate `state` in Google/GitHub OAuth callback | `backend/app/api/auth.py:444-457` |
-| S6 | Enforce presigned-PUT `ContentLength` cap | `backend/app/integrations/r2.py:77-85` |
-| S7 | Validate the Strava webhook verify token instead of a static default | `backend/app/config.py:66`, `backend/app/api/webhooks.py:52` |
+Grouped by track. Each was confirmed absent from the current code, usually because the
+fix carries the item/bug ID in a comment.
 
-**Tests**: reject foreign R2 prefix (S2); bad/missing OAuth state → 400 (S5); first
-integration test for the R2 video endpoints (upload-url/create/stream-url/delete).
+**Track 1 — unblock branch & migrations: RESOLVED.** Single Alembic head `091`; no two
+files share a `revision`. Both historical collisions were fixed forward: the `078`
+duplicate, and the `083` route-merge/camera clash (camera renumbered to `084`). Two
+follow-on production incidents were fixed by `087` (which used `sa.JSONB()` — see AGENTS
+pitfall #22) and `090` (model/migration drift on `lift_video_analyses`, pitfall #24).
+Local branch hygiene (stale checkout, superseded T3 commits, repo-root artifacts) is no
+longer relevant — the work merged via PRs.
 
----
+**Track 2 — security: FULLY RESOLVED.** S1 (token logging), S2 (`r2_key` prefix validation,
+`videos.py:111`), S3 (ownership checks on linked session/PR, `videos.py:113-130`), S4 (auth
+rate limit keyed on the real client IP via `services/client_ip.py`; the misleading, unenforced
+slowapi `Limiter` deleted), S5 (OAuth `state` on the app-auth callback — **#213**), S6
+(`ContentLength` cap), S7 (Strava verify token — **#213**).
 
-## Track 3 — Silent correctness bugs (P1)
+**Track 3:** RMI-03 (only mark "personalized" on a real fit) · RMI-04 (`elevations`/`elevation`,
+`route_intelligence.py`) · RMI-06 (dead `predicted_effort` gone) · SCI-01 (suppress
+`intensity_raise` under active health alerts) · SCI-03 (today's TSS not re-applied in the TSB
+projection, `projections.py:732-740`) · SCI-05 (`_focus_groups` set intersection,
+`conformity.py:96-111`) · SCI-06 (`_activity_sport_matches_day`, `conformity.py:669`) · Robust
+(narrowed `except`, malformed-GPX `400`, `Content-Disposition` sanitised) · AI-02/07/12 (AI
+errors surfaced, provider errors no longer leaked, `enabled: !!token`) · Docs (algorithms
+decoupling wording, BUG-071 proximity note) · **DATA-11** (`GoalCheckIn` exported — #213,
+now guarded by `tests/test_model_registry.py`) · DATA-03/04/05/09 (`UniqueConstraint` +
+`index=True` present in `activity.py`, `training_plan.py`, `health_alert.py`, `lifting.py`;
+FK indexes in `rpe_calibration.py`, `lift_video_analysis.py`) · DATA-02/06/07/08 (N+1s
+removed — `selectinload` on plan days, segment efforts, warmup steps, lifting sets;
+`activity_context` bulk-loads via `.in_(ids)`. Per-activity context compute in a loop is
+inherent to its cost model, not a relation N+1).
 
-| ID | Fix | File(s) |
-|----|-----|---------|
-| RMI-04 | Accept both `elevations` and `elevation`; re-select routes with `terrain_classification = unknown` | `backend/app/integrations/route_intelligence.py:182`, `backend/app/tasks/scheduler.py:1053` |
-| RMI-03 | Only persist/mark "personalized" when a real fit exists; else report `default` | `backend/app/tasks/scheduler.py:1385`, `backend/app/api/cycling/power.py:901` |
-| RMI-06 | Remove or wire the dead `predicted_effort` path | `backend/app/tasks/scheduler.py:1073` |
-| RMI-07 | Stop passing `None` weather features; source real humidity/pressure/wind direction | `backend/app/tasks/scheduler.py:1498` |
-| RMI-08 | Upsert cross-domain insights per `(user, insight_type)`; fix `data_quality` scoping | `backend/app/tasks/scheduler.py:2093-2129` |
-| RMI-12 | Bound `w_prime` (e.g. 5–40 kJ) | `backend/app/integrations/power_models.py:225-237` |
-| SCI-01 | Suppress `intensity_raise` when active health alerts | `backend/app/services/adaptive.py:579-626` |
-| SCI-02 | Make taper idempotent for repeated `event_id` | `backend/app/services/training_plan.py:513-528` |
-| SCI-03 | Don't re-apply today's planned TSS in TSB projection | `backend/app/services/projections.py:179-182,749` |
-| SCI-05 | Align conformity focus scoring with focus-group linking | `backend/app/services/conformity.py:472-475` |
-| SCI-06 | Sport-match before picking first same-date activity | `backend/app/services/conformity.py:656-666` |
-| SCI-07 | Share one ACSM constant/helper | `backend/app/services/cycling/vo2max.py:33`, `backend/app/integrations/power_models.py:326` |
-| SYNC-11 | Increment `merged_count` in Wahoo route sync | `backend/app/services/wahoo.py:324,445` |
-| SYNC-12 | Date Whoop weigh-ins by local time | `backend/app/services/whoop.py:1283` |
-| DATA-11 | Export `GoalCheckIn` from `models/__init__.py` | `backend/app/models/__init__.py` |
-| DATA-03/04/05/09 | Add FK `index=True` + idempotency uniques to ORM `__table_args__` | `models/activity.py`, `training_plan.py`, `health_alert.py`, `lifting.py`, `rpe_calibration.py`, `lift_video_analysis.py` |
-| DATA-02/06/07/08 | Remove N+1s (route-quality, activity-context, training-plan matching, segment efforts) | `route_quality_service.py`, `activity_context.py`, `training_plan.py`, `segments.py` |
-| SYNC-06/07/08 | Remove sync N+1s / delete-in-loop | `strava/linking.py`, `strava/sync.py`, `strava/webhook_queue.py` |
-| Robust | Narrow `except Exception: pass` on streams; raise `400` on malformed GPX; sanitise `Content-Disposition` | `strava/webhooks.py:141`, `strava/sync.py:370`, `api/routes.py:783,1047`, `api/export.py:213` |
-| AI-02/07/12 | Surface AI errors; stop leaking provider errors; add `enabled: !!token` | `components/cycling/LlmAnalysisCard.tsx`, `services/llm_base.py:291`, `app/(app)/dashboard/page.tsx:158` |
-| Docs | Fix `docs/algorithms.md` decoupling wording + `docs/BUGS.md` BUG-071 proximity note | `docs/algorithms.md:37`, `docs/BUGS.md:474` |
+**Track 5:** `enabled: !!token` on the missing JWT queries · mutation errors surfaced
+(`onError` + inline UI) and calendar fetch `isError` · duplicated week math routed through
+`lib/training/week.ts` · tests for `week.ts` and `routeUtils.ts`.
 
-Each item gets a targeted unit/integration test where feasible.
-
----
-
-## Track 4 — In-flight work correctness (P1, after Track 1)
-
-- [ ] `backend/app/services/route_matching.py:254` — size the longitude cell by `cos(lat)`
-      (or widen the neighbourhood) so high-latitude matches are not missed; add a ~55°N test.
-- [ ] `backend/app/tasks/scheduler.py:1285` — pre-filter route pairs with `cheap_candidate`
-      before O(n²) Fréchet; chunk or cap for large route sets.
-- [ ] `backend/app/services/wahoo_push.py:139-274` — make push idempotent across partial
-      failure (orphaned Wahoo routes); normalise dict-wrapped create responses (pitfall #6);
-      add orchestration tests (scope-403, 404 remove, re-push vs create).
-- [ ] `frontend/src/components/activities/Replay3D.tsx` — fix `raceMarkers` index misalignment.
-- [ ] `frontend/src/lib/raceRides.ts` + `replay.ts` — share the projection centroid or correct
-      the "distance-aligned" comment.
-- [ ] `frontend/src/components/activities/Replay3D.tsx` — wind HUD reads refs during render; use state.
-- [ ] `frontend/src/lib/lifting/useLiveSession.ts:360` — treat any 4xx on finish as terminal
-      (extends BUG-098).
-- [ ] Remove dead code: `score_route_breakdown()`, `find_plan_by_external_id`, `delete_route`,
-      `WAHOO_FAMILY_BIKING`.
-- [ ] Docs: add `route_matching.py` + `recompute_route_similarity` to CODEMAP/AGENTS;
-      reconcile `plans/route-merging-overhaul.md` weights/gate (0.45/0.40/0.15, gate 0.55,
-      N=120) with the implementation (0.60/0.25/0.15, gate 0.45, N=200).
+**Track 6 — Jev decision layer: SHIPPED (Phases 0–4).** Config flags (`typesafe_api_key`,
+`jev_enabled`, `jev_model`, `jev_timeout_s`), `integrations/jev_client.py`,
+`services/jev_tagging.py` with `tag_activity`, migration `081` (lifting AI tags), route
+arbitration (`route_service._arbitrate_route_pair`), and merge arbitration
+(`merge_service._arbitrate_duplicate`). The original row framed this as unbuilt; it is not.
+`plans/jev-implementation-plan-2026-09-27.md` still carries a stale "no code yet" header.
 
 ---
 
-## Track 5 — Frontend reliability sweep (P2)
+## Suggested sequencing (revised 2026-09-30)
 
-- [ ] Add `enabled: !!token` to the ~18 JWT queries missing it (calendar, goals, lifting ×7,
-      training ×3, routes/duplicates, weather widgets ×3, link-activity, workout-planner,
-      add-exercise).
-- [ ] Surface mutation errors with `onError` + inline UI (route delete/favorite/rename,
-      health dismiss, settings export); add `isError` to the calendar fetch.
-- [ ] Route duplicated week math through `lib/training/week.ts` (drifted `getTotalWeeks` in
-      `PlanBuilder.tsx:116` vs `WeeklyView.tsx:113`).
-- [ ] Replace `toLocale*(undefined/[])` with `getActiveLocale()` at the ~19 sites.
-- [ ] Consolidate duplicated formatters (`formatStat`, `formatDistance`, `formatElevation`,
-      `formatDuration`, `formatTime`, `StatBadge`) into `lib/utils.ts`.
-- [ ] A11y: bump `DashboardRefresh` to a 44px target; portal the `lifting/live` finish sheet
-      and `MobileRouteDetailSheet` via `Modal`/`createPortal` (pitfall #32).
-- [ ] Dead-code: remove unused `StatsView`, `ErrorState`, `Field`, `PageHeader`,
-      `SectionLabel`, `Stat`; wire or delete `types/generated.ts` and guard it with a CI
-      drift check.
-- [ ] Tests for `lib/training/week.ts` and `lib/routeUtils.ts`.
+Tracks 4 and 5 are the cheapest remaining wins and are already itemised above; Track 3's
+eight items are small, independent fixes. Suggested order:
 
-Verify: `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
+1. `fix/frontend-reliability` — Track 5's four items (all frontend, `tsc` + `vitest` only).
+2. `fix/inflight-correctness-a` — the four backend Track 4 items (route_matching, scheduler
+   pre-filter, wahoo_push idempotency, dead code) + the CODEMAP/gate-reconciliation docs row.
+3. `fix/silent-correctness-2` — Track 3's eight items.
+4. `fix/inflight-correctness-b` — the four frontend Track 4 items (3D `raceMarkers`,
+   `raceRides` centroid, wind HUD, `useLiveSession` 4xx). **Coordinate**: this area is
+   actively edited by the relive/3D sessions.
+
+Each: isolated worktree → `pytest` (backend) / `tsc`+`vitest`+`build` (frontend) →
+PR into `main` → release via `main → prod` (AGENTS Git & Deployment Strategy).
 
 ---
 
-## Track 6 — New feature: Jev decision layer (P2/P3)
+## Outstanding questions
 
-Highest-leverage new capability; design already written in `plans/jev-decision-layer.md`.
+- **Table count drift**: `AGENTS.md` states 45 tables; `Base.metadata` reports **46** at
+  refresh time. Confirm which is right and reconcile — not fixed here because `AGENTS.md`
+  is under concurrent edit by other sessions (pitfalls #22–#27 were appended today).
+- **Track 4's 3D/replay items** may already be in flight in another worktree
+  (`feature/relive-3d-quality`, `feature/relive-broadcast-v2`). Check before starting.
 
-- [ ] Config flags (`typesafe_api_key`, `jev_enabled`, `jev_model`) + optional-integration diagnostic.
-- [ ] `backend/app/integrations/jev_client.py` — single entry point, no-op when unset (keep
-      stdlib-only at module scope, pitfall #33).
-- [ ] Use case 3 — free-text tagging: classify `LiftingSession.notes` / `Activity.name` /
-      `Event.notes` / `Goal.notes` into a closed label set; feed `analyze_injury_risk` +
-      `deficiency`.
-- [ ] Use case 4 — match arbitration: confidence-scored tie-break inside the existing numeric
-      gates (activity/route/session merge).
-- [ ] Tests: no-op when unset; deterministic fallback unchanged; tag/match fixtures.
-
-**Alternative / additional**: close the remaining training-aid open loops — #22 use fitted
-taus in `compute_training_load`, #25 pass CTL/ATL/TSB to the weekly LLM prompt, #27 fix the
-weather-card result shape.
-
----
-
-## Suggested PR sequence
-
-1. `chore/unblock-migrations` — Track 1
-2. `security/hardening-quickwins` — Track 2
-3. `fix/silent-correctness` — Track 3
-4. `fix/inflight-correctness` — Track 4
-5. `fix/frontend-reliability` — Track 5
-6. `feat/jev-decision-layer` — Track 6
-
-Each: branch → tests + `ruff check` / `tsc --noEmit` → PR into `main` → merge `main` → `prod`
-to ship (per AGENTS Git & Deployment Strategy).
-
-## Deferred / separately tracked (not in this plan)
+## Deferred / separately tracked (unchanged)
 
 - Garmin / TrainingPeaks / Zwift / Apple Health integrations (need OAuth app registration).
-- Cross-route climb clustering + exact distance-aligned segments (`§3.13` future work).
-- `openapi-typescript` codegen as the type source of truth (Track 5 only guards/removes the
-  stale artifact).
-- Monitoring stack live verification (B-33 built), make Playwright E2E blocking in CI.
+- Cross-route climb clustering + exact distance-aligned segments (`§3.13`; see also
+  `plans/underdeveloped-features-2026-09-27.md` C2b).
+- `openapi-typescript` codegen as the type source of truth (Track 5 #7 only guards/removes
+  the stale artifact).
+- Monitoring stack live verification (B-33 built); make Playwright E2E blocking in CI.
 - BUG-045 secret rotation (manual ops).

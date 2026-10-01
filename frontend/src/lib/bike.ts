@@ -87,6 +87,20 @@ export function orientBike(object: THREE.Object3D, forward: THREE.Vector3, leanR
   object.quaternion.copy(bikePoseQuaternion(forward, leanRad));
 }
 
+/**
+ * Shift an oriented model container down so the model's lowest point in the
+ * rig frame — the wheel contact patch — sits exactly at the rig origin (z=0),
+ * wherever the GLB author put zero. Returns the applied shift (0 when the
+ * model is empty). Pure three math — unit-tested.
+ */
+export function groundModelToOrigin(inner: THREE.Object3D): number {
+  inner.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(inner);
+  if (bounds.isEmpty() || !Number.isFinite(bounds.min.z)) return 0;
+  inner.position.z -= bounds.min.z;
+  return bounds.min.z;
+}
+
 /** radial spoke-blur sprite used as the spinning-wheel overlay */
 function createWheelBlurTexture(): THREE.Texture {
   const size = 256;
@@ -191,6 +205,9 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
     });
   }
   inner.add(model);
+  // Plant the wheels on the rig origin — lean pivots at the contact patch
+  // and the rider sits exactly on the road instead of sinking into it.
+  groundModelToOrigin(inner);
   object.add(inner);
 
   // ── wheel motion-blur discs (rig frame: forward +X, up +Z) ──────────────

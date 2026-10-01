@@ -120,3 +120,6 @@ reports/
 
 # T3 bar-detector dataset (frames + labels) — generated locally, large.
 labels/
+
+# Superpowers plan workspaces (ledger, briefs, fixtures) — session scratch.
+.superpowers/
