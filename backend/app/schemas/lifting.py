@@ -40,8 +40,22 @@ class LiftingSetRead(LiftingSetBase):
     id: uuid.UUID
     session_id: uuid.UUID
     client_id: str | None = None
+    """Explicit performance order within the session. Nullable so rows predating
+    migration 092 read back as null rather than failing validation."""
+    order_index: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ReorderSetsRequest(BaseModel):
+    """Body for ``PATCH /lifting/sessions/{id}/reorder``.
+
+    ``set_ids`` must be the session's complete set list in the desired order —
+    not a subset and not a diff. Anything else is ambiguous (which sets move
+    where?) and is rejected rather than interpreted.
+    """
+
+    set_ids: list[uuid.UUID] = Field(..., min_length=1)
 
 
 # ── Lifting Session ───────────────────────────────────────────────────────────

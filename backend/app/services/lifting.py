@@ -282,12 +282,15 @@ async def create_session(
     db.add(session)
     await db.flush()
 
-    # Add sets
-    for s in data.sets:
+    # Add sets. ``order_index`` follows the submitted order, which is the order
+    # the user performed them — assigned from the position rather than from
+    # created_at, since every row in this loop shares one transaction timestamp.
+    for position, s in enumerate(data.sets):
         lifting_set = LiftingSet(
             session_id=session.id,
             exercise_name=normalise_exercise_name(s.exercise_name),
             set_number=s.set_number,
+            order_index=position,
             weight_kg=s.weight_kg,
             reps=s.reps,
             rpe=s.rpe,
@@ -299,6 +302,13 @@ async def create_session(
         db.add(lifting_set)
 
     await db.flush()
+
+    # Compacting here is safe even though all sets share a created_at: order_index
+    # is now the total order, and this is exactly the 1, 1, 3 case it exists for.
+    for exercise_name in {
+        normalise_exercise_name(s.exercise_name) for s in data.sets
+    }:
+        await _renumber_exercise_sets(db, session.id, exercise_name)
 
     # Calculate total volume
     volume = calculate_session_volume([s.model_dump() for s in data.sets])
@@ -384,6 +394,58 @@ async def get_active_session(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+class ReorderMismatch(ValueError):
+    """The submitted set list is not exactly the session's set list.
+
+    A distinct type so the route maps it to 422 without catching unrelated
+    ``ValueError``s raised elsewhere in the request.
+    """
+
+
+async def reorder_session_sets(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+    set_ids: list[uuid.UUID],
+) -> LiftingSession | None:
+    """Rewrite a session's set order from a complete, ordered id list.
+
+    Returns the reloaded session, or None when the session is missing or not
+    owned by ``user_id`` — both 404, so a caller cannot probe for another user's
+    session.
+
+    Raises ``ReorderMismatch`` when ``set_ids`` is not exactly the session's set
+    list. Deliberately strict: a partial list cannot express a reorder, and
+    guessing would risk silently dropping or duplicating sets. Because the check
+    is a set comparison, re-sending the current order succeeds and changes
+    nothing — the call is idempotent.
+
+    Ordering is presentation only, so volume and PRs are not recomputed.
+    """
+    session = await get_session(db, session_id, user_id)
+    if not session:
+        return None
+
+    current_ids = [s.id for s in session.sets]
+    if len(set_ids) != len(current_ids) or set(set_ids) != set(current_ids):
+        raise ReorderMismatch(
+            "set_ids must list every set in the session exactly once "
+            f"(expected {len(current_ids)}, received {len(set_ids)})"
+        )
+
+    position = {set_id: index for index, set_id in enumerate(set_ids)}
+    for lifting_set in session.sets:
+        lifting_set.order_index = position[lifting_set.id]
+    await db.flush()
+
+    # Re-sort the already-loaded collection. The relationship's ``order_by``
+    # applies when the collection is *loaded*, so a re-query returns the
+    # identity-mapped session with the stale order still attached — the writes
+    # above are correct but the response would not reflect them.
+    session.sets.sort(key=lambda s: (s.order_index, s.created_at, s.id))
+    return session
 
 
 async def update_session(
@@ -548,6 +610,57 @@ async def find_linkable_activities(
 # ── Set CRUD ──────────────────────────────────────────────────────────────────
 
 
+async def _next_order_index(db: AsyncSession, session_id: uuid.UUID) -> int:
+    """Next ``order_index`` for a set appended to ``session_id``.
+
+    ``coalesce(max, -1) + 1`` so the first set is 0. Falls back correctly when
+    every existing row still has a null ``order_index`` (pre-migration data or a
+    session created between the column being added and the backfill running).
+    """
+    current = await db.execute(
+        select(func.coalesce(func.max(LiftingSet.order_index), -1)).where(
+            LiftingSet.session_id == session_id
+        )
+    )
+    # An `or -1` here would be wrong: a session whose first set has order_index
+    # 0 yields max = 0, which is falsy, so every append would recompute 0 and
+    # collide with set 1. The SQL coalesce already covers the empty case, so no
+    # sentinel is needed at all.
+    return int(current.scalar()) + 1
+
+
+async def _renumber_exercise_sets(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    exercise_name: str,
+) -> None:
+    """Make ``set_number`` contiguous 1..n for one exercise within a session.
+
+    ``set_number`` was client-supplied with no enforcement, so a session could
+    legitimately hold 1, 1, 3. That ambiguity is why a superset ("bench 1-3 then
+    row 1-3") was not expressible as data. Compacts in performance order, and is
+    a no-op for an exercise with no sets.
+    """
+    result = await db.execute(
+        select(LiftingSet)
+        .where(
+            LiftingSet.session_id == session_id,
+            LiftingSet.exercise_name == exercise_name,
+        )
+        .order_by(
+            LiftingSet.order_index,
+            LiftingSet.created_at,
+            LiftingSet.id,
+        )
+    )
+    rows = list(result.scalars().all())
+    for position, row in enumerate(rows, start=1):
+        if row.set_number != position:
+            row.set_number = position
+    if rows:
+        await db.flush()
+
+
 async def add_set(
     db: AsyncSession,
     session_id: uuid.UUID,
@@ -587,6 +700,11 @@ async def add_set(
         client_id=data.client_id,
     )
     db.add(lifting_set)
+    # Explicit performance order. Assigned here rather than relying on
+    # created_at, which is the transaction timestamp in Postgres: every set from
+    # one create_session call shares a value, so append order was previously
+    # whatever the database returned.
+    lifting_set.order_index = await _next_order_index(db, session_id)
 
     # Update session volume
     if not data.is_warmup:
@@ -671,8 +789,6 @@ async def update_set(
             0.0, (session.total_volume_kg or 0.0) - old_volume + new_volume
         )
 
-    await db.flush()
-
     # Re-check PRs for affected exercises (old name and new name if changed)
     exercises_to_check = {old_exercise_name}
     if lifting_set.exercise_name != old_exercise_name:
@@ -681,6 +797,21 @@ async def update_set(
         if not lifting_set.is_warmup or exercise_name == old_exercise_name:
             await _recalculate_pr_after_set_change(db, user_id, exercise_name)
 
+    # Renumber whichever exercise groups this edit disturbed. Only needed when
+    # the set moved between exercises: within one exercise an explicit
+    # set_number edit is the caller's stated intent, and compacting here would
+    # silently override it.
+    if lifting_set.exercise_name != old_exercise_name:
+        await _renumber_exercise_sets(
+            db,
+            lifting_set.session_id,
+            lifting_set.exercise_name,
+        )
+        await _renumber_exercise_sets(db, lifting_set.session_id, old_exercise_name)
+
+    # An edit does not change performance order, so order_index is untouched.
+    # LiftingSetUpdate carries no order_index field, so the allowlist loop above
+    # cannot have written it either.
     await db.flush()
     return lifting_set
 
@@ -712,6 +843,11 @@ async def delete_set(db: AsyncSession, set_id: uuid.UUID, user_id: uuid.UUID) ->
     # Recalculate PRs for the affected exercise
     if not is_warmup:
         await _recalculate_pr_after_set_change(db, user_id, exercise_name)
+
+    # Close the gap the deleted set left in its exercise's numbering. Deleting
+    # bench 1 of 1-3 must leave 1-2, not 2-3, or "bench 1-3" stops being a
+    # statement about the data.
+    await _renumber_exercise_sets(db, lifting_set.session_id, exercise_name)
 
     await db.flush()
     return True

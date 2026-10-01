@@ -23,6 +23,17 @@ from app.services.lifting import _MUTABLE_SET_FIELDS, update_set
 # ── Fakes ────────────────────────────────────────────────────────────────────
 
 
+class _FakeScalars:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return list(self._rows)
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
 class _FakeResult:
     def __init__(self, value):
         self._value = value
@@ -32,6 +43,13 @@ class _FakeResult:
 
     def scalar_one(self):
         return self._value
+
+    def scalars(self):
+        # ``update_set`` renumbers the affected exercise groups, which is a
+        # row-returning query. Default to no rows so the fake models "nothing to
+        # renumber" without every test having to queue an extra result.
+        rows = self._value if isinstance(self._value, list) else []
+        return _FakeScalars(rows)
 
     def all(self):
         return self._value or []
