@@ -4,8 +4,9 @@ import json
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import mean
+from typing import ClassVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,6 +118,197 @@ class ChartService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ── Activity time series ──────────────────────────────────────────────────
+
+    # Bucket-count ceilings. Beyond these the response is clamped and flagged
+    # ``complete=False`` rather than silently returning a partial window.
+    TIMESERIES_MAX_BUCKETS: ClassVar[dict[str, int]] = {
+        "day": 366,
+        "week": 520,
+        "month": 240,
+    }
+
+    async def activity_timeseries(
+        self,
+        user_id: uuid.UUID,
+        *,
+        bucket: str = "day",
+        start: date,
+        end: date,
+        sport_type: str | None = None,
+        source: str | None = None,
+    ) -> dict:
+        """Dense activity aggregates bucketed by day, week or month.
+
+        This replaces the activities page's client-side bucketing over a
+        row-capped fetch. That approach had two defects: it could only ever see
+        the most recent N rows, and the client re-zero-filled the gaps — so a
+        truncated window rendered as a training dip that never happened, under a
+        note claiming the view "does not silently chart a partial window".
+
+        Aggregating in SQL removes the row cap from the path entirely, so a
+        truncated series stops being representable. The returned series is
+        **dense**: every bucket in range is present, zero-filled. A zero bucket
+        therefore means "no training", which is true by construction, and the
+        client has no code path that can invent one.
+
+        Note the deliberate absence of an ``Activity.tss.isnot(None)`` filter
+        (which ``weekly_tss`` uses): excluding TSS-less activities would also
+        drop them from the count, distance and duration, which is wrong. The
+        ``coalesce`` on the TSS sum handles a null sum instead.
+        """
+        if bucket not in self.TIMESERIES_MAX_BUCKETS:
+            raise ValueError(f"bucket must be one of {sorted(self.TIMESERIES_MAX_BUCKETS)}")
+        if end < start:
+            raise ValueError("end must not be before start")
+
+        # Clamp rather than reject, and say so via complete/clamped_to.
+        clamped_to: date | None = None
+        effective_end = end
+        max_buckets = self.TIMESERIES_MAX_BUCKETS[bucket]
+        if self._bucket_count(bucket, start, end) > max_buckets:
+            effective_end = self._advance(start, bucket, max_buckets - 1)
+            clamped_to = effective_end
+
+        base_filters = [
+            Activity.user_id == user_id,
+            # Standalone Wahoo rows were merged into their Strava twin; counting
+            # them again would double-count. Same filter list_activities uses.
+            Activity.source != "wahoo",
+            Activity.start_date >= start,
+            Activity.start_date <= effective_end,
+        ]
+        if sport_type:
+            base_filters.append(Activity.sport_type == sport_type)
+        if source:
+            base_filters.append(Activity.source == source)
+
+        bucket_expr = func.date_trunc(bucket, Activity.start_date).label("bucket_start")
+        rows = await self.db.execute(
+            select(
+                bucket_expr,
+                func.count(Activity.id).label("count"),
+                func.coalesce(func.sum(Activity.distance_meters), 0).label(
+                    "distance_meters"
+                ),
+                func.coalesce(func.sum(Activity.duration_seconds), 0).label(
+                    "duration_seconds"
+                ),
+                func.coalesce(func.sum(Activity.elevation_gain_meters), 0).label(
+                    "elevation_gain_meters"
+                ),
+                func.coalesce(func.sum(Activity.tss), 0).label("tss"),
+            )
+            .where(*base_filters)
+            .group_by(bucket_expr)
+            .order_by(bucket_expr)
+        )
+
+        by_bucket = {
+            self._as_date(r.bucket_start): {
+                "bucket_start": self._as_date(r.bucket_start),
+                "count": int(r.count or 0),
+                "distance_meters": float(r.distance_meters or 0),
+                "duration_seconds": int(r.duration_seconds or 0),
+                "elevation_gain_meters": float(r.elevation_gain_meters or 0),
+                "tss": float(r.tss or 0),
+            }
+            for r in rows.all()
+        }
+
+        # Dense fill: walk every bucket boundary in range, not just the ones the
+        # GROUP BY returned.
+        buckets: list[dict] = []
+        cursor = self._truncate(start, bucket)
+        while cursor <= effective_end:
+            buckets.append(
+                by_bucket.get(
+                    cursor,
+                    {
+                        "bucket_start": cursor,
+                        "count": 0,
+                        "distance_meters": 0.0,
+                        "duration_seconds": 0,
+                        "elevation_gain_meters": 0.0,
+                        "tss": 0.0,
+                    },
+                )
+            )
+            cursor = self._advance(cursor, bucket, 1)
+
+        # Totals over the whole (untruncated-by-bucket) range, summed from the
+        # dense series so they can never disagree with the chart above them.
+        totals = {
+            "count": sum(b["count"] for b in buckets),
+            "distance_meters": sum(b["distance_meters"] for b in buckets),
+            "duration_seconds": sum(b["duration_seconds"] for b in buckets),
+            "elevation_gain_meters": sum(b["elevation_gain_meters"] for b in buckets),
+            "tss": sum(b["tss"] for b in buckets),
+        }
+
+        sport_rows = await self.db.execute(
+            select(Activity.sport_type, func.count(Activity.id).label("count"))
+            .where(*base_filters)
+            .group_by(Activity.sport_type)
+            .order_by(func.count(Activity.id).desc())
+        )
+        sport_breakdown = [
+            {"sport_type": r.sport_type, "count": int(r.count or 0)}
+            for r in sport_rows.all()
+        ]
+
+        return {
+            "bucket": bucket,
+            "start": start,
+            "end": end,
+            "complete": clamped_to is None,
+            "clamped_to": clamped_to,
+            "buckets": buckets,
+            "totals": totals,
+            "sport_breakdown": sport_breakdown,
+        }
+
+    # ── Time-series bucket helpers ────────────────────────────────────────────
+
+    @staticmethod
+    def _truncate(d: date, bucket: str) -> date:
+        """Floor ``d`` to its bucket start, matching Postgres date_trunc.
+
+        ``date_trunc('week', …)`` is Monday-based, which is what the frontend's
+        getISOWeek helper already assumes.
+        """
+        if bucket == "week":
+            return d - timedelta(days=d.weekday())
+        if bucket == "month":
+            return d.replace(day=1)
+        return d
+
+    @classmethod
+    def _advance(cls, d: date, bucket: str, n: int) -> date:
+        if bucket == "week":
+            return d + timedelta(weeks=n)
+        if bucket == "month":
+            month_index = d.month - 1 + n
+            return d.replace(
+                year=d.year + month_index // 12, month=month_index % 12 + 1, day=1
+            )
+        return d + timedelta(days=n)
+
+    @classmethod
+    def _bucket_count(cls, bucket: str, start: date, end: date) -> int:
+        first = cls._truncate(start, bucket)
+        n = 1
+        while cls._advance(first, bucket, n) <= end:
+            n += 1
+        return n
+
+    @staticmethod
+    def _as_date(value) -> date:
+        """date_trunc on a timestamptz returns a datetime; normalise to date."""
+        if isinstance(value, datetime):
+            return value.date()
+        return value
 
     # ── Power curve (best power at each duration) ─────────────────────────────
 

@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -31,9 +32,11 @@ from app.schemas.activity import (
     LinkedLiftingSessionSummary,
     RideAnalysisResponse,
     SleepLogSummary,
+    TimeseriesResponse,
 )
 from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
+from app.services.charts import ChartService
 from app.services.sport_filter import allowed_sport_types, is_allowed_sport
 
 logger = logging.getLogger(__name__)
@@ -330,6 +333,45 @@ async def get_activity_summary(
         total_duration_seconds=float(row.total_duration or 0),
         total_tss=float(row.total_tss or 0),
     )
+
+
+@router.get("/timeseries", response_model=TimeseriesResponse)
+async def get_activity_timeseries(
+    bucket: Literal["day", "week", "month"] = Query(
+        default="day", description="Bucket width. Weeks are Monday-based."
+    ),
+    start: date = Query(..., description="Range start (inclusive, YYYY-MM-DD)"),
+    end: date = Query(..., description="Range end (inclusive, YYYY-MM-DD)"),
+    sport_type: str | None = Query(None),
+    source: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dense activity aggregates, bucketed server-side.
+
+    The activities stats view used to bucket client-side over a row-capped
+    fetch and re-zero-fill the gaps, so a truncated window rendered as a
+    training dip that never happened — under a note claiming the view "does not
+    silently chart a partial window". Aggregating in SQL puts no row cap in the
+    path, so a truncated series is no longer representable, and every bucket in
+    range is returned so a zero means "no training" by construction.
+
+    ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+    handlers below or it 422s. Same trap as ``/orphans`` in routes.py — the
+    decorator-order test is the one that catches it.
+    """
+    service = ChartService(db)
+    try:
+        return await service.activity_timeseries(
+            current_user.id,
+            bucket=bucket,
+            start=start,
+            end=end,
+            sport_type=sport_type,
+            source=source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/calendar")

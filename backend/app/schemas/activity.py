@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -354,3 +355,55 @@ class ActivityContextRead(BaseModel):
     load_context: LoadContextRead | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ── Activity time series ─────────────────────────────────────────────────────
+
+
+class TimeseriesBucket(BaseModel):
+    """One dense bucket. Zero values mean "no training", which is true by
+    construction — the server fills every bucket in range, so the client cannot
+    invent one."""
+
+    bucket_start: date
+    count: int = 0
+    distance_meters: float = 0
+    duration_seconds: int = 0
+    elevation_gain_meters: float = 0
+    tss: float = 0
+
+
+class TimeseriesTotals(BaseModel):
+    """Totals over the whole range, summed from the dense series so they can
+    never disagree with the chart above them."""
+
+    count: int = 0
+    distance_meters: float = 0
+    duration_seconds: int = 0
+    elevation_gain_meters: float = 0
+    tss: float = 0
+
+
+class SportCount(BaseModel):
+    sport_type: str | None = None
+    count: int = 0
+
+
+class TimeseriesResponse(BaseModel):
+    """Server-bucketed activity aggregates.
+
+    ``complete`` is False only when the requested range exceeded the bucket
+    ceiling and was clamped server-side; ``clamped_to`` then carries the
+    effective end. With aggregation in SQL no row cap applies, so this stays
+    True in practice — it exists so a future clamp has an honest signal to
+    surface instead of the client guessing.
+    """
+
+    bucket: Literal["day", "week", "month"]
+    start: date
+    end: date
+    complete: bool = True
+    clamped_to: date | None = None
+    buckets: list[TimeseriesBucket]
+    totals: TimeseriesTotals
+    sport_breakdown: list[SportCount]
