@@ -1351,6 +1351,16 @@ async def list_duplicates(
     pairs = await route_service.find_cached_duplicates(db, current_user.id)
     if pairs is None:
         pairs = await route_service.find_potential_duplicates(db, current_user.id)
+    # Quarantined routes are excluded from matching, so offering them as
+    # merge candidates is contradictory. Two such routes reached this list
+    # with a stale road match describing geometry they no longer held, and
+    # scored each other 1.0/auto as a result.
+    pairs = [
+        p
+        for p in pairs
+        if getattr(p["route_a"], "quarantined_at", None) is None
+        and getattr(p["route_b"], "quarantined_at", None) is None
+    ]
     return [
         DuplicatePair(
             route_a=RouteRead.model_validate(p["route_a"]),
