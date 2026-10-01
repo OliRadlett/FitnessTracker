@@ -106,13 +106,32 @@ def review_row_bucket(
     return bucket_for(containment, jaccard)
 
 
-def review_sort_key(containment: float, jaccard: float, has_geometry: bool):
-    """Deterministic best-first ordering for the review queue.
+def review_sort_key(
+    *,
+    has_geometry: bool,
+    has_candidate: bool,
+    containment: float,
+    jaccard: float,
+):
+    """Deterministic most-confident-first ordering for the review queue.
 
-    Unscoreable rows sort last whatever their numbers, so the ones a user
-    can act on are not buried under 11 rows that have no data.
+    Ordered by **bucket**, then containment, then Jaccard — deliberately
+    not by containment first. Containment alone put a lap of a longer
+    course (containment 1.000, Jaccard 0.300) above a genuine duplicate
+    (0.988 / 0.649): the row with the strongest containment signal was the
+    one most likely to be a false positive, and it sat at the top of the
+    list.
+
+    Leading with the bucket also keeps sorting and badging on one rule, so
+    the order the rows appear in always matches the badge they display.
     """
-    return (0 if has_geometry else 1, -containment, -jaccard)
+    bucket = review_row_bucket(
+        has_geometry=has_geometry,
+        has_candidate=has_candidate,
+        containment=containment,
+        jaccard=jaccard,
+    )
+    return (REVIEW_BUCKETS.index(bucket), -containment, -jaccard)
 
 
 def active_routes_clause():
@@ -444,10 +463,80 @@ async def list_review_queue(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
 
     out.sort(
         key=lambda r: review_sort_key(
-            r["containment"], r["jaccard"], r["has_geometry"]
+            has_geometry=r["has_geometry"],
+            has_candidate=r["live_id"] is not None,
+            containment=r["containment"],
+            jaccard=r["jaccard"],
         )
     )
     return out
+
+
+def pending_review_clause():
+    """SQL predicate for "quarantined and not yet judged".
+
+    Shared by the single-row and bulk dismisses on purpose: two copies of
+    "quarantined, not dismissed" drift, and a bulk action makes the drift
+    expensive — it would stamp rows the single-row path already rejected.
+    """
+    return Route.quarantined_at.isnot(None), Route.dismissed_at.is_(None)
+
+
+class StaleReviewQueue(Exception):
+    """The queue changed between the caller rendering it and acting on it.
+
+    Bulk dismissal is durable and there is no undo in the UI, so acting on a
+    stale count would dismiss a set of routes the user never actually saw.
+    The request is refused instead; re-fetching and re-confirming is cheap.
+    """
+
+    def __init__(self, expected: int, actual: int):
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Review queue changed: page showed {expected} in this bucket, "
+            f"{actual} now awaiting review. Re-check before dismissing."
+        )
+
+
+async def dismiss_bucket(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    bucket: str,
+    expected_count: int | None = None,
+) -> int:
+    """Dismiss every pending review row in one bucket. Returns how many.
+
+    Membership is resolved through :func:`list_review_queue`, the same
+    function the list endpoint uses, so what the UI counted and what this
+    writes cannot diverge — a second copy of the scoring rules would be one
+    more thing to drift.
+    """
+    if bucket not in REVIEW_BUCKETS:
+        raise ValueError(f"Unknown review bucket: {bucket}")
+
+    queue = await list_review_queue(db, user_id)
+    ids = [row["orphan_id"] for row in queue if row["bucket"] == bucket]
+
+    if expected_count is not None and len(ids) != expected_count:
+        raise StaleReviewQueue(expected_count, len(ids))
+
+    if not ids:
+        return 0
+
+    # Same predicate as the single-row dismiss: pending review only. Never
+    # clears quarantined_at — bulk dismissal must not un-quarantine anything.
+    result = await db.execute(
+        update(Route)
+        .where(Route.id.in_(ids), Route.user_id == user_id, *pending_review_clause())
+        .values(dismissed_at=func.now())
+    )
+    await db.flush()
+    logger.info(
+        f"Bulk-dismissed {result.rowcount} routes in bucket '{bucket}' "
+        f"for user {user_id}"
+    )
+    return int(result.rowcount)
 
 
 async def dismiss_route(db: AsyncSession, user_id: uuid.UUID, route_id: uuid.UUID) -> bool:
@@ -457,8 +546,7 @@ async def dismiss_route(db: AsyncSession, user_id: uuid.UUID, route_id: uuid.UUI
         .where(
             Route.id == route_id,
             Route.user_id == user_id,
-            Route.quarantined_at.isnot(None),
-            Route.dismissed_at.is_(None),
+            *pending_review_clause(),
         )
         .values(dismissed_at=func.now())
     )

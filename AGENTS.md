@@ -197,7 +197,7 @@ Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlo
 3. **Keep `main` and `prod` content-identical** between releases.
 4. **Before pushing a release**: `git log --oneline origin/main..origin/prod` + `git diff --stat origin/main origin/prod`.
 5. **`prod` is a release branch, not a working branch.** Commit locally, PR into `main`, then merge `main` → `prod` to ship.
-6. After deploying: `git checkout main && git pull origin main`.
+6. After deploying: `git checkout main && git pull origin main`. ⚠️ **Check the checkout succeeded before pulling** — this repo has several worktrees and any of them can already hold `main`, in which case `git checkout main` fails and the `git pull origin main` then merges `main` into whatever branch you were on. It happened silently once and left a stray merge commit on a feature branch. Either verify with `git branch --show-current`, or pull without switching: `git fetch origin && git log --oneline origin/main`.
 7. **Local hooks**: `git config core.hooksPath .githooks` enables the committed `pre-commit` (ruff backend lint, fail-open without ruff) and `commit-msg` (conventional commits) hooks. CI remains the authority for typecheck/tests.
 
 ## Quick Reference
