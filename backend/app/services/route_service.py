@@ -627,6 +627,14 @@ async def merge_routes(
     task), and quality/favourite/derived fields are preserved. A
     :class:`RouteMergeLog` row is written so the merge can be undone via
     :func:`undo_route_merge`.
+
+    **The merge is always scored.** When the caller supplies no ``breakdown``
+    the pair is scored here, so every merge records the evidence behind its
+    decision. Previously the UI path passed neither and 26 of 27
+    ``identical`` merges were logged with ``score = 0.0`` and an empty
+    breakdown — untrainable and unauditable. Computing it here rather than in
+    each caller means the UI, bulk merge and the similarity task all get it
+    for free.
     """
     from app.models.activity import Activity
     from app.models.route_organize import (
@@ -644,6 +652,43 @@ async def merge_routes(
         return None
     if primary.id == duplicate.id:
         return primary
+
+    if breakdown is None:
+        # Score the pair so the log carries its evidence. A degenerate or
+        # undecodable polyline must not block a legitimate merge, but it must
+        # not leave an unauditable one either — hence "scored: False" rather
+        # than a null breakdown, which is indistinguishable from nobody
+        # having looked.
+        try:
+            from app.services.route_matching import score_route_pair
+
+            pa = _safe_decode(primary.encoded_polyline)
+            pb = _safe_decode(duplicate.encoded_polyline)
+            if len(pa) > 1 and len(pb) > 1:
+                bd = score_route_pair(
+                    pa,
+                    pb,
+                    length_a=primary.distance_meters,
+                    length_b=duplicate.distance_meters,
+                )
+                breakdown = bd.to_dict()
+                breakdown["scored"] = True
+                score = bd.total
+            else:
+                breakdown = {
+                    "scored": False,
+                    "reason": "polyline too short to score",
+                    "length_a_m": primary.distance_meters,
+                    "length_b_m": duplicate.distance_meters,
+                }
+        except Exception as e:
+            breakdown = {
+                "scored": False,
+                "reason": f"scoring failed: {type(e).__name__}: {e}",
+            }
+            logger.warning(
+                f"Could not score merge pair {primary_route_id}/{duplicate_route_id}: {e}"
+            )
 
     snapshot = {
         "id": str(duplicate.id),
