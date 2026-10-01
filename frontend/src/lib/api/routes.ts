@@ -7,6 +7,7 @@ import type {
   DuplicatePair,
   MergeResult,
   OrphanReviewResponse,
+  DismissedRoutes,
   RouteMergeLogEntry,
   SimilarRoute,
   MergedRouteView,
@@ -83,6 +84,17 @@ export async function getOrphanCandidates(
   token?: string,
 ): Promise<OrphanReviewResponse> {
   return apiFetch<OrphanReviewResponse>('/api/v1/routes/orphans', {}, token);
+}
+
+/**
+ * Routes reviewed and rejected, newest first.
+ *
+ * Dismissal is the decision most likely to be made in bulk, and a bulk
+ * mistake is likely by construction — this is how you find one and send it
+ * back to the review queue via `keepOrphan`.
+ */
+export async function getDismissedRoutes(token?: string): Promise<DismissedRoutes> {
+  return apiFetch<DismissedRoutes>('/api/v1/routes/orphans/dismissed', {}, token);
 }
 
 /**
