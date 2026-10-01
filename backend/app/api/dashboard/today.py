@@ -1,5 +1,6 @@
 """Dashboard API — today endpoint."""
 
+import logging
 import uuid
 from datetime import date, timedelta
 
@@ -8,6 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+
+logger = logging.getLogger(__name__)
 from app.models.activity import Activity
 from app.models.daily_metric import DailyMetric
 from app.models.health_alert import HealthAlert
@@ -18,6 +21,7 @@ from app.schemas.dashboard import (
     TodayActivitySummary,
     TodayLiftingSummary,
     TodaySummary,
+    TodayVerdict,
 )
 from app.services.auth import get_current_user
 from app.services.cache import cached
@@ -217,6 +221,25 @@ async def dashboard_today(
 
     rest_suggestion = await _suggest_rest_days(db, uid, latest_recovery)
 
+    # The unified verdict (plan §1): the same rest signal plus the four engines
+    # `/today` was previously ignoring, with each engine's stance kept so
+    # agreement and disagreement are both visible.
+    #
+    # Fail-open at the top level, not per-engine: `compute_today_verdict` already
+    # degrades each engine independently, so reaching *this* except means
+    # something structural broke. `verdict=None` then makes the page fall back to
+    # the legacy rest-only banner rather than showing an error — the endpoint's
+    # job is to answer "what today", and a 500 does not answer that.
+    verdict = None
+    try:
+        from app.services.today import compute_today_verdict
+
+        verdict = TodayVerdict.model_validate(
+            await compute_today_verdict(db, uid, rest_day_suggestion=rest_suggestion)
+        )
+    except Exception as exc:
+        logger.warning("today verdict composition failed: %s", exc, exc_info=True)
+
     return TodaySummary(
         today_activities=today_activities,
         today_lifting_sessions=today_lifting_sessions,
@@ -233,4 +256,5 @@ async def dashboard_today(
         current_tsb=current_tsb,
         active_alerts=active_alerts,
         rest_day_suggestion=rest_suggestion,
+        verdict=verdict,
     )

@@ -44,6 +44,49 @@ class RestDaySuggestion(BaseModel):
     consecutive_training_days: int = 0
 
 
+class EngineConsensus(BaseModel):
+    """One engine's vote on the daily verdict (plan §1).
+
+    ``available: False`` with a ``reason`` is a first-class outcome, not an
+    error. Cross-domain analysis runs weekly; before its first run the honest
+    thing to show is "not run yet", because a verdict that silently omits an
+    engine reads as unanimous agreement from the ones that spoke.
+    """
+
+    engine: str
+    stance: str | None = None
+    confidence: str | None = None
+    available: bool = True
+    reason: str | None = None
+    note: str | None = None
+    analyzed_at: datetime | None = None
+
+
+class ProjectedLoadPoint(BaseModel):
+    """One day of the forward look, from ``compute_tsb_projection``."""
+
+    date: date
+    ctl: float | None = None
+    atl: float | None = None
+    tsb: float | None = None
+
+
+class TodayVerdict(BaseModel):
+    """The unified daily verdict: all five engines, with provenance.
+
+    The headline follows the *strongest* rest signal rather than an average of
+    all engines. An average of "train" and "rest" produces "train, but rest", and
+    the athlete acts on the first word - so an averaged verdict is worse than
+    either engine's own answer.
+    """
+
+    should_rest: bool = False
+    headline: str = ""
+    reasons: list[str] = []
+    consensus: list[EngineConsensus] = []
+    projected_load: list[ProjectedLoadPoint] = []
+
+
 class TodaySummary(BaseModel):
     """Aggregated today data for the dashboard today view."""
 
@@ -63,6 +106,11 @@ class TodaySummary(BaseModel):
     active_alerts: int = 0
     # Shared verdict input (3.1) — Today Brief renders RestDayBanner from this.
     rest_day_suggestion: RestDaySuggestion | None = None
+    # The enriched verdict (plan §1), composed from all five engines with
+    # provenance. ``None`` only when composition failed outright — the page then
+    # falls back to the legacy rest-only field above, which is retained for
+    # exactly that path.
+    verdict: TodayVerdict | None = None
 
 
 class DashboardSummary(BaseModel):

@@ -188,6 +188,8 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 39. **`asyncio.gather` on one `AsyncSession` is not a concurrency test**: SQLAlchemy serialises both coroutines onto a single connection, so the second one always observes the first one's writes and the test passes against the very bug it exists to catch. `UndoLog`'s claim-before-restore ordering (§8) was guarded by a `gather` "race" that **passed when the claim was moved after the restore** — a false green. The fix is a test that is concurrent *in shape*: a restorer that re-enters `undo` for the same claim, which can only be refused if the claim is already visible. Removing the early claim entirely makes that test fail, which is how it was verified.
 40. **A JSONB payload is JSON-native on the way back out, not just in**: a `uuid.UUID` written to `UndoLog.payload` returns as a `str`, so a restorer that skips `uuid.UUID(value)` works in-process and fails the first time it reads a real row. `record_undo` now proves the round-trip with `json.dumps` and names the offending payload, rather than letting it surface as a driver-level `TypeError` at flush time — after the operation that wrote it has already run.
 41. **Order by `(created_at, id)`, and do not claim insertion order**: two rows written in one transaction share `created_at` (pitfall 28), so `created_at DESC` alone is a coin flip. The id tiebreak makes the order *total and stable across calls* — which is what a list driving an undo button needs. It does **not** recover insertion order and cannot: random UUIDs carry no sequence. Say so in the code rather than letting a reader assume the tiebreak implies chronology.
+42. **A composite verdict must report the engines that stayed silent, or it reads as unanimous**: `/today` composed five recommendation engines and emitted a `consensus[]` row only for those that had something to say. With no active plan and no cross-domain run — most users, most days — the result was a three-row consensus that read as agreement. Every engine now emits a row, and one that is silent or degraded emits `available: false` with the reason. The test for this is that the row count is constant, not that the values are right; removing a single unavailable row fails 3 of the 25.
+43. **Degrade per-component when a response is a composite**: `compute_today_verdict` wraps each engine independently so one broken weekly job cannot cost the user the whole verdict, and the endpoint has a second, outer fail-open that nulls `verdict` rather than 500ing. `/today`'s job is to answer "what today", and an endpoint that errors has not answered it — the page falls back to the legacy rest-only banner and then to the client-side verdict.
 
 ## Development Lessons
 
@@ -200,8 +202,9 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 
 ## Active Planning
 
-**Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–2 landed). Nine
-specs in [`plans/`](plans/) from a re-baselined brainstorm, plus
+**Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
+Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
+[`plans/`](plans/) from a re-baselined brainstorm, plus
 [`plans/2026-10-01-data-integrity-integration-plan.md`](plans/2026-10-01-data-integrity-integration-plan.md)
 for sequencing and the cross-section conflicts. Every one of those specs named a *missing
 feature* that turned out to be shipped with a silent correctness defect underneath — import
@@ -210,13 +213,14 @@ wedge a workout, undo existed but never retracted its announcement. Read the int
 plan first: it decides CSV import and the `exercise→FK` migration (both rejected) and
 records that §1 must not ship before §5.
 
-Wave 3 (`UndoLog`, §8) has landed the mechanism: `models/undo.py` + `services/undo.py`
+Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.py`
 (typed per-kind restorers, claim-before-restore, 30-day `expires_at`, daily prune task).
-**It has no HTTP surface yet, and no registered production kind** — see the PR for the
-reason `RouteMergeLog` was *not* migrated onto it. Wave 4 (§1 unified daily recommendation)
-remains; it is last because it consolidates five recommendation engines behind the
-provenance work in §1. **New migrations continue from 097** — `096` is `undo_logs`, and the
-branch was renumbered mid-flight once already (pitfall 34).
+**It has no HTTP surface and no registered production kind** — `RouteMergeLog` was
+deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
+working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
+five engines composed with a `consensus[]` that reports silence as `available: false`.
+**New migrations continue from 097** — `096` is `undo_logs`, and the branch was renumbered
+mid-flight once already (pitfall 34).
 
 Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md).
 
