@@ -381,6 +381,42 @@ async def add_route_source(
     return source
 
 
+# How much of an existing polyline an incoming one must cover before the
+# incoming geometry may replace it.
+#
+# "Richer geometry wins" used to compare point counts alone. That premise —
+# both polylines describe the same route — holds when the provider route id
+# matched correctly and fails silently when sync matched the wrong row. Two
+# production routes ended up carrying a different ride's geometry, by 21%
+# and 28% by length, and were then scored against that ride as a 100%
+# auto-match.
+#
+# Two recordings of one route cover each other; two different routes do not,
+# even when they share a start point. Adoption is the rare path (a genuine
+# re-sync at higher resolution), so a strict threshold costs nothing real.
+ADOPT_MIN_OVERLAP = 0.7
+
+
+def _polyline_matches(
+    existing: list[tuple[float, float]], incoming: list[tuple[float, float]]
+) -> bool:
+    """Whether ``incoming`` plausibly re-describes ``existing``.
+
+    Guards the richer-geometry-wins rule. Returns True when either trace
+    covers most of the other, so a denser re-resolution of the same ride is
+    adopted while an unrelated route's geometry is refused.
+    """
+    from app.services.route_matching import coverage
+
+    if not existing or not incoming:
+        return False
+    if len(existing) < 2 or len(incoming) < 2:
+        return False
+    forward = coverage(existing, incoming, 40.0)
+    backward = coverage(incoming, existing, 40.0)
+    return max(forward, backward) >= ADOPT_MIN_OVERLAP
+
+
 async def create_or_merge_route(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -465,7 +501,9 @@ async def create_or_merge_route(
         # Optionally update the canonical polyline if the new one is higher fidelity
         new_point_count = len(points)
         existing_points = _safe_decode(duplicate.encoded_polyline)
-        if new_point_count > len(existing_points):
+        if new_point_count > len(existing_points) and _polyline_matches(
+            existing_points, points
+        ):
             duplicate.encoded_polyline = encoded_polyline
             if elevation_profile:
                 duplicate.elevation_profile = elevation_profile
@@ -1111,7 +1149,7 @@ async def find_potential_duplicates(
     result = await db.execute(
         select(Route)
         .options(selectinload(Route.sources), selectinload(Route.tags))
-        .where(Route.user_id == user_id)
+        .where(Route.user_id == user_id, active_routes_clause())
     )
     routes = list(result.scalars().all())
 
