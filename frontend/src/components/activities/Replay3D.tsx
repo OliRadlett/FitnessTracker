@@ -985,7 +985,6 @@ export function Replay3D({
     // dramatic sprint lines at pace. Tinted by the current effort (power/HR).
     const STREAK_COUNT = 400;
     const streakPos = new Float32Array(STREAK_COUNT * 3);
-    const streakAlpha = new Float32Array(STREAK_COUNT);
     const streakGeo = new THREE.BufferGeometry();
     streakGeo.setAttribute('position', new THREE.BufferAttribute(streakPos, 3));
     const streakMat = new THREE.PointsMaterial({
@@ -1637,7 +1636,6 @@ export function Replay3D({
           streakPos[si * 3] = a.x + (b.x - a.x) * f;
           streakPos[si * 3 + 1] = a.y + (b.y - a.y) * f;
           streakPos[si * 3 + 2] = a.z + (b.z - a.z) * f;
-          streakAlpha[si] = (1 - t) * streakIntensity;
           si++;
         }
         // Zero out unused points (push them far away / invisible).
