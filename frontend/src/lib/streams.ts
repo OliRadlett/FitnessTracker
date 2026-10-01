@@ -81,3 +81,28 @@ export function streamLabel(streamType: string): string {
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+export interface ReplayEligibility {
+  isCycling: boolean;
+  loading: boolean;
+  error: boolean;
+  streams: ActivityStream[] | undefined;
+  polyline: string | null | undefined;
+}
+
+/**
+ * Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
+ * Loading/error/empty-streams cases return null — the stream section owns
+ * that copy. Verbatim copy shared by the activities page and the compare
+ * modal. Pure.
+ */
+export function replayMissingReason(input: ReplayEligibility): string | null {
+  if (!input.isCycling || input.loading || input.error) return null;
+  if (!input.streams?.length) return null;
+  if (!input.polyline) return 'No route attached — 3D replay needs GPS.';
+  if (!hasStream(input.streams, ...VELOCITY_STREAM_TYPES)) {
+    const present = presentStreamTypes(input.streams);
+    return `3D replay needs a speed stream — this ride has ${present.length ? present.map(streamLabel).join(', ') : 'no readable streams'} but no velocity.`;
+  }
+  return null;
+}
