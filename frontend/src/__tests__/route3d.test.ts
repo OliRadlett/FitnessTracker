@@ -14,6 +14,7 @@ import {
   gradeColor,
   gridSampleCoords,
   hexToRgb,
+  parseOverlayHoverKm,
   pointColor,
   slopeColor,
   steepestKm,
@@ -375,5 +376,16 @@ describe('colour ramps', () => {
   it('pointColor maps the lowest elevation to the ramp start', () => {
     const low = { x: 0, y: 0, z: 0, distKm: 0, slopePct: 0, elevation: 0 };
     expect(pointColor(low, 'elevation', 0, 100)).toEqual(hexToRgb(ELEVATION_RAMP[0][1]));
+  });
+});
+
+describe('parseOverlayHoverKm', () => {
+  it('accepts finite km labels, rejects anything else', () => {
+    expect(parseOverlayHoverKm(12.3)).toBe(12.3);
+    expect(parseOverlayHoverKm(0)).toBe(0);
+    expect(parseOverlayHoverKm('12.3')).toBeNull();
+    expect(parseOverlayHoverKm(NaN)).toBeNull();
+    expect(parseOverlayHoverKm(-1)).toBeNull();
+    expect(parseOverlayHoverKm(undefined)).toBeNull();
   });
 });
