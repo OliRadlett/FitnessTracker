@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     public_url: str = "https://localhost"
     frontend_url: str = "https://localhost/fittrack"
 
+    # Trusted reverse proxies, comma-separated IPs/CIDRs. ``X-Forwarded-For`` is
+    # honoured (for the auth rate-limit key) only when the immediate TCP peer is
+    # one of these, so a client cannot spoof its own address. Defaults to
+    # loopback + private ranges: the backend is never published publicly (only
+    # Caddy is), so every peer is a trusted proxy or a local process.
+    trusted_proxies: str = (
+        "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+    )
+
     # Account whitelist — comma-separated email addresses allowed to log in.
     # If empty, all accounts are allowed (no restriction).
     allowed_emails: str = ""

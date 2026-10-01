@@ -10,9 +10,9 @@
 > those are frequently stale. Migration head at refresh time: **`091`**, single head, no
 > duplicate `revision` values.
 >
-> **Headline**: of the 45 tracked rows, **23 are fixed** and **22 remain**. Track 1 is
-> fully resolved, Track 2 is down to one item, and Track 6 has shipped in full. The
-> remaining work is Track 2 ×1, Track 3 ×8, Track 4 ×9, Track 5 ×4.
+> **Headline**: of the 45 tracked rows, **24 are fixed** and **21 remain**. Tracks 1, 2
+> and 6 are fully resolved. The remaining work is Track 3 ×8, Track 4 ×9, Track 5 ×4.
+> (S4 closed on 2026-10-01; other row statuses are as of 2026-09-30.)
 >
 > **Refreshing again?** Re-check the code, not this file. `git grep` for the item ID or
 > bug ID first — fixes carry an ID in a comment.
@@ -53,12 +53,6 @@ All nine original items remain open; file references re-confirmed at refresh tim
 - [ ] A11y / portal: `DashboardRefresh.tsx:82` is 28 px (below the 44 px target); `lifting/live/page.tsx:637` (`FinishSheet`) and `MobileRouteDetailSheet.tsx:81` are inline fixed divs — portal them through `Modal`/`createPortal` (pitfall #15).
 - [ ] `lib/api/types/generated.ts` exists but is imported nowhere and has no CI drift guard. Either wire it as the type source of truth or delete it **with** a drift check. (The other dead-code names in the original row — `StatsView`, `ErrorState`, `Field`, `PageHeader`, `SectionLabel`, `Stat` — have since been **adopted**, see `plans/underdeveloped-features-2026-09-27.md` §A1/A2.)
 
-### Track 2 — one item left
-
-| # | Defect | Evidence | Fix |
-|---|--------|----------|-----|
-| S4 | The auth rate-limit bucket is keyed on the **proxy peer**, not the forwarded client IP, so behind Caddy every client shares one 20 req/min budget — a single abusive caller consumes it for everyone. `slowapi`'s `Limiter` is also instantiated but vestigial (SEC-03). | `main.py:112-129` keys on `get_remote_address(request)` (`:119`); `limiter` built at `main.py:24-25`, `app.state.limiter` set at `:75` | Key on the trusted client IP from `X-Forwarded-For` (only from the known proxy). Then either register `SlowAPIMiddleware` or delete the vestigial `Limiter` |
-
 ---
 
 ## Fixed (code-verified 2026-09-30)
@@ -74,9 +68,11 @@ pitfall #22) and `090` (model/migration drift on `lift_video_analyses`, pitfall 
 Local branch hygiene (stale checkout, superseded T3 commits, repo-root artifacts) is no
 longer relevant — the work merged via PRs.
 
-**Track 2 — security:** S1 (token logging), S2 (`r2_key` prefix validation, `videos.py:111`),
-S3 (ownership checks on linked session/PR, `videos.py:113-130`), S5 (OAuth `state` on the
-app-auth callback — **#213**), S6 (`ContentLength` cap), S7 (Strava verify token — **#213**).
+**Track 2 — security: FULLY RESOLVED.** S1 (token logging), S2 (`r2_key` prefix validation,
+`videos.py:111`), S3 (ownership checks on linked session/PR, `videos.py:113-130`), S4 (auth
+rate limit keyed on the real client IP via `services/client_ip.py`; the misleading, unenforced
+slowapi `Limiter` deleted), S5 (OAuth `state` on the app-auth callback — **#213**), S6
+(`ContentLength` cap), S7 (Strava verify token — **#213**).
 
 **Track 3:** RMI-03 (only mark "personalized" on a real fit) · RMI-04 (`elevations`/`elevation`,
 `route_intelligence.py`) · RMI-06 (dead `predicted_effort` gone) · SCI-01 (suppress
@@ -118,7 +114,6 @@ eight items are small, independent fixes. Suggested order:
 4. `fix/inflight-correctness-b` — the four frontend Track 4 items (3D `raceMarkers`,
    `raceRides` centroid, wind HUD, `useLiveSession` 4xx). **Coordinate**: this area is
    actively edited by the relive/3D sessions.
-5. `security/rate-limit-key` — S4.
 
 Each: isolated worktree → `pytest` (backend) / `tsc`+`vitest`+`build` (frontend) →
 PR into `main` → release via `main → prod` (AGENTS Git & Deployment Strategy).
