@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
+import { routeNamesDiffer } from '@/lib/routeUtils';
 import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
 import { RouteMap } from '@/components/maps/RouteMap';
 import {
@@ -78,7 +79,13 @@ function OrphanRow({
 }) {
   const [showWhy, setShowWhy] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [confirmIdentical, setConfirmIdentical] = useState(false);
   const isLap = row.containment >= 0.9 && row.jaccard < 0.5;
+  // An `identical` merge trains the matcher, so a wrong call here is
+  // permanent — unlike a `variant` merge, which is excluded from training
+  // and can be reclassified from the merge log.
+  const identicalNeedsConfirm =
+    row.live_name != null && routeNamesDiffer(row.orphan_name, row.live_name);
   // An overlay with one line is not a comparison. 11 of 67 orphans have no
   // candidate at all, and drawing a single trace next to "no candidate"
   // invites the reader to compare it against nothing.
@@ -233,15 +240,48 @@ function OrphanRow({
           </button>
           {row.live_id && (
             <>
-              <button
-                onClick={() => onMerge(row, 'identical')}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
-                title="Same route recorded twice"
-              >
-                <GitMerge className="h-3.5 w-3.5" />
-                Duplicate
-              </button>
+              {confirmIdentical && identicalNeedsConfirm ? (
+                <span className="flex items-center gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
+                  Trains the matcher — confirm?
+                  <button
+                    onClick={() => {
+                      setConfirmIdentical(false);
+                      onMerge(row, 'identical');
+                    }}
+                    disabled={busy}
+                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  >
+                    Yes, merge
+                  </button>
+                  <button
+                    onClick={() => setConfirmIdentical(false)}
+                    disabled={busy}
+                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (identicalNeedsConfirm) {
+                      setConfirmIdentical(true);
+                    } else {
+                      onMerge(row, 'identical');
+                    }
+                  }}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  title={
+                    identicalNeedsConfirm
+                      ? 'Same route recorded twice — this trains the matcher, and the names differ'
+                      : 'Same route recorded twice'
+                  }
+                >
+                  <GitMerge className="h-3.5 w-3.5" />
+                  Duplicate
+                </button>
+              )}
               <button
                 onClick={() => onMerge(row, 'variant')}
                 disabled={busy}
