@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
-from app.models.cycling import CyclingProfile
+from app.models.cycling import CyclingPowerRecord, CyclingProfile
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
@@ -108,6 +108,22 @@ def _recovery_insight(values: list[float]) -> str:
     latest = values[-1]
     zone = "green" if latest >= 66 else ("yellow" if latest >= 33 else "red")
     return f"Today's recovery is {latest:.0f} ({zone} zone); period average {avg:.0f}."
+
+
+def _num(value, default: float = 0.0) -> float:
+    """Coerce a possibly-null aggregate to a float.
+
+    ``coalesce`` in the SQL covers a null *sum* over no rows, but a sum over
+    rows that are all null still returns null. Same guard the dashboard
+    endpoints had as ``_safe_agg``, kept under its own name now that the logic
+    lives here.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -309,6 +325,162 @@ class ChartService:
         if isinstance(value, datetime):
             return value.date()
         return value
+
+    # ── Monthly training breakdown ────────────────────────────────────────────
+
+    # Standalone Wahoo rows were merged into their Strava twin; counting them
+    # again would double-count. Named once here because three separate call
+    # sites had this filter written out independently, and the `monthly` path
+    # had two near-identical copies of the whole query block that had already
+    # begun to diverge (see ``monthly_breakdown``).
+    _NOT_STANDALONE_WAHO = Activity.source != "wahoo"
+
+    async def monthly_breakdown(
+        self,
+        user_id: uuid.UUID,
+        *,
+        start: date,
+        end: date,
+    ) -> list[dict]:
+        """Per-month lifting, cardio, PR and recovery totals, densely filled.
+
+        Returns one dict per calendar month from the start of ``start``'s month
+        through ``start``'s month in ``end``, **including months with no
+        training at all**. The dense fill is the whole point: a caller that
+        iterated the grouped rows alone would silently omit empty months, and a
+        chart would then draw a straight line across a three-week gap as if the
+        rider had trained continuously. A missing month is data.
+
+        Every month in range is zero-filled except ``avg_recovery``, which is
+        None when there is no recovery data — 0 would be a real measurement.
+
+        This replaces two hand-written copies of the same five queries, in
+        ``api/dashboard/weekly.py`` and ``api/dashboard/yearly.py``. They had
+        already drifted: the weekly copy bounded its queries only from below,
+        the yearly copy from both sides, and each grew its own month-enumeration
+        loop. Grouping is on ``to_char(..., 'YYYY-MM')`` rather than
+        ``date_trunc`` to preserve the existing month-boundary behaviour
+        exactly; do not "simplify" it to ``date_trunc`` without checking the
+        timezone interaction.
+
+        The five queries cannot become one — they read five different tables —
+        so this consolidates the *shape*, the guard and the fill, not the
+        round-trips.
+        """
+        month_start = start.replace(day=1)
+        # Two different bounds, which must not be conflated:
+        #
+        # - `month_end` is the *first* of the end month. It is what the fill loop
+        #   iterates over, since it advances a month at a time.
+        # - `range_end` is the *last* of the end month. It is what the queries
+        #   filter on, because `<= month_end` would exclude every row in the
+        #   final month — for `end=2026-06-30` the filter becomes `<= 2026-06-01`
+        #   and June comes back empty. Using the first of the month as an
+        #   inclusive upper bound silently drops the last (and only) month
+        #   whenever the caller passes any day other than the 1st.
+        month_end = end.replace(day=1)
+        range_end = self._advance(month_end, "month", 1) - timedelta(days=1)
+
+        def _in_range(column):
+            return (column >= month_start, column <= range_end)
+
+        lifting_rows = await self.db.execute(
+            select(
+                func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
+                func.count(LiftingSession.id).label("sessions"),
+                func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
+                    "volume"
+                ),
+            )
+            .where(
+                LiftingSession.user_id == user_id,
+                *_in_range(LiftingSession.session_date),
+            )
+            .group_by("month")
+        )
+        lifting_by_month = {
+            row.month: {"sessions": int(row.sessions), "volume": _num(row.volume)}
+            for row in lifting_rows
+        }
+
+        activity_rows = await self.db.execute(
+            select(
+                func.to_char(Activity.start_date, "YYYY-MM").label("month"),
+                func.count(Activity.id).label("sessions"),
+                func.coalesce(func.sum(Activity.tss), 0.0).label("tss"),
+                func.coalesce(func.sum(Activity.distance_meters), 0.0).label("distance"),
+                func.coalesce(func.sum(Activity.duration_seconds), 0.0).label("time"),
+            )
+            .where(
+                Activity.user_id == user_id,
+                self._NOT_STANDALONE_WAHO,
+                *_in_range(Activity.start_date),
+            )
+            .group_by("month")
+        )
+        activity_by_month = {
+            row.month: {
+                "sessions": int(row.sessions),
+                "tss": _num(row.tss),
+                "distance": _num(row.distance),
+                "time": _num(row.time),
+            }
+            for row in activity_rows
+        }
+
+        # PRs come from two tables (lifting and cycling power) that are summed
+        # into one count per month.
+        pr_counts: dict[str, int] = {}
+        for model in (PersonalRecord, CyclingPowerRecord):
+            pr_rows = await self.db.execute(
+                select(
+                    func.to_char(model.achieved_date, "YYYY-MM").label("month"),
+                    func.count(model.id).label("prs"),
+                )
+                .where(model.user_id == user_id, *_in_range(model.achieved_date))
+                .group_by("month")
+            )
+            for row in pr_rows:
+                pr_counts[row.month] = pr_counts.get(row.month, 0) + int(row.prs)
+
+        recovery_rows = await self.db.execute(
+            select(
+                func.to_char(DailyMetric.metric_date, "YYYY-MM").label("month"),
+                func.avg(DailyMetric.recovery_score).label("avg_recovery"),
+            )
+            .where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.recovery_score.isnot(None),
+                *_in_range(DailyMetric.metric_date),
+            )
+            .group_by("month")
+        )
+        recovery_by_month: dict[str, float | None] = {}
+        for row in recovery_rows:
+            value = row.avg_recovery
+            recovery_by_month[row.month] = round(value, 1) if value is not None else None
+
+        breakdown: list[dict] = []
+        current = month_start
+        while current <= month_end:
+            key = current.strftime("%Y-%m")
+            lifting = lifting_by_month.get(key, {})
+            cardio = activity_by_month.get(key, {})
+            breakdown.append(
+                {
+                    "month": key,
+                    "total_tss": cardio.get("tss", 0.0),
+                    "lifting_volume_kg": lifting.get("volume", 0.0),
+                    "total_distance_meters": cardio.get("distance", 0.0),
+                    "total_time_seconds": cardio.get("time", 0.0),
+                    "lifting_sessions": lifting.get("sessions", 0),
+                    "cardio_sessions": cardio.get("sessions", 0),
+                    "pr_count": pr_counts.get(key, 0),
+                    "avg_recovery": recovery_by_month.get(key),
+                }
+            )
+            current = self._advance(current, "month", 1)
+        return breakdown
 
     # ── Power curve (best power at each duration) ─────────────────────────────
 
