@@ -258,9 +258,18 @@ async def _enrich_and_create_route(
         trackpoints
     )
 
-    # Enrich raw_data with Komoot route type
+    # Enrich raw_data with Komoot route type.
+    #
+    # Taken from the payload, not from which loop called this. The two loops
+    # were not disjoint — the recorded-tour loop fetched planned routes too
+    # — so labelling by call site wrote "recorded" onto thirty
+    # tour_planned objects, contradicting the type in the same row. The
+    # payload is the authority on what Komoot actually returned.
     raw_data = dict(tour_data)
-    raw_data["_komoot_type"] = "planned" if is_planned_route else "recorded"
+    komoot_type = tour_data.get("type")
+    if not komoot_type:
+        komoot_type = "tour_planned" if is_planned_route else "tour_recorded"
+    raw_data["_komoot_type"] = komoot_type
 
     # Check if this was merged (existing source found)
     existing_source = await db.execute(
@@ -327,6 +336,17 @@ async def sync_komoot_routes(
     merged_count = 0
 
     # ── Sync completed tours ────────────────────────────────────────────────
+    # Filtered to tour_recorded, and the filter is load-bearing rather than
+    # tidiness. Unfiltered, this call also returns every planned route, so
+    # this loop re-ingested all of them under a bare id while the planned
+    # loop ingested the same objects under a `route_`-prefixed id — two rows
+    # per tour. All 57 Komoot sources in the database were tour_planned; not
+    # one recorded tour had ever been picked up.
+    #
+    # Verified against the live API: tour_type="tour_recorded" returns zero
+    # tours for this account (so this loop is currently a no-op, and will
+    # start working the moment a ride is recorded), while "recorded" and
+    # "planned" both return HTTP 400.
     page = 0
     while synced_count < limit:
         try:
@@ -334,6 +354,7 @@ async def sync_komoot_routes(
                 user_id=komoot_user_id,
                 page=page,
                 limit=50,
+                tour_type="tour_recorded",
             )
         except Exception as e:
             logger.error(f"Failed to fetch Komoot tours page {page}: {e}")
