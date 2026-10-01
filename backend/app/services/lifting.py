@@ -603,6 +603,24 @@ async def add_set(
     return lifting_set
 
 
+# Fields a client is allowed to PATCH on a set. Kept as an explicit allowlist
+# rather than a blanket ``setattr`` loop so that adding a field to
+# ``LiftingSetUpdate`` fails visibly at review instead of silently becoming a
+# raw-write path that bypasses the normalisation applied here.
+_MUTABLE_SET_FIELDS = frozenset(
+    {
+        "exercise_name",
+        "set_number",
+        "weight_kg",
+        "reps",
+        "rpe",
+        "is_warmup",
+        "is_amrap",
+        "notes",
+    }
+)
+
+
 async def update_set(
     db: AsyncSession,
     set_id: uuid.UUID,
@@ -626,6 +644,16 @@ async def update_set(
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field not in _MUTABLE_SET_FIELDS:
+            continue
+        if field == "exercise_name" and value is not None:
+            # ``exercise_name`` is the de facto key for every lifting view
+            # (chart registry, PR correlation, video correlation, volume
+            # trends, CSV export). ``create_session`` and ``add_set`` both store
+            # the canonical form; a raw string written here would fork this set
+            # off the exercise's entire history and mint a phantom PR, because
+            # ``_recalculate_pr_after_set_change`` below runs on the new name.
+            value = normalise_exercise_name(value)
         setattr(lifting_set, field, value)
 
     # Recalculate session volume
