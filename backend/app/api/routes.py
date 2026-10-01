@@ -42,6 +42,8 @@ from app.schemas.auth import UserRead
 from app.schemas.route import (
     BulkDismissRequest,
     BulkDismissResult,
+    DismissedRouteResponse,
+    DismissedRouteRow,
     DuplicatePair,
     EffortEstimateRequest,
     EffortEstimateResponse,
@@ -904,6 +906,29 @@ async def dismiss_orphan(
         )
     await db.flush()  # BUG-015: flush only; get_db commits.
     return {"id": str(route_id), "dismissed": True}
+
+
+@router.get("/orphans/dismissed", response_model=DismissedRouteResponse)
+async def list_dismissed_routes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Routes reviewed and rejected, so a rejection can be found and undone.
+
+    Dismissal is the decision most likely to be made in bulk, and a bulk
+    mistake is likely by construction. ``POST /orphans/{id}/keep`` already
+    reverses a dismissal, but before this listing existed there was no way
+    to *find* a dismissed route — the review queue deliberately filters them
+    out — so an incorrect rejection was only discoverable if you already knew
+    the route id.
+
+    Registered above ``PATCH /{route_id}``: ``dismissed`` is not a valid
+    UUID, so a dynamic route ahead of this one would claim it and 422.
+    """
+    rows = await route_quarantine.list_dismissed_routes(db, current_user.id)
+    return DismissedRouteResponse(
+        rows=[DismissedRouteRow(**r) for r in rows], total=len(rows)
+    )
 
 
 @router.post("/orphans/{route_id}/keep", response_model=dict)

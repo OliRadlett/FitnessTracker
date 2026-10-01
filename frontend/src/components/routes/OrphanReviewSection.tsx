@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   bulkDismissOrphans,
+  getDismissedRoutes,
   dismissOrphan,
   getOrphanCandidates,
   keepOrphan,
@@ -276,6 +277,86 @@ function OrphanRow({
 }
 
 /**
+ * Routes the user reviewed and rejected, with a way to bring them back.
+ *
+ * Collapsed by default: it is an archive, not a to-do list, and 49 dismissed
+ * routes would otherwise dominate a page whose purpose is the two rows still
+ * awaiting a decision.
+ */
+function DismissedRoutesSection({
+  open,
+  onToggle,
+  busy,
+  onRestore,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  busy: boolean;
+  onRestore: (routeId: string) => void;
+}) {
+  const { token } = useAuthFetch();
+  const { data, isLoading } = useQuery({
+    queryKey: ['route-dismissed'],
+    queryFn: () => getDismissedRoutes(token),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const total = data?.total ?? 0;
+  if (!isLoading && total === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        {open ? 'Hide' : 'Show'} dismissed routes{total ? ` (${total})` : ''}
+      </button>
+
+      {open && (
+        <>
+          <p className="mt-2 text-xs text-muted">
+            Rejected during review and kept out of matching. Restoring returns one to the
+            queue as an active route.
+          </p>
+          <div className="mt-2 max-h-72 overflow-y-auto">
+            {isLoading && <p className="py-2 text-sm text-muted">Loading…</p>}
+            {data?.rows.map((r) => (
+              <div
+                key={r.route_id}
+                className="flex items-center justify-between gap-3 border-t border-border py-2 first:border-t-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-text">{r.name}</p>
+                  <p className="font-mono text-xs text-muted">
+                    {formatDistance(r.distance_meters)} · dismissed{' '}
+                    {new Date(r.dismissed_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => onRestore(r.route_id)}
+                  disabled={busy}
+                  className="shrink-0 rounded border border-border px-2 py-1 text-xs text-text hover:bg-surface-light disabled:opacity-50"
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * Review queue for quarantined routes.
  *
  * A quarantined route has no linked activities — the residue of an earlier
@@ -288,6 +369,7 @@ export function OrphanReviewSection() {
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['route-orphans'],
@@ -362,11 +444,23 @@ export function OrphanReviewSection() {
   // one the user actually saw rather than a live value that may have moved.
   const countsSnapshot = data?.counts ?? {};
 
+  const restoreMutation = useMutation({
+    mutationFn: (routeId: string) => keepOrphan(routeId, token),
+    onSuccess: () => {
+      toast.success('Restored — it is active and used in matching again.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['route-dismissed'] });
+    },
+    onError: (e) =>
+      toast.error(`Restore failed: ${(e as Error)?.message || 'try again.'}`),
+  });
+
   const busy =
     mergeMutation.isPending ||
     keepMutation.isPending ||
     dismissMutation.isPending ||
-    bulkDismissMutation.isPending;
+    bulkDismissMutation.isPending ||
+    restoreMutation.isPending;
 
   if (isError) {
     return (
@@ -461,10 +555,21 @@ export function OrphanReviewSection() {
             <strong>Duplicate</strong> = the same route recorded twice. <strong>Variant
             </strong> = same course, different form — only variants stay out of matcher
             training. <strong>Keep</strong> un-quarantines it. <strong>Dismiss</strong>{' '}
-            keeps it out of matching permanently.
+            keeps it out of matching.
           </p>
         </>
       )}
+
+      {/* Dismissal is the decision most likely to be made in bulk, and a bulk
+          mistake is likely by construction — so the rejections need to be
+          findable. The review queue deliberately filters them out, which
+          means without this the only way back was to already know the id. */}
+      <DismissedRoutesSection
+        open={showDismissed}
+        onToggle={() => setShowDismissed((v) => !v)}
+        busy={busy}
+        onRestore={(id) => restoreMutation.mutate(id)}
+      />
     </Card>
   );
 }

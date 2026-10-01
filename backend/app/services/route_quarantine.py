@@ -539,6 +539,49 @@ async def dismiss_bucket(
     return int(result.rowcount)
 
 
+async def list_dismissed_routes(
+    db: AsyncSession, user_id: uuid.UUID, limit: int = 200
+) -> list[dict]:
+    """Routes the user reviewed and rejected, newest first.
+
+    Exists because dismissal is the decision most likely to be made in bulk
+    — 49 of them in one action — and a bulk mistake is likely by
+    construction. Without a listing, a wrong dismissal was only discoverable
+    if you already knew the route id.
+
+    Selects on ``dismissed_at IS NOT NULL``. Returning the *pending* queue
+    here instead would look like the feature working while restoring the
+    wrong thing.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(
+                    Route.id,
+                    Route.name,
+                    Route.dismissed_at,
+                    Route.quarantined_at,
+                    Route.distance_meters,
+                )
+                .where(Route.user_id == user_id, Route.dismissed_at.isnot(None))
+                .order_by(Route.dismissed_at.desc())
+                .limit(limit)
+            )
+        )
+        .all()
+    )
+    return [
+        {
+            "route_id": r.id,
+            "name": r.name,
+            "dismissed_at": r.dismissed_at,
+            "quarantined_at": r.quarantined_at,
+            "distance_meters": r.distance_meters,
+        }
+        for r in rows
+    ]
+
+
 async def dismiss_route(db: AsyncSession, user_id: uuid.UUID, route_id: uuid.UUID) -> bool:
     """Record "reviewed and rejected", keeping the route quarantined."""
     result = await db.execute(
