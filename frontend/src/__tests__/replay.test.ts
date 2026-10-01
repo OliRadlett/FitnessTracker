@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReplay,
   cumulativeFromVelocity,
+  groundHeightAt,
   powerZoneBounds,
   projectPolyline,
   replayMetricColor,
@@ -11,6 +12,7 @@ import {
   replayDistanceAt,
   timeFmt,
   tourRate,
+  type ReplayPoint,
 } from '@/lib/replay';
 import { decodePolyline } from '@/lib/polyline';
 
@@ -367,5 +369,40 @@ describe('replayDistanceAt', () => {
       // Without activity distance we trust the stream (~500 m).
       expect(result.totalDistance).toBeLessThan(1000);
     });
+  });
+});
+
+describe('groundHeightAt', () => {
+  const pts = (zs: number[]): ReplayPoint[] =>
+    zs.map((z, i) => ({
+      elapsed: i,
+      distance: i * 10,
+      x: i * 10,
+      y: 0,
+      z,
+      speed: 5,
+      power: null,
+      hr: null,
+      cadence: null,
+      grade: null,
+    }));
+
+  it('returns the z of the nearest point by ground distance', () => {
+    const points = pts([10, 20, 30]); // x = 0, 10, 20
+    expect(groundHeightAt(points, 0, 0)).toBe(10);
+    expect(groundHeightAt(points, 21, 0)).toBe(30);
+    expect(groundHeightAt(points, 9, 0)).toBe(20);
+    expect(groundHeightAt(points, 4, 0)).toBe(10);
+  });
+
+  it('ignores altitude when measuring nearness (pure x/y)', () => {
+    // points at x=0 (z=100) and x=10 (z=0): proximity is by x/y only.
+    const points = pts([100, 0]);
+    expect(groundHeightAt(points, 15, 0)).toBe(0);
+    expect(groundHeightAt(points, 4, 0)).toBe(100);
+  });
+
+  it('returns 0 for an empty path', () => {
+    expect(groundHeightAt([], 5, 5)).toBe(0);
   });
 });

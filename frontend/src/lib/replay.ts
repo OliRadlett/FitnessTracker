@@ -32,6 +32,27 @@ export interface ReplayPoint {
   grade: number | null;
 }
 
+/**
+ * Height of the ride surface at world (x, y): the z of the nearest path
+ * point. Single choke point for vertical placement — road, bike, shadow,
+ * markers and ghosts all sample this instead of hand-adding offsets, so a
+ * drape/exaggeration change propagates everywhere at once. Pure.
+ */
+export function groundHeightAt(points: ReplayPoint[], x: number, y: number): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (const p of points) {
+    const dx = p.x - x;
+    const dy = p.y - y;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = p.z;
+    }
+  }
+  return best;
+}
+
 export interface StreamInput {
   values: number[];
   resolution?: number | null;
