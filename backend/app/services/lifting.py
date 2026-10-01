@@ -873,7 +873,9 @@ async def _notify_pr(
         body=f"{pr.weight_kg:.1f} kg × {pr.reps} — e1RM {est} kg",
         severity="success",
         link="/lifting",
-        dedup_key=f"pr:{pr.exercise_name}:{pr.achieved_date}",
+        # Shared with _revoke_pr_notification so a retraction finds exactly the
+        # row this wrote.
+        dedup_key=_pr_dedup_key(pr),
         metadata={"exercise": pr.exercise_name},
     )
 
@@ -952,6 +954,78 @@ async def _check_and_record_pr(
     return None
 
 
+def _pr_dedup_key(pr: PersonalRecord) -> str:
+    """The dedup key ``_notify_pr`` uses for this record.
+
+    Shared so the revoke path keys on exactly what the notify path wrote — if
+    these two ever disagree, the stale notification is never found.
+    """
+    return f"pr:{pr.exercise_name}:{pr.achieved_date}"
+
+
+async def _revoke_pr_notification(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    pr: PersonalRecord,
+) -> bool:
+    """Retract the announcement for a PR that is being deleted.
+
+    Two effects, both required:
+
+    1. **Delete the stale notification.** Otherwise the user keeps a "Bench
+       Press PR" entry for a record that no longer exists.
+    2. **Free the dedup key.** ``notify`` suppresses any row matching the key,
+       so leaving it in place means a genuinely re-earned PR on the same date
+       is *silently* never announced again. The failure is symmetric — stale
+       in one direction, permanently muted in the other.
+
+    Then emit a compensating ``pr_revoked`` notification. This is not
+    redundant: the original was delivered by web push, which has already
+    reached the device and **cannot be unsent**. Silence would leave the user
+    believing they still hold a PR, so the reversal has to be stated.
+
+    Shares the caller's transaction on purpose (§3.2): if the notification
+    delete committed but the PR delete rolled back, the user would lose the
+    announcement for a PR they still hold *and* its dedup key — permanently
+    silenced. Both or neither.
+    """
+    from app.models.notification import Notification
+    from app.services.notifications import notify
+
+    dedup_key = _pr_dedup_key(pr)
+    result = await db.execute(
+        select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.dedup_key == dedup_key,
+        )
+    )
+    stale = list(result.scalars().all())
+    for row in stale:
+        await db.delete(row)
+    if stale:
+        # Flush so the frees are visible to the dedup check in notify() below —
+        # otherwise the compensating row's own key check sees the deleted one.
+        await db.flush()
+
+    await notify(
+        db,
+        user_id,
+        type="pr_revoked",
+        title=f"{pr.exercise_name} PR removed",
+        body=(
+            f"The {pr.exercise_name} record of "
+            f"{pr.weight_kg:.1f} kg × {pr.reps} was removed — the set that set it "
+            "is gone."
+        ),
+        severity="info",
+        link="/lifting",
+        # No dedup_key: a revocation is a distinct event and should never be
+        # suppressed, even if the same PR is retracted twice.
+        metadata={"exercise": pr.exercise_name, "revoked_date": str(pr.achieved_date)},
+    )
+    return bool(stale)
+
+
 async def _recalculate_pr_after_set_change(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -998,8 +1072,16 @@ async def _recalculate_pr_after_set_change(
     best_set = best_set_result.scalar_one_or_none()
 
     if best_set is None:
-        # No sets remain for this exercise — delete the PR
+        # No sets remain for this exercise — delete the PR.
+        #
+        # The original "Bench Press PR" notification is an *out-of-band* effect
+        # of the achievement, so deleting the record alone leaves it standing.
+        # Worse, its dedup_key is what suppresses a future notification: re-log
+        # the same lift on the same date and `notify` dedups against the stale
+        # row, so the record can never be re-announced. One delete fixes both —
+        # see revoke_pr_notification.
         if existing_pr:
+            await _revoke_pr_notification(db, user_id, existing_pr)
             await db.delete(existing_pr)
             await db.flush()
         return None
