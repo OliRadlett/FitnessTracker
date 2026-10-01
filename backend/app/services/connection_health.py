@@ -36,6 +36,15 @@ logger = logging.getLogger(__name__)
 CONNECTION_STATUS_ACTIVE = "active"
 CONNECTION_STATUS_NEEDS_REAUTH = "needs_reauth"
 
+# Consecutive transient failures before a connection is declared permanently
+# broken and the user is asked to reconnect.
+#
+# High enough that a network outage or a provider blip does not demand a
+# re-auth nobody needs; low enough that a genuinely dead connection surfaces
+# instead of failing silently forever. Production reached 136 before this
+# existed.
+MAX_CONSECUTIVE_FAILURES = 10
+
 # Refresh proactively before the access token actually dies. Without a buffer
 # a token that expires between the refresh check and the last API call of a
 # long sync raises a mid-sync 401, which the scheduler marks needs_reauth —
@@ -247,6 +256,26 @@ async def _record_transient(
     connection.last_error = message[:500]
     connection.last_error_at = datetime.now(UTC)
     await db.commit()
+
+    # Sustained failure is not transient. Without this the counter was written
+    # and never read, and the Withings connection sat at 136 consecutive
+    # failures with status 'active' — a healthy-looking connection that had
+    # failed every refresh and never asked the user to reconnect. The trigger
+    # case is an API-level refusal (Withings error 2554 "Not implemented"),
+    # which is not a 401/403 and so fell into the "anything else" branch and
+    # stayed there forever.
+    #
+    # Sibling subsystems already escalate this way (push.py, and
+    # route_intelligence.py); this was the one that didn't.
+    if connection.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+        await _mark_reauth(
+            db,
+            connection,
+            f"{connection.provider} failed {connection.consecutive_failures} "
+            f"times in a row, so this is no longer transient: {message}",
+        )
+        return
+
     logger.warning(
         f"{connection.provider} transient refresh failure "
         f"({connection.consecutive_failures}x) for user {connection.user_id}: {message}"
