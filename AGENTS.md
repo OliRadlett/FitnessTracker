@@ -198,6 +198,7 @@ Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlo
 4. **Before pushing a release**: `git log --oneline origin/main..origin/prod` + `git diff --stat origin/main origin/prod`.
 5. **`prod` is a release branch, not a working branch.** Commit locally, PR into `main`, then merge `main` → `prod` to ship.
 6. After deploying: `git checkout main && git pull origin main`.
+7. **Local hooks**: `git config core.hooksPath .githooks` enables the committed `pre-commit` (ruff backend lint, fail-open without ruff) and `commit-msg` (conventional commits) hooks. CI remains the authority for typecheck/tests.
 
 ## Quick Reference
 

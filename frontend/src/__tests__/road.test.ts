@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
 import { buildRoadRibbon } from '@/lib/road';
 import type { ReplayPoint } from '@/lib/replay';
 
@@ -41,6 +42,28 @@ describe('buildRoadRibbon', () => {
   it('omits colours by default', () => {
     const r = buildRoadRibbon([pt(0, 0, 0, 0), pt(10, 0, 0, 10)]);
     expect(r!.colors).toBeNull();
+  });
+
+  it('yields finite upward normals once uploaded (guards the Lambert shading)', () => {
+    // The viewer calls computeVertexNormals on the ribbon; degenerate input
+    // (duplicate points, zero-length segments) must not produce NaN normals.
+    const pts = [
+      pt(0, 0, 0, 0),
+      pt(10, 5, 2, 12),
+      pt(10, 5, 2, 12), // duplicate point — zero-area segment
+      pt(25, -5, 6, 30),
+    ];
+    const r = buildRoadRibbon(pts, { width: 6 });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(r!.positions, 3));
+    geo.setIndex(new THREE.BufferAttribute(r!.indices, 1));
+    geo.computeVertexNormals();
+    const n = geo.getAttribute('normal') as THREE.BufferAttribute;
+    for (let i = 0; i < n.count; i++) {
+      expect(Number.isFinite(n.getX(i)) && Number.isFinite(n.getY(i)) && Number.isFinite(n.getZ(i))).toBe(true);
+    }
+    // Flat-ish ribbon: normals point mostly up.
+    expect(n.getZ(0)).toBeGreaterThan(0.5);
   });
 
   it('duplicates each per-point colour onto both ribbon edges', () => {

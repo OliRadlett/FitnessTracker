@@ -4,6 +4,7 @@ import {
   MAX_LEAN,
   bikeOrientationMatrix,
   bikePoseQuaternion,
+  groundModelToOrigin,
   leanFromCurvature,
 } from '@/lib/bike';
 
@@ -50,6 +51,39 @@ describe('bikePoseQuaternion', () => {
     const q = bikePoseQuaternion(new THREE.Vector3(1, 0, 1).normalize());
     const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
     expect(fwd.z).toBeGreaterThan(0.5);
+  });
+});
+
+describe('groundModelToOrigin', () => {
+  it('shifts the container so the lowest rig-frame point sits at z=0', () => {
+    // A 1m cube floating at model-up +2, mapped through the bike orientation
+    // (model +Y → rig +Z): rig-frame z spans [1.5, 2.5].
+    const inner = new THREE.Group();
+    inner.quaternion.setFromRotationMatrix(bikeOrientationMatrix());
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+    box.position.set(0, 2, 0);
+    inner.add(box);
+    expect(groundModelToOrigin(inner)).toBeCloseTo(1.5, 6);
+    expect(inner.position.z).toBeCloseTo(-1.5, 6);
+    // Recomputed bounds now bottom out at the origin.
+    const after = new THREE.Box3().setFromObject(inner);
+    expect(after.min.z).toBeCloseTo(0, 6);
+  });
+
+  it('leaves an already-grounded model alone', () => {
+    const inner = new THREE.Group();
+    inner.quaternion.setFromRotationMatrix(bikeOrientationMatrix());
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+    box.position.set(0, 0.5, 0); // spans model y [0, 1] → rig z [0, 1]
+    inner.add(box);
+    expect(groundModelToOrigin(inner)).toBeCloseTo(0, 6);
+    expect(inner.position.z).toBeCloseTo(0, 6);
+  });
+
+  it('returns 0 for an empty container', () => {
+    const inner = new THREE.Group();
+    expect(groundModelToOrigin(inner)).toBe(0);
+    expect(inner.position.z).toBe(0);
   });
 });
 

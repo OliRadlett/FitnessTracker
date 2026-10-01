@@ -17,6 +17,10 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [prod]
+  # Manual trigger (Pitfall #27): a manual dispatch is a safe no-op under the
+  # `if: workflow_run.conclusion == 'success'` guards below — the supported
+  # retry path is dispatching CI on prod, whose completion fires this workflow.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production

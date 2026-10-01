@@ -5,6 +5,9 @@ on:
     branches: [main, prod]
   pull_request:
     branches: [main, prod]
+  # Manual retry lever (Pitfall #27): a prod push that registers no CI run
+  # cannot be retried cleanly — dispatch CI on prod instead of a no-op commit.
+  workflow_dispatch:
 
 jobs:
   lint:
