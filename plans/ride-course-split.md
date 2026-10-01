@@ -353,5 +353,24 @@ activities that no longer exist. Re-deriving the negative population would
 mean re-introducing them, so tuning against it now would be tuning against
 a problem that may not exist.
 
-**Auto-merge is off.** No threshold is validated; everything stays
-review-only, per the §2 decision.
+**Auto-merge is off, and now enforced in code.** No threshold is validated;
+everything stays review-only, per the §2 decision.
+
+This was true only in prose until 2026-10-01.
+`recompute_route_similarity` merged every `tier == "auto"` pair
+unconditionally, and on **28 Sep it silently merged a route at score 0.826**
+— no review, no UI, no trace in the review queue. A decision that lives only
+in a document reverts the first time someone reads the code instead of the
+plan.
+
+`route_auto_merge_enabled` (default **false**) now gates that loop. The 0.82
+tiering threshold is kept: it defines what *would* merge if the flag is
+turned on deliberately. Detection is untouched — pairs are still written to
+`route_similarity` and still surface on the review page. Only the
+unreviewed merge is gated.
+
+**The similarity graph is a weekly snapshot and that is the real reason
+duplicates went unseen.** It last ran 28 Sep; five genuine duplicates were
+created on 30 Sep and had never been compared, four of them scoring 1.0.
+Re-run it after adding routes rather than waiting for Sunday — that is how
+the review queue stays current.
