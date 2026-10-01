@@ -141,41 +141,19 @@ jobs:
             git fetch origin prod
             git reset --hard origin/prod
 
-            echo "▸ Generating production Caddyfile (without tls internal)…"
+            echo "▸ Deriving production Caddyfile from infra/Caddyfile…"
+            # infra/Caddyfile is the single source of truth (routing + security
+            # headers). Derive the deployed file from it instead of duplicating
+            # the body here: a hand-maintained inline copy previously drifted and
+            # shipped without the security headers. Only two values are
+            # substituted -- the site address, and the ACME account email which
+            # comes from a repo secret rather than the droplet .env.
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
-            # Unset DRONE_SSH_PREV_COMMAND_EXIT_CODE to prevent it from leaking into heredoc
-            unset DRONE_SSH_PREV_COMMAND_EXIT_CODE
-            cat > infra/Caddyfile <<CADDYEOF
-            {
-                email ${{ secrets.ACME_EMAIL || 'admin@example.com' }}
-            }
-
-            :80 {
-                redir https://{host}{uri} permanent
-            }
-
-            ${DEPLOY_DOMAIN} {
-                handle /fittrack* {
-                    reverse_proxy frontend:3000
-                }
-
-                # NextAuth error redirects omit basePath — catch and redirect (BUG-046)
-                @nextauth path /api/auth /api/auth/*
-                redir @nextauth /fittrack{uri} permanent
-
-                handle /api/v1* {
-                    reverse_proxy backend:8000
-                }
-                handle /health {
-                    reverse_proxy backend:8000
-                }
-                handle / {
-                    redir /fittrack permanent
-                }
-            }
-            CADDYEOF
-            # Strip any stray lines that leaked into the Caddyfile (e.g. env vars from SSH action)
-            grep -vE '^[A-Z_]+=' infra/Caddyfile > infra/Caddyfile.tmp && mv infra/Caddyfile.tmp infra/Caddyfile
+            ACME_EMAIL="${{ secrets.ACME_EMAIL || 'admin@example.com' }}"
+            sed -e "s|{\$DOMAIN:localhost}|${DEPLOY_DOMAIN}|" \
+                -e "s|^\([[:space:]]*\)email .*|\1email ${ACME_EMAIL}|" \
+                infra/Caddyfile > infra/Caddyfile.tmp
+            mv infra/Caddyfile.tmp infra/Caddyfile
             echo "▸ Caddyfile validated:"
             cat infra/Caddyfile
 
