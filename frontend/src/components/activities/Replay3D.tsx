@@ -26,6 +26,7 @@ import { applyWeatherLight, daylightPhase, solarPosition, sunDirection, sunLight
 import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
 import type { ImageryDrape } from '@/lib/imageryTiles';
+import { windsockPose } from '@/lib/three/weather';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
 import { getActiveLocale } from '@/lib/utils';
@@ -1315,6 +1316,42 @@ export function Replay3D({
       endMk.position.set(last.x, last.y, groundHeightAt(points, last.x, last.y) + 1.2);
       markerGroup.add(endMk);
       markerDisposables.push(endGeo, endMat);
+    }
+
+    // ── Wind sock: pole + sock at the route start, yawed downwind ──────────
+    // Hidden without wind data or in calm air (windsockPose null). Screen-
+    // small but physical: orientation + lift come from the tested helper.
+    {
+      const pose = windsockPose(weather?.windSpeedKmh, weather?.windDirection);
+      if (pose && points.length >= 2) {
+        const p0 = points[0];
+        const p1 = points[1];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy) || 1;
+        // Well to the side of the start (chase sits metres behind the rider
+        // at t=0 — anything closer fills the frame).
+        const sx = p0.x + (-dy / len) * 15;
+        const sy = p0.y + (dx / len) * 15;
+        const base = groundHeightAt(points, sx, sy);
+        const yaw = new THREE.Group();
+        yaw.position.set(sx, sy, base);
+        yaw.rotation.z = pose.rotationZ;
+        const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 5, 8);
+        const poleMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.z = 2.5;
+        yaw.add(pole);
+        const sockGeo = new THREE.ConeGeometry(0.45, 1.6, 8);
+        sockGeo.rotateZ(-Math.PI / 2); // cone tip (+Y) → +X rest direction
+        const sockMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+        const sock = new THREE.Mesh(sockGeo, sockMat);
+        sock.position.set(0.8, 0, 5);
+        sock.rotation.y = -pose.lift * 0.5; // tip rises with wind
+        yaw.add(sock);
+        markerGroup.add(yaw);
+        markerDisposables.push(poleGeo, poleMat, sockGeo, sockMat);
+      }
     }
 
     // ── Km markers: dot + distance label at regular intervals ──────────────

@@ -18,6 +18,30 @@ export function parseCardinal(dir: string | null): number {
 
 export type WeatherFxType = 'snow' | 'rain' | 'haze';
 
+export interface WindsockPose {
+  /** yaw about the scene up axis (+X rest → downwind), radians */
+  rotationZ: number;
+  /** 0..1 sock lift with wind speed */
+  lift: number;
+}
+
+/**
+ * Windsock yaw/lift from ride wind (null = hide: calm or unknown). The sock
+ * points downwind ("to" direction = cardinal + 180°), using the scene's
+ * rotation.z = atan2(north, east) yaw convention. Pure.
+ */
+export function windsockPose(
+  windSpeedKmh: number | null | undefined,
+  windDirection: string | null | undefined,
+): WindsockPose | null {
+  if (!windDirection || windSpeedKmh == null || windSpeedKmh <= 0.5) return null;
+  const toRad = (((parseCardinal(windDirection) + 180) % 360) * Math.PI) / 180;
+  return {
+    rotationZ: Math.atan2(Math.cos(toRad), Math.sin(toRad)),
+    lift: Math.min(1, windSpeedKmh / 30),
+  };
+}
+
 export interface ClassifiedWeather {
   /** lowercased conditions string (empty when unknown) */
   cond: string;
