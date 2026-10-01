@@ -42,11 +42,12 @@ const FIXTURES = {
   night: VISUAL_NIGHT,
 } as const;
 
-async function gotoHarness(page: Page, fixture: keyof typeof FIXTURES, cam: 'chase' | 'cockpit' = 'chase') {
-  // Satellite off: Esri tiles are slow and non-deterministic; terrain stays on.
-  await page.addInitScript(() => {
-    window.localStorage?.setItem('relive:imagery', 'off');
-  });
+async function gotoHarness(page: Page, fixture: keyof typeof FIXTURES, cam: 'chase' | 'cockpit' = 'chase', imagery: 'on' | 'off' = 'off') {
+  // Satellite off by default: Esri tiles are slow and non-deterministic;
+  // terrain stays on. The satellite baseline opts in explicitly.
+  await page.addInitScript((value) => {
+    window.localStorage?.setItem('relive:imagery', value);
+  }, imagery);
   // Forward app diagnostics so terrain failures are visible in the log.
   page.on('console', (m) => {
     if (m.text().includes('[Replay3D]')) console.log('BROWSER ' + m.text().slice(0, 200));
@@ -113,6 +114,16 @@ test.describe('replay visual baselines', () => {
     await expect(page).toHaveScreenshot('replay-hilly-full.png', {
       maxDiffPixelRatio: 0.05,
       animations: 'disabled',
+    });
+  });
+
+  test('hilly ride with satellite drape, full composer', async ({ page }) => {
+    await gotoHarness(page, 'hilly', 'chase', 'on');
+    await expect(page).toHaveScreenshot('replay-hilly-satellite-full.png', {
+      maxDiffPixelRatio: 0.05,
+      animations: 'disabled',
+      // Esri drape keeps SwiftShader busy; the capture itself needs longer.
+      timeout: 30_000,
     });
   });
 
