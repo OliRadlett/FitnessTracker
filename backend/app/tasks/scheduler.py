@@ -139,6 +139,14 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=30, day_of_week=0),
         "options": {"expires": 3600},
     },
+    # Undo retention (plan §8). Daily at 03:40 UTC: past `expires_at` the rows
+    # are audit-only, and a daily sweep keeps the table bounded without any read
+    # path having to clean up after itself.
+    "prune-expired-undo-logs": {
+        "task": "app.tasks.scheduler.prune_expired_undo_logs",
+        "schedule": crontab(hour=3, minute=40),
+        "options": {"expires": 1800},
+    },
     # Generate daily health alerts at 6 AM UTC
     "generate-health-alerts": {
         "task": "app.tasks.scheduler.generate_health_alerts",
@@ -582,6 +590,33 @@ def process_strava_webhook_events() -> dict:
             return await process_pending_strava_events(db)
 
     return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.prune_expired_undo_logs")
+def prune_expired_undo_logs() -> dict:
+    """Drop undo claims past their retention window (plan §8, §2.4).
+
+    Past ``expires_at`` an operation can no longer be reversed, so the row is
+    audit data only and keeping it serves nothing but growth. Kept as a task
+    rather than a request-path delete so a read never has to clean up after
+    itself.
+
+    Claims that have been *undone* are deliberately kept until they also expire:
+    "this happened and was reversed" is more informative than deleting it, and
+    it is the only trace that the operation was compensated at all.
+    """
+    import asyncio
+
+    from app.database import task_session
+    from app.services.undo import prune_expired
+
+    async def _run():
+        async with task_session() as db:
+            removed = await prune_expired(db)
+            await db.commit()
+            return removed
+
+    return asyncio.run(_run_task_guarded("prune_expired_undo_logs", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.reconcile_strava_activities")

@@ -95,7 +95,7 @@ See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/A
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
@@ -185,6 +185,9 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 36. **A pure clustering key and a persisted one have different stability requirements**: `segments.cluster_id` comes from DBSCAN over gradient/length/gain *shape* with **no coordinates**, so it answers "which climbs train alike" — the right primitive for borrowing efforts in `_predict_segment_effort`, and the wrong one for identity. `segments.geo_cluster_id` is the geographic answer, and its key (smallest member id) shifts whenever membership changes. That is fine *only* because every reader groups by the current value; persisting it therefore requires carrying it across `sync_route_segments`'s delete-and-recreate via an **explicit allowlist** (`_CARRIED_FIELDS`) — an automatic "every non-geometry column" rule would eventually copy a recomputed leaderboard total and serve stale data.
 37. **`SegmentEffort.is_pr` was assigned nowhere**: the column existed in the model, schema and read path but was never written, so the PR badge could never render. The general shape — a denormalised column that is read and displayed but has no writer — is invisible to type checking and to tests that build rows directly rather than through the code path that should set it.
 38. **The pre-commit hook had no environment, so it was never running the tests**: it exported nothing, `app.config` could not construct settings, and *every* test failed at collection — 49 failures and 319 errors, none related to the staged change. CI passed only because CI supplies those from secrets a local hook cannot read. A hook that reports mass failures is indistinguishable from a real regression unless you check whether the failures are plausible; the tell was that they appeared on a commit touching one file. The hook now exports local test defaults, matching `docs/RUNNING.md`.
+39. **`asyncio.gather` on one `AsyncSession` is not a concurrency test**: SQLAlchemy serialises both coroutines onto a single connection, so the second one always observes the first one's writes and the test passes against the very bug it exists to catch. `UndoLog`'s claim-before-restore ordering (§8) was guarded by a `gather` "race" that **passed when the claim was moved after the restore** — a false green. The fix is a test that is concurrent *in shape*: a restorer that re-enters `undo` for the same claim, which can only be refused if the claim is already visible. Removing the early claim entirely makes that test fail, which is how it was verified.
+40. **A JSONB payload is JSON-native on the way back out, not just in**: a `uuid.UUID` written to `UndoLog.payload` returns as a `str`, so a restorer that skips `uuid.UUID(value)` works in-process and fails the first time it reads a real row. `record_undo` now proves the round-trip with `json.dumps` and names the offending payload, rather than letting it surface as a driver-level `TypeError` at flush time — after the operation that wrote it has already run.
+41. **Order by `(created_at, id)`, and do not claim insertion order**: two rows written in one transaction share `created_at` (pitfall 28), so `created_at DESC` alone is a coin flip. The id tiebreak makes the order *total and stable across calls* — which is what a list driving an undo button needs. It does **not** recover insertion order and cannot: random UUIDs carry no sequence. Say so in the code rather than letting a reader assume the tiebreak implies chronology.
 
 ## Development Lessons
 
@@ -207,10 +210,13 @@ wedge a workout, undo existed but never retracted its announcement. Read the int
 plan first: it decides CSV import and the `exercise→FK` migration (both rejected) and
 records that §1 must not ship before §5.
 
-Wave 3 (`UndoLog`, §8) and Wave 4 (§1 unified daily recommendation) remain. Wave 4 is last
-because it consolidates five recommendation engines behind the provenance work in §1.
-**New migrations continue from 096** — `095` is `segments.geo_cluster_id`, and the branch
-was renumbered mid-flight once already (pitfall 34).
+Wave 3 (`UndoLog`, §8) has landed the mechanism: `models/undo.py` + `services/undo.py`
+(typed per-kind restorers, claim-before-restore, 30-day `expires_at`, daily prune task).
+**It has no HTTP surface yet, and no registered production kind** — see the PR for the
+reason `RouteMergeLog` was *not* migrated onto it. Wave 4 (§1 unified daily recommendation)
+remains; it is last because it consolidates five recommendation engines behind the
+provenance work in §1. **New migrations continue from 097** — `096` is `undo_logs`, and the
+branch was renumbered mid-flight once already (pitfall 34).
 
 Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md).
 
