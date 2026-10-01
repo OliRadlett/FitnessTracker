@@ -42,8 +42,7 @@ import {
   HEARTRATE_STREAM_TYPES,
   POWER_STREAM_TYPES,
   VELOCITY_STREAM_TYPES,
-  hasStream,
-  presentStreamTypes,
+  replayMissingReason as whyNoReplay,
   streamInput,
   streamLabel,
 } from '@/lib/streams';
@@ -210,17 +209,18 @@ function ActivityExpanded({
 
   // Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
   // Loading/error/empty-streams cases are covered by the stream section below.
-  const replayMissingReason: string | null = useMemo(() => {
-    if (!isCycling || detailLoading || detailError) return null;
-    const streams = activityDetail?.streams;
-    if (!streams?.length) return null;
-    if (!activity.encoded_polyline) return 'No route attached — 3D replay needs GPS.';
-    if (!hasStream(streams, ...VELOCITY_STREAM_TYPES)) {
-      const present = presentStreamTypes(streams);
-      return `3D replay needs a speed stream — this ride has ${present.length ? present.map(streamLabel).join(', ') : 'no readable streams'} but no velocity.`;
-    }
-    return null;
-  }, [activity, activityDetail, detailError, detailLoading, isCycling]);
+  // Copy lives in lib/streams so the compare modal reuses it verbatim.
+  const replayMissingReason: string | null = useMemo(
+    () =>
+      whyNoReplay({
+        isCycling,
+        loading: !!detailLoading,
+        error: !!detailError,
+        streams: activityDetail?.streams,
+        polyline: activity.encoded_polyline,
+      }),
+    [activity, activityDetail, detailError, detailLoading, isCycling],
+  );
 
   // Shared 3D playhead — reset the selected stream tab when the activity
   // changes (the previous ride's type may not exist here, P2-3).
