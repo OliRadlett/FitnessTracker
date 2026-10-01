@@ -203,6 +203,59 @@ def compute_is_loop(
     return haversine_distance(start_lat, start_lng, end_lat, end_lng) < LOOP_THRESHOLD_M
 
 
+async def find_identical_geometry_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    distance_meters: float,
+    encoded_polyline: str,
+) -> Route | None:
+    """Find a route the user already has that is *byte-for-byte* this ride.
+
+    Deliberately separate from :func:`find_duplicate_route`, which answers a
+    different question. That function asks "how similar are these?", scores
+    them, and applies a threshold. This one asks "are these the same
+    recording?", and answers by equality.
+
+    The distinction is what makes it safe to consult before the scored path.
+    A score can be recalibrated, tuned, or moved by a threshold change, and
+    below the threshold a genuine duplicate is simply not found. Equality
+    cannot: two polylines either are the same string or they are not. A
+    sub-section of a longer route - the shape that would poison route
+    training - is not byte-identical to it and so cannot match here.
+
+    ``distance_meters`` is compared too, as a second independent equality
+    check. A ride of a different length is a different ride even if some
+    provider hands back a coincidentally equal geometry string.
+
+    Quarantined routes ARE visible here, unlike in ``find_duplicate_route``.
+    That is the whole point. Quarantine means "the user has set this aside",
+    not "this no longer exists" — and ``create_or_merge_route`` cannot tell
+    the difference, so excluding quarantined rows made a quarantined route
+    invisible to both of its lookup paths and the next sync recreated it.
+    Twelve Komoot tours were stored twice that way, nine of them by a single
+    18:00 sync, undoing merges the user had already made.
+
+    Attach the source to the quarantined row rather than creating a new one.
+    Quarantine itself is untouched: only ``restore_route`` and ``keep_route``
+    clear it, both explicit user actions.
+    """
+    if not encoded_polyline:
+        return None
+
+    result = await db.execute(
+        select(Route)
+        .options(selectinload(Route.sources))
+        .where(
+            Route.user_id == user_id,
+            Route.encoded_polyline == encoded_polyline,
+            Route.distance_meters == distance_meters,
+        )
+        .order_by(Route.quarantined_at.isnot(None), Route.created_at)
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
 async def find_duplicate_route(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -473,18 +526,24 @@ async def create_or_merge_route(
     start_lat, start_lng = points[0]
     end_lat, end_lng = points[-1]
 
-    # Check for duplicates
-    duplicate = await find_duplicate_route(
+    # Identity before similarity. Byte-identical geometry is proof of the
+    # same recording and is checked first, ahead of the scored path and
+    # ahead of quarantine filtering — see find_identical_geometry_route.
+    duplicate = await find_identical_geometry_route(
+        db, user_id, distance_meters, encoded_polyline
+    )
+    if duplicate is None:
+        duplicate = await find_duplicate_route(
         db,
         user_id,
         distance_meters,
         encoded_polyline,
         name,
-        start_lat,
-        start_lng,
-        end_lat,
-        end_lng,
-    )
+            start_lat,
+            start_lng,
+            end_lat,
+            end_lng,
+        )
 
     if duplicate:
         # Merge: add source to existing route
