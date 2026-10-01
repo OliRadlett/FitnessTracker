@@ -2296,7 +2296,7 @@ export interface paths {
          * Get Vo2Max Estimate
          * @description Estimate VO2max from power and HR data.
          *
-         *     Uses ACSM power-based formula (best 5-min power) and Uth HR-based formula.
+         *     Uses FRIEND power-based formula (best 5-min power) and Uth HR-based formula.
          *     Returns the highest estimate with classification.
          */
         get: operations["get_vo2max_estimate_api_v1_cycling_vo2max_get"];

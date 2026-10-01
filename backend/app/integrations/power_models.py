@@ -461,11 +461,13 @@ def fit_personalized_vo2max(
     ss_tot = sum((yi - mean_y) ** 2 for yi in y)
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
-    # Estimate VO2max using the ACSM relationship:
-    # VO2 = 10.8 * W/kg + 7
+    # Estimate VO2max using the FRIEND equation:
+    # VO2 = 10.649 * W/kg + 3.5
+    # (1.74 × 6.12 = 10.649; Nes et al. 2018, PMID 29692203 — >4× lower error
+    # than the traditional ACSM 10.8×W/kg+7.)
     # Read power off the regression line at the user's threshold HR
     # (their LTHR when known, else the 170 bpm population fallback), then
-    # apply ACSM.
+    # apply FRIEND.
     if hr_anchor is not None and 100 <= hr_anchor <= 210:
         hr_threshold = float(hr_anchor)
     else:
@@ -473,10 +475,10 @@ def fit_personalized_vo2max(
     if slope > 0:
         power_at_threshold = (hr_threshold - intercept) / slope
         if weight_kg and weight_kg > 0:
-            vo2max = 10.8 * power_at_threshold + 7.0
+            vo2max = 10.649 * power_at_threshold + 3.5
         else:
             # Without weight, assume 75kg
-            vo2max = 10.8 * power_at_threshold / 75.0 + 7.0
+            vo2max = 10.649 * power_at_threshold / 75.0 + 3.5
     else:
         vo2max = None
 

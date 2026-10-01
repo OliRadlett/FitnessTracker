@@ -10,7 +10,9 @@
  * metric / en-GB / 24h.
  */
 
+import type { ActivityCalendarEntry } from '@/lib/api';
 import type { DateLocale, TimeFormat, UnitSystem } from '@/lib/api/types/preferences';
+import { isStrengthType } from '@/lib/sportUtils';
 
 let activeUnitSystem: UnitSystem = 'metric';
 let activeLocale: DateLocale = 'en-GB';
@@ -57,6 +59,29 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (hrs > 0) return `${hrs}h ${mins}m`;
   if (mins > 0) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   return `${secs}s`;
+}
+
+/**
+ * Activity summary line for the calendar: strength sessions show their focus
+ * (or name), everything else joins distance \u00B7 duration \u00B7 TSS.
+ * Previously duplicated verbatim in the calendar page and agenda view.
+ */
+export function formatStat(activity: ActivityCalendarEntry): string {
+  if (isStrengthType(activity.sport_type)) {
+    if (activity.focus) return activity.focus;
+    return activity.name;
+  }
+  const parts: string[] = [];
+  if (activity.distance_meters != null) parts.push(formatDistance(activity.distance_meters));
+  if (activity.duration_seconds != null) parts.push(formatDuration(activity.duration_seconds));
+  if (activity.tss != null) parts.push(`${Math.round(activity.tss)} TSS`);
+  return parts.join(' \u00B7 ') || activity.name;
+}
+
+/** metres → "1235 m" (rounded). 0 m is a real value; null/undefined → "—". */
+export function formatElevation(meters?: number | null): string {
+  if (meters == null) return '—';
+  return `${Math.round(meters)} m`;
 }
 
 /**

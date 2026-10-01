@@ -182,7 +182,7 @@ Once the backend is running, visit:
 - **FTP management** — Manual entry, auto-estimation from power curve, FTP history tracking
 - **Training load** — CTL/ATL/TSB computation with EWMA model
 - **Power analysis** — Power curve, power zones, normalized power, variability index
-- **VO2max estimation** — ACSM power formula + Uth HR formula
+- **VO2max estimation** — FRIEND power formula + Uth HR formula
 - **Decoupling analysis** — Cardiac drift detection for rides >60min
 - **Power vs HR** — Power-to-heart-rate correlation analysis
 

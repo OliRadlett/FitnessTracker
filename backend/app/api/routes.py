@@ -40,6 +40,8 @@ from app.models.route_organize import (
 from app.models.user import User
 from app.schemas.auth import UserRead
 from app.schemas.route import (
+    BulkDismissRequest,
+    BulkDismissResult,
     DuplicatePair,
     EffortEstimateRequest,
     EffortEstimateResponse,
@@ -856,6 +858,31 @@ async def list_orphan_candidates(
     return OrphanReviewResponse(
         rows=[OrphanReviewRow(**r) for r in rows], counts=counts
     )
+
+
+@router.post("/orphans/bulk-dismiss", response_model=BulkDismissResult)
+async def bulk_dismiss_orphans(
+    req: BulkDismissRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss every quarantined route currently in one review bucket.
+
+    Scoped to a bucket rather than free-form ids so the set being acted on
+    is the set the user was shown. ``expected_count`` is verified first, so
+    a stale page is refused rather than dismissing whatever the queue holds
+    now — the action is durable and there is no bulk undo.
+    """
+    try:
+        dismissed = await route_quarantine.dismiss_bucket(
+            db, current_user.id, req.bucket, req.expected_count
+        )
+    except route_quarantine.StaleReviewQueue as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return BulkDismissResult(bucket=req.bucket, dismissed=dismissed)
 
 
 @router.post("/orphans/{route_id}/dismiss", response_model=dict)

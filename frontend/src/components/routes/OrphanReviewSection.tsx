@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  bulkDismissOrphans,
   dismissOrphan,
   getOrphanCandidates,
   keepOrphan,
@@ -335,8 +336,37 @@ export function OrphanReviewSection() {
     onError: (e) => toast.error(`Dismiss failed: ${(e as Error)?.message || 'try again.'}`),
   });
 
+  // Dismissal is durable and there is no bulk undo, so this asks twice: once
+  // to open the confirm, and the count is sent as `expectedCount` so the
+  // server refuses if the queue moved on since this page rendered.
+  const [pendingBulk, setPendingBulk] = useState<OrphanBucket | null>(null);
+
+  const bulkDismissMutation = useMutation({
+    mutationFn: (bucket: OrphanBucket) =>
+      bulkDismissOrphans(bucket, countsSnapshot[bucket] ?? 0, token),
+    onSuccess: (result) => {
+      setPendingBulk(null);
+      toast.success(
+        `Dismissed ${result.dismissed} ${BUCKET_LABEL[result.bucket as OrphanBucket]?.toLowerCase() ?? result.bucket}.`,
+      );
+      invalidate();
+    },
+    onError: (e) => {
+      setPendingBulk(null);
+      toast.error(`Bulk dismiss failed: ${(e as Error)?.message || 'try again.'}`);
+      refetch();
+    },
+  });
+
+  // Snapshot the counts as rendered, so the count we confirm against is the
+  // one the user actually saw rather than a live value that may have moved.
+  const countsSnapshot = data?.counts ?? {};
+
   const busy =
-    mergeMutation.isPending || keepMutation.isPending || dismissMutation.isPending;
+    mergeMutation.isPending ||
+    keepMutation.isPending ||
+    dismissMutation.isPending ||
+    bulkDismissMutation.isPending;
 
   if (isError) {
     return (
@@ -363,12 +393,44 @@ export function OrphanReviewSection() {
           </p>
         </div>
         {!isLoading && rows.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {BUCKET_ORDER.filter((b) => counts[b]).map((b) => (
-              <Badge key={b} className={BUCKET_STYLE[b]}>
-                {counts[b]} {BUCKET_LABEL[b].toLowerCase()}
-              </Badge>
-            ))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {BUCKET_ORDER.filter((b) => counts[b]).map((b) =>
+              pendingBulk === b ? (
+                <span
+                  key={b}
+                  className="flex items-center gap-2 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+                >
+                  Dismiss all {counts[b]} {BUCKET_LABEL[b].toLowerCase()}?
+                  <button
+                    onClick={() => bulkDismissMutation.mutate(b)}
+                    disabled={busy}
+                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  >
+                    Yes, dismiss {counts[b]}
+                  </button>
+                  <button
+                    onClick={() => setPendingBulk(null)}
+                    disabled={busy}
+                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  key={b}
+                  onClick={() => setPendingBulk(b)}
+                  disabled={busy}
+                  className="rounded disabled:opacity-50"
+                  title={`Dismiss all ${counts[b]} ${BUCKET_LABEL[b].toLowerCase()}`}
+                >
+                  <Badge className={BUCKET_STYLE[b]}>
+                    {counts[b]} {BUCKET_LABEL[b].toLowerCase()}
+                    <span className="ml-1 opacity-70">×</span>
+                  </Badge>
+                </button>
+              ),
+            )}
           </div>
         )}
       </div>

@@ -246,6 +246,24 @@ class OrphanReviewRow(BaseModel):
     bucket: str = "unscorable"  # near_certain | likely | ambiguous | distinct | unscorable
 
 
+class BulkDismissRequest(BaseModel):
+    """Dismiss every pending review row in one bucket.
+
+    ``expected_count`` is the number the caller displayed. It is checked
+    against the queue as it stands when the write happens, and a mismatch
+    is refused — bulk dismissal is durable and the UI has no undo, so acting
+    on a stale page would dismiss a set the user never saw.
+    """
+
+    bucket: str
+    expected_count: int | None = None
+
+
+class BulkDismissResult(BaseModel):
+    bucket: str
+    dismissed: int
+
+
 class OrphanReviewResponse(BaseModel):
     rows: list[OrphanReviewRow]
     counts: dict[str, int]

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { RouteData } from '@/lib/api/types';
 import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
 
@@ -16,6 +17,13 @@ export function MobileRouteDetailSheet({ route, onClose }: MobileRouteDetailShee
   const currentY = useRef(0);
   const lastMove = useRef<{ y: number; t: number } | null>(null);
   const velocity = useRef(0);
+  // Portal gate: the sheet renders into <body> so it escapes <main>, which a
+  // Modal makes inert. Guarded so document.body is never touched during SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   useEffect(() => {
     if (route) {
@@ -75,9 +83,9 @@ export function MobileRouteDetailSheet({ route, onClose }: MobileRouteDetailShee
     lastMove.current = null;
   };
 
-  if (!route) return null;
+  if (!route || !mounted || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-40 lg:hidden">
       <div
         className="absolute inset-0 bg-black/50"
@@ -110,6 +118,7 @@ export function MobileRouteDetailSheet({ route, onClose }: MobileRouteDetailShee
           <RouteDetailPanel route={route} onClose={onClose} scrollable={false} />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

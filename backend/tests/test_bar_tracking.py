@@ -3,9 +3,8 @@
 Pure NumPy/standard library — no mediapipe needed.
 """
 
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
 
 from app.integrations import bar_tracking as bt
 

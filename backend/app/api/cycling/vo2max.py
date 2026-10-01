@@ -40,7 +40,7 @@ async def get_vo2max_estimate(
 ):
     """Estimate VO2max from power and HR data.
 
-    Uses ACSM power-based formula (best 5-min power) and Uth HR-based formula.
+    Uses FRIEND power-based formula (best 5-min power) and Uth HR-based formula.
     Returns the highest estimate with classification.
     """
     result = await estimate_vo2max(db, current_user.id, days)
@@ -146,7 +146,9 @@ async def get_decoupling_for_activity(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid activity ID")
 
-    result = await compute_decoupling_for_activity(db, act_uuid, user_id=current_user.id)
+    result = await compute_decoupling_for_activity(
+        db, act_uuid, user_id=current_user.id
+    )
     if not result:
         raise HTTPException(
             status_code=404,

@@ -172,21 +172,111 @@ class TestDismissIsReversible:
 
 
 class TestReviewSortKey:
+    """Bucket order leads; containment no longer decides on its own.
+
+    Sorting by containment put ``Evening Ride`` — containment 1.000,
+    Jaccard 0.300, a *lap* — above genuine duplicates at 0.988. The row
+    with the strongest containment signal was the one most likely to be a
+    false positive, and it was first in the list.
+    """
+
+    def _key(self, **kw):
+        base = {"has_geometry": True, "has_candidate": True}
+        base.update(kw)
+        return review_sort_key(**base)
+
     def test_best_bucket_sorts_first(self):
-        strong = review_sort_key(containment=0.99, jaccard=0.71, has_geometry=True)
-        weak = review_sort_key(containment=0.20, jaccard=0.15, has_geometry=True)
+        strong = self._key(containment=0.99, jaccard=0.71)
+        weak = self._key(containment=0.20, jaccard=0.15)
         assert strong < weak
+
+    def test_a_lap_does_not_outrank_a_duplicate_just_on_containment(self):
+        """The case the change exists for.
+
+        Containment 1.000 / Jaccard 0.300 is a lap of a longer course.
+        Containment 0.988 / Jaccard 0.649 is a genuine duplicate. Ranking
+        on raw containment put the lap first.
+        """
+        lap = self._key(containment=1.0, jaccard=0.3)
+        duplicate = self._key(containment=0.9876, jaccard=0.649)
+        assert duplicate < lap, (
+            "a genuine duplicate must sort above a lap regardless of "
+            "containment, or the most confident-looking row is the likeliest "
+            "false positive"
+        )
+
+    def test_buckets_are_ordered_most_to_least_confident(self):
+        order = [
+            self._key(containment=0.99, jaccard=0.71),
+            self._key(containment=0.75, jaccard=0.30),
+            self._key(containment=0.65, jaccard=0.40),
+            self._key(containment=0.20, jaccard=0.15),
+        ]
+        assert order == sorted(order), (
+            "near_certain < likely < ambiguous < distinct"
+        )
 
     def test_unscorable_sorts_last_regardless_of_score(self):
         """Zero scores are not 'a very distant route' — they are no data."""
-        scored = review_sort_key(containment=0.30, jaccard=0.20, has_geometry=True)
-        unscored = review_sort_key(containment=0.0, jaccard=0.0, has_geometry=False)
+        scored = self._key(containment=0.30, jaccard=0.20)
+        unscored = review_sort_key(
+            containment=0.0,
+            jaccard=0.0,
+            has_geometry=False,
+            has_candidate=False,
+        )
         assert scored < unscored
 
+    def test_no_candidate_sorts_with_the_unscoreable(self):
+        """Nothing to compare against is the same state as nothing to read."""
+        with_candidate = self._key(containment=0.0, jaccard=0.0)
+        without = review_sort_key(
+            containment=0.0,
+            jaccard=0.0,
+            has_geometry=True,
+            has_candidate=False,
+        )
+        assert without > with_candidate
+
     def test_sort_is_stable_on_ties_so_ordering_is_deterministic(self):
-        a = review_sort_key(containment=0.75, jaccard=0.40, has_geometry=True)
-        b = review_sort_key(containment=0.75, jaccard=0.40, has_geometry=True)
+        a = self._key(containment=0.75, jaccard=0.40)
+        b = self._key(containment=0.75, jaccard=0.40)
         assert a == b
+
+    def test_sort_agrees_with_the_badge_the_row_displays(self):
+        """Sorting and badging by different rules is worse than either alone.
+
+        The bucket a row is badged with must be the bucket that positioned
+        it, or the order the list appears in reads as arbitrary.
+        """
+        samples = {
+            "near_certain": (0.99, 0.71, True, True),
+            "likely": (0.75, 0.30, True, True),
+            "ambiguous": (0.65, 0.40, True, True),
+            "distinct": (0.20, 0.15, True, True),
+            "unscorable": (0.0, 0.0, False, False),
+        }
+        for expected, (cont, jac, geom, cand) in samples.items():
+            badged = review_row_bucket(
+                has_geometry=geom,
+                has_candidate=cand,
+                containment=cont,
+                jaccard=jac,
+            )
+            assert badged == expected, f"{cont}/{jac} should be {expected}"
+            assert REVIEW_BUCKETS.index(badged) == list(samples).index(expected)
+
+        # And the keys must come out in declared bucket order.
+        keys = [
+            review_sort_key(
+                has_geometry=geom,
+                has_candidate=cand,
+                containment=cont,
+                jaccard=jac,
+            )
+            for cont, jac, geom, cand in samples.values()
+        ]
+        assert keys == sorted(keys)
 
 
 

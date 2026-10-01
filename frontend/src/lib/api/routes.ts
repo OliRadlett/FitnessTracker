@@ -85,6 +85,28 @@ export async function getOrphanCandidates(
   return apiFetch<OrphanReviewResponse>('/api/v1/routes/orphans', {}, token);
 }
 
+/**
+ * Dismiss every quarantined route currently in one review bucket.
+ *
+ * `expectedCount` is the number the UI displayed; the server refuses the
+ * write if the queue has moved on, because dismissal is durable and there
+ * is no bulk undo.
+ */
+export async function bulkDismissOrphans(
+  bucket: string,
+  expectedCount: number,
+  token?: string,
+): Promise<{ bucket: string; dismissed: number }> {
+  return apiFetch<{ bucket: string; dismissed: number }>(
+    '/api/v1/routes/orphans/bulk-dismiss',
+    {
+      method: 'POST',
+      body: JSON.stringify({ bucket, expected_count: expectedCount }),
+    },
+    token,
+  );
+}
+
 /** Reject a quarantined route. It stays quarantined, but leaves the queue. */
 export async function dismissOrphan(
   routeId: string,
