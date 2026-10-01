@@ -1643,23 +1643,36 @@ def recompute_route_similarity() -> dict:
                         )
 
                     # Auto-merge high-confidence pairs (skip already-merged ids).
+                    #
+                    # Gated: the plan records auto-merge as off because no
+                    # threshold has been validated, and this loop used to run
+                    # regardless — it silently merged a route at 0.826 on
+                    # 28 Sep. Detection is unaffected; pairs are still cached
+                    # above and still surface for review.
                     merged_away: set[str] = set()
-                    for p in pairs:
-                        if p["tier"] != "auto":
-                            continue
-                        if p["a"] in merged_away or p["b"] in merged_away:
-                            continue
-                        merged = await merge_routes(
-                            db,
-                            _uuid.UUID(p["a"]),
-                            _uuid.UUID(p["b"]),
-                            user_id,
-                            score=p["total"],
-                            breakdown=p,
+                    if not settings.route_auto_merge_enabled:
+                        logger.info(
+                            "Auto-merge disabled; %d duplicate pair(s) left for "
+                            "review",
+                            sum(1 for p in pairs if p["tier"] == "auto"),
                         )
-                        if merged is not None:
-                            merged_away.add(p["b"])
-                            merged_count += 1
+                    else:
+                        for p in pairs:
+                            if p["tier"] != "auto":
+                                continue
+                            if p["a"] in merged_away or p["b"] in merged_away:
+                                continue
+                            merged = await merge_routes(
+                                db,
+                                _uuid.UUID(p["a"]),
+                                _uuid.UUID(p["b"]),
+                                user_id,
+                                score=p["total"],
+                                breakdown=p,
+                            )
+                            if merged is not None:
+                                merged_away.add(p["b"])
+                                merged_count += 1
 
                     await db.commit()
                     total_pairs += len(pairs)
