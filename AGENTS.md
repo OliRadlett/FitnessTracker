@@ -133,7 +133,7 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 - **Celery tasks**: Use [`task_session()`](backend/app/database.py) for a fresh engine per invocation
 - **Whoop API reference**: https://developer.whoop.com (not vendored locally)
 - **Jev decision layer**: `TYPESAFE_API_KEY` enables TypeSafe Jev. See [`docs/JEV_TAGGING.md`](docs/JEV_TAGGING.md) + [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md)
-- **Rate limiting**: auth/`/sync-user` go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), fail-open on Redis outage). slowapi `Limiter` instantiated but **not** registered as middleware (SEC-03).
+- **Rate limiting**: auth/`/sync-user` go through a Redis fixed-window limiter ([`check_rate_limit`](backend/app/services/cache.py), fail-open on Redis outage), keyed on the **real client IP** via [`get_client_ip`](backend/app/services/client_ip.py). `X-Forwarded-For` is honoured only when the immediate peer is a trusted proxy (`TRUSTED_PROXIES`, default loopback + private ranges) — the backend has no public port, so Caddy is always the peer.
 - **Prometheus**: `/metrics` endpoint via prometheus-fastapi-instrumentator
 
 ### Frontend

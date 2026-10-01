@@ -18,7 +18,6 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "python-multipart>=0.0.27",
     "itsdangerous>=2.2.0",
-    "slowapi>=0.1.10",
     "python-json-logger>=2.0.0",
     "cryptography>=50.0.0",
     "prometheus-fastapi-instrumentator>=7.0.0",
