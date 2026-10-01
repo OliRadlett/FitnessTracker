@@ -1,7 +1,10 @@
 """Activity API — list/filter/get activities, calendar, backfill route links, merge analysis, file import."""
 
+import itertools
 import json
 import logging
+import math
+import statistics
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
@@ -882,6 +885,39 @@ async def import_fit(
     return enriched
 
 
+def _observed_resolution(time_axis: list) -> int | None:
+    """Median spacing between consecutive timestamps, in whole seconds.
+
+    The *median* rather than the mean: a multi-rate file has a long tail of slow
+    samples (auto-pause, a signal dropout) that would drag a mean well above the
+    rate the rider actually recorded at, and ``ActivityStream.resolution`` is an
+    integer so it has to round to something anyway. The median is the rate the
+    bulk of the samples share.
+
+    Returns None when there is no usable axis — a file with no timestamps, one
+    whose timestamps are not strictly increasing, or one where *any* sample is
+    missing. That last case matters: every stream in the payload is
+    index-aligned to the record list, so a time axis with a hole in it would be
+    shorter than its siblings and silently misalign them. Falling back to the
+    duration estimate is worse than perfect but not wrong; a short axis is wrong
+    in a way nothing downstream can detect.
+    """
+    if not time_axis:
+        return None
+    if any(
+        not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t)
+        for t in time_axis
+    ):
+        return None
+    stamps = [float(t) for t in time_axis]
+    if len(stamps) < 2:
+        return None
+    deltas = [b - a for a, b in itertools.pairwise(stamps) if b > a]
+    if not deltas:
+        return None
+    return max(1, int(round(statistics.median(deltas))))
+
+
 async def _import_fit(
     db: AsyncSession,
     current_user: User,
@@ -1009,19 +1045,43 @@ async def _import_fit(
         "position_lat": "position_lat",
         "position_long": "position_long",
         "temperature": "temperature",
+        # The per-record time axis. Persisting it is what makes
+        # ``segments._time_axis`` reachable for imported rides at all — the
+        # function exists and is unit-tested, but with no ``time`` stream in the
+        # database it always returned None and every segment effort window fell
+        # back to nominal spacing.
+        "time": "time",
     }
     dur = session.get("duration_seconds")
+
+    # Real observed sample spacing, taken from the time axis when the file has
+    # one. The previous expression was ``dur // len(values)`` — integer floor
+    # division assigning ONE uniform rate to every stream. A real FIT file is
+    # multi-rate (1 Hz power beside 5 s GPS), so that number is wrong for
+    # everything except whichever stream happens to be full-rate. Where there is
+    # no time axis, the old arithmetic stays as the fallback rather than storing
+    # a null that consumers cannot interpret.
+    observed = _observed_resolution(streams.get("time") or [])
+
     for fit_key, stream_type in STREAM_TYPE_MAP.items():
         values = streams.get(fit_key)
-        if values and len(values) > 0:
+        if not values:
+            continue
+        if stream_type == "time":
+            # The axis itself: the stored series is one sample per timestamp, so
+            # inheriting ``observed`` would be circular.
+            res = 1
+        elif observed is not None:
+            res = observed
+        else:
             res = max(1, dur // len(values)) if dur else None
-            stream = ActivityStream(
-                activity_id=activity.id,
-                stream_type=stream_type,
-                data={"data": values},
-                resolution=res,
-            )
-            db.add(stream)
+        stream = ActivityStream(
+            activity_id=activity.id,
+            stream_type=stream_type,
+            data={"data": values},
+            resolution=res,
+        )
+        db.add(stream)
 
     # Auto-compute TSS so the imported ride counts for training load. Every
     # provider sync does this (strava/sync.py, wahoo.py, strava/webhooks.py) and
