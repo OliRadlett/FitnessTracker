@@ -21,6 +21,7 @@ from app.schemas.dashboard import (
     YearOverYearComparison,
 )
 from app.services.auth import get_current_user
+from app.services.charts import ChartService
 
 router = APIRouter()
 
@@ -203,128 +204,23 @@ async def yearly_summary(
     pr_highlights = pr_highlights[:10]
 
     # ── Monthly breakdown ────────────────────────────────────────────────
-    # Lifting by month
-    result = await db.execute(
-        select(
-            func.to_char(LiftingSession.session_date, "YYYY-MM").label("month"),
-            func.count(LiftingSession.id).label("sessions"),
-            func.coalesce(func.sum(LiftingSession.total_volume_kg), 0.0).label(
-                "volume"
-            ),
+    # Shared with the weekly summary via ChartService.monthly_breakdown, which
+    # owns the grouping, the standalone-Wahoo exclusion, the PR merge across
+    # lifting and cycling power, and the dense fill of empty months.
+    #
+    # Bounded by year-end rather than ``effective_end`` (= min(year_end, today))
+    # on purpose. The original filled all twelve months of the year with zeros
+    # for the ones that had not happened yet, and the "best month" highlights and
+    # the frontend both expect twelve slots; bounding by today would return only
+    # the months elapsed so far and change the shape of the response. The one
+    # consequence is that a future-dated activity inside the current year is now
+    # counted — which is what the twelve-month fill always implied anyway.
+    months_list: list[MonthlySummaryItem] = [
+        MonthlySummaryItem(**row)
+        for row in await ChartService(db).monthly_breakdown(
+            uid, start=year_start, end=date(year, 12, 31)
         )
-        .where(
-            LiftingSession.user_id == uid,
-            LiftingSession.session_date >= year_start,
-            LiftingSession.session_date <= effective_end,
-        )
-        .group_by("month")
-        .order_by("month")
-    )
-    lifting_by_month: dict[str, dict] = {}
-    for row in result.all():
-        lifting_by_month[row.month] = {
-            "sessions": int(row.sessions),
-            "volume": _safe_agg(row.volume),
-        }
-
-    # Activity by month
-    result = await db.execute(
-        select(
-            func.to_char(Activity.start_date, "YYYY-MM").label("month"),
-            func.count(Activity.id).label("sessions"),
-            func.coalesce(func.sum(Activity.tss), 0.0).label("tss"),
-            func.coalesce(func.sum(Activity.distance_meters), 0.0).label("distance"),
-            func.coalesce(func.sum(Activity.duration_seconds), 0.0).label("time"),
-        )
-        .where(
-            Activity.user_id == uid,
-            Activity.source != "wahoo",
-            Activity.start_date >= year_start,
-            Activity.start_date <= effective_end,
-        )
-        .group_by("month")
-        .order_by("month")
-    )
-    activity_by_month: dict[str, dict] = {}
-    for row in result.all():
-        activity_by_month[row.month] = {
-            "sessions": int(row.sessions),
-            "tss": _safe_agg(row.tss),
-            "distance": _safe_agg(row.distance),
-            "time": _safe_agg(row.time),
-        }
-
-    # PRs by month (lifting + cycling)
-    result = await db.execute(
-        select(
-            func.to_char(PersonalRecord.achieved_date, "YYYY-MM").label("month"),
-            func.count(PersonalRecord.id).label("prs"),
-        )
-        .where(
-            PersonalRecord.user_id == uid,
-            PersonalRecord.achieved_date >= year_start,
-            PersonalRecord.achieved_date <= effective_end,
-        )
-        .group_by("month")
-    )
-    prs_by_month: dict[str, int] = {}
-    for row in result.all():
-        prs_by_month[row.month] = int(row.prs)
-
-    # Add cycling power PRs to monthly counts
-    result = await db.execute(
-        select(
-            func.to_char(CyclingPowerRecord.achieved_date, "YYYY-MM").label("month"),
-            func.count(CyclingPowerRecord.id).label("prs"),
-        )
-        .where(
-            CyclingPowerRecord.user_id == uid,
-            CyclingPowerRecord.achieved_date >= year_start,
-            CyclingPowerRecord.achieved_date <= effective_end,
-        )
-        .group_by("month")
-    )
-    for row in result.all():
-        prs_by_month[row.month] = prs_by_month.get(row.month, 0) + int(row.prs)
-
-    # Recovery by month
-    result = await db.execute(
-        select(
-            func.to_char(DailyMetric.metric_date, "YYYY-MM").label("month"),
-            func.avg(DailyMetric.recovery_score).label("avg_recovery"),
-        )
-        .where(
-            DailyMetric.user_id == uid,
-            DailyMetric.metric_date >= year_start,
-            DailyMetric.metric_date <= effective_end,
-            DailyMetric.recovery_score.isnot(None),
-        )
-        .group_by("month")
-    )
-    recovery_by_month: dict[str, float | None] = {}
-    for row in result.all():
-        safe = _safe_agg(row.avg_recovery, default=None)
-        recovery_by_month[row.month] = round(safe, 1) if safe is not None else None
-
-    # Build 12-month list
-    months_list: list[MonthlySummaryItem] = []
-    for m in range(1, 13):
-        month_key = f"{year}-{m:02d}"
-        lifting = lifting_by_month.get(month_key, {})
-        activity = activity_by_month.get(month_key, {})
-        months_list.append(
-            MonthlySummaryItem(
-                month=month_key,
-                total_tss=activity.get("tss", 0.0),
-                lifting_volume_kg=lifting.get("volume", 0.0),
-                total_distance_meters=activity.get("distance", 0.0),
-                total_time_seconds=activity.get("time", 0.0),
-                lifting_sessions=lifting.get("sessions", 0),
-                cardio_sessions=activity.get("sessions", 0),
-                pr_count=prs_by_month.get(month_key, 0),
-                avg_recovery=recovery_by_month.get(month_key),
-            )
-        )
+    ]
 
     # ── Highlights ───────────────────────────────────────────────────────
     # Best month by TSS

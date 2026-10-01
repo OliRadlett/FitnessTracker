@@ -24,6 +24,14 @@ export interface LoggedSet {
   is_amrap: boolean;
   /** null while unsynced */
   remoteId: string | null;
+  /**
+   * Why this set can never sync, or null. Set only for a permanent rejection
+   * (400/422) so the set is dead-lettered rather than retried forever. Never
+   * set for a transient failure — those stay queued and retry.
+   */
+  failedReason: string | null;
+  /** Sync attempts so far; used to bound the retry loop. */
+  attempts: number;
 }
 
 /** A planned exercise target carried from today's training plan. */
@@ -91,6 +99,67 @@ function loadState(): LiveSessionState | null {
 const EMPTY_DELETE_SET: ReadonlySet<string> = new Set();
 
 /**
+ * Give up on a set after this many attempts.
+ *
+ * Reached only when the server is genuinely flapping — a permanently-rejected
+ * set is dead-lettered on the first 400/422 rather than consuming attempts.
+ */
+const MAX_SYNC_ATTEMPTS = 8;
+
+/**
+ * Classify a sync failure so the flush can tell "retry later" from "never".
+ *
+ * The old loop collapsed every error into one string and rethrew, so a single
+ * permanently-invalid set aborted the whole flush: every later set stayed
+ * local-only, every queued delete stayed queued, and the session finish (Step 4)
+ * never ran. The finishing overlay then retried every 4s forever, and the one
+ * control the user had — "retry" — failed identically each time.
+ *
+ * - `permanent` → the request will never succeed as-is. Dead-letter the set,
+ *   skip it, and keep going. Never silently: it surfaces in the UI.
+ * - `session-gone` → the server no longer has this session (404). Not a
+ *   set-level failure: clear the session id so the next pass re-creates.
+ * - `transient` → keep the current behaviour and let the backoff handle it.
+ */
+type SyncFailure = 'permanent' | 'session-gone' | 'transient';
+
+function classifySyncFailure(err: unknown): SyncFailure {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 404) return 'session-gone';
+  // 400/422 are validation failures — replaying the identical body cannot help.
+  if (status === 400 || status === 422) return 'permanent';
+  return 'transient';
+}
+
+/** Human-readable reason for a dead-lettered set, naming the likely bad field. */
+function describePermanentFailure(err: unknown): string {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 422) return 'the server rejected these values — check weight and reps';
+  if (status === 400) return 'the server rejected this set';
+  return `the server rejected this set (HTTP ${status ?? 'unknown'})`;
+}
+
+/** Non-finite numbers become `null` through JSON.stringify, so Pydantic 422s forever. */
+function isSyncableNumber(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Next `set_number` for an exercise within a session.
+ *
+ * `max + 1` rather than `count + 1`: `resumeSession` adopts the server's
+ * `set_number` verbatim, and those are not guaranteed contiguous, so counting
+ * would silently skip numbers on a resumed session. Shared by `logSet` and
+ * `nextSetNumberFor` so the two cannot drift.
+ */
+function nextSetNumber(exerciseName: string, sets: readonly LoggedSet[]): number {
+  const numbers = sets
+    .filter((s) => s.exercise_name === exerciseName)
+    .map((s) => s.set_number);
+  return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+}
+
+/**
  * Merge flush-progress (`working`, snapshotted when the flush began) into the
  * freshest storage state. Logging a set while a request is in flight (or from
  * another tab) mutates storage directly; saving `working` alone would clobber
@@ -104,7 +173,15 @@ const EMPTY_DELETE_SET: ReadonlySet<string> = new Set();
  */
 export function mergeWithStorage(
   working: LiveSessionState,
-  processedDeletes: ReadonlySet<string> = EMPTY_DELETE_SET
+  processedDeletes: ReadonlySet<string> = EMPTY_DELETE_SET,
+  /**
+   * True when this flush determined the remote session no longer exists (a 404
+   * on set-add). Storage still holds the old id, and the normal
+   * `working.sessionId ?? stored.sessionId` would restore it — defeating the
+   * clear and wedging every later flush on a session that is gone. So an
+   * explicit invalidation is passed through rather than inferred.
+   */
+  sessionInvalidated = false
 ): LiveSessionState | null {
   const stored = loadState();
   // The session was discarded mid-flush — stop syncing it and never resurrect
@@ -118,11 +195,22 @@ export function mergeWithStorage(
   if (stored.startedAt !== working.startedAt) return null;
 
   const workingById = new Map(working.sets.map((s) => [s.clientId, s]));
-  // Newest set data from storage; overlay any remoteId learned during the flush
+  // Newest set data from storage; overlay sync progress learned during the flush.
+  //
+  // `remoteId`, `failedReason` and `attempts` are all *sync* progress rather
+  // than user data, so they merge in from `working` exactly like remoteId does.
+  // Leaving failedReason out would silently discard every dead-letter decision
+  // this flush made — the set would be retried forever, which is the original
+  // bug.
   const sets = stored.sets.map((s) => {
     const w = workingById.get(s.clientId);
     if (!w) return s;
-    return w.remoteId && !s.remoteId ? { ...s, remoteId: w.remoteId } : s;
+    const next = { ...s };
+    if (w.remoteId && !s.remoteId) next.remoteId = w.remoteId;
+    if (w.failedReason && !s.failedReason) next.failedReason = w.failedReason;
+    // Monotonic counter: take whichever snapshot is further along.
+    if (w.attempts > (s.attempts ?? 0)) next.attempts = w.attempts;
+    return next;
   });
   // Sets the flush snapshot knew about but storage lost. If the user removed a
   // set while its create was mid-flight (undo raced the sync), the server may
@@ -138,7 +226,7 @@ export function mergeWithStorage(
 
   return {
     ...stored,
-    sessionId: working.sessionId ?? stored.sessionId,
+    sessionId: sessionInvalidated ? null : (working.sessionId ?? stored.sessionId),
     sets,
     pendingDeletes: Array.from(pendingDeletes),
   };
@@ -195,6 +283,8 @@ export function useLiveSession(authFetch: AuthFetch) {
   const [isOffline, setIsOffline] = useState(
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
+  /** Inline message for a set rejected before it was ever queued. */
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [prEvents, setPrEvents] = useState<{ id: string; exercise_name: string; text: string }[]>([]);
 
   const syncingRef = useRef(false);
@@ -252,12 +342,15 @@ export function useLiveSession(authFetch: AuthFetch) {
     // merge would re-queue them from the not-yet-updated storage snapshot and
     // the flush would re-issue the same DELETE forever (404 → retry loop).
     const processedDeletes = new Set<string>();
+    // Set when a 404 proves the remote session is gone, so the clear survives
+    // the merge (storage still holds the stale id).
+    let sessionInvalidated = false;
     // Fold sync progress into the freshest storage state (which may have been
     // mutated mid-flight) and mirror it into React state. The extra spread
     // guarantees a new reference so setState always re-renders. Returns false
     // if the session was discarded/replaced mid-flush — the sync must stop.
     const commit = (): boolean => {
-      const merged = mergeWithStorage(working, processedDeletes);
+      const merged = mergeWithStorage(working, processedDeletes, sessionInvalidated);
       if (merged === null) {
         syncingRef.current = false;
         return false;
@@ -302,15 +395,64 @@ export function useLiveSession(authFetch: AuthFetch) {
         if (!commit()) return { finished: false };
       }
 
-      // Step 2: push unsynced sets individually (idempotent via client_id)
-      const unsynced = working.sets.filter((s) => !s.remoteId);
+      // Step 2: push unsynced sets individually (idempotent via client_id).
+      //
+      // A failure here must not abandon the rest of the flush: Steps 3 (deletes)
+      // and 4 (finish) sit below this loop, so throwing strands them forever
+      // behind one bad set.
+      const unsynced = working.sets.filter((s) => !s.remoteId && !s.failedReason);
       for (const set of unsynced) {
+        // Bounded: a set that keeps failing transiently is dead-lettered rather
+        // than retried without limit.
+        if (set.attempts >= MAX_SYNC_ATTEMPTS) {
+          set.failedReason = 'gave up after repeated sync failures';
+          if (!commit()) return { finished: false };
+          continue;
+        }
+        set.attempts += 1;
         try {
           const remote = await addSetToSession(authFetchRef.current, working.sessionId!, toPayload(set));
           const target = working.sets.find((s) => s.clientId === set.clientId);
           if (target && !target.remoteId) target.remoteId = remote.id;
           if (!commit()) return { finished: false };
-        } catch {
+        } catch (err) {
+          const failure = classifySyncFailure(err);
+
+          if (failure === 'session-gone') {
+            // The remote session no longer exists. Not this set's fault — drop the
+            // id so Step 1 re-creates on the next pass. Re-creation is idempotent
+            // because it reuses the SAME liveKey (never a fresh one), so
+            // create_session collapses instead of minting a duplicate.
+            working.sessionId = null;
+            sessionInvalidated = true;
+            if (!commit()) return { finished: false };
+            // Release the in-flight guard before scheduling. commit()'s success
+            // path does not clear it (only the tail of the try block does), so
+            // without this the follow-up flush would see syncingRef still true
+            // and return immediately — the session id would stay cleared with
+            // nothing retrying it.
+            syncingRef.current = false;
+            // Bailing out here skips the "still pending?" check at the end of
+            // the try block, so schedule the re-create explicitly.
+            void followUpFlush(500);
+            return { finished: false };
+          }
+
+          if (failure === 'permanent') {
+            // Dead-letter this set and carry on. Deliberately not silent: it is
+            // surfaced via syncStatus/pendingCount and can be removed from the
+            // finishing overlay, so this is recoverable rather than a wedge.
+            const target = working.sets.find((s) => s.clientId === set.clientId);
+            if (target) target.failedReason = describePermanentFailure(err);
+            if (!commit()) return { finished: false };
+            continue;
+          }
+
+          // Transient — rethrow so the outer catch backs off and retries, but
+          // commit first: `attempts` was incremented above and the throw
+          // abandons this flush, so without persisting it the counter never
+          // survives and the bound below can never be reached.
+          if (!commit()) return { finished: false };
           throw new Error('add-set-failed');
         }
       }
@@ -334,6 +476,10 @@ export function useLiveSession(authFetch: AuthFetch) {
       // flush that started before requestFinish (snapshot had phase='active')
       // still applies ended_at/rpe/notes from the persisted intent. Also runs
       // for any `finishing` state so a legacy snapshot (pre-flag) completes.
+      //
+      // Reached even when a set was dead-lettered in Step 2: the session should
+      // close with the sets that DID sync, not be held open by one that never
+      // can. The dead-lettered set stays visible and removable.
       if (working.finish_requested || working.phase === 'finishing') {
         // A `finishing` state with no remote session has nothing to persist —
         // clear it locally rather than PATCHing /sessions/null forever.
@@ -480,7 +626,19 @@ export function useLiveSession(authFetch: AuthFetch) {
         is_amrap?: boolean;
       },
       prText?: string
-    ) => {
+    ): boolean => {
+      // Refuse a set that can never sync. A stray letter in a numeric field
+      // yields NaN, JSON.stringify turns NaN into null, and Pydantic rejects
+      // the body with 422 on every attempt — a poison pill that persisted to
+      // localStorage and blocked the whole flush. Cheap to stop here.
+      if (!isSyncableNumber(input.weight_kg) || !isSyncableNumber(input.reps)) {
+        setValidationError(
+          'Weight and reps must be numbers. Set not logged.'
+        );
+        return false;
+      }
+      setValidationError(null);
+
       const clientId = newClientId();
       patch((prev) => ({
         ...prev,
@@ -491,10 +649,13 @@ export function useLiveSession(authFetch: AuthFetch) {
           {
             clientId,
             remoteId: null,
+            failedReason: null,
+            attempts: 0,
             exercise_name: input.exercise_name,
-            // Derived from latest persisted state, never a stale closure
-            set_number:
-              prev.sets.filter((s) => s.exercise_name === input.exercise_name).length + 1,
+            // max+1, not count+1: a resumed session adopts the server's
+            // set_number verbatim and those are not guaranteed contiguous, so
+            // counting would silently skip numbers.
+            set_number: nextSetNumber(input.exercise_name, prev.sets),
             weight_kg: input.weight_kg,
             reps: input.reps,
             rpe: input.rpe,
@@ -511,6 +672,7 @@ export function useLiveSession(authFetch: AuthFetch) {
         }, 5000);
       }
       scheduleFlush();
+      return true;
     },
     [patch, scheduleFlush]
   );
@@ -626,7 +788,11 @@ export function useLiveSession(authFetch: AuthFetch) {
     const sets: LoggedSet[] = (remote.sets ?? []).map((s) => ({
       clientId: s.client_id ?? `resume-${s.id}`,
       remoteId: s.id,
+      failedReason: null,
+      attempts: 0,
       exercise_name: s.exercise_name,
+      // Adopted verbatim; nextSetNumber() takes max+1 so a gap here is not
+      // carried into a collision.
       set_number: s.set_number,
       weight_kg: s.weight_kg,
       reps: s.reps,
@@ -658,6 +824,22 @@ export function useLiveSession(authFetch: AuthFetch) {
   // runs even when `sessionId` is still null — a create that failed (e.g. dead
   // backend token) must be retried too, not abandoned.
   const finishing = state?.phase === 'finishing' || !!state?.finish_requested;
+
+  // Stop retrying once there is provably nothing left that a retry can fix.
+  // The loop previously had no termination condition, so a permanently-rejected
+  // set meant an unbounded 4s re-push against the backend for as long as the
+  // overlay was open. Dead-lettered sets and exhausted attempts both mean
+  // "retrying is pointless"; transient-pending work still retries.
+  // A finish still has to be flushed even when no sets are pending — Step 4
+  // PATCHes the session's ended_at/duration, which is the whole point of
+  // finishing. So gate only on retryable *sets* and deletes, never on the
+  // absence of a sessionId: a legacy `finishing` snapshot (persisted before
+  // finish_requested existed) and a 404-cleared session both look "nothing to
+  // sync" otherwise, and would never complete.
+  //
+  // The bound on the loop is per-set (MAX_SYNC_ATTEMPTS in Step 2), not here:
+  // a dead-lettered set is skipped outright rather than re-attempted, so this
+  // effect converges as soon as the finish PATCH lands and state clears.
   useEffect(() => {
     if (!finishing) return;
     if (syncingRef.current) return;
@@ -678,7 +860,7 @@ export function useLiveSession(authFetch: AuthFetch) {
 
   const nextSetNumberFor = useCallback(
     (exerciseName: string | null) =>
-      (exerciseName ? (state?.sets.filter((s) => s.exercise_name === exerciseName).length ?? 0) : 0) + 1,
+      exerciseName && state ? nextSetNumber(exerciseName, state.sets) : 0,
     [state]
   );
 
@@ -689,22 +871,31 @@ export function useLiveSession(authFetch: AuthFetch) {
     new Set((state?.sets ?? []).map((s) => s.exercise_name))
   );
 
+  // Sets the server rejected permanently. Surfaced so a dead-lettered set is
+  // visible and removable rather than silently dropped — swallowing it would
+  // trade a loud wedge for quiet data loss.
+  const failedSets = (state?.sets ?? []).filter((s) => s.failedReason);
+
   // Sets + deletes not yet confirmed by the server — the "to sync" meter.
+  // A dead-lettered set is still unsynced, so it counts here too: it is work the
+  // session has not successfully pushed.
   const pendingCount =
     (state?.sets ?? []).filter((s) => !s.remoteId).length +
     (state?.pendingDeletes?.length ?? 0);
 
-  // Deterministic ordering: offline (browser says so) beats it all — logging
-  // still works and everything is queued; syncError means we're online but the
-  // server isn't accepting writes right now; pending is normal back pressure.
-  type LiveSyncStatus = 'synced' | 'pending' | 'offline' | 'error';
+  // Deterministic ordering. 'blocked' outranks the transient states: a
+  // permanently-rejected set needs a decision from the user, and retrying will
+  // not fix it.
+  type LiveSyncStatus = 'synced' | 'pending' | 'offline' | 'error' | 'blocked';
   const syncStatus: LiveSyncStatus = isOffline
     ? 'offline'
-    : syncError
-      ? 'error'
-      : pendingCount > 0
-        ? 'pending'
-        : 'synced';
+    : failedSets.length > 0
+      ? 'blocked'
+      : syncError
+        ? 'error'
+        : pendingCount > 0
+          ? 'pending'
+          : 'synced';
 
   return {
     state,
@@ -713,6 +904,10 @@ export function useLiveSession(authFetch: AuthFetch) {
     isOffline,
     pendingCount,
     syncStatus,
+    /** Permanently-rejected sets, with the reason, so the UI can offer recovery. */
+    failedSets,
+    /** Inline message for a set rejected before it was queued (bad input). */
+    validationError,
     prEvents,
     totalVolume,
     exercises,

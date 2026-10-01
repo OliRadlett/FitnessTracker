@@ -13,6 +13,7 @@ from celery.schedules import crontab
 
 from app.config import get_settings
 from app.integrations.resilience import ModalCircuitBreaker
+from app.services.geo_clusters import geo_cluster_segments
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,14 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=30, day_of_week=0),
         "options": {"expires": 3600},
     },
+    # Undo retention (plan §8). Daily at 03:40 UTC: past `expires_at` the rows
+    # are audit-only, and a daily sweep keeps the table bounded without any read
+    # path having to clean up after itself.
+    "prune-expired-undo-logs": {
+        "task": "app.tasks.scheduler.prune_expired_undo_logs",
+        "schedule": crontab(hour=3, minute=40),
+        "options": {"expires": 1800},
+    },
     # Generate daily health alerts at 6 AM UTC
     "generate-health-alerts": {
         "task": "app.tasks.scheduler.generate_health_alerts",
@@ -241,6 +250,15 @@ celery_app.conf.beat_schedule = {
     "check-stale-ftp": {
         "task": "app.tasks.scheduler.check_stale_ftp",
         "schedule": crontab(hour=4, minute=15, day_of_week=0),
+    },
+    # Backfill TSS for imported activities stranded without one (Sunday 4:45 AM
+    # UTC — deliberately after auto-estimate-ftp and check-stale-ftp, so rides
+    # imported before FTP was configured become computable once FTP exists).
+    # No-op when there is nothing to fill.
+    "backfill-manual-activity-tss": {
+        "task": "app.tasks.scheduler.backfill_manual_activity_tss",
+        "schedule": crontab(hour=4, minute=45, day_of_week=0),
+        "options": {"expires": 3600},
     },
     # Sync Whoop data every 30 minutes (cycles, recovery, sleep, workouts)
     "sync-whoop-data": {
@@ -572,6 +590,33 @@ def process_strava_webhook_events() -> dict:
             return await process_pending_strava_events(db)
 
     return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.prune_expired_undo_logs")
+def prune_expired_undo_logs() -> dict:
+    """Drop undo claims past their retention window (plan §8, §2.4).
+
+    Past ``expires_at`` an operation can no longer be reversed, so the row is
+    audit data only and keeping it serves nothing but growth. Kept as a task
+    rather than a request-path delete so a read never has to clean up after
+    itself.
+
+    Claims that have been *undone* are deliberately kept until they also expire:
+    "this happened and was reversed" is more informative than deleting it, and
+    it is the only trace that the operation was compensated at all.
+    """
+    import asyncio
+
+    from app.database import task_session
+    from app.services.undo import prune_expired
+
+    async def _run():
+        async with task_session() as db:
+            removed = await prune_expired(db)
+            await db.commit()
+            return removed
+
+    return asyncio.run(_run_task_guarded("prune_expired_undo_logs", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.reconcile_strava_activities")
@@ -2258,6 +2303,38 @@ def analyze_segments_intelligence_weekly() -> dict:
                         seg.prediction_confidence = prediction.get("confidence")
                         seg.intelligence_analyzed_at = datetime.now(UTC)
 
+                    # Cross-route hill identity, in the same transaction as the
+                    # writes above so the label and its inputs can never be
+                    # inconsistent with each other.
+                    #
+                    # Local and pure, not dispatched to Modal: it needs no
+                    # compute, and sending it to Modal would drag a module-scope
+                    # `app.config` import into the image (pitfall 16) plus the
+                    # `add_local_file` mounting (pitfall 17) for nothing. Note
+                    # this also finally *uses* the start/end coordinates that
+                    # were already being sent to Modal and discarded -- the
+                    # geographic identity is computed here because it is the one
+                    # clustering that has to see coordinates.
+                    #
+                    # `segments` is already every Segment for this user, so this
+                    # adds no query.
+                    geo = geo_cluster_segments(
+                        [
+                            {
+                                "id": s.id,
+                                "start_lat": s.start_lat,
+                                "start_lng": s.start_lng,
+                                "end_lat": s.end_lat,
+                                "end_lng": s.end_lng,
+                                "distance_m": s.distance_m,
+                                "avg_gradient_pct": s.avg_gradient_pct,
+                            }
+                            for s in segments
+                        ]
+                    )
+                    for seg in segments:
+                        seg.geo_cluster_id = geo.get(seg.id)
+
                     analyzed_count += 1
                     await db.commit()
 
@@ -3615,6 +3692,65 @@ def backfill_streams_for_all_activities() -> dict:
             return await _backfill_streams(db)
 
     return asyncio.run(_run_task_guarded("backfill_streams_for_all_activities", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.backfill_manual_activity_tss")
+def backfill_manual_activity_tss() -> dict:
+    """Compute TSS for imported activities that were stranded without one.
+
+    ``import_fit`` now computes TSS on write, but two populations are still
+    stranded: activities imported before that landed, and activities imported
+    while no FTP was configured (the HR fallback needs LTHR and a resting HR, so
+    the import legitimately produced no TSS). Setting FTP later does not
+    retroactively fix them, and every load consumer skips null-tss rows - so
+    those rides contribute nothing to weekly TSS, CTL/ATL, or the
+    recommendation engines.
+
+    Scoped to ``source='manual'`` so provider-synced rows are never touched, and
+    to ``tss IS NULL`` so this is idempotent: a repeat run finds nothing and
+    recomputes nothing. Per-user failures are rolled back and skipped so one
+    bad row cannot kill the sweep.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+    from app.services.cycling import (
+        backfill_manual_activity_tss as _backfill_manual_tss,
+    )
+
+    async def _run():
+        async with task_session() as db:
+            users_result = await db.execute(select(User))
+            users = list(users_result.scalars().all())
+            total = 0
+            failed = 0
+            by_user: dict[str, int] = {}
+            for user in users:
+                try:
+                    count = await _backfill_manual_tss(db, user.id)
+                    if count:
+                        by_user[str(user.id)] = count
+                    total += count
+                except Exception as e:
+                    failed += 1
+                    logger.error(
+                        f"Manual-activity TSS backfill failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+                else:
+                    await db.commit()
+            return {
+                "users_total": len(users),
+                "activities_backfilled": total,
+                "users_failed": failed,
+                "by_user": by_user,
+            }
+
+    return asyncio.run(_run_task_guarded("backfill_manual_activity_tss", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.refresh_weather_forecasts")

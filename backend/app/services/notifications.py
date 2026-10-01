@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_PREFERENCES: dict[str, bool] = {
     "health_alert": True,
     "pr": True,
+    # Retraction of a PR whose record was deleted. Gated separately from "pr" so
+    # a user can silence achievements while still being told when one is taken
+    # back — and because the reversal is the only correction they would
+    # otherwise get, since the original web push cannot be unsent.
+    "pr_revoked": True,
     "goal_milestone": True,
     "plan_reminder": True,
     "connection_reauth": True,

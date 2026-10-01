@@ -564,3 +564,101 @@ async def test_best_avg_power_includes_coasting(
     # And the number shown on the segment card is not the pedalling power.
     assert efforts[0].avg_power_watts < 300.0
     assert seg.best_avg_power_watts == efforts[0].avg_power_watts
+
+# ── §3: derived-field carry-over and the PR flag ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_is_pr_marks_exactly_the_fastest_effort(
+    db_session: AsyncSession, test_user: User
+):
+    """``SegmentEffort.is_pr`` was never assigned anywhere in the backend.
+
+    It appeared only in the model, the schema and the read path, so every effort
+    carried the column default and the PR badge in ``SegmentRow.tsx`` could
+    never render. ``min()`` on ``elapsed_seconds`` is already the segment's PR
+    by the same definition the segment-level totals use, so the winner is
+    marked in place rather than in a second pass.
+    """
+    from tests.integration.test_segment_recompute import _climb_and_effort
+
+    segments, efforts = await _climb_and_effort(db_session, test_user)
+    assert efforts, "expected the seeded ride to produce efforts"
+
+    fastest = min(efforts, key=lambda e: e.elapsed_seconds)
+    prs = [e for e in efforts if e.is_pr]
+    assert len(prs) == 1, "exactly one effort per segment is the PR"
+    assert prs[0].id == fastest.id
+
+
+@pytest.mark.asyncio
+async def test_derived_fields_survive_a_recompute(
+    db_session: AsyncSession, test_user: User
+):
+    """The precondition for persisting ``geo_cluster_id`` at all.
+
+    ``sync_route_segments`` is delete-and-recreate per route, so without a
+    carry-over every recompute wiped a week of intelligence and reset the hill
+    to NULL. A persisted column that dies on every recompute is not meaningfully
+    persisted: the hill would fragment each time a route was re-imported and the
+    merged leaderboard would go back to one row per route.
+    """
+    from tests.integration.test_segment_recompute import _climb_and_effort
+
+    segments, _ = await _climb_and_effort(db_session, test_user)
+    assert segments
+    original = segments[0]
+    cluster = uuid.uuid4()
+
+    original.geo_cluster_id = cluster
+    original.cluster_id = 7
+    original.climb_type = "steady"
+    original.sustainedness = 0.62
+    original.difficulty_score = 71.5
+    original.predicted_vam = 903.0
+    original.predicted_time_seconds = 399.0
+    original.predicted_power_watts = 254.0
+    original.prediction_confidence = 0.44
+    original.intelligence_analyzed_at = datetime(2026, 9, 27, 6, 15, tzinfo=UTC)
+    await db_session.flush()
+
+    from app.services.segments import _CARRIED_FIELDS
+
+    route_id = original.route_id
+    await db_session.flush()
+    recomputed = await sync_route_segments(db_session, test_user.id, route_id)
+
+    assert recomputed, "the recompute must still produce the segment"
+    after = recomputed[0]
+    assert after.id != original.id, "delete-and-recreate means a new row"
+
+    for field in _CARRIED_FIELDS:
+        assert getattr(after, field) == getattr(original, field), (
+            f"{field} was not carried across the recompute"
+        )
+    assert after.geo_cluster_id == cluster
+
+
+@pytest.mark.asyncio
+async def test_geometry_totals_are_recomputed_not_carried(
+    db_session: AsyncSession, test_user: User
+):
+    """The complement: the fields that must NOT be copied.
+
+    ``times_ridden`` / ``pr_seconds`` / ``has_pr`` / ``best_avg_power_watts`` are
+    recomputed from the efforts later in ``sync_route_segments``. Carrying them
+    would serve a stale leaderboard, which is why ``_CARRIED_FIELDS`` is an
+    explicit allowlist rather than "every non-geometry column".
+    """
+    from tests.integration.test_segment_recompute import _climb_and_effort
+
+    segments, efforts = await _climb_and_effort(db_session, test_user)
+    assert segments and efforts
+    assert segments[0].times_ridden == 1
+
+    recomputed = await sync_route_segments(db_session, test_user.id, segments[0].route_id)
+    after = recomputed[0]
+    assert after.times_ridden == 1, "recomputed from the efforts, not copied blindly"
+    assert after.pr_seconds == pytest.approx(
+        segments[0].pr_seconds, abs=0.01
+    ), "recomputed to the same value, because the same ride is on the same route"

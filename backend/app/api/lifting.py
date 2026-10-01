@@ -22,6 +22,7 @@ from app.schemas.lifting import (
     LiftingSetUpdate,
     PersonalRecordCreate,
     PersonalRecordRead,
+    ReorderSetsRequest,
     SuggestLoadRequest,
     SuggestLoadResponse,
     VolumeTrendResponse,
@@ -201,6 +202,35 @@ async def get_linkable_activities(
         db, current_user.id, session_id
     )
     return [_enrich_activity_read(a) for a in activities]
+
+
+@router.patch("/sessions/{session_id}/reorder", response_model=LiftingSessionRead)
+async def reorder_session_sets(
+    session_id: uuid.UUID,
+    data: ReorderSetsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set the performance order of a session's sets.
+
+    ``set_ids`` must be the session's **complete** set list in the desired
+    order. A subset or a diff is ambiguous — which of the omitted sets move, and
+    where? — so it is rejected with 422 rather than interpreted. That also makes
+    the operation idempotent: re-sending the current order is a no-op, and a
+    stale client cannot silently drop sets.
+
+    Ordering only changes presentation, so volume and PRs are untouched: this is
+    not a training change.
+    """
+    try:
+        session = await lifting_service.reorder_session_sets(
+            db, session_id, current_user.id, data.set_ids
+        )
+    except lifting_service.ReorderMismatch as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return LiftingSessionRead.model_validate(session)
 
 
 @router.post("/backfill-links")

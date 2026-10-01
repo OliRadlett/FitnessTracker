@@ -69,6 +69,25 @@ class Segment(Base):
     has_pr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Intelligence fields (fitted by Modal weekly task)
     cluster_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Cross-route identity for one physical hill (migration 094).
+    #
+    # Deliberately **not** the same thing as ``cluster_id`` above, and the two
+    # must not be unified. ``cluster_id`` comes from a DBSCAN over gradient /
+    # length / gain *shape* with no coordinates at all, so it answers "which
+    # climbs train alike" -- which is what ``_predict_segment_effort`` borrows
+    # efforts by. This answers "which rows are the same hill", which is what a
+    # merged leaderboard needs. A statistical analogue is the wrong key for
+    # identity in both directions: it splits one hill into several rows and
+    # merges genuinely different hills that happen to share a profile.
+    #
+    # The value is the lexicographically smallest member segment's id, so it is
+    # a self-consistent label rather than a counter. It is NOT stable across
+    # recomputes -- membership can change, and the smallest id with it -- which
+    # is acceptable because every reader groups by the *current* value and this
+    # is a display grouping, not a foreign key anything hangs off.
+    geo_cluster_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     climb_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     sustainedness: Mapped[float | None] = mapped_column(Float, nullable=True)
     difficulty_score: Mapped[float | None] = mapped_column(Float, nullable=True)

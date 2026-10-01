@@ -5,6 +5,7 @@ import type { NotificationSeverity, NotificationType } from './api/types/notific
 export const TYPE_ICONS: Record<NotificationType, string> = {
   health_alert: '🩺',
   pr: '🏆',
+  pr_revoked: '↩️',
   goal_milestone: '🎯',
   plan_reminder: '📋',
   connection_reauth: '🔗',
@@ -31,6 +32,7 @@ export const SEVERITY_BADGE: Record<NotificationSeverity, string> = {
 export const TYPE_LABELS: Record<NotificationType, string> = {
   health_alert: 'Health',
   pr: 'Personal records',
+  pr_revoked: 'PR corrections',
   goal_milestone: 'Goals',
   plan_reminder: 'Plans',
   connection_reauth: 'Connections',

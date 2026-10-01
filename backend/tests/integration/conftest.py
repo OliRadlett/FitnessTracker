@@ -21,6 +21,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.database import Base, get_db
@@ -58,9 +59,58 @@ async def test_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
+    # Reset the schema rather than ``Base.metadata.drop_all``. Dropping table by
+    # table depends on SQLAlchemy inferring a correct dependency order, which
+    # breaks down here: the integration endpoints run inside this fixture's own
+    # connection (``get_db`` is overridden to yield ``db_session``) and
+    # ``get_db`` *commits* on a successful request, which commits the fixture's
+    # wrapping transaction out from under it. Teardown then ran against
+    # inconsistent connection state and died on
+    # "cannot drop table users because other objects depend on it",
+    # surfacing as an ERROR against whichever test happened to run last.
+    #
+    # This database is created by, and exists only for, this fixture — so a
+    # CASCADE drop of the whole schema is both safe and order-independent.
+    #
+    # A CASCADE schema drop is strictly more destructive than the table-by-table
+    # drop_all it replaced, so the "exists only for this fixture" assumption is
+    # now *enforced* rather than trusted: TEST_DATABASE_URL defaults to a
+    # dedicated fittrack_test database independent of DATABASE_URL, but someone
+    # can export it pointing anywhere. Refuse unless the database name says test.
+    _assert_is_test_database(engine)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
     await engine.dispose()
+
+
+# A database name that would be catastrophic to CASCADE. `fittrack_test` is the
+# default; the suffixes cover the other conventional spellings.
+_NON_TEST_DB_NAMES = frozenset({"fittrack", "postgres", "template0", "template1"})
+
+
+def _assert_is_test_database(engine) -> None:
+    """Fail loudly rather than CASCADE-drop a database that is not a test one.
+
+    Teardown drops an entire schema. The database is disposable by construction
+    *only* if it really is a test database, and that is exactly the kind of
+    assumption that is true until someone exports a URL. Check it.
+    """
+    url = engine.url
+    name = (url.database or "").strip().lower()
+    if not name or name in _NON_TEST_DB_NAMES:
+        raise RuntimeError(
+            f"Refusing to drop the schema of database {name!r}: it does not look "
+            "like a test database. tests/integration/conftest.py drops the whole "
+            "public schema on teardown, so TEST_DATABASE_URL must point at a "
+            "disposable test database (e.g. fittrack_test), never a real one."
+        )
+    if "test" not in name:
+        raise RuntimeError(
+            f"Refusing to drop the schema of database {name!r}: the name does not "
+            "contain 'test'. tests/integration/conftest.py drops the whole public "
+            "schema on teardown."
+        )
 
 
 # ── Per-test transactional session ────────────────────────────────────────
