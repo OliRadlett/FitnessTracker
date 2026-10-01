@@ -25,6 +25,7 @@ import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlig
 import { applyWeatherLight, daylightPhase, solarPosition, sunDirection, sunLightModel } from '@/lib/sun';
 import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
+import type { ImageryDrape } from '@/lib/imageryTiles';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
 import { getActiveLocale } from '@/lib/utils';
@@ -578,6 +579,16 @@ export function Replay3D({
   });
   // Bumped whenever the scene is rebuilt so the terrain bed is re-attached.
   const [terrainEpoch, setTerrainEpoch] = useState(0);
+  // Bed data preserved across scene rebuilds: the drape-driven rebuild
+  // disposes the mesh, but the fetched DEM is still valid for the same ride —
+  // re-attach from here with no network and no overlay flash. Keyed by
+  // polyline; a new ride misses and takes the full fetch path.
+  const terrainDataRef = useRef<{ key: string; grid: RouteGrid; heights: number[]; attribution: string } | null>(null);
+  // Set when a rebuild re-attaches from cache while state stays 'on' (silent).
+  const terrainSilentRef = useRef(false);
+  // Satellite canvas preserved the same way (keyed by grid object identity —
+  // the cached bed reuses the same grid object, a new ride builds a new one).
+  const imageryCacheRef = useRef<{ grid: RouteGrid; drape: ImageryDrape } | null>(null);
   const [terrainAttribution, setTerrainAttribution] = useState<string>('');
   // Tile-loading progress for the loading overlay (loaded/total), so the user
   // sees real progress instead of an indeterminate spinner.
@@ -2014,10 +2025,17 @@ export function Replay3D({
     (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
-    // the effect re-runs even if terrainState was mid-load).
+    // the effect re-runs even if terrainState was mid-load). When the bed data
+    // for this ride is cached, re-attach silently: keep state 'on' so the
+    // overlay never re-flashes, and let the epoch re-run the attach below.
     if (terrainStateRef.current !== 'off') {
-      setTerrainState('loading');
-      setTerrainEpoch((e) => e + 1);
+      if (terrainDataRef.current?.key === polyline) {
+        terrainSilentRef.current = true;
+        setTerrainEpoch((e) => e + 1);
+      } else {
+        setTerrainState('loading');
+        setTerrainEpoch((e) => e + 1);
+      }
     }
 
     const cleanup = () => {
@@ -2170,16 +2188,150 @@ export function Replay3D({
   };
 
   // ── Opt-in DEM terrain bed: high-res terrarium, Open-Meteo fallback ─────
+  // Build the bed mesh from fetched (or cached) bed data and attach it to the
+  // live scene, propagating drape + imagery triggers. Shared by the network
+  // path and the silent cache path — one attach implementation, no drift.
+  const attachBed = async (
+    gridSpec: RouteGrid,
+    heights: number[],
+    attribution: string,
+    startedScene: typeof sceneRef.current,
+    isCancelled: () => boolean,
+  ): Promise<void> => {
+    const { buildTerrainMesh, computeDrape } = await import('@/lib/route3d');
+    const s = sceneRef.current;
+    if (!s) {
+      // Scene not built yet (effect ran before scene ready) — mark failed;
+      // the terrainEpoch bump when the scene finishes re-triggers loading.
+      // (Never bail silently: 'on'/'loading' with no mesh and no retry is
+      // the unlogged stall that hides the overlay forever.)
+      console.error('[Replay3D] terrain attach found no scene (mount race)');
+      setTerrainState('failed');
+      return;
+    }
+    // Drape the ride onto the DEM bed (pure helper — same frame for road,
+    // bike, ghost and markers). Flat rides keep raw z (drape null).
+    const { altMin, drape } = computeDrape(points, heights, gridSpec, {
+      lat0: build.lat0,
+      lng0: build.lng0,
+      zScale: build.zScale,
+    });
+    const meshData = buildTerrainMesh(gridSpec, heights, {
+      lat0: build.lat0,
+      lng0: build.lng0,
+      altMin,
+      zScale: build.zScale,
+      seaLevelM: 0,
+    });
+    const geo = new THREE.PlaneGeometry(1, 1, gridSpec.cols - 1, gridSpec.rows - 1);
+    geo.setAttribute('position', new THREE.BufferAttribute(meshData.positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(meshData.colors, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.grid = gridSpec;
+    mesh.userData.heights = heights;
+    mesh.userData.altMin = altMin;
+    mesh.userData.zScale = build.zScale;
+    mesh.receiveShadow = true;
+    // The scene may have rebuilt while fetching — attach to the live one.
+    const live = sceneRef.current;
+    if (!live || isCancelled()) {
+      geo.dispose();
+      mat.dispose();
+      // Scene was torn down mid-fetch (unmount/rebuild). Mark failed so the
+      // user isn't stuck on an indefinite loading spinner with no feedback.
+      // Always log: silent 'failed' + cleared overlay + no bed is the
+      // undiagnosable stall (overlay hides, stability wait never passes).
+      if (!isCancelled()) {
+        console.error('[Replay3D] terrain attach found no live scene (teardown race)');
+        setTerrainState('failed');
+      }
+      return;
+    }
+    if (live !== startedScene) {
+      // Rebuild completed mid-fetch and its completion bump already fired —
+      // no further retry is coming. This mesh belongs to a dead scene:
+      // dispose it, reset to loading and re-bump so the effect refetches
+      // for the live scene instead of stranding state 'on' with no bed.
+      geo.dispose();
+      mat.dispose();
+      setTerrainState('loading');
+      setTerrainEpoch((e) => e + 1);
+      return;
+    }
+    if (live.terrain) {
+      live.scene.remove(live.terrain);
+      live.terrain.geometry.dispose();
+      (live.terrain.material as THREE.Material).dispose();
+    }
+    live.scene.add(mesh);
+    live.grid.visible = false;
+    live.terrain = mesh;
+    setTerrainAttribution(attribution);
+    setTerrainState('on');
+    // Propagate the drape (only when it changed, to avoid a rebuild loop).
+    if (drape) {
+      const prev = drapeZRef.current;
+      let changed = !prev || prev.length !== drape.length;
+      if (!changed && prev) {
+        for (let i = 0; i < drape.length; i++) {
+          if (Math.abs(prev[i] - drape[i]) > 0.01) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (changed) {
+        drapeZRef.current = drape;
+        setDrapeZ(drape);
+      }
+    } else if (drapeZRef.current) {
+      drapeZRef.current = null;
+      setDrapeZ(null);
+    }
+    // Re-drape imagery if it was already on.
+    if (imageryStateRef.current === 'on') setImageryState('loading');
+    // Re-trigger the imagery effect if it's still waiting: it runs on
+    // mount before the terrain mesh exists (bare return, stays 'loading')
+    // and nothing else re-runs it when there's no drape change to rebuild
+    // the scene (flat rides) — the overlay would hang forever.
+    if (imageryStateRef.current === 'loading') setTerrainEpoch((e) => e + 1);
+  };
   useEffect(() => {
-    if (terrainState !== 'loading') return;
+    let cancelled = false;
+    const controller = new AbortController();
+    // Silent re-attach: the scene rebuilt but the bed data for this ride is
+    // cached — rebuild the mesh with no network and no state change, so the
+    // overlay stays ready instead of flashing loading→on→loading→on.
+    if (terrainState !== 'loading') {
+      const cached = terrainDataRef.current;
+      if (terrainSilentRef.current && cached && cached.key === polyline) {
+        terrainSilentRef.current = false;
+        const startedScene = sceneRef.current;
+        // Never fail silently here: an unhandled throw would strand state
+        // 'on' with no bed and a hidden overlay. Downgrade to a logged
+        // 'failed' so the end state is always visible and retryable.
+        void attachBed(cached.grid, cached.heights, cached.attribution, startedScene, () => cancelled).catch((err) => {
+          console.error('[Replay3D] terrain silent re-attach failed:', err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+          setTerrainState('failed');
+        });
+      } else if (terrainSilentRef.current) {
+        // Stale flag (ride changed under us) — fall back to a full load.
+        terrainSilentRef.current = false;
+        setTerrainState('loading');
+      }
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }
     if (!polyline) {
       setTerrainState('failed');
       return;
     }
     setLoadProgress(null);
     loadProgressRef.current = { loaded: 0, total: 0 };
-    let cancelled = false;
-    const controller = new AbortController();
     // Scene identity at fetch start. The fetch takes seconds; if the scene
     // rebuilds mid-fetch the completion bump may already be consumed, so an
     // unchecked attach can set 'on' on a dead scene while the live scene has
@@ -2219,96 +2371,10 @@ export function Replay3D({
           attribution = 'Terrain © Open-Meteo — Copernicus DEM (GLO-90)';
         }
         if (cancelled) return;
-        const { buildTerrainMesh, computeDrape } = await import('@/lib/route3d');
-        const s = sceneRef.current;
-        if (!s) {
-          // Scene not built yet (effect ran before scene ready) — bail; the
-          // terrainEpoch bump when the scene finishes will re-trigger loading.
-          return;
-        }
-        // Drape the ride onto the DEM bed (pure helper — same frame for road,
-        // bike, ghost and markers). Flat rides keep raw z (drape null).
-        const { altMin, drape } = computeDrape(points, heights, gridSpec, {
-          lat0: build.lat0,
-          lng0: build.lng0,
-          zScale: build.zScale,
-        });
-        const meshData = buildTerrainMesh(gridSpec, heights, {
-          lat0: build.lat0,
-          lng0: build.lng0,
-          altMin,
-          zScale: build.zScale,
-          seaLevelM: 0,
-        });
-        const geo = new THREE.PlaneGeometry(1, 1, gridSpec.cols - 1, gridSpec.rows - 1);
-        geo.setAttribute('position', new THREE.BufferAttribute(meshData.positions, 3));
-        geo.setAttribute('color', new THREE.BufferAttribute(meshData.colors, 3));
-        geo.computeVertexNormals();
-        const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.userData.grid = gridSpec;
-        mesh.userData.heights = heights;
-        mesh.userData.altMin = altMin;
-        mesh.userData.zScale = build.zScale;
-        mesh.receiveShadow = true;
-        // The scene may have rebuilt while fetching — attach to the live one.
-        const live = sceneRef.current;
-        if (!live || cancelled) {
-          geo.dispose();
-          mat.dispose();
-          // Scene was torn down mid-fetch (unmount/rebuild). Mark failed so the
-          // user isn't stuck on an indefinite loading spinner with no feedback.
-          if (!cancelled) setTerrainState('failed');
-          return;
-        }
-        if (live !== startedScene) {
-          // Rebuild completed mid-fetch and its completion bump already fired —
-          // no further retry is coming. This mesh belongs to a dead scene:
-          // dispose it, reset to loading and re-bump so the effect refetches
-          // for the live scene instead of stranding state 'on' with no bed.
-          geo.dispose();
-          mat.dispose();
-          setTerrainState('loading');
-          setTerrainEpoch((e) => e + 1);
-          return;
-        }
-        if (live.terrain) {
-          live.scene.remove(live.terrain);
-          live.terrain.geometry.dispose();
-          (live.terrain.material as THREE.Material).dispose();
-        }
-        live.scene.add(mesh);
-        live.grid.visible = false;
-        live.terrain = mesh;
-        setTerrainAttribution(attribution);
-        setTerrainState('on');
-        // Propagate the drape (only when it changed, to avoid a rebuild loop).
-        if (drape) {
-          const prev = drapeZRef.current;
-          let changed = !prev || prev.length !== drape.length;
-          if (!changed && prev) {
-            for (let i = 0; i < drape.length; i++) {
-              if (Math.abs(prev[i] - drape[i]) > 0.01) {
-                changed = true;
-                break;
-              }
-            }
-          }
-          if (changed) {
-            drapeZRef.current = drape;
-            setDrapeZ(drape);
-          }
-        } else if (drapeZRef.current) {
-          drapeZRef.current = null;
-          setDrapeZ(null);
-        }
-        // Re-drape imagery if it was already on.
-        if (imageryStateRef.current === 'on') setImageryState('loading');
-        // Re-trigger the imagery effect if it's still waiting: it runs on
-        // mount before the terrain mesh exists (bare return, stays 'loading')
-        // and nothing else re-runs it when there's no drape change to rebuild
-        // the scene (flat rides) — the overlay would hang forever.
-        if (imageryStateRef.current === 'loading') setTerrainEpoch((e) => e + 1);
+        // Preserve the bed data across scene rebuilds (keyed by ride): the
+        // drape-driven rebuild disposes the mesh, but the DEM is still valid.
+        terrainDataRef.current = { key: polyline, grid: gridSpec, heights, attribution };
+        await attachBed(gridSpec, heights, attribution, startedScene, () => cancelled);
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         // Terrain failures were completely silent, which made attach failures
@@ -2345,10 +2411,16 @@ export function Replay3D({
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
-        const drape = await fetchWithTimeout(
+        // Reuse the preserved drape when the bed survived (same grid object
+        // re-attached after a scene rebuild) — no satellite refetch.
+        const cachedDrape = imageryCacheRef.current && imageryCacheRef.current.grid === grid
+          ? imageryCacheRef.current.drape
+          : null;
+        const drape = cachedDrape ?? await fetchWithTimeout(
           fetchImageryDrape(grid, { maxTiles: 36, signal: controller.signal, onProgress: onTileProgress }),
           30000,
         );
+        if (!cachedDrape) imageryCacheRef.current = { grid, drape };
         if (cancelled) return;
         const uv = new Float32Array(grid.rows * grid.cols * 2);
         for (let r = 0; r < grid.rows; r++) {
