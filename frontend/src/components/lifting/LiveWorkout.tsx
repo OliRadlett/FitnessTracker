@@ -377,6 +377,20 @@ export function LiveWorkout({
               >
                 📴 Offline · {pendingCount} to sync
               </span>
+            ) : live.syncStatus === 'blocked' ? (
+              // Retrying cannot fix a permanently-rejected set, so this is a
+              // status, not a retry button — offering "retry" here would repeat
+              // the dead end the finishing overlay had.
+              <span
+                role="status"
+                className="px-3 py-1 rounded-full text-xs bg-warning/15 text-warning"
+                title={live.failedSets
+                  .map((s) => `${s.exercise_name}: ${s.failedReason}`)
+                  .join('\n')}
+              >
+                ⚠ {live.failedSets.length} set{live.failedSets.length === 1 ? '' : 's'} rejected —
+                fix or remove
+              </span>
             ) : live.syncStatus === 'error' ? (
               <button
                 onClick={live.retrySync}
