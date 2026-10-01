@@ -1,0 +1,25 @@
+#!/bin/sh
+# commit-msg — enforce conventional commits (Git & Deployment Strategy Rule 4
+# prefers squash/simple history; conventional subjects keep it greppable).
+# Enable with: git config core.hooksPath .githooks
+# Allowed: Merge commits, revert commits, and type(scope): subject.
+set -eu
+
+MSG_FILE="$1"
+SUBJECT=$(head -n1 "$MSG_FILE")
+
+# Merge commits bypass the check.
+case "$SUBJECT" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+# type[(scope)][!]: subject — subject must be non-empty.
+if printf '%s' "$SUBJECT" | grep -Eq '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\(.+\))?(!)?: .+'; then
+  exit 0
+fi
+
+echo "commit-msg: rejected. Use conventional commits:" >&2
+echo "  type(scope): concise subject" >&2
+echo "  type: feat|fix|docs|style|refactor|test|chore|perf|ci|build" >&2
+echo "Got: $SUBJECT" >&2
+exit 1
