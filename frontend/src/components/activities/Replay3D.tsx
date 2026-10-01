@@ -2348,6 +2348,9 @@ export function Replay3D({
         // 'on' with no bed and a hidden overlay. Downgrade to a logged
         // 'failed' so the end state is always visible and retryable.
         void attachBed(cached.grid, cached.heights, cached.attribution, startedScene, () => cancelled).catch((err) => {
+          // A cancelled run belongs to a dead scene — the live run owns the
+          // outcome, so swallow quietly. Anything else is a visible failure.
+          if (cancelled) return;
           console.error('[Replay3D] terrain silent re-attach failed:', err instanceof Error ? `${err.name}: ${err.message}` : String(err));
           setTerrainState('failed');
         });
