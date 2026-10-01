@@ -162,8 +162,21 @@ class Settings(BaseSettings):
         0.55  # review floor — below this a pair is not a candidate
     )
     route_match_auto_threshold: float = (
-        0.82  # at/above this a duplicate pair auto-merges; the rest go to review
+        0.82  # at/above this a pair is *tiered* auto; merging still needs the flag below
     )
+    # Auto-merge is OFF, per the ride/course split plan: no threshold has been
+    # validated, so every duplicate stays review-only. The tiering threshold
+    # above is kept because it defines what would merge if this is turned on
+    # deliberately.
+    #
+    # This used to be unconditional in `recompute_route_similarity`, which
+    # silently merged a route at 0.826 on 28 Sep while the plan said it could
+    # not happen. A decision that lives only in a document reverts the first
+    # time someone reads the code instead of the plan.
+    #
+    # Detection is unaffected: pairs are still written to `route_similarity`
+    # and still surface for review. Only the unreviewed merge is gated.
+    route_auto_merge_enabled: bool = False
     route_match_gate: float = (
         0.45  # hard gate — below this the composite score is forced to 0
     )
