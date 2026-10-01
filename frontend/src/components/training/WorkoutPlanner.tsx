@@ -7,7 +7,7 @@ import { useAuthFetch, updatePlanDay } from '@/lib/api';
 import type { TrainingPlanDay } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { RouteMap } from '@/components/maps/RouteMap';
-import { formatDistance, formatTSB } from '@/lib/utils';
+import { formatDistance, formatElevation, formatTSB } from '@/lib/utils';
 import type {
   WorkoutZonesResponse,
   WorkoutPlanResponse,
@@ -33,11 +33,6 @@ const DURATION_OPTIONS = [
   { value: 150, label: '2h 30m' },
   { value: 180, label: '3 hrs' },
 ];
-
-function formatElevation(meters?: number): string {
-  if (meters == null) return '—';
-  return `${Math.round(meters)}m`;
-}
 
 function ExpandableRouteMatch({
   match,

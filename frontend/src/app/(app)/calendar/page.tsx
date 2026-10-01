@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatStat } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   ActivityCalendarEntry,
@@ -67,26 +67,6 @@ function DayMetricsBadges({ dm }: { dm: DailyMetricSummary }) {
       )}
     </div>
   );
-}
-
-function formatStat(activity: ActivityCalendarEntry): string {
-  if (isStrengthType(activity.sport_type)) {
-    if (activity.focus) {
-      return activity.focus;
-    }
-    return activity.name;
-  }
-  const parts: string[] = [];
-  if (activity.distance_meters != null) {
-    parts.push(formatDistance(activity.distance_meters));
-  }
-  if (activity.duration_seconds != null) {
-    parts.push(formatDuration(activity.duration_seconds));
-  }
-  if (activity.tss != null) {
-    parts.push(`${Math.round(activity.tss)} TSS`);
-  }
-  return parts.join(' \u00B7 ') || activity.name;
 }
 
 // ─── Calendar grid builder ─────────────────────────────────────────────────

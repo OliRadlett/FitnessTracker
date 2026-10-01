@@ -86,6 +86,7 @@
 | `PageHeader` | Single page-header pattern (title + subtitle + actions + status). Replaces ad-hoc `<h1>` strings. `title` is a `ReactNode`, so a page can compose a badge or node into the heading. The wrapper is `items-start`, and the `<h1>` is `text-2xl sm:text-3xl` — so adopting it on a `text-xl` page makes the title larger, and on a page that bottom-aligned its actions (`items-end`, e.g. dashboard) the actions move to top-alignment. Adopted on: activities, analytics, dashboard, goals, lifting, lifting/videos, segments, today. Still bespoke `<h1>`: lifting/live, routes, routes/duplicates |
 | `SectionLabel` | Small-caps section label — the one allowed `uppercase` pattern |
 | `Stat` | Metric-stat pattern (label + tabular value + unit + delta). Content-only — wrap in `Card`/grid at the call site |
+| `StatBadge` | Centred label/value badge for analysis cards (optional `hint` → tooltip + ⓘ glyph). Renders nothing when `value` is null/undefined. Shared by the cycling/lifting analysis cards (was 3 local copies) |
 | `Field` | Labelled form field — assigns `id`, wires `aria-describedby`/`aria-invalid`, renders hint/error |
 | `Toast` | App-wide toast system (`ToastProvider` mounted in `Providers`; `useToast().success/error/toast`). Success/info auto-dismiss, errors sticky |
 | `ConfirmDialog` | Accessible confirm dialog (built on `Modal`) for destructive actions — replaces native `confirm()` |
@@ -251,7 +252,7 @@
 | File | Purpose |
 |------|---------|
 | `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
-| `utils.ts` | `formatDuration`, `formatDistance`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
+| `utils.ts` | `formatDuration`, `formatDistance`, `formatElevation`, `formatStat`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
 | `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |
 | `healthPrefs.ts` | **§3.12 Health-alert preferences client** — `getHealthPreferences` / `updateHealthPreferences` (`GET/PUT /metrics/health-preferences`; types + `HEALTH_SIGNAL_LABELS` in `lib/api/types/health.ts`). Used by `settings/HealthAlertSettings` |

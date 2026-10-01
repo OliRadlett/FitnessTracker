@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
-import { formatDistance } from '@/lib/utils';
+import { formatDistance, getActiveLocale } from '@/lib/utils';
 import { fmtElevation, computeDifficulty, DifficultyBadge } from '@/lib/routeUtils';
 import {
   X,
@@ -404,7 +404,7 @@ function MergeHistorySection({
                       {Math.round(m.score * 100)}% match
                     </Badge>
                     {m.created_at && (
-                      <span>{new Date(m.created_at).toLocaleString()}</span>
+                      <span>{new Date(m.created_at).toLocaleString(getActiveLocale())}</span>
                     )}
                     {!m.primary_exists && (
                       <span className="text-warning">
