@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { RouteSummary } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { formatElevation } from '@/lib/utils';
 
 interface RoutePickerModalProps {
   open: boolean;
@@ -18,11 +19,6 @@ interface RoutePickerModalProps {
 
 function formatDistance(meters: number): string {
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-  return `${Math.round(meters)} m`;
-}
-
-function formatElevation(meters?: number): string {
-  if (!meters) return '—';
   return `${Math.round(meters)} m`;
 }
 

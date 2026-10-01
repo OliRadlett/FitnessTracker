@@ -5,20 +5,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { Activity, RideFuelPlan } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { StatBadge } from '@/components/ui/StatBadge';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { relativeTime } from '@/lib/analysisRenderer';
 
 interface FuelPlanCardProps {
   activity?: Activity;
-}
-
-function StatBadge({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center">
-      <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-foreground mt-1">{value}</p>
-    </div>
-  );
 }
 
 function ActualsEditor({ plan, activityId }: { plan: RideFuelPlan; activityId?: string }) {

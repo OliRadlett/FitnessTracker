@@ -27,6 +27,7 @@ import { createSkyDome } from '@/lib/sky';
 import type { RouteGrid } from '@/lib/route3d';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
+import { getActiveLocale } from '@/lib/utils';
 
 /** practical headlamp strength at full darkness (physical units, tuned by eye) */
 const HEADLAMP_MAX = 60;
@@ -2778,7 +2779,7 @@ export function Replay3D({
                 style={{ backgroundColor: r.color }}
                 aria-hidden="true"
               />
-              <span className="text-muted">{new Date(r.date).toLocaleDateString()}</span>
+              <span className="text-muted">{new Date(r.date).toLocaleDateString(getActiveLocale())}</span>
               {r.isPr && <span className="text-amber-400" title="Personal best">★</span>}
               {r.durationSeconds != null && (
                 <span className="text-foreground/70">
@@ -2802,7 +2803,7 @@ export function Replay3D({
               <div key={s.id} className="flex items-center gap-2">
                 <span className="w-4 text-right font-mono text-muted">{i + 1}.</span>
                 <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate text-foreground/80">{new Date(s.date).toLocaleDateString()}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground/80">{new Date(s.date).toLocaleDateString(getActiveLocale())}</span>
                 <span className="font-mono tabular-nums text-foreground">{(s.distance / 1000).toFixed(2)} km</span>
                 <span
                   className={`w-14 text-right font-mono tabular-nums ${

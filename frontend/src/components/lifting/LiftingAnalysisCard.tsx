@@ -3,6 +3,7 @@
 import React from 'react';
 import type { LiftingAnalysis, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { StatBadge } from '@/components/ui/StatBadge';
 import { Chart } from '@/components/charts/Chart';
 import { glossary } from '@/lib/metricGlossary';
 
@@ -14,18 +15,6 @@ function fatigueColor(index: number): string {
   if (index < 40) return 'text-positive';
   if (index < 70) return 'text-warning';
   return 'text-warning';
-}
-
-function StatBadge({ label, value, className = '', hint }: { label: string; value: string | number; className?: string; hint?: string }) {
-  return (
-    <div className="bg-surface-light/30 rounded-lg px-4 py-3 text-center" title={hint}>
-      <p className="text-xs text-muted uppercase tracking-wide">
-        {label}
-        {hint && <span className="text-muted text-[10px] cursor-help ml-1" aria-hidden>ⓘ</span>}
-      </p>
-      <p className={`text-lg font-semibold text-foreground mt-1 ${className}`}>{value}</p>
-    </div>
-  );
 }
 
 export function LiftingAnalysisCard({ analysis }: LiftingAnalysisCardProps) {
