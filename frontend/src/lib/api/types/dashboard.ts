@@ -165,4 +165,40 @@ export interface TodaySummary {
   active_alerts: number;
   // Shared verdict input (3.1) — Today Brief renders RestDayBanner from this.
   rest_day_suggestion?: RestDaySuggestion;
+  /**
+   * The unified verdict (plan §1) — all five recommendation engines with their
+   * provenance.
+   *
+   * `undefined` only when composition failed outright, which the page handles by
+   * falling back to `rest_day_suggestion`. An engine with nothing to say still
+   * appears here with `available: false` and a reason, so the consensus never
+   * reads as unanimous agreement from the engines that happened to speak.
+   */
+  verdict?: TodayVerdict;
+}
+
+/** One engine's vote. `available: false` + `reason` is a finding, not an error. */
+export interface EngineConsensus {
+  engine: string;
+  stance?: string | null;
+  confidence?: string | null;
+  available: boolean;
+  reason?: string | null;
+  note?: string | null;
+  analyzed_at?: string | null;
+}
+
+export interface ProjectedLoadPoint {
+  date: string;
+  ctl?: number | null;
+  atl?: number | null;
+  tsb?: number | null;
+}
+
+export interface TodayVerdict {
+  should_rest: boolean;
+  headline: string;
+  reasons: string[];
+  consensus: EngineConsensus[];
+  projected_load: ProjectedLoadPoint[];
 }
