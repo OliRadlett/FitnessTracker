@@ -826,8 +826,19 @@ async def merge_routes(
     }
 
     # 1. Sources
-    for source in duplicate.sources:
-        source.route_id = primary.id
+    #
+    # Moved through the relationship collections, NOT by assigning
+    # ``source.route_id`` directly. ``Route.sources`` is declared
+    # ``cascade="all, delete-orphan"``, and a direct FK assignment leaves the
+    # child still registered under ``duplicate`` as far as SQLAlchemy's
+    # bookkeeping is concerned — so the ``db.delete(duplicate)`` further down
+    # cascades over it and the source is destroyed rather than transferred.
+    # That silently lost a provider id on every merge: a duplicate's source is
+    # often the only record that the provider issued that id, and losing it
+    # makes the next sync for that id miss the exact-source lookup.
+    for source in list(duplicate.sources):
+        duplicate.sources.remove(source)
+        primary.sources.append(source)
         moved["source_ids"].append(str(source.id))
 
     # 2. Activities (previously ON DELETE SET NULL → silently unlinked)
