@@ -21,8 +21,12 @@ that is not what we mean.
 The fuzzy tier (same sport, start within +/-5 min, duration and distance
 within 1%) needs no column — it queries the existing ones.
 
-Revision ID: 093
-Revises: 092
+Renumbered from ``093`` when ``main`` shipped its own ``092`` in flight; never
+pushed or applied anywhere shared. See the note in
+``093_add_lifting_set_order_index.py``.
+
+Revision ID: 094
+Revises: 093
 Create Date: 2026-10-01
 """
 
@@ -30,8 +34,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "093"
-down_revision = "092"
+revision = "094"
+down_revision = "093"
 branch_labels = None
 depends_on = None
 

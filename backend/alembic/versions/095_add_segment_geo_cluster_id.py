@@ -22,8 +22,12 @@ No JSONB here -- ``sa.UUID()`` is exported at SQLAlchemy top level, so the
 pitfall-22 dialect trap does not apply. ``tests/test_migration_dialect_types.py``
 still covers this revision.
 
-Revision ID: 094
-Revises: 093
+Renumbered from ``094`` when ``main`` shipped its own ``092`` in flight; never
+pushed or applied anywhere shared. See the note in
+``093_add_lifting_set_order_index.py``.
+
+Revision ID: 095
+Revises: 094
 Create Date: 2026-10-01
 """
 
@@ -31,8 +35,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "094"
-down_revision = "093"
+revision = "095"
+down_revision = "094"
 branch_labels = None
 depends_on = None
 

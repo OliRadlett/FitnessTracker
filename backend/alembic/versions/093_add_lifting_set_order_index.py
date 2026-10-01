@@ -11,6 +11,14 @@ This is a prerequisite for two things the schema could not previously
 express: reordering a session, and describing a superset (contiguous runs of
 one exercise followed by another), both of which need a real ordering column.
 
+Revision history: this was authored as revision ``092`` on a branch that had not
+diverged from ``main``. ``main`` independently shipped ``092_json_null_to_sql_null``
+while the branch was in flight, so two files claimed ``revision = "092"`` and
+alembic would have refused to resolve a head. Renumbered to ``093`` — safe because
+none of these three migrations was ever pushed or applied to any shared database
+(AGENTS pitfall 24 forbids editing an *applied* revision, not renumbering an
+unreleased one).
+
 Design notes:
 
 * Nullable, so the column can be added without a blocking backfill on a live
@@ -23,8 +31,8 @@ Design notes:
   NULL`` so it cannot clobber writes made after the column was added.
 * Additive ``Integer`` — no JSONB, so the dialect-import trap does not apply.
 
-Revision ID: 092
-Revises: 091
+Revision ID: 093
+Revises: 092
 Create Date: 2026-10-01
 """
 
@@ -32,8 +40,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "092"
-down_revision = "091"
+revision = "093"
+down_revision = "092"
 branch_labels = None
 depends_on = None
 
