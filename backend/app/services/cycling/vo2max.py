@@ -25,10 +25,24 @@ class Vo2maxEstimate:
     all_estimates: list[dict]  # individual estimates for transparency
 
 
-def _acsm_vo2max(power_watts: float, weight_kg: float) -> float:
-    """ACSM leg-ergometry equation: VO2 (ml/kg/min) = 1.8 × (kgm/min)/kg + 7.
+def _friend_vo2max(power_watts: float, weight_kg: float) -> float:
+    """FRIEND-ergometry equation: VO2 (ml/kg/min) = 1.74 × (W × 6.12/kg) + 3.5.
 
-    1 W = 6.12 kgm/min, so the power coefficient is 1.8 × 6.12 = 11.016.
+    From the FRIEND study (Nes et al., 2018, PubMed 29692203), which found
+    the FRIEND equation has >4× lower prediction error than the traditional
+    ACSM leg-ergometry equation. The coefficient 1.74 × 6.12 = 10.649.
+
+    Like ACSM, this is a submaximal-to-VO2max estimate: best applied to
+    sustained maximal efforts (e.g. 5-min best power).
+    """
+    return (10.649 * power_watts) / weight_kg + 3.5
+
+
+def _acsm_vo2max_legacy(power_watts: float, weight_kg: float) -> float:
+    """Deprecated: pre-FRIEND ACSM leg-ergometry VO2 (ml/kg/min) = 11.016 × W/kg + 7.
+
+    Kept for audit / historical reference only — do not use for new estimates.
+    The FRIEND equation (_friend_vo2max) is ~30× more accurate (Nes et al., 2018).
     """
     return (11.016 * power_watts) / weight_kg + 7.0
 
@@ -60,9 +74,11 @@ async def estimate_vo2max(
 ) -> Vo2maxEstimate | None:
     """Estimate VO2max from power and/or heart rate data.
 
-    Method 1 (Power-based): Uses ACSM leg-ergometry formula:
-        VO2 (ml/kg/min) = (11.016 × watts) / body_mass_kg + 7
-        Uses best 5-min power as proxy for VO2max power.
+    Method 1 (Power-based): Uses the FRIEND-ergometry equation (Nes et al., 2018):
+        VO2 (ml/kg/min) = (10.649 × watts) / body_mass_kg + 3.5
+        (1.74 × 6.12 = 10.649; the FRIEND study found >4× lower error
+        than the traditional ACSM 11.016 × W/kg + 7.) Uses best 5-min
+        power as proxy for VO2max power.
         Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
 
     Method 2 (HR-based): Uses Uth formula:
@@ -77,7 +93,7 @@ async def estimate_vo2max(
 
     estimates: list[tuple[float, float, str]] = []  # (vo2max, confidence, method)
 
-    # ── Method 1: Power-based (ACSM) ──────────────────────────────────────
+    # ── Method 1: Power-based (FRIEND) ──────────────────────────────────────
     # Get best 5-min / 8-min power from streams
     best_power = await compute_power_curve_from_streams(db, user_id, days)
     power_5min = best_power.get(300)
@@ -93,7 +109,7 @@ async def estimate_vo2max(
     if power_5min and power_5min > 0:
         if weight_kg and weight_kg > 0:
             w_per_kg = power_5min / weight_kg
-            vo2_ml_kg_min = _acsm_vo2max(power_5min, weight_kg)
+            vo2_ml_kg_min = _friend_vo2max(power_5min, weight_kg)
 
             # Sanity check: VO2max between 20-90 ml/kg/min
             if 20 <= vo2_ml_kg_min <= 90:
@@ -101,31 +117,31 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.7,
-                        f"ACSM power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
+                        f"FRIEND power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
                     )
                 )
         else:
             # Without weight, estimate from power alone using typical weight assumptions
             # Use 75kg as default — very rough
-            vo2_ml_kg_min = _acsm_vo2max(power_5min, 75.0)
+            vo2_ml_kg_min = _friend_vo2max(power_5min, 75.0)
             if 20 <= vo2_ml_kg_min <= 90:
                 estimates.append(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.4,
-                        f"ACSM power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
+                        f"FRIEND power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
                     )
                 )
 
     # Also try best 8-min power as a secondary signal
     if power_8min and power_8min > 0 and weight_kg and weight_kg > 0:
-        vo2_ml_kg_min = _acsm_vo2max(power_8min, weight_kg)
+        vo2_ml_kg_min = _friend_vo2max(power_8min, weight_kg)
         if 20 <= vo2_ml_kg_min <= 90:
             estimates.append(
                 (
                     round(vo2_ml_kg_min, 1),
                     0.6,
-                    f"ACSM power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
+                    f"FRIEND power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
                 )
             )
 
@@ -287,7 +303,7 @@ async def compute_vo2max_history(
         if not weight_kg or weight_kg <= 0:
             weight_kg = 75.0
             weight_defaulted = True
-        vo2_ml_kg_min = _acsm_vo2max(best_5min, weight_kg)
+        vo2_ml_kg_min = _friend_vo2max(best_5min, weight_kg)
 
         if 20 <= vo2_ml_kg_min <= 90:
             history.append(
