@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -626,6 +627,13 @@ function FinishSheet({
   const [rpe, setRpe] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  // Portal gate: the sheet renders into <body> so it escapes <main>, which a
+  // Modal makes inert. Guarded so document.body is never touched during SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleFinish = async () => {
     setSaving(true);
@@ -633,7 +641,9 @@ function FinishSheet({
     setSaving(false);
   };
 
-  return (
+  if (!mounted || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" role="dialog" aria-label="Finish session">
       <div className="bg-surface rounded-t-2xl border-t border-surface-light/50 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
         <h2 className="text-lg font-bold text-foreground">Session summary</h2>
@@ -708,6 +718,7 @@ function FinishSheet({
           Whoop strain/HR will attach to this session after your next sync (~30 min).
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

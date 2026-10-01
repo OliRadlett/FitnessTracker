@@ -1,38 +1,17 @@
 ﻿'use client';
 
 import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
-import { formatDuration, formatDistance } from '@/lib/utils';
+import { formatStat } from '@/lib/utils';
 import type { ActivityCalendarEntry, DailyMetricSummary } from '@/lib/api';
 import {
   getSportColor,
   getSportTextColor,
   getSportBorderColor,
   getSportEmoji,
-  isStrengthType,
 } from '@/lib/sportUtils';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 
 // ── Calendar Agenda View ─────────────────────────────────────────────────────
-
-function formatStat(activity: ActivityCalendarEntry): string {
-  if (isStrengthType(activity.sport_type)) {
-    if (activity.focus) {
-      return activity.focus;
-    }
-    return activity.name;
-  }
-  const parts: string[] = [];
-  if (activity.distance_meters != null) {
-    parts.push(formatDistance(activity.distance_meters));
-  }
-  if (activity.duration_seconds != null) {
-    parts.push(formatDuration(activity.duration_seconds));
-  }
-  if (activity.tss != null) {
-    parts.push(`${Math.round(activity.tss)} TSS`);
-  }
-  return parts.join(' \u00B7 ') || activity.name;
-}
 
 // ── Calendar Agenda View ─────────────────────────────────────────────────────
 
