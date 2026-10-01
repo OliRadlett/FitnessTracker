@@ -176,7 +176,7 @@ openssl rand -base64 48
 
 ## 7. Configure Caddy for Your Domain
 
-The Caddyfile uses the `DOMAIN` environment variable (set in `.env`). No manual Caddyfile editing is needed — the deploy workflow resets it on every push.
+`infra/Caddyfile` is the single source of truth for routing and security headers. The deploy workflow derives the live file from it on every push, substituting only two values it cannot supply: the site address (from `DOMAIN` in `.env`) and the ACME account email (from the `ACME_EMAIL` repo secret). Make Caddy changes in the committed file.
 
 Set your domain in `.env`:
 
@@ -186,7 +186,7 @@ DOMAIN=oliradlett.co.uk
 
 Caddy will automatically obtain a Let's Encrypt certificate for your domain. For `localhost`, it uses a self-signed certificate.
 
-> **Note**: Do NOT edit the Caddyfile directly — the deploy workflow (`git reset --hard`) overwrites it on every deploy. All domain configuration is via the `DOMAIN` env var.
+> **Note**: Do NOT edit the Caddyfile on the server — the deploy workflow resets it (`git reset --hard`) and re-derives it from the committed `infra/Caddyfile` on every deploy, discarding server-side edits. All domain configuration is via the `DOMAIN` env var.
 
 ## 8. Configure OAuth providers
 
