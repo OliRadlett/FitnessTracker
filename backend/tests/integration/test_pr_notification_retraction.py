@@ -32,21 +32,19 @@ pytestmark = pytest.mark.integration
 
 async def _make_pr_session(client, *, exercise: str, weight: float, reps: int = 5):
     """Create a session whose single set is a PR for ``exercise``."""
-    return (
-        await client.post(
-            "/api/v1/lifting/sessions",
-            json={
-                "session_date": date.today().isoformat(),
-                "sets": [
-                    {
-                        "exercise_name": exercise,
-                        "set_number": 1,
-                        "weight_kg": weight,
-                        "reps": reps,
-                    }
-                ],
-            },
-        )
+    return await client.post(
+        "/api/v1/lifting/sessions",
+        json={
+            "session_date": date.today().isoformat(),
+            "sets": [
+                {
+                    "exercise_name": exercise,
+                    "set_number": 1,
+                    "weight_kg": weight,
+                    "reps": reps,
+                }
+            ],
+        },
     )
 
 
@@ -76,7 +74,9 @@ class TestPrRetraction:
         before = await _notifications(db_session, test_user.id)
         assert [n.type for n in before] == ["pr"]
 
-        assert (await client.delete(f"/api/v1/lifting/sets/{set_id}")).status_code == 204
+        assert (
+            await client.delete(f"/api/v1/lifting/sets/{set_id}")
+        ).status_code == 204
 
         assert await _prs(db_session, test_user.id) == []
         # No notification claims a PR that no longer exists.
@@ -84,16 +84,18 @@ class TestPrRetraction:
             "pr_revoked"
         ]
 
-    async def test_retraction_emits_a_correction(
-        self, client, db_session, test_user
-    ):
+    async def test_retraction_emits_a_correction(self, client, db_session, test_user):
         """The push already reached the device, so the reversal must be stated."""
         body = await _make_pr_session(client, exercise="Deadlift", weight=180.0)
         set_id = body.json()["sets"][0]["id"]
 
         await client.delete(f"/api/v1/lifting/sets/{set_id}")
 
-        revoked = [n for n in await _notifications(db_session, test_user.id) if n.type == "pr_revoked"]
+        revoked = [
+            n
+            for n in await _notifications(db_session, test_user.id)
+            if n.type == "pr_revoked"
+        ]
         assert len(revoked) == 1
         note = revoked[0]
         # Names the exercise and is not styled as an achievement.
@@ -146,20 +148,18 @@ class TestPrRetraction:
         types = [n.type for n in await _notifications(db_session, test_user.id)]
         assert "pr_revoked" not in types
 
-    async def test_no_pr_no_notification_noise(
-        self, client, db_session, test_user
-    ):
+    async def test_no_pr_no_notification_noise(self, client, db_session, test_user):
         """A high-rep set is not a PR candidate, so deleting it announces nothing."""
-        body = await _make_pr_session(client, exercise="Bench Press", weight=60.0, reps=20)
+        body = await _make_pr_session(
+            client, exercise="Bench Press", weight=60.0, reps=20
+        )
         set_id = body.json()["sets"][0]["id"]
 
         await client.delete(f"/api/v1/lifting/sets/{set_id}")
 
         assert await _notifications(db_session, test_user.id) == []
 
-    async def test_warmup_set_deletion_is_silent(
-        self, client, db_session, test_user
-    ):
+    async def test_warmup_set_deletion_is_silent(self, client, db_session, test_user):
         """Warmups never contend for records, so nothing to retract."""
         resp = await client.post(
             "/api/v1/lifting/sessions",
@@ -245,7 +245,9 @@ class TestPrRetraction:
         expected = f"pr:Bench Press:{prs[0].achieved_date}"
         assert _pr_dedup_key(prs[0]) == expected
         # And that is the key the notification actually carries.
-        pr_note = next(n for n in await _notifications(db_session, test_user.id) if n.type == "pr")
+        pr_note = next(
+            n for n in await _notifications(db_session, test_user.id) if n.type == "pr"
+        )
         assert pr_note.dedup_key == expected
 
         await client.delete(f"/api/v1/lifting/sets/{set_id}")

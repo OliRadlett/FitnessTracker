@@ -64,7 +64,11 @@ class TestDensity:
 
         resp = await client.get(
             "/api/v1/activities/timeseries",
-            params={"bucket": "day", "start": start.isoformat(), "end": end.isoformat()},
+            params={
+                "bucket": "day",
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
         )
         assert resp.status_code == 200, resp.text
         buckets = resp.json()["buckets"]
@@ -90,7 +94,11 @@ class TestDensity:
 
         resp = await client.get(
             "/api/v1/activities/timeseries",
-            params={"bucket": "week", "start": start.isoformat(), "end": end.isoformat()},
+            params={
+                "bucket": "week",
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
         )
         buckets = resp.json()["buckets"]
 
@@ -98,9 +106,7 @@ class TestDensity:
         assert 0 in counts, "an empty week must be represented, not skipped"
         assert sum(counts) == 2
 
-    async def test_week_buckets_are_monday_based(
-        self, db_session, test_user, client
-    ):
+    async def test_week_buckets_are_monday_based(self, db_session, test_user, client):
         """date_trunc('week') is Monday-based; the frontend assumes ISO weeks."""
         resp = await client.get(
             "/api/v1/activities/timeseries",
@@ -113,9 +119,7 @@ class TestDensity:
         for b in resp.json()["buckets"]:
             assert date.fromisoformat(b["bucket_start"]).weekday() == 0
 
-    async def test_month_buckets_start_on_first(
-        self, db_session, test_user, client
-    ):
+    async def test_month_buckets_start_on_first(self, db_session, test_user, client):
         resp = await client.get(
             "/api/v1/activities/timeseries",
             params={
@@ -127,9 +131,7 @@ class TestDensity:
         for b in resp.json()["buckets"]:
             assert date.fromisoformat(b["bucket_start"]).day == 1
 
-    async def test_range_spanning_year_boundary(
-        self, db_session, test_user, client
-    ):
+    async def test_range_spanning_year_boundary(self, db_session, test_user, client):
         """Month arithmetic across a year boundary is the easy thing to get wrong."""
         resp = await client.get(
             "/api/v1/activities/timeseries",
@@ -145,9 +147,7 @@ class TestDensity:
 
 
 class TestTotals:
-    async def test_totals_match_sum_of_buckets(
-        self, db_session, test_user, client
-    ):
+    async def test_totals_match_sum_of_buckets(self, db_session, test_user, client):
         """Totals are summed from the dense series, so they cannot disagree."""
         for d in (1, 3, 10):
             db_session.add(_activity(test_user, days_ago=d))
@@ -157,7 +157,11 @@ class TestTotals:
 
         resp = await client.get(
             "/api/v1/activities/timeseries",
-            params={"bucket": "day", "start": start.isoformat(), "end": end.isoformat()},
+            params={
+                "bucket": "day",
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
         )
         body = resp.json()
 
@@ -168,9 +172,7 @@ class TestTotals:
         )
         assert body["totals"]["distance_meters"] == pytest.approx(90000.0)
 
-    async def test_no_activities_returns_all_zero(
-        self, db_session, test_user, client
-    ):
+    async def test_no_activities_returns_all_zero(self, db_session, test_user, client):
         end = date.today()
         resp = await client.get(
             "/api/v1/activities/timeseries",
@@ -212,9 +214,7 @@ class TestFilters:
         assert body["totals"]["count"] == 1
         assert body["sport_breakdown"] == [{"sport_type": "running", "count": 1}]
 
-    async def test_wahoo_activities_excluded(
-        self, db_session, test_user, client
-    ):
+    async def test_wahoo_activities_excluded(self, db_session, test_user, client):
         """Standalone Wahoo rows were merged into their Strava twin.
 
         Counting them again would double-count, so the same filter

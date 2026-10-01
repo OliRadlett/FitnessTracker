@@ -98,7 +98,9 @@ async def _import_one(client, payload: dict, monkeypatch, content: bytes = b"rid
 
 
 class TestExactDuplicate:
-    async def test_same_bytes_create_one_row(self, client, db_session, test_user, monkeypatch):
+    async def test_same_bytes_create_one_row(
+        self, client, db_session, test_user, monkeypatch
+    ):
         """The regression: identical bytes used to produce two activities."""
         payload = _parsed_fit()
 
@@ -121,7 +123,9 @@ class TestExactDuplicate:
         )
         assert len(rows) == 1
 
-    async def test_fingerprint_is_stored(self, client, db_session, test_user, monkeypatch):
+    async def test_fingerprint_is_stored(
+        self, client, db_session, test_user, monkeypatch
+    ):
         from app.services.import_dedup import file_fingerprint
 
         payload = _parsed_fit()
@@ -139,7 +143,9 @@ class TestExactDuplicate:
         assert rows[0].import_fingerprint == file_fingerprint(b"fingerprint-bytes")
 
     async def test_fingerprint_is_exposed_on_read(self, client, monkeypatch):
-        body = (await _import_one(client, _parsed_fit(), monkeypatch, b"exposed")).json()
+        body = (
+            await _import_one(client, _parsed_fit(), monkeypatch, b"exposed")
+        ).json()
         assert body["import_fingerprint"] is not None
 
     async def test_different_bytes_are_not_exact_duplicates(
@@ -174,7 +180,9 @@ class TestExactDuplicate:
         )
         assert len(rows) == 2
 
-    async def test_provider_rows_have_no_fingerprint(self, client, db_session, test_activity):
+    async def test_provider_rows_have_no_fingerprint(
+        self, client, db_session, test_activity
+    ):
         """Only file imports carry one — provider rows stay NULL."""
         assert test_activity.import_fingerprint is None
 
@@ -198,7 +206,9 @@ class TestFuzzyDuplicate:
         # Clock drift plus a rounding-level distance difference.
         second = await _import_one(
             client,
-            _parsed_fit(start_time=base + timedelta(minutes=2), distance_meters=30060.0),
+            _parsed_fit(
+                start_time=base + timedelta(minutes=2), distance_meters=30060.0
+            ),
             monkeypatch,
             b"export-two-different-bytes",
         )
@@ -219,7 +229,9 @@ class TestFuzzyDuplicate:
         sources = list(
             (
                 await db_session.execute(
-                    select(ActivitySource).where(ActivitySource.activity_id == original_id)
+                    select(ActivitySource).where(
+                        ActivitySource.activity_id == original_id
+                    )
                 )
             )
             .scalars()
@@ -318,7 +330,10 @@ class TestFuzzyDuplicate:
         """Beyond the 1% tolerance."""
         base = datetime.now(UTC) - timedelta(days=22)
         first = await _import_one(
-            client, _parsed_fit(start_time=base, distance_meters=30000.0), monkeypatch, b"d1"
+            client,
+            _parsed_fit(start_time=base, distance_meters=30000.0),
+            monkeypatch,
+            b"d1",
         )
         second = await _import_one(
             client,
@@ -328,9 +343,7 @@ class TestFuzzyDuplicate:
         )
         assert second.json()["id"] != first.json()["id"]
 
-    async def test_missing_distance_does_not_block_a_match(
-        self, client, monkeypatch
-    ):
+    async def test_missing_distance_does_not_block_a_match(self, client, monkeypatch):
         """A file with no distance cannot be told apart by distance.
 
         The other two criteria still have to agree, so this must not become a
@@ -446,9 +459,7 @@ class TestBulkImport:
         )
         assert len(rows) == 2
 
-    async def test_duplicates_are_counted_separately(
-        self, client, monkeypatch
-    ):
+    async def test_duplicates_are_counted_separately(self, client, monkeypatch):
         """A batch mixing new and already-imported files reports both."""
         base = datetime.now(UTC) - timedelta(days=60)
         mapping = {
@@ -474,7 +485,10 @@ class TestBulkImport:
         assert body["created"] == 1
         # The duplicate points at the activity that already existed.
         assert body["results"][0]["attached_source"] is True
-        assert body["results"][0]["activity_id"] == first.json()["results"][0]["activity_id"]
+        assert (
+            body["results"][0]["activity_id"]
+            == first.json()["results"][0]["activity_id"]
+        )
 
     async def test_empty_batch_is_rejected(self, client):
         resp = await client.post("/api/v1/activities/import-bulk", files=[])

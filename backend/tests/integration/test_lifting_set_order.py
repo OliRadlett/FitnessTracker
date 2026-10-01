@@ -172,7 +172,11 @@ class TestCreateSessionOrdering:
         body = await _session(
             client,
             test_user,
-            [("Back Squat", 1, 100.0), ("Back Squat", 1, 100.0), ("Back Squat", 3, 100.0)],
+            [
+                ("Back Squat", 1, 100.0),
+                ("Back Squat", 1, 100.0),
+                ("Back Squat", 3, 100.0),
+            ],
         )
         squat = [s for s in body["sets"] if s["exercise_name"] == "Back Squat"]
         assert sorted(s["set_number"] for s in squat) == [1, 2, 3]
@@ -328,9 +332,7 @@ class TestReorderEndpoint:
         )
         assert resp.status_code == 404
 
-    async def test_another_users_session_is_404(
-        self, client, db_session, test_user
-    ):
+    async def test_another_users_session_is_404(self, client, db_session, test_user):
         """Ownership is enforced, and 404 (not 403) so sessions are not probeable."""
         mine = await _session(client, test_user, [("Back Squat", 1, 100.0)])
         mine_ids = [s["id"] for s in mine["sets"]]
@@ -422,7 +424,9 @@ class TestDeleteRenumbers:
 
         reloaded = (await client.get(f"/api/v1/lifting/sessions/{body['id']}")).json()
         remaining = [
-            s["set_number"] for s in reloaded["sets"] if s["exercise_name"] == "Back Squat"
+            s["set_number"]
+            for s in reloaded["sets"]
+            if s["exercise_name"] == "Back Squat"
         ]
         assert sorted(remaining) == [1, 2]
 
@@ -446,7 +450,9 @@ class TestDeleteRenumbers:
 
         reloaded = (await client.get(f"/api/v1/lifting/sessions/{body['id']}")).json()
         remaining = sorted(
-            s["set_number"] for s in reloaded["sets"] if s["exercise_name"] == "Back Squat"
+            s["set_number"]
+            for s in reloaded["sets"]
+            if s["exercise_name"] == "Back Squat"
         )
         assert remaining == [1, 2]
 
@@ -466,7 +472,9 @@ class TestDeleteRenumbers:
 
         reloaded = (await client.get(f"/api/v1/lifting/sessions/{body['id']}")).json()
         bench = sorted(
-            s["set_number"] for s in reloaded["sets"] if s["exercise_name"] == "Bench Press"
+            s["set_number"]
+            for s in reloaded["sets"]
+            if s["exercise_name"] == "Bench Press"
         )
         assert bench == [1, 2]
 
@@ -475,9 +483,7 @@ class TestDeleteRenumbers:
 
 
 class TestEditRenumbers:
-    async def test_moving_a_set_compacts_both_exercises(
-        self, client, test_user
-    ):
+    async def test_moving_a_set_compacts_both_exercises(self, client, test_user):
         body = await _session(
             client,
             test_user,
@@ -508,9 +514,7 @@ class TestEditRenumbers:
         # Bench gained a set, so it must be contiguous 1-2.
         assert sorted(by_exercise["Bench Press"]) == [1, 2]
 
-    async def test_normalised_move_keeps_numbering_contiguous(
-        self, client, test_user
-    ):
+    async def test_normalised_move_keeps_numbering_contiguous(self, client, test_user):
         """A lowercase alias still moves the set (Wave 0.2 normalisation)."""
         body = await _session(
             client,
@@ -527,7 +531,9 @@ class TestEditRenumbers:
         assert resp.status_code == 200
         reloaded = (await client.get(f"/api/v1/lifting/sessions/{body['id']}")).json()
         squat_numbers = sorted(
-            s["set_number"] for s in reloaded["sets"] if s["exercise_name"] == "Back Squat"
+            s["set_number"]
+            for s in reloaded["sets"]
+            if s["exercise_name"] == "Back Squat"
         )
         assert squat_numbers == [1, 2]
         assert squat["id"] in {s["id"] for s in reloaded["sets"]}
@@ -603,9 +609,7 @@ class TestBackfillMigration:
         await db_session.execute(text(_BACKFILL_SQL))
         db_session.expire_all()
 
-    async def test_backfill_assigns_a_total_order(
-        self, db_session, test_user
-    ):
+    async def test_backfill_assigns_a_total_order(self, db_session, test_user):
         session = await self._seed_legacy(db_session, test_user)
         session_id = session.id
 
@@ -626,9 +630,7 @@ class TestBackfillMigration:
         assert sorted(r.order_index for r in rows) == [0, 1, 2, 3]
         # Each exercise's own set_number order is preserved within the session.
         squat = [r for r in rows if r.exercise_name == "Back Squat"]
-        assert [r.order_index for r in squat] == sorted(
-            r.order_index for r in squat
-        )
+        assert [r.order_index for r in squat] == sorted(r.order_index for r in squat)
 
     async def test_backfill_is_idempotent(self, db_session, test_user):
         """Re-running must not renumber — a scheduler repeat or a retry."""
@@ -689,9 +691,7 @@ class TestBackfillMigration:
         ).scalar_one()
         assert stored == 99
 
-    async def test_backfill_keeps_each_session_separate(
-        self, db_session, test_user
-    ):
+    async def test_backfill_keeps_each_session_separate(self, db_session, test_user):
         """Numbering restarts per session — two sessions must not interleave."""
         from datetime import date as _date
 

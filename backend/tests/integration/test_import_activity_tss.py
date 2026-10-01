@@ -86,7 +86,9 @@ async def _import_fit(client) -> dict:
 
 
 class TestImportComputesTss:
-    async def test_imported_activity_has_tss(self, client, db_session, test_cycling_profile):
+    async def test_imported_activity_has_tss(
+        self, client, db_session, test_cycling_profile
+    ):
         """The regression: this used to persist tss=NULL."""
         body = await _import_fit(client)
 
@@ -175,9 +177,7 @@ class TestBackfillManualActivityTss:
         assert activity.tss is not None and activity.tss > 0
         assert activity.tss_source == "power"
 
-    async def test_is_idempotent(
-        self, db_session, test_user, test_cycling_profile
-    ):
+    async def test_is_idempotent(self, db_session, test_user, test_cycling_profile):
         """A repeat run must find nothing, not recompute and churn."""
         activity = _stranded_import(test_user)
         db_session.add(activity)

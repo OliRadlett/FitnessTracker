@@ -21,6 +21,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.database import Base, get_db
@@ -58,8 +59,21 @@ async def test_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
+    # Reset the schema rather than ``Base.metadata.drop_all``. Dropping table by
+    # table depends on SQLAlchemy inferring a correct dependency order, which
+    # breaks down here: the integration endpoints run inside this fixture's own
+    # connection (``get_db`` is overridden to yield ``db_session``) and
+    # ``get_db`` *commits* on a successful request, which commits the fixture's
+    # wrapping transaction out from under it. Teardown then ran against
+    # inconsistent connection state and died on
+    # "cannot drop table users because other objects depend on it",
+    # surfacing as an ERROR against whichever test happened to run last.
+    #
+    # This database is created by, and exists only for, this fixture — so a
+    # CASCADE drop of the whole schema is both safe and order-independent.
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
     await engine.dispose()
 
 
