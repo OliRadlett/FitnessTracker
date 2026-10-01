@@ -16,7 +16,7 @@ from app.services.cycling import (
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
 )
-from app.services.cycling.vo2max import _acsm_vo2max
+from app.services.cycling.vo2max import _friend_vo2max
 
 
 class TestCalculatePowerTSS:
@@ -222,16 +222,19 @@ class TestEstimateFTPFromPowerCurve:
         assert detailed.confidence <= 0.5
 
 
-class TestAcsmVo2max:
-    """ACSM leg ergometry: 1.8 × (kgm/min)/kg + 7 with 1 W = 6.12 kgm/min."""
+class TestFriendVo2max:
+    """FRIEND-ergometry: 1.74 × (W × 6.12/kg) + 3.5, i.e. 10.649 × W/kg + 3.5.
+
+    From Nes et al. (2018, PubMed 29692203), >4× lower error than ACSM.
+    """
 
     def test_coefficient(self):
-        """300 W @75 kg → 11.016×300/75 + 7 = 51.064."""
-        assert _acsm_vo2max(300.0, 75.0) == pytest.approx(51.064, abs=0.001)
+        """300 W @75 kg → 10.649×300/75 + 3.5 = 46.096."""
+        assert _friend_vo2max(300.0, 75.0) == pytest.approx(46.096, abs=0.001)
 
     def test_rest_term(self):
-        """Zero watts still yields the 7 ml/kg/min intercept."""
-        assert _acsm_vo2max(0.0, 75.0) == pytest.approx(7.0)
+        """Zero watts still yields the 3.5 ml/kg/min intercept."""
+        assert _friend_vo2max(0.0, 75.0) == pytest.approx(3.5)
 
 
 class TestComputeTrainingLoad:

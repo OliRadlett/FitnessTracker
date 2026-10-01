@@ -522,20 +522,20 @@ export const mockPowerZones = {
 export const mockVo2max = {
   vo2max: 52.5,
   confidence: 0.82,
-  method: 'ACSM power-based',
+  method: 'FRIEND power-based',
   classification: 'Good',
   all_estimates: [
-    { vo2max: 52.5, confidence: 0.82, method: 'ACSM power-based' },
+    { vo2max: 52.5, confidence: 0.82, method: 'FRIEND power-based' },
     { vo2max: 51.2, confidence: 0.65, method: 'Uth HR-based' },
   ],
 };
 
 export const mockVo2maxHistory = {
   data: [
-    { date: '2026-05-01', vo2max: 48.5, method: 'ACSM' },
-    { date: '2026-06-01', vo2max: 50.2, method: 'ACSM' },
-    { date: '2026-07-01', vo2max: 51.8, method: 'ACSM' },
-    { date: '2026-08-01', vo2max: 52.5, method: 'ACSM' },
+    { date: '2026-05-01', vo2max: 48.5, method: 'FRIEND' },
+    { date: '2026-06-01', vo2max: 50.2, method: 'FRIEND' },
+    { date: '2026-07-01', vo2max: 51.8, method: 'FRIEND' },
+    { date: '2026-08-01', vo2max: 52.5, method: 'FRIEND' },
   ],
   current_vo2max: 52.5,
   current_classification: 'Good',
