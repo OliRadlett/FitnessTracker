@@ -117,8 +117,15 @@ class Route(Base):
     collection_items: Mapped[list["RouteCollectionItem"]] = relationship(  # type: ignore[name-defined]
         "RouteCollectionItem", cascade="all, delete-orphan"
     )
+    # `passive_deletes=True` so the database's ON DELETE CASCADE applies.
+    # Without it SQLAlchemy treats the delete as a de-association and sets
+    # `route_quality.route_id` to NULL — which that column forbids, so any
+    # route carrying a quality row could not be deleted. That included
+    # `DELETE /routes/{id}` and every merge, since `merge_routes` also deletes
+    # the duplicate row. The error names a table rather than this
+    # relationship, so the cause is not obvious from the traceback.
     quality: Mapped["RouteQuality | None"] = relationship(  # type: ignore[name-defined]
-        "RouteQuality", back_populates="route", uselist=False
+        "RouteQuality", back_populates="route", uselist=False, passive_deletes=True
     )
 
 
