@@ -206,3 +206,22 @@ npm run typecheck
 - `docs/algorithms.md` — TSS/CTL/ATL, power models, highlight detection
 - `frontend/src/app/dev/replay/page.tsx` — offline test harness
 - `plans/future-enhancements.md` §3.16 — original parent spec
+
+## Release status (2026-10-02 — UNRELEASED, do not treat as shipped)
+
+All work sits on `feature/relive-bugfix-pass`, **unpushed** — the sandbox
+cannot reach the remote (SSH pipe blocked), so push + PR + CI + the
+`main` → `prod` merge all need a hosted terminal:
+
+```
+git push -u origin feature/relive-bugfix-pass
+# PR into main, wait for CI — test.yml must actually run the vitest suite,
+# which has never executed under the real runner for any of this work
+# then: main → prod merge, watch Deploy, verify /health + one live replay
+```
+
+Pre-deploy minimum: hosted `vitest`, then the visual pass (golden hour,
+night + headlamp, rain, punchy-ride tour, ghost delta, Focus on, poster +
+clip, mobile Lite ride) plus speaker levels. Several shipped items are
+explicitly pending that eyeball (DOF defaults off, mirror/SSR honesty,
+shader compile on real GPUs). Do not fast-forward this to `prod`.
