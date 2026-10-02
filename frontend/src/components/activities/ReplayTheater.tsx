@@ -201,7 +201,9 @@ export function ReplayTheater({
 
       {ghostCandidates.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-surface-light px-3 py-2 text-xs sm:px-4">
-          <span className="uppercase tracking-wide text-muted">Ghost</span>
+          <span className="uppercase tracking-wide text-muted" title="Ghosts align by ride time — both rides start together">
+            Ghost · time-aligned
+          </span>
           <button
             onClick={() => setGhostId(null)}
             aria-pressed={ghostId === null}

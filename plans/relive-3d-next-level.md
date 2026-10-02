@@ -1,6 +1,6 @@
 # Relive 3D — Next Level: The Project Centerpiece
 
-> **Status**: Phase A complete pending hosted eyeballs — atmosphere dome, cloud shell, god rays, default-off DOF and wet reflections shipped (2026-10-02); the route view shares the atmosphere dome + fair-weather clouds too. Still open: raymarched cloud shadows, true mirror/SSR, defaulting DOF on.
+> **Status**: All sandbox-buildable work shipped (2026-10-02) — Phase A complete (atmosphere dome, cloud shell, god rays, default-off DOF, wet reflections, route-view parity), Phase B director complete (beats, shot library, captions, lookahead, wiki guide, first-run intro), Phase C perf budget, Phase D full audio, plus reduced-motion + screen-reader support. Everything merged on `feature/relive-bugfix-pass`, `tsc` clean, 211 unit checks green by direct execution. Still open, all externally gated: hosted visual/audio verification, WebGPU/LOD, share links, montage UI, AR, AI analysis, segments, weather timeline, power-model what-ifs, music pacing, video export.
 > **Prerequisite**: `plans/relive-3d-redesign.md` — all five phases complete.
 > **North star**: Turn the 3D ride viewer from "the best feature" into **the thing
 > people point at when they tell others about FitTrack** — a Relive-grade highlight
