@@ -2829,6 +2829,15 @@ export function Replay3D({
         if (!mesh || !grid) {
           // Terrain not attached yet (scene rebuild race) — stay in 'loading'
           // and retry when the terrain epoch bumps (mesh re-attaches).
+          // BUT if terrain is terminally off/failed, no mesh is ever coming:
+          // satellite needs a bed to drape onto, so resolve to 'off' instead
+          // of stranding the loading overlay forever. (Observed: auto-load
+          // initializer + terrain toggled off = infinite spinner.)
+          const ts = terrainStateRef.current;
+          if (ts === 'off' || ts === 'failed') {
+            setImageryState('off');
+            return;
+          }
           return;
         }
         const { fetchImageryDrape, imageryUv, IMAGERY_ATTRIBUTION } = await import('@/lib/imageryTiles');
