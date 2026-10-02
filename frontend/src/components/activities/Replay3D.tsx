@@ -2769,6 +2769,8 @@ export function Replay3D({
       const old = mesh?.material as THREE.MeshBasicMaterial | undefined;
       if (mesh && old) {
         old.map?.dispose();
+        // Restore the exact initial material (DoubleSide included) so repeated
+        // satellite toggles can't drift the terrain's rendering state.
         mesh.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
         old.dispose();
       }

@@ -445,11 +445,22 @@ export default function ActivitiesPage() {
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const PAGE_SIZE = 50;
 
-  // Deep-link: select the activity referenced by ?activity=<id> on load
+  // Deep-link: select the activity referenced by ?activity=<id> on load. A
+  // bare ?replay=<id> (shared Theater link, no activity param) selects that
+  // ride too and canonicalizes the URL, so the Theater auto-opens from the
+  // replay link alone — off-list ids already render via the fallback below.
   useEffect(() => {
     const id = getParam('activity');
-    if (id) setSelectedActivityId((prev) => (prev === id ? prev : id));
-  }, [getParam]);
+    if (id) {
+      setSelectedActivityId((prev) => (prev === id ? prev : id));
+      return;
+    }
+    const replayId = getParam('replay');
+    if (replayId) {
+      setSelectedActivityId((prev) => (prev === replayId ? prev : replayId));
+      setParam('activity', replayId);
+    }
+  }, [getParam, setParam]);
 
   const handleSelectActivity = useCallback((id: string | null) => {
     setSelectedActivityId(id);

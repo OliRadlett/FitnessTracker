@@ -112,7 +112,7 @@ export function ReplayTheater({
     () => (history?.rides ?? []).map((r) => r.activity_id).slice(0, 8),
     [history],
   );
-  const { data: raceDetails } = useQuery<ActivityDetail[]>({
+  const { data: raceDetails, isLoading: raceLoading, isError: raceError } = useQuery<ActivityDetail[]>({
     queryKey: ['race-details', allRideIds],
     // One slow/failed ride must not kill the whole mode — keep the rest.
     queryFn: async () => {
@@ -218,6 +218,21 @@ export function ReplayTheater({
           >
             Race Yourself
           </button>
+        </div>
+      )}
+
+      {/* Race-mode fetch state: without this the toggle appears dead while
+          up to 8 ride details load (or silently does nothing when fewer
+          than 2 build into traces). */}
+      {raceMode && (raceLoading || raceError || (raceDetails && !race)) && (
+        <div className="border-b border-surface-light px-3 py-1.5 text-xs sm:px-4" role="status">
+          {raceLoading ? (
+            <span className="text-muted">Loading race rides…</span>
+          ) : raceError ? (
+            <span className="text-warning">Couldn&apos;t load race rides — check your connection and toggle Race Yourself off and on.</span>
+          ) : (
+            <span className="text-muted">Need at least 2 rides with route data to draw the race.</span>
+          )}
         </div>
       )}
 
