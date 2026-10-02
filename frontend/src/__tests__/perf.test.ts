@@ -3,6 +3,7 @@ import {
   PERF_MIN_FPS,
   PERF_WARMUP_FRAMES,
   createPerfBudget,
+  isSoftwareGLRenderer,
   perfNeedsDegrade,
   perfObserve,
   prefersReducedMotion,
@@ -61,6 +62,21 @@ describe('prefersReducedMotion', () => {
       else w.matchMedia = prev;
       if (createdWindow) delete g.window;
     }
+  });
+});
+
+describe('isSoftwareGLRenderer', () => {
+  it('catches software rasterizers without touching real GPUs', () => {
+    expect(isSoftwareGLRenderer('WebKit WebGL SwiftShader Device')).toBe(true);
+    expect(isSoftwareGLRenderer('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))')).toBe(true);
+    expect(isSoftwareGLRenderer('llvmpipe (LLVM 15, 256 bits)')).toBe(true);
+    expect(isSoftwareGLRenderer('WebGL Basic Render Driver')).toBe(true);
+    expect(isSoftwareGLRenderer('ANGLE (NVIDIA, NVIDIA GeForce RTX 4070)')).toBe(false);
+    expect(isSoftwareGLRenderer('Apple M1 Pro')).toBe(false);
+    expect(isSoftwareGLRenderer('Mali-G78')).toBe(false);
+    expect(isSoftwareGLRenderer(null)).toBe(false);
+    expect(isSoftwareGLRenderer(undefined)).toBe(false);
+    expect(isSoftwareGLRenderer('')).toBe(false);
   });
 });
 

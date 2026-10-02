@@ -46,6 +46,18 @@ export function perfNeedsDegrade(fps: number, minFps = PERF_MIN_FPS): boolean {
 }
 
 /**
+ * True for software rasterizers (SwiftShader, llvmpipe, Windows Basic Render
+ * Driver, swrast) — no real GPU. These render the composer at single-digit
+ * fps AND decode tiles on the main thread, so the fps budget (which only
+ * assesses after tiles settle) trips far too late: start reduced instead.
+ * Hardware ANGLE/Metal strings must NOT match — only the software signs.
+ */
+export function isSoftwareGLRenderer(rendererName: string | null | undefined): boolean {
+  if (!rendererName) return false;
+  return /swiftshader|llvmpipe|softpipe|swrast|basic render/i.test(rendererName);
+}
+
+/**
  * Whether the OS asks for reduced motion (SSR-safe: false without window).
  * The viewer honours it by holding the auto-orbit static, skipping camera
  * banking, speed streaks and cloud drift — the ride itself still plays.
