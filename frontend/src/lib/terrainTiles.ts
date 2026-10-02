@@ -32,11 +32,17 @@ export function terrariumDecode(r: number, g: number, b: number): number {
   return r * 256 + g + b / 256 - 32768;
 }
 
+/** Web-Mercator latitude limit — beyond this the projection blows up. */
+export const MAX_MERCATOR_LAT = 85.05112878;
+
 /** fractional global pixel position (256 px per tile) at zoom `z` */
 export function lngLatToPixel(lat: number, lng: number, z: number): { x: number; y: number } {
   const n = 2 ** z * 256;
   const x = ((lng + 180) / 360) * n;
-  const latRad = (lat * Math.PI) / 180;
+  // Clamp: at ±90° tan+sec overflow to ±Infinity, exploding the tile range
+  // into an astronomic Promise.all (OOM/hang on polar garbage input).
+  const clampedLat = Math.max(-MAX_MERCATOR_LAT, Math.min(MAX_MERCATOR_LAT, lat));
+  const latRad = (clampedLat * Math.PI) / 180;
   const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
   return { x, y };
 }
@@ -93,6 +99,9 @@ function linspace(a: number, b: number, n: number): number[] {
 const tileCache = new Map<string, Float32Array>();
 
 async function loadTile(z: number, x: number, y: number, signal?: AbortSignal): Promise<Float32Array> {
+  // An already-aborted signal never fires its listener — reject upfront
+  // instead of hanging until the tile timeout.
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
   const key = `${z}/${x}/${y}`;
   const hit = tileCache.get(key);
   if (hit) return hit;

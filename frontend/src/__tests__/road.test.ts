@@ -66,6 +66,21 @@ describe('buildRoadRibbon', () => {
     expect(n.getZ(0)).toBeGreaterThan(0.5);
   });
 
+  it('keeps nonzero width on fully degenerate input (duplicate GPS fixes)', () => {
+    const pts = [pt(5, 5, 1, 0), pt(5, 5, 1, 0), pt(5, 5, 1, 0)];
+    const r = buildRoadRibbon(pts, { width: 6, zOffset: 0 });
+    expect(r).not.toBeNull();
+    // Falls back to the last-known heading instead of collapsing to zero width.
+    const w = Math.hypot(r!.positions[0] - r!.positions[3], r!.positions[1] - r!.positions[4]);
+    expect(w).toBeCloseTo(6, 6);
+  });
+
+  it('skips vertical cliffs, not just horizontal gaps', () => {
+    const pts = [pt(0, 0, 0, 0), pt(0, 0, 500, 10)];
+    const r = buildRoadRibbon(pts, { maxSegmentM: 300 });
+    expect(Array.from(r!.indices)).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
   it('duplicates each per-point colour onto both ribbon edges', () => {
     const pts = [pt(0, 0, 0, 0), pt(10, 0, 0, 10)];
     const r = buildRoadRibbon(pts, { colors: [1, 0, 0, 0, 1, 0] });

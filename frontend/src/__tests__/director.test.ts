@@ -64,6 +64,22 @@ describe('samplePath', () => {
     expect(s.fov).toBe(55);
   });
 
+  it('holds a single keyframe without crashing', () => {
+    const kf = { time: 0, position: [1, 2, 3] as [number, number, number], target: [4, 5, 6] as [number, number, number], fov: 50 };
+    const s = samplePath({ keyframes: [kf], duration: 5 }, 2);
+    expect(s.position).toEqual([1, 2, 3]);
+    expect(s.target).toEqual([4, 5, 6]);
+    expect(s.fov).toBe(50);
+  });
+
+  it('ignores backwards clock steps instead of un-easing the shot', () => {
+    const s = seedOrbitShot(0, 1.0);
+    updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS / 2);
+    const mid = s.angle;
+    expect(updateOrbitShot(s, 0)).toBe(mid); // jump back = freeze, not rewind
+    expect(updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS)).toBeCloseTo(1.0 + ORBIT_REFRAME_RAD, 6);
+  });
+
   it('produces a finite, continuous path', () => {
     const path = buildDirectorPath(stubBuild());
     let prev = samplePath(path, 0).position;

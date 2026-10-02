@@ -1,5 +1,6 @@
 'use client';
 
+import type { Dispatch, SetStateAction } from 'react';
 import type { ReplayCamMode } from '@/lib/director';
 
 export type TerrainState = 'off' | 'loading' | 'on' | 'failed';
@@ -30,10 +31,10 @@ export interface ReplayToolbarProps {
   camMode: ReplayCamMode;
   setCamMode: (m: ReplayCamMode) => void;
   showBroadcast: boolean;
-  setShowBroadcast: (v: (b: boolean) => boolean) => void;
+  setShowBroadcast: Dispatch<SetStateAction<boolean>>;
   tourAvailable: boolean;
   tour: boolean;
-  setTour: (v: (b: boolean) => boolean) => void;
+  setTour: Dispatch<SetStateAction<boolean>>;
   terrainToggleable: boolean;
   terrainState: TerrainState;
   toggleTerrain: () => void;
@@ -43,7 +44,7 @@ export interface ReplayToolbarProps {
   takePoster: () => void;
   takeClip: () => void;
   photo: boolean;
-  setPhoto: (v: (b: boolean) => boolean) => void;
+  setPhoto: Dispatch<SetStateAction<boolean>>;
 }
 
 /**

@@ -1,13 +1,22 @@
 # Relive — 3D Ride Viewer Redesign
 
-> **Status**: In progress — Phase 0 done, Phase 1 underway (2026-09-24).
+> **Status**: ✅ Complete (2026-09-30) — all five phases shipped + Broadcast v2 polish.
+> See [next-level plan](plans/relive-3d-next-level.md) for the centerpiece roadmap.
 > **Supersedes**: the archived `3d-ride-view-enhancements.md` (Phases A–E shipped the
 > technical scaffold; this plan replaces the *experience*).
 > **Parent spec**: `plans/future-enhancements.md` §3.16.
 > **Files**: `frontend/src/components/activities/Replay3D.tsx`,
-> `frontend/src/lib/replay.ts`, `frontend/src/lib/route3d.ts`,
-> `frontend/src/lib/terrain.ts`, `frontend/src/app/(app)/activities/page.tsx`,
-> `frontend/src/components/activities/CompareActivitiesModal.tsx`,
+> `frontend/src/components/activities/ReplayTheater.tsx`,
+> `frontend/src/components/activities/ReplayToolbar.tsx`,
+> `frontend/src/components/activities/ReplayLoadingOverlay.tsx`,
+> `frontend/src/lib/replay.ts`, `frontend/src/lib/director.ts`,
+> `frontend/src/lib/bike.ts`, `frontend/src/lib/road.ts`,
+> `frontend/src/lib/sky.ts`, `frontend/src/lib/sun.ts`,
+> `frontend/src/lib/highlights.ts`, `frontend/src/lib/terrainTiles.ts`,
+> `frontend/src/lib/imageryTiles.ts`, `frontend/src/lib/terrain.ts`,
+> `frontend/src/lib/route3d.ts`, `frontend/src/lib/raceRides.ts`,
+> `frontend/src/lib/three/weather.ts`,
+> `frontend/src/app/dev/replay/page.tsx`,
 > `frontend/public/models/cube-agree-c62-2026.glb`.
 
 ## Why (diagnosis of the current viewer)
@@ -326,21 +335,43 @@ local `dev.oliradlett.co.uk` Caddy TLS + hosts setup.
   spawning motion trails behind the bike. Density and length scale with speed
   (invisible when crawling, dramatic sprint lines at pace). Color shifts from
   cyan (cool) to orange (hot) with effort.
-- **Depth of field**: BokehPass added to the post-processing pipeline (RenderPass
-  → BokehPass → BloomPass → OutputPass). Focus distance tracks the rider; aperture
-  widens in orbit/cinematic (shallow, dramatic) and narrows in follow cams (deep,
-  so the road ahead stays readable).
+- **Depth of field**: *rejected* — BokehPass decodes its depth prepass with
+  perspective math, but this renderer uses `logarithmicDepthBuffer` for km-scale
+  terrain (needed to avoid z-fighting at 0.3 m near / 8 000 m far). The CoC came
+  out garbage and the whole frame stayed blurry. Bloom alone (`RenderPass →
+  BloomPass → OutputPass`, skipped in Lite mode) keeps the cinematic look without
+  the incompatibility.
 - **Dynamic auto-camera**: a new "auto" mode (now the default) that evaluates ride
   context — grade, speed, power vs FTP, highlight proximity — and picks the best
   camera angle: drone on climbs, flyby on descents, chase on sprints/fast
   sections, orbit as the cinematic default. Hysteresis cooldown (4–6 s) prevents
   rapid flipping.
 
+### Bug-finding & fixing pass (2026-10-02)
+Two-auditor sweep (component/integration + pure-lib) with fixes, no behavior
+redesigns. Notable: stream/position misalignment under variable speed fixed in
+`resampleByDistance` (binary-search + lerp); `totalTime` is now the last sample's
+clock; `auto` camera resolves once per frame so road window, markers, fog, FOV
+and HUD agree (plus camera-up reset in follow cams, hidden rider in cockpit,
+click-to-seek in auto-orbit); playhead beacon + start cone reoriented to Z-up;
+wheel-blur discs excluded from shadow casting; speed streaks fade per-vertex;
+ghost/race builds share the main `frame`/`altBase` (+ altitude in race traces);
+race query survives single-ride failures (`allSettled`); `?replay=` set on open
++ cleared on close; HUD distance units (m→km) and `1:60` durations fixed; photo
+mode keeps an exit button; keyboard covers all 7 cameras. Crash guards: empty
+velocity, single-keyframe paths, polar tile math, solar NaN, pre-aborted tile
+loads, ghost material disposal. Tests extended alongside (`replay`, `road`,
+`director`, `highlights`, `raceRides`, `sun`, `terrainTiles`); `tsc` clean —
+note: `vitest` could not run in this sandbox (esbuild worker spawn EPERM), so
+the new/updated tests still need a hosted run.
+
 ### Remaining
-- Optional: wet-road sheen / wind sock, **segment racing** and **public share
-  link** (both need backend/product scope).
-- `AGENTS.md` / `frontend/src/CODEMAP.md` §3.16 still need the latest entries at
-  release time.
+- Optional: wind sock, **segment racing** (race against Strava segment leaders on
+  the route) and **public share link** (both need backend/product scope).
+- Wet-road sheen is shipped (wetness 0..1 darkens + blues the asphalt via
+  `MeshLambertMaterial` color modulation in the tick).
+- `CODEMAP.md` §3.16 updated; `AGENTS.md` follows its "feature status lives in
+  `plans/*.md`" rule. `lib/changelog.ts` updated with a 2026-09-30 Relive entry.
 
 ## Risks / guardrails
 

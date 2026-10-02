@@ -188,6 +188,10 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
   inner.quaternion.setFromRotationMatrix(bikeOrientationMatrix());
   const model = template.scene.clone(true);
 
+  // Ghost clones own their materials (transparent blue tint) while sharing the
+  // template's geometries/textures — track them so dispose() frees the clones
+  // without touching shared template assets.
+  const ghostMaterials: THREE.Material[] = [];
   if (ghost) {
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -200,6 +204,7 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
         clone.transparent = true;
         clone.opacity = 0.45;
         clone.depthWrite = false;
+        ghostMaterials.push(clone);
         return clone;
       }) as unknown as THREE.Material;
     });
@@ -243,6 +248,9 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
       else object.quaternion.copy(target);
     },
     update(speedMs, dt) {
+      // Non-positive dt (paused/backgrounded tab) must not rewind the wheel
+      // angle or drive opacity backwards.
+      if (!(dt > 0)) return;
       // fade the blur in from ~2 m/s to ~7 m/s
       const target = Math.max(0, Math.min(1, (speedMs - 2) / 5)) * 0.8;
       blurMaterial.opacity += (target - blurMaterial.opacity) * Math.min(1, dt * 6);
@@ -256,6 +264,7 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
       discGeo.dispose();
       blurMaterial.dispose();
       blurTexture.dispose();
+      for (const m of ghostMaterials) m.dispose();
     },
   };
 }

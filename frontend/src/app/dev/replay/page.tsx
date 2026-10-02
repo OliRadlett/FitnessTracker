@@ -43,6 +43,9 @@ interface Fixture {
 const FIXTURE_NAMES = ['act1', 'act2'];
 
 function buildFrom(f: Fixture): ReplayBuildResult {
+  // Malformed fixture streams degrade to undefined inputs → buildReplay's
+  // empty-velocity guard returns an empty build and Replay3D shows its
+  // fallback instead of crashing.
   return buildReplay({
     polyline: f.encoded_polyline,
     velocity: streamInput(f.streams, ...VELOCITY_STREAM_TYPES),
@@ -51,6 +54,7 @@ function buildFrom(f: Fixture): ReplayBuildResult {
     hr: streamInput(f.streams, ...HEARTRATE_STREAM_TYPES),
     cadence: streamInput(f.streams, ...CADENCE_STREAM_TYPES),
     maxSamples: 4000,
+    activityDistanceMeters: f.distance_meters,
   });
 }
 

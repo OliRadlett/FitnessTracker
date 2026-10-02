@@ -243,7 +243,9 @@ function ActivityExpanded({
   );
 
   // Deep link ?replay=<id>: auto-open the Theater once the build is ready.
-  const { getParam } = useDeepLink();
+  // The param is set on manual open too (so refresh keeps the Theater) and
+  // cleared on close (so back-button/refresh doesn't trap the user in it).
+  const { getParam, setParam } = useDeepLink();
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || !replayBuild) return;
@@ -253,6 +255,14 @@ function ActivityExpanded({
       setTheaterOpen(true);
     }
   }, [getParam, activity.id, replayBuild]);
+  const openTheater = useCallback(() => {
+    setTheaterOpen(true);
+    setParam('replay', activity.id);
+  }, [setParam, activity.id]);
+  const closeTheater = useCallback(() => {
+    setTheaterOpen(false);
+    setParam('replay', null);
+  }, [setParam]);
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -322,7 +332,7 @@ function ActivityExpanded({
       {/* 3D Replay launcher — the full experience lives in the Theater (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 ? (
         <button
-          onClick={() => setTheaterOpen(true)}
+          onClick={openTheater}
           className="mb-4 flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
         >
           <span className="min-w-0 flex-1">
@@ -343,7 +353,7 @@ function ActivityExpanded({
           build={replayBuild}
           polyline={activity.encoded_polyline ?? undefined}
           ftpWatts={profile?.ftp_watts ?? null}
-          onClose={() => setTheaterOpen(false)}
+          onClose={closeTheater}
         />
       )}
 

@@ -95,12 +95,17 @@ export function ReplayTheater({
         hr: streamInput(detail.streams, ...HEARTRATE_STREAM_TYPES),
         cadence: streamInput(detail.streams, ...CADENCE_STREAM_TYPES),
         maxSamples: 4000,
+        // Same-route ghost: share the main frame so the ghost sits at its
+        // true geographic offset (not collapsed onto its own centroid) with
+        // comparable altitude. Replay3D still plants it on the main surface.
+        frame: { lat0: build.lat0, lng0: build.lng0 },
+        altBase: { altMin: build.altMin, zScale: build.zScale },
         activityDistanceMeters: ride?.distance_meters ?? undefined,
         activityDurationSeconds: ride?.duration_seconds ?? undefined,
       }),
       name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
     };
-  }, [ghostDetail, ghostCandidates, ghostId]);
+  }, [ghostDetail, ghostCandidates, ghostId, build]);
 
   // ── "Race Yourself": fetch all rides on the route and build traces ─────
   const allRideIds = useMemo(
@@ -109,16 +114,27 @@ export function ReplayTheater({
   );
   const { data: raceDetails } = useQuery<ActivityDetail[]>({
     queryKey: ['race-details', allRideIds],
-    queryFn: () => Promise.all(allRideIds.map((id) => authFetch<ActivityDetail>(`/api/v1/activities/${id}`))),
+    // One slow/failed ride must not kill the whole mode — keep the rest.
+    queryFn: async () => {
+      const settled = await Promise.allSettled(allRideIds.map((id) => authFetch<ActivityDetail>(`/api/v1/activities/${id}`)));
+      return settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    },
     enabled: raceMode && !!token && allRideIds.length > 0,
+    staleTime: 1000 * 60 * 10,
+    retry: 1,
   });
   const race = useMemo(() => {
     if (!raceMode || !history || !raceDetails) return null;
     const detailById: Record<string, { name: string; encoded_polyline?: string | null; streams?: ActivityDetail['streams'] }> = {};
     for (const d of raceDetails) detailById[d.id] = d;
-    const rides = buildRaceRides({ history, detailById });
+    const rides = buildRaceRides({
+      history,
+      detailById,
+      frame: { lat0: build.lat0, lng0: build.lng0 },
+      altBase: { altMin: build.altMin, zScale: build.zScale },
+    });
     return rides.length >= 2 ? rides : null;
-  }, [raceMode, history, raceDetails]);
+  }, [raceMode, history, raceDetails, build]);
 
   useEffect(() => {
     const main = document.querySelector('main');
