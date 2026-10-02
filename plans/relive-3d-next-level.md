@@ -160,7 +160,7 @@ insights you didn't notice? Can you race the KOM ghost?
 - Polish the tour transitions (no pops, no snaps)
 - Ensure mobile is flawless
 - Honour `prefers-reduced-motion` — shipped 2026-10-02 (static auto-orbit hold, no banking/bob/FOV drift/streaks/cloud drift, flyby→orbit in auto; ride playback, weather and explicit camera choices unaffected)
-- Add a "What's new" tour on first open
+- ~~Add a "What's new" tour on first open~~ — shipped 2026-10-02 (one-time dismissible Theater intro card, `relive:intro-v1` flag)
 - Ship with a featured ride gallery as the default demo
 
 ---

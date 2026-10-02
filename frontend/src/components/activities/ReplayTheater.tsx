@@ -60,8 +60,27 @@ export function ReplayTheater({
   const [mounted, setMounted] = useState(false);
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [raceMode, setRaceMode] = useState(false);
+  // First-run intro card (Phase Z): one-time orientation, dismissed forever.
+  const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    let dismissed = false;
+    try {
+      dismissed = window.localStorage?.getItem('relive:intro-v1') === 'seen';
+    } catch {
+      /* private mode — show it every time rather than crash */
+    }
+    if (!dismissed) setShowIntro(true);
+  }, []);
+  const dismissIntro = () => {
+    try {
+      window.localStorage?.setItem('relive:intro-v1', 'seen');
+    } catch {
+      /* ignore */
+    }
+    setShowIntro(false);
+  };
 
   // Ghost candidates: other rides on the same route.
   const { data: history } = useQuery<RouteHistoryResponse>({
@@ -233,6 +252,24 @@ export function ReplayTheater({
           ) : (
             <span className="text-muted">Need at least 2 rides with route data to draw the race.</span>
           )}
+        </div>
+      )}
+
+      {showIntro && (
+        <div className="border-b border-accent/30 bg-accent/10 px-3 py-2 text-xs sm:px-4" role="note" aria-label="First-run tips">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-medium text-foreground">Welcome to the Theater — </span>
+            <span className="text-muted">Tour plays the highlights</span>
+            <span className="text-muted">1–7 switch cameras, Space plays</span>
+            <span className="text-muted">Ghost races a previous ride</span>
+            <button
+              type="button"
+              onClick={dismissIntro}
+              className="ml-auto min-h-[36px] rounded-full border border-accent/40 px-3 text-accent transition-colors hover:bg-accent/20"
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
 
