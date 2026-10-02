@@ -133,7 +133,7 @@ beats? Can you export a 2-minute highlight reel?
 
 1. WebGPU migration (with WebGL fallback)
 2. Progressive terrain LOD
-3. ~~Adaptive performance budget~~ — shipped 2026-10-02 (`lib/perf.ts`: one-shot verdict after a 150-frame settled window; reduced profile = pixelRatio 1, bloom/rays/focus off, particles + streaks hidden, with an honest fps badge; user re-enables never re-degrade)
+3. ~~Adaptive performance budget~~ — shipped 2026-10-02 (`lib/perf.ts`: one-shot verdict after a 150-frame settled window; reduced profile = pixelRatio 1, bloom/rays/focus off, particles + streaks hidden, with an honest fps badge; user re-enables never re-degrade; software rasterizers skip the wait and degrade up front via `isSoftwareGLRenderer`)
 4. Interactive share links (`?share=<token>`)
 5. Ride montage editor (multi-activity sequences)
 

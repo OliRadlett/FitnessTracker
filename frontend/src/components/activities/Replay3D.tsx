@@ -32,7 +32,7 @@ import { CLOUD_LIT, CLOUD_SHADE, cloudFactors, cloudWindVec, createCloudDome, ti
 import { GodRaysShader, sunScreenPosition } from '@/lib/godrays';
 import { DofShader, dofSettingsFor, syncDofTarget, type DofTarget } from '@/lib/dof';
 import { createRideAudio, type RideAudio } from '@/lib/audio';
-import { createPerfBudget, perfNeedsDegrade, perfObserve, prefersReducedMotion } from '@/lib/perf';
+import { createPerfBudget, isSoftwareGLRenderer, perfNeedsDegrade, perfObserve, prefersReducedMotion } from '@/lib/perf';
 import type { RouteGrid } from '@/lib/route3d';
 import type { ImageryDrape } from '@/lib/imageryTiles';
 import { windsockPose } from '@/lib/three/weather';
@@ -1728,6 +1728,30 @@ export function Replay3D({
       if (dx * dx + dy * dy + dz * dz > 1e-9) dir.set(dx, dy, dz).normalize();
       return { index: i, speed: p0.speed };
     };
+    // One-shot reduced profile, shared by the fps-budget trip below and the
+    // software-GL fast path at setup. fps null = assessed never (the budget
+    // path always passes a number); the badge hides the fps readout then.
+    const degradeToReduced = (fps: number | null) => {
+      perfReducedRef.current = true;
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      renderer.setPixelRatio(1);
+      if (composer && w > 0 && h > 0) {
+        composer.setPixelRatio(1);
+        composer.setSize(w, h);
+        const dofState = sceneRef.current?.dof;
+        if (dofState) syncDofTarget(dofState, w, h, 1);
+        const bloom = composer.passes.find((p) => p instanceof UnrealBloomPass);
+        if (bloom) bloom.enabled = false;
+      }
+      // Honest UI flips — the toggles show the reduced state and the
+      // user can re-enable either (nothing re-degrades behind them).
+      setRaysOn(false);
+      setDofOn(false);
+      if (weatherFx) weatherFx.visible = false;
+      setPerfMode('reduced');
+      setPerfFps(fps == null ? null : Math.round(fps));
+    };
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -1739,27 +1763,7 @@ export function Replay3D({
         const settled = terrainStateRef.current !== 'loading' && imageryStateRef.current !== 'loading';
         if (settled) {
           const fps = perfObserve(perfBudget, dt * 1000);
-          if (fps != null && perfNeedsDegrade(fps)) {
-            perfReducedRef.current = true;
-            const w = mount.clientWidth;
-            const h = mount.clientHeight;
-            renderer.setPixelRatio(1);
-            if (composer && w > 0 && h > 0) {
-              composer.setPixelRatio(1);
-              composer.setSize(w, h);
-              const dofState = sceneRef.current?.dof;
-              if (dofState) syncDofTarget(dofState, w, h, 1);
-              const bloom = composer.passes.find((p) => p instanceof UnrealBloomPass);
-              if (bloom) bloom.enabled = false;
-            }
-            // Honest UI flips — the toggles show the reduced state and the
-            // user can re-enable either (nothing re-degrades behind them).
-            setRaysOn(false);
-            setDofOn(false);
-            if (weatherFx) weatherFx.visible = false;
-            setPerfMode('reduced');
-            setPerfFps(Math.round(fps));
-          }
+          if (fps != null && perfNeedsDegrade(fps)) degradeToReduced(fps);
         }
       }
       const L = linkRef.current;
@@ -2406,6 +2410,21 @@ export function Replay3D({
     ro.observe(mount);
 
     sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer, rays: godRaysPass, dof, dirLight, sky, cloud, hemiLight, headlamp };
+    // Software-rasterizer fast path (SwiftShader/llvmpipe/Basic Render —
+    // see lib/perf isSoftwareGLRenderer): these render at single-digit fps
+    // AND decode tiles on the main thread, so the budget above (which only
+    // assesses settled frames) would strand them in full quality. Degrade
+    // up front instead; fps badge shows without a number until assessed.
+    if (!liteMode && !perfReducedRef.current) {
+      try {
+        const glCtx = renderer.getContext();
+        const dbg = glCtx.getExtension('WEBGL_debug_renderer_info');
+        const glName = dbg ? String(glCtx.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+        if (isSoftwareGLRenderer(glName)) degradeToReduced(null);
+      } catch {
+        /* unknown renderer — the budget path decides */
+      }
+    }
     (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
