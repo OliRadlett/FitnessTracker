@@ -40,6 +40,7 @@ import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
+import { StrengthSuggestionsCard } from './StrengthSuggestionsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -530,6 +531,11 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
 
       {/* Adaptive suggestions card (§3.11) */}
       <AdaptiveSuggestionsCard planId={plan.id} />
+
+      {/* Smart strength suggestions — weight updates based on prior-week conformity */}
+      {plan.plan_type === 'strength' && (
+        <StrengthSuggestionsCard planId={plan.id} />
+      )}
 
       {/* TSB projection strip (Phase 7) — event-linked plans only */}
       {tsbProjectionQuery.data && (() => {
