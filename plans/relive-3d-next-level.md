@@ -191,13 +191,22 @@ npx vitest run \
 # Type check
 npm run typecheck
 
-# Manual checks
-# 1. Desktop: open Theater on a climb, toggle cinematic → orbit handoff
-# 2. Mobile: lite mode, 60fps on a 10 km ride
-# 3. Deep link: ?replay=<id> auto-opens Theater
-# 4. Ghost: race another ride, delta displays correctly
-# 5. Export: poster at 2×, clip renders 6s webm
-# 6. Share: ?share=<token> plays chromeless
+# Manual checks (hosted pass for the 2026-10-02 release)
+# Atmosphere: golden-hour ride (warm light + long glow), night ride (stars +
+#   headlamp pool), overcast/rain (grey sky, dimmed silver lining, wet mirror)
+# Tour: punchy ride with attacks — chapter chips seek + play scripted shots,
+#   captions narrate, "Up next" jumps; shot ends hand back cleanly, no pops
+# Focus (experimental, default OFF): toggle on — orbit goes shallow, chase
+#   stays deep; poster capture keeps correct blur radius at 2x
+# Audio: speaker on — wind rises with speed, tire hum under it, heartbeat
+#   follows HR; silence when paused; no sound before the toggle tap
+# Ghost/race: same-route ghost + delta; Race Yourself traces + standings;
+#   compare-modal ghost race on the linked clock
+# Deep links: ?replay=<id> alone opens the Theater; ?t=<s> starts there;
+#   both clear on close; first-run intro shows once, dismiss persists
+# Motion: OS reduced-motion on — orbit holds static, no banking/streaks/drift
+# Mobile: Lite ride holds frame rate; Performance-mode badge only when earned
+# Export: poster 2x PNG crisp; 6 s clip records with HUD as shown
 ```
 
 ## Related
