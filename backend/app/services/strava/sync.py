@@ -1089,6 +1089,27 @@ async def sync_strava_routes(
             break
 
     # 2. Extract routes from existing cycling activities with polylines
+    #
+    # Gated off by default (`strava_activity_routes_enabled`). A ride is not a
+    # course, and turning a ride into a route lets `create_or_merge_route`'s
+    # geometric dedupe absorb it into an unrelated route that it merely
+    # resembles — production ended up with five routes holding 4-7 distinct
+    # rides each. Rides link to courses; they do not become them. See
+    # config.py for the full rationale and `plans/ride-course-split.md` §2.
+    from app.config import get_settings as _get_settings
+
+    if not _get_settings().strava_activity_routes_enabled:
+        logging.getLogger(__name__).debug(
+            "Skipping activity-derived routes: "
+            "strava_activity_routes_enabled is false"
+        )
+        logging.getLogger(__name__).info(
+            f"Strava route sync complete for user {user_id}: "
+            f"{synced_count} synced, {merged_count} merged "
+            "(activity-derived routes disabled)"
+        )
+        return synced_count, merged_count
+
     # Find cycling activities that have map.summary_polyline in raw_data
     from sqlalchemy import select as sa_select
 
