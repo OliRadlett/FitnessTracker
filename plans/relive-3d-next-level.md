@@ -207,27 +207,18 @@ npm run typecheck
 - `frontend/src/app/dev/replay/page.tsx` — offline test harness
 - `plans/future-enhancements.md` §3.16 — original parent spec
 
-## Release status (2026-10-02 — ON MAIN, NOT ON PROD)
+## Release status (2026-10-02 — LIVE ON PROD)
 
-`feature/relive-bugfix-pass` merged to `main` as PR #241 (merge commit
-`7c6644e`); CI fully green (Lint, Backend, Frontend incl. vitest + typecheck
-+ prod build, E2E). Sandbox git limits were worked around (OpenSSL backend,
-`gh`-keyring credentials, in-memory auth only — repo config restored after).
+Shipped: PR #241 → `main` (`7c6644e`, full CI green) → `prod` (`9e5bd03`)
+via the standard merge + Deploy workflow (green), `/health` 200 ok
+post-deploy. Sandbox git limits were worked around along the way (OpenSSL
+backend, `gh`-keyring credentials, in-memory auth only — repo config
+restored after; one self-inflicted `prod` branch deletion recovered
+byte-identical, full story in the session record).
 
-`prod` (at `5771267`) does NOT have this work yet — the `main` → `prod`
-merge + push must run from a hosted terminal (a sandbox mishap deleted and
-recovered `origin/prod` byte-identical mid-flight, so no more plumbing
-heroics from here):
-
-```
-git checkout prod && git pull origin prod   # prod intact at 5771267e — verify
-git merge origin/main && git push origin prod
-# watch the Deploy workflow, verify /health + one live replay
-```
-
-Pre-deploy minimum still outstanding: the visual pass (golden hour, night +
-headlamp, rain, punchy-ride tour, ghost delta, Focus on, poster + clip,
-mobile Lite ride), speaker levels, and regenerating the `replay-visual`
-screenshot baselines (they predate the new sky). Several shipped items are
-explicitly pending that eyeball (DOF defaults off, mirror/SSR honesty,
-shader compile on real GPUs).
+Still outstanding, all needing eyes/ears/browsers: the visual pass
+(golden hour, night + headlamp, rain, punchy-ride tour, ghost delta, Focus
+on, poster + clip, mobile Lite ride), speaker levels, and regenerating the
+`replay-visual` screenshot baselines (they predate the new sky). Several
+shipped items are explicitly pending that eyeball (DOF defaults off,
+mirror/SSR honesty, shader compile on real GPUs).
