@@ -177,6 +177,24 @@ class Settings(BaseSettings):
     # Detection is unaffected: pairs are still written to `route_similarity`
     # and still surface for review. Only the unreviewed merge is gated.
     route_auto_merge_enabled: bool = False
+
+    # Whether a Strava *activity* with a polyline should become a Route.
+    #
+    # Off by default. A ride is not a course: `plans/ride-course-split.md` §2
+    # records the decision that Route means Course, and explicitly lists "a
+    # recorded ride cluster" as what Route is *not*. Rides link to courses
+    # many-to-one; they do not become them.
+    #
+    # While this was on, `create_or_merge_route`'s geometric dedupe absorbed
+    # any activity scoring >=0.82 against an existing route — and rides on
+    # familiar roads score high. Production ended up with five routes holding
+    # 4-7 distinct rides each (27 rides collapsed into 5), the worst holding
+    # seven rides across four months and seven different distances alongside
+    # a real Strava course id. Note `route_auto_merge_enabled` does NOT gate
+    # this: that flag guards the similarity *task*, whereas this path merges
+    # during sync inside `create_or_merge_route`.
+    strava_activity_routes_enabled: bool = False
+
     route_match_gate: float = (
         0.45  # hard gate — below this the composite score is forced to 0
     )
