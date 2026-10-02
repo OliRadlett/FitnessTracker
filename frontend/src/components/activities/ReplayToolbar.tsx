@@ -1,5 +1,6 @@
 'use client';
 
+import type { Dispatch, SetStateAction } from 'react';
 import type { ReplayCamMode } from '@/lib/director';
 
 export type TerrainState = 'off' | 'loading' | 'on' | 'failed';
@@ -23,6 +24,8 @@ function camTitle(m: ReplayCamMode): string {
       return 'Cinematic fly-by orbit';
     case 'cinematic':
       return 'Cinematic director — scripted flyover then chase';
+    default:
+      return 'Tour shot — scripted camera move';
   }
 }
 
@@ -30,10 +33,18 @@ export interface ReplayToolbarProps {
   camMode: ReplayCamMode;
   setCamMode: (m: ReplayCamMode) => void;
   showBroadcast: boolean;
-  setShowBroadcast: (v: (b: boolean) => boolean) => void;
+  setShowBroadcast: Dispatch<SetStateAction<boolean>>;
+  raysOn: boolean;
+  setRaysOn: Dispatch<SetStateAction<boolean>>;
+  dofOn: boolean;
+  setDofOn: Dispatch<SetStateAction<boolean>>;
+  /** false in mobile Lite mode (no DOF pass exists there) */
+  dofAvailable: boolean;
+  audioOn: boolean;
+  toggleAudio: () => void;
   tourAvailable: boolean;
   tour: boolean;
-  setTour: (v: (b: boolean) => boolean) => void;
+  setTour: Dispatch<SetStateAction<boolean>>;
   terrainToggleable: boolean;
   terrainState: TerrainState;
   toggleTerrain: () => void;
@@ -43,7 +54,7 @@ export interface ReplayToolbarProps {
   takePoster: () => void;
   takeClip: () => void;
   photo: boolean;
-  setPhoto: (v: (b: boolean) => boolean) => void;
+  setPhoto: Dispatch<SetStateAction<boolean>>;
 }
 
 /**
@@ -78,6 +89,38 @@ export function ReplayToolbar(p: ReplayToolbarProps) {
         }`}
       >
         HUD
+      </button>
+      <button
+        onClick={() => p.setRaysOn((b) => !b)}
+        aria-pressed={p.raysOn}
+        title="Toggle sun rays (unavailable in mobile Lite mode)"
+        className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
+          p.raysOn ? 'bg-accent/20 text-accent' : 'text-muted'
+        }`}
+      >
+        Rays
+      </button>
+      {p.dofAvailable && (
+        <button
+          onClick={() => p.setDofOn((b) => !b)}
+          aria-pressed={p.dofOn}
+          title="Toggle depth of field — shallow in orbit, deep on the move (experimental)"
+          className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
+            p.dofOn ? 'bg-accent/20 text-accent' : 'text-muted'
+          }`}
+        >
+          Focus
+        </button>
+      )}
+      <button
+        onClick={p.toggleAudio}
+        aria-pressed={p.audioOn}
+        title="Toggle wind audio (starts on this tap — browsers require a gesture)"
+        className={`rounded border border-surface-light px-2 py-1 min-h-[44px] sm:min-h-[36px] text-[11px] transition-colors hover:bg-surface-light/40 ${
+          p.audioOn ? 'bg-accent/20 text-accent' : 'text-muted'
+        }`}
+      >
+        {p.audioOn ? '🔊' : '🔇'}
       </button>
       {p.tourAvailable && (
         <button

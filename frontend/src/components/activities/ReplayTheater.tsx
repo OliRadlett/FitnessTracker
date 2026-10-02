@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
@@ -61,8 +61,47 @@ export function ReplayTheater({
   const [mounted, setMounted] = useState(false);
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [raceMode, setRaceMode] = useState(false);
+  // Deep-link start offset, read once on mount (SSR-safe: window is absent).
+  // Garbage ?t= degrades to the ride start; the viewer clamps into range.
+  const initialT = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    const v = Number(new URLSearchParams(window.location.search).get('t'));
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }, []);
+  // Playhead sync back into ?t= (replaceState, no history spam). onElapsed
+  // already throttles to half-second quanta, so this writes ≤2×/s. Writes go
+  // straight to history — not through useDeepLink — so playback never
+  // re-renders the activities page behind the Theater. Nothing reads
+  // getParam('t'), so the hook state harmlessly lags the URL here.
+  const onPlayhead = useCallback((t: number) => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (t > 1) params.set('t', String(Math.floor(t)));
+    else params.delete('t');
+    const qs = params.toString();
+    window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, []);
+  // First-run intro card (Phase Z): one-time orientation, dismissed forever.
+  const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    let dismissed = false;
+    try {
+      dismissed = window.localStorage?.getItem('relive:intro-v1') === 'seen';
+    } catch {
+      /* private mode — show it every time rather than crash */
+    }
+    if (!dismissed) setShowIntro(true);
+  }, []);
+  const dismissIntro = () => {
+    try {
+      window.localStorage?.setItem('relive:intro-v1', 'seen');
+    } catch {
+      /* ignore */
+    }
+    setShowIntro(false);
+  };
 
   // Ghost candidates: other rides on the same route.
   const { data: history } = useQuery<RouteHistoryResponse>({
@@ -96,30 +135,46 @@ export function ReplayTheater({
         hr: streamInput(detail.streams, ...HEARTRATE_STREAM_TYPES),
         cadence: streamInput(detail.streams, ...CADENCE_STREAM_TYPES),
         maxSamples: 4000,
+        // Same-route ghost: share the main frame so the ghost sits at its
+        // true geographic offset (not collapsed onto its own centroid) with
+        // comparable altitude. Replay3D still plants it on the main surface.
+        frame: { lat0: build.lat0, lng0: build.lng0 },
+        altBase: { altMin: build.altMin, zScale: build.zScale },
         activityDistanceMeters: ride?.distance_meters ?? undefined,
         activityDurationSeconds: ride?.duration_seconds ?? undefined,
       }),
       name: ride ? new Date(ride.date).toLocaleDateString(getActiveLocale()) : 'Ghost',
     };
-  }, [ghostDetail, ghostCandidates, ghostId]);
+  }, [ghostDetail, ghostCandidates, ghostId, build]);
 
   // ── "Race Yourself": fetch all rides on the route and build traces ─────
   const allRideIds = useMemo(
     () => (history?.rides ?? []).map((r) => r.activity_id).slice(0, 8),
     [history],
   );
-  const { data: raceDetails } = useQuery<ActivityDetail[]>({
+  const { data: raceDetails, isLoading: raceLoading, isError: raceError } = useQuery<ActivityDetail[]>({
     queryKey: ['race-details', allRideIds],
-    queryFn: () => Promise.all(allRideIds.map((id) => authFetch<ActivityDetail>(`/api/v1/activities/${id}`))),
+    // One slow/failed ride must not kill the whole mode — keep the rest.
+    queryFn: async () => {
+      const settled = await Promise.allSettled(allRideIds.map((id) => authFetch<ActivityDetail>(`/api/v1/activities/${id}`)));
+      return settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    },
     enabled: raceMode && !!token && allRideIds.length > 0,
+    staleTime: 1000 * 60 * 10,
+    retry: 1,
   });
   const race = useMemo(() => {
     if (!raceMode || !history || !raceDetails) return null;
     const detailById: Record<string, { name: string; encoded_polyline?: string | null; streams?: ActivityDetail['streams'] }> = {};
     for (const d of raceDetails) detailById[d.id] = d;
-    const rides = buildRaceRides({ history, detailById });
+    const rides = buildRaceRides({
+      history,
+      detailById,
+      frame: { lat0: build.lat0, lng0: build.lng0 },
+      altBase: { altMin: build.altMin, zScale: build.zScale },
+    });
     return rides.length >= 2 ? rides : null;
-  }, [raceMode, history, raceDetails]);
+  }, [raceMode, history, raceDetails, build]);
 
   useEffect(() => {
     const main = document.querySelector('main');
@@ -167,7 +222,9 @@ export function ReplayTheater({
 
       {ghostCandidates.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-surface-light px-3 py-2 text-xs sm:px-4">
-          <span className="uppercase tracking-wide text-muted">Ghost</span>
+          <span className="uppercase tracking-wide text-muted" title="Ghosts align by ride time — both rides start together">
+            Ghost · time-aligned
+          </span>
           <button
             onClick={() => setGhostId(null)}
             aria-pressed={ghostId === null}
@@ -206,6 +263,39 @@ export function ReplayTheater({
         </div>
       )}
 
+      {/* Race-mode fetch state: without this the toggle appears dead while
+          up to 8 ride details load (or silently does nothing when fewer
+          than 2 build into traces). */}
+      {raceMode && (raceLoading || raceError || (raceDetails && !race)) && (
+        <div className="border-b border-surface-light px-3 py-1.5 text-xs sm:px-4" role="status">
+          {raceLoading ? (
+            <span className="text-muted">Loading race rides…</span>
+          ) : raceError ? (
+            <span className="text-warning">Couldn&apos;t load race rides — check your connection and toggle Race Yourself off and on.</span>
+          ) : (
+            <span className="text-muted">Need at least 2 rides with route data to draw the race.</span>
+          )}
+        </div>
+      )}
+
+      {showIntro && (
+        <div className="border-b border-accent/30 bg-accent/10 px-3 py-2 text-xs sm:px-4" role="note" aria-label="First-run tips">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-medium text-foreground">Welcome to the Theater — </span>
+            <span className="text-muted">Tour plays the highlights</span>
+            <span className="text-muted">1–7 switch cameras, Space plays</span>
+            <span className="text-muted">Ghost races a previous ride</span>
+            <button
+              type="button"
+              onClick={dismissIntro}
+              className="ml-auto min-h-[36px] rounded-full border border-accent/40 px-3 text-accent transition-colors hover:bg-accent/20"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
         <Replay3D
           name={activity.name}
@@ -215,6 +305,8 @@ export function ReplayTheater({
           startDate={activity.start_date}
           ghost={ghost}
           race={race}
+          initialElapsed={initialT}
+          onElapsed={onPlayhead}
           weather={{
             conditions: activity.weather_conditions,
             temperature: activity.weather_temperature,

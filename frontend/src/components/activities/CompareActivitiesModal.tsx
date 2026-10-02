@@ -21,7 +21,7 @@ import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 
 // Lazy-loaded: three.js stays out of the modal's (and first) bundle unless the
-// user opens the 3D view (§3.16 side-by-side replay).
+// user opens the 3D view (§3.16 — one shared scene with ride B as a ghost race).
 const Replay3D = dynamic(
   () => import('@/components/activities/Replay3D').then((mod) => mod.Replay3D),
   { ssr: false, loading: () => <div className="h-[300px] animate-pulse bg-surface-light/20 rounded" /> }
@@ -53,7 +53,10 @@ export function CompareActivitiesModal({
   const isLoading = loadingA || loadingB;
   const streamsError = errorA || errorB;
 
-  // §3.16 side-by-side replay: build a ReplayBuildResult (pure) for each ride.
+  // §3.16 ghost race: build a ReplayBuildResult (pure) for each ride. The two
+  // rides may be different routes, so each keeps its own projection frame and
+  // they overlay for comparison — no shared frame (that would separate them by
+  // their true geographic offset and defeat the race).
   function buildReplayFor(
     activity: Activity,
     streams: ActivityStream[] | undefined
@@ -68,7 +71,12 @@ export function CompareActivitiesModal({
       hr: streamInput(streams, ...HEARTRATE_STREAM_TYPES),
       cadence: streamInput(streams, ...CADENCE_STREAM_TYPES),
       maxSamples: 4000,
+      activityDistanceMeters: activity.distance_meters ?? undefined,
+      activityDurationSeconds: activity.duration_seconds ?? undefined,
     });
+    // A degenerate build (single sample) can't animate — hide the 3D tab and
+    // fall back to charts, same as buildRaceRides does for its traces.
+    if (res.points.length < 2) return null;
     return res;
   }
 
@@ -76,7 +84,8 @@ export function CompareActivitiesModal({
   const replayB = useMemo(() => buildReplayFor(activityB, streamsB), [activityB, streamsB]);
   const canCompare3d = replayA !== null && replayB !== null;
   const [view, setView] = useState<'charts' | '3d'>('charts');
-  // Auto-switch to the 3D tab once both builds are ready (and hide it if not).
+  // The 3D tab stays hidden until both builds are ready; the user switches
+  // explicitly (no auto-yank out of the charts they may be reading).
   const show3d = canCompare3d;
 
   // ── Linked 3D playback (Phase E): one master clock in absolute seconds ──

@@ -29,6 +29,7 @@ const sections = [
   { id: 'weather-integration', label: 'Weather Integration', icon: '🌦️' },
   { id: 'training-plans', label: 'Training Plans & Conformity', icon: '📋' },
   { id: 'goals-projections', label: 'Goals & Projections', icon: '🎯' },
+  { id: 'relive-3d', label: '3D Ride Replay', icon: '🎬' },
   { id: 'changelog', label: "What's New", icon: '🆕' },
 ];
 
@@ -941,7 +942,82 @@ export default function WikiPage() {
           </Card>
         </section>
 
-        {/* ─── 11. What's New ──────────────────────────────────── */}
+        {/* ─── 11. 3D Ride Replay ───────────────────────────────── */}
+        <section id="relive-3d">
+          <Card>
+            <CardTitle>🎬 3D Ride Replay</CardTitle>
+            <div className="space-y-4 text-sm text-muted leading-relaxed">
+              <p>
+                Relive any cycling ride as a full-screen 3D film: your bike on a real-terrain
+                reconstruction of your route, directed like a broadcast, with live telemetry.
+                Open a cycling activity in <WikiLink href="/activities">Activities</WikiLink>,
+                switch to the <strong className="text-foreground">Replay</strong> tab and hit{' '}
+                <strong className="text-foreground">Open 3D Replay</strong>. The address bar
+                carries <strong className="text-foreground">?replay=</strong> plus the playhead
+                position (<strong className="text-foreground">?t=</strong> seconds) while the
+                Theater is open, so a link opens that exact replay at that exact moment — no
+                navigation needed. Needs a GPS route plus a speed stream — rides without them
+                explain exactly what is missing.
+              </p>
+
+              <div>
+                <h3 className="text-foreground font-semibold mb-2">Cameras & Transport</h3>
+                <p>
+                  <strong className="text-foreground">Auto</strong> (default) picks the angle for
+                  the terrain — drone on climbs, flyby on descents, chase on sprints — or take
+                  over with <strong className="text-foreground">Orbit / Chase / Drone / Cockpit /
+                  Flyby / Cinematic</strong>. Keyboard: <strong className="text-foreground">Space</strong> plays,
+                  <strong className="text-foreground"> ←/→</strong> seek 15 s,{' '}
+                  <strong className="text-foreground">1–7</strong> switch cameras. The elevation
+                  scrubber under the transport seeks by course profile; the time-of-day slider
+                  re-lights the whole scene from night through golden hour.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-foreground font-semibold mb-2">Tour, Highlights & Story Beats</h3>
+                <p>
+                  <strong className="text-foreground">Tour</strong> plays the ride&apos;s story:
+                  solid chips are terrain highlights (climbs, descents, best power, fastest km),
+                  dashed chips are story beats the rider created (attacks, comebacks, the final
+                  push) — each with scripted cinematic shots. The caption narrates the playhead
+                  and an <strong className="text-foreground">Up next</strong> pill jumps to
+                  whatever comes next. The <strong className="text-foreground">HUD</strong> toggle
+                  adds the broadcast overlay: speed, Coggan-zone power, HR, cadence, grade.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-foreground font-semibold mb-2">Ghost Racing</h3>
+                <p>
+                  Pick any other ride on the same route as a translucent{' '}
+                  <strong className="text-foreground">ghost</strong> with a live ahead/behind
+                  delta, or toggle <strong className="text-foreground">Race Yourself</strong> to
+                  stack every ride as coloured traces with a live leaderboard. The compare modal&apos;s
+                  3D tab races two rides in one shared scene on a linked clock.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-foreground font-semibold mb-2">World, Capture & Performance</h3>
+                <p>
+                  Real elevation terrain is on by default with optional satellite imagery; sky,
+                  sun position, rain/snow particles and wet-road reflections follow the
+                  ride&apos;s actual weather. <strong className="text-foreground">Poster</strong> saves
+                  a 2× PNG and <strong className="text-foreground">Clip</strong> records 6 s of
+                  video; <strong className="text-foreground">Photo</strong> hides the chrome for
+                  clean captures. The speaker button adds wind/heartbeat audio,{' '}
+                  <strong className="text-foreground">Focus</strong> is an experimental depth of
+                  field, and slow devices automatically step down to{' '}
+                  <strong className="text-foreground">Performance mode</strong> (mobile gets an
+                  extra-light build).
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* ─── 12. What's New ──────────────────────────────────── */}
         <section id="changelog">
           <Card>
             <CardTitle>🆕 What's New</CardTitle>

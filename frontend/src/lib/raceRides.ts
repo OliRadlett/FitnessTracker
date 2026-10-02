@@ -12,7 +12,7 @@
 
 import type { ActivityStream } from '@/lib/api';
 import { buildReplay } from '@/lib/replay';
-import { streamInput, VELOCITY_STREAM_TYPES } from '@/lib/streams';
+import { ALTITUDE_STREAM_TYPES, streamInput, VELOCITY_STREAM_TYPES } from '@/lib/streams';
 
 /** built replay path — positions in the shared projection frame */
 export interface RacePoint {
@@ -55,6 +55,7 @@ export const RACE_PALETTE = [
  * Binary search — points are sorted by elapsed. Pure.
  */
 export function raceIndexAt(points: RacePoint[], t: number): number {
+  if (points.length === 0) return 0;
   let lo = 0;
   let hi = points.length - 1;
   while (lo < hi) {
@@ -107,6 +108,14 @@ export interface BuildRaceRidesArgs {
       streams?: ActivityStream[];
     }
   >;
+  /**
+   * Shared projection frame + vertical base from the main ride. Without these
+   * each trace centres on its own centroid (collapsing onto the origin) with
+   * its own altitude base — pass the main build's `lat0`/`lng0`/`altMin`/
+   * `zScale` so traces sit at their true geographic offset and comparable z.
+   */
+  frame?: { lat0: number; lng0: number };
+  altBase?: { altMin: number; zScale: number };
 }
 
 /**
@@ -117,6 +126,8 @@ export interface BuildRaceRidesArgs {
 export function buildRaceRides({
   history,
   detailById,
+  frame,
+  altBase,
 }: BuildRaceRidesArgs): RaceRide[] {
   const rides = history.rides
     .map((r) => {
@@ -125,7 +136,16 @@ export function buildRaceRides({
       const polyline = detail.encoded_polyline;
       const velocity = streamInput(detail.streams, ...VELOCITY_STREAM_TYPES);
       if (!velocity) return null;
-      const build = buildReplay({ polyline, velocity, maxSamples: 1500 });
+      const build = buildReplay({
+        polyline,
+        velocity,
+        altitude: streamInput(detail.streams, ...ALTITUDE_STREAM_TYPES),
+        frame,
+        altBase,
+        activityDistanceMeters: r.distance_meters ?? undefined,
+        activityDurationSeconds: r.duration_seconds ?? undefined,
+        maxSamples: 1500,
+      });
       if (build.points.length < 2) return null;
       const isPr = history.personal_best?.activity_id === r.activity_id;
       return {
@@ -148,8 +168,13 @@ export function buildRaceRides({
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
-    // most recent first
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // most recent first (unparseable dates sort last, never NaN — a NaN
+    // comparator return makes order implementation-defined)
+    .sort((a, b) => {
+      const ta = new Date(b.date).getTime();
+      const tb = new Date(a.date).getTime();
+      return (Number.isFinite(ta) ? ta : -Infinity) - (Number.isFinite(tb) ? tb : -Infinity);
+    });
 
   return rides.map((r, i) => ({ ...r, color: RACE_PALETTE[i % RACE_PALETTE.length] }));
 }

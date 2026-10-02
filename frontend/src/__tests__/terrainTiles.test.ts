@@ -3,6 +3,7 @@ import {
   chooseZoom,
   diffuseVoids,
   lngLatToPixel,
+  MAX_MERCATOR_LAT,
   TERRARIUM_MAX_ZOOM,
   terrariumDecode,
   tileRangeForBbox,
@@ -71,6 +72,13 @@ describe('tileRangeForBbox', () => {
     const r = tileRangeForBbox(51.5, -0.13, 51.52, -0.1, 13);
     expect(r.x1).toBeGreaterThanOrEqual(r.x0);
     expect(r.y1).toBeGreaterThanOrEqual(r.y0);
+  });
+
+  it('clamps polar latitudes instead of exploding the tile range', () => {
+    const r = tileRangeForBbox(89.9, -0.1, 90, -0.1, 12);
+    for (const v of [r.x0, r.x1, r.y0, r.y1]) expect(Number.isFinite(v)).toBe(true);
+    expect(r.y1 - r.y0).toBeLessThan(1000);
+    expect(lngLatToPixel(90, 0, 12).y).toBeCloseTo(lngLatToPixel(MAX_MERCATOR_LAT, 0, 12).y, 6);
   });
 });
 
