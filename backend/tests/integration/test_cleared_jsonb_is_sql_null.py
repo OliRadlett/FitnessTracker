@@ -25,7 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import Activity
 from app.models.route import Route
 
-pytestmark = pytest.mark.asyncio
+# Applied to the async tests individually rather than module-wide: a
+# module-level mark also lands on the synchronous declaration test in
+# TestTheColumnsAreDeclaredForIt, and pytest warns it is not an async function.
+# That warning appears on every run and trains you to ignore warnings from
+# this file.
 
 # Columns whose "cleared" state is expressed as SQL NULL. Each is invalidated
 # by a geometry change and re-populated by a Modal worker, so a None that
@@ -48,6 +52,7 @@ async def _is_sql_null(
 
 
 class TestClearedColumnsAreReallyNull:
+    @pytest.mark.asyncio
     async def test_route_road_match_clears_to_sql_null(
         self, db_session: AsyncSession, test_route: Route
     ):
@@ -73,6 +78,7 @@ class TestClearedColumnsAreReallyNull:
             "A map-matching task filtering on `IS NULL` would skip this route."
         )
 
+    @pytest.mark.asyncio
     async def test_activity_road_match_clears_to_sql_null(
         self, db_session: AsyncSession, test_activity: Activity
     ):
@@ -109,6 +115,7 @@ class TestTheColumnsAreDeclaredForIt:
                     f"{model.__name__}.{name} must be JSONB(none_as_null=True)"
                 )
 
+    @pytest.mark.asyncio
     async def test_a_cleared_route_is_offered_to_map_matching(
         self, db_session: AsyncSession, test_route: Route
     ):
