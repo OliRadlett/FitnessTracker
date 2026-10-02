@@ -74,6 +74,20 @@ describe('cumulativeFromVelocity', () => {
     const cum = cumulativeFromVelocity([0, Number.NaN, 5], 1);
     expect(Number.isFinite(cum[cum.length - 1])).toBe(true);
   });
+
+  it('clamps negative velocity so distance stays monotonic', () => {
+    // [0] is the t=0 origin; i=1 contributes max(0,-3)=0, i=2 adds 5.
+    const cum = cumulativeFromVelocity([5, -3, 5], 1);
+    expect(cum).toEqual([0, 0, 5]);
+    for (let i = 1; i < cum.length; i++) {
+      expect(cum[i]).toBeGreaterThanOrEqual(cum[i - 1]);
+    }
+  });
+
+  it('falls back to a 1 s step for bad resolutions', () => {
+    expect(cumulativeFromVelocity([5, 5], Number.NaN).at(-1)).toBe(5);
+    expect(cumulativeFromVelocity([5, 5], 0).at(-1)).toBe(5);
+  });
 });
 
 describe('buildReplay', () => {
@@ -89,7 +103,9 @@ describe('buildReplay', () => {
       altitude: { values: [10, 20, 30, 40, 50, 60, 70] },
     });
     expect(result.points.length).toBe(7);
-    expect(result.totalTime).toBe(7);
+    // Elapsed runs 0..6 across 7 one-second samples — totalTime is the last
+    // sample's clock, not one phantom step past it.
+    expect(result.totalTime).toBe(6);
     // 6 trailing 5 m/s samples integrated over 1s each.
     expect(result.totalDistance).toBeCloseTo(30, 6);
     expect(result.maxSpeed).toBe(5);
@@ -203,6 +219,26 @@ describe('buildReplay', () => {
     expect(shared.points[0].x).toBeGreaterThan(60000);
     // Same altitude profile in the same vertical base → same z.
     expect(shared.points[6].z).toBeCloseTo(main.points[6].z, 6);
+  });
+
+  it('returns an empty build (not a bogus negative-index point) without velocity', () => {
+    const result = buildReplay({ polyline, velocity: { values: [] } });
+    expect(result.points).toEqual([]);
+    expect(result.totalTime).toBe(0);
+    expect(result.totalDistance).toBe(0);
+    expect(result.maxSpeed).toBe(0);
+  });
+
+  it('aligns streams by sample under variable speed, not by distance fraction', () => {
+    // Sprint start then cruise: distances [0, 1, 10, 19] — a distance-fraction
+    // mapping would read sample 1's power from the wrong index.
+    const result = buildReplay({
+      polyline,
+      velocity: { values: [0, 1, 9, 9] },
+      power: { values: [0, 400, 150, 150] },
+    });
+    expect(result.points[1].power).toBe(400);
+    expect(result.points[2].power).toBe(150);
   });
 });
 

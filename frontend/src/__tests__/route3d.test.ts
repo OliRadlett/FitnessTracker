@@ -249,6 +249,27 @@ describe('buildRoute3D', () => {
     for (const z of res.drape!) expect(Number.isFinite(z)).toBe(true);
   });
 
+  it('returns null drape when the DEM has no usable data', () => {
+    // All-void grid: smoothing finds nothing, so keep raw z instead of an
+    // identical array that would pointlessly rebuild the scene.
+    const grid: RouteGrid = {
+      cols: 5,
+      rows: 5,
+      lat0: 51.5,
+      lng0: -0.1,
+      latSpan: 0.04,
+      lngSpan: 0.04,
+      lats: [51.5, 51.51, 51.52, 51.53, 51.54],
+      lngs: [-0.1, -0.09, -0.08, -0.07, -0.06],
+    };
+    const pts = [
+      { x: 0, y: 0, z: 5 },
+      { x: 100, y: 0, z: 6 },
+    ];
+    const res = computeDrape(pts, new Array(25).fill(Number.NaN), grid, { lat0: 51.5, lng0: -0.1, zScale: 2 });
+    expect(res.drape).toBeNull();
+  });
+
   it('returns null drape for flat rides', () => {
     const grid: RouteGrid = {
       cols: 5,

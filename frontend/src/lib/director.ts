@@ -40,6 +40,8 @@ const vec = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
  * list. Smooth, C1-continuous, passes through every keyframe.
  */
 function catmullRom(points: THREE.Vector3[], u: number): THREE.Vector3 {
+  if (points.length === 0) return new THREE.Vector3(0, 0, 0);
+  if (points.length === 1) return points[0].clone();
   const n = points.length - 1;
   const i = Math.min(n - 1, Math.max(0, Math.floor(u * n)));
   const localT = u * n - i;
@@ -146,6 +148,8 @@ export interface OrbitShot {
   moveStart: number;
   /** alternates each reframe so long-run drift cancels instead of circling */
   dirSign: 1 | -1;
+  /** last clock seen — backwards jumps (tab-switch clock skew) are ignored */
+  lastSeen: number;
 }
 
 /** Start a fresh hold at `angle` (e.g. seeded from the live camera). Pure. */
@@ -158,6 +162,7 @@ export function seedOrbitShot(nowMs: number, angle: number): OrbitShot {
     toAngle: angle,
     moveStart: 0,
     dirSign: 1,
+    lastSeen: nowMs,
   };
 }
 
@@ -168,6 +173,9 @@ export function seedOrbitShot(nowMs: number, angle: number): OrbitShot {
  * call once per frame with a monotonic clock. Pure (no three/DOM).
  */
 export function updateOrbitShot(s: OrbitShot, nowMs: number): number {
+  // Freeze on backwards clock steps instead of un-easing the shot.
+  if (nowMs < s.lastSeen) nowMs = s.lastSeen;
+  s.lastSeen = nowMs;
   if (s.holding && nowMs >= s.holdUntil) {
     s.holding = false;
     s.fromAngle = s.angle;
@@ -186,11 +194,14 @@ export function updateOrbitShot(s: OrbitShot, nowMs: number): number {
   return s.angle;
 }
 
-/** Auto-camera sub-modes (cinematic intro excluded — it is scripted, not picked). */
+/** Auto-camera sub-modes (scripted modes excluded — they play, not pick). */
 export type AutoCamMode = 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby';
 
-/** Full camera-mode selector state, including manual auto + scripted cinematic. */
-export type ReplayCamMode = 'auto' | AutoCamMode | 'cinematic';
+/**
+ * Full camera-mode selector state: manual auto + scripted cinematic intro +
+ * scripted tour shots. `shot` is tour-only (never a toolbar/keyboard choice).
+ */
+export type ReplayCamMode = 'auto' | AutoCamMode | 'cinematic' | 'shot';
 
 export interface AutoCamContext {
   grade: number;
@@ -218,16 +229,23 @@ export function samplePath(path: DirectorPath, t: number): CameraSample {
   if (path.keyframes.length === 0) {
     return { position: [0, 0, 100], target: [0, 0, 0], fov: 55 };
   }
+  if (path.keyframes.length === 1) {
+    const k = path.keyframes[0];
+    return { position: [...k.position], target: [...k.target], fov: k.fov };
+  }
   const clamped = Math.max(0, Math.min(path.duration, t));
   const u = path.duration > 0 ? clamped / path.duration : 1;
 
   const positions = path.keyframes.map((k) => vec(...k.position));
   const targets = path.keyframes.map((k) => vec(...k.target));
 
-  const pos = catmullRom(positions, ease(u));
-  const tgt = catmullRom(targets, ease(u));
+  // No easing here: buildDirectorPath already bakes the smoothstep into the
+  // keyframe geometry (and FOV), so easing again would double-ease the motion
+  // and desync position from FOV.
+  const pos = catmullRom(positions, u);
+  const tgt = catmullRom(targets, u);
 
-  // linear fov interpolation at the eased parameter
+  // linear fov interpolation at parameter u
   const fovIdx = u * (path.keyframes.length - 1);
   const fi = Math.min(path.keyframes.length - 2, Math.floor(fovIdx));
   const ft = fovIdx - fi;

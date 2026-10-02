@@ -43,6 +43,9 @@ interface Fixture {
 const FIXTURE_NAMES = ['act1', 'act2'];
 
 function buildFrom(f: Fixture): ReplayBuildResult {
+  // Malformed fixture streams degrade to undefined inputs → buildReplay's
+  // empty-velocity guard returns an empty build and Replay3D shows its
+  // fallback instead of crashing.
   return buildReplay({
     polyline: f.encoded_polyline,
     velocity: streamInput(f.streams, ...VELOCITY_STREAM_TYPES),
@@ -51,6 +54,7 @@ function buildFrom(f: Fixture): ReplayBuildResult {
     hr: streamInput(f.streams, ...HEARTRATE_STREAM_TYPES),
     cadence: streamInput(f.streams, ...CADENCE_STREAM_TYPES),
     maxSamples: 4000,
+    activityDistanceMeters: f.distance_meters,
   });
 }
 
@@ -74,13 +78,29 @@ export default function DevReplayPage() {
   }, []);
 
   const build = useMemo(() => (fixtures[idx] ? buildFrom(fixtures[idx]) : null), [fixtures, idx]);
-  const ghost = useMemo(
-    () =>
-      ghostIdx != null && fixtures[ghostIdx]
-        ? { build: buildFrom(fixtures[ghostIdx]), name: fixtures[ghostIdx].name }
-        : null,
-    [fixtures, ghostIdx],
-  );
+  // Same-route ghost shares the main build's frame, mirroring the Theater —
+  // otherwise the harness would test a placement the app never renders.
+  const ghost = useMemo(() => {
+    if (ghostIdx == null || !fixtures[ghostIdx] || !build) return null;
+    const f = fixtures[ghostIdx];
+    const velocity = streamInput(f.streams, ...VELOCITY_STREAM_TYPES);
+    if (!velocity || !f.encoded_polyline) return null;
+    return {
+      build: buildReplay({
+        polyline: f.encoded_polyline,
+        velocity,
+        altitude: streamInput(f.streams, ...ALTITUDE_STREAM_TYPES),
+        power: streamInput(f.streams, ...POWER_STREAM_TYPES),
+        hr: streamInput(f.streams, ...HEARTRATE_STREAM_TYPES),
+        cadence: streamInput(f.streams, ...CADENCE_STREAM_TYPES),
+        maxSamples: 4000,
+        frame: { lat0: build.lat0, lng0: build.lng0 },
+        altBase: { altMin: build.altMin, zScale: build.zScale },
+        activityDistanceMeters: f.distance_meters,
+      }),
+      name: f.name,
+    };
+  }, [fixtures, ghostIdx, build]);
 
   if (err) return <div className="p-6 text-sm text-warning">Fixture load failed — {err}</div>;
   if (!build || !fixtures[idx]) return <div className="p-6 text-sm text-muted">Loading fixtures…</div>;

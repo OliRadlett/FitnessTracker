@@ -33,7 +33,10 @@ export function solarPosition(date: Date, lat: number, lng: number): SunPosition
   const ra = Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L));
   const H = rad * (280.16 + 360.9856235 * d) + rad * lng - ra; // hour angle
   const latR = rad * lat;
-  const elevation = Math.asin(Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(H));
+  // Clamp the asin argument — at the poles float error pushes it to 1±ε,
+  // and an Invalid Date propagates NaN throughout (callers treat NaN as night).
+  const sinEl = Math.max(-1, Math.min(1, Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(H)));
+  const elevation = Math.asin(sinEl);
   // SunCalc azimuth is measured from south (westward); convert to compass (N=0, E=90).
   const azFromSouth = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(latR) - Math.tan(dec) * Math.cos(latR));
   const azimuth = ((azFromSouth / rad + 180) % 360 + 360) % 360;
@@ -55,7 +58,8 @@ export type Daylight = 'night' | 'blue' | 'golden' | 'day';
  * visible pops at these boundaries.
  */
 export function daylightPhase(elevationDeg: number): Daylight {
-  if (elevationDeg < -6) return 'night';
+  // NaN (e.g. Invalid Date upstream) reads as night, never as day.
+  if (!Number.isFinite(elevationDeg) || elevationDeg < -6) return 'night';
   if (elevationDeg < 0) return 'blue';
   if (elevationDeg < 10) return 'golden';
   return 'day';
@@ -139,7 +143,9 @@ export interface SunLight {
  * the old three-constant palette. Pure.
  */
 export function sunLightModel(elevationDeg: number): SunLight {
-  const e = Math.max(-18, Math.min(90, elevationDeg));
+  // Non-finite input (Invalid Date upstream) falls back to the night floor
+  // instead of NaN-poisoning every light in the scene.
+  const e = Number.isFinite(elevationDeg) ? Math.max(-18, Math.min(90, elevationDeg)) : -18;
   let i = 0;
   while (i < LIGHT_STOPS.length - 2 && e > LIGHT_STOPS[i + 1].e) i++;
   const a = LIGHT_STOPS[i];

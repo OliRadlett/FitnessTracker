@@ -48,15 +48,26 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
   const indices = new Uint32Array((n - 1) * 6);
   const colors = inColors ? new Float32Array(n * 2 * 3) : null;
 
+  // Last known-good heading — a fully degenerate window (duplicate GPS fixes)
+  // would otherwise collapse to a zero-width ribbon with zero normals.
+  let lastDx = 1;
+  let lastDy = 0;
   for (let i = 0; i < n; i++) {
     const p = points[i];
     const a = points[Math.max(0, i - 1)];
     const b = points[Math.min(n - 1, i + 1)];
     let dx = b.x - a.x;
     let dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    dx /= len;
-    dy /= len;
+    const len = Math.hypot(dx, dy);
+    if (len > 1e-9) {
+      dx /= len;
+      dy /= len;
+      lastDx = dx;
+      lastDy = dy;
+    } else {
+      dx = lastDx;
+      dy = lastDy;
+    }
     // ground-plane left normal
     const lx = -dy;
     const ly = dx;
@@ -87,10 +98,11 @@ export function buildRoadRibbon(points: ReplayPoint[], opts: RoadOptions = {}): 
 
   for (let i = 0; i < n - 1; i++) {
     // A path discontinuity (GPS gap / out-and-back join) would stretch the
-    // ribbon into a huge triangle — skip those segments (indices stay 0).
+    // ribbon into a huge triangle — skip those segments (indices stay 0,
+    // i.e. degenerate tris at vertex 0, which the GPU culls for free).
     const p0 = points[i];
     const p1 = points[i + 1];
-    if (Math.hypot(p1.x - p0.x, p1.y - p0.y) > (opts.maxSegmentM ?? 300)) continue;
+    if (Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z) > (opts.maxSegmentM ?? 300)) continue;
     const a = i * 2;
     const b = a + 1;
     const c = a + 2;
