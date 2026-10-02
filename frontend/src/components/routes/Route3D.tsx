@@ -13,6 +13,7 @@ import type { Segment } from '@/lib/api/types';
 import { FOG_COLOR, SKY_HORIZON, SKY_TOP } from '@/lib/sky';
 import { atmosphereFactors, createAtmosphereDome, updateAtmosphereDome } from '@/lib/sky';
 import { CLOUD_LIT, CLOUD_SHADE, cloudFactors, createCloudDome, tickCloudDome, updateCloudDome } from '@/lib/clouds';
+import { prefersReducedMotion } from '@/lib/perf';
 
 const START_COLOR = new THREE.Color('#22c55e');
 const END_COLOR = new THREE.Color('#ef4444');
@@ -434,12 +435,14 @@ export function Route3D({
     // touch-action:none); horizontal drags still orbit, pinch still zooms.
     renderer.domElement.style.touchAction = 'pan-y';
 
+    // Frozen drift under reduced motion — same contract as the replay.
+    const calmMotion = prefersReducedMotion();
     let raf = 0;
     const tick = () => {
       controls.update();
       sky.position.copy(camera.position);
       cloud.position.copy(camera.position);
-      tickCloudDome(cloud, performance.now() / 1000);
+      if (!calmMotion) tickCloudDome(cloud, performance.now() / 1000);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
