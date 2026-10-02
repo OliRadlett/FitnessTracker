@@ -3111,6 +3111,13 @@ export function Replay3D({
             Performance mode{perfFps != null ? ` · ${perfFps} fps` : ''}
           </div>
         )}
+        {/* Screen-reader mirror of the caption slot: static event text only —
+            never the ticking countdown (that would spam announcements). */}
+        <div aria-live="polite" aria-atomic="true" className="sr-only">
+          {activeHighlight?.label ??
+            activeBeat?.label ??
+            (nextUp ? `Up next: ${nextUp.event.label}` : '')}
+        </div>
         {(() => {
           // Terrain highlights win the caption; story beats fill the gaps;
           // otherwise look ahead to whatever comes next (tap to jump there).

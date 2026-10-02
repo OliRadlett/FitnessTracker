@@ -190,6 +190,10 @@ function ActivityExpanded({
   }, [activityDetail, selectedStream]);
 
   // ── 3D replay data (cycling rides with a route + streams) — §3.16 ──────
+  // Deps are scalar fields (not the whole activity object): list re-renders
+  // mint fresh row objects, and a new build identity would tear down + refetch
+  // the entire live 3D scene behind an open Theater. React Query keeps
+  // activityDetail reference-stable across identical refetches.
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
     if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
     const streams = activityDetail.streams!;
@@ -206,7 +210,8 @@ function ActivityExpanded({
       activityDistanceMeters: activity.distance_meters ?? undefined,
       activityDurationSeconds: activity.duration_seconds ?? undefined,
     });
-  }, [activity, activityDetail, isCycling]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity.id, activity.encoded_polyline, activity.distance_meters, activity.duration_seconds, activityDetail, isCycling]);
 
   // Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
   // Loading/error/empty-streams cases are covered by the stream section below.

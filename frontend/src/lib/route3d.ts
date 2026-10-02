@@ -286,6 +286,9 @@ export function computeDrape(
       }
       return c ? s / c : null;
     });
+    // No usable DEM anywhere — return null (keep raw z) instead of an array
+    // identical to the input, which would pointlessly rebuild the scene.
+    if (smooth.every((v) => v == null)) return { base, altMin, demMin, drape: null };
     drape = points.map((p, i) => {
       const d = smooth[i];
       return d == null ? p.z : (d - base) * frame.zScale;

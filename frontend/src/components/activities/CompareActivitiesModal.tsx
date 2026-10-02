@@ -73,6 +73,9 @@ export function CompareActivitiesModal({
       activityDistanceMeters: activity.distance_meters ?? undefined,
       activityDurationSeconds: activity.duration_seconds ?? undefined,
     });
+    // A degenerate build (single sample) can't animate — hide the 3D tab and
+    // fall back to charts, same as buildRaceRides does for its traces.
+    if (res.points.length < 2) return null;
     return res;
   }
 
