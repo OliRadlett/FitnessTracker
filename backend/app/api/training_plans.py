@@ -18,6 +18,7 @@ from app.schemas.training_plan import (
     GeneratePlanRequest,
     RefreshTargetsResponse,
     RescheduleDayRequest,
+    StrengthPlanSuggestionsResponse,
     SubstituteDayRequest,
     TrainingPlanCreate,
     TrainingPlanDayRead,
