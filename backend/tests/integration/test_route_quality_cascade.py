@@ -28,7 +28,10 @@ from app.models.route import Route
 from app.models.route_organize import RouteQuality
 from app.services.route_service import delete_route
 
-pytestmark = pytest.mark.asyncio
+# Applied to the async class below rather than module-wide: a module-level
+# `pytest.mark.asyncio` also lands on the synchronous declaration test at the
+# bottom, and pytest warns it is not an async function. That noise would sit in
+# the output of every run and mask real warnings about this file.
 
 POLY = "o}~mH~}xMz@z@z@z@z@z@"
 
@@ -67,6 +70,7 @@ async def _quality(db: AsyncSession, route: Route, user_id) -> RouteQuality:
 
 
 class TestDeletingAQualityScoredRoute:
+    @pytest.mark.asyncio
     async def test_delete_succeeds_when_a_quality_row_exists(
         self, db_session: AsyncSession, test_user
     ):
@@ -84,6 +88,7 @@ class TestDeletingAQualityScoredRoute:
         ).scalars().all()
         assert not remaining, "the route survived deletion"
 
+    @pytest.mark.asyncio
     async def test_the_quality_row_is_cascaded_away(
         self, db_session: AsyncSession, test_user
     ):
