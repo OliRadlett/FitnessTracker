@@ -8,6 +8,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
@@ -18,12 +19,20 @@ import { DESCENT_COLOR, GRADE_RAMP, bilinearHeight, slopeColor } from '@/lib/rou
 import { createBikeRig, leanFromCurvature, type BikeRig } from '@/lib/bike';
 import { buildRoadRibbon } from '@/lib/road';
 import { buildDirectorPath, pickAutoCameraMode, samplePath, seedOrbitShot, updateOrbitShot } from '@/lib/director';
-import type { AutoCamMode, OrbitShot, ReplayCamMode } from '@/lib/director';
+import type { AutoCamMode, DirectorPath, OrbitShot, ReplayCamMode } from '@/lib/director';
+import { buildShotPath, pickBeatShot, shotWantsOverview, type ShotKind } from '@/lib/shots';
 import { ReplayToolbar } from './ReplayToolbar';
 import { ReplayLoadingOverlay } from './ReplayLoadingOverlay';
 import { detectHighlights, highlightAt, type HighlightKind } from '@/lib/highlights';
+import { beatAt, detectBeats, type Beat } from '@/lib/beats';
+import { nextEvent } from '@/lib/tour';
 import { applyWeatherLight, daylightPhase, solarPosition, sunDirection, sunLightModel } from '@/lib/sun';
-import { createSkyDome } from '@/lib/sky';
+import { atmosphereFactors, createAtmosphereDome, updateAtmosphereDome } from '@/lib/sky';
+import { CLOUD_LIT, CLOUD_SHADE, cloudFactors, cloudWindVec, createCloudDome, tickCloudDome, updateCloudDome } from '@/lib/clouds';
+import { GodRaysShader, sunScreenPosition } from '@/lib/godrays';
+import { DofShader, dofSettingsFor, syncDofTarget, type DofTarget } from '@/lib/dof';
+import { createRideAudio, type RideAudio } from '@/lib/audio';
+import { createPerfBudget, perfNeedsDegrade, perfObserve } from '@/lib/perf';
 import type { RouteGrid } from '@/lib/route3d';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
@@ -559,7 +568,7 @@ export function Replay3D({
   // Resolved per-frame camera mode ('auto' unwrapped). Scene logic, the HUD
   // badge and click-to-seek all read this — never the raw camMode, which stays
   // 'auto' while the director switches underneath.
-  const resolvedModeRef = useRef<AutoCamMode | 'cinematic'>('orbit');
+  const resolvedModeRef = useRef<ReplayCamMode>('orbit');
   const [resolvedAuto, setResolvedAuto] = useState<AutoCamMode>('orbit');
   const [colorBy, setColorBy] = useState<ReplayColorMode>('speed');
   const [terrainState, setTerrainState] = useState<'off' | 'loading' | 'on' | 'failed'>(() => {
@@ -607,12 +616,15 @@ export function Replay3D({
     path: Line2;
     pathGeo: LineGeometry | null;
     roadGeo: THREE.BufferGeometry | null;
-    roadMat: THREE.MeshLambertMaterial | null;
+    roadMat: THREE.MeshPhongMaterial | null;
     home: { pos: THREE.Vector3; target: THREE.Vector3 } | null;
     terrain: THREE.Mesh | null;
     composer: EffectComposer | null;
+    rays: ShaderPass | null;
+    dof: (DofTarget & { depth: THREE.MeshDepthMaterial }) | null;
     dirLight: THREE.DirectionalLight | null;
     sky: THREE.Mesh | null;
+    cloud: THREE.Mesh | null;
     hemiLight: THREE.HemisphereLight | null;
     headlamp: THREE.PointLight | null;
   } | null>(null);
@@ -653,6 +665,60 @@ export function Replay3D({
   const orbitJustHandedOffRef = useRef(false);
   // Current active highlight (read in the RAF tick for auto-camera context).
   const activeHighlightRef = useRef<{ startElapsed: number; endElapsed: number; label: string; detail: string; kind: HighlightKind } | null>(null);
+  // Current sun direction in the replay frame, read per-frame (god-rays
+  // screen projection). Updated at setup and by the time-of-day scrubber.
+  const sunDirRef = useRef<[number, number, number]>([0.5, -0.5, 0.8]);
+  // God-rays toggle (Lite mode has no rays pass at all — see scene setup).
+  const [raysOn, setRaysOn] = useState(true);
+  const raysOnRef = useRef(true);
+  // Depth-of-field toggle. Default OFF: an unaudited blur must never touch a
+  // real session — the tick owns `pass.enabled` outright from this ref, so
+  // off means byte-identical rendering to before (no prepass even runs).
+  const [dofOn, setDofOn] = useState(false);
+  const dofOnRef = useRef(false);
+  useEffect(() => {
+    dofOnRef.current = dofOn;
+  }, [dofOn]);
+  useEffect(() => {
+    raysOnRef.current = raysOn;
+    const r = sceneRef.current?.rays;
+    if (r) r.enabled = raysOn;
+  }, [raysOn]);
+  // Adaptive performance: one-shot reduced profile + badge for its fps.
+  const [perfMode, setPerfMode] = useState<'full' | 'reduced'>('full');
+  const [perfFps, setPerfFps] = useState<number | null>(null);
+  const perfReducedRef = useRef(false);
+  // Ride audio: engine lives across toggles (rebuilt noise is expensive);
+  // created on the toggle gesture only (autoplay policy). Default off.
+  const audioRef = useRef<RideAudio | null>(null);
+  const audioAccRef = useRef(0);
+  const [audioOn, setAudioOn] = useState(false);
+  const toggleAudio = () => {
+    if (!audioOn) {
+      if (!audioRef.current) audioRef.current = createRideAudio();
+      if (!audioRef.current) return; // no Web Audio — stay off, not stuck on
+      audioRef.current.setActive(true);
+      setAudioOn(true);
+    } else {
+      audioRef.current?.setActive(false);
+      setAudioOn(false);
+    }
+  };
+  // A hidden tab stops RAF but not audio — suspend, resume only if still on.
+  useEffect(() => {
+    const onVis = () => audioRef.current?.setActive(!document.hidden && audioOn);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [audioOn]);
+  // Engine lifetime is the component, not the scene: terrain-drape rebuilds
+  // tear the scene down mid-ride and must never take audio with them.
+  useEffect(
+    () => () => {
+      audioRef.current?.dispose();
+      audioRef.current = null;
+    },
+    []
+  );
   // Ride-time weather, read per-frame (wet road sheen + wind HUD).
   const wetnessRef = useRef(0);
   const windSpeedRef = useRef(0);
@@ -688,28 +754,33 @@ export function Replay3D({
     if (s.scene.fog) (s.scene.fog as THREE.Fog).color.set(L.fog);
     // Update sun direction
     const sd = sunDirection(sun);
+    sunDirRef.current = sd;
     const size = 1000; // arbitrary scale — the tick repositions relative to the bike
     s.dirLight.position.set(sd[0] * size, sd[1] * size, Math.max(0.2, sd[2]) * size);
-    // Update sky dome texture
-    const mat = s.sky.material as THREE.MeshBasicMaterial;
-    if (mat.map) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 2;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const grad = ctx.createLinearGradient(0, 0, 0, 256);
-        grad.addColorStop(0, L.skyTop);
-        grad.addColorStop(0.55, L.skyHorizon);
-        grad.addColorStop(1, '#060a14');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 2, 256);
-      }
-      mat.map.dispose();
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      mat.map = tex;
-      mat.needsUpdate = true;
+    // Update the atmosphere dome — uniforms only, no texture rebuild, so
+    // scrubbing the time of day stays cheap enough to drag live.
+    updateAtmosphereDome(s.sky, {
+      sunDirection: sunDirection(sun),
+      skyTop: L.skyTop,
+      skyHorizon: L.skyHorizon,
+      fog: L.fog,
+      ...atmosphereFactors(sun.elevationDeg, { overcast, rainy, snowy, foggy }),
+    });
+    // Clouds follow the sun too (silver lining + warmth move with it).
+    if (s.cloud) {
+      const cf = cloudFactors(sun.elevationDeg, { overcast, rainy, snowy, foggy });
+      updateCloudDome(s.cloud, {
+        sunDirection: sunDirection(sun),
+        baseColor: CLOUD_LIT,
+        darkColor: CLOUD_SHADE,
+        fog: L.fog,
+        nightFactor: atmosphereFactors(sun.elevationDeg, null).nightFactor,
+        coverage: cf.coverage,
+        opacity: cf.opacity,
+        silver: cf.silver,
+        warmth: cf.warmth,
+        wind: cloudWindVec(windSpeedRef.current, windDirRef.current),
+      });
     }
   }, [timeOffsetH, startDate, build.lat0, build.lng0]);
 
@@ -741,6 +812,12 @@ export function Replay3D({
   }, [link]);
   useEffect(() => {
     camModeRef.current = camMode;
+    // Leaving shot mode abandons any in-flight scripted path (its handoff is
+    // moot once the user or director has moved on).
+    if (camMode !== 'shot') {
+      shotPathRef.current = null;
+      shotKindRef.current = null;
+    }
     // Re-seed follow smoothing from wherever the orbit camera is now.
     followPosRef.current = null;
     lookTargetRef.current = null;
@@ -761,6 +838,11 @@ export function Replay3D({
   useEffect(() => {
     cinematicImageryRef.current = imageryStateRef.current === 'loading';
   }, []);
+  // Tour-only scripted shot playback (shot library — never user-selectable).
+  const shotPathRef = useRef<DirectorPath | null>(null);
+  const shotStartRef = useRef(0);
+  const shotKindRef = useRef<ShotKind | null>(null);
+  const preShotModeRef = useRef<ReplayCamMode>('auto');
 
   // Build the three.js scene once for this ride.
   useEffect(() => {
@@ -811,8 +893,6 @@ export function Replay3D({
     windSpeedRef.current = windSpeed;
     windDirRef.current = windDir;
     const L = applyWeatherLight(sunLightModel(sun ? sun.elevationDeg : 45), { overcast, rainy, snowy, foggy });
-    const SKY_TOP = new THREE.Color(L.skyTop);
-    const SKY_HORIZON = new THREE.Color(L.skyHorizon);
     const FOG_COLOR = new THREE.Color(L.fog);
     const sunIntensity = L.sunIntensity;
     const hemiIntensity = L.hemiIntensity;
@@ -861,9 +941,44 @@ export function Replay3D({
     const cy = (minY + maxY) / 2;
     const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 100);
 
-    // Gradient sky dome (follows the camera) + distance fog tuned to the ride.
-    const sky = createSkyDome(size * 4, SKY_TOP, SKY_HORIZON);
+    // Analytic atmosphere dome (follows the camera) + distance fog tuned to
+    // the ride. Driven by the same sun model as the lights, so the sky and
+    // the lighting can never disagree about the time of day.
+    const sky = createAtmosphereDome(size * 4);
+    {
+      const factors = atmosphereFactors(sun ? sun.elevationDeg : 45, { overcast, rainy, snowy, foggy });
+      const skySun: [number, number, number] = sun ? sunDirection(sun) : [0.5, -0.5, 0.8];
+      updateAtmosphereDome(sky, {
+        sunDirection: skySun,
+        skyTop: L.skyTop,
+        skyHorizon: L.skyHorizon,
+        fog: L.fog,
+        ...factors,
+      });
+    }
     scene.add(sky);
+    // Procedural cloud shell inside the sky dome (skipped in Lite mode — a
+    // fullscreen fbm layer is the wrong trade on small screens). Coverage
+    // follows the ride weather; drift follows the ride wind.
+    let cloud: THREE.Mesh | null = null;
+    if (!liteMode) {
+      cloud = createCloudDome(size * 3.4);
+      const cf = cloudFactors(sun ? sun.elevationDeg : 45, { overcast, rainy, snowy, foggy });
+      const skySun: [number, number, number] = sun ? sunDirection(sun) : [0.5, -0.5, 0.8];
+      updateCloudDome(cloud, {
+        sunDirection: skySun,
+        baseColor: CLOUD_LIT,
+        darkColor: CLOUD_SHADE,
+        fog: L.fog,
+        nightFactor: atmosphereFactors(sun ? sun.elevationDeg : 45, null).nightFactor,
+        coverage: cf.coverage,
+        opacity: cf.opacity,
+        silver: cf.silver,
+        warmth: cf.warmth,
+        wind: cloudWindVec(windSpeed, windDir),
+      });
+      scene.add(cloud);
+    }
     scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.4, size * 3.2 * fogFarScale);
 
     // ── Weather particles: rain streaks, snow, or clear ─────────────────────
@@ -936,17 +1051,33 @@ export function Replay3D({
       size * 8
     );
 
-    // Post: bloom → output. (Depth of field was removed: BokehPass decodes its
-    // depth prepass with perspective math, but this renderer uses
+    // Post: god-rays → bloom → output. (Depth of field was removed: BokehPass
+    // decodes its depth prepass with perspective math, but this renderer uses
     // logarithmicDepthBuffer for the km-scale terrain — the CoC came out
-    // garbage and the whole frame stayed blurry. Bloom alone keeps the
-    // cinematic look without the incompatibility.)
+    // garbage and the whole frame stayed blurry. God-rays are depth-free by
+    // construction, so they don't share that failure mode.)
     let composer: EffectComposer | null = null;
+    let godRaysPass: ShaderPass | null = null;
+    let dof: { pass: ShaderPass; rt: THREE.WebGLRenderTarget; depth: THREE.MeshDepthMaterial } | null = null;
     if (!liteMode) {
       composer = new EffectComposer(renderer);
       composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       composer.setSize(mount.clientWidth, mount.clientHeight);
       composer.addPass(new RenderPass(scene, camera));
+      // DOF depth prepass target at half resolution (blur is forgiving).
+      // Owned + disposed here — the composer never sees it.
+      const dofRt = new THREE.WebGLRenderTarget(2, 2);
+      const dofDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+      const dofPass = new ShaderPass(DofShader);
+      dofPass.uniforms.tDepth.value = dofRt.texture;
+      dofPass.uniforms.uNear.value = camera.near;
+      dofPass.uniforms.uFar.value = camera.far;
+      dof = { pass: dofPass, rt: dofRt, depth: dofDepth };
+      syncDofTarget(dof, mount.clientWidth, mount.clientHeight, renderer.getPixelRatio());
+      composer.addPass(dofPass);
+      godRaysPass = new ShaderPass(GodRaysShader);
+      godRaysPass.enabled = raysOnRef.current;
+      composer.addPass(godRaysPass);
       // Restrained bloom: threshold 1.0 so only true HDR sources (sun glints,
       // headlamp pool, bright paint) bloom, with modest strength/radius so the
       // glow stays local — the old 0.6/0.5 smeared close-range brights (white
@@ -994,7 +1125,8 @@ export function Replay3D({
     grid.rotation.x = Math.PI / 2;
     grid.scale.setScalar(size / 2);
     grid.position.set(cx, cy, Math.max(minZ - size * 0.05, 0));
-    const sd = sun ? sunDirection(sun) : [0.5, -0.5, 0.8];
+    const sd: [number, number, number] = sun ? sunDirection(sun) : [0.5, -0.5, 0.8];
+    sunDirRef.current = sd;
     dirLight.position.set(cx + sd[0] * size, cy + sd[1] * size, minZ + Math.max(0.2, sd[2]) * size);
     scene.add(dirLight);
 
@@ -1176,20 +1308,28 @@ export function Replay3D({
       colors: roadTint(replayPathColorArray(points, colorByRef.current)),
     });
     let roadGeo: THREE.BufferGeometry | null = null;
-    let roadMat: THREE.MeshLambertMaterial | null = null;
+    let roadMat: THREE.MeshPhongMaterial | null = null;
     let roadTex: THREE.Texture | null = null;
     if (roadData) {
       roadGeo = new THREE.BufferGeometry();
       roadGeo.setAttribute('position', new THREE.BufferAttribute(roadData.positions, 3));
       roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadData.uvs, 2));
       roadGeo.setIndex(new THREE.BufferAttribute(roadData.indices, 1));
-      // Smooth vertex normals so the Lambert ribbon shades with slope/aspect.
+      // Smooth vertex normals so the ribbon shades with slope/aspect.
       // Without these the shader reads a zero normal (flat, wrong brightness)
       // and shadow reception breaks.
       roadGeo.computeVertexNormals();
       if (roadData.colors) roadGeo.setAttribute('color', new THREE.BufferAttribute(roadData.colors, 3));
       roadTex = createRoadTexture();
-      roadMat = new THREE.MeshLambertMaterial({ map: roadTex, vertexColors: !!roadData.colors, side: THREE.DoubleSide });
+      // Phong (not Lambert): wet asphalt gets a sun/headlamp specular glint.
+      // Shininess is driven per-frame by wetness; dry reads as matte.
+      roadMat = new THREE.MeshPhongMaterial({
+        map: roadTex,
+        vertexColors: !!roadData.colors,
+        side: THREE.DoubleSide,
+        shininess: 8,
+        specular: new THREE.Color(0x9db4d4),
+      });
       const roadMesh = new THREE.Mesh(roadGeo, roadMat);
       roadMesh.receiveShadow = true;
       scene.add(roadMesh);
@@ -1284,6 +1424,44 @@ export function Replay3D({
           /* ghost model optional */
         });
     }
+
+    // ── Wet-road mirror: a dimmed bike clone under the contact patch ───────
+    // A true planar reflection needs a mirror render target; instead the
+    // mirrored rig draws faintly OVER the opaque ribbon (depth test off, late
+    // render order), which reads as a wet mirror at a fraction of the cost.
+    // The group origin is the contact patch, so mirroring Z about it plants
+    // the reflection exactly under the bike.
+    const reflGroup = new THREE.Group();
+    reflGroup.scale.z = -1;
+    reflGroup.visible = false;
+    scene.add(reflGroup);
+    let reflRig: BikeRig | null = null;
+    createBikeRig({ reflection: true })
+      .then((rig) => {
+        if (bikeCancelled) {
+          rig.dispose();
+          return;
+        }
+        rig.object.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          for (const mm of mats) {
+            const mat = mm as THREE.Material;
+            mat.depthTest = false;
+            // Mirroring flips face winding — without this the clone culls
+            // itself into near-invisibility.
+            mat.side = THREE.DoubleSide;
+          }
+          m.renderOrder = 5;
+          m.castShadow = false;
+        });
+        reflGroup.add(rig.object);
+        reflRig = rig;
+      })
+      .catch(() => {
+        /* mirror optional — the sheen still sells wetness */
+      });
 
     // ── Start/finish markers: green cone at start, white sphere at end ────
     const markerGroup = new THREE.Group();
@@ -1455,6 +1633,8 @@ export function Replay3D({
     let raf = 0;
     let last = performance.now();
     let prevElapsed = 0;
+    // Adaptive budget: judged once the scene is fully loaded, applied once.
+    const perfBudget = createPerfBudget();
     const tmpDesired = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
     const _tmpAxis = new THREE.Vector3();
@@ -1479,6 +1659,36 @@ export function Replay3D({
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       if (!sceneReady) setSceneReady(true);
+      // Adaptive performance: count only settled frames (loading jank must
+      // never count), judge once, step down once. Lite mode is already
+      // minimal — nothing left to shed there.
+      if (!liteMode && !perfReducedRef.current) {
+        const settled = terrainStateRef.current !== 'loading' && imageryStateRef.current !== 'loading';
+        if (settled) {
+          const fps = perfObserve(perfBudget, dt * 1000);
+          if (fps != null && perfNeedsDegrade(fps)) {
+            perfReducedRef.current = true;
+            const w = mount.clientWidth;
+            const h = mount.clientHeight;
+            renderer.setPixelRatio(1);
+            if (composer && w > 0 && h > 0) {
+              composer.setPixelRatio(1);
+              composer.setSize(w, h);
+              const dofState = sceneRef.current?.dof;
+              if (dofState) syncDofTarget(dofState, w, h, 1);
+              const bloom = composer.passes.find((p) => p instanceof UnrealBloomPass);
+              if (bloom) bloom.enabled = false;
+            }
+            // Honest UI flips — the toggles show the reduced state and the
+            // user can re-enable either (nothing re-degrades behind them).
+            setRaysOn(false);
+            setDofOn(false);
+            if (weatherFx) weatherFx.visible = false;
+            setPerfMode('reduced');
+            setPerfFps(Math.round(fps));
+          }
+        }
+      }
       const L = linkRef.current;
       if (L) {
         // Linked clock: the parent owns time; shorter rides freeze at their end.
@@ -1498,6 +1708,17 @@ export function Replay3D({
       if (bikeRig) {
         bikeRig.setPose(riderDir, leanAt(points, riderPose.index), dt);
         bikeRig.update(riderPose.speed, rideDelta);
+      }
+      // Wet-road mirror tracks the bike's pose; visible only when wet (never
+      // in the cockpit, where the rig itself is hidden).
+      if (reflRig) {
+        const mirrorOn = wetnessRef.current > 0.04 && rider.visible;
+        reflGroup.visible = mirrorOn;
+        if (mirrorOn) {
+          reflGroup.position.copy(rider.position);
+          reflRig.setPose(riderDir, leanAt(points, riderPose.index), dt);
+          reflRig.update(riderPose.speed, rideDelta);
+        }
       }
       // ── Auto-camera: resolve 'auto' BEFORE anything else reads the mode ──
       // Decision table lives in lib/director (pure + tested); the component
@@ -1529,8 +1750,8 @@ export function Replay3D({
       }
       if (mode !== resolvedModeRef.current) {
         resolvedModeRef.current = mode;
-        // 'auto' is unwrapped by now; 'cinematic' has no HUD badge entry.
-        if (mode !== 'cinematic') setResolvedAuto(mode);
+        // 'auto' is unwrapped by now; scripted modes have no HUD badge entry.
+        if (mode !== 'cinematic' && mode !== 'shot') setResolvedAuto(mode);
       }
       // Segments drawn = point index (points 0..i need i segments).
       trailGeo.instanceCount = Math.max(0, Math.min(riderPose.index, points.length - 1));
@@ -1538,7 +1759,8 @@ export function Replay3D({
       // course is visible. Chase/cockpit: window around the rider — the distant
       // leg projects into a band from a low camera, and the span is generous
       // enough to read as continuous ahead and behind.
-      const inOverview = mode === 'orbit' || mode === 'cinematic' || mode === 'drone' || mode === 'flyby';
+      const shotWide = mode === 'shot' && shotKindRef.current !== null && shotWantsOverview(shotKindRef.current);
+      const inOverview = mode === 'orbit' || mode === 'cinematic' || mode === 'drone' || mode === 'flyby' || shotWide;
       if (roadGeo) {
         if (inOverview) {
           roadGeo.setDrawRange(0, roadGeo.getIndex()!.count);
@@ -1676,23 +1898,26 @@ export function Replay3D({
         streakMat.opacity = 0.25 + streakIntensity * 0.5;
         (streakGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
         (streakGeo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-        streaks.visible = true;
+        // A reduced profile keeps streaks off (set once at degrade time).
+        streaks.visible = !perfReducedRef.current;
       } else {
         streaks.visible = false;
       }
-      // Wet road: darken + desaturate the asphalt and lift a faint sheen so a
-      // rainy ride reads as slick. Dry → no change.
+      // Wet road: darken + desaturate the asphalt, lift a faint blue sheen,
+      // and open the specular gate so sun/headlamp glint off standing water.
+      // Dry → matte, no change.
       const roadMat = sceneRef.current?.roadMat;
       if (roadMat) {
         const w = wetnessRef.current;
         const base = 1 - w * 0.45; // darker when wet
         roadMat.color.setRGB(base, base, base + w * 0.04); // faint blue sheen
+        roadMat.shininess = 6 + w * 70;
       }
       // Tight fog in follow cams so the windowed road fades out instead of
       // ending in a hard edge; wide in orbit so the whole route stays visible.
       if (scene.fog) {
         const fog = scene.fog as THREE.Fog;
-        const follow = mode !== 'orbit' && mode !== 'cinematic';
+        const follow = mode !== 'orbit' && mode !== 'cinematic' && !shotWide;
         fog.near = follow ? 60 : size * 0.4;
         fog.far = follow ? 1400 * fogFarScale : size * 3.2 * fogFarScale;
       }
@@ -1874,6 +2099,25 @@ export function Replay3D({
             setCamMode('orbit');
           }
         }
+      } else if (mode === 'shot' && shotPathRef.current) {
+        // Tour-only scripted shot: play the library path, then hand back to
+        // whatever mode was active before the beat started.
+        controls.enabled = false;
+        const shotPath = shotPathRef.current;
+        const shotT = (now - shotStartRef.current) / 1000;
+        const sample = samplePath(shotPath, shotT);
+        camera.up.copy(UP_Z);
+        camera.fov = sample.fov;
+        camera.updateProjectionMatrix();
+        camera.position.set(sample.position[0], sample.position[1], sample.position[2]);
+        tmpLook.set(sample.target[0], sample.target[1], sample.target[2]);
+        camera.lookAt(tmpLook);
+        rider.visible = true;
+        if (shotT >= shotPath.duration) {
+          shotPathRef.current = null;
+          shotKindRef.current = null;
+          setCamMode(preShotModeRef.current);
+        }
       } else {
         // Follow cams drive the camera directly; OrbitControls stays out.
         // Reset the up vector every frame — the orbit drone rolls camera.up
@@ -1993,7 +2237,7 @@ export function Replay3D({
       }
       // Speed feel: widen the FOV slightly with speed (follow cams only —
       // the cinematic director and auto-orbit own their own FOV).
-      const fovOwnedByCam = mode === 'cinematic' || mode === 'orbit';
+      const fovOwnedByCam = mode === 'cinematic' || mode === 'orbit' || mode === 'shot';
       if (!fovOwnedByCam) {
         const targetFov = 55 + Math.min(1, riderPose.speed / 12) * 9;
         if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -2002,6 +2246,60 @@ export function Replay3D({
         }
       }
       sky.position.copy(camera.position);
+      if (sceneRef.current?.cloud) {
+        sceneRef.current.cloud.position.copy(camera.position);
+        tickCloudDome(sceneRef.current.cloud, now / 1000);
+      }
+      // Ride audio at ~7 Hz — the engine smooths internally, so per-frame
+      // updates would only churn. Silent when paused.
+      audioAccRef.current += dt;
+      if (audioRef.current && audioAccRef.current > 0.15) {
+        audioAccRef.current = 0;
+        if (playingRef.current) {
+          audioRef.current.setWind(riderPose.speed);
+          audioRef.current.setHeart(points[riderPose.index]?.hr ?? null);
+        } else {
+          audioRef.current.setWind(0);
+          audioRef.current.setHeart(null);
+        }
+      }
+      // God-rays track the sun's screen position; off-screen/behind fades to 0.
+      const raysPass = sceneRef.current?.rays;
+      if (raysPass) {
+        const screen = sunScreenPosition(camera, sunDirRef.current);
+        const ru = raysPass.uniforms as Record<string, { value: unknown }>;
+        (ru.uSunUv.value as THREE.Vector2).set(screen.uv[0], screen.uv[1]);
+        (ru.uIntensity.value as number) = screen.visible;
+      }
+      // DOF depth prepass (default off — the tick owns `pass.enabled`, so off
+      // costs nothing and renders byte-identically to before). Shadows stay on
+      // through the prepass: toggling them per frame would churn shader
+      // programs, so the prepass simply pays the second shadow render.
+      const dofState = sceneRef.current?.dof;
+      const dofSettings = dofState ? dofSettingsFor(mode) : null;
+      if (dofState) dofState.pass.enabled = dofOnRef.current && dofSettings != null;
+      if (dofState && dofState.pass.enabled && dofSettings) {
+        // Translucent fx layers would write solid depth — hide them for the
+        // prepass (rider, road, terrain and markers keep true depth).
+        const hidden: THREE.Object3D[] = [streaks, beacon, markerGroup];
+        if (weatherFx) hidden.push(weatherFx);
+        const prevVis = hidden.map((o) => o.visible);
+        for (const o of hidden) o.visible = false;
+        const prevOverride = scene.overrideMaterial;
+        const prevTarget = renderer.getRenderTarget();
+        scene.overrideMaterial = dofState.depth;
+        renderer.setRenderTarget(dofState.rt);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(prevTarget);
+        scene.overrideMaterial = prevOverride;
+        hidden.forEach((o, i) => {
+          o.visible = prevVis[i];
+        });
+        const du = dofState.pass.uniforms as Record<string, { value: unknown }>;
+        (du.uFocus.value as number) = camera.position.distanceTo(rider.position);
+        (du.uRange.value as number) = dofSettings.range;
+        (du.uMaxBlur.value as number) = dofSettings.maxBlur;
+      }
       if (composer) composer.render();
       else renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
@@ -2016,6 +2314,7 @@ export function Replay3D({
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         composer?.setSize(w, h);
+        if (dof) syncDofTarget(dof, w, h, renderer.getPixelRatio());
         // Line2 widths are resolution-dependent — keep both materials in sync.
         pathMat.resolution.set(w, h);
         trailMat.resolution.set(w, h);
@@ -2024,7 +2323,7 @@ export function Replay3D({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer, dirLight, sky, hemiLight, headlamp };
+    sceneRef.current = { renderer, controls, camera, scene, grid, rider, bike: null, trail, path: pathLine, pathGeo, roadGeo, roadMat, home: { pos: homePos, target: homeTarget }, terrain: null, composer, rays: godRaysPass, dof, dirLight, sky, cloud, hemiLight, headlamp };
     (window as unknown as { __relive?: unknown }).__relive = { scene, camera, controls, rider, sceneRef, drapeZ, zScale: build.zScale, points };
     // The fresh scene has no terrain bed — refetch if the user had it on.
     // A fresh scene has no terrain bed — force a reload/reattach (epoch bump so
@@ -2040,6 +2339,7 @@ export function Replay3D({
       bikeCancelled = true;
       bikeRig?.dispose();
       ghostRig?.dispose();
+      reflRig?.dispose();
       renderer.domElement.removeEventListener('dblclick', onDblClick);
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
       renderer.domElement.removeEventListener('mouseup', onMouseUp);
@@ -2082,9 +2382,23 @@ export function Replay3D({
       dirLight.dispose?.();
       headlamp.dispose();
       sky.geometry.dispose();
+      // Atmosphere dome holds uniforms only (no textures); the optional chain
+      // keeps this correct if the material ever carries a map again.
       (sky.material as THREE.MeshBasicMaterial).map?.dispose();
       (sky.material as THREE.Material).dispose();
+      if (cloud) {
+        cloud.geometry.dispose();
+        (cloud.material as THREE.Material).dispose();
+      }
       composer?.dispose();
+      // Composer disposal covers only its own targets — the DOF target, depth
+      // material and pass belong to us.
+      const dofGone = sceneRef.current?.dof;
+      if (dofGone) {
+        dofGone.rt.dispose();
+        dofGone.depth.dispose();
+        dofGone.pass.dispose();
+      }
       weatherFx?.geometry.dispose();
       (weatherFx?.material as THREE.Material | undefined)?.dispose();
       streaks.geometry.dispose();
@@ -2454,7 +2768,41 @@ export function Replay3D({
     s.controls.update();
   };
 
+  // Restore the pre-shot mode when a scripted tour shot is abandoned.
+  const cancelShot = () => {
+    if (shotPathRef.current) {
+      shotPathRef.current = null;
+      shotKindRef.current = null;
+      if (camModeRef.current === 'shot') setCamMode(preShotModeRef.current);
+    }
+  };
+
+  // Play a scripted library shot for a beat, starting from the live camera
+  // pose (no teleport cut). Falls back to a follow mode when unusable.
+  const startBeatShot = (b: Beat) => {
+    if (camModeRef.current !== 'shot') preShotModeRef.current = camModeRef.current;
+    const s = sceneRef.current;
+    const kind = pickBeatShot(b.kind);
+    const path = buildShotPath(points, kind, b.startElapsed);
+    if (!s || path.keyframes.length < 2) {
+      setCamMode(b.kind === 'finale' ? 'flyby' : b.kind === 'comeback' ? 'drone' : 'chase');
+      return;
+    }
+    // First keyframe = live pose so the shot eases in instead of jumping.
+    const first = path.keyframes[0];
+    first.position = [s.camera.position.x, s.camera.position.y, s.camera.position.z];
+    const look = lookTargetRef.current;
+    if (look) first.target = [look.x, look.y, look.z];
+    first.fov = s.camera.fov;
+    shotKindRef.current = kind;
+    shotPathRef.current = path;
+    shotStartRef.current = performance.now();
+    setCamMode('shot');
+  };
+
   const seek = (t: number) => {
+    // A seek strands a wall-clock shot at a stale location — drop it first.
+    cancelShot();
     const L = linkRef.current;
     const span = L?.span ?? totalTime;
     const c = Math.max(0, Math.min(span, t));
@@ -2478,12 +2826,40 @@ export function Replay3D({
     setRate(r);
   };
 
-  // Entering the tour: jump to the first highlight and start playing.
+  // Story beats (what the rider did — attacks, comebacks, closing pushes).
+  // Declared up here because tour entry seeks the first of highlights/beats.
+  // The caption prefers terrain highlights; beats fill the gaps so the tour
+  // always has something to say.
+  const beats = useMemo(
+    () => detectBeats(points, { ftpWatts: ftpWatts ?? undefined }),
+    [points, ftpWatts]
+  );
+  const activeBeat = useMemo(
+    () => (tour ? beatAt(beats, displayElapsed) : null),
+    [tour, beats, displayElapsed]
+  );
+
+  // Lookahead: the next timeline event inside 3 minutes (highlights win
+  // timestamp ties — terrain before story). Live even when not touring.
+  const nextUp = useMemo(
+    () => nextEvent([...highlights, ...beats], displayElapsed),
+    [highlights, beats, displayElapsed]
+  );
+
+  // Entering the tour: jump to the first highlight (or story beat when the
+  // route has no terrain features) and start playing. Chapter-chip jumps set
+  // the suppress flag first — otherwise this effect yanks a non-first chapter
+  // back to the start on the same render.
+  const tourStart = highlights.length ? highlights[0].startElapsed : beats.length ? beats[0].startElapsed : null;
+  const suppressTourEntryRef = useRef(false);
   useEffect(() => {
-    if (!tour || !highlights.length) return;
-    seek(highlights[0].startElapsed);
-    if (!linkRef.current) setPlaying(true);
+    if (!tour) suppressTourEntryRef.current = false;
   }, [tour]);
+  useEffect(() => {
+    if (!tour || tourStart == null || suppressTourEntryRef.current) return;
+    seek(tourStart);
+    if (!linkRef.current) setPlaying(true);
+  }, [tour, tourStart]);
 
   // Keyboard shortcuts: space = play/pause, ←/→ = seek 15 s, 1–7 = cameras.
   useEffect(() => {
@@ -2525,6 +2901,9 @@ export function Replay3D({
     s.renderer.setSize(w, h, false);
     s.composer?.setPixelRatio(2);
     s.composer?.setSize(w, h);
+    // The DOF depth target tracks the composer size, or the poster's blur
+    // radius silently doubles.
+    if (s.dof) syncDofTarget(s.dof, w, h, 2);
     s.camera.updateProjectionMatrix();
     render();
     el.toBlob((blob) => {
@@ -2532,6 +2911,7 @@ export function Replay3D({
       s.renderer.setSize(w, h, false);
       s.composer?.setPixelRatio(prevRatio);
       s.composer?.setSize(w, h);
+      if (s.dof) syncDofTarget(s.dof, w, h, prevRatio);
       s.camera.updateProjectionMatrix();
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -2621,9 +3001,15 @@ export function Replay3D({
     activeHighlightRef.current = activeHighlight;
   }, [activeHighlight]);
   useEffect(() => {
-    if (!tour || !activeHighlight) return;
-    setCamMode(activeHighlight.kind === 'climb' ? 'drone' : 'chase');
-  }, [tour, activeHighlight]);
+    if (!tour) return;
+    if (activeHighlight) {
+      setCamMode(activeHighlight.kind === 'climb' ? 'drone' : 'chase');
+      return;
+    }
+    // No terrain feature under the playhead — play the beat's signature
+    // scripted shot instead of a plain follow mode.
+    if (activeBeat) startBeatShot(activeBeat);
+  }, [tour, activeHighlight, activeBeat]);
 
   if (failed) {
     return (
@@ -2648,6 +3034,13 @@ export function Replay3D({
         setCamMode={setCamMode}
         showBroadcast={showBroadcast}
         setShowBroadcast={setShowBroadcast}
+        raysOn={raysOn}
+        setRaysOn={setRaysOn}
+        dofOn={dofOn}
+        setDofOn={setDofOn}
+        dofAvailable={!liteMode}
+        audioOn={audioOn}
+        toggleAudio={toggleAudio}
         tourAvailable={highlights.length > 0} // toolbar extracted
         tour={tour}
         setTour={setTour}
@@ -2684,12 +3077,39 @@ export function Replay3D({
         <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-surface/70 px-1.5 py-0.5 text-[10px] text-muted [.photo_&]:hidden">
           drag to orbit · pinch to zoom · space play · ←/→ seek · 1–7 cameras · click route to jump
         </div>
-        {activeHighlight && (
-          <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center [.photo_&]:hidden">
-            <p className="text-xs font-semibold text-accent">{activeHighlight.label}</p>
-            <p className="text-[11px] text-foreground">{activeHighlight.detail}</p>
+        {perfMode === 'reduced' && (
+          <div
+            title="Effects auto-tuned for smooth playback — Rays/Focus can be re-enabled anytime"
+            className="pointer-events-none absolute bottom-1 right-1 rounded bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted [.photo_&]:hidden"
+          >
+            Performance mode{perfFps != null ? ` · ${perfFps} fps` : ''}
           </div>
         )}
+        {(() => {
+          // Terrain highlights win the caption; story beats fill the gaps;
+          // otherwise look ahead to whatever comes next (tap to jump there).
+          const story = activeHighlight ?? activeBeat;
+          if (story) {
+            return (
+              <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-lg border border-accent/30 bg-surface/85 px-3 py-1.5 text-center [.photo_&]:hidden">
+                <p className="text-xs font-semibold text-accent">{story.label}</p>
+                <p className="text-[11px] text-foreground">{story.detail}</p>
+              </div>
+            );
+          }
+          if (!nextUp) return null;
+          return (
+            <button
+              onClick={() => seek(nextUp.event.startElapsed)}
+              title="Jump to the next highlight"
+              className="pointer-events-auto absolute bottom-2 left-1/2 max-w-[80%] -translate-x-1/2 rounded-full border border-surface-light bg-surface/70 px-3 py-1 text-[11px] text-muted backdrop-blur-sm transition-colors hover:border-accent/30 hover:text-foreground [.photo_&]:hidden"
+            >
+              Up next: <span className="font-medium text-foreground/80">{nextUp.event.label}</span>
+              {' · in '}
+              <span className="font-mono tabular-nums">{timeFmt(nextUp.inSeconds)}</span>
+            </button>
+          );
+        })()}
         {/* ── Broadcast HUD: live ride data overlay ─────────────────────────── */}
         {hud && showBroadcast && (
           <div className="pointer-events-none absolute left-2 top-2 z-10 w-44 rounded-lg border border-surface-light/50 bg-surface/80 p-2 font-mono text-[10px] tabular-nums backdrop-blur-sm [.photo_&]:hidden">
@@ -2775,12 +3195,13 @@ export function Replay3D({
         )}
       </div>
 
-      {highlights.length > 0 && (
-        <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 [.photo_&]:hidden" role="group" aria-label="Ride highlights">
+      {(highlights.length > 0 || beats.length > 0) && (
+        <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 [.photo_&]:hidden" role="group" aria-label="Ride highlights and story beats">
           {highlights.map((h, i) => (
             <button
               key={`${h.kind}-${i}`}
               onClick={() => {
+                suppressTourEntryRef.current = true;
                 setTour(true);
                 seek(h.startElapsed);
               }}
@@ -2792,6 +3213,27 @@ export function Replay3D({
               }`}
             >
               {h.label}
+            </button>
+          ))}
+          {beats.map((b, i) => (
+            <button
+              key={`${b.kind}-${i}`}
+              onClick={() => {
+                suppressTourEntryRef.current = true;
+                setTour(true);
+                seek(b.startElapsed);
+                // Play this beat's shot immediately — the tour effect would
+                // also catch it, but only after the playhead render lands.
+                startBeatShot(b);
+              }}
+              title={b.detail}
+              className={`shrink-0 rounded-full border border-dashed px-2.5 py-0.5 min-h-[32px] text-[10px] transition-colors ${
+                activeBeat === b
+                  ? 'border-violet-400/60 bg-violet-400/20 text-violet-300'
+                  : 'border-surface-light text-muted hover:border-violet-400/40'
+              }`}
+            >
+              {b.label}
             </button>
           ))}
         </div>

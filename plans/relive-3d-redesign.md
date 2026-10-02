@@ -365,6 +365,17 @@ loads, ghost material disposal. Tests extended alongside (`replay`, `road`,
 note: `vitest` could not run in this sandbox (esbuild worker spawn EPERM), so
 the new/updated tests still need a hosted run.
 
+### Follow-up audit fixes (next-level rounds)
+Fresh-eyes pass over the blind-built stack: tour chapter chips no longer get
+yanked back to the first chapter by the tour-entry auto-seek (suppress flag,
+also fixing the same pre-existing redirect for highlights); DOF depth target
+kept in lockstep on every composer resize via `syncDofTarget` (window, perf
+degrade, 2× poster capture). A throwaway node harness (esbuild-bundle +
+plain asserts, since vitest cannot spawn here) now executes the pure libs'
+core behaviors at runtime — it caught two wrong test expectations of mine
+before they could lock in (negative-velocity cumulative totals, orbit move
+completion timing), both corrected in `replay.test.ts` / `director.test.ts`.
+
 ### Remaining
 - Optional: wind sock, **segment racing** (race against Strava segment leaders on
   the route) and **public share link** (both need backend/product scope).

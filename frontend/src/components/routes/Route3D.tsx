@@ -10,7 +10,9 @@ import { decodePolyline } from '@/lib/polyline';
 import type { BuildRoute3DResult, ColorMode, RoutePathPoint, TerrainInput } from '@/lib/route3d';
 import { DESCENT_COLOR, ELEVATION_RAMP, GRADE_RAMP, GRADE_SCALE, buildRoute3D, computeGrid, pointColor, steepestKm } from '@/lib/route3d';
 import type { Segment } from '@/lib/api/types';
-import { FOG_COLOR, SKY_HORIZON, SKY_TOP, createSkyDome } from '@/lib/sky';
+import { FOG_COLOR, SKY_HORIZON, SKY_TOP } from '@/lib/sky';
+import { atmosphereFactors, createAtmosphereDome, updateAtmosphereDome } from '@/lib/sky';
+import { CLOUD_LIT, CLOUD_SHADE, cloudFactors, createCloudDome, tickCloudDome, updateCloudDome } from '@/lib/clouds';
 
 const START_COLOR = new THREE.Color('#22c55e');
 const END_COLOR = new THREE.Color('#ef4444');
@@ -200,13 +202,45 @@ export function Route3D({
     const dirLight = new THREE.DirectionalLight(0xfff2df, 1.4);
     dirLight.position.set(size * 0.6, -size * 0.5, size);
     scene.add(dirLight);
-    const sky = createSkyDome(size * 4, SKY_TOP, SKY_HORIZON);
+    // Disposal registry for scene-owned GPU assets (cloud shell included).
+    const geos: THREE.BufferGeometry[] = [];
+    const mats: THREE.Material[] = [];
+    // Analytic atmosphere + fair-weather clouds, sharing the replay's sky
+    // engine. The route view has no ride timestamp, so it stages permanent
+    // late morning: sun aligned with the key light, same palette as before.
+    const sky = createAtmosphereDome(size * 4);
+    const routeSun = new THREE.Vector3(size * 0.6, -size * 0.5, size).normalize();
+    const routeElev = (Math.asin(Math.max(-1, Math.min(1, routeSun.z))) * 180) / Math.PI;
+    updateAtmosphereDome(sky, {
+      sunDirection: [routeSun.x, routeSun.y, routeSun.z],
+      skyTop: `#${SKY_TOP.getHexString()}`,
+      skyHorizon: `#${SKY_HORIZON.getHexString()}`,
+      fog: `#${FOG_COLOR.getHexString()}`,
+      ...atmosphereFactors(routeElev, null),
+    });
     scene.add(sky);
+    const cloud = createCloudDome(size * 3.4);
+    {
+      const cf = cloudFactors(routeElev, null);
+      updateCloudDome(cloud, {
+        sunDirection: [routeSun.x, routeSun.y, routeSun.z],
+        baseColor: CLOUD_LIT,
+        darkColor: CLOUD_SHADE,
+        fog: `#${FOG_COLOR.getHexString()}`,
+        nightFactor: 0,
+        coverage: cf.coverage,
+        opacity: cf.opacity,
+        silver: cf.silver,
+        warmth: cf.warmth,
+        wind: [0.004, 0.0015],
+      });
+    }
+    scene.add(cloud);
+    geos.push(cloud.geometry);
+    mats.push(cloud.material as THREE.Material);
     scene.fog = new THREE.Fog(FOG_COLOR.getHex(), size * 0.6, size * 4);
 
     // ── Terrain bed from the DEM grid (same frame as the path) ───────────
-    const geos: THREE.BufferGeometry[] = [];
-    const mats: THREE.Material[] = [];
     if (build.terrainVerts) {
       const cols = terrain?.grid.cols ?? 0;
       const rows = terrain?.grid.rows ?? 0;
@@ -404,6 +438,8 @@ export function Route3D({
     const tick = () => {
       controls.update();
       sky.position.copy(camera.position);
+      cloud.position.copy(camera.position);
+      tickCloudDome(cloud, performance.now() / 1000);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };

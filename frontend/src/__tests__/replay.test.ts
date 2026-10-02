@@ -76,11 +76,12 @@ describe('cumulativeFromVelocity', () => {
   });
 
   it('clamps negative velocity so distance stays monotonic', () => {
+    // [0] is the t=0 origin; i=1 contributes max(0,-3)=0, i=2 adds 5.
     const cum = cumulativeFromVelocity([5, -3, 5], 1);
+    expect(cum).toEqual([0, 0, 5]);
     for (let i = 1; i < cum.length; i++) {
       expect(cum[i]).toBeGreaterThanOrEqual(cum[i - 1]);
     }
-    expect(cum[cum.length - 1]).toBe(10);
   });
 
   it('falls back to a 1 s step for bad resolutions', () => {

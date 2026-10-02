@@ -194,11 +194,14 @@ export function updateOrbitShot(s: OrbitShot, nowMs: number): number {
   return s.angle;
 }
 
-/** Auto-camera sub-modes (cinematic intro excluded — it is scripted, not picked). */
+/** Auto-camera sub-modes (scripted modes excluded — they play, not pick). */
 export type AutoCamMode = 'orbit' | 'chase' | 'drone' | 'cockpit' | 'flyby';
 
-/** Full camera-mode selector state, including manual auto + scripted cinematic. */
-export type ReplayCamMode = 'auto' | AutoCamMode | 'cinematic';
+/**
+ * Full camera-mode selector state: manual auto + scripted cinematic intro +
+ * scripted tour shots. `shot` is tour-only (never a toolbar/keyboard choice).
+ */
+export type ReplayCamMode = 'auto' | AutoCamMode | 'cinematic' | 'shot';
 
 export interface AutoCamContext {
   grade: number;

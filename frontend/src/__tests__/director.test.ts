@@ -74,10 +74,13 @@ describe('samplePath', () => {
 
   it('ignores backwards clock steps instead of un-easing the shot', () => {
     const s = seedOrbitShot(0, 1.0);
-    updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS / 2);
+    // The hold-to-move transition fires on first observation past the
+    // deadline, so the move runs [t1, t1+MOVE], not [HOLD, HOLD+MOVE].
+    const t1 = ORBIT_HOLD_MS + ORBIT_MOVE_MS / 2;
+    updateOrbitShot(s, t1);
     const mid = s.angle;
     expect(updateOrbitShot(s, 0)).toBe(mid); // jump back = freeze, not rewind
-    expect(updateOrbitShot(s, ORBIT_HOLD_MS + ORBIT_MOVE_MS)).toBeCloseTo(1.0 + ORBIT_REFRAME_RAD, 6);
+    expect(updateOrbitShot(s, t1 + ORBIT_MOVE_MS)).toBeCloseTo(1.0 + ORBIT_REFRAME_RAD, 6);
   });
 
   it('produces a finite, continuous path', () => {

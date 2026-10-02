@@ -1,6 +1,6 @@
 # Relive 3D — Next Level: The Project Centerpiece
 
-> **Status**: Planning (2026-09-30)
+> **Status**: Phase A complete pending hosted eyeballs — atmosphere dome, cloud shell, god rays, default-off DOF and wet reflections shipped (2026-10-02); the route view shares the atmosphere dome + fair-weather clouds too. Still open: raymarched cloud shadows, true mirror/SSR, defaulting DOF on.
 > **Prerequisite**: `plans/relive-3d-redesign.md` — all five phases complete.
 > **North star**: Turn the 3D ride viewer from "the best feature" into **the thing
 > people point at when they tell others about FitTrack** — a Relive-grade highlight
@@ -107,11 +107,11 @@ The final pillar: the viewer doesn't just show what happened, it **analyzes** it
 ### Phase A: Atmosphere (2-3 weeks)
 **Goal**: The sky alone makes people take screenshots.
 
-1. Rayleigh-Mie scattering shader (replacing the gradient dome)
-2. Volumetric cloud layer with sun-shadow attenuation
-3. Custom DOF shader (logDepth-aware) — orbit shallow, chase deep
-4. Screen-space road reflections
-5. God rays / crepuscular scattering
+1. ~~Analytic sky shader (sun disc/glow, night stars, weather grey-out)~~ — shipped 2026-10-02 (`lib/sky.ts` atmosphere dome, live in Replay3D; Route3D keeps the gradient dome)
+2. ~~Procedural cloud shell (animated fbm, weather coverage, sun silver-lining, ride-wind drift)~~ — shipped 2026-10-02 (`lib/clouds.ts`, skipped in Lite mode); still open: raymarched self-shadowing + cloud light-attenuation on terrain
+3. ~~Custom DOF shader (logDepth-aware) — orbit shallow, chase deep~~ — shipped 2026-10-02 behind a default-OFF Focus toggle (`lib/dof.ts`: own RGBA depth prepass — clip-space packed, so the log-depth trap that killed BokehPass cannot apply — plus per-mode focus policy; skipped in Lite/mobile; needs a hosted eyeball before defaulting on)
+4. ~~Screen-space road reflections~~ — shipped 2026-10-02 as a mirror cheat + wet specular (`createBikeRig({reflection})` mirrored clone under the contact patch, drawn faint over the ribbon; road upgraded Lambert→Phong with wetness-driven shininess). A true mirror RT / SSR remains the possible future upgrade.
+5. ~~God rays / crepuscular scattering~~ — shipped 2026-10-02 (depth-free luminance-threshold radial-blur pass, `lib/godrays.ts`, chained render → rays → bloom → output with a toolbar toggle; skipped in Lite mode)
 
 **Test**: Can you distinguish a sunrise, noon, and sunset ride at a glance? Does
 the bike reflect in the wet road?
@@ -119,9 +119,9 @@ the bike reflect in the wet road?
 ### Phase B: AI Director (3-4 weeks)
 **Goal**: The tour feels directed, not algorithmic.
 
-1. Narrative beat detection (beyond climbs/sprints to emotional moments)
-2. Shot library (8-10 cinematic templates with smooth transitions)
-3. Auto-captions + callouts with timing
+1. ~~Narrative beat detection (attacks, comebacks, closing pushes)~~ — shipped 2026-10-02 (`lib/beats.ts`, measured-power detectors; tour seeks/captions/directs beats when highlights are absent)
+2. ~~Shot library (5 scripted templates: chase-low, track, orbit-punch, drone-pull, rise-reveal)~~ — shipped 2026-10-02 (`lib/shots.ts`, tour-only `shot` camera mode with live-pose blending, pre-shot restore, seek/manual cancel paths; wide reveals reuse the full-road view)
+3. ~~Auto-captions + lookahead callouts~~ — shipped 2026-10-02 (tour caption covers highlights/beats; `lib/tour.ts` `nextEvent` powers an "Up next" jump chip; music-reactive pacing stays open)
 4. Music-reactive pacing (optional tempo track)
 5. One-tap video export (1080p MP4 with captions)
 
@@ -133,7 +133,7 @@ beats? Can you export a 2-minute highlight reel?
 
 1. WebGPU migration (with WebGL fallback)
 2. Progressive terrain LOD
-3. Adaptive performance budget
+3. ~~Adaptive performance budget~~ — shipped 2026-10-02 (`lib/perf.ts`: one-shot verdict after a 150-frame settled window; reduced profile = pixelRatio 1, bloom/rays/focus off, particles + streaks hidden, with an honest fps badge; user re-enables never re-degrade)
 4. Interactive share links (`?share=<token>`)
 5. Ride montage editor (multi-activity sequences)
 
@@ -144,7 +144,7 @@ watch a shared ride? Can two rides flow into one sequence?
 **Goal**: The viewer becomes a training tool and a showpiece.
 
 1. AR mode (WebXR) — walk your route in your living room
-2. Spatial audio (wind, wheels, heartbeat)
+2. ~~Spatial audio: wind + heartbeat + tire rumble~~ — shipped 2026-10-02 (`lib/audio.ts`: synthesized filtered-noise wind tracking speed, scheduled lub-dub thumps tracking live HR, plus tire hum reusing the noise bed through a bandpass; gesture-created context, default-OFF speaker toggle, tab-hide suspend)
 3. AI ride analysis (voice-over summary)
 4. Strava segment racing overlay
 5. Weather timeline (conditions change as you scrub)

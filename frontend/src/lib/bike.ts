@@ -176,23 +176,27 @@ function loadTemplate(): Promise<Template> {
 
 /**
  * Create a bike rig. `ghost` renders a translucent blue-tinted copy for ghost
- * racing (Phase 5).
+ * racing (Phase 5); `reflection` renders a dim neutral copy for the wet-road
+ * mirror (next-level Phase A) — faint enough to read as a reflection.
  */
-export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {}): Promise<BikeRig> {
+export async function createBikeRig(
+  { ghost = false, reflection = false }: { ghost?: boolean; reflection?: boolean } = {}
+): Promise<BikeRig> {
   const template = await loadTemplate();
 
   const object = new THREE.Group();
-  object.name = ghost ? 'bike-ghost' : 'bike';
+  object.name = reflection ? 'bike-reflection' : ghost ? 'bike-ghost' : 'bike';
 
   const inner = new THREE.Group();
   inner.quaternion.setFromRotationMatrix(bikeOrientationMatrix());
   const model = template.scene.clone(true);
 
-  // Ghost clones own their materials (transparent blue tint) while sharing the
-  // template's geometries/textures — track them so dispose() frees the clones
-  // without touching shared template assets.
+  // Translucent clones own their materials while sharing the template's
+  // geometries/textures — track them so dispose() frees the clones without
+  // touching shared template assets.
   const ghostMaterials: THREE.Material[] = [];
-  if (ghost) {
+  if (ghost || reflection) {
+    const tint = new THREE.Color(reflection ? 0x11161f : 0x60a5fa);
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -200,9 +204,9 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
       mesh.material = mats.map((m) => {
         const clone = m.clone();
         const std = clone as THREE.MeshStandardMaterial;
-        if ('color' in std) std.color = std.color.clone().lerp(new THREE.Color(0x60a5fa), 0.55);
+        if ('color' in std) std.color = std.color.clone().lerp(tint, reflection ? 0.7 : 0.55);
         clone.transparent = true;
-        clone.opacity = 0.45;
+        clone.opacity = reflection ? 0.16 : 0.45;
         clone.depthWrite = false;
         ghostMaterials.push(clone);
         return clone;
@@ -239,6 +243,9 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
   }
 
   let wheelAngle = 0;
+  // A reflection's blur discs must stay whisper-faint — they share the rig's
+  // update loop, so scale their target instead of special-casing the traverse.
+  const blurDim = reflection ? 0.3 : 1;
 
   return {
     object,
@@ -252,7 +259,7 @@ export async function createBikeRig({ ghost = false }: { ghost?: boolean } = {})
       // angle or drive opacity backwards.
       if (!(dt > 0)) return;
       // fade the blur in from ~2 m/s to ~7 m/s
-      const target = Math.max(0, Math.min(1, (speedMs - 2) / 5)) * 0.8;
+      const target = Math.max(0, Math.min(1, (speedMs - 2) / 5)) * 0.8 * blurDim;
       blurMaterial.opacity += (target - blurMaterial.opacity) * Math.min(1, dt * 6);
       // spin rate ∝ speed (visual); roll the shared texture so both wheels spin
       wheelAngle += (speedMs / WHEEL_RADIUS) * dt;
