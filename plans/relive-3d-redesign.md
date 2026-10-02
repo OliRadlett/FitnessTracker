@@ -378,7 +378,13 @@ completion timing), both corrected in `replay.test.ts` / `director.test.ts`.
 A second harness round ran the full committed 3D unit suite under plain node
 (vitest API shim + `@/` resolve hooks, then deleted): **210 passed, 0 failed**
 across all 19 files — and caught one real lib bug on top, overcast skies now
-attenuating the cloud silver-lining (`clouds.ts`).
+attenuating the cloud silver-lining (`clouds.ts`). Backend contract audit
+(2026-10-02): every field the viewer consumes verified against backend code —
+route-history shape + PB nullability (`api/routes.py`, `schemas/route.py`),
+weather columns populated at sync (`services/weather.py`), Strava/FIT stream
+type spellings all covered by `lib/streams.ts`, `{data:[...]}` payload +
+high-resolution 1 s convention, `ActivityStreamRead` fields, and cycling
+profile FTP. No mismatches; null weather degrades gracefully by design.
 
 ### Remaining
 - Optional: wind sock, **segment racing** (race against Strava segment leaders on
