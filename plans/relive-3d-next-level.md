@@ -231,3 +231,8 @@ on, poster + clip, mobile Lite ride), speaker levels, and regenerating the
 `replay-visual` screenshot baselines (they predate the new sky). Several
 shipped items are explicitly pending that eyeball (DOF defaults off,
 mirror/SSR honesty, shader compile on real GPUs).
+
+Follow-up release (PR #243, live): imagery resolves to `off` when terrain
+is terminally gone (was an infinite spinner with terrain off), and software
+rasterizers start in the reduced profile (SwiftShader-class GPUs). Shipped
+from hosted loading feedback (Firefox desktop, silent infinite loading).
