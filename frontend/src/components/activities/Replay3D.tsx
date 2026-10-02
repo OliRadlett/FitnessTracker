@@ -32,7 +32,7 @@ import { CLOUD_LIT, CLOUD_SHADE, cloudFactors, cloudWindVec, createCloudDome, ti
 import { GodRaysShader, sunScreenPosition } from '@/lib/godrays';
 import { DofShader, dofSettingsFor, syncDofTarget, type DofTarget } from '@/lib/dof';
 import { createRideAudio, type RideAudio } from '@/lib/audio';
-import { createPerfBudget, perfNeedsDegrade, perfObserve } from '@/lib/perf';
+import { createPerfBudget, perfNeedsDegrade, perfObserve, prefersReducedMotion } from '@/lib/perf';
 import type { RouteGrid } from '@/lib/route3d';
 import type { RaceRide } from '@/lib/raceRides';
 import { raceIndexAt, speedColor } from '@/lib/raceRides';
@@ -688,6 +688,21 @@ export function Replay3D({
   const [perfMode, setPerfMode] = useState<'full' | 'reduced'>('full');
   const [perfFps, setPerfFps] = useState<number | null>(null);
   const perfReducedRef = useRef(false);
+  // Reduced motion: hold ambient camera motion still for users who ask the OS
+  // for it (auto-orbit drift, banking, streaks, cloud drift). Ride playback,
+  // weather and explicit camera choices are unaffected.
+  const reducedMotionRef = useRef(false);
+  useEffect(() => {
+    reducedMotionRef.current = prefersReducedMotion();
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotionRef.current = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => {
+      reducedMotionRef.current = e.matches;
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   // Ride audio: engine lives across toggles (rebuilt noise is expensive);
   // created on the toggle gesture only (autoplay policy). Default off.
   const audioRef = useRef<RideAudio | null>(null);
@@ -1742,9 +1757,12 @@ export function Replay3D({
         const auto = autoCamRef.current;
         if (now >= auto.until) {
           const next = pickAutoCamera();
+          // Reduced motion swaps the circling flyby for a held orbit — the
+          // calm default these users asked the OS for.
+          const resolved = reducedMotionRef.current && next === 'flyby' ? 'orbit' : next;
           // Cooldown: 6s for orbit (stable), 4s for action cams.
-          auto.mode = next;
-          auto.until = now + (next === 'orbit' ? 6000 : 4000);
+          auto.mode = resolved;
+          auto.until = now + (resolved === 'orbit' ? 6000 : 4000);
         }
         mode = auto.mode;
       }
@@ -1898,8 +1916,9 @@ export function Replay3D({
         streakMat.opacity = 0.25 + streakIntensity * 0.5;
         (streakGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
         (streakGeo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-        // A reduced profile keeps streaks off (set once at degrade time).
-        streaks.visible = !perfReducedRef.current;
+        // A reduced profile keeps streaks off (set once at degrade time);
+        // reduced motion keeps them off too (speed lines are motion effects).
+        streaks.visible = !perfReducedRef.current && !reducedMotionRef.current;
       } else {
         streaks.visible = false;
       }
@@ -1989,12 +2008,13 @@ export function Replay3D({
           } else {
           // Hold the composed shot; ease to a reframed angle when the hold
           // expires — a virtual drone that reframes instead of spinning.
-          const orbitAngle = updateOrbitShot(auto.shot, now);
+          // Reduced motion freezes the hold: same cinematic framing, no drift.
+          const orbitAngle = reducedMotionRef.current ? auto.shot.angle : updateOrbitShot(auto.shot, now);
           // Radius widens with speed (intimate when slow, sweeping when fast).
           const radius = 26 + Math.min(42, riderPose.speed * 1.3);
 
           // Height: 3/4 view that rises with speed, plus a gentle vertical bob.
-          const bob = Math.sin(t * 0.55) * 2.5;
+          const bob = reducedMotionRef.current ? 0 : Math.sin(t * 0.55) * 2.5;
           const height = 12 + Math.min(18, riderPose.speed * 0.45) + bob;
 
           // ── Aspect-adaptive elliptical orbit ──────────────────────────────
@@ -2030,9 +2050,11 @@ export function Replay3D({
           camera.position.lerp(desired, k);
 
           // Subtle speed-adaptive FOV — widens slightly at speed for motion feel.
-          const targetFov = 46 + Math.min(16, riderPose.speed * 0.28);
-          camera.fov += (targetFov - camera.fov) * 0.04;
-          camera.updateProjectionMatrix();
+          if (!reducedMotionRef.current) {
+            const targetFov = 46 + Math.min(16, riderPose.speed * 0.28);
+            camera.fov += (targetFov - camera.fov) * 0.04;
+            camera.updateProjectionMatrix();
+          }
 
           controls.target.set(lx, ly, lz);
           camera.lookAt(lx, ly, lz);
@@ -2040,7 +2062,8 @@ export function Replay3D({
           // ── Camera banking: roll into turns for a drone-like feel ────────
           // Yaw rate from heading change → bank angle. Cross product sign gives
           // the turn direction (left/right). Smoothed so it doesn't jitter.
-          if (prevHeadingRef.current && riderDir.lengthSq() > 1e-9) {
+          // Skipped for reduced motion (the horizon stays level).
+          if (!reducedMotionRef.current && prevHeadingRef.current && riderDir.lengthSq() > 1e-9) {
             const prev = prevHeadingRef.current;
             // Horizontal-plane cross product (z component) → turn direction.
             const turn = prev.x * riderDir.y - prev.y * riderDir.x;
@@ -2248,7 +2271,8 @@ export function Replay3D({
       sky.position.copy(camera.position);
       if (sceneRef.current?.cloud) {
         sceneRef.current.cloud.position.copy(camera.position);
-        tickCloudDome(sceneRef.current.cloud, now / 1000);
+        // Frozen drift under reduced motion — the layer stays put.
+        if (!reducedMotionRef.current) tickCloudDome(sceneRef.current.cloud, now / 1000);
       }
       // Ride audio at ~7 Hz — the engine smooths internally, so per-frame
       // updates would only churn. Silent when paused.

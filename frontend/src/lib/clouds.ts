@@ -51,10 +51,18 @@ export function cloudFactors(
   }
   const night = 1 - smoothstep(-8, -2, e);
   const dayAmount = smoothstep(-2, 2, e);
+  // An overcast sun has no sharp edge to silver-line.
+  let grey = 0;
+  if (weather) {
+    if (weather.overcast) grey = Math.max(grey, 0.55);
+    if (weather.foggy) grey = Math.max(grey, 0.55);
+    if (weather.snowy) grey = Math.max(grey, 0.7);
+    if (weather.rainy) grey = Math.max(grey, 0.8);
+  }
   return {
     coverage,
     opacity: 0.9 * (1 - night * 0.35),
-    silver: dayAmount * (1 - night * 0.8),
+    silver: dayAmount * (1 - night * 0.8) * (1 - grey * 0.6),
     warmth: 1 - smoothstep(5, 35, e),
   };
 }

@@ -44,3 +44,17 @@ export function perfObserve(budget: PerfBudget, dtMs: number): number | null {
 export function perfNeedsDegrade(fps: number, minFps = PERF_MIN_FPS): boolean {
   return fps < minFps;
 }
+
+/**
+ * Whether the OS asks for reduced motion (SSR-safe: false without window).
+ * The viewer honours it by holding the auto-orbit static, skipping camera
+ * banking, speed streaks and cloud drift — the ride itself still plays.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}

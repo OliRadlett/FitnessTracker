@@ -5,6 +5,7 @@ import {
   createPerfBudget,
   perfNeedsDegrade,
   perfObserve,
+  prefersReducedMotion,
 } from '@/lib/perf';
 
 describe('perfObserve', () => {
@@ -37,6 +38,29 @@ describe('perfObserve', () => {
     fps = perfObserve(b, 5000);
     expect(fps).not.toBeNull();
     expect(fps!).toBeGreaterThan(50);
+  });
+});
+
+describe('prefersReducedMotion', () => {
+  it('reads the OS preference and degrades safe without matchMedia', () => {
+    // globalThis — never bare `window`, so this also runs outside jsdom.
+    const g = globalThis as unknown as Record<string, unknown>;
+    const createdWindow = !('window' in g);
+    if (createdWindow) g.window = {};
+    const w = g.window as Record<string, unknown>;
+    const prev = w.matchMedia;
+    try {
+      w.matchMedia = () => ({ matches: true }) as MediaQueryList;
+      expect(prefersReducedMotion()).toBe(true);
+      w.matchMedia = () => ({ matches: false }) as MediaQueryList;
+      expect(prefersReducedMotion()).toBe(false);
+      delete w.matchMedia;
+      expect(prefersReducedMotion()).toBe(false);
+    } finally {
+      if (prev === undefined) delete w.matchMedia;
+      else w.matchMedia = prev;
+      if (createdWindow) delete g.window;
+    }
   });
 });
 

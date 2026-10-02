@@ -159,6 +159,7 @@ insights you didn't notice? Can you race the KOM ghost?
 - Pick 3-4 items from Phase A that deliver the biggest visual punch
 - Polish the tour transitions (no pops, no snaps)
 - Ensure mobile is flawless
+- Honour `prefers-reduced-motion` — shipped 2026-10-02 (static auto-orbit hold, no banking/bob/FOV drift/streaks/cloud drift, flyby→orbit in auto; ride playback, weather and explicit camera choices unaffected)
 - Add a "What's new" tour on first open
 - Ship with a featured ride gallery as the default demo
 
