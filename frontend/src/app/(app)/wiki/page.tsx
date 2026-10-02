@@ -952,8 +952,11 @@ export default function WikiPage() {
                 reconstruction of your route, directed like a broadcast, with live telemetry.
                 Open a cycling activity in <WikiLink href="/activities">Activities</WikiLink>,
                 switch to the <strong className="text-foreground">Replay</strong> tab and hit{' '}
-                <strong className="text-foreground">Open 3D Replay</strong>. Needs a GPS route
-                plus a speed stream — rides without them explain exactly what is missing.
+                <strong className="text-foreground">Open 3D Replay</strong>. The address bar
+                carries <strong className="text-foreground">?replay=</strong> while the Theater
+                is open, so the link opens that exact replay on its own — no navigation needed.
+                Needs a GPS route plus a speed stream — rides without them explain exactly what
+                is missing.
               </p>
 
               <div>
