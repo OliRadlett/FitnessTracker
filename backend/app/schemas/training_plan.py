@@ -357,7 +357,7 @@ class GeneratePlanRequest(BaseModel):
     # is applied to the matching week (1-indexed). Unset weeks inherit the
     # nearest preceding entry, so a 6-week plan only needs entries for weeks
     # where the stimulus changes.
-    strength_template: list[StrengthWeekTemplate] | None = None
+    strength_template: list["StrengthWeekTemplate"] | None = None
 
     # Focus rotation for strength days (e.g. ["squat", "bench", "deadlift"]).
     # Defaults to ["squat", "bench", "deadlift"] when omitted.
