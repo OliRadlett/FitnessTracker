@@ -345,11 +345,70 @@ class GeneratePlanRequest(BaseModel):
     """Request to auto-generate a plan from a template."""
 
     name: str
-    template_type: str  # build, base, peak, taper, recovery
+    template_type: str  # build, base, peak, taper, recovery, strength
     weeks: int = 4
     start_date: date
-    base_tss: float = 300.0  # weekly TSS starting point
+    base_tss: float = 300.0  # weekly TSS starting point (cycling templates)
     event_id: uuid.UUID | None = None  # optional — links plan and applies taper
+
+    # ── Strength template options (when template_type == "strength") ────────
+    #
+    # `strength_template` encodes a progressive-overload pattern. Each entry
+    # is applied to the matching week (1-indexed). Unset weeks inherit the
+    # nearest preceding entry, so a 6-week plan only needs entries for weeks
+    # where the stimulus changes.
+    strength_template: list["StrengthWeekTemplate"] | None = None
+
+    # Focus rotation for strength days (e.g. ["squat", "bench", "deadlift"]).
+    # Defaults to ["squat", "bench", "deadlift"] when omitted.
+    strength_focuses: list[str] | None = None
+
+    # Optional starting point (overrides auto-detection from user history).
+    strength_start_rpe: float | None = None
+    strength_start_sets: int | None = None
+    strength_start_reps: int | None = None
+    strength_start_weight_kg: float | None = None
+
+
+class StrengthWeekTemplate(BaseModel):
+    """One week's progressive-overload parameters in a strength template."""
+    week: int  # 1-indexed
+    rpe: float | None = None
+    sets: int | None = None
+    reps: int | None = None
+    # Optional per-exercise weight overrides keyed by focus (e.g. "squat").
+    weights: dict[str, float] | None = None
+    notes: str | None = None
+
+
+class ExerciseSuggestion(BaseModel):
+    """One exercise with a suggested new weight."""
+
+    exercise_name: str
+    old_weight_kg: float | None
+    suggested_weight_kg: float
+    rpe: float | None
+    sets: int
+    reps: int
+
+
+class StrengthDaySuggestion(BaseModel):
+    """Suggested updates for a future plan day based on prior-week performance."""
+
+    day_id: uuid.UUID
+    day_date: date
+    sport: str
+    planned_focus: str | None = None
+    exercises: list[ExerciseSuggestion] = []
+
+
+class StrengthPlanSuggestionsResponse(BaseModel):
+    """Full response wrapping the list of day-level suggestions."""
+
+    plan_id: uuid.UUID
+    generated_at: datetime
+    suggestions: list[StrengthDaySuggestion] = []
+    summary: str | None = None
 
 
 # ── FL1: refresh cycle targets ──────────────────────────────────────────

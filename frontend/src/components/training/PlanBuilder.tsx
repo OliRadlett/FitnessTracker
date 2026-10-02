@@ -79,6 +79,7 @@ const TEMPLATE_OPTIONS = [
   { value: 'peak', label: 'Peak — High intensity' },
   { value: 'taper', label: 'Taper — Pre-event reduction' },
   { value: 'recovery', label: 'Recovery — Active rest' },
+  { value: 'strength', label: 'Strength — User-defined progression' },
 ] as const;
 
 const STATUS_COLORS: Record<string, string> = {
@@ -419,6 +420,189 @@ function EmptyState({
             )}
           </div>
         </div>
+
+        {/* Strength template options (shown when template_type === 'strength') */}
+        {templateForm.template_type === 'strength' && (
+          <div className="mt-4 pt-4 border-t border-surface-light/50 space-y-4">
+            <h4 className="text-sm font-semibold text-foreground">💪 Strength Progression</h4>
+            <p className="text-xs text-muted">
+              Define your weekly RPE/sets/reps progression. Only specify weeks
+              where the stimulus changes — unset weeks inherit from the nearest
+              preceding week.
+            </p>
+
+            {/* Starting values */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className={labelCls}>Starting RPE</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={10}
+                  step={0.5}
+                  value={templateForm.strength_start_rpe ?? 8}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_rpe: parseFloat(e.target.value) || 8,
+                    }))
+                  }
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Starting Sets</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={templateForm.strength_start_sets ?? 5}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_sets: parseInt(e.target.value) || 5,
+                    }))
+                  }
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Starting Reps</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={templateForm.strength_start_reps ?? 5}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_reps: parseInt(e.target.value) || 5,
+                    }))
+                  }
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Starting Weight (kg)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.5}
+                  value={templateForm.strength_start_weight_kg ?? ''}
+                  onChange={(e) =>
+                    setTemplateForm((f) => ({
+                      ...f,
+                      strength_start_weight_kg: parseFloat(e.target.value) || undefined,
+                    }))
+                  }
+                  placeholder="Auto-detect from history"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            {/* Weekly progression template */}
+            <div>
+              <label className={labelCls}>Weekly Progression (optional)</label>
+              <div className="space-y-2">
+                {(templateForm.strength_template || []).map((entry, idx) => (
+                  <div key={idx} className="grid grid-cols-5 gap-2 items-end">
+                    <div>
+                      <label className={labelCls}>Week</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        value={entry.week}
+                        onChange={(e) => {
+                          const newTemplate = [...(templateForm.strength_template || [])];
+                          newTemplate[idx].week = parseInt(e.target.value) || 1;
+                          setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>RPE</label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={10}
+                        step={0.5}
+                        value={entry.rpe ?? ''}
+                        onChange={(e) => {
+                          const newTemplate = [...(templateForm.strength_template || [])];
+                          newTemplate[idx].rpe = parseFloat(e.target.value) || undefined;
+                          setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                        }}
+                        placeholder="Inherit"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Sets</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={entry.sets ?? ''}
+                        onChange={(e) => {
+                          const newTemplate = [...(templateForm.strength_template || [])];
+                          newTemplate[idx].sets = parseInt(e.target.value) || undefined;
+                          setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                        }}
+                        placeholder="Inherit"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Reps</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={entry.reps ?? ''}
+                        onChange={(e) => {
+                          const newTemplate = [...(templateForm.strength_template || [])];
+                          newTemplate[idx].reps = parseInt(e.target.value) || undefined;
+                          setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                        }}
+                        placeholder="Inherit"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={() => {
+                          const newTemplate = [...(templateForm.strength_template || [])];
+                          newTemplate.splice(idx, 1);
+                          setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                        }}
+                        className="text-xs text-warning hover:text-warning/80"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    const newTemplate = [
+                      ...(templateForm.strength_template || []),
+                      { week: (templateForm.strength_template?.length ?? 0) + 1 },
+                    ];
+                    setTemplateForm((f) => ({ ...f, strength_template: newTemplate }));
+                  }}
+                  className="px-3 py-1.5 text-xs bg-surface-light text-foreground rounded hover:bg-surface-light/70"
+                >
+                  + Add Week
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={handleGenerate}

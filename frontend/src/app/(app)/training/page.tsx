@@ -25,6 +25,7 @@ import { WeeklyView } from '@/components/training/WeeklyView';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
+import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-light/20 text-muted border-muted/30',
@@ -47,6 +48,7 @@ const BLOCK_TYPE_EMOJI: Record<string, string> = {
   taper: '📉',
   recovery: '💚',
   custom: '⚙️',
+  strength: '🏋️',
 };
 
 /**
@@ -449,8 +451,13 @@ export default function TrainingPage() {
                       Taper starts in {evt.days_until_taper} days
                     </p>
                   )}
-                  <EventResultPanel event={evt} />
-                  <div className="mt-2">
+                   <EventResultPanel event={evt} />
+                   {evt.days_until !== undefined && evt.days_until <= 7 && (
+                     <div className="mt-2">
+                       <EventAiAnalysisCard eventId={evt.id} />
+                     </div>
+                   )}
+                   <div className="mt-2">
                     <button
                       onClick={() => downloadEventReport(evt.id)}
                       disabled={exportingEventId === evt.id}
