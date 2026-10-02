@@ -953,10 +953,11 @@ export default function WikiPage() {
                 Open a cycling activity in <WikiLink href="/activities">Activities</WikiLink>,
                 switch to the <strong className="text-foreground">Replay</strong> tab and hit{' '}
                 <strong className="text-foreground">Open 3D Replay</strong>. The address bar
-                carries <strong className="text-foreground">?replay=</strong> while the Theater
-                is open, so the link opens that exact replay on its own — no navigation needed.
-                Needs a GPS route plus a speed stream — rides without them explain exactly what
-                is missing.
+                carries <strong className="text-foreground">?replay=</strong> plus the playhead
+                position (<strong className="text-foreground">?t=</strong> seconds) while the
+                Theater is open, so a link opens that exact replay at that exact moment — no
+                navigation needed. Needs a GPS route plus a speed stream — rides without them
+                explain exactly what is missing.
               </p>
 
               <div>

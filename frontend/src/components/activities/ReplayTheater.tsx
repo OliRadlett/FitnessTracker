@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
@@ -60,6 +60,26 @@ export function ReplayTheater({
   const [mounted, setMounted] = useState(false);
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [raceMode, setRaceMode] = useState(false);
+  // Deep-link start offset, read once on mount (SSR-safe: window is absent).
+  // Garbage ?t= degrades to the ride start; the viewer clamps into range.
+  const initialT = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    const v = Number(new URLSearchParams(window.location.search).get('t'));
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }, []);
+  // Playhead sync back into ?t= (replaceState, no history spam). onElapsed
+  // already throttles to half-second quanta, so this writes ≤2×/s. Writes go
+  // straight to history — not through useDeepLink — so playback never
+  // re-renders the activities page behind the Theater. Nothing reads
+  // getParam('t'), so the hook state harmlessly lags the URL here.
+  const onPlayhead = useCallback((t: number) => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (t > 1) params.set('t', String(Math.floor(t)));
+    else params.delete('t');
+    const qs = params.toString();
+    window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, []);
   // First-run intro card (Phase Z): one-time orientation, dismissed forever.
   const [showIntro, setShowIntro] = useState(false);
 
@@ -284,6 +304,8 @@ export function ReplayTheater({
           startDate={activity.start_date}
           ghost={ghost}
           race={race}
+          initialElapsed={initialT}
+          onElapsed={onPlayhead}
           weather={{
             conditions: activity.weather_conditions,
             temperature: activity.weather_temperature,

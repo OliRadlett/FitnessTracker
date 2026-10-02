@@ -267,6 +267,7 @@ function ActivityExpanded({
   const closeTheater = useCallback(() => {
     setTheaterOpen(false);
     setParam('replay', null);
+    setParam('t', null);
   }, [setParam]);
 
   // Stop context propagation when clicking inside expanded detail

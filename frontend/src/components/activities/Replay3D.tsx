@@ -466,6 +466,7 @@ export function Replay3D({
   polyline,
   onElapsed,
   link,
+  initialElapsed,
   ftpWatts,
   canvasHeightClass = 'h-[300px]',
   theater = false,
@@ -484,6 +485,8 @@ export function Replay3D({
   onElapsed?: (seconds: number) => void;
   /** linked clock for side-by-side compare — transport delegates to the parent */
   link?: ReplayLink | null;
+  /** start offset seconds (deep-link ?t=) — clamped into range on mount */
+  initialElapsed?: number;
   /** rider FTP for Coggan zone bands behind the power row */
   ftpWatts?: number | null;
   /** Tailwind height class for the canvas container (Theater passes a taller one) */
@@ -511,6 +514,12 @@ export function Replay3D({
 }) {
   const points = build.points;
   const totalTime = build.totalTime;
+  // Deep-link start offset (?t=): garbage in → ride start, never NaN state.
+  const startAt = (() => {
+    const t = initialElapsed ?? 0;
+    if (!Number.isFinite(t)) return 0;
+    return Math.max(0, Math.min(t, totalTime));
+  })();
 
   // ── Route extent: bounding box + principal direction (PCA on the path) ───
   // Used by the orbit camera to frame an elliptical path that hugs the route
@@ -560,7 +569,7 @@ export function Replay3D({
   const [sceneReady, setSceneReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(() => tourRate(totalTime, 300));
-  const [displayElapsed, setDisplayElapsed] = useState(0);
+  const [displayElapsed, setDisplayElapsed] = useState(startAt);
   const [camMode, setCamMode] = useState<ReplayCamMode>('auto');
   // Auto-camera state: the currently selected sub-mode and a cooldown timer so
   // we don't flip cameras every frame.
@@ -633,7 +642,7 @@ export function Replay3D({
   // without a React render per frame.
   const playingRef = useRef(false);
   const rateRef = useRef(rate);
-  const elapsedRef = useRef(0);
+  const elapsedRef = useRef(startAt);
   const camModeRef = useRef(camMode);
   const colorByRef = useRef<ReplayColorMode>(colorBy);
   const onElapsedRef = useRef(onElapsed);
