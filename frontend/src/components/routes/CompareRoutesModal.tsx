@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { RouteData } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
@@ -24,6 +25,7 @@ import {
   fmtDurationShort,
   haversineDistance,
 } from '@/lib/routeUtils';
+import { parseOverlayHoverKm } from '@/lib/route3d';
 
 // Lazy-loaded: three.js stays out of the bundle unless the modal opens (§3.16).
 const Route3D = dynamic(
@@ -84,6 +86,11 @@ export function CompareRoutesModal({
     elevationB: elevDataB[i]?.elevation ?? null,
   }));
 
+  // Shared hover: one km drives the marker in BOTH 3D views (C3 parity
+  // with the activities ghost-race clock — routes are static, so hover
+  // position is the shared dimension, not time).
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+
   // Stats delta
   const distDelta = routeA.distance_meters - routeB.distance_meters;
   const elevDelta = (routeA.elevation_gain_meters ?? 0) - (routeB.elevation_gain_meters ?? 0);
@@ -138,7 +145,12 @@ export function CompareRoutesModal({
             <div>
               <h4 className="text-xs text-muted mb-2 uppercase tracking-wider">Elevation Profile Overlay</h4>
               <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={overlayData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                <AreaChart
+                  data={overlayData}
+                  margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+                  onMouseMove={(s) => setHoverKm(parseOverlayHoverKm(s?.activeLabel))}
+                  onMouseLeave={() => setHoverKm(null)}
+                >
                   <defs>
                     <linearGradient id="elevGradA" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -215,6 +227,7 @@ export function CompareRoutesModal({
                   polyline={r.encoded_polyline}
                   elevations={r.elevation_profile?.elevations ?? null}
                   name={r.name}
+                  highlightDistKm={hoverKm}
                 />
               ))}
             </div>

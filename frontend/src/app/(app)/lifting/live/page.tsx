@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -273,16 +274,43 @@ export default function LiveLiftPage() {
       await live.discardSession();
       await queryClient.invalidateQueries({ queryKey: ['lifting-active-session'] });
     };
+    // A set the server rejected permanently cannot be fixed by retrying. Offer
+    // to drop it and save the rest, so one bad set no longer strands the whole
+    // session on a "Retry now" button that fails identically every time.
+    const failed = live.failedSets;
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
           <p className="text-foreground font-semibold">Finishing session…</p>
-          <p className="text-muted text-sm">
-            {live.isOffline
-              ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
-              : 'Waiting for the network to save your session.'}
-            {live.syncError && ' You can leave this page — it will resume automatically.'}
-          </p>
+          {failed.length > 0 ? (
+            <div className="space-y-2 text-left">
+              <p className="text-warning text-sm">
+                {failed.length === 1 ? '1 set could not be saved' : `${failed.length} sets could not be saved`}
+                . Everything else has been saved.
+              </p>
+              <ul className="space-y-1">
+                {failed.map((s) => (
+                  <li key={s.clientId} className="text-xs text-muted flex items-center gap-2">
+                    <span className="text-foreground font-medium">{s.exercise_name}</span>
+                    <span>— {s.failedReason}</span>
+                    <button
+                      onClick={() => live.removeSet(s.clientId)}
+                      className="text-accent underline ml-auto shrink-0"
+                    >
+                      Remove &amp; save the rest
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-muted text-sm">
+              {live.isOffline
+                ? "You're offline — this session is saved on this device and will upload automatically when you're back online."
+                : 'Waiting for the network to save your session.'}
+              {live.syncError && ' You can leave this page — it will resume automatically.'}
+            </p>
+          )}
           <button
             onClick={live.retrySync}
             className="px-4 py-2 rounded-lg bg-accent text-background font-semibold"
@@ -626,6 +654,13 @@ function FinishSheet({
   const [rpe, setRpe] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  // Portal gate: the sheet renders into <body> so it escapes <main>, which a
+  // Modal makes inert. Guarded so document.body is never touched during SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleFinish = async () => {
     setSaving(true);
@@ -633,7 +668,9 @@ function FinishSheet({
     setSaving(false);
   };
 
-  return (
+  if (!mounted || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" role="dialog" aria-label="Finish session">
       <div className="bg-surface rounded-t-2xl border-t border-surface-light/50 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
         <h2 className="text-lg font-bold text-foreground">Session summary</h2>
@@ -708,6 +745,7 @@ function FinishSheet({
           Whoop strain/HR will attach to this session after your next sync (~30 min).
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

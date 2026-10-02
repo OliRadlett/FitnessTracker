@@ -323,6 +323,15 @@ export function bilinearHeight(grid: RouteGrid, heights: number[], lat: number, 
 }
 
 /**
+ * Hover distance from the compare overlay chart (km): the Recharts active
+ * label is already km, but mouse events can deliver strings, NaN, or nothing.
+ * Finite numbers ≥ 0 pass through; everything else is no marker. Pure.
+ */
+export function parseOverlayHoverKm(label: unknown): number | null {
+  return typeof label === 'number' && Number.isFinite(label) && label >= 0 ? label : null;
+}
+
+/**
  * Absolute hypsometric ceiling (m): terrain tint maps 0..HYPSO_MAX_M onto
  * ELEVATION_RAMP so altitude reads the same on every ride — green lowlands,
  * brown hills, white peaks — instead of stretching the full ramp over whatever

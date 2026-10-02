@@ -10,22 +10,23 @@
 > those are frequently stale. Migration head at refresh time: **`091`**, single head, no
 > duplicate `revision` values.
 >
-> **Headline**: of the 45 tracked rows, **23 are fixed** and **22 remain**. Track 1 is
-> fully resolved, Track 2 is down to one item, and Track 6 has shipped in full. The
-> remaining work is Track 2 ×1, Track 3 ×8, Track 4 ×9, Track 5 ×4.
+> **Headline**: of the 45 tracked rows, **28 are fixed** and **17 remain**. Tracks 1, 2
+> and 6 are fully resolved. The remaining work is Track 3 ×7, Track 4 ×9, Track 5 ×1 (the
+> deferred codegen decision).
+> (S4 closed and Track 5's items 1–3 shipped on 2026-10-01; the same-day re-verification
+> found RMI-07 already fixed. Other row statuses are as of 2026-09-30 unless marked.)
 >
 > **Refreshing again?** Re-check the code, not this file. `git grep` for the item ID or
 > bug ID first — fixes carry an ID in a comment.
 
 ## Remaining work (the only actionable part)
 
-### Track 3 — silent correctness bugs (8 open)
+### Track 3 — silent correctness bugs (7 open)
 
 | ID | Defect | Evidence | Fix |
 |----|--------|----------|-----|
 | SCI-02 | Re-linking the **same** `event_id` re-applies the taper ramp, compounding the reduction | `services/training_plan.py:513` sets `plan.event_id` and tapers with no repeated-event guard | Early-return when `plan.event_id == event_id` |
-| SCI-07 | ACSM VO2max formula duplicated inline instead of shared | `services/cycling/vo2max.py:28` (`_acsm_vo2max`) vs `integrations/power_models.py:464-479` | Import the shared helper in `power_models.py` |
-| RMI-07 | Weather features passed to Modal as `None` for missing humidity/pressure/wind-direction | `tasks/scheduler.py:1986-1997` | Source the real fields, or drop rows missing them before the call |
+| SCI-07 | FRIEND VO2max formula duplicated inline instead of shared | `services/cycling/vo2max.py:28` (`_friend_vo2max`) vs `integrations/power_models.py:464-479` | Import the shared helper in `power_models.py` |
 | RMI-08 | Cross-domain insights are appended, never upserted → duplicates accumulate per run | `tasks/scheduler.py:2660-2667` | Unique constraint on `(user, insight_type)` + `on_conflict_do_update` |
 | RMI-12 | `w_prime` bound is too loose (1–100 kJ) to be physiologically meaningful | `integrations/power_models.py:328` | Tighten to 5–40 kJ |
 | SYNC-11 | Wahoo route sync reports `merged_count` without ever incrementing it | `services/wahoo.py:403/517/526` | Increment when `create_or_merge_route` merges |
@@ -41,23 +42,17 @@ All nine original items remain open; file references re-confirmed at refresh tim
 - [ ] `services/wahoo_push.py:174/211/249` — push re-creates on retry; make idempotent across partial failure. `integrations/wahoo_client.py:211/380` returns raw `resp.json()` without unwrapping nested `{plan:{id:…}}`, so IDs are lost.
 - [ ] `frontend/src/components/activities/Replay3D.tsx:1139` vs `:1523` — short rides are skipped when building markers but indexed by position at render, so `raceMarkers` misaligns.
 - [ ] `frontend/src/lib/raceRides.ts:128` — `buildReplay` is called with no shared `frame`, so `replay.ts:50-51` defaults each ride to its own centroid; the "distance-aligned" comment is wrong.
-- [ ] `frontend/src/components/activities/Replay3D.tsx:646-647/953/955` — wind refs are written during render but no wind HUD exists. Render it from state, or delete the refs.
+- [ ] `frontend/src/components/activities/Replay3D.tsx:646-647/953/955` — **re-verified 2026-10-01 after #218**: the refs now live inside the scene-setup effect and feed the rain-drift vector, and `windDirRef` is read once — but `windSpeedRef` is **write-only** and the comment still claims a "wind HUD" that does not exist. Fix: drop the dead ref and the comment, or actually render the HUD from state.
 - [ ] `frontend/src/lib/lifting/useLiveSession.ts:364` — only HTTP 404 is treated as a terminal finish; any 4xx should be (extends BUG-098).
 - [ ] Dead code: `services/route_service.py:175` `score_route_breakdown`; `integrations/wahoo_client.py:22` `WAHOO_FAMILY_BIKING`, `:191` `find_plan_by_external_id`, `:377` `delete_route`.
-- [ ] Docs: `route_matching.py` + `recompute_route_similarity` are absent from AGENTS/CODEMAP, and `route_matching.py:36-41` weights (0.60/0.25/0.15) disagree with `plans/route-merging-overhaul.md:68/77` (0.45/0.40/0.15, gate 0.55, N=120).
+- [ ] Docs: **partially fixed** — `services/CODEMAP.md:16` now documents `route_matching.py`, but it is still absent from AGENTS.md, `recompute_route_similarity` remains undocumented, and `route_matching.py:36-41` weights (0.60/0.25/0.15, gate 0.45, N=200) still disagree with `plans/route-merging-overhaul.md:68/77` (0.45/0.40/0.15, gate 0.55, N=120).
 
-### Track 5 — frontend reliability (4 open)
+### Track 5 — frontend reliability (1 open)
 
-- [ ] Locale: `toLocale*()` called with no locale in `ReplayTheater.tsx:101/191`, `Replay3D.tsx:2886/2910`, `routes/duplicates/page.tsx:407`. Pass `getActiveLocale()`.
-- [ ] Duplicated formatters still local to their callers: `formatStat` (`calendar/page.tsx:72`, `CalendarAgendaView.tsx:17`), `formatDuration` (`lifting/live/page.tsx:585`), `formatElevation` (`WorkoutPlanner.tsx:37`, `RoutePickerModal.tsx:24`), `formatDistance` (`RoutePickerModal.tsx:19`), `StatBadge` (`FuelPlanCard.tsx:15`, `RideAnalysisCard.tsx:20`, `LiftingAnalysisCard.tsx:19`). Move to `lib/utils.ts`.
-- [ ] A11y / portal: `DashboardRefresh.tsx:82` is 28 px (below the 44 px target); `lifting/live/page.tsx:637` (`FinishSheet`) and `MobileRouteDetailSheet.tsx:81` are inline fixed divs — portal them through `Modal`/`createPortal` (pitfall #15).
-- [ ] `lib/api/types/generated.ts` exists but is imported nowhere and has no CI drift guard. Either wire it as the type source of truth or delete it **with** a drift check. (The other dead-code names in the original row — `StatsView`, `ErrorState`, `Field`, `PageHeader`, `SectionLabel`, `Stat` — have since been **adopted**, see `plans/underdeveloped-features-2026-09-27.md` §A1/A2.)
-
-### Track 2 — one item left
-
-| # | Defect | Evidence | Fix |
-|---|--------|----------|-----|
-| S4 | The auth rate-limit bucket is keyed on the **proxy peer**, not the forwarded client IP, so behind Caddy every client shares one 20 req/min budget — a single abusive caller consumes it for everyone. `slowapi`'s `Limiter` is also instantiated but vestigial (SEC-03). | `main.py:112-129` keys on `get_remote_address(request)` (`:119`); `limiter` built at `main.py:24-25`, `app.state.limiter` set at `:75` | Key on the trusted client IP from `X-Forwarded-For` (only from the known proxy). Then either register `SlowAPIMiddleware` or delete the vestigial `Limiter` |
+- [x] Locale: `toLocale*()` with no locale now passes `getActiveLocale()` — `ReplayTheater.tsx:101/191`, `Replay3D.tsx:2781/2805`, `routes/duplicates/page.tsx:407`. **Fixed 2026-10-01** (`fix/frontend-locale-formatters-a11y`).
+- [x] Shared display helpers: `formatStat` (calendar ×2) and `formatElevation` (×2) moved to `lib/utils.ts`; `StatBadge` (×3) moved to `components/ui/StatBadge.tsx`, with tests in `__tests__/sharedFormat.test.tsx`. **Fixed 2026-10-01.** ⚠️ Two of the original row's "duplicates" were **not** duplicates and were deliberately left local: `RoutePickerModal.formatDistance` (renders `450 m` under 1 km) and `lifting/live`'s stopwatch `formatDuration` (`5m 30s`) — both differ from `lib/utils.ts`, so merging would have changed output.
+- [x] A11y / portal: `DashboardRefresh.tsx` refresh button is now a 44 px target (`w-11 h-11`); `FinishSheet` (`lifting/live/page.tsx`) and `MobileRouteDetailSheet.tsx` now `createPortal` into `document.body` behind an SSR `mounted` gate (pitfall #15). **Fixed 2026-10-01.**
+- [ ] `lib/api/types/generated.ts` — **deferred (needs a decision)**. It is imported nowhere, but it is *actively regenerated* (last touched 2026-09-28 by #161) and `lib/api/CODEMAP.md:80-88` documents it as the intended type source of truth, with **no CI drift guard**. Deleting it (this row's alternative) would contradict that stated direction, so it needs an explicit call: adopt it and add a drift check, or delete it. (The row's other dead-code names — `StatsView`, `ErrorState`, `Field`, `PageHeader`, `SectionLabel`, `Stat` — have since been **adopted**, see `plans/underdeveloped-features-2026-09-27.md` §A1/A2.)
 
 ---
 
@@ -74,12 +69,16 @@ pitfall #22) and `090` (model/migration drift on `lift_video_analyses`, pitfall 
 Local branch hygiene (stale checkout, superseded T3 commits, repo-root artifacts) is no
 longer relevant — the work merged via PRs.
 
-**Track 2 — security:** S1 (token logging), S2 (`r2_key` prefix validation, `videos.py:111`),
-S3 (ownership checks on linked session/PR, `videos.py:113-130`), S5 (OAuth `state` on the
-app-auth callback — **#213**), S6 (`ContentLength` cap), S7 (Strava verify token — **#213**).
+**Track 2 — security: FULLY RESOLVED.** S1 (token logging), S2 (`r2_key` prefix validation,
+`videos.py:111`), S3 (ownership checks on linked session/PR, `videos.py:113-130`), S4 (auth
+rate limit keyed on the real client IP via `services/client_ip.py`; the misleading, unenforced
+slowapi `Limiter` deleted), S5 (OAuth `state` on the app-auth callback — **#213**), S6
+(`ContentLength` cap), S7 (Strava verify token — **#213**).
 
 **Track 3:** RMI-03 (only mark "personalized" on a real fit) · RMI-04 (`elevations`/`elevation`,
-`route_intelligence.py`) · RMI-06 (dead `predicted_effort` gone) · SCI-01 (suppress
+`route_intelligence.py`) · RMI-06 (dead `predicted_effort` gone) · RMI-07 (weather features now
+sourced from the real humidity/pressure/wind-direction columns — `tasks/scheduler.py:1990-1998`,
+commit `e9bfc87f`; re-verified 2026-10-01) · SCI-01 (suppress
 `intensity_raise` under active health alerts) · SCI-03 (today's TSS not re-applied in the TSB
 projection, `projections.py:732-740`) · SCI-05 (`_focus_groups` set intersection,
 `conformity.py:96-111`) · SCI-06 (`_activity_sport_matches_day`, `conformity.py:669`) · Robust
@@ -95,7 +94,10 @@ inherent to its cost model, not a relation N+1).
 
 **Track 5:** `enabled: !!token` on the missing JWT queries · mutation errors surfaced
 (`onError` + inline UI) and calendar fetch `isError` · duplicated week math routed through
-`lib/training/week.ts` · tests for `week.ts` and `routeUtils.ts`.
+`lib/training/week.ts` · tests for `week.ts` and `routeUtils.ts` · **2026-10-01**: locale-aware
+`toLocale*()` at the replay/duplicate call sites · shared `formatStat`/`formatElevation`
+(`lib/utils.ts`) and `StatBadge` (`components/ui/StatBadge.tsx`) · 44 px dashboard refresh
+target · `FinishSheet` + `MobileRouteDetailSheet` portalled to `document.body`.
 
 **Track 6 — Jev decision layer: SHIPPED (Phases 0–4).** Config flags (`typesafe_api_key`,
 `jev_enabled`, `jev_model`, `jev_timeout_s`), `integrations/jev_client.py`,
@@ -106,19 +108,17 @@ arbitration (`route_service._arbitrate_route_pair`), and merge arbitration
 
 ---
 
-## Suggested sequencing (revised 2026-09-30)
+## Suggested sequencing (revised 2026-10-01)
 
-Tracks 4 and 5 are the cheapest remaining wins and are already itemised above; Track 3's
-eight items are small, independent fixes. Suggested order:
+Track 5's actionable items shipped in `fix/frontend-locale-formatters-a11y` (the codegen
+artifact is deferred pending a decision). Remaining work, cheapest first:
 
-1. `fix/frontend-reliability` — Track 5's four items (all frontend, `tsc` + `vitest` only).
-2. `fix/inflight-correctness-a` — the four backend Track 4 items (route_matching, scheduler
+1. `fix/inflight-correctness-a` — the four backend Track 4 items (route_matching, scheduler
    pre-filter, wahoo_push idempotency, dead code) + the CODEMAP/gate-reconciliation docs row.
-3. `fix/silent-correctness-2` — Track 3's eight items.
-4. `fix/inflight-correctness-b` — the four frontend Track 4 items (3D `raceMarkers`,
-   `raceRides` centroid, wind HUD, `useLiveSession` 4xx). **Coordinate**: this area is
-   actively edited by the relive/3D sessions.
-5. `security/rate-limit-key` — S4.
+2. `fix/silent-correctness-2` — Track 3's seven items.
+3. `fix/inflight-correctness-b` — the four frontend Track 4 items (3D `raceMarkers`,
+   `raceRides` centroid, wind HUD, `useLiveSession` 4xx). Note #218 (relive 3D rebuild) has
+   merged; the three replay rows were re-verified **still open** against it.
 
 Each: isolated worktree → `pytest` (backend) / `tsc`+`vitest`+`build` (frontend) →
 PR into `main` → release via `main → prod` (AGENTS Git & Deployment Strategy).
@@ -130,8 +130,10 @@ PR into `main` → release via `main → prod` (AGENTS Git & Deployment Strategy
 - **Table count drift**: `AGENTS.md` states 45 tables; `Base.metadata` reports **46** at
   refresh time. Confirm which is right and reconcile — not fixed here because `AGENTS.md`
   is under concurrent edit by other sessions (pitfalls #22–#27 were appended today).
-- **Track 4's 3D/replay items** may already be in flight in another worktree
-  (`feature/relive-3d-quality`, `feature/relive-broadcast-v2`). Check before starting.
+- **Track 4's 3D/replay items**: #218 (relive 3D quality rebuild) has now merged, and the
+  three replay rows were re-verified **still open** against it on 2026-10-01 — so no need to
+  wait, but expect conflicts in `Replay3D.tsx`.
+- **`generated.ts`**: adopt-with-drift-check vs delete (see Track 5) — needs a decision.
 
 ## Deferred / separately tracked (unchanged)
 

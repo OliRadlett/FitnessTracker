@@ -48,6 +48,14 @@ class Activity(Base):
         String(50), nullable=False
     )  # strava, wahoo, manual (primary source)
     provider_activity_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # sha256 of the uploaded file's bytes, for file imports only (migration
+    # 093). Content-derived rather than provider-derived, so unlike
+    # provider_activity_id a later sync cannot rewrite it. NULL for every
+    # provider-synced and hand-entered activity; the unique index over it is
+    # partial for that reason.
+    import_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     sport_type: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True
     )  # cycling, running, swimming, strength, powerlifting
@@ -102,8 +110,16 @@ class Activity(Base):
     context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Phase 2 — OSM road-graph edge set (coverage, names, version) + embedding
     # features for section-repeat / lap detection. Mirrors Route.road_match.
-    road_match: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    road_embedding: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # `none_as_null=True` — see Route.road_match. These are cleared when the
+    # activity's geometry changes, and map-matching selects on `IS NULL`;
+    # SQLAlchemy would otherwise store a cleared column as JSON `null`, which
+    # that predicate does not match.
+    road_match: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    road_embedding: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     road_match_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

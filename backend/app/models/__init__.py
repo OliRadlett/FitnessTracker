@@ -38,6 +38,7 @@ from app.models.rpe_calibration import RpeCalibration
 from app.models.segment import Segment, SegmentEffort
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
+from app.models.undo import UndoLog
 from app.models.user import OAuthConnection, User
 from app.models.weather import CachedWeather
 from app.models.webhook_event import StravaWebhookEvent
@@ -86,6 +87,7 @@ __all__ = [
     "StravaWebhookEvent",
     "TrainingPlan",
     "TrainingPlanDay",
+    "UndoLog",
     "User",
     "WarmupTemplate",
     "WarmupTemplateStep",

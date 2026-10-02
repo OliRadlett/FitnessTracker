@@ -246,6 +246,45 @@ class OrphanReviewRow(BaseModel):
     bucket: str = "unscorable"  # near_certain | likely | ambiguous | distinct | unscorable
 
 
+class BulkDismissRequest(BaseModel):
+    """Dismiss every pending review row in one bucket.
+
+    ``expected_count`` is the number the caller displayed. It is checked
+    against the queue as it stands when the write happens, and a mismatch
+    is refused — bulk dismissal is durable and the UI has no undo, so acting
+    on a stale page would dismiss a set the user never saw.
+    """
+
+    bucket: str
+    expected_count: int | None = None
+
+
+class BulkDismissResult(BaseModel):
+    bucket: str
+    dismissed: int
+
+
+class DismissedRouteRow(BaseModel):
+    """A route the user reviewed and rejected.
+
+    Listed so a rejection can be found and undone. 49 of these were created
+    in one bulk action, so a mistake in that action is likely by
+    construction — and with nothing listing them, an incorrect dismissal was
+    only discoverable if you already knew the route id.
+    """
+
+    route_id: uuid.UUID
+    name: str
+    dismissed_at: datetime
+    distance_meters: float
+    quarantined_at: datetime | None = None
+
+
+class DismissedRouteResponse(BaseModel):
+    rows: list[DismissedRouteRow]
+    total: int
+
+
 class OrphanReviewResponse(BaseModel):
     rows: list[OrphanReviewRow]
     counts: dict[str, int]

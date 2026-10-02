@@ -7,6 +7,7 @@ import type {
   DuplicatePair,
   MergeResult,
   OrphanReviewResponse,
+  DismissedRoutes,
   RouteMergeLogEntry,
   SimilarRoute,
   MergedRouteView,
@@ -83,6 +84,39 @@ export async function getOrphanCandidates(
   token?: string,
 ): Promise<OrphanReviewResponse> {
   return apiFetch<OrphanReviewResponse>('/api/v1/routes/orphans', {}, token);
+}
+
+/**
+ * Routes reviewed and rejected, newest first.
+ *
+ * Dismissal is the decision most likely to be made in bulk, and a bulk
+ * mistake is likely by construction — this is how you find one and send it
+ * back to the review queue via `keepOrphan`.
+ */
+export async function getDismissedRoutes(token?: string): Promise<DismissedRoutes> {
+  return apiFetch<DismissedRoutes>('/api/v1/routes/orphans/dismissed', {}, token);
+}
+
+/**
+ * Dismiss every quarantined route currently in one review bucket.
+ *
+ * `expectedCount` is the number the UI displayed; the server refuses the
+ * write if the queue has moved on, because dismissal is durable and there
+ * is no bulk undo.
+ */
+export async function bulkDismissOrphans(
+  bucket: string,
+  expectedCount: number,
+  token?: string,
+): Promise<{ bucket: string; dismissed: number }> {
+  return apiFetch<{ bucket: string; dismissed: number }>(
+    '/api/v1/routes/orphans/bulk-dismiss',
+    {
+      method: 'POST',
+      body: JSON.stringify({ bucket, expected_count: expectedCount }),
+    },
+    token,
+  );
 }
 
 /** Reject a quarantined route. It stays quarantined, but leaves the queue. */

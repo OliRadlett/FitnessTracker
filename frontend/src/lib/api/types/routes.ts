@@ -234,6 +234,25 @@ export interface OrphanReviewResponse {
   counts: Record<string, number>;
 }
 
+/**
+ * A route the user reviewed and rejected.
+ *
+ * 49 of these were created in one bulk dismissal, so a mistake in that
+ * action is likely by construction — this is what makes it findable.
+ */
+export interface DismissedRouteRow {
+  route_id: string;
+  name: string;
+  dismissed_at: string;
+  distance_meters: number;
+  quarantined_at: string | null;
+}
+
+export interface DismissedRoutes {
+  rows: DismissedRouteRow[];
+  total: number;
+}
+
 export interface RouteMergeLogEntry {
   id: string;
   primary_route_id: string;

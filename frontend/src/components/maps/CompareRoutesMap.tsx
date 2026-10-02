@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { decodePolyline } from '@/lib/polyline';
 import { MAP_ATTRIBUTION, MAP_MAX_ZOOM, MAP_TILE_URL } from '@/lib/mapTiles';
+import {
+  COLOR_A,
+  COLOR_B,
+  isDrawable,
+  overlayStyles,
+} from './compareMapStyles';
 
 interface CompareRoutesMapProps {
   encodedA: string;
@@ -13,9 +19,8 @@ interface CompareRoutesMapProps {
   className?: string;
 }
 
-// A = existing/accent blue, B = amber. High-contrast over OSM tiles.
-const COLOR_A = '#3b82f6';
-const COLOR_B = '#f59e0b';
+// A = existing/accent blue, B = amber. Re-exported from compareMapStyles so
+// the start markers and the polylines cannot drift apart.
 
 /**
  * Overlay map for the duplicate-review queue: draws both candidate polylines on
@@ -69,20 +74,14 @@ export function CompareRoutesMap({
       const latLngsB = pointsB.map((p) => L.latLng(p[0], p[1]));
 
       // B first (under), then A (over) so A reads clearly where they overlap.
+      // The styles come from compareMapStyles so the "B stays visible when
+      // they coincide" rule is testable without Leaflet.
+      const styles = overlayStyles();
       if (latLngsB.length > 1) {
-        L.polyline(latLngsB, {
-          color: COLOR_B,
-          weight: 4,
-          opacity: 0.75,
-        }).addTo(map);
+        L.polyline(latLngsB, styles.b).addTo(map);
       }
       if (latLngsA.length > 1) {
-        L.polyline(latLngsA, {
-          color: COLOR_A,
-          weight: 3,
-          opacity: 0.85,
-          dashArray: '6 4',
-        }).addTo(map);
+        L.polyline(latLngsA, styles.a).addTo(map);
       }
 
       // Start markers: A solid, B hollow, so overlapping starts stay readable.
@@ -118,6 +117,22 @@ export function CompareRoutesMap({
     return (
       <div className={`flex items-center justify-center bg-surface-light/20 rounded-lg ${className}`}>
         <p className="text-muted text-sm">No route data available</p>
+      </div>
+    );
+  }
+
+  // A 2-point "polyline" is a start and an end. Four production routes decode
+  // to 2–31 points, which renders as a blank-looking map; saying so is more
+  // useful than drawing a straight line and letting it read as missing data.
+  if (!isDrawable(pointsA) && !isDrawable(pointsB)) {
+    return (
+      <div
+        className={`flex flex-col items-center justify-center gap-1 bg-surface-light/20 rounded-lg ${className}`}
+      >
+        <p className="text-muted text-sm">Too few GPS points to draw</p>
+        <p className="text-muted text-xs">
+          {labelA} and {labelB} have no usable recorded track
+        </p>
       </div>
     );
   }

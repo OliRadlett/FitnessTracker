@@ -199,7 +199,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     enabled: !!token,
   });
 
-  // Phase 7 — TSB projection for event-linked plans.
+  // Phase 7 — TSB projection. Available for every plan: the backend no longer
+  // requires an event link, so an unlinked plan projects to its window end
+  // (labelled "Projected TSB") while an event-linked plan projects to race day.
   const tsbProjectionQuery = useQuery({
     queryKey: ['tsb-projection', plan.id],
     queryFn: () =>
@@ -209,7 +211,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
         token,
       ),
     staleTime: 5 * 60_000,
-    enabled: !!token && !!plan.event_id,
+    enabled: !!token,
   });
 
   const invalidateWeeks = () => {
@@ -543,7 +545,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
               : 'text-warning';
         return (
           <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-surface-light/20 border border-surface-light/40">
-            <span className="text-xs font-medium text-muted uppercase tracking-wide">Race TSB</span>
+            <span className="text-xs font-medium text-muted uppercase tracking-wide">
+              {tsb.event_date ? 'Race TSB' : 'Projected TSB'}
+            </span>
             {raceDayTsb != null && (
               <span className={`text-sm font-semibold ${tsbColor(raceDayTsb)}`}>
                 {raceDayTsb >= 0 ? '+' : ''}{raceDayTsb.toFixed(1)}

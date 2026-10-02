@@ -116,6 +116,16 @@ export default function TodayBriefPage() {
     sleepDebtHours: sleepDebt?.debt_hours ?? null,
   });
   const style = VERDICT_STYLE[verdict.verdict];
+  // Stand-in for the tier-1 banner when the server sent a verdict but no legacy
+  // suggestion. The banner still renders its TSB/recovery/streak tiles from this,
+  // so it must be a real object rather than a cast of undefined.
+  const legacySuggestion = {
+    should_rest: todaySummary?.verdict?.should_rest ?? false,
+    reasons: [] as string[],
+    current_tsb: todaySummary?.current_tsb,
+    latest_recovery: readiness?.recovery_score ?? undefined,
+    consecutive_training_days: 0,
+  };
   const topInsight = pickTopInsight(insights ?? [], sleepDebt?.debt_hours ?? null);
   const todayWx = forecast?.days?.[0];
   const hasQueryError = todayError || readinessError;
@@ -140,10 +150,18 @@ export default function TodayBriefPage() {
         message="Some of today's data failed to load."
       />
 
-      {/* 1 — Verdict: one shared component with the Dashboard (3.1).
-          Falls back to the local verdict card until the backend ships
-          rest_day_suggestion. */}
-      {todaySummary?.rest_day_suggestion ? (
+      {/* 1 — Verdict. Three tiers, and the order matters: the server verdict
+          knows about five engines (load, adaptive, deficiency, cross-domain,
+          projection); the rest-only banner knows about one; the local card
+          knows about three signals and is the last resort. Before this the page
+          rendered tiers two and three as peers and silently discarded one. */}
+      {todaySummary?.verdict ? (
+        <RestDayBanner
+          suggestion={todaySummary.rest_day_suggestion ?? legacySuggestion}
+          verdict={todaySummary.verdict}
+          sleepDebtHours={sleepDebt?.debt_hours ?? null}
+        />
+      ) : todaySummary?.rest_day_suggestion ? (
         <RestDayBanner
           suggestion={todaySummary.rest_day_suggestion}
           sleepDebtHours={sleepDebt?.debt_hours ?? null}

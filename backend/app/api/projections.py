@@ -78,7 +78,7 @@ async def get_tsb_projection(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """TSB projection for event-linked training plans only."""
+    """TSB projection for a training plan (event linkage optional)."""
     try:
         result = await compute_tsb_projection(db, current_user.id, plan_id, days)
     except LookupError as exc:

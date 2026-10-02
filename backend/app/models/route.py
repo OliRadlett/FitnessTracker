@@ -52,10 +52,23 @@ class Route(Base):
     quality_score: Mapped[float | None] = mapped_column(
         Float, nullable=True, index=True
     )
-    terrain_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # `none_as_null=True` on every column that is *cleared* rather than
+    # filled: SQLAlchemy's JSONB default serialises a Python ``None`` as JSON
+    # ``null``, which is a real value, not SQL ``NULL``. Assigning ``None`` to
+    # these columns therefore appeared to clear them and did not —
+    # ``WHERE road_match IS NULL`` does not match a row holding JSON null.
+    # These three are cleared whenever a route's geometry changes, and the
+    # map-matching tasks select on exactly that predicate.
+    terrain_classification: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     # Phase 2 — OSM road-graph map-match (edge set + coverage) and route embedding.
-    road_match: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    road_embedding: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    road_match: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    road_embedding: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     road_match_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Wahoo push state — id of the route uploaded to the user's Wahoo library
     wahoo_route_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -104,8 +117,15 @@ class Route(Base):
     collection_items: Mapped[list["RouteCollectionItem"]] = relationship(  # type: ignore[name-defined]
         "RouteCollectionItem", cascade="all, delete-orphan"
     )
+    # `passive_deletes=True` so the database's ON DELETE CASCADE applies.
+    # Without it SQLAlchemy treats the delete as a de-association and sets
+    # `route_quality.route_id` to NULL — which that column forbids, so any
+    # route carrying a quality row could not be deleted. That included
+    # `DELETE /routes/{id}` and every merge, since `merge_routes` also deletes
+    # the duplicate row. The error names a table rather than this
+    # relationship, so the cause is not obvious from the traceback.
     quality: Mapped["RouteQuality | None"] = relationship(  # type: ignore[name-defined]
-        "RouteQuality", back_populates="route", uselist=False
+        "RouteQuality", back_populates="route", uselist=False, passive_deletes=True
     )
 
 

@@ -15,6 +15,40 @@ from fitparse import FitFile
 # FIT files store lat/lon as semicircles; convert to degrees.
 _SEMICIRCLE_TO_DEG = 180.0 / (2**31)
 
+# FIT's own epoch. Only needed if a decoder hands back a raw integer rather than
+# a datetime — ``fitparse`` decodes to ``datetime`` — so this is a fallback, not
+# the normal path.
+_FIT_EPOCH = datetime(1989, 12, 31, tzinfo=UTC)
+
+
+def _epoch_seconds(value: Any) -> float | None:
+    """Normalise a record ``timestamp`` to epoch seconds.
+
+    ``fitparse`` decodes FIT's ``timestamp`` field to a ``datetime``, but the
+    field's wire type is a uint32 of milliseconds since the FIT epoch, and a
+    different decoder (or a hand-built test double) may hand back the raw
+    integer. Both are accepted so the parser does not depend on which.
+
+    Returns None for a missing or unusable value, which drops the ``time`` stream
+    via the existing all-None pruning — a file with no usable timestamps falls
+    back to the old arithmetic spacing rather than storing a broken axis. See
+    ``segments._time_axis``, which requires a strictly increasing series.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        # Naive datetimes are treated as UTC: FIT timestamps are absolute.
+        stamp = value if value.tzinfo else value.replace(tzinfo=UTC)
+        return stamp.timestamp()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value)
+        # Distinguish "seconds since the FIT epoch" from "milliseconds", since
+        # a ms value is ~1e9 and would otherwise land in the year 5138.
+        if seconds > 1e11:
+            seconds /= 1000.0
+        return (_FIT_EPOCH.timestamp() + seconds) if seconds < 1e8 else seconds
+    return None
+
 # FIT sport-type enum values we recognise → internal sport_type strings.
 _SPORT_MAP: dict[int, str] = {
     0: "cycling",  # generic
@@ -158,6 +192,17 @@ def parse_fit_file(file_bytes: bytes) -> dict:
         "position_lat": [],
         "position_long": [],
         "temperature": [],
+        # The authoritative time axis. FIT guarantees a ``timestamp`` on every
+        # record message, and it is the only field saying *when* each sample was
+        # taken. Without it the importer had to infer spacing arithmetically
+        # (duration // sample count), which forces one uniform rate onto a file
+        # that is genuinely multi-rate — 1 Hz power beside 5 s GPS — so segment
+        # effort windows and VAM come out systematically wrong.
+        #
+        # ``fitparse`` decodes FIT timestamps to ``datetime``; these are
+        # normalised to epoch seconds by ``_epoch_seconds``, which is what
+        # ``segments._time_axis`` consumes.
+        "time": [],
     }
     record_count = 0
 
@@ -180,6 +225,7 @@ def parse_fit_file(file_bytes: bytes) -> dict:
         streams["position_lat"].append(lat)
         streams["position_long"].append(lng)
         streams["temperature"].append(_safe_float(fields.get("temperature")))
+        streams["time"].append(_epoch_seconds(fields.get("timestamp")))
 
     session_info["record_count"] = record_count
 

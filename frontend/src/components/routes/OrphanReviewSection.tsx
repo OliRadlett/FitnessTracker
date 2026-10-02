@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  bulkDismissOrphans,
+  getDismissedRoutes,
   dismissOrphan,
   getOrphanCandidates,
   keepOrphan,
@@ -15,6 +17,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
+import { routeNamesDiffer } from '@/lib/routeUtils';
 import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
 import { RouteMap } from '@/components/maps/RouteMap';
 import {
@@ -76,7 +79,13 @@ function OrphanRow({
 }) {
   const [showWhy, setShowWhy] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [confirmIdentical, setConfirmIdentical] = useState(false);
   const isLap = row.containment >= 0.9 && row.jaccard < 0.5;
+  // An `identical` merge trains the matcher, so a wrong call here is
+  // permanent — unlike a `variant` merge, which is excluded from training
+  // and can be reclassified from the merge log.
+  const identicalNeedsConfirm =
+    row.live_name != null && routeNamesDiffer(row.orphan_name, row.live_name);
   // An overlay with one line is not a comparison. 11 of 67 orphans have no
   // candidate at all, and drawing a single trace next to "no candidate"
   // invites the reader to compare it against nothing.
@@ -231,15 +240,48 @@ function OrphanRow({
           </button>
           {row.live_id && (
             <>
-              <button
-                onClick={() => onMerge(row, 'identical')}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
-                title="Same route recorded twice"
-              >
-                <GitMerge className="h-3.5 w-3.5" />
-                Duplicate
-              </button>
+              {confirmIdentical && identicalNeedsConfirm ? (
+                <span className="flex items-center gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
+                  Trains the matcher — confirm?
+                  <button
+                    onClick={() => {
+                      setConfirmIdentical(false);
+                      onMerge(row, 'identical');
+                    }}
+                    disabled={busy}
+                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  >
+                    Yes, merge
+                  </button>
+                  <button
+                    onClick={() => setConfirmIdentical(false)}
+                    disabled={busy}
+                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (identicalNeedsConfirm) {
+                      setConfirmIdentical(true);
+                    } else {
+                      onMerge(row, 'identical');
+                    }
+                  }}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  title={
+                    identicalNeedsConfirm
+                      ? 'Same route recorded twice — this trains the matcher, and the names differ'
+                      : 'Same route recorded twice'
+                  }
+                >
+                  <GitMerge className="h-3.5 w-3.5" />
+                  Duplicate
+                </button>
+              )}
               <button
                 onClick={() => onMerge(row, 'variant')}
                 disabled={busy}
@@ -275,6 +317,86 @@ function OrphanRow({
 }
 
 /**
+ * Routes the user reviewed and rejected, with a way to bring them back.
+ *
+ * Collapsed by default: it is an archive, not a to-do list, and 49 dismissed
+ * routes would otherwise dominate a page whose purpose is the two rows still
+ * awaiting a decision.
+ */
+function DismissedRoutesSection({
+  open,
+  onToggle,
+  busy,
+  onRestore,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  busy: boolean;
+  onRestore: (routeId: string) => void;
+}) {
+  const { token } = useAuthFetch();
+  const { data, isLoading } = useQuery({
+    queryKey: ['route-dismissed'],
+    queryFn: () => getDismissedRoutes(token),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const total = data?.total ?? 0;
+  if (!isLoading && total === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        {open ? 'Hide' : 'Show'} dismissed routes{total ? ` (${total})` : ''}
+      </button>
+
+      {open && (
+        <>
+          <p className="mt-2 text-xs text-muted">
+            Rejected during review and kept out of matching. Restoring returns one to the
+            queue as an active route.
+          </p>
+          <div className="mt-2 max-h-72 overflow-y-auto">
+            {isLoading && <p className="py-2 text-sm text-muted">Loading…</p>}
+            {data?.rows.map((r) => (
+              <div
+                key={r.route_id}
+                className="flex items-center justify-between gap-3 border-t border-border py-2 first:border-t-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-text">{r.name}</p>
+                  <p className="font-mono text-xs text-muted">
+                    {formatDistance(r.distance_meters)} · dismissed{' '}
+                    {new Date(r.dismissed_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => onRestore(r.route_id)}
+                  disabled={busy}
+                  className="shrink-0 rounded border border-border px-2 py-1 text-xs text-text hover:bg-surface-light disabled:opacity-50"
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * Review queue for quarantined routes.
  *
  * A quarantined route has no linked activities — the residue of an earlier
@@ -287,6 +409,7 @@ export function OrphanReviewSection() {
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['route-orphans'],
@@ -335,8 +458,49 @@ export function OrphanReviewSection() {
     onError: (e) => toast.error(`Dismiss failed: ${(e as Error)?.message || 'try again.'}`),
   });
 
+  // Dismissal is durable and there is no bulk undo, so this asks twice: once
+  // to open the confirm, and the count is sent as `expectedCount` so the
+  // server refuses if the queue moved on since this page rendered.
+  const [pendingBulk, setPendingBulk] = useState<OrphanBucket | null>(null);
+
+  const bulkDismissMutation = useMutation({
+    mutationFn: (bucket: OrphanBucket) =>
+      bulkDismissOrphans(bucket, countsSnapshot[bucket] ?? 0, token),
+    onSuccess: (result) => {
+      setPendingBulk(null);
+      toast.success(
+        `Dismissed ${result.dismissed} ${BUCKET_LABEL[result.bucket as OrphanBucket]?.toLowerCase() ?? result.bucket}.`,
+      );
+      invalidate();
+    },
+    onError: (e) => {
+      setPendingBulk(null);
+      toast.error(`Bulk dismiss failed: ${(e as Error)?.message || 'try again.'}`);
+      refetch();
+    },
+  });
+
+  // Snapshot the counts as rendered, so the count we confirm against is the
+  // one the user actually saw rather than a live value that may have moved.
+  const countsSnapshot = data?.counts ?? {};
+
+  const restoreMutation = useMutation({
+    mutationFn: (routeId: string) => keepOrphan(routeId, token),
+    onSuccess: () => {
+      toast.success('Restored — it is active and used in matching again.');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['route-dismissed'] });
+    },
+    onError: (e) =>
+      toast.error(`Restore failed: ${(e as Error)?.message || 'try again.'}`),
+  });
+
   const busy =
-    mergeMutation.isPending || keepMutation.isPending || dismissMutation.isPending;
+    mergeMutation.isPending ||
+    keepMutation.isPending ||
+    dismissMutation.isPending ||
+    bulkDismissMutation.isPending ||
+    restoreMutation.isPending;
 
   if (isError) {
     return (
@@ -363,12 +527,44 @@ export function OrphanReviewSection() {
           </p>
         </div>
         {!isLoading && rows.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {BUCKET_ORDER.filter((b) => counts[b]).map((b) => (
-              <Badge key={b} className={BUCKET_STYLE[b]}>
-                {counts[b]} {BUCKET_LABEL[b].toLowerCase()}
-              </Badge>
-            ))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {BUCKET_ORDER.filter((b) => counts[b]).map((b) =>
+              pendingBulk === b ? (
+                <span
+                  key={b}
+                  className="flex items-center gap-2 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+                >
+                  Dismiss all {counts[b]} {BUCKET_LABEL[b].toLowerCase()}?
+                  <button
+                    onClick={() => bulkDismissMutation.mutate(b)}
+                    disabled={busy}
+                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  >
+                    Yes, dismiss {counts[b]}
+                  </button>
+                  <button
+                    onClick={() => setPendingBulk(null)}
+                    disabled={busy}
+                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  key={b}
+                  onClick={() => setPendingBulk(b)}
+                  disabled={busy}
+                  className="rounded disabled:opacity-50"
+                  title={`Dismiss all ${counts[b]} ${BUCKET_LABEL[b].toLowerCase()}`}
+                >
+                  <Badge className={BUCKET_STYLE[b]}>
+                    {counts[b]} {BUCKET_LABEL[b].toLowerCase()}
+                    <span className="ml-1 opacity-70">×</span>
+                  </Badge>
+                </button>
+              ),
+            )}
           </div>
         )}
       </div>
@@ -399,10 +595,21 @@ export function OrphanReviewSection() {
             <strong>Duplicate</strong> = the same route recorded twice. <strong>Variant
             </strong> = same course, different form — only variants stay out of matcher
             training. <strong>Keep</strong> un-quarantines it. <strong>Dismiss</strong>{' '}
-            keeps it out of matching permanently.
+            keeps it out of matching.
           </p>
         </>
       )}
+
+      {/* Dismissal is the decision most likely to be made in bulk, and a bulk
+          mistake is likely by construction — so the rejections need to be
+          findable. The review queue deliberately filters them out, which
+          means without this the only way back was to already know the id. */}
+      <DismissedRoutesSection
+        open={showDismissed}
+        onToggle={() => setShowDismissed((v) => !v)}
+        busy={busy}
+        onRestore={(id) => restoreMutation.mutate(id)}
+      />
     </Card>
   );
 }

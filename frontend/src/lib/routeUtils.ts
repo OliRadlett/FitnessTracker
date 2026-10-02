@@ -26,6 +26,24 @@ export function computeDifficulty(
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 
+/**
+ * Whether two route names differ meaningfully, case- and space-insensitively.
+ *
+ * Used to warn before an `identical` merge on a differently-named pair.
+ * `identical` merges are the ones that train the embedding metric, so they
+ * are the ones where a wrong call is permanent — whereas a `variant` merge
+ * is excluded from training and can be reclassified freely.
+ *
+ * Not a duplicate *test*, just a prompt to look: two names differing does not
+ * make two routes distinct (Strava auto-generates names, so the same ride can
+ * appear as "Evening Ride" and "Afternoon Ride"), and two names matching does
+ * not make them identical.
+ */
+export function routeNamesDiffer(nameA: string | null, nameB: string | null): boolean {
+  const norm = (n: string | null) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return norm(nameA) !== norm(nameB);
+}
+
 export function fmtElevation(meters: number): string {
   return `${Math.round(meters)} m`;
 }

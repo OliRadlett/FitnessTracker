@@ -32,6 +32,12 @@ class SegmentRead(BaseModel):
     effort_count: int = 0
     # Intelligence fields (fitted by Modal weekly task)
     cluster_id: int | None = None
+    # Cross-route hill identity. `geo_cluster_size` is the number of segments
+    # sharing this label across routes, computed at read time: >1 means this row
+    # is one detection of a hill that appears elsewhere, and the hill row is the
+    # place to show the rider's real best.
+    geo_cluster_id: uuid.UUID | None = None
+    geo_cluster_size: int = 1
     climb_type: str | None = None
     sustainedness: float | None = None
     difficulty_score: float | None = None
@@ -62,6 +68,29 @@ class SegmentDetail(BaseModel):
     """Segment + its leaderboard-of-self efforts (PR first)."""
 
     segment: SegmentRead
+    efforts: list[SegmentEffortRead] = []
+
+
+class ClimbDetail(BaseModel):
+    """One physical hill, merged across every route it appears on.
+
+    ``name`` is canonical: the most-ridden member's name, which is the best
+    available proxy for "what the rider calls this hill". Renaming is an
+    explicit follow-on (§6 of the spec) -- a hill has no durable identity of its
+    own, so there is nothing stable to hang a user-chosen name on yet.
+
+    ``efforts`` is ranked by VAM, not elapsed seconds. Different routes detect
+    the same hill with slightly different windows (900 m vs 950 m depending on
+    elevation sampling), so elapsed seconds across members are not comparable and
+    ranking by them would report a "best" nobody rode. VAM -- metres gained per
+    hour -- is window-robust. Seconds fall back only when no member effort
+    carries a VAM at all.
+    """
+
+    geo_cluster_id: uuid.UUID
+    name: str
+    route_count: int
+    segments: list[SegmentRead] = []
     efforts: list[SegmentEffortRead] = []
 
 

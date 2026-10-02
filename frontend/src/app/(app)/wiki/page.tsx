@@ -134,7 +134,7 @@ const glossaryEntries = [
   },
   {
     name: 'VO2max',
-    formula: 'ACSM power or Uth HR estimation (ml/kg/min)',
+    formula: 'FRIEND power or Uth HR estimation (ml/kg/min)',
     description:
       'Maximum oxygen uptake. > 50 = good, > 60 = excellent for cyclists. Estimated from power and heart rate data; improves with structured training.',
   },

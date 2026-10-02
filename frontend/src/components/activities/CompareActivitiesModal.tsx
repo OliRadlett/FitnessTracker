@@ -13,6 +13,7 @@ import {
   ALTITUDE_STREAM_TYPES,
   CADENCE_STREAM_TYPES,
   getStreamValues,
+  replayMissingReason,
   streamInput,
 } from '@/lib/streams';
 import { Chart } from '@/components/charts/Chart';
@@ -279,6 +280,28 @@ export function CompareActivitiesModal({
               >
                 3D Ghost Race
               </button>
+            </div>
+          )}
+          {/* Explain per ride why 3D is unavailable (same copy as the page). */}
+          {!show3d && !isLoading && (
+            <div className="mb-4 space-y-1">
+              {[
+                { act: activityA, streams: streamsA },
+                { act: activityB, streams: streamsB },
+              ].map(({ act, streams }) => {
+                const reason = replayMissingReason({
+                  isCycling: act.sport_type === 'cycling',
+                  loading: false,
+                  error: !!streamsError,
+                  streams,
+                  polyline: act.encoded_polyline,
+                });
+                return reason ? (
+                  <p key={act.id} className="text-xs text-muted">
+                    {act.name.slice(0, 24)}: {reason}
+                  </p>
+                ) : null;
+              })}
             </div>
           )}
         {isLoading ? (

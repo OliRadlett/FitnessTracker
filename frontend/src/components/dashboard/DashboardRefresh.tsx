@@ -79,7 +79,7 @@ export function DashboardRefresh() {
         disabled={!!isFetching}
         aria-label="Refresh dashboard data"
         title="Refresh dashboard data"
-        className={`shrink-0 w-7 h-7 rounded-full border border-surface-light flex items-center justify-center transition-colors ${
+        className={`shrink-0 w-11 h-11 rounded-full border border-surface-light flex items-center justify-center transition-colors ${
           isFetching
             ? 'text-muted cursor-not-allowed'
             : 'text-muted hover:text-foreground hover:border-accent'

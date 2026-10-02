@@ -203,6 +203,59 @@ def compute_is_loop(
     return haversine_distance(start_lat, start_lng, end_lat, end_lng) < LOOP_THRESHOLD_M
 
 
+async def find_identical_geometry_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    distance_meters: float,
+    encoded_polyline: str,
+) -> Route | None:
+    """Find a route the user already has that is *byte-for-byte* this ride.
+
+    Deliberately separate from :func:`find_duplicate_route`, which answers a
+    different question. That function asks "how similar are these?", scores
+    them, and applies a threshold. This one asks "are these the same
+    recording?", and answers by equality.
+
+    The distinction is what makes it safe to consult before the scored path.
+    A score can be recalibrated, tuned, or moved by a threshold change, and
+    below the threshold a genuine duplicate is simply not found. Equality
+    cannot: two polylines either are the same string or they are not. A
+    sub-section of a longer route - the shape that would poison route
+    training - is not byte-identical to it and so cannot match here.
+
+    ``distance_meters`` is compared too, as a second independent equality
+    check. A ride of a different length is a different ride even if some
+    provider hands back a coincidentally equal geometry string.
+
+    Quarantined routes ARE visible here, unlike in ``find_duplicate_route``.
+    That is the whole point. Quarantine means "the user has set this aside",
+    not "this no longer exists" — and ``create_or_merge_route`` cannot tell
+    the difference, so excluding quarantined rows made a quarantined route
+    invisible to both of its lookup paths and the next sync recreated it.
+    Twelve Komoot tours were stored twice that way, nine of them by a single
+    18:00 sync, undoing merges the user had already made.
+
+    Attach the source to the quarantined row rather than creating a new one.
+    Quarantine itself is untouched: only ``restore_route`` and ``keep_route``
+    clear it, both explicit user actions.
+    """
+    if not encoded_polyline:
+        return None
+
+    result = await db.execute(
+        select(Route)
+        .options(selectinload(Route.sources))
+        .where(
+            Route.user_id == user_id,
+            Route.encoded_polyline == encoded_polyline,
+            Route.distance_meters == distance_meters,
+        )
+        .order_by(Route.quarantined_at.isnot(None), Route.created_at)
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
 async def find_duplicate_route(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -381,6 +434,42 @@ async def add_route_source(
     return source
 
 
+# How much of an existing polyline an incoming one must cover before the
+# incoming geometry may replace it.
+#
+# "Richer geometry wins" used to compare point counts alone. That premise —
+# both polylines describe the same route — holds when the provider route id
+# matched correctly and fails silently when sync matched the wrong row. Two
+# production routes ended up carrying a different ride's geometry, by 21%
+# and 28% by length, and were then scored against that ride as a 100%
+# auto-match.
+#
+# Two recordings of one route cover each other; two different routes do not,
+# even when they share a start point. Adoption is the rare path (a genuine
+# re-sync at higher resolution), so a strict threshold costs nothing real.
+ADOPT_MIN_OVERLAP = 0.7
+
+
+def _polyline_matches(
+    existing: list[tuple[float, float]], incoming: list[tuple[float, float]]
+) -> bool:
+    """Whether ``incoming`` plausibly re-describes ``existing``.
+
+    Guards the richer-geometry-wins rule. Returns True when either trace
+    covers most of the other, so a denser re-resolution of the same ride is
+    adopted while an unrelated route's geometry is refused.
+    """
+    from app.services.route_matching import coverage
+
+    if not existing or not incoming:
+        return False
+    if len(existing) < 2 or len(incoming) < 2:
+        return False
+    forward = coverage(existing, incoming, 40.0)
+    backward = coverage(incoming, existing, 40.0)
+    return max(forward, backward) >= ADOPT_MIN_OVERLAP
+
+
 async def create_or_merge_route(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -437,18 +526,24 @@ async def create_or_merge_route(
     start_lat, start_lng = points[0]
     end_lat, end_lng = points[-1]
 
-    # Check for duplicates
-    duplicate = await find_duplicate_route(
+    # Identity before similarity. Byte-identical geometry is proof of the
+    # same recording and is checked first, ahead of the scored path and
+    # ahead of quarantine filtering — see find_identical_geometry_route.
+    duplicate = await find_identical_geometry_route(
+        db, user_id, distance_meters, encoded_polyline
+    )
+    if duplicate is None:
+        duplicate = await find_duplicate_route(
         db,
         user_id,
         distance_meters,
         encoded_polyline,
         name,
-        start_lat,
-        start_lng,
-        end_lat,
-        end_lng,
-    )
+            start_lat,
+            start_lng,
+            end_lat,
+            end_lng,
+        )
 
     if duplicate:
         # Merge: add source to existing route
@@ -465,7 +560,9 @@ async def create_or_merge_route(
         # Optionally update the canonical polyline if the new one is higher fidelity
         new_point_count = len(points)
         existing_points = _safe_decode(duplicate.encoded_polyline)
-        if new_point_count > len(existing_points):
+        if new_point_count > len(existing_points) and _polyline_matches(
+            existing_points, points
+        ):
             duplicate.encoded_polyline = encoded_polyline
             if elevation_profile:
                 duplicate.elevation_profile = elevation_profile
@@ -627,6 +724,14 @@ async def merge_routes(
     task), and quality/favourite/derived fields are preserved. A
     :class:`RouteMergeLog` row is written so the merge can be undone via
     :func:`undo_route_merge`.
+
+    **The merge is always scored.** When the caller supplies no ``breakdown``
+    the pair is scored here, so every merge records the evidence behind its
+    decision. Previously the UI path passed neither and 26 of 27
+    ``identical`` merges were logged with ``score = 0.0`` and an empty
+    breakdown — untrainable and unauditable. Computing it here rather than in
+    each caller means the UI, bulk merge and the similarity task all get it
+    for free.
     """
     from app.models.activity import Activity
     from app.models.route_organize import (
@@ -644,6 +749,43 @@ async def merge_routes(
         return None
     if primary.id == duplicate.id:
         return primary
+
+    if breakdown is None:
+        # Score the pair so the log carries its evidence. A degenerate or
+        # undecodable polyline must not block a legitimate merge, but it must
+        # not leave an unauditable one either — hence "scored: False" rather
+        # than a null breakdown, which is indistinguishable from nobody
+        # having looked.
+        try:
+            from app.services.route_matching import score_route_pair
+
+            pa = _safe_decode(primary.encoded_polyline)
+            pb = _safe_decode(duplicate.encoded_polyline)
+            if len(pa) > 1 and len(pb) > 1:
+                bd = score_route_pair(
+                    pa,
+                    pb,
+                    length_a=primary.distance_meters,
+                    length_b=duplicate.distance_meters,
+                )
+                breakdown = bd.to_dict()
+                breakdown["scored"] = True
+                score = bd.total
+            else:
+                breakdown = {
+                    "scored": False,
+                    "reason": "polyline too short to score",
+                    "length_a_m": primary.distance_meters,
+                    "length_b_m": duplicate.distance_meters,
+                }
+        except Exception as e:
+            breakdown = {
+                "scored": False,
+                "reason": f"scoring failed: {type(e).__name__}: {e}",
+            }
+            logger.warning(
+                f"Could not score merge pair {primary_route_id}/{duplicate_route_id}: {e}"
+            )
 
     snapshot = {
         "id": str(duplicate.id),
@@ -684,8 +826,19 @@ async def merge_routes(
     }
 
     # 1. Sources
-    for source in duplicate.sources:
-        source.route_id = primary.id
+    #
+    # Moved through the relationship collections, NOT by assigning
+    # ``source.route_id`` directly. ``Route.sources`` is declared
+    # ``cascade="all, delete-orphan"``, and a direct FK assignment leaves the
+    # child still registered under ``duplicate`` as far as SQLAlchemy's
+    # bookkeeping is concerned — so the ``db.delete(duplicate)`` further down
+    # cascades over it and the source is destroyed rather than transferred.
+    # That silently lost a provider id on every merge: a duplicate's source is
+    # often the only record that the provider issued that id, and losing it
+    # makes the next sync for that id miss the exact-source lookup.
+    for source in list(duplicate.sources):
+        duplicate.sources.remove(source)
+        primary.sources.append(source)
         moved["source_ids"].append(str(source.id))
 
     # 2. Activities (previously ON DELETE SET NULL → silently unlinked)
@@ -1066,7 +1219,7 @@ async def find_potential_duplicates(
     result = await db.execute(
         select(Route)
         .options(selectinload(Route.sources), selectinload(Route.tags))
-        .where(Route.user_id == user_id)
+        .where(Route.user_id == user_id, active_routes_clause())
     )
     routes = list(result.scalars().all())
 

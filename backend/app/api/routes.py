@@ -40,6 +40,10 @@ from app.models.route_organize import (
 from app.models.user import User
 from app.schemas.auth import UserRead
 from app.schemas.route import (
+    BulkDismissRequest,
+    BulkDismissResult,
+    DismissedRouteResponse,
+    DismissedRouteRow,
     DuplicatePair,
     EffortEstimateRequest,
     EffortEstimateResponse,
@@ -858,6 +862,31 @@ async def list_orphan_candidates(
     )
 
 
+@router.post("/orphans/bulk-dismiss", response_model=BulkDismissResult)
+async def bulk_dismiss_orphans(
+    req: BulkDismissRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss every quarantined route currently in one review bucket.
+
+    Scoped to a bucket rather than free-form ids so the set being acted on
+    is the set the user was shown. ``expected_count`` is verified first, so
+    a stale page is refused rather than dismissing whatever the queue holds
+    now — the action is durable and there is no bulk undo.
+    """
+    try:
+        dismissed = await route_quarantine.dismiss_bucket(
+            db, current_user.id, req.bucket, req.expected_count
+        )
+    except route_quarantine.StaleReviewQueue as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await db.flush()  # BUG-015: flush only; get_db commits.
+    return BulkDismissResult(bucket=req.bucket, dismissed=dismissed)
+
+
 @router.post("/orphans/{route_id}/dismiss", response_model=dict)
 async def dismiss_orphan(
     route_id: uuid.UUID,
@@ -877,6 +906,29 @@ async def dismiss_orphan(
         )
     await db.flush()  # BUG-015: flush only; get_db commits.
     return {"id": str(route_id), "dismissed": True}
+
+
+@router.get("/orphans/dismissed", response_model=DismissedRouteResponse)
+async def list_dismissed_routes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Routes reviewed and rejected, so a rejection can be found and undone.
+
+    Dismissal is the decision most likely to be made in bulk, and a bulk
+    mistake is likely by construction. ``POST /orphans/{id}/keep`` already
+    reverses a dismissal, but before this listing existed there was no way
+    to *find* a dismissed route — the review queue deliberately filters them
+    out — so an incorrect rejection was only discoverable if you already knew
+    the route id.
+
+    Registered above ``PATCH /{route_id}``: ``dismissed`` is not a valid
+    UUID, so a dynamic route ahead of this one would claim it and 422.
+    """
+    rows = await route_quarantine.list_dismissed_routes(db, current_user.id)
+    return DismissedRouteResponse(
+        rows=[DismissedRouteRow(**r) for r in rows], total=len(rows)
+    )
 
 
 @router.post("/orphans/{route_id}/keep", response_model=dict)
@@ -1299,6 +1351,16 @@ async def list_duplicates(
     pairs = await route_service.find_cached_duplicates(db, current_user.id)
     if pairs is None:
         pairs = await route_service.find_potential_duplicates(db, current_user.id)
+    # Quarantined routes are excluded from matching, so offering them as
+    # merge candidates is contradictory. Two such routes reached this list
+    # with a stale road match describing geometry they no longer held, and
+    # scored each other 1.0/auto as a result.
+    pairs = [
+        p
+        for p in pairs
+        if getattr(p["route_a"], "quarantined_at", None) is None
+        and getattr(p["route_b"], "quarantined_at", None) is None
+    ]
     return [
         DuplicatePair(
             route_a=RouteRead.model_validate(p["route_a"]),

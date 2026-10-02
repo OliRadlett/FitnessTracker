@@ -18,6 +18,7 @@ import {
   VELOCITY_STREAM_TYPES,
   streamInput,
 } from '@/lib/streams';
+import { getActiveLocale } from '@/lib/utils';
 
 // three.js stays out of the activities bundle until the Theater opens.
 const Replay3D = dynamic(
@@ -142,7 +143,7 @@ export function ReplayTheater({
         activityDistanceMeters: ride?.distance_meters ?? undefined,
         activityDurationSeconds: ride?.duration_seconds ?? undefined,
       }),
-      name: ride ? new Date(ride.date).toLocaleDateString() : 'Ghost',
+      name: ride ? new Date(ride.date).toLocaleDateString(getActiveLocale()) : 'Ghost',
     };
   }, [ghostDetail, ghostCandidates, ghostId, build]);
 
@@ -245,7 +246,7 @@ export function ReplayTheater({
                   : 'border-surface-light text-muted hover:border-accent/30'
               }`}
             >
-              {new Date(r.date).toLocaleDateString()}
+              {new Date(r.date).toLocaleDateString(getActiveLocale())}
               {r.average_power ? ` · ${Math.round(r.average_power)}W` : ''}
             </button>
           ))}

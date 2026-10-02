@@ -1,8 +1,7 @@
 """Unit tests for joint-moment estimates (§3.18 / F9)."""
 
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
 
 from app.integrations import biomechanics as bm
 

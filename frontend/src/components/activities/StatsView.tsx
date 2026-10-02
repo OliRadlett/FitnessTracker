@@ -1,100 +1,82 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { Activity, ChartData } from '@/lib/api';
+import type { ChartData, TimeseriesResponse } from '@/lib/api';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { getActiveLocale } from '@/lib/utils';
 
-function getISOWeek(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-}
-
 export function StatsView({
-  activities,
+  monthly,
+  weekly,
+  horizonMonths,
+  onHorizonChange,
   isLoading = false,
 }: {
-  activities: Activity[];
+  monthly: TimeseriesResponse | undefined;
+  weekly: TimeseriesResponse | undefined;
+  horizonMonths: number;
+  onHorizonChange: (months: number) => void;
   isLoading?: boolean;
 }) {
-  // Monthly distance bars (last 6 months)
+  const clampedTo = monthly && !monthly.complete ? monthly.clamped_to : null;
+  // Monthly distance bars.
+  //
+  // Every value comes straight off the server's dense series. There is
+  // deliberately no bucket construction and no zero-filling here: the previous
+  // version built months client-side and pre-seeded them to zero, so a server
+  // row cap made a missing month render as a training dip that never happened.
+  // The server now returns every bucket in range, so a zero means "no
+  // training" and there is no loop here that could invent one.
   const monthlyDistanceChart: ChartData | null = useMemo(() => {
-    if (activities.length === 0) return null;
-    const now = new Date();
-    const months: { key: string; label: string; distance: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString(getActiveLocale(), { month: 'short', year: '2-digit' });
-      months.push({ key, label, distance: 0 });
-    }
-    for (const a of activities) {
-      if (STRENGTH_TYPES.includes(a.sport_type)) continue;
-      const d = new Date(a.start_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const month = months.find((m) => m.key === key);
-      if (month) month.distance += a.distance_meters ?? 0;
-    }
+    if (!monthly || monthly.buckets.length === 0) return null;
     return {
       chart_type: 'bar',
       title: 'Monthly Distance',
-      labels: months.map((m) => m.label),
+      labels: monthly.buckets.map((b) =>
+        new Date(`${b.bucket_start}T00:00:00`).toLocaleDateString(getActiveLocale(), {
+          month: 'short',
+          year: '2-digit',
+        }),
+      ),
       x_label: 'Month',
       y_label: 'Distance (km)',
-      series: [{ name: 'Distance', data: months.map((m) => Math.round(m.distance / 1000 * 10) / 10) }],
+      series: [
+        {
+          name: 'Distance',
+          data: monthly.buckets.map((b) => Math.round((b.distance_meters / 1000) * 10) / 10),
+        },
+      ],
     };
-  }, [activities]);
+  }, [monthly]);
 
-  // Sport breakdown pie
+  // Sport breakdown pie.
   const sportPieChart: ChartData | null = useMemo(() => {
-    if (activities.length === 0) return null;
-    const counts = new Map<string, number>();
-    for (const a of activities) {
-      counts.set(a.sport_type, (counts.get(a.sport_type) ?? 0) + 1);
-    }
-    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    const breakdown = monthly?.sport_breakdown ?? [];
+    if (breakdown.length === 0) return null;
     return {
       chart_type: 'pie',
       title: 'Sport Breakdown',
-      labels: sorted.map(([type]) => type),
-      series: [{ name: 'Activities', data: sorted.map(([, count]) => count) }],
+      labels: breakdown.map((s) => s.sport_type ?? 'unknown'),
+      series: [{ name: 'Activities', data: breakdown.map((s) => s.count) }],
     };
-  }, [activities]);
+  }, [monthly]);
 
-  // Weekly TSS trend (last 12 weeks)
+  // Weekly TSS trend. Same reasoning: server buckets, no client zero-fill.
   const weeklyTssChart: ChartData | null = useMemo(() => {
-    if (activities.length === 0) return null;
-    const now = new Date();
-    const weeks: { key: string; label: string; tss: number }[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i * 7);
-      const weekKey = getISOWeek(d);
-      const label = `W${weekKey.split('-W')[1]}`;
-      weeks.push({ key: weekKey, label, tss: 0 });
-    }
-    // Deduplicate by key
-    const uniqueWeeks = weeks.filter((w, i, arr) => arr.findIndex((x) => x.key === w.key) === i);
-    for (const a of activities) {
-      const weekKey = getISOWeek(new Date(a.start_date));
-      const week = uniqueWeeks.find((w) => w.key === weekKey);
-      if (week) week.tss += a.tss ?? 0;
-    }
+    if (!weekly || weekly.buckets.length === 0) return null;
     return {
       chart_type: 'area',
       title: 'Weekly TSS Trend',
-      labels: uniqueWeeks.map((w) => w.label),
-      x_label: 'Week',
+      labels: weekly.buckets.map((b) => {
+        const d = new Date(`${b.bucket_start}T00:00:00`);
+        return d.toLocaleDateString(getActiveLocale(), { month: 'short', day: 'numeric' });
+      }),
+      x_label: 'Week starting',
       y_label: 'TSS',
-      series: [{ name: 'TSS', data: uniqueWeeks.map((w) => Math.round(w.tss)) }],
+      series: [{ name: 'TSS', data: weekly.buckets.map((b) => Math.round(b.tss)) }],
     };
-  }, [activities]);
+  }, [weekly]);
 
   if (isLoading) {
     return (
@@ -109,26 +91,59 @@ export function StatsView({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <ChartCard
-        title="Monthly Distance"
-        data={monthlyDistanceChart}
-        emptyMessage="No activity data"
-        height={280}
-      />
-      <ChartCard
-        title="Sport Breakdown"
-        data={sportPieChart}
-        emptyMessage="No activity data"
-        height={280}
-      />
-      <div className="lg:col-span-2">
+    <div className="space-y-3">
+      {/*
+        The horizon is a real control. It was a hardcoded constant before
+        (6 months / 12 weeks), and the only reason to change it was the 200-row
+        cap that made anything deeper wrong. With server-side aggregation any
+        depth in range is correct, so this is just a range selector.
+      */}
+      <div className="flex items-center gap-2 justify-end">
+        <label htmlFor="stats-horizon" className="text-xs text-muted">
+          Range
+        </label>
+        <select
+          id="stats-horizon"
+          value={horizonMonths}
+          onChange={(e) => onHorizonChange(Number(e.target.value))}
+          className="bg-surface border border-border rounded px-2 py-1 text-xs text-foreground"
+        >
+          <option value={6}>6 months</option>
+          <option value={12}>12 months</option>
+          <option value={24}>24 months</option>
+          <option value={60}>5 years</option>
+        </select>
+      </div>
+
+      {/* Honest signal when the server had to clamp the requested range. */}
+      {clampedTo && (
+        <p className="text-xs text-warning" role="status">
+          Range clamped to {clampedTo} — the requested window exceeds the maximum
+          number of buckets for this view.
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard
-          title="Weekly TSS Trend"
-          data={weeklyTssChart}
-          emptyMessage="No TSS data"
+          title="Monthly Distance"
+          data={monthlyDistanceChart}
+          emptyMessage="No activity data"
           height={280}
         />
+        <ChartCard
+          title="Sport Breakdown"
+          data={sportPieChart}
+          emptyMessage="No activity data"
+          height={280}
+        />
+        <div className="lg:col-span-2">
+          <ChartCard
+            title="Weekly TSS Trend"
+            data={weeklyTssChart}
+            emptyMessage="No TSS data"
+            height={280}
+          />
+        </div>
       </div>
     </div>
   );

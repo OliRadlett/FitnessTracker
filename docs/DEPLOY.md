@@ -100,6 +100,9 @@ SECRET_KEY=<generate-a-strong-secret>             # openssl rand -base64 48
 DEBUG=false
 ALLOWED_ORIGINS=https://oliradlett.co.uk
 PUBLIC_URL=https://oliradlett.co.uk
+# Trusted reverse proxies for the auth rate limiter (comma-separated IPs/CIDRs).
+# Unset = default loopback + private ranges, correct for Caddy-only ingress.
+# TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
 
 # ─── Account Whitelist ────────────────────────────────────
 # Only these Google accounts can log in. Comma-separated.

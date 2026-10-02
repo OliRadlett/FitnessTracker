@@ -587,6 +587,36 @@ async def _linked_activities(db: AsyncSession, route_id: uuid.UUID) -> list[Acti
     return list(result.scalars().all())
 
 
+# Derived columns that `sync_route_segments` must carry across a rebuild.
+#
+# Deliberately an explicit allowlist, not "every column that is not geometry".
+# `times_ridden`, `pr_seconds`, `has_pr` and `best_avg_power_watts` are
+# recomputed from the efforts further down this function and must NOT be
+# copied, and `id`/`created_at` must not survive the recreate at all. An
+# automatic rule would eventually copy one of those and quietly serve a stale
+# leaderboard; naming the list makes the omission a visible decision.
+_CARRIED_FIELDS = (
+    # Cross-route hill identity.
+    "geo_cluster_id",
+    # Shape-similarity cluster (different meaning from geo_cluster_id).
+    "cluster_id",
+    # Everything the weekly Modal intelligence task fills.
+    "climb_type",
+    "sustainedness",
+    "difficulty_score",
+    "predicted_vam",
+    "predicted_time_seconds",
+    "predicted_power_watts",
+    "prediction_confidence",
+    "intelligence_analyzed_at",
+)
+
+
+def _carried_fields(seg: Segment) -> dict:
+    """Snapshot the derived columns that survive a delete-and-recreate."""
+    return {name: getattr(seg, name) for name in _CARRIED_FIELDS}
+
+
 async def sync_route_segments(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -603,6 +633,31 @@ async def sync_route_segments(
     climbs = detect_climb_segments(profile)
 
     # Delete-and-recreate keeps geometry authoritative (unique route-range).
+    #
+    # Snapshot the derived fields *before* the delete. Everything below
+    # `geo_cluster_id` is computed by the weekly intelligence task, which runs
+    # on Sundays; without this, any recompute wiped a week of intelligence and
+    # reset the hill to NULL. A persisted column that dies on every recompute
+    # is not meaningfully persisted -- the hill identity would fragment every
+    # time a route was re-imported and the leaderboard would go back to one row
+    # per route. The weekly task would eventually refill it, but it would
+    # fragment first, and a fragment-then-regroup is visible as a wrong answer.
+    #
+    # Keyed on (start_dist_m, end_dist_m) because that is the existing unique
+    # constraint. For a matching key the geometry is unchanged by construction,
+    # so a carried-over prediction is still valid. A changed key means the route
+    # geometry was edited: the fields correctly fall back to NULL, and
+    # `intelligence_analyzed_at` is rendered in the UI, so the staleness is
+    # visible rather than silent.
+    snapshot: dict[tuple[float, float], dict] = {}
+    prior = await db.execute(
+        select(Segment).where(
+            Segment.route_id == route_id, Segment.user_id == user_id
+        )
+    )
+    for seg in prior.scalars().all():
+        snapshot[(seg.start_dist_m, seg.end_dist_m)] = _carried_fields(seg)
+
     existing = await db.execute(
         delete(Segment).where(Segment.route_id == route_id, Segment.user_id == user_id)
     )
@@ -630,6 +685,10 @@ async def sync_route_segments(
             ),
         )
         db.add(seg)
+        carried = snapshot.get((climb["start_dist"], climb["end_dist"]))
+        if carried:
+            for field, value in carried.items():
+                setattr(seg, field, value)
         created.append(seg)
 
     await db.flush()
@@ -700,6 +759,21 @@ async def sync_route_segments(
             pr = min(efforts, key=lambda e: e.elapsed_seconds)
             seg.pr_seconds = pr.elapsed_seconds
             seg.has_pr = True
+            # `SegmentEffort.is_pr` was never assigned anywhere in the backend --
+            # only read, in the schema and the read path. So every effort
+            # carried the column default (False) and the PR badge in
+            # SegmentRow.tsx could never render. `min()` on elapsed_seconds is
+            # already the PR by the same definition the segment-level totals use,
+            # so mark it here rather than in a separate pass.
+            #
+            # Every other effort on this segment is explicitly set False: these
+            # rows were just recreated, and relying on the column default would
+            # leave that dependent on the model's default surviving a
+            # `db.add()` without a value. On a delete-and-recreate the rows are
+            # new objects, so the default does apply -- but stating it makes the
+            # invariant local and survives anyone making the recreate a reuse.
+            for effort in efforts:
+                effort.is_pr = effort.id == pr.id
             powered = [e.avg_power_watts for e in efforts if e.avg_power_watts]
             seg.best_avg_power_watts = max(powered) if powered else None
         else:
@@ -775,3 +849,85 @@ async def get_segment_leaderboard(
     )
     efforts = list(result.scalars().all())
     return seg, efforts
+
+
+async def geo_cluster_sizes(
+    db: AsyncSession, user_id: uuid.UUID
+) -> dict[uuid.UUID, int]:
+    """``geo_cluster_id -> member count`` for one user's segments.
+
+    One grouped query for the whole user rather than a count per segment: the
+    ``/segments`` page renders every row, so counting inside the page loop would
+    be an N+1 on a list endpoint. Segments whose ``geo_cluster_id`` is NULL are
+    omitted -- they are not clustered yet, and every caller treats a missing key
+    as a hill of one.
+    """
+    result = await db.execute(
+        select(Segment.geo_cluster_id, func.count(Segment.id))
+        .where(Segment.user_id == user_id, Segment.geo_cluster_id.isnot(None))
+        .group_by(Segment.geo_cluster_id)
+    )
+    return {key: int(count) for key, count in result.all() if key is not None}
+
+
+async def get_climb_leaderboard(
+    db: AsyncSession, user_id: uuid.UUID, geo_cluster_id: uuid.UUID
+) -> tuple[list[Segment], list[SegmentEffort]]:
+    """Every segment sharing a hill identity, plus all their efforts, ranked.
+
+    Returns ``(members, efforts)``; raises ``LookupError`` when the id matches
+    nothing owned by this user. An id belonging to another user is deliberately
+    indistinguishable from one that does not exist, so the endpoint cannot be
+    used to probe for other people's hill ids.
+    """
+    result = await db.execute(
+        select(Segment)
+        .where(
+            Segment.user_id == user_id,
+            Segment.geo_cluster_id == geo_cluster_id,
+        )
+        .options(
+            selectinload(Segment.route),
+            selectinload(Segment.efforts).load_only(SegmentEffort.id),
+        )
+    )
+    members = list(result.scalars().all())
+    if not members:
+        raise LookupError("Climb not found")
+
+    efforts_result = await db.execute(
+        select(SegmentEffort)
+        .where(SegmentEffort.segment_id.in_([s.id for s in members]))
+        .options(selectinload(SegmentEffort.activity))
+    )
+    efforts = list(efforts_result.scalars().all())
+
+    # Rank by VAM (window-robust) and fall back to elapsed seconds only when
+    # nothing carries a VAM. SQLite-style NULL ordering is not something to rely
+    # on here, so the sort is done in Python explicitly: rows without a VAM sort
+    # last rather than first, which `ORDER BY effort_vam` would not guarantee.
+    if any(e.effort_vam is not None for e in efforts):
+        efforts.sort(
+            key=lambda e: (
+                e.effort_vam is None,  # False (0) sorts before True (1)
+                -(e.effort_vam or 0.0),
+                e.elapsed_seconds,
+            )
+        )
+    else:
+        efforts.sort(key=lambda e: e.elapsed_seconds)
+    return members, efforts
+
+
+def canonical_climb_name(members: list[Segment]) -> str:
+    """The most-ridden member's name, as the hill's display name.
+
+    A hill has no name of its own -- the per-segment name is generated from the
+    route name and distance range, so the same hill wears a different name on
+    every route. The most-ridden member is the best available proxy for "what
+    the rider calls it", and ties break on the name so the choice is
+    deterministic.
+    """
+    if not members:
+        raise ValueError("canonical_climb_name requires at least one member")
+    return min(members, key=lambda s: (-s.times_ridden, s.name)).name

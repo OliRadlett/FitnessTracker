@@ -83,7 +83,8 @@ def test_vo2max_uses_lthr_anchor_when_valid():
     result = fit_personalized_vo2max(_steady_rides(), weight_kg=75.0, hr_anchor=150.0)
     assert result["hr_threshold_used"] == 150.0
     # x in W/kg: slope 18.75, intercept 100 → (150-100)/18.75 = 2.667 W/kg
-    assert result["vo2max"] == pytest.approx(10.8 * 2.6667 + 7.0, abs=0.2)
+    # FRIEND: 10.649 × 2.667 + 3.5 = 31.897
+    assert result["vo2max"] == pytest.approx(10.649 * 2.6667 + 3.5, abs=0.2)
 
 
 def test_vo2max_falls_back_to_170_without_anchor():

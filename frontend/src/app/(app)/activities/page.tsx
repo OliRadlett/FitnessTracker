@@ -15,6 +15,7 @@ import type {
   RideAnalysis,
   LoadContext,
   RideMetrics,
+  TimeseriesResponse,
 } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
@@ -42,8 +43,7 @@ import {
   HEARTRATE_STREAM_TYPES,
   POWER_STREAM_TYPES,
   VELOCITY_STREAM_TYPES,
-  hasStream,
-  presentStreamTypes,
+  replayMissingReason as whyNoReplay,
   streamInput,
   streamLabel,
 } from '@/lib/streams';
@@ -63,18 +63,6 @@ import { PatternsView } from '@/components/activities/PatternsView';
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
-
-/**
- * Cap on the 6-month window shared by the Timeline / Patterns / Stats views.
- *
- * `GET /activities` enforces `le=200` server-side, so this is the maximum
- * obtainable in one request and cannot simply be raised. A heavy athlete
- * (>~33 activities/month) therefore has the *oldest* months and weeks missing
- * from the aggregates below, so Stats surfaces a truncation note instead of
- * silently charting a partial window. The proper fix is server-side bucketing
- * (monthly distance, sport counts, weekly TSS).
- */
-const STATS_WINDOW_LIMIT = 200;
 
 const SORT_OPTIONS: { label: string; sort_by: string; sort_order: string }[] = [
   { label: 'Date (newest)', sort_by: 'start_date', sort_order: 'desc' },
@@ -215,17 +203,18 @@ function ActivityExpanded({
 
   // Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
   // Loading/error/empty-streams cases are covered by the stream section below.
-  const replayMissingReason: string | null = useMemo(() => {
-    if (!isCycling || detailLoading || detailError) return null;
-    const streams = activityDetail?.streams;
-    if (!streams?.length) return null;
-    if (!activity.encoded_polyline) return 'No route attached — 3D replay needs GPS.';
-    if (!hasStream(streams, ...VELOCITY_STREAM_TYPES)) {
-      const present = presentStreamTypes(streams);
-      return `3D replay needs a speed stream — this ride has ${present.length ? present.map(streamLabel).join(', ') : 'no readable streams'} but no velocity.`;
-    }
-    return null;
-  }, [activity, activityDetail, detailError, detailLoading, isCycling]);
+  // Copy lives in lib/streams so the compare modal reuses it verbatim.
+  const replayMissingReason: string | null = useMemo(
+    () =>
+      whyNoReplay({
+        isCycling,
+        loading: !!detailLoading,
+        error: !!detailError,
+        streams: activityDetail?.streams,
+        polyline: activity.encoded_polyline,
+      }),
+    [activity, activityDetail, detailError, detailLoading, isCycling],
+  );
 
   // Shared 3D playhead — reset the selected stream tab when the activity
   // changes (the previous ride's type may not exist here, P2-3).
@@ -745,8 +734,10 @@ export default function ActivitiesPage() {
   const hasActiveFilters = Object.keys(filters).length > 0 || searchText.trim() !== '' || sortIndex !== 0
     || advMinDist !== '' || advMaxDist !== '' || advMinDur !== '' || advMaxDur !== '' || advMinTss !== '' || advMaxTss !== '';
 
-  // Fetch a larger dataset for the Timeline / Patterns / Stats views
-  // (last 6 months, capped at the endpoint's max of 200 — see STATS_WINDOW_LIMIT).
+  // Fetch a larger dataset for the Timeline / Patterns views, which genuinely
+  // need rows. The Stats view does NOT use this — it reads server-bucketed
+  // aggregates (see below) so its charts are correct at any depth rather than
+  // limited to whatever 200 rows happen to cover.
   const sixMonthsAgo = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 6);
@@ -755,16 +746,49 @@ export default function ActivitiesPage() {
 
   const { data: statsActivities, isLoading: statsLoading } = useQuery<Activity[]>({
     queryKey: ['activities-stats'],
-    queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=${STATS_WINDOW_LIMIT}&sort_by=start_date&sort_order=desc`),
+    queryFn: () => authFetch<Activity[]>(`/api/v1/activities?start_date_after=${sixMonthsAgo}&limit=200&sort_by=start_date&sort_order=desc`),
     enabled:
-      (viewMode === 'timeline' ||
-        viewMode === 'patterns' ||
-        viewMode === 'stats') &&
+      (viewMode === 'timeline' || viewMode === 'patterns') &&
       !!token,
   });
 
-  /** The window came back full, so older months/weeks are missing from the aggregates. */
-  const statsWindowTruncated = (statsActivities?.length ?? 0) >= STATS_WINDOW_LIMIT;
+  // ── Stats: server-bucketed aggregates ───────────────────────────────────
+  //
+  // Replaces the client-side bucketing over the row-capped fetch above. The
+  // server returns a DENSE series, so a zero bucket means "no training" by
+  // construction; the previous version pre-seeded months client-side and
+  // re-zero-filled, which made the 200-row cap render as a training dip that
+  // never happened. The horizon is a user choice because any depth in range is
+  // now correct.
+  const [statsHorizonMonths, setStatsHorizonMonths] = useState(6);
+
+  const statsRange = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - statsHorizonMonths);
+    const iso = (d: Date) => d.toISOString().split('T')[0];
+    return { start: iso(start), end: iso(end) };
+  }, [statsHorizonMonths]);
+
+  const monthlyTimeseriesQuery = useQuery<TimeseriesResponse>({
+    queryKey: ['activity-timeseries', 'month', statsRange.start, statsRange.end],
+    queryFn: () =>
+      authFetch<TimeseriesResponse>(
+        `/api/v1/activities/timeseries?bucket=month&start=${statsRange.start}&end=${statsRange.end}`,
+      ),
+    enabled: viewMode === 'stats' && !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const weeklyTimeseriesQuery = useQuery<TimeseriesResponse>({
+    queryKey: ['activity-timeseries', 'week', statsRange.start, statsRange.end],
+    queryFn: () =>
+      authFetch<TimeseriesResponse>(
+        `/api/v1/activities/timeseries?bucket=week&start=${statsRange.start}&end=${statsRange.end}`,
+      ),
+    enabled: viewMode === 'stats' && !!token,
+    staleTime: 5 * 60_000,
+  });
 
   // Calendar data for timeline view (last 30 days by default)
   const thirtyDaysAgo = useMemo(() => {
@@ -1084,20 +1108,13 @@ export default function ActivitiesPage() {
           }}
         />
       ) : viewMode === 'stats' ? (
-        <>
-          <StatsView
-            activities={statsActivities ?? []}
-            isLoading={statsLoading}
-          />
-          {statsWindowTruncated && (
-            <p className="text-xs text-warning mt-3">
-              The chart below covers the most recent {STATS_WINDOW_LIMIT} activities (the last
-              6 months). A heavier training load has more activities in that window than the
-              endpoint can return at once, so older months and weeks would be understated —
-              this view does not silently chart a partial window.
-            </p>
-          )}
-        </>
+        <StatsView
+          monthly={monthlyTimeseriesQuery.data}
+          weekly={weeklyTimeseriesQuery.data}
+          horizonMonths={statsHorizonMonths}
+          onHorizonChange={setStatsHorizonMonths}
+          isLoading={monthlyTimeseriesQuery.isLoading || weeklyTimeseriesQuery.isLoading}
+        />
       ) : isLoading ? (
         <div className="space-y-3" aria-label="Loading activities">
           {Array.from({ length: 5 }).map((_, i) => (

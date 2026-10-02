@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     public_url: str = "https://localhost"
     frontend_url: str = "https://localhost/fittrack"
 
+    # Trusted reverse proxies, comma-separated IPs/CIDRs. ``X-Forwarded-For`` is
+    # honoured (for the auth rate-limit key) only when the immediate TCP peer is
+    # one of these, so a client cannot spoof its own address. Defaults to
+    # loopback + private ranges: the backend is never published publicly (only
+    # Caddy is), so every peer is a trusted proxy or a local process.
+    trusted_proxies: str = (
+        "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+    )
+
     # Account whitelist — comma-separated email addresses allowed to log in.
     # If empty, all accounts are allowed (no restriction).
     allowed_emails: str = ""
@@ -153,8 +162,39 @@ class Settings(BaseSettings):
         0.55  # review floor — below this a pair is not a candidate
     )
     route_match_auto_threshold: float = (
-        0.82  # at/above this a duplicate pair auto-merges; the rest go to review
+        0.82  # at/above this a pair is *tiered* auto; merging still needs the flag below
     )
+    # Auto-merge is OFF, per the ride/course split plan: no threshold has been
+    # validated, so every duplicate stays review-only. The tiering threshold
+    # above is kept because it defines what would merge if this is turned on
+    # deliberately.
+    #
+    # This used to be unconditional in `recompute_route_similarity`, which
+    # silently merged a route at 0.826 on 28 Sep while the plan said it could
+    # not happen. A decision that lives only in a document reverts the first
+    # time someone reads the code instead of the plan.
+    #
+    # Detection is unaffected: pairs are still written to `route_similarity`
+    # and still surface for review. Only the unreviewed merge is gated.
+    route_auto_merge_enabled: bool = False
+
+    # Whether a Strava *activity* with a polyline should become a Route.
+    #
+    # Off by default. A ride is not a course: `plans/ride-course-split.md` §2
+    # records the decision that Route means Course, and explicitly lists "a
+    # recorded ride cluster" as what Route is *not*. Rides link to courses
+    # many-to-one; they do not become them.
+    #
+    # While this was on, `create_or_merge_route`'s geometric dedupe absorbed
+    # any activity scoring >=0.82 against an existing route — and rides on
+    # familiar roads score high. Production ended up with five routes holding
+    # 4-7 distinct rides each (27 rides collapsed into 5), the worst holding
+    # seven rides across four months and seven different distances alongside
+    # a real Strava course id. Note `route_auto_merge_enabled` does NOT gate
+    # this: that flag guards the similarity *task*, whereas this path merges
+    # during sync inside `create_or_merge_route`.
+    strava_activity_routes_enabled: bool = False
+
     route_match_gate: float = (
         0.45  # hard gate — below this the composite score is forced to 0
     )

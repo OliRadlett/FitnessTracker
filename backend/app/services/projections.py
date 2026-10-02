@@ -680,17 +680,19 @@ async def compute_tsb_projection(
     plan_id: uuid.UUID,
     days_ahead: int = 14,
 ) -> dict:
-    """TSB projection for event-linked plans only.
+    """TSB projection for a training plan. Event linkage is optional.
 
-    1. Load plan, validate ownership, check event_id is set (else 400)
+    1. Load plan, validate ownership, resolve the linked event date if any
     2. Get current CTL/ATL from training_load service (through today)
     3. Get planned TSS from TrainingPlanDay for the N days from tomorrow
     4. Run tsb_projection
-    5. Compute race-day TSB (entry at the event date when inside the
-       projected window, else the last projected day)
+    5. Compute race-day TSB (entry at the event date when the plan is linked
+       to an event whose date falls inside the projected window, else the last
+       projected day)
 
     Returns ``{plan_id, event_date, current_tsb, race_day_tsb,
-    projection, freshness_assessment}``.
+    projection, freshness_assessment}``. ``event_date`` is None for an
+    unlinked plan.
     """
     # 1. Load plan
     result = await db.execute(
@@ -702,14 +704,20 @@ async def compute_tsb_projection(
     if not plan:
         raise LookupError("Training plan not found")
 
-    if not plan.event_id:
-        raise ValueError("Training plan is not linked to an event")
+    # Event linkage used to be required, which confined this projection to race
+    # plans and made the general question - "how will my next two weeks of
+    # planned load leave me?" - unanswerable. The projection itself never
+    # needed the event: with no event, only race_day_tsb falls back to the last
+    # projected day (step 5), which is the honest reading of a plan with no
+    # target date. Consumers get a usable projection either way.
+    event_date = None
+    if plan.event_id:
+        from app.models.event import Event
 
-    # Get event date
-    from app.models.event import Event
-
-    result = await db.execute(select(Event.event_date).where(Event.id == plan.event_id))
-    event_date = result.scalar_one_or_none()
+        result = await db.execute(
+            select(Event.event_date).where(Event.id == plan.event_id)
+        )
+        event_date = result.scalar_one_or_none()
 
     # 2. Get current CTL/ATL
     today = date.today()

@@ -1,9 +1,13 @@
 """Activity API — list/filter/get activities, calendar, backfill route links, merge analysis, file import."""
 
+import itertools
 import json
 import logging
+import math
+import statistics
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -31,9 +35,11 @@ from app.schemas.activity import (
     LinkedLiftingSessionSummary,
     RideAnalysisResponse,
     SleepLogSummary,
+    TimeseriesResponse,
 )
 from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
+from app.services.charts import ChartService
 from app.services.sport_filter import allowed_sport_types, is_allowed_sport
 
 logger = logging.getLogger(__name__)
@@ -330,6 +336,45 @@ async def get_activity_summary(
         total_duration_seconds=float(row.total_duration or 0),
         total_tss=float(row.total_tss or 0),
     )
+
+
+@router.get("/timeseries", response_model=TimeseriesResponse)
+async def get_activity_timeseries(
+    bucket: Literal["day", "week", "month"] = Query(
+        default="day", description="Bucket width. Weeks are Monday-based."
+    ),
+    start: date = Query(..., description="Range start (inclusive, YYYY-MM-DD)"),
+    end: date = Query(..., description="Range end (inclusive, YYYY-MM-DD)"),
+    sport_type: str | None = Query(None),
+    source: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dense activity aggregates, bucketed server-side.
+
+    The activities stats view used to bucket client-side over a row-capped
+    fetch and re-zero-fill the gaps, so a truncated window rendered as a
+    training dip that never happened — under a note claiming the view "does not
+    silently chart a partial window". Aggregating in SQL puts no row cap in the
+    path, so a truncated series is no longer representable, and every bucket in
+    range is returned so a zero means "no training" by construction.
+
+    ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+    handlers below or it 422s. Same trap as ``/orphans`` in routes.py — the
+    decorator-order test is the one that catches it.
+    """
+    service = ChartService(db)
+    try:
+        return await service.activity_timeseries(
+            current_user.id,
+            bucket=bucket,
+            start=start,
+            end=end,
+            sport_type=sport_type,
+            source=source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/calendar")
@@ -832,8 +877,67 @@ async def import_fit(
 
     Parses the FIT file, creates an Activity with session-level metrics
     and ActivityStream records for time-series data (HR, power, GPS, etc.).
+
+    A file that duplicates an existing import returns that activity rather than
+    creating a second row — see ``services/import_dedup.py``.
+    """
+    enriched, _created = await _import_fit(db, current_user, file)
+    return enriched
+
+
+def _observed_resolution(time_axis: list) -> int | None:
+    """Median spacing between consecutive timestamps, in whole seconds.
+
+    The *median* rather than the mean: a multi-rate file has a long tail of slow
+    samples (auto-pause, a signal dropout) that would drag a mean well above the
+    rate the rider actually recorded at, and ``ActivityStream.resolution`` is an
+    integer so it has to round to something anyway. The median is the rate the
+    bulk of the samples share.
+
+    Returns None when there is no usable axis — a file with no timestamps, one
+    whose timestamps are not strictly increasing, or one where *any* sample is
+    missing. That last case matters: every stream in the payload is
+    index-aligned to the record list, so a time axis with a hole in it would be
+    shorter than its siblings and silently misalign them. Falling back to the
+    duration estimate is worse than perfect but not wrong; a short axis is wrong
+    in a way nothing downstream can detect.
+    """
+    if not time_axis:
+        return None
+    if any(
+        not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t)
+        for t in time_axis
+    ):
+        return None
+    stamps = [float(t) for t in time_axis]
+    if len(stamps) < 2:
+        return None
+    deltas = [b - a for a, b in itertools.pairwise(stamps) if b > a]
+    if not deltas:
+        return None
+    return max(1, int(round(statistics.median(deltas))))
+
+
+async def _import_fit(
+    db: AsyncSession,
+    current_user: User,
+    file: UploadFile,
+) -> tuple[ActivityRead, bool]:
+    """Do the work behind ``POST /import-fit``.
+
+    Returns ``(activity, created)``. ``created`` is False when the file matched
+    an existing activity — exactly (same bytes) or fuzzily (the same ride
+    re-exported) — in which case an ``ActivitySource`` row records the file as
+    further provenance for it. Returning the flag rather than inferring it from
+    the response keeps "did this create a row?" answerable, which the bulk
+    endpoint needs to report honestly.
     """
     from app.services.fit_parser import parse_fit_file
+    from app.services.import_dedup import (
+        attach_import_source,
+        file_fingerprint,
+        find_duplicate,
+    )
     from app.services.polyline_utils import encode_polyline
 
     # BUG-017: Limit file size to 50MB
@@ -851,6 +955,33 @@ async def import_fit(
 
     session = parsed["session"]
     streams = parsed.get("streams", {})
+
+    # ── Duplicate detection ───────────────────────────────────────────────
+    #
+    # An imported activity carries no provider_activity_id, so before this
+    # there was nothing to deduplicate on: uploading the same file twice
+    # produced two rows and every load-bearing aggregate counted the ride
+    # twice. Two tiers — an exact content hash, then a fuzzy match for the
+    # same ride re-exported by different software.
+    fingerprint = file_fingerprint(raw)
+    duplicate = await find_duplicate(
+        db,
+        current_user.id,
+        fingerprint=fingerprint,
+        sport_type=session.get("sport_type", "cycling"),
+        start_date=session.get("start_time"),
+        duration_seconds=session.get("duration_seconds"),
+        distance_meters=session.get("distance_meters"),
+    )
+    if duplicate is not None:
+        if not duplicate.exact:
+            # Fuzzy: record the file as another source of the existing activity
+            # rather than creating a second row. Reversible, and it keeps the
+            # import visible as evidence instead of silently dropping it.
+            await attach_import_source(
+                db, duplicate.activity, fingerprint=fingerprint
+            )
+        return _enrich_activity_read(duplicate.activity), False
 
     # Build encoded polyline from GPS stream if available (filter out None values)
     gps_lats = streams.get("position_lat", [])
@@ -879,9 +1010,14 @@ async def import_fit(
     activity = Activity(
         user_id=current_user.id,
         source="manual",
+        import_fingerprint=fingerprint,
         sport_type=activity_sport,
         name=session.get("name", "Imported Activity"),
-        start_date=session.get("start_time", datetime.now(UTC)),
+        # `or` rather than a dict default: a FIT file with no recorded start
+        # time yields an explicit None, which a default argument would let
+        # through to this NOT NULL column and 500 on. Fall back to now so the
+        # activity is still importable — the fuzzy tier simply cannot match it.
+        start_date=session.get("start_time") or datetime.now(UTC),
         duration_seconds=session.get("duration_seconds"),
         distance_meters=session.get("distance_meters"),
         elevation_gain_meters=session.get("elevation_gain_meters"),
@@ -909,19 +1045,64 @@ async def import_fit(
         "position_lat": "position_lat",
         "position_long": "position_long",
         "temperature": "temperature",
+        # The per-record time axis. Persisting it is what makes
+        # ``segments._time_axis`` reachable for imported rides at all — the
+        # function exists and is unit-tested, but with no ``time`` stream in the
+        # database it always returned None and every segment effort window fell
+        # back to nominal spacing.
+        "time": "time",
     }
     dur = session.get("duration_seconds")
+
+    # Real observed sample spacing, taken from the time axis when the file has
+    # one. The previous expression was ``dur // len(values)`` — integer floor
+    # division assigning ONE uniform rate to every stream. A real FIT file is
+    # multi-rate (1 Hz power beside 5 s GPS), so that number is wrong for
+    # everything except whichever stream happens to be full-rate. Where there is
+    # no time axis, the old arithmetic stays as the fallback rather than storing
+    # a null that consumers cannot interpret.
+    observed = _observed_resolution(streams.get("time") or [])
+
     for fit_key, stream_type in STREAM_TYPE_MAP.items():
         values = streams.get(fit_key)
-        if values and len(values) > 0:
+        if not values:
+            continue
+        if stream_type == "time":
+            # The axis itself: the stored series is one sample per timestamp, so
+            # inheriting ``observed`` would be circular.
+            res = 1
+        elif observed is not None:
+            res = observed
+        else:
             res = max(1, dur // len(values)) if dur else None
-            stream = ActivityStream(
-                activity_id=activity.id,
-                stream_type=stream_type,
-                data={"data": values},
-                resolution=res,
-            )
-            db.add(stream)
+        stream = ActivityStream(
+            activity_id=activity.id,
+            stream_type=stream_type,
+            data={"data": values},
+            resolution=res,
+        )
+        db.add(stream)
+
+    # Auto-compute TSS so the imported ride counts for training load. Every
+    # provider sync does this (strava/sync.py, wahoo.py, strava/webhooks.py) and
+    # `backfill_lifting_tss` covers lifting, but nothing covered file imports:
+    # an imported activity kept tss=NULL, and load consumers skip null-tss rows
+    # (services/analytics.py), so the ride was invisible to weekly TSS, CTL/ATL
+    # and the recommendation engines despite parsing perfectly.
+    #
+    # Called unconditionally rather than behind `if profile.ftp_watts` as the
+    # sync paths do, so the HR fallback inside can engage when no FTP is set.
+    # The function itself early-returns when tss is already set, so this is
+    # idempotent. FIT's own normalized_power is preferred over a recomputation
+    # from samples (activity.normalized_power or activity.average_power).
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
+
+    profile = await get_or_create_cycling_profile(db, current_user.id)
+    await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
+    await db.flush()
 
     # Re-query with eager loading so _enrich_activity_read can access relationships
     result = await db.execute(
@@ -935,7 +1116,102 @@ async def import_fit(
     )
     activity = result.scalar_one()
     enriched = _enrich_activity_read(activity)
-    return enriched
+    return enriched, True
+
+
+class BulkImportFileResult(BaseModel):
+    """Per-file outcome. A batch never fails as a unit."""
+
+    filename: str
+    status: Literal["created", "duplicate", "failed"]
+    activity_id: str | None = None
+    #: True when a fuzzy match attached this file to an existing activity
+    #: instead of creating a second row for the same ride.
+    attached_source: bool = False
+    error: str | None = None
+
+
+class BulkImportResponse(BaseModel):
+    created: int
+    duplicates: int
+    failed: int
+    results: list[BulkImportFileResult]
+
+
+# Bounded rather than unbounded: this endpoint is synchronous, and a single
+# user importing history does not need an async job with progress polling. The
+# per-file cap stops one request holding a worker open indefinitely.
+MAX_BULK_FILES = 20
+
+
+@router.post("/import-bulk", response_model=BulkImportResponse)
+async def import_bulk(
+    files: list[UploadFile] = File(..., description="Up to 20 FIT files"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import several FIT files, reporting each one's outcome independently.
+
+    ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+    handlers or it is shadowed and 422s (pitfall 13).
+
+    **Per-file commit is the whole point.** ``get_db`` commits once at the end
+    of the request, so a naive loop is all-or-nothing: one malformed file at
+    position 900 of 1000 would erase the 899 that succeeded. Each file is
+    committed on its own, and a failure is rolled back before the next file
+    starts, so one bad file cannot poison the session for the ones after it.
+
+    That means the batch is intentionally *not* atomic — which is why the
+    response is a per-file result array rather than a single success flag. The
+    user can see exactly what landed and retry only what failed.
+    """
+    if len(files) > MAX_BULK_FILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Too many files: {len(files)} (max {MAX_BULK_FILES})",
+        )
+
+    results: list[BulkImportFileResult] = []
+    for upload in files:
+        try:
+            enriched, created = await _import_fit(db, current_user, upload)
+            await db.commit()
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="created" if created else "duplicate",
+                    activity_id=str(enriched.id),
+                    attached_source=not created,
+                )
+            )
+        except HTTPException as exc:
+            # Roll back this file's partial work before the next one, so a
+            # failure cannot leave the session unusable.
+            await db.rollback()
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="failed",
+                    error=str(exc.detail),
+                )
+            )
+        except Exception as exc:
+            await db.rollback()
+            logger.warning("Bulk import failed for %s: %s", upload.filename, exc)
+            results.append(
+                BulkImportFileResult(
+                    filename=upload.filename or "unnamed",
+                    status="failed",
+                    error="could not be parsed or stored",
+                )
+            )
+
+    return BulkImportResponse(
+        created=sum(1 for r in results if r.status == "created"),
+        duplicates=sum(1 for r in results if r.status == "duplicate"),
+        failed=sum(1 for r in results if r.status == "failed"),
+        results=results,
+    )
 
 
 # ── Activity Analysis ────────────────────────────────────────────────────────

@@ -211,7 +211,15 @@ class KomootClient:
             user_id: Komoot user ID
             page: Page number (0-based)
             limit: Results per page
-            tour_type: Filter by type (e.g. "planned", "recorded", or None for all)
+            tour_type: Filter by type. The only accepted values are
+                ``"tour_planned"`` and ``"tour_recorded"`` — Komoot 400s on
+                anything else, including the plausible-looking ``"planned"``
+                and ``"recorded"``. Omit it to get every type.
+
+        Omitting the filter is not a neutral default. The recorded-tours sync
+        relied on it, and consequently re-ingested every planned route under
+        a second provider id, which is how twelve Komoot tours came to be
+        stored twice. Pass the type explicitly.
         """
         headers = self._auth_headers()
         params: dict = {"page": page, "limit": limit}

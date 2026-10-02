@@ -8,6 +8,7 @@ import {
   getStreamValues,
   hasStream,
   presentStreamTypes,
+  replayMissingReason,
   streamInput,
   streamLabel,
 } from '@/lib/streams';
@@ -73,5 +74,39 @@ describe('stream spelling matrix (Strava vs FIT)', () => {
     expect(streamLabel('watts')).toBe('Power');
     expect(streamLabel('time')).toBe('Time');
     expect(streamLabel('mystery_metric')).toBe('Mystery Metric');
+  });
+});
+
+describe('replayMissingReason', () => {
+  it('returns null when not cycling, loading, errored, or streamless', () => {
+    const vel = [stream('velocity_smooth', [1])];
+    expect(replayMissingReason({ isCycling: false, loading: false, error: false, streams: vel, polyline: 'abc' })).toBeNull();
+    expect(replayMissingReason({ isCycling: true, loading: true, error: false, streams: vel, polyline: 'abc' })).toBeNull();
+    expect(replayMissingReason({ isCycling: true, loading: false, error: true, streams: vel, polyline: 'abc' })).toBeNull();
+    expect(replayMissingReason({ isCycling: true, loading: false, error: false, streams: [], polyline: 'abc' })).toBeNull();
+    expect(replayMissingReason({ isCycling: true, loading: false, error: false, streams: undefined, polyline: 'abc' })).toBeNull();
+  });
+
+  it('explains missing GPS before missing speed', () => {
+    expect(
+      replayMissingReason({ isCycling: true, loading: false, error: false, streams: [stream('power', [1])], polyline: null })
+    ).toBe('No route attached — 3D replay needs GPS.');
+  });
+
+  it('names present streams with human labels, never raw spellings', () => {
+    const msg = replayMissingReason({
+      isCycling: true,
+      loading: false,
+      error: false,
+      streams: [stream('heartrate', [60]), stream('watts', [100])],
+      polyline: 'abc',
+    });
+    expect(msg).toBe('3D replay needs a speed stream — this ride has Heart rate, Power but no velocity.');
+  });
+
+  it('returns null when a speed stream exists', () => {
+    expect(
+      replayMissingReason({ isCycling: true, loading: false, error: false, streams: [stream('enhanced_speed', [5])], polyline: 'abc' })
+    ).toBeNull();
   });
 });

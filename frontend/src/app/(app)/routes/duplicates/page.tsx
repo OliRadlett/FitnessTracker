@@ -18,8 +18,8 @@ import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
-import { formatDistance } from '@/lib/utils';
-import { fmtElevation, computeDifficulty, DifficultyBadge } from '@/lib/routeUtils';
+import { formatDistance, getActiveLocale } from '@/lib/utils';
+import { fmtElevation, computeDifficulty, DifficultyBadge, routeNamesDiffer } from '@/lib/routeUtils';
 import {
   X,
   GitMerge,
@@ -404,7 +404,7 @@ function MergeHistorySection({
                       {Math.round(m.score * 100)}% match
                     </Badge>
                     {m.created_at && (
-                      <span>{new Date(m.created_at).toLocaleString()}</span>
+                      <span>{new Date(m.created_at).toLocaleString(getActiveLocale())}</span>
                     )}
                     {!m.primary_exists && (
                       <span className="text-warning">
@@ -619,6 +619,25 @@ function DuplicatePairCard({
               </span>
             </label>
           </div>
+
+          {/* An `identical` merge is the only kind that trains the matcher, so
+              it is the one where a wrong call is permanent. Differently-named
+              pairs are where the doubt belongs: Strava auto-generates names,
+              so the same ride can arrive under two. */}
+          {mergeKind === 'identical' &&
+            routeNamesDiffer(pair.route_a.name, pair.route_b.name) && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  These routes have different names, and this merge will{' '}
+                  <strong>train the matcher</strong> that they are the same
+                  ride. Check the map first. If one is a shorter or partial
+                  recording of the other, choose &ldquo;same kind of
+                  ride&rdquo; instead — that merge is excluded from training
+                  and can be reclassified later.
+                </span>
+              </p>
+            )}
 
           <div className="mt-3 flex justify-end gap-2">
             <button

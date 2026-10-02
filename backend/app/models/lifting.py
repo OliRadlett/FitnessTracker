@@ -91,7 +91,10 @@ class LiftingSession(Base):
     sets: Mapped[list["LiftingSet"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
-        order_by="LiftingSet.created_at",
+        # order_index leads so a user-chosen order wins; created_at then id make
+        # the result deterministic for rows not yet backfilled. All three are
+        # needed — created_at alone ties for whole sessions (see order_index).
+        order_by="(LiftingSet.order_index, LiftingSet.created_at, LiftingSet.id)",
     )
     linked_activity: Mapped["Activity | None"] = relationship(
         back_populates="lifting_session"
@@ -112,6 +115,14 @@ class LiftingSet(Base):
     )
     exercise_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     set_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Explicit performance order within the session. Previously the relationship
+    # ordered by ``created_at``, which cannot express it: Postgres ``now()`` is
+    # the *transaction* timestamp, so every set inserted by one
+    # ``create_session`` call shares a value and the order is whatever the
+    # database happens to return. ``order_index`` is the authoritative order;
+    # ``created_at`` and ``id`` remain as tiebreaks for rows still null.
+    # Nullable so the column can be added without a blocking backfill.
+    order_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
     reps: Mapped[int] = mapped_column(Integer, nullable=False)
     rpe: Mapped[float | None] = mapped_column(Float, nullable=True)

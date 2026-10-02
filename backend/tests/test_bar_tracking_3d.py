@@ -7,9 +7,8 @@ the expected numbers are exact rather than golden-file approximations.
 
 from typing import ClassVar
 
+import numpy as np
 import pytest
-
-np = pytest.importorskip("numpy")
 
 from app.integrations import bar_tracking_3d as b3
 
