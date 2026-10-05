@@ -8,8 +8,6 @@ import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
   PersonalRecord,
-  VolumeTrendPoint,
-  VolumeTrendResponse,
   CreateSessionPayload,
   UpdateSessionPayload,
   CreatePRPayload,
@@ -20,6 +18,7 @@ import type {
   LiftVideo,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
@@ -40,6 +39,8 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
+import type { LucideIcon } from 'lucide-react';
+import { Dumbbell, ChartColumn, TrendingUp, Timer } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,17 +58,6 @@ function formatSessionTimeRange(startedAt?: string | null, endedAt?: string | nu
       : null);
   if (duration && duration > 0) range += ` · ${formatDuration(duration)}`;
   return range;
-}
-
-function buildVolumeChart(volumeData: VolumeTrendPoint[]): ChartData {
-  return {
-    chart_type: 'bar' as const,
-    title: 'Volume Trend (12 weeks)',
-    labels: volumeData.map((d) => d.week_start),
-    x_label: 'Week',
-    y_label: 'Volume (kg)',
-    series: [{ name: 'Total Volume', data: volumeData.map((d) => d.total_volume_kg) }],
-  };
 }
 
 /** Group lifting sets by exercise name, preserving order of first appearance. */
@@ -130,6 +120,15 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
+type LiftingTab = 'sessions' | 'analytics' | 'prs' | 'templates';
+
+const TABS: { value: LiftingTab; label: string; icon: LucideIcon }[] = [
+  { value: 'sessions', label: 'Sessions', icon: Dumbbell },
+  { value: 'analytics', label: 'Analytics', icon: ChartColumn },
+  { value: 'prs', label: 'PRs', icon: TrendingUp },
+  { value: 'templates', label: 'Templates', icon: Timer },
+];
+
 export default function LiftingPage() {
   usePageTitle('Lifting');
   const { authFetch, token } = useAuthFetch();
@@ -142,14 +141,40 @@ export default function LiftingPage() {
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [showManualPR, setShowManualPR] = useState(false);
   const [showAccessories, setShowAccessories] = useState(false);
+  const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
+  // selectedPRId is used for deep-link highlighting in Phase 4 (PR tab)
+  void selectedPRId;
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
 
-  // Deep-link: select the session referenced by ?session=<id> on load
+  // Tab URL state — syncs with `?tab=<name>` for deep-linking
+  const [activeTab, setActiveTab] = useState<LiftingTab>('sessions');
+
+  // Deep-link: read tab + session/PR from URL on mount
   useEffect(() => {
-    const id = getParam('session');
-    if (id) setSelectedSessionId((prev) => (prev === id ? prev : id));
+    const tab = getParam('tab') as LiftingTab | null;
+    if (tab && TABS.some((t) => t.value === tab)) {
+      setActiveTab(tab);
+    }
+    const sessionId = getParam('session');
+    if (sessionId) {
+      setSelectedSessionId((prev) => (prev === sessionId ? prev : sessionId));
+      if (tab !== 'sessions') setActiveTab('sessions');
+    }
+    const prId = getParam('pr');
+    if (prId) {
+      setSelectedPRId(prId);
+      setActiveTab('prs');
+    }
   }, [getParam]);
+
+  const handleTabChange = useCallback(
+    (tab: LiftingTab) => {
+      setActiveTab(tab);
+      setParam('tab', tab);
+    },
+    [setParam],
+  );
 
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -329,14 +354,6 @@ export default function LiftingPage() {
     previousPRsRef.current = currentMap;
   }, [personalRecords]);
 
-  const { data: volumeResponse, isLoading: volumeLoading } = useQuery<VolumeTrendResponse>({
-    queryKey: ['lifting-volume'],
-    queryFn: () => authFetch<VolumeTrendResponse>('/api/v1/lifting/volume-trends?weeks=12'),
-    enabled: !!token,
-    staleTime: 300_000,  // 5 min — volume trends are expensive
-  });
-  const volumeData = volumeResponse?.data;
-
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Whoop-mismatch banner snooze (2.7) — 7 days, localStorage.
@@ -457,8 +474,6 @@ export default function LiftingPage() {
     onError: (err: Error) => setActionError(err.message || 'Failed to create PR'),
   });
 
-  const volumeChart = volumeData ? buildVolumeChart(volumeData) : null;
-
   // Compute exercise groups for detail view
   const exerciseGroups = sessionDetail?.sets ? groupSetsByExercise(sessionDetail.sets) : new Map();
 
@@ -504,6 +519,18 @@ export default function LiftingPage() {
           </>
         }
       />
+
+      {/* Tab bar */}
+      <SegmentedControl
+        ariaLabel="Lifting page sections"
+        value={activeTab}
+        onChange={handleTabChange}
+        options={TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon }))}
+      />
+
+      {/* ── Sessions Tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'sessions' && (
+        <div className="space-y-6">
 
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
@@ -914,9 +941,15 @@ export default function LiftingPage() {
           )}
         </div>
       </div>
+        </div>
+      )}
 
-      {/* Warmup Templates */}
-      <WarmupTemplateManager />
+      {/* ── Templates Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'templates' && <WarmupTemplateManager />}
+
+      {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'prs' && (
+        <div className="space-y-6">
 
       {/* Personal Records */}
       <Card>
@@ -1069,17 +1102,12 @@ export default function LiftingPage() {
 
       {/* Weakness / Deficiency Analysis */}
       <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
+        </div>
+      )}
 
-      {/* Volume Trend */}
-      <Card>
-        <CardHeader><CardTitle>Volume Trend</CardTitle></CardHeader>
-        <ChartBody
-          isLoading={volumeLoading}
-          data={volumeChart}
-          emptyMessage="No volume data available"
-          height={320}
-        />
-      </Card>
+      {/* ── Analytics Tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6">
 
       {/* Strength Balance */}
       <Card>
@@ -1094,7 +1122,7 @@ export default function LiftingPage() {
 
       {/* Weekly Volume — backend attaches an injury-risk insight on spikes */}
       <Card>
-        <CardHeader><CardTitle>Weekly Volume (16 weeks)</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Weekly Volume</CardTitle></CardHeader>
         <ChartBody
           isLoading={weeklyVolumeLoading}
           data={weeklyVolumeChart}
@@ -1131,6 +1159,8 @@ export default function LiftingPage() {
 
       {/* Exercise Progress */}
       <ExerciseProgressSection sessions={sessions} />
+        </div>
+      )}
 
       {/* Link Activity Modal */}
       {linkModalSessionId && (

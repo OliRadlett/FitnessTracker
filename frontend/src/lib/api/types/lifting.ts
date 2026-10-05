@@ -212,6 +212,10 @@ export interface LiftingSet {
   session_id: string;
   exercise_name: string;
   set_number: number;
+  /** Explicit ordering within the session (migration 093). Nullable so rows
+   *  predating the migration read back as null. Use with `order_index` for
+   *  deterministic set display and drag-drop reordering. */
+  order_index?: number | null;
   weight_kg: number;
   reps: number;
   rpe?: number;
