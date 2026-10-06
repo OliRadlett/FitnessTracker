@@ -27,7 +27,7 @@
 |----|--------|----------|-----|
 | SCI-02 | Re-linking the **same** `event_id` re-applies the taper ramp, compounding the reduction | `services/training_plan.py:513` sets `plan.event_id` and tapers with no repeated-event guard | Early-return when `plan.event_id == event_id` |
 | SCI-07 | FRIEND VO2max formula duplicated inline instead of shared | `services/cycling/vo2max.py:28` (`_friend_vo2max`) vs `integrations/power_models.py:464-479` | Import the shared helper in `power_models.py` |
-| RMI-08 | Cross-domain insights are appended, never upserted → duplicates accumulate per run | `tasks/scheduler.py:2660-2667` | Unique constraint on `(user, insight_type)` + `on_conflict_do_update` |
+| ✅ RMI-08 | Cross-domain insights are appended, never upserted → duplicates accumulate per run | `tasks/scheduler.py:2779-2789` | **Fixed** on branch `fix/cross-domain-insight-upsert`: migration 097 dedups existing rows (keep newest per `user_id, insight_type`) and adds `uq_cross_domain_insight_user_type`; scheduler upserts via `pg_insert().on_conflict_do_update()`. Option A: constraint covers all three insight types (latest-wins for `race_retrospective`, matching every reader). |
 | RMI-12 | `w_prime` bound is too loose (1–100 kJ) to be physiologically meaningful | `integrations/power_models.py:328` | Tighten to 5–40 kJ |
 | SYNC-11 | Wahoo route sync reports `merged_count` without ever incrementing it | `services/wahoo.py:403/517/526` | Increment when `create_or_merge_route` merges |
 | SYNC-12 | Whoop weigh-ins dated with server/UTC `date.today()` | `services/whoop.py:1295` | Convert to the user-local date |

@@ -2562,6 +2562,7 @@ def analyze_cross_domain_weekly() -> dict:
     from datetime import datetime, timedelta
 
     from sqlalchemy import select
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.database import task_session
     from app.models.activity import Activity
@@ -2776,14 +2777,34 @@ def analyze_cross_domain_weekly() -> dict:
                             if not data_quality.get("sufficient", False):
                                 continue
 
-                        insight = CrossDomainInsight(
-                            user_id=uid,
-                            insight_type=insight_type,
-                            results=insight_data,
-                            insights=insight_data.get("insights", []),
-                            data_quality=data_quality,
+                        # Upsert keyed on (user_id, insight_type): update the
+                        # existing row in place instead of blind-inserting a new
+                        # one every weekly run (RMI-08). Migration 097's unique
+                        # constraint ``uq_cross_domain_insight_user_type`` is the
+                        # ON CONFLICT target; the scheduler's Python-side event_id
+                        # check in _build_race_retrospective_args stays only as a
+                        # perf optimisation (it skips the Modal call for an
+                        # already-stored event) — uniqueness is now enforced by
+                        # the DB.
+                        stmt = (
+                            pg_insert(CrossDomainInsight)
+                            .values(
+                                user_id=uid,
+                                insight_type=insight_type,
+                                results=insight_data,
+                                insights=insight_data.get("insights", []),
+                                data_quality=data_quality,
+                            )
+                            .on_conflict_do_update(
+                                index_elements=["user_id", "insight_type"],
+                                set_={
+                                    "results": insight_data,
+                                    "insights": insight_data.get("insights", []),
+                                    "data_quality": data_quality,
+                                },
+                            )
                         )
-                        db.add(insight)
+                        await db.execute(stmt)
 
                     analyzed_count += 1
                     await db.commit()
