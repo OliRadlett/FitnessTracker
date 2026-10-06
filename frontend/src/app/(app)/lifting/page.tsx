@@ -8,8 +8,6 @@ import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
   PersonalRecord,
-  VolumeTrendPoint,
-  VolumeTrendResponse,
   CreateSessionPayload,
   UpdateSessionPayload,
   CreatePRPayload,
@@ -18,8 +16,18 @@ import type {
   LiftingAnalysis,
   DeficiencyResponse,
   LiftVideo,
+  CyclingProfile,
 } from '@/lib/api';
+import {
+  LEVEL_ORDER,
+  levelForRatio,
+  nextLevelTarget,
+  ratioToBodyweight,
+  standardKeyFor,
+  type StandardLevel,
+} from '@/lib/lifting/standards';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
@@ -32,6 +40,15 @@ import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
+import { SessionCardMini } from '@/components/lifting/SessionCardMini';
+import { SetsVisualizer } from '@/components/lifting/SetsVisualizer';
+import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
+import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
+import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
+import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
+import { RepRangeCard } from '@/components/lifting/RepRangeCard';
+import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
+import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
 import { useForecastChart } from '@/lib/projection';
@@ -40,6 +57,8 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
+import type { LucideIcon } from 'lucide-react';
+import { Dumbbell, ChartColumn, TrendingUp, Timer, Zap, Link2, Clock, TriangleAlert } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,17 +76,6 @@ function formatSessionTimeRange(startedAt?: string | null, endedAt?: string | nu
       : null);
   if (duration && duration > 0) range += ` · ${formatDuration(duration)}`;
   return range;
-}
-
-function buildVolumeChart(volumeData: VolumeTrendPoint[]): ChartData {
-  return {
-    chart_type: 'bar' as const,
-    title: 'Volume Trend (12 weeks)',
-    labels: volumeData.map((d) => d.week_start),
-    x_label: 'Week',
-    y_label: 'Volume (kg)',
-    series: [{ name: 'Total Volume', data: volumeData.map((d) => d.total_volume_kg) }],
-  };
 }
 
 /** Group lifting sets by exercise name, preserving order of first appearance. */
@@ -130,6 +138,15 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
+type LiftingTab = 'sessions' | 'analytics' | 'prs' | 'templates';
+
+const TABS: { value: LiftingTab; label: string; icon: LucideIcon }[] = [
+  { value: 'sessions', label: 'Sessions', icon: Dumbbell },
+  { value: 'analytics', label: 'Analytics', icon: ChartColumn },
+  { value: 'prs', label: 'PRs', icon: TrendingUp },
+  { value: 'templates', label: 'Templates', icon: Timer },
+];
+
 export default function LiftingPage() {
   usePageTitle('Lifting');
   const { authFetch, token } = useAuthFetch();
@@ -142,14 +159,38 @@ export default function LiftingPage() {
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [showManualPR, setShowManualPR] = useState(false);
   const [showAccessories, setShowAccessories] = useState(false);
+  const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
 
-  // Deep-link: select the session referenced by ?session=<id> on load
+  // Tab URL state — syncs with `?tab=<name>` for deep-linking
+  const [activeTab, setActiveTab] = useState<LiftingTab>('sessions');
+
+  // Deep-link: read tab + session/PR from URL on mount
   useEffect(() => {
-    const id = getParam('session');
-    if (id) setSelectedSessionId((prev) => (prev === id ? prev : id));
+    const tab = getParam('tab') as LiftingTab | null;
+    if (tab && TABS.some((t) => t.value === tab)) {
+      setActiveTab(tab);
+    }
+    const sessionId = getParam('session');
+    if (sessionId) {
+      setSelectedSessionId((prev) => (prev === sessionId ? prev : sessionId));
+      if (tab !== 'sessions') setActiveTab('sessions');
+    }
+    const prId = getParam('pr');
+    if (prId) {
+      setSelectedPRId(prId);
+      setActiveTab('prs');
+    }
   }, [getParam]);
+
+  const handleTabChange = useCallback(
+    (tab: LiftingTab) => {
+      setActiveTab(tab);
+      setParam('tab', tab);
+    },
+    [setParam],
+  );
 
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -175,6 +216,20 @@ export default function LiftingPage() {
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const { data: big3TotalChart, isLoading: big3TotalLoading } = useQuery<ChartData>({
+    queryKey: ['chart-big-3-total'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/big_3_total'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const { data: volIntChart, isLoading: volIntLoading } = useQuery<ChartData>({
+    queryKey: ['chart-volume-intensity'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/volume_intensity_periodization?weeks=26'),
     enabled: !!token,
     staleTime: 300_000,
   });
@@ -221,6 +276,14 @@ export default function LiftingPage() {
     queryFn: () => authFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${selectedSessionId}/analysis`),
     enabled: !!selectedSessionId && !!token,
   });
+
+  const { data: cyclingProfile } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+  const bodyweightKg = cyclingProfile?.weight_kg ?? null;
 
   const { data: personalRecords, isLoading: prLoading } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
@@ -276,6 +339,20 @@ export default function LiftingPage() {
     setVideoGalleryOpen(true);
   }
 
+  // PRs achieved per session (for card-level PR badges)
+  const prsBySession = useMemo(() => {
+    const map = new Map<string, PersonalRecord[]>();
+    for (const pr of personalRecords ?? []) {
+      if (pr.session_id) {
+        const key = pr.session_id.toString();
+        const arr = map.get(key) ?? [];
+        arr.push(pr);
+        map.set(key, arr);
+      }
+    }
+    return map;
+  }, [personalRecords]);
+
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
     queryKey: ['deficiency'],
     queryFn: () => authFetch<DeficiencyResponse>('/api/v1/deficiency?weeks=8'),
@@ -328,14 +405,6 @@ export default function LiftingPage() {
 
     previousPRsRef.current = currentMap;
   }, [personalRecords]);
-
-  const { data: volumeResponse, isLoading: volumeLoading } = useQuery<VolumeTrendResponse>({
-    queryKey: ['lifting-volume'],
-    queryFn: () => authFetch<VolumeTrendResponse>('/api/v1/lifting/volume-trends?weeks=12'),
-    enabled: !!token,
-    staleTime: 300_000,  // 5 min — volume trends are expensive
-  });
-  const volumeData = volumeResponse?.data;
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -457,10 +526,20 @@ export default function LiftingPage() {
     onError: (err: Error) => setActionError(err.message || 'Failed to create PR'),
   });
 
-  const volumeChart = volumeData ? buildVolumeChart(volumeData) : null;
-
   // Compute exercise groups for detail view
   const exerciseGroups = sessionDetail?.sets ? groupSetsByExercise(sessionDetail.sets) : new Map();
+
+  // Best stored 1RM per exercise — basis for the set-review % markers.
+  const e1rmByExercise = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const pr of personalRecords ?? []) {
+      if (pr.record_type !== '1rm' || pr.estimated_1rm == null) continue;
+      if (pr.estimated_1rm > (map.get(pr.exercise_name) ?? 0)) {
+        map.set(pr.exercise_name, pr.estimated_1rm);
+      }
+    }
+    return map;
+  }, [personalRecords]);
 
   return (
     <div className="space-y-6">
@@ -493,7 +572,11 @@ export default function LiftingPage() {
               className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
               title="Auto-link Strava strength activities to lifting sessions"
             >
-              {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
+              {backfillMutation.isPending ? 'Linking...' : (
+                <span className="inline-flex items-center gap-1.5">
+                  <Link2 className="w-4 h-4" aria-hidden />Auto-Link Strava
+                </span>
+              )}
             </button>
             <button
               onClick={() => setShowNewSession(!showNewSession)}
@@ -505,10 +588,27 @@ export default function LiftingPage() {
         }
       />
 
+      {/* Tab bar */}
+      <SegmentedControl
+        ariaLabel="Lifting page sections"
+        value={activeTab}
+        onChange={handleTabChange}
+        options={TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon }))}
+      />
+
+      {/* ── Sessions Tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'sessions' && (
+        <div className="space-y-6">
+
+      {/* Today's planned strength day (active plan) */}
+      <TodayStrengthDayCard />
+
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
         <div>
-          <p className="text-foreground font-semibold">⚡ Track a session live</p>
+          <p className="text-foreground font-semibold inline-flex items-center gap-1.5">
+            <Zap className="w-4 h-4" aria-hidden />Track a session live
+          </p>
           <p className="text-sm text-muted">
             Log sets as you lift — one tap per set, works offline, Whoop strain attaches automatically.
           </p>
@@ -651,57 +751,29 @@ export default function LiftingPage() {
               <SkeletonRow key={i} />
             ))
           ) : sessions && sessions.length > 0 ? (
-            sessions.map((session) => (
-              <Card
+            sessions.map((session) => {
+              const sv = videoBySession.get(session.id);
+              const prsInSession = prsBySession.get(session.id);
+              return (
+              <SessionCardMini
                 key={session.id}
-                onClick={() => { handleSelectSession(selectedSessionId === session.id ? null : session.id); setShowAddExercise(false); }}
-                className={selectedSessionId === session.id ? 'border-accent/50' : ''}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                 <div className="flex items-center gap-2">
-                       <p className="text-sm font-medium text-foreground">{session.focus || 'General Session'}</p>
-                       {session.linked_activity && (
-                         <span className="text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded font-medium">Strava</span>
-                       )}
-                       {(() => {
-                         const sv = videoBySession.get(session.id);
-                         if (!sv || sv.length === 0) return null;
-                         return (
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               openVideoGallery(sv, `${session.focus || 'Session'} videos`);
-                             }}
-                             title={`${sv.length} video${sv.length !== 1 ? 's' : ''}`}
-                           >
-                             <VideoChip count={sv.length} />
-                           </button>
-                         );
-                       })()}
-                     </div>
-                    <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString(getActiveLocale())}</p>
-                    {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds) && (
-                      <p className="text-xs text-muted">
-                        🕐 {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-purple-400">{session.sets?.length ?? 0} sets</p>
-                    {session.total_volume_kg !== undefined && (
-                      <p className="text-xs text-muted">{session.total_volume_kg.toLocaleString()} kg</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))
+                session={session}
+                isSelected={selectedSessionId === session.id}
+                onSelect={(id) => { handleSelectSession(id); setShowAddExercise(false); }}
+                videos={sv}
+                sessionPRs={prsInSession}
+                onAddSet={(s) => { handleSelectSession(s.id); setShowAddExercise(true); }}
+                onEdit={(s) => { handleSelectSession(s.id); setShowEditSession(true); }}
+                onDelete={(s) => { handleSelectSession(s.id); setConfirmDeleteSession(true); }}
+              />
+            );
+          })
           ) : (
             <EmptyState
               icon="🏋️"
               title="No lifting sessions recorded"
               description="Create your first session above, or jump straight into the Live Lift tracker to start logging sets in real time."
-              action={{ label: '⚡ Start Live Session', href: '/lifting/live' }}
+              action={{ label: 'Start Live Session', href: '/lifting/live' }}
             />
           )}
           </div>
@@ -716,11 +788,20 @@ export default function LiftingPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>{sessionDetail.focus || 'Session Detail'}</CardTitle>
-                    <p className="text-sm text-muted mt-1">
-                      {new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}
-                      {formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds) &&
-                        ` · 🕐 ${formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds)}`}
-                      {sessionDetail.notes && ` · ${sessionDetail.notes}`}
+                    <p className="text-sm text-muted mt-1 flex items-center gap-1 flex-wrap">
+                      <span>{new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}</span>
+                      {(() => {
+                        const range = formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds);
+                        if (!range) return null;
+                        return (
+                          <span className="inline-flex items-center gap-1">
+                            <span aria-hidden="true">·</span>
+                            <Clock className="w-3.5 h-3.5" aria-hidden />
+                            {range}
+                          </span>
+                        );
+                      })()}
+                      {sessionDetail.notes && <span>· {sessionDetail.notes}</span>}
                     </p>
                     {sessionDetail.ai_tags && (
                       <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -746,7 +827,8 @@ export default function LiftingPage() {
                               className="text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning"
                               title="Jev detected a pain/injury mention in the notes"
                             >
-                              ⚠️ pain mention
+                              <TriangleAlert className="w-3 h-3 inline mr-0.5" aria-hidden />
+                              pain mention
                             </span>
                           )}
                         {typeof sessionDetail.ai_tags.high_fatigue === 'number' &&
@@ -862,7 +944,7 @@ export default function LiftingPage() {
                     onClick={() => setLinkModalSessionId(selectedSessionId)}
                     className="text-sm text-accent hover:text-accent-hover transition-colors flex items-center gap-1"
                   >
-                    <span>🔗</span> Link Strava activity
+                    <Link2 className="w-4 h-4" aria-hidden /> Link Strava activity
                   </button>
                 </div>
               )}
@@ -897,6 +979,13 @@ export default function LiftingPage() {
               )}
             </Card>
 
+            {/* Set review — read-only viz layer, separate from logging/editing */}
+            {sessionDetail.sets && sessionDetail.sets.length > 0 && (
+              <div className="mt-6">
+                <SetsVisualizer sets={sessionDetail.sets} e1rmByExercise={e1rmByExercise} />
+              </div>
+            )}
+
             {/* Static Session Analysis */}
             {sessionAnalysis && (
               <div className="mt-6">
@@ -908,15 +997,35 @@ export default function LiftingPage() {
             <div className="mt-6">
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
             </div>
+
+            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
+            <div className="mt-6">
+              <QuickAddSetBar session={sessionDetail} />
+            </div>
             </div>
           ) : (
             <Card><p className="text-muted text-center py-12">Select a session to view details</p></Card>
           )}
         </div>
       </div>
+        </div>
+      )}
 
-      {/* Warmup Templates */}
-      <WarmupTemplateManager />
+      {/* ── Templates Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'templates' && <WarmupTemplateManager />}
+
+      {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'prs' && (
+        <div className="space-y-6">
+          <DotsScoreCard
+            personalRecords={personalRecords}
+            bodyweightKg={bodyweightKg}
+            isLoading={prLoading}
+          />
+          <DotsProgressionCard
+            totalChart={big3TotalChart}
+            isLoading={big3TotalLoading}
+          />
 
       {/* Personal Records */}
       <Card>
@@ -963,10 +1072,47 @@ export default function LiftingPage() {
           compoundPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
           accessoryPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
 
+          const LEVEL_COLORS: Record<StandardLevel, string> = {
+            beginner: 'text-muted',
+            intermediate: 'text-blue-400',
+            advanced: 'text-purple-400',
+            elite: 'text-positive',
+          };
+
           function PRCard({ pr }: { pr: PersonalRecord }) {
+            const standardKey = standardKeyFor(pr.exercise_name);
+            const bwRatio =
+              standardKey != null
+                ? ratioToBodyweight(pr.estimated_1rm, bodyweightKg)
+                : null;
+            const isDeepLinked = selectedPRId != null && pr.id === selectedPRId;
             return (
-              <div className="p-4 bg-surface-light/30 rounded-lg">
+              <div
+                className={`p-4 bg-surface-light/30 rounded-lg ${isDeepLinked ? 'ring-2 ring-accent' : ''}`}
+                ref={isDeepLinked ? (el) => el?.scrollIntoView({ block: 'center' }) : undefined}
+              >
                 <p className="text-sm font-medium text-foreground mb-2">{pr.exercise_name}</p>
+                {standardKey != null && bwRatio != null && bodyweightKg != null && (() => {
+                  const level = levelForRatio(standardKey, bwRatio);
+                  const next = nextLevelTarget(standardKey, level);
+                  const nextName =
+                    next != null ? LEVEL_ORDER[LEVEL_ORDER.indexOf(level) + 1] : null;
+                  return (
+                    <div className="flex items-center justify-center gap-1.5 mb-2 flex-wrap">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium bg-surface-light ${LEVEL_COLORS[level]}`}
+                        title={`Estimated 1RM is ${bwRatio.toFixed(2)}× bodyweight (${bodyweightKg.toFixed(0)} kg)`}
+                      >
+                        {level.charAt(0).toUpperCase() + level.slice(1)} · {bwRatio.toFixed(2)}× BW
+                      </span>
+                      {next != null && nextName != null && (
+                        <span className="text-[11px] text-muted">
+                          → {Math.round(next * bodyweightKg)} kg {nextName}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
@@ -1009,6 +1155,18 @@ export default function LiftingPage() {
                   >
                     View activity →
                   </Link>
+                )}
+                {pr.session_id && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectSession(pr.session_id as string);
+                      handleTabChange('sessions');
+                    }}
+                    className="mt-1 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
+                  >
+                    View session →
+                  </button>
                 )}
               </div>
             );
@@ -1068,18 +1226,44 @@ export default function LiftingPage() {
       </Card>
 
       {/* Weakness / Deficiency Analysis */}
-      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
+      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} category="lifting" />
+        </div>
+      )}
 
-      {/* Volume Trend */}
+      {/* ── Analytics Tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6">
+
+      {/* Featured: unified cycling + lifting load */}
+      <CombinedLoadChart />
+
+      {/* Big-3 Total progression */}
       <Card>
-        <CardHeader><CardTitle>Volume Trend</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Big-3 Total</CardTitle></CardHeader>
         <ChartBody
-          isLoading={volumeLoading}
-          data={volumeChart}
-          emptyMessage="No volume data available"
-          height={320}
+          isLoading={big3TotalLoading}
+          data={big3TotalChart}
+          emptyMessage="Log 1RM PRs on squat, bench, and deadlift to track your total"
+          height={280}
         />
       </Card>
+
+      {/* Rep-range mix (overview + per-exercise) */}
+      <RepRangeCard />
+
+      {/* Volume × Intensity periodization */}
+      <Card>
+        <CardHeader><CardTitle>Volume × Intensity</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={volIntLoading}
+          data={volIntChart}
+          emptyMessage="Log working sets to see volume and intensity trends"
+          height={280}
+        />
+      </Card>
+
+      {/* RPE drift (actual vs planned) */}
+      <RpeDriftCard />
 
       {/* Strength Balance */}
       <Card>
@@ -1094,7 +1278,7 @@ export default function LiftingPage() {
 
       {/* Weekly Volume — backend attaches an injury-risk insight on spikes */}
       <Card>
-        <CardHeader><CardTitle>Weekly Volume (16 weeks)</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Weekly Volume</CardTitle></CardHeader>
         <ChartBody
           isLoading={weeklyVolumeLoading}
           data={weeklyVolumeChart}
@@ -1131,6 +1315,8 @@ export default function LiftingPage() {
 
       {/* Exercise Progress */}
       <ExerciseProgressSection sessions={sessions} />
+        </div>
+      )}
 
       {/* Link Activity Modal */}
       {linkModalSessionId && (

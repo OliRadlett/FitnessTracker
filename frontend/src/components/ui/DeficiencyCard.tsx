@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import type { DeficiencyResponse, WeaknessItem, DeficiencySeverity } from '@/lib/api';
+import type { DeficiencyCategory, DeficiencyResponse, DeficiencySummary, WeaknessItem, DeficiencySeverity } from '@/lib/api';
+import { Bike, Dumbbell, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function WeaknessRow({ item }: { item: WeaknessItem }) {
   );
 }
 
-function CategoryGroup({ title, icon, items }: { title: string; icon: string; items: WeaknessItem[] }) {
+function CategoryGroup({ title, icon, items }: { title: string; icon: React.ReactNode; items: WeaknessItem[] }) {
   if (items.length === 0) return null;
   return (
     <div>
@@ -147,28 +148,44 @@ function CategoryGroup({ title, icon, items }: { title: string; icon: string; it
 interface DeficiencyCardProps {
   data?: DeficiencyResponse;
   isLoading?: boolean;
+  /** Narrow to one domain (e.g. the lifting PRs tab shows lifting only). Summary counts are recomputed over the filtered set. */
+  category?: DeficiencyCategory;
 }
 
-export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
+function summarize(items: WeaknessItem[]): DeficiencySummary {
+  const count = (s: DeficiencySeverity) => items.filter((w) => w.severity === s).length;
+  return {
+    total_weaknesses: items.filter((w) => w.severity !== 'strength').length,
+    critical: count('critical'),
+    high: count('high'),
+    medium: count('medium'),
+    low: count('low'),
+    strengths: count('strength'),
+  };
+}
+
+export function DeficiencyCard({ data, isLoading, category }: DeficiencyCardProps) {
   const [showMinor, setShowMinor] = useState(false);
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle>🎯 Weakness Analysis</CardTitle></CardHeader>
+        <CardHeader><CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle></CardHeader>
         <SkeletonRow className="h-24" />
       </Card>
     );
   }
 
-  const weaknesses = data?.weaknesses ?? [];
-  const summary = data?.summary;
+  const weaknesses = (data?.weaknesses ?? []).filter(
+    (w) => category === undefined || w.category === category,
+  );
+  const summary = category === undefined ? data?.summary : summarize(weaknesses);
 
   // No analysis at all → balanced state
   if (!data || weaknesses.length === 0) {
     return (
       <Card>
-        <CardHeader><CardTitle>🎯 Weakness Analysis</CardTitle></CardHeader>
+        <CardHeader><CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle></CardHeader>
         <div className="flex items-center gap-3 py-6 justify-center">
           <span className="h-8 w-8 rounded-full bg-positive/20 flex items-center justify-center shrink-0" aria-hidden="true">
             <svg className="h-5 w-5 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
@@ -200,7 +217,7 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <CardTitle>🎯 Weakness Analysis</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle>
           {summary && (summary.total_weaknesses > 0 || summary.strengths > 0) && (
             <div className="flex items-center gap-1.5 flex-wrap">
               {hasCritical && (
@@ -226,8 +243,8 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
         </div>
       ) : (
         <div className="space-y-5">
-          <CategoryGroup title="Strength Training" icon="🏋️" items={visibleLifting} />
-          <CategoryGroup title="Cycling" icon="🚴" items={visibleCycling} />
+          <CategoryGroup title="Strength Training" icon={<Dumbbell className="w-3.5 h-3.5" aria-hidden />} items={visibleLifting} />
+          <CategoryGroup title="Cycling" icon={<Bike className="w-3.5 h-3.5" aria-hidden />} items={visibleCycling} />
 
           {minor.length > 0 && (
             <button

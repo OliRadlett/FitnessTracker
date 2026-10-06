@@ -94,6 +94,20 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "consistency_heatmap": {"method": "consistency_heatmap", "params": ["days"]},
     "sleep_consistency": {"method": "sleep_consistency", "params": ["days"]},
     "strength_balance": {"method": "strength_balance", "params": []},
+    "big_3_total": {"method": "big_3_total", "params": []},
+    "rep_range_distribution": {
+        "method": "rep_range_distribution",
+        "params": ["exercise_name", "weeks"],
+    },
+    "volume_intensity_periodization": {
+        "method": "volume_intensity_periodization",
+        "params": ["weeks"],
+    },
+    "rpe_drift": {
+        "method": "rpe_drift",
+        "params": ["exercise_name", "weeks"],
+        "required": ["exercise_name"],
+    },
     # Lifting-video trends (B-26)
     "video_form_trend": {"method": "video_form_trend", "params": ["days", "exercise_name"]},
     "video_velocity_trend": {

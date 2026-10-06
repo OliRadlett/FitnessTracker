@@ -129,6 +129,251 @@ class TestNewCharts:
         resp = await client.get("/api/v1/charts/strength_balance")
         assert resp.status_code == 200
 
+    async def test_big_3_total_empty(self, client):
+        resp = await client.get("/api/v1/charts/big_3_total")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+        assert data["labels"] == []
+        assert data["series"] == []
+
+    async def test_big_3_total_progression(
+        self, client, db_session, test_user
+    ):
+        """Cumulative bests per lift plus running total across PR dates."""
+        from app.models.lifting import PersonalRecord
+
+        async def seed(name: str, e1rm: float, days_ago: int) -> None:
+            db_session.add(
+                PersonalRecord(
+                    user_id=test_user.id,
+                    exercise_name=name,
+                    record_type="1rm",
+                    weight_kg=e1rm,
+                    reps=1,
+                    estimated_1rm=e1rm,
+                    achieved_date=date.today() - timedelta(days=days_ago),
+                )
+            )
+
+        await seed("Back Squat", 150.0, 30)
+        await seed("Bench Press", 100.0, 20)
+        await seed("Deadlift", 180.0, 10)
+        await seed("Back Squat", 160.0, 5)
+        await seed("Barbell Curl", 60.0, 5)  # not a Big-3 lift: ignored
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/charts/big_3_total")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [s["name"] for s in data["series"]] == [
+            "Squat",
+            "Bench Press",
+            "Deadlift",
+            "Total",
+        ]
+        assert len(data["labels"]) == 4
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        # Bench/Deadlift read as gaps until their first PR.
+        assert by_name["Bench Press"][0] is None
+        assert by_name["Deadlift"][0] is None
+        assert by_name["Deadlift"][1] is None
+        # Running totals: 150 → 250 → 430 → 440.
+        assert by_name["Total"] == [150.0, 250.0, 430.0, 440.0]
+        assert by_name["Squat"][-1] == 160.0
+
+    async def _seed_rep_sets(self, db_session, test_user) -> None:
+        """Bench 2×3 + 2×5 + 1×10 (+1 warmup, excluded); Squat 1×3."""
+        from app.models.lifting import LiftingSession, LiftingSet
+
+        session = LiftingSession(
+            user_id=test_user.id,
+            session_date=date.today() - timedelta(days=5),
+            focus="test",
+        )
+        db_session.add(session)
+        await db_session.flush()
+        rows = [
+            ("Bench Press", 1, 100.0, 3, False),
+            ("Bench Press", 2, 100.0, 3, False),
+            ("Bench Press", 3, 80.0, 5, False),
+            ("Bench Press", 4, 80.0, 5, False),
+            ("Bench Press", 5, 60.0, 10, False),
+            ("Bench Press", 6, 40.0, 5, True),  # warmup: excluded
+            ("Back Squat", 1, 120.0, 3, False),
+        ]
+        for name, num, weight, reps, warmup in rows:
+            db_session.add(
+                LiftingSet(
+                    session_id=session.id,
+                    exercise_name=name,
+                    set_number=num,
+                    weight_kg=weight,
+                    reps=reps,
+                    is_warmup=warmup,
+                )
+            )
+        await db_session.flush()
+
+    async def test_rep_range_overview(self, client, db_session, test_user):
+        await self._seed_rep_sets(db_session, test_user)
+        resp = await client.get("/api/v1/charts/rep_range_distribution")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["labels"] == ["Bench Press", "Back Squat"]
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        assert by_name["Strength (1–3)"] == [2, 1]
+        assert by_name["Hypertrophy (4–6)"] == [2, 0]
+        assert by_name["Endurance (7+)"] == [1, 0]
+
+    async def test_rep_range_single_exercise(self, client, db_session, test_user):
+        await self._seed_rep_sets(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rep_range_distribution",
+            params={"exercise_name": "Bench Press"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["labels"] == ["Strength (1–3)", "Hypertrophy (4–6)", "Endurance (7+)"]
+        assert data["series"][0]["data"] == [2, 2, 1]
+
+    async def test_rep_range_empty(self, client):
+        resp = await client.get("/api/v1/charts/rep_range_distribution")
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
+    async def _seed_periodized_sets(self, db_session, test_user) -> None:
+        """Two weeks apart (always different Monday buckets): week A 1000kg @
+        90% avg intensity, week B 815kg @ ~93.7%."""
+        from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
+
+        for name, e1rm in (("Bench Press", 100.0), ("Back Squat", 150.0)):
+            db_session.add(
+                PersonalRecord(
+                    user_id=test_user.id,
+                    exercise_name=name,
+                    record_type="1rm",
+                    weight_kg=e1rm,
+                    reps=1,
+                    estimated_1rm=e1rm,
+                    achieved_date=date.today() - timedelta(days=60),
+                )
+            )
+        await db_session.flush()
+        weeks = [
+            (12, [("Bench Press", 80.0, 5), ("Back Squat", 120.0, 5)]),
+            (5, [("Bench Press", 85.0, 5), ("Back Squat", 130.0, 3)]),
+        ]
+        for days_ago, sets in weeks:
+            session = LiftingSession(
+                user_id=test_user.id,
+                session_date=date.today() - timedelta(days=days_ago),
+                focus="test",
+            )
+            db_session.add(session)
+            await db_session.flush()
+            for i, (name, weight, reps) in enumerate(sets, start=1):
+                db_session.add(
+                    LiftingSet(
+                        session_id=session.id,
+                        exercise_name=name,
+                        set_number=i,
+                        weight_kg=weight,
+                        reps=reps,
+                    )
+                )
+        await db_session.flush()
+
+    async def test_volume_intensity(self, client, db_session, test_user):
+        await self._seed_periodized_sets(db_session, test_user)
+        resp = await client.get("/api/v1/charts/volume_intensity_periodization")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["labels"]) == 2
+        by_name = {s["name"]: s for s in data["series"]}
+        assert by_name["Volume (kg)"]["data"] == [1000.0, 815.0]
+        assert by_name["Avg intensity (%1RM)"]["data"] == [90.0, 93.7]
+        assert by_name["Avg intensity (%1RM)"]["y_axis"] == "right"
+
+    async def test_volume_intensity_empty(self, client):
+        resp = await client.get("/api/v1/charts/volume_intensity_periodization")
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
+    async def _seed_rpe_drift(self, db_session, test_user) -> None:
+        """Plan target RPE 8 for Bench; sessions averaging 8.0 then 9.0."""
+        from app.models.lifting import LiftingSession, LiftingSet
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan = TrainingPlan(
+            user_id=test_user.id,
+            name="RPE Plan",
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=30),
+            plan_type="custom",
+            status="active",
+        )
+        db_session.add(plan)
+        await db_session.flush()
+        db_session.add(
+            TrainingPlanDay(
+                plan_id=plan.id,
+                day_date=date.today() - timedelta(days=10),
+                sport="strength",
+                planned_exercises=[
+                    {"exercise": "Bench Press", "sets": 3, "reps": 5, "target_rpe": 8}
+                ],
+            )
+        )
+        sessions = [
+            (8, [(80.0, 5, 8.0), (80.0, 5, 8.0)]),
+            (3, [(85.0, 5, 9.0)]),
+        ]
+        for days_ago, sets in sessions:
+            session = LiftingSession(
+                user_id=test_user.id,
+                session_date=date.today() - timedelta(days=days_ago),
+                focus="test",
+            )
+            db_session.add(session)
+            await db_session.flush()
+            for i, (weight, reps, rpe) in enumerate(sets, start=1):
+                db_session.add(
+                    LiftingSet(
+                        session_id=session.id,
+                        exercise_name="Bench Press",
+                        set_number=i,
+                        weight_kg=weight,
+                        reps=reps,
+                        rpe=rpe,
+                    )
+                )
+        await db_session.flush()
+
+    async def test_rpe_drift(self, client, db_session, test_user):
+        await self._seed_rpe_drift(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rpe_drift", params={"exercise_name": "Bench Press"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["labels"]) == 2
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        assert by_name["Actual RPE"] == [8.0, 9.0]
+        assert by_name["Target RPE"] == [8.0, 8.0]
+
+    async def test_rpe_drift_requires_exercise(self, client):
+        resp = await client.get("/api/v1/charts/rpe_drift")
+        assert resp.status_code == 422
+
+    async def test_rpe_drift_empty(self, client, db_session, test_user):
+        await self._seed_rpe_drift(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rpe_drift", params={"exercise_name": "Overhead Press"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200
