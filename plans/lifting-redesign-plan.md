@@ -258,23 +258,23 @@ Move `WarmupTemplateManager` to its own tab. Minor visual cleanup (replace emoji
 | # | Feature | Effort | Backend? | Description |
 |---|---------|--------|----------|-------------|
 | C1 | **Warm-up set calculator** | S | Pure frontend | Given a top working weight, auto-generate warm-up sets using Rippetoe 5×5 progression (45%, 55%, 65%, 75%, 85% of top set) with a "Copy to Live Lift" button |
-| C2 | **Rep range distribution chart** | M | Small chart method | Pie/bar showing sets in strength (1-3 reps), hypertrophy (4-6), endurance (7+) per exercise over a time window |
+| C2 | **Rep range distribution chart** | M | Small chart method | Pie/bar showing sets in strength (1-3 reps), hypertrophy (4-6), endurance (7+) per exercise over a time window → Phase 6 |
 | C3 | **Load balance chart** | M | Small chart method | Volume distribution across push/pull/legs or squat/bench/deadlift/accessory ratio over time |
 | C4 | **Training max tracking** | S | No | Track a separate "training max" (e.g. 90% of meet max) used for programming — visible in PRs tab alongside absolute PRs |
-| C5 | **Wilks/ICS score progression** | M | Wilks/ICS in chart service | Bodyweight-normalized total score timeline on PRs tab — the fairest comparison across time and bodyweight |
-| C6 | **Meet prep timeline** | M | Read-only from Events table | If a `lift` event exists in the future, show a countdown with a standard peak/taper schedule (3-week taper: volume ↓, intensity maintained) |
+| C5 | **Dots score progression** | M | Client-side join (Big-3 total + bodyweight history) | Bodyweight-normalized score timeline on PRs tab. Score card shipped (Dots, male formula); progression → Phase 6 |
+| C6 | **Meet prep timeline** | M | Read-only from Events table | ❌ CUT 2026-10-06: no meets → dead UI (compete bundle) |
 | C7 | **Exercise notes history** | S | No | Per-exercise note timeline in session detail — shows past notes for that exercise across all sessions |
 | C8 | **Injury risk composite score** | M | Aggregate existing data | Combine volume spikes (from `weekly_volume` insight), RPE escalation (from `session_analysis`), form deviations (from video analysis), and asymmetry metrics (bar path) into a single per-session score + tooltip breakdown |
 | C9 | **1RM / 5/3/1 program selector** | M | Pure frontend | Generate warm-up + working sets for standard programs (5×5, 5/3/1, Hepburn, Simple Jack'd) given a target e1RM and bodyweight |
 | C10 | **Video analysis on set rows** | M | Already has data | In session detail, show form score / velocity as inline badges on sets that have linked videos — click to open `Pose3D`/`VbtPanel` |
-| C11 | **Session PDF export** | M | Pattern exists (`export/event-report`) | Export a session (exercises, sets, RPE, analysis, notes, video links) as a shareable PDF |
-| C12 | **Attempt history / single-ply mode** | M | New endpoint or client-side filter | Show all sets for an exercise on a given day, sorted by time/weight — "competition mode" UI for meet prep |
+| C11 | **Session PDF export** | M | Pattern exists (`export/event-report`) | ❌ CUT 2026-10-06: user wants neither PDF nor clipboard sharing |
+| C12 | **Attempt history / single-ply mode** | M | New endpoint or client-side filter | ❌ CUT 2026-10-06: no meets → dead UI (compete bundle). Shipped "View session →" links cover the casual case |
 | C13 | **Recovery-adjusted loading** | M | No (uses existing whoop_strain + ai_tags + health data) | If Whoop recovery < 60% or Jev tags indicate `high_fatigue`/`pain_injury`, suggest RPE reduction or load deload — shown on Today's Strength Day card + session cards |
 | C14 | **Exercise substitution engine** | M | Read ai_tags + exercise_db | If `ai_tags.pain_injury` or user notes flag an exercise, suggest biomechanically similar alternatives (e.g., low-bar → high-bar squat, barbell → dumbbell press) |
-| C15 | **Volume×Intensity periodization chart** | S | New chart method | Lifting equivalent of cycling CTL/ATL: volume (kg) × average %1RM over time, color-coded by phase (accumulation / intensification / realization / recovery) |
-| C16 | **RPE drift chart** | M | Small chart method | Track actual RPE vs expected RPE (from plan `target_rpe`) per exercise over time — early indicator of overreaching or under-recovery |
+| C15 | **Volume×Intensity periodization chart** | S | New chart method | Lifting equivalent of cycling CTL/ATL: volume (kg) × average %1RM over time, color-coded by phase (accumulation / intensification / realization / recovery) → Phase 6 |
+| C16 | **RPE drift chart** | M | Small chart method | Track actual RPE vs expected RPE (from plan `target_rpe`) per exercise over time — early indicator of overreaching or under-recovery → Phase 6 |
 | C17 | **Velocity trend chart** | M | Uses existing video analysis data | Mean concentric velocity per exercise over time, with velocity-zone indicators (e.g., "speed strength" zone) — only shows for exercises with VBT-linked videos |
-| C18 | **Competition attempt simulator** | M | Pure frontend | Given a current e1RM, simulate 3 attempts (e.g., opener at 85%, 2nd at 92.5%, 3rd at 100%) with a "total" projection — powerlifters' most-used tool |
+| C18 | **Competition attempt simulator** | M | Pure frontend | ❌ CUT 2026-10-06: no meets → dead UI (compete bundle) |
 | C19 | **Exercise rotation tracker** | S | No | Track how often specific exercise variations (e.g., high-bar vs low-bar squat) are trained, to spot imbalances or overuse |
 | C20 | **Session quality score** | S | No | Composite badge on session cards combining fatigue index, RPE escalation, set completion, PR proximity — color-coded (green/orange/red) |
 
@@ -284,7 +284,7 @@ Move `WarmupTemplateManager` to its own tab. Minor visual cleanup (replace emoji
 |---|---------|--------|----------|-------------|
 | D1 | **Keyboard shortcuts** | S | No | `N` → new session, `←`/`→` → navigate sessions, `Ctrl+K` → command palette, `?` → shortcuts modal |
 | D2 | **Session comparison** | M | No | Select 2 sessions → side-by-side comparison of volume, intensity, exercises, fatigue index |
-| D3 | **Clipboard export** | XS | No | One-click "copy as text" of a session's sets for sharing in forums or with a coach |
+| D3 | **Clipboard export** | XS | No | ❌ CUT 2026-10-06: user wants neither PDF nor clipboard sharing |
 | D4 | **Animated transitions** | S | No | Smooth fade/slide when selecting sessions, entering detail view — uses `framer-motion` or CSS transitions |
 | D5 | **Session notes timeline** | S | No | In session detail, show a collapsible timeline of all notes across sets + session-level note history |
 | D6 | **Focus filter** | XS | No | Filter session list by focus (squat day / bench day / deadlift day / accessories) — simple tag filter |
@@ -355,22 +355,30 @@ No database migrations needed for Tier A. The `order_index` column (migration 09
 - ✅ Dark mode consistency
 - ✅ Component tests for new sub-components
 
-### Phase 6 — Competitive features (1–2 weeks, P2)
-- ✅ Warm-up set calculator (C-1)
-- ✅ Rep range distribution chart (C-2)
-- ✅ Recovery-adjusted loading (C-13)
-- ✅ Meet prep timeline (C-6)
-- ✅ Competition attempt simulator (C-18)
-- ✅ Session quality score badge (C-20)
-- ✅ Keyboard shortcuts (D-1)
-- ✅ Session comparison (D-2)
+### Phase 6 — Review-side analytics batch (decided 2026-10-06, build next)
+- Dots progression over time (C-5 remainder: join Big-3 total + bodyweight history, client-side)
+- Rep range distribution chart (C-2: strength/hypertrophy/endurance split per exercise)
+- Volume×Intensity periodization chart (C-15)
+- RPE drift chart (C-16: actual vs planned RPE per exercise)
 
-### Phase 7 — Advanced analytics (1 week, P2)
-- ✅ Volume×Intensity periodization chart (C-15)
-- ✅ RPE drift chart (C-16)
-- ✅ Velocity trend chart (C-17)
-- ✅ Exercise rotation tracker (C-19)
-- ✅ Animated transitions (D-4)
+### Phase 7 — Act-side batch (on the table, unstarted)
+- Warm-up set calculator (C-1)
+- Recovery-adjusted loading (C-13)
+- Keyboard shortcuts (D-1)
+- Focus filter (D-6)
+
+### Cut with rationale (2026-10-06 user decisions)
+- Compete bundle C-6/C-12/C-18 (meet prep timeline, attempt simulator, competition mode): no meets → dead UI. Attempt links already cover casual curiosity.
+- Sharing C-11/D-3 (PDF export, clipboard export): neither wanted.
+- B-1 drag-drop reorder: no dnd primitive, dead on touch, edge-case op.
+- A-3 cut reversed same day: user ruled data porn stays if gated (see `docs/review-vs-act.md`).
+
+### Still deferred (no decision)
+C-3 load balance, C-4 training max, C-7 exercise notes, C-8 injury-risk composite
+(open Q7 placement moot until built), C-9 1RM/5-3-1 programs, C-10 video on set
+rows (open Q9 data question moot until built), C-14 substitution engine, C-17
+velocity trend (needs VBT video data), C-19 rotation tracker, D-2 session
+comparison, D-4 animated transitions, D-5 notes timeline.
 
 ---
 
