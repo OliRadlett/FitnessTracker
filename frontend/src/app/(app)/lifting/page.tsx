@@ -160,8 +160,6 @@ export default function LiftingPage() {
   const [showManualPR, setShowManualPR] = useState(false);
   const [showAccessories, setShowAccessories] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
-  // selectedPRId is used for deep-link highlighting in Phase 4 (PR tab)
-  void selectedPRId;
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
 
@@ -1087,8 +1085,12 @@ export default function LiftingPage() {
               standardKey != null
                 ? ratioToBodyweight(pr.estimated_1rm, bodyweightKg)
                 : null;
+            const isDeepLinked = selectedPRId != null && pr.id === selectedPRId;
             return (
-              <div className="p-4 bg-surface-light/30 rounded-lg">
+              <div
+                className={`p-4 bg-surface-light/30 rounded-lg ${isDeepLinked ? 'ring-2 ring-accent' : ''}`}
+                ref={isDeepLinked ? (el) => el?.scrollIntoView({ block: 'center' }) : undefined}
+              >
                 <p className="text-sm font-medium text-foreground mb-2">{pr.exercise_name}</p>
                 {standardKey != null && bwRatio != null && bodyweightKg != null && (() => {
                   const level = levelForRatio(standardKey, bwRatio);
