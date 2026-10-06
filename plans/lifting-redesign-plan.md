@@ -232,7 +232,7 @@ Move `WarmupTemplateManager` to its own tab. Minor visual cleanup (replace emoji
 | A1 | **Tabbed IA** | M | ⚠️ `LiftingSet.order_index` to frontend type | Split the 1,178-line page into 4 tabs; preserve deep-link URLs |
 | A13 | **Shared `CombinedLoadChart` component** | S | Extract from `/analytics` into `components/charts/CombinedLoadChart.tsx`; reused by Analytics tab |
 | A2 | **Session Card mini-dashboard** | M | No | Add fatigue index, PR proximity, live timing, whoop badge to session cards |
-| A3 | **Sets visualizer** | M | No | Bar chart of working sets per exercise in session detail; RPE markers, PR-distance |
+| A3 | **Sets visualizer** | M | No | ❌ CUT 2026-10-06: redundant with `LiftingAnalysisCard` (set-progression line + volume breakdown already visualize every working set). A third viz between the table and the analysis violates "coach-grade, not data-porn" |
 | A4 | **Consolidate volume charts** | S | No | Remove client-side `buildVolumeChart`; use backend `weekly_volume` only |
 | A5 | **PR timeline + strength standards** | M | No | Big-3 total chart, Wilks/ICS bodyweight-relative, standards badges |
 | A6 | **Today's Strength Day card** | M | No | Show active plan's strength day with weight suggestions; reuse `live-plan-today` logic from `/lifting/live` |
@@ -248,7 +248,7 @@ Move `WarmupTemplateManager` to its own tab. Minor visual cleanup (replace emoji
 
 | # | Feature | Effort | Backend? | Description |
 |---|---------|--------|----------|-------------|
-| B1 | **Drag-drop set reordering in detail** | S | Expose `order_index` on `LiftingSetRead` (already on model) | PATCH `/sets/reorder` endpoint exists; wire the `ReorderSetsRequest` |
+| B1 | **Drag-drop set reordering in detail** | S | Expose `order_index` on `LiftingSetRead` (already on model) | ❌ CUT 2026-10-06: no dnd primitive in the codebase, HTML5 DnD is dead on touch (this page is mobile-first), and reorder is an edge-case op — creation order + edit/delete cover real flows. Endpoint + `order_index` type stay available |
 | B2 | **Big-3 Total Progression chart** | S | Small chart method in `ChartService` | Aggregate PR history into squat+bench+deadlift+total timeline |
 | B3 | **`order_index` in frontend `LiftingSet` type** | XS | No | Already on backend schema; add to `types/lifting.ts` |
 | B4 | **DeficiencyCard move to PRs tab** | S | No | Filter to `category: 'lifting'` only; dashboard keeps full view |

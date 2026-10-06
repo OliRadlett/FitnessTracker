@@ -219,7 +219,7 @@ export function SessionCardMini({
                   e.stopPropagation();
                   onAddSet(session);
                 }}
-                className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted hover:text-accent rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent rounded transition-colors"
                 title="Quick-add a set"
                 aria-label="Add set"
               >
@@ -232,7 +232,7 @@ export function SessionCardMini({
                   e.stopPropagation();
                   onEdit(session);
                 }}
-                className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted hover:text-foreground rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground rounded transition-colors"
                 title="Edit session"
                 aria-label="Edit"
               >
@@ -245,7 +245,7 @@ export function SessionCardMini({
                   e.stopPropagation();
                   onDelete(session);
                 }}
-                className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted hover:text-warning rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning rounded transition-colors"
                 title="Delete session"
                 aria-label="Delete"
               >
