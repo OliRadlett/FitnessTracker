@@ -43,6 +43,7 @@ import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionCardMini } from '@/components/lifting/SessionCardMini';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
+import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
@@ -972,6 +973,11 @@ export default function LiftingPage() {
       {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'prs' && (
         <div className="space-y-6">
+          <DotsScoreCard
+            personalRecords={personalRecords}
+            bodyweightKg={bodyweightKg}
+            isLoading={prLoading}
+          />
 
       {/* Personal Records */}
       <Card>

@@ -2,9 +2,6 @@
 // STANDARDS (Symmetric Strength / StrengthLevel tradition, male-calibrated
 // bodyweight multipliers). Keep the two in sync: the ratio badges rendered
 // here must agree with the DeficiencyCard findings from that engine.
-//
-// Dots scoring lives here too once the polynomial constants are confirmed
-// (see plan §7 Q10) — ratio badges do not depend on it.
 
 export type StandardLevel = 'beginner' | 'intermediate' | 'advanced' | 'elite';
 
@@ -54,4 +51,36 @@ export function nextLevelTarget(lift: string, level: StandardLevel): number | nu
   const idx = LEVEL_ORDER.indexOf(level);
   if (idx < 0 || idx >= LEVEL_ORDER.length - 1) return null;
   return STANDARDS[lift][LEVEL_ORDER[idx + 1]];
+}
+
+// ── Dots scoring ─────────────────────────────────────────────────────────────
+// Dots = Total × 500 / (a·BW⁴ + b·BW³ + c·BW² + d·BW + e).
+// Official coefficients (user-confirmed, 2026-10-06). Both sexes are stored;
+// the UI uses the male formula only (no sex field exists in the schema — see
+// plan §8) and says so on the card.
+
+export type DotsSex = 'male' | 'female';
+
+const DOTS_MEN = {
+  a: -0.000001093, b: 0.0007391293, c: -0.1918759221, d: 24.0900756, e: -307.75076,
+};
+const DOTS_WOMEN = {
+  a: -0.0000010706, b: 0.0005158568, c: -0.1126655495, d: 13.6175032, e: -57.96288,
+};
+
+/** Dots score for a total at a bodyweight. Null-safe: null on bad inputs. */
+export function dots(
+  totalKg: number | null | undefined,
+  bodyweightKg: number | null | undefined,
+  sex: DotsSex = 'male',
+): number | null {
+  if (totalKg == null || bodyweightKg == null || totalKg <= 0 || bodyweightKg <= 0) {
+    return null;
+  }
+  const k = sex === 'female' ? DOTS_WOMEN : DOTS_MEN;
+  const x = bodyweightKg;
+  const denom =
+    k.a * x * x * x * x + k.b * x * x * x + k.c * x * x + k.d * x + k.e;
+  if (!(denom > 0)) return null;
+  return (500 * totalKg) / denom;
 }

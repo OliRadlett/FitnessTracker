@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dots,
   levelForRatio,
   nextLevelTarget,
   ratioToBodyweight,
@@ -58,5 +59,27 @@ describe('nextLevelTarget', () => {
 
   it('returns null at elite', () => {
     expect(nextLevelTarget('Deadlift', 'elite')).toBeNull();
+  });
+});
+
+describe('dots', () => {
+  it('scores a 500kg total at 100kg male (hand-verified reference)', () => {
+    // Denominator: -109.30 + 739.1293 - 1918.759221 + 2409.00756 - 307.75076
+    // = 812.326879 → 250000 / 812.326879 ≈ 307.76. If this fails, the
+    // constants drifted — do not "fix" the test, re-confirm the polynomial.
+    expect(dots(500, 100, 'male')).toBeCloseTo(307.76, 1);
+  });
+
+  it('rewards lighter lifters for the same total', () => {
+    const at100 = dots(500, 100, 'male')!;
+    const at83 = dots(500, 83, 'male')!;
+    expect(at83).toBeGreaterThan(at100);
+  });
+
+  it('is null-safe', () => {
+    expect(dots(null, 100)).toBeNull();
+    expect(dots(500, null)).toBeNull();
+    expect(dots(500, 0)).toBeNull();
+    expect(dots(-10, 100)).toBeNull();
   });
 });
