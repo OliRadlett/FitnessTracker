@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import type { DeficiencyResponse, WeaknessItem, DeficiencySeverity } from '@/lib/api';
+import type { DeficiencyCategory, DeficiencyResponse, DeficiencySummary, WeaknessItem, DeficiencySeverity } from '@/lib/api';
 import { Bike, Dumbbell, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,9 +148,23 @@ function CategoryGroup({ title, icon, items }: { title: string; icon: React.Reac
 interface DeficiencyCardProps {
   data?: DeficiencyResponse;
   isLoading?: boolean;
+  /** Narrow to one domain (e.g. the lifting PRs tab shows lifting only). Summary counts are recomputed over the filtered set. */
+  category?: DeficiencyCategory;
 }
 
-export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
+function summarize(items: WeaknessItem[]): DeficiencySummary {
+  const count = (s: DeficiencySeverity) => items.filter((w) => w.severity === s).length;
+  return {
+    total_weaknesses: items.filter((w) => w.severity !== 'strength').length,
+    critical: count('critical'),
+    high: count('high'),
+    medium: count('medium'),
+    low: count('low'),
+    strengths: count('strength'),
+  };
+}
+
+export function DeficiencyCard({ data, isLoading, category }: DeficiencyCardProps) {
   const [showMinor, setShowMinor] = useState(false);
 
   if (isLoading) {
@@ -162,8 +176,10 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
     );
   }
 
-  const weaknesses = data?.weaknesses ?? [];
-  const summary = data?.summary;
+  const weaknesses = (data?.weaknesses ?? []).filter(
+    (w) => category === undefined || w.category === category,
+  );
+  const summary = category === undefined ? data?.summary : summarize(weaknesses);
 
   // No analysis at all → balanced state
   if (!data || weaknesses.length === 0) {
@@ -201,7 +217,7 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <CardTitle>🎯 Weakness Analysis</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle>
           {summary && (summary.total_weaknesses > 0 || summary.strengths > 0) && (
             <div className="flex items-center gap-1.5 flex-wrap">
               {hasCritical && (

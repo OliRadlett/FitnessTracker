@@ -54,7 +54,7 @@ import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCar
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 import type { LucideIcon } from 'lucide-react';
-import { Dumbbell, ChartColumn, TrendingUp, Timer } from 'lucide-react';
+import { Dumbbell, ChartColumn, TrendingUp, Timer, Zap, Link2, Clock, TriangleAlert } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -551,7 +551,11 @@ export default function LiftingPage() {
               className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
               title="Auto-link Strava strength activities to lifting sessions"
             >
-              {backfillMutation.isPending ? 'Linking...' : '🔗 Auto-Link Strava'}
+              {backfillMutation.isPending ? 'Linking...' : (
+                <span className="inline-flex items-center gap-1.5">
+                  <Link2 className="w-4 h-4" aria-hidden />Auto-Link Strava
+                </span>
+              )}
             </button>
             <button
               onClick={() => setShowNewSession(!showNewSession)}
@@ -581,7 +585,9 @@ export default function LiftingPage() {
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
         <div>
-          <p className="text-foreground font-semibold">⚡ Track a session live</p>
+          <p className="text-foreground font-semibold inline-flex items-center gap-1.5">
+            <Zap className="w-4 h-4" aria-hidden />Track a session live
+          </p>
           <p className="text-sm text-muted">
             Log sets as you lift — one tap per set, works offline, Whoop strain attaches automatically.
           </p>
@@ -746,7 +752,7 @@ export default function LiftingPage() {
               icon="🏋️"
               title="No lifting sessions recorded"
               description="Create your first session above, or jump straight into the Live Lift tracker to start logging sets in real time."
-              action={{ label: '⚡ Start Live Session', href: '/lifting/live' }}
+              action={{ label: 'Start Live Session', href: '/lifting/live' }}
             />
           )}
           </div>
@@ -761,11 +767,20 @@ export default function LiftingPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>{sessionDetail.focus || 'Session Detail'}</CardTitle>
-                    <p className="text-sm text-muted mt-1">
-                      {new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}
-                      {formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds) &&
-                        ` · 🕐 ${formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds)}`}
-                      {sessionDetail.notes && ` · ${sessionDetail.notes}`}
+                    <p className="text-sm text-muted mt-1 flex items-center gap-1 flex-wrap">
+                      <span>{new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}</span>
+                      {(() => {
+                        const range = formatSessionTimeRange(sessionDetail.started_at, sessionDetail.ended_at, sessionDetail.duration_seconds);
+                        if (!range) return null;
+                        return (
+                          <span className="inline-flex items-center gap-1">
+                            <span aria-hidden="true">·</span>
+                            <Clock className="w-3.5 h-3.5" aria-hidden />
+                            {range}
+                          </span>
+                        );
+                      })()}
+                      {sessionDetail.notes && <span>· {sessionDetail.notes}</span>}
                     </p>
                     {sessionDetail.ai_tags && (
                       <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -791,7 +806,8 @@ export default function LiftingPage() {
                               className="text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning"
                               title="Jev detected a pain/injury mention in the notes"
                             >
-                              ⚠️ pain mention
+                              <TriangleAlert className="w-3 h-3 inline mr-0.5" aria-hidden />
+                              pain mention
                             </span>
                           )}
                         {typeof sessionDetail.ai_tags.high_fatigue === 'number' &&
@@ -907,7 +923,7 @@ export default function LiftingPage() {
                     onClick={() => setLinkModalSessionId(selectedSessionId)}
                     className="text-sm text-accent hover:text-accent-hover transition-colors flex items-center gap-1"
                   >
-                    <span>🔗</span> Link Strava activity
+                    <Link2 className="w-4 h-4" aria-hidden /> Link Strava activity
                   </button>
                 </div>
               )}
@@ -1174,7 +1190,7 @@ export default function LiftingPage() {
       </Card>
 
       {/* Weakness / Deficiency Analysis */}
-      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} />
+      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} category="lifting" />
         </div>
       )}
 
