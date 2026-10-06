@@ -127,6 +127,7 @@
 | `AddExerciseForm` | Add exercise + sets to session |
 | `ExerciseGroup` | Grouped sets for one exercise (lucide edit/delete actions) |
 | `SessionCardMini` | Session list mini-dashboard — focus/program badges, live timing, Whoop strain, quality badge (RPE/volume heuristic), PR count, video chip, TSS; quick-action add/edit/delete (select + open the matching detail flow) |
+| `SetsVisualizer` | Set-review viz layer (read-only data porn, labeled zone separate from logging) — per-exercise load bars with RPE colours, warm-up fade, AMRAP tags, % of stored-1RM markers via Brzycki. Pure helpers (`groupForViz`, `rpeBarColor`) unit-tested in `src/__tests__/sets-visualizer.test.ts` |
 | `QuickAddSetBar` | Sticky one-line set logger at the session-detail bottom — exercise autocomplete (prefills last weight/reps per exercise), kg/reps/RPE/warm-up, POSTs `AddSetPayload` with per-exercise next `set_number` |
 | `TodayStrengthDayCard` | Active plan's uncompleted strength day for today (via `useTodaysStrengthDay`) — focus, programmed sets×reps×loads, links to Live Lift + Training. Renders nothing when none |
 | `DotsScoreCard` | Current Dots score from best Big-3 e1RMs + bodyweight (male formula only — no sex field in schema; stated on card). Empty states for missing PRs / bodyweight (links to Settings) |

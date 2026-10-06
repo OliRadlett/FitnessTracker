@@ -41,6 +41,7 @@ import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSe
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionCardMini } from '@/components/lifting/SessionCardMini';
+import { SetsVisualizer } from '@/components/lifting/SetsVisualizer';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
 import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
@@ -520,6 +521,18 @@ export default function LiftingPage() {
   // Compute exercise groups for detail view
   const exerciseGroups = sessionDetail?.sets ? groupSetsByExercise(sessionDetail.sets) : new Map();
 
+  // Best stored 1RM per exercise — basis for the set-review % markers.
+  const e1rmByExercise = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const pr of personalRecords ?? []) {
+      if (pr.record_type !== '1rm' || pr.estimated_1rm == null) continue;
+      if (pr.estimated_1rm > (map.get(pr.exercise_name) ?? 0)) {
+        map.set(pr.exercise_name, pr.estimated_1rm);
+      }
+    }
+    return map;
+  }, [personalRecords]);
+
   return (
     <div className="space-y-6">
       {/* PR Celebration Toast */}
@@ -957,6 +970,13 @@ export default function LiftingPage() {
                 <p className="text-muted text-center py-8">No exercises yet. Add your first exercise above.</p>
               )}
             </Card>
+
+            {/* Set review — read-only viz layer, separate from logging/editing */}
+            {sessionDetail.sets && sessionDetail.sets.length > 0 && (
+              <div className="mt-6">
+                <SetsVisualizer sets={sessionDetail.sets} e1rmByExercise={e1rmByExercise} />
+              </div>
+            )}
 
             {/* Static Session Analysis */}
             {sessionAnalysis && (
