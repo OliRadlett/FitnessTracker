@@ -16,7 +16,16 @@ import type {
   LiftingAnalysis,
   DeficiencyResponse,
   LiftVideo,
+  CyclingProfile,
 } from '@/lib/api';
+import {
+  LEVEL_ORDER,
+  levelForRatio,
+  nextLevelTarget,
+  ratioToBodyweight,
+  standardKeyFor,
+  type StandardLevel,
+} from '@/lib/lifting/standards';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -257,6 +266,14 @@ export default function LiftingPage() {
     queryFn: () => authFetch<LiftingAnalysis>(`/api/v1/lifting/sessions/${selectedSessionId}/analysis`),
     enabled: !!selectedSessionId && !!token,
   });
+
+  const { data: cyclingProfile } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+  const bodyweightKg = cyclingProfile?.weight_kg ?? null;
 
   const { data: personalRecords, isLoading: prLoading } = useQuery<PersonalRecord[]>({
     queryKey: ['personal-records'],
@@ -1001,10 +1018,43 @@ export default function LiftingPage() {
           compoundPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
           accessoryPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
 
+          const LEVEL_COLORS: Record<StandardLevel, string> = {
+            beginner: 'text-muted',
+            intermediate: 'text-blue-400',
+            advanced: 'text-purple-400',
+            elite: 'text-positive',
+          };
+
           function PRCard({ pr }: { pr: PersonalRecord }) {
+            const standardKey = standardKeyFor(pr.exercise_name);
+            const bwRatio =
+              standardKey != null
+                ? ratioToBodyweight(pr.estimated_1rm, bodyweightKg)
+                : null;
             return (
               <div className="p-4 bg-surface-light/30 rounded-lg">
                 <p className="text-sm font-medium text-foreground mb-2">{pr.exercise_name}</p>
+                {standardKey != null && bwRatio != null && bodyweightKg != null && (() => {
+                  const level = levelForRatio(standardKey, bwRatio);
+                  const next = nextLevelTarget(standardKey, level);
+                  const nextName =
+                    next != null ? LEVEL_ORDER[LEVEL_ORDER.indexOf(level) + 1] : null;
+                  return (
+                    <div className="flex items-center justify-center gap-1.5 mb-2 flex-wrap">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium bg-surface-light ${LEVEL_COLORS[level]}`}
+                        title={`Estimated 1RM is ${bwRatio.toFixed(2)}× bodyweight (${bodyweightKg.toFixed(0)} kg)`}
+                      >
+                        {level.charAt(0).toUpperCase() + level.slice(1)} · {bwRatio.toFixed(2)}× BW
+                      </span>
+                      {next != null && nextName != null && (
+                        <span className="text-[11px] text-muted">
+                          → {Math.round(next * bodyweightKg)} kg {nextName}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
@@ -1047,6 +1097,18 @@ export default function LiftingPage() {
                   >
                     View activity →
                   </Link>
+                )}
+                {pr.session_id && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectSession(pr.session_id as string);
+                      handleTabChange('sessions');
+                    }}
+                    className="mt-1 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
+                  >
+                    View session →
+                  </button>
                 )}
               </div>
             );
