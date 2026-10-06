@@ -103,6 +103,11 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
         "method": "volume_intensity_periodization",
         "params": ["weeks"],
     },
+    "rpe_drift": {
+        "method": "rpe_drift",
+        "params": ["exercise_name", "weeks"],
+        "required": ["exercise_name"],
+    },
     # Lifting-video trends (B-26)
     "video_form_trend": {"method": "video_form_trend", "params": ["days", "exercise_name"]},
     "video_velocity_trend": {

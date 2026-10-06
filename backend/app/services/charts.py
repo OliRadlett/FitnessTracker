@@ -2909,6 +2909,122 @@ class ChartService:
             insights=insights,
         )
 
+    # ── RPE drift ─────────────────────────────────────────────────────────────
+
+    async def rpe_drift(
+        self, user_id: uuid.UUID, exercise_name: str, weeks: int = 26
+    ) -> ChartData:
+        """Per-session average RPE against the plan's latest target RPE.
+
+        The target is the most recent ``target_rpe`` programmed for the
+        exercise on any of the user's strength plan days, drawn as a constant
+        reference line — plans prescribe loads, not dates, so no date join is
+        attempted. A sustained positive drift is an early overreaching flag.
+        """
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        cutoff = date.today() - timedelta(weeks=weeks)
+
+        set_rows = (
+            await self.db.execute(
+                select(LiftingSession.session_date, LiftingSet.rpe)
+                .join(LiftingSet, LiftingSet.session_id == LiftingSession.id)
+                .where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSet.exercise_name == exercise_name,
+                    LiftingSet.is_warmup.is_(False),
+                    LiftingSet.rpe.isnot(None),
+                    LiftingSession.session_date >= cutoff,
+                )
+                .order_by(LiftingSession.session_date)
+            )
+        ).all()
+
+        by_date: dict[str, list[float]] = {}
+        for day, rpe in set_rows:
+            by_date.setdefault(day.isoformat(), []).append(float(rpe))
+        labels = sorted(by_date)
+        actuals = [round(sum(v) / len(v), 1) for v in (by_date[d] for d in labels)]
+
+        target: float | None = None
+        day_rows = (
+            await self.db.execute(
+                select(TrainingPlanDay.planned_exercises)
+                .join(TrainingPlan, TrainingPlanDay.plan_id == TrainingPlan.id)
+                .where(
+                    TrainingPlan.user_id == user_id,
+                    TrainingPlanDay.sport == "strength",
+                )
+                .order_by(TrainingPlanDay.day_date.desc())
+            )
+        ).all()
+        for (exercises,) in day_rows:
+            for ex in exercises or []:
+                if (
+                    isinstance(ex, dict)
+                    and ex.get("exercise") == exercise_name
+                    and ex.get("target_rpe") is not None
+                ):
+                    try:
+                        target = float(ex["target_rpe"])
+                    except (TypeError, ValueError):
+                        continue
+                    break
+            if target is not None:
+                break
+
+        if not labels:
+            return ChartData(
+                chart_type="line",
+                title=f"RPE Drift — {exercise_name}",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="RPE (1–10)",
+                insights=[f"No rated working sets logged for {exercise_name} in range."],
+            )
+
+        series = [ChartSeries(name="Actual RPE", data=actuals, color="#3b82f6")]
+        if target is not None:
+            series.append(
+                ChartSeries(
+                    name="Target RPE", data=[target] * len(labels), color="#f59e0b"
+                )
+            )
+
+        insights: list[str] = []
+        if target is None:
+            insights.append(
+                f"No planned RPE target for {exercise_name} — showing actuals only."
+            )
+        elif len(actuals) >= 2:
+            recent = sum(actuals[-4:]) / min(len(actuals), 4)
+            drift = recent - target
+            if drift >= 1:
+                insights.append(
+                    f"Running hot: recent RPE averages {recent:.1f} vs target "
+                    f"{target:.1f} (+{drift:.1f}) — possible overreaching."
+                )
+            elif drift <= -1:
+                insights.append(
+                    f"Running cool: recent RPE averages {recent:.1f} vs target "
+                    f"{target:.1f} ({drift:.1f}) — room to load."
+                )
+            else:
+                insights.append(
+                    f"On target: recent RPE averages {recent:.1f} vs {target:.1f} planned."
+                )
+
+        return ChartData(
+            chart_type="line",
+            title=f"RPE Drift — {exercise_name}",
+            labels=labels,
+            series=series,
+            x_label="Date",
+            y_label="RPE (1–10)",
+            insights=insights,
+        )
+
     # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
 
     async def periodization(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:

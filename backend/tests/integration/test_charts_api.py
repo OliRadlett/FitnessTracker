@@ -300,6 +300,80 @@ class TestNewCharts:
         assert resp.status_code == 200
         assert resp.json()["labels"] == []
 
+    async def _seed_rpe_drift(self, db_session, test_user) -> None:
+        """Plan target RPE 8 for Bench; sessions averaging 8.0 then 9.0."""
+        from app.models.lifting import LiftingSession, LiftingSet
+        from app.models.training_plan import TrainingPlan, TrainingPlanDay
+
+        plan = TrainingPlan(
+            user_id=test_user.id,
+            name="RPE Plan",
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=30),
+            plan_type="custom",
+            status="active",
+        )
+        db_session.add(plan)
+        await db_session.flush()
+        db_session.add(
+            TrainingPlanDay(
+                plan_id=plan.id,
+                day_date=date.today() - timedelta(days=10),
+                sport="strength",
+                planned_exercises=[
+                    {"exercise": "Bench Press", "sets": 3, "reps": 5, "target_rpe": 8}
+                ],
+            )
+        )
+        sessions = [
+            (8, [(80.0, 5, 8.0), (80.0, 5, 8.0)]),
+            (3, [(85.0, 5, 9.0)]),
+        ]
+        for days_ago, sets in sessions:
+            session = LiftingSession(
+                user_id=test_user.id,
+                session_date=date.today() - timedelta(days=days_ago),
+                focus="test",
+            )
+            db_session.add(session)
+            await db_session.flush()
+            for i, (weight, reps, rpe) in enumerate(sets, start=1):
+                db_session.add(
+                    LiftingSet(
+                        session_id=session.id,
+                        exercise_name="Bench Press",
+                        set_number=i,
+                        weight_kg=weight,
+                        reps=reps,
+                        rpe=rpe,
+                    )
+                )
+        await db_session.flush()
+
+    async def test_rpe_drift(self, client, db_session, test_user):
+        await self._seed_rpe_drift(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rpe_drift", params={"exercise_name": "Bench Press"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["labels"]) == 2
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        assert by_name["Actual RPE"] == [8.0, 9.0]
+        assert by_name["Target RPE"] == [8.0, 8.0]
+
+    async def test_rpe_drift_requires_exercise(self, client):
+        resp = await client.get("/api/v1/charts/rpe_drift")
+        assert resp.status_code == 422
+
+    async def test_rpe_drift_empty(self, client, db_session, test_user):
+        await self._seed_rpe_drift(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rpe_drift", params={"exercise_name": "Overhead Press"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200

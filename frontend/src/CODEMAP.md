@@ -131,6 +131,9 @@
 | `QuickAddSetBar` | Sticky one-line set logger at the session-detail bottom — exercise autocomplete (prefills last weight/reps per exercise), kg/reps/RPE/warm-up, POSTs `AddSetPayload` with per-exercise next `set_number` |
 | `TodayStrengthDayCard` | Active plan's uncompleted strength day for today (via `useTodaysStrengthDay`) — focus, programmed sets×reps×loads, links to Live Lift + Training. Renders nothing when none |
 | `DotsScoreCard` | Current Dots score from best Big-3 e1RMs + bodyweight (male formula only — no sex field in schema; stated on card). Empty states for missing PRs / bodyweight (links to Settings) |
+| `DotsProgressionCard` | Dots-over-time on the PRs tab — Big-3 total series joined to weigh-ins via step-carried bodyweight (`joinDotsProgression`, unit-tested; dates with no prior weigh-in are gaps, never backfilled) |
+| `RepRangeCard` | Rep-range mix (Analytics) — top-8 overview + per-exercise triplet via one endpoint, autocomplete toggle, weeks selector |
+| `RpeDriftCard` | Actual vs planned RPE per exercise (Analytics) — autocomplete (required) + weeks selector; query disabled until an exercise is entered |
 | `ExerciseProgressSection` | Exercise progress over time (autocomplete exercise selector) |
 | `LiftingAnalysisCard` | Post-session analysis card |
 | `SessionAiAnalysisCard` | Per-session AI lifting analysis (on-demand Gemini) |

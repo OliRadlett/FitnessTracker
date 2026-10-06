@@ -47,6 +47,7 @@ import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard'
 import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
 import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
 import { RepRangeCard } from '@/components/lifting/RepRangeCard';
+import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
@@ -1258,6 +1259,9 @@ export default function LiftingPage() {
           height={280}
         />
       </Card>
+
+      {/* RPE drift (actual vs planned) */}
+      <RpeDriftCard />
 
       {/* Strength Balance */}
       <Card>
