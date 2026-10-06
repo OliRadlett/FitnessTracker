@@ -32,6 +32,7 @@ import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSe
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionCardMini } from '@/components/lifting/SessionCardMini';
+import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
 import { useForecastChart } from '@/lib/projection';
@@ -921,6 +922,11 @@ export default function LiftingPage() {
             {/* AI Session Analysis */}
             <div className="mt-6">
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
+            </div>
+
+            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
+            <div className="mt-6">
+              <QuickAddSetBar session={sessionDetail} />
             </div>
             </div>
           ) : (
