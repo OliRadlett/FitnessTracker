@@ -232,7 +232,7 @@ Move `WarmupTemplateManager` to its own tab. Minor visual cleanup (replace emoji
 | A1 | **Tabbed IA** | M | ⚠️ `LiftingSet.order_index` to frontend type | Split the 1,178-line page into 4 tabs; preserve deep-link URLs |
 | A13 | **Shared `CombinedLoadChart` component** | S | Extract from `/analytics` into `components/charts/CombinedLoadChart.tsx`; reused by Analytics tab |
 | A2 | **Session Card mini-dashboard** | M | No | Add fatigue index, PR proximity, live timing, whoop badge to session cards |
-| A3 | **Sets visualizer** | M | No | ✅ REINSTATED 2026-10-06 (user: data porn is fine — it must be *differentiated* from training aids, not cut). Per-exercise set bars with RPE markers + PR-distance, placed in a labeled "Review" zone; action surfaces (quick-add, edit) stay in a separate floating/action zone. No page redesign needed: tabs + section labels already separate the modes |
+| A3 | **Sets visualizer** | M | No | ✅ SHIPPED 2026-10-06 (user: data porn is fine — it must be *differentiated* from training aids, not cut). Per-exercise set bars with RPE markers + PR-distance, placed in a labeled "Review" zone; action surfaces (quick-add, edit) stay in a separate floating/action zone. No page redesign needed: tabs + section labels already separate the modes. Generalized as [`docs/review-vs-act.md`](../docs/review-vs-act.md) for reuse across pages |
 | A4 | **Consolidate volume charts** | S | No | Remove client-side `buildVolumeChart`; use backend `weekly_volume` only |
 | A5 | **PR timeline + strength standards** | M | No | Big-3 total chart, Wilks/ICS bodyweight-relative, standards badges |
 | A6 | **Today's Strength Day card** | M | No | Show active plan's strength day with weight suggestions; reuse `live-plan-today` logic from `/lifting/live` |

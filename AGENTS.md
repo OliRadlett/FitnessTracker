@@ -142,6 +142,7 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 - **Tailwind theme**: Dark mode, custom tokens: `background`, `surface`, `surface-light`, `accent`, `positive`, `warning`, `muted`. See [`tailwind.config.js`](frontend/tailwind.config.js)
 - **Component structure**: `ui/`, `charts/`, `cycling/`, `lifting/`, `maps/`, `training/`, `routes/`, `goals/`, `dashboard/`, `health/`, `calendar/`, `activities/`, `settings/`, `sync/`
 - **Modal component**: [`Modal`](frontend/src/components/ui/Modal.tsx) — bottom sheet on mobile (<sm), centered dialog on desktop (≥sm)
+- **Review vs Act**: data-rich viz ("data porn") is welcome but gated away from action surfaces — tabs/zones/floating action layer, read-only viz components. See [`docs/review-vs-act.md`](docs/review-vs-act.md)
 - **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only. **API calls must be network-only** (not cached).
 - **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages
 
