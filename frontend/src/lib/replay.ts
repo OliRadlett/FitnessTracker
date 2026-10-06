@@ -106,34 +106,55 @@ export function cumulativeFromVelocity(
   velocity: number[],
   resolution = 1
 ): number[] {
+  // Guard the step: a NaN/zero/negative resolution would poison elapsed and
+  // distance. Negative GPS velocity samples are clamped — distance must be
+  // monotonic for the polyline mapping, grade and highlight math downstream.
+  const step = Number.isFinite(resolution) && resolution > 0 ? resolution : 1;
   const cum = [0];
   for (let i = 1; i < velocity.length; i++) {
     const v = velocity[i];
-    cum.push(cum[i - 1] + (Number.isFinite(v) ? v : 0) * resolution);
+    cum.push(cum[i - 1] + Math.max(0, Number.isFinite(v) ? v : 0) * step);
   }
   return cum;
 }
 
-/** resample a per-second array onto M samples proportional to cumulative distance */
+/**
+ * Align a per-sample stream (altitude/power/HR/cadence, parallel to the
+ * velocity samples whose cumulative distances are `distances`) onto
+ * `targetDistances` by binary-searching the distance curve and lerping.
+ * Exact distance hits return the exact sample; out-of-range targets clamp to
+ * the ends; non-finite samples propagate as null instead of false zeros.
+ */
 export function resampleByDistance(
   values: number[],
   distances: number[],
   targetDistances: number[]
 ): (number | null)[] {
-  if (values.length === 0) return targetDistances.map(() => null);
-  const out: (number | null)[] = [];
-  const total = distances.length > 0 ? distances[distances.length - 1] : 0;
-  for (const d of targetDistances) {
-    if (total <= 0) {
-      out.push(null);
-      continue;
+  if (values.length === 0 || distances.length === 0) return targetDistances.map(() => null);
+  // Streams may carry a different resolution than velocity — only the paired
+  // prefix is meaningful.
+  const n = Math.min(values.length, distances.length);
+  const at = (i: number): number | null => {
+    const v = values[Math.max(0, Math.min(n - 1, i))];
+    return Number.isFinite(v) ? v : null;
+  };
+  return targetDistances.map((d) => {
+    if (!Number.isFinite(d)) return null;
+    if (d <= distances[0]) return at(0);
+    if (d >= distances[n - 1]) return at(n - 1);
+    let lo = 0;
+    let hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (distances[mid] < d) lo = mid + 1;
+      else hi = mid;
     }
-    const frac = Math.max(0, Math.min(1, d / total));
-    const idx = Math.max(0, Math.min(values.length - 1, Math.round(frac * (values.length - 1))));
-    const v = values[idx];
-    out.push(Number.isFinite(v) ? v : null);
-  }
-  return out;
+    const a = at(lo - 1);
+    const b = at(lo);
+    if (a == null || b == null) return b ?? a;
+    const span = distances[lo] - distances[lo - 1] || 1;
+    return a + (b - a) * ((d - distances[lo - 1]) / span);
+  });
 }
 
 export interface ReplayBuildOptions {
@@ -210,10 +231,27 @@ export function buildReplay(
   const polyDist = cumulativePolyline(coords, xs, ys);
 
   const velocity = opts.velocity?.values ?? [];
-  const resid = opts.velocity?.resolution ?? 1;
+  const rawResid = opts.velocity?.resolution ?? 1;
+  const resid = Number.isFinite(rawResid) && rawResid > 0 ? rawResid : 1;
+  if (velocity.length === 0) {
+    // No velocity stream — nothing to synchronise against. Callers gate on
+    // this, but never emit a bogus negative-index point.
+    return {
+      points: [],
+      totalTime: 0,
+      totalDistance: 0,
+      maxSpeed: 0,
+      lat0,
+      lng0,
+      altMin: opts.altBase?.altMin ?? 0,
+      zScale: opts.altBase?.zScale ?? 1,
+    };
+  }
   const sampleDist = cumulativeFromVelocity(velocity, resid);
 
-  let totalTime = velocity.length > 0 ? velocity.length * resid : 0;
+  // Elapsed runs 0..(n-1)*resid — totalTime is the last sample's clock, not
+  // one phantom step past it.
+  let totalTime = (velocity.length - 1) * resid;
   let totalDistance = sampleDist.length > 0 ? sampleDist[sampleDist.length - 1] : 0;
   if (totalDistance <= 0 && polyDist.length > 0) totalDistance = polyDist[polyDist.length - 1];
 
@@ -322,6 +360,7 @@ export function buildReplay(
   // covers, the stream was truncated — extend the replay along the remaining
   // polyline at the average speed so the full path animates.
   if (
+    points.length > 0 &&
     opts.activityDistanceMeters &&
     opts.activityDistanceMeters > totalDistance * 1.1 &&
     polyDist.length > 0

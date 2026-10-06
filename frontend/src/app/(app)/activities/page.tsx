@@ -178,6 +178,10 @@ function ActivityExpanded({
   }, [activityDetail, selectedStream]);
 
   // ── 3D replay data (cycling rides with a route + streams) — §3.16 ──────
+  // Deps are scalar fields (not the whole activity object): list re-renders
+  // mint fresh row objects, and a new build identity would tear down + refetch
+  // the entire live 3D scene behind an open Theater. React Query keeps
+  // activityDetail reference-stable across identical refetches.
   const replayBuild: ReplayBuildResult | null = useMemo(() => {
     if (!isCycling || !activity.encoded_polyline || !activityDetail?.streams?.length) return null;
     const streams = activityDetail.streams!;
@@ -194,7 +198,8 @@ function ActivityExpanded({
       activityDistanceMeters: activity.distance_meters ?? undefined,
       activityDurationSeconds: activity.duration_seconds ?? undefined,
     });
-  }, [activity, activityDetail, isCycling]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity.id, activity.encoded_polyline, activity.distance_meters, activity.duration_seconds, activityDetail, isCycling]);
 
   // Explain *why* 3D is unavailable instead of rendering nothing (P1-1).
   // Loading/error/empty-streams cases are covered by the stream section below.
@@ -232,7 +237,9 @@ function ActivityExpanded({
   );
 
   // Deep link ?replay=<id>: auto-open the Theater once the build is ready.
-  const { getParam } = useDeepLink();
+  // The param is set on manual open too (so refresh keeps the Theater) and
+  // cleared on close (so back-button/refresh doesn't trap the user in it).
+  const { getParam, setParam } = useDeepLink();
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || !replayBuild) return;
@@ -242,6 +249,15 @@ function ActivityExpanded({
       setTheaterOpen(true);
     }
   }, [getParam, activity.id, replayBuild]);
+  const openTheater = useCallback(() => {
+    setTheaterOpen(true);
+    setParam('replay', activity.id);
+  }, [setParam, activity.id]);
+  const closeTheater = useCallback(() => {
+    setTheaterOpen(false);
+    setParam('replay', null);
+    setParam('t', null);
+  }, [setParam]);
 
   // Stop context propagation when clicking inside expanded detail
   const handleStopClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -311,7 +327,7 @@ function ActivityExpanded({
       {/* 3D Replay launcher — the full experience lives in the Theater (§3.16) */}
       {replayBuild && replayBuild.points.length >= 2 ? (
         <button
-          onClick={() => setTheaterOpen(true)}
+          onClick={openTheater}
           className="mb-4 flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
         >
           <span className="min-w-0 flex-1">
@@ -332,7 +348,7 @@ function ActivityExpanded({
           build={replayBuild}
           polyline={activity.encoded_polyline ?? undefined}
           ftpWatts={profile?.ftp_watts ?? null}
-          onClose={() => setTheaterOpen(false)}
+          onClose={closeTheater}
         />
       )}
 
@@ -424,11 +440,22 @@ export default function ActivitiesPage() {
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const PAGE_SIZE = 50;
 
-  // Deep-link: select the activity referenced by ?activity=<id> on load
+  // Deep-link: select the activity referenced by ?activity=<id> on load. A
+  // bare ?replay=<id> (shared Theater link, no activity param) selects that
+  // ride too and canonicalizes the URL, so the Theater auto-opens from the
+  // replay link alone — off-list ids already render via the fallback below.
   useEffect(() => {
     const id = getParam('activity');
-    if (id) setSelectedActivityId((prev) => (prev === id ? prev : id));
-  }, [getParam]);
+    if (id) {
+      setSelectedActivityId((prev) => (prev === id ? prev : id));
+      return;
+    }
+    const replayId = getParam('replay');
+    if (replayId) {
+      setSelectedActivityId((prev) => (prev === replayId ? prev : replayId));
+      setParam('activity', replayId);
+    }
+  }, [getParam, setParam]);
 
   const handleSelectActivity = useCallback((id: string | null) => {
     setSelectedActivityId(id);

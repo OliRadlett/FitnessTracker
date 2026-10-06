@@ -94,15 +94,24 @@ function avgGrade(points: ReplayPoint[], a: number, b: number, gain: number): nu
 function bestSprint(points: ReplayPoint[], windowS: number): { a: number; b: number; avg: number } | null {
   const hasPower = points.some((p) => p.power != null);
   if (!hasPower) return null;
+  // Nulls are missing samples, not zeros — averaging over them would dilute a
+  // real effort, so count only non-null samples in each window.
   const prefix: number[] = [0];
-  for (const p of points) prefix.push(prefix[prefix.length - 1] + (p.power ?? 0));
+  const counts: number[] = [0];
+  for (const p of points) {
+    const v = p.power;
+    prefix.push(prefix[prefix.length - 1] + (v ?? 0));
+    counts.push(counts[counts.length - 1] + (v != null ? 1 : 0));
+  }
   let best: { a: number; b: number; avg: number } | null = null;
   let lo = 0;
   for (let hi = 0; hi < points.length; hi++) {
     while (points[hi].elapsed - points[lo].elapsed > windowS) lo++;
     const n = hi - lo + 1;
     if (n < 3) continue;
-    const avg = (prefix[hi + 1] - prefix[lo]) / n;
+    const measured = counts[hi + 1] - counts[lo];
+    if (measured < 3) continue;
+    const avg = (prefix[hi + 1] - prefix[lo]) / measured;
     if (!best || avg > best.avg) best = { a: lo, b: hi, avg };
   }
   return best;
@@ -110,7 +119,7 @@ function bestSprint(points: ReplayPoint[], windowS: number): { a: number; b: num
 
 /** fastest window of `windowM` metres by elapsed time */
 function bestFastest(points: ReplayPoint[], windowM: number): { a: number; b: number; kmh: number } | null {
-  if (points.length < 2) return null;
+  if (points.length < 2 || !(windowM > 0)) return null;
   let best: { a: number; b: number; kmh: number } | null = null;
   let lo = 0;
   for (let hi = 0; hi < points.length; hi++) {
@@ -205,13 +214,25 @@ export function detectHighlights(points: ReplayPoint[], opts: HighlightOptions =
   return out.sort((x, y) => x.startElapsed - y.startElapsed);
 }
 
-/** The highlight covering `elapsed`, if any (climbs/descents win over sprint/fastest). */
+/**
+ * The highlight covering `elapsed`, if any. Explicit rank — climbs/descents
+ * outrank sprint/fastest, ties break by score then earliest start — instead of
+ * the old order-dependent rule where any later sprint/fastest entry won.
+ */
+const HIGHLIGHT_RANK: Record<HighlightKind, number> = { climb: 0, descent: 0, sprint: 1, fastest: 2 };
+
 export function highlightAt(highlights: Highlight[], elapsed: number): Highlight | null {
   let best: Highlight | null = null;
   for (const h of highlights) {
     if (elapsed < h.startElapsed || elapsed > h.endElapsed) continue;
-    if (!best) best = h;
-    else if (best.kind === 'sprint' || best.kind === 'fastest') best = h;
+    if (!best) {
+      best = h;
+      continue;
+    }
+    const rank = HIGHLIGHT_RANK[h.kind] - HIGHLIGHT_RANK[best.kind];
+    if (rank < 0 || (rank === 0 && (h.score > best.score || (h.score === best.score && h.startElapsed < best.startElapsed)))) {
+      best = h;
+    }
   }
   return best;
 }

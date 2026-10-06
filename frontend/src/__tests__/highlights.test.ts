@@ -71,6 +71,28 @@ describe('detectHighlights', () => {
     expect(fastest!.detail).toMatch(/km\/h$/);
   });
 
+  it('ignores a zero fastest window instead of reporting 0 km/h', () => {
+    const pts = mk(250, { dt: (i) => (i >= 100 && i <= 160 ? 0.7 : 2) });
+    expect(detectHighlights(pts, { fastestWindowM: 0 }).some((h) => h.kind === 'fastest')).toBe(false);
+  });
+
+  it('does not let null power samples dilute (or invent) a sprint', () => {
+    // Only two real 500 W samples amid nulls: no window has 3 measured
+    // samples, so there is no sprint (the old nulls-as-zero math invented one).
+    const pts = mk(30);
+    pts[10].power = 500;
+    pts[11].power = 500;
+    expect(detectHighlights(pts).some((h) => h.kind === 'sprint')).toBe(false);
+  });
+
+  it('averages sprints over measured samples only', () => {
+    const pts = mk(60);
+    for (let i = 20; i <= 29; i++) pts[i].power = 400;
+    const sprint = detectHighlights(pts).find((h) => h.kind === 'sprint');
+    expect(sprint).toBeDefined();
+    expect(sprint!.detail).toMatch(/^400 W$/);
+  });
+
   it('sorts highlights by start time', () => {
     const pts = mk(300, {
       grade: (i) => (i < 100 ? 6 : i > 200 ? -6 : 0),
@@ -90,5 +112,13 @@ describe('highlightAt', () => {
     expect(highlightAt([climb, sprint], 50)?.kind).toBe('climb');
     expect(highlightAt([climb, sprint], 70)?.kind).toBe('sprint');
     expect(highlightAt([climb], 5)).toBeNull();
+  });
+
+  it('ranks sprint above fastest regardless of list order, ties by score', () => {
+    const mkH = (kind: 'sprint' | 'fastest', score: number) => (
+      { kind, startElapsed: 0, endElapsed: 100, startKm: 0, endKm: 1, label: kind, detail: '', score }
+    );
+    expect(highlightAt([mkH('fastest', 99), mkH('sprint', 1)], 50)?.kind).toBe('sprint');
+    expect(highlightAt([mkH('sprint', 1), mkH('sprint', 2)], 50)?.score).toBe(2);
   });
 });

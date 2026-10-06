@@ -43,6 +43,49 @@ describe('buildRaceRides', () => {
   });
 });
 
+describe('buildRaceRides alignment', () => {
+  const poly = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
+  const streamsFor = (id: string): ActivityStream[] => [
+    { id: `${id}-v`, activity_id: id, stream_type: 'velocity', data: { data: [5, 6, 7, 8] }, resolution: 1 },
+    { id: `${id}-a`, activity_id: id, stream_type: 'altitude', data: { data: [100, 110, 120, 130] }, resolution: 1 },
+  ];
+
+  it('sorts unparseable dates last instead of NaN-scrambling the order', () => {
+    const rides = buildRaceRides({
+      history: {
+        rides: [
+          { activity_id: 'bad', date: 'not-a-date', duration_seconds: 60, distance_meters: 1000, average_power: 200, tss: 30 },
+          { activity_id: 'good', date: '2026-06-01', duration_seconds: 60, distance_meters: 1000, average_power: 250, tss: 35 },
+        ],
+        personal_best: null,
+      },
+      detailById: {
+        bad: { name: 'Bad', encoded_polyline: poly, streams: streamsFor('bad') },
+        good: { name: 'Good', encoded_polyline: poly, streams: streamsFor('good') },
+      },
+    });
+    expect(rides.length).toBe(2);
+    expect(rides[0].id).toBe('good');
+  });
+
+  it('builds traces in the shared frame with real altitude when given', () => {
+    const frame = { lat0: 51.5, lng0: -0.1 };
+    const altBase = { altMin: 100, zScale: 2 };
+    const rides = buildRaceRides({
+      history: {
+        rides: [{ activity_id: 'a', date: '2026-06-01', duration_seconds: 60, distance_meters: 1000, average_power: 200, tss: 30 }],
+        personal_best: null,
+      },
+      detailById: { a: { name: 'A', encoded_polyline: poly, streams: streamsFor('a') } },
+      frame,
+      altBase,
+    });
+    expect(rides.length).toBe(1);
+    // Altitude carried through (not flat zero) under the shared vertical base.
+    expect(Math.max(...rides[0].points.map((p) => p.z))).toBeGreaterThan(0);
+  });
+});
+
 describe('raceIndexAt', () => {
   const pts: RacePoint[] = [
     { x: 0, y: 0, z: 0, distance: 0, speed: 5, elapsed: 0 },
@@ -65,6 +108,10 @@ describe('raceIndexAt', () => {
   it('finds the floor for in-between times', () => {
     expect(raceIndexAt(pts, 3)).toBe(1);
     expect(raceIndexAt(pts, 5.9)).toBe(2);
+  });
+
+  it('returns 0 for an empty path instead of an out-of-bounds index', () => {
+    expect(raceIndexAt([], 5)).toBe(0);
   });
 });
 

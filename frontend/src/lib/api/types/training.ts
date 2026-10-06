@@ -161,7 +161,7 @@ export interface TrainingPlan {
   description?: string;
   start_date: string;
   end_date: string;
-  plan_type: 'custom' | 'build' | 'base' | 'peak' | 'taper' | 'recovery';
+  plan_type: 'custom' | 'build' | 'base' | 'peak' | 'taper' | 'recovery' | 'strength';
   status: 'draft' | 'active' | 'completed' | 'archived';
   event_id?: string | null;
   created_at: string;
@@ -260,6 +260,15 @@ export interface UpdateTrainingPlanPayload {
   days?: CreateTrainingPlanDayPayload[];
 }
 
+export interface StrengthWeekTemplate {
+  week: number;
+  rpe?: number | null;
+  sets?: number | null;
+  reps?: number | null;
+  weights?: Record<string, number> | null;
+  notes?: string | null;
+}
+
 export interface GeneratePlanPayload {
   name: string;
   template_type: string;
@@ -267,6 +276,38 @@ export interface GeneratePlanPayload {
   start_date: string;
   base_tss?: number;
   event_id?: string | null;
+  strength_template?: StrengthWeekTemplate[];
+  strength_focuses?: string[];
+  strength_start_rpe?: number | null;
+  strength_start_sets?: number | null;
+  strength_start_reps?: number | null;
+  strength_start_weight_kg?: number | null;
+}
+
+// ─── Strength Suggestions ────────────────────────────────────────────────
+
+export interface StrengthExerciseSuggestion {
+  exercise_name: string;
+  old_weight_kg: number | null;
+  suggested_weight_kg: number;
+  rpe: number | null;
+  sets: number;
+  reps: number;
+}
+
+export interface StrengthDaySuggestion {
+  day_id: string;
+  day_date: string;
+  sport: string;
+  planned_focus: string | null;
+  exercises: StrengthExerciseSuggestion[];
+}
+
+export interface StrengthPlanSuggestionsResponse {
+  plan_id: string;
+  generated_at: string;
+  suggestions: StrengthDaySuggestion[];
+  summary: string | null;
 }
 
 // ─── Weekly View (Phase 5B) ──────────────────────────────────────────────

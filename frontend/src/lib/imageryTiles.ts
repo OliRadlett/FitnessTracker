@@ -34,6 +34,7 @@ export function imageryUv(drape: ImageryDrape, lat: number, lng: number): [numbe
 }
 
 function loadImage(url: string, signal?: AbortSignal): Promise<HTMLImageElement> {
+  if (signal?.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.decoding = 'async';

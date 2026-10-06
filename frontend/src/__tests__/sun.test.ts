@@ -22,6 +22,20 @@ describe('solarPosition', () => {
     expect(p.elevationDeg).toBeLessThan(0);
   });
 
+  it('stays finite at the pole (asin clamp, no NaN)', () => {
+    const p = solarPosition(new Date('2026-06-21T12:00:00Z'), 90, 0);
+    expect(Number.isFinite(p.elevationDeg)).toBe(true);
+    expect(Number.isFinite(p.azimuthDeg)).toBe(true);
+  });
+
+  it('treats non-finite input as night, never day', () => {
+    expect(daylightPhase(Number.NaN)).toBe('night');
+    const m = sunLightModel(Number.NaN);
+    expect(m.phase).toBe('night');
+    expect(Number.isFinite(m.sunIntensity)).toBe(true);
+    expect(m.headlamp).toBe(1);
+  });
+
   it('returns a unit direction vector pointing up when the sun is overhead', () => {
     const [x, y, z] = sunDirection({ elevationDeg: 90, azimuthDeg: 0 });
     expect(x).toBeCloseTo(0, 6);

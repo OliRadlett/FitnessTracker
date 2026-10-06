@@ -2679,15 +2679,18 @@ class ChartService:
             x_label="Date",
             y_label="Est. 1RM (kg)",
             insights=[
-                f"Big-3 total {total_data[-1]:.0f}kg "
-                f"({(best['Squat'] or 0):.0f} + {(best['Bench Press'] or 0):.0f} + {(best['Deadlift'] or 0):.0f})."
+                (
+                    f"Big-3 total {total_data[-1]:.0f}kg "
+                    f"({(best['Squat'] or 0):.0f} + {(best['Bench Press'] or 0):.0f} + "
+                    f"{(best['Deadlift'] or 0):.0f})."
+                )
             ],
         )
 
     # ── Rep-range distribution ────────────────────────────────────────────────
 
     # Rep bands shared by the overview and single-exercise shapes.
-    BAND_NAMES = ["Strength (1–3)", "Hypertrophy (4–6)", "Endurance (7+)"]
+    BAND_NAMES = ("Strength (1–3)", "Hypertrophy (4–6)", "Endurance (7+)")
     TOP_EXERCISES = 8
 
     @staticmethod
@@ -2776,8 +2779,10 @@ class ChartService:
         band_totals = [sum(triplet[i] for _, triplet in ranked) for i in range(3)]
         dominant = max(range(3), key=lambda i: band_totals[i])
         insights = [
-            f"{band_totals[dominant] / grand * 100:.0f}% of recent sets are in "
-            f"the {band_names[dominant].lower()} band."
+            (
+                f"{band_totals[dominant] / grand * 100:.0f}% of recent sets are in "
+                f"the {band_names[dominant].lower()} band."
+            )
         ]
         return ChartData(
             chart_type="bar",

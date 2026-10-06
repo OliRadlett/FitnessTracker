@@ -9,7 +9,7 @@ Services follow the ``(db: AsyncSession, user_id, ...)`` convention and raise
 import logging
 import re
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,11 @@ from app.schemas.training_plan import (
     ActualLiftingSession,
     BadWeather,
     DayWeather,
+    ExerciseSuggestion,
     GeneratePlanRequest,
+    StrengthDaySuggestion,
+    StrengthPlanSuggestionsResponse,
+    StrengthWeekTemplate,
     TrainingPlanCreate,
     TrainingPlanDayCreate,
     TrainingPlanDayRead,
@@ -57,7 +61,7 @@ from app.services.workout_planner import (
 
 logger = logging.getLogger(__name__)
 
-VALID_PLAN_TYPES = {"custom", "build", "base", "peak", "taper", "recovery"}
+VALID_PLAN_TYPES = {"custom", "build", "base", "peak", "taper", "recovery", "strength"}
 VALID_PLAN_STATUSES = {"draft", "active", "completed", "archived"}
 VALID_DAY_TYPES = {"rest", "easy", "moderate", "hard", "race"}
 
@@ -371,6 +375,388 @@ def _generate_plan_days(
     return days
 
 
+# ── Strength plan generation (user-defined progressive overload) ────────────
+
+# Default focus rotation for strength days
+_DEFAULT_STRENGTH_FOCUSES = ["squat", "bench", "deadlift"]
+
+# Weight progression step sizes by RPE range (kg)
+_RPE_WEIGHT_STEPS = {
+    (8.0, 9.0): 5.0,   # RPE 8-9: +5kg
+    (9.0, 10.0): 2.5,  # RPE 9-10: +2.5kg
+    (7.0, 8.0): 5.0,   # RPE 7-8: +5kg
+    (6.0, 7.0): 5.0,   # RPE 6-7: +5kg
+}
+
+
+def _get_weight_step(rpe: float | None) -> float:
+    """Weight increment for a given RPE — heavier increments at lower RPE."""
+    if rpe is None:
+        return 2.5
+    for (low, high), step in _RPE_WEIGHT_STEPS.items():
+        if low <= rpe < high:
+            return step
+    return 2.5
+
+
+def _strength_plan_days(
+    weeks: int,
+    start_date: date,
+    focuses: list[str] | None = None,
+    template: list["StrengthWeekTemplate"] | None = None,
+) -> list[TrainingPlanDayCreate]:
+    """Generate a user-defined strength plan with progressive overload.
+
+    Structure:
+    - Days 1, 3, 5: main strength days (one per focus in rotation)
+    - Days 2, 4, 6: accessory/variation work
+    - Day 7: rest
+
+    The ``template`` parameter lets the user override RPE/sets/reps/weights
+    per week. Unset weeks inherit from the nearest preceding week.
+    """
+    days: list[TrainingPlanDayCreate] = []
+    focuses = focuses or list(_DEFAULT_STRENGTH_FOCUSES)
+
+    # Build per-week template lookup (0-indexed internally)
+    tmpl_by_week: dict[int, dict] = {}
+    if template:
+        for entry in template:
+            week_idx = entry.week - 1
+            tmpl_by_week[week_idx] = {
+                "rpe": entry.rpe,
+                "sets": entry.sets,
+                "reps": entry.reps,
+                "weights": entry.weights,
+                "notes": entry.notes,
+            }
+
+    # Inherit values from nearest preceding week
+    current_rpe: float = 8.0
+    current_sets: int = 5
+    current_reps: int = 5
+    current_weights: dict[str, float] = {}
+
+    for week in range(weeks):
+        entry = tmpl_by_week.get(week)
+        if entry:
+            if entry.get("rpe") is not None:
+                current_rpe = entry["rpe"]
+            if entry.get("sets") is not None:
+                current_sets = entry["sets"]
+            if entry.get("reps") is not None:
+                current_reps = entry["reps"]
+            if entry.get("weights"):
+                current_weights.update(entry["weights"])
+
+        focus = focuses[week % len(focuses)]
+        template_week = entry.get("notes") if entry else None
+
+        for day_offset in range(7):
+            day_date = start_date + timedelta(weeks=week, days=day_offset)
+            dow = day_date.weekday()
+
+            if dow == 6:  # Sunday = rest
+                days.append(
+                    TrainingPlanDayCreate(
+                        day_date=day_date,
+                        sport="rest",
+                        planned_tss=0,
+                        planned_duration_min=0,
+                        planned_type="rest",
+                    )
+                )
+            elif dow in (0, 2, 4):  # Mon, Wed, Fri = main strength days
+                day_focus = focuses[(week + dow // 2) % len(focuses)]
+                weight = current_weights.get(day_focus)
+                days.append(
+                    _strength_day(day_date, day_focus, "main", duration_min=75)
+                )
+                # Override RPE/sets/reps on the last exercise of main
+                if days[-1].planned_exercises:
+                    for ex in days[-1].planned_exercises:
+                        if current_rpe is not None:
+                            ex["rpe"] = round(current_rpe, 1)
+                        if current_sets is not None:
+                            ex["sets"] = current_sets
+                        if current_reps is not None and dow == 2:
+                            ex["reps"] = current_reps
+                        if weight is not None and ex.get(
+                            "exercise", ""
+                        ).lower().startswith(day_focus):
+                            ex["weight_kg"] = round(weight, 1)
+                if template_week:
+                    days[-1].workout_description = template_week
+            elif dow == 1 or dow == 3:  # Tue, Thu = accessories
+                days.append(
+                    _strength_day(
+                        day_date, focus, "accessories", duration_min=45
+                    )
+                )
+                if days[-1].planned_exercises:
+                    for ex in days[-1].planned_exercises:
+                        if current_rpe is not None:
+                            ex["rpe"] = round(current_rpe - 1, 1)
+                        if current_sets is not None:
+                            ex["sets"] = max(2, current_sets - 1)
+                        if current_reps is not None:
+                            ex["reps"] = current_reps + 2
+            else:  # Sat = optional second session or rest
+                days.append(
+                    _strength_day(
+                        day_date, focus, "main", duration_min=60
+                    )
+                )
+                if days[-1].planned_exercises:
+                    for ex in days[-1].planned_exercises:
+                        if current_rpe is not None:
+                            ex["rpe"] = round(current_rpe - 0.5, 1)
+                        if current_sets is not None:
+                            ex["sets"] = max(2, current_sets - 1)
+                        if current_reps is not None:
+                            ex["reps"] = current_reps + 2
+
+    return days
+
+
+# ── Strength suggestion logic (smart weight adjustment for big 3) ──────────
+
+# Conformity threshold for auto-suggesting weight increases (0-100)
+SUGGEST_WEIGHT_THRESHOLD = 85.0
+
+# Weight increments based on RPE proximity
+_STEP_WELL_EASY = 5.0    # RPE 0.5+ below target: +5kg
+_STEP_WELL_MATCH = 2.5   # RPE within ±0.5 of target: +2.5kg
+
+
+def _classify_big3_exercise(exercise_name: str) -> str | None:
+    """Classify an exercise name as squat/bench/deadlift or return None."""
+    name = exercise_name.lower()
+    if "squat" in name:
+        return "squat"
+    if "bench" in name or "press" in name:
+        return "bench"
+    if "deadlift" in name:
+        return "deadlift"
+    return None
+
+
+async def suggest_strength_updates(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+) -> dict:
+    """Suggest weight updates for upcoming big-3 exercises based on RPE.
+
+    Focuses on the Big 3 (squat, bench, deadlift). Uses the most recent
+    completed strength session to evaluate whether the user hit their planned
+    RPE targets, and suggests weight adjustments for the same exercises in
+    upcoming days.
+
+    - RPE within tolerance (±0.5): matched well, suggest +2.5kg
+    - RPE below planned: user had capacity, suggest +5kg
+    - RPE above planned: user struggled, suggest maintain
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise LookupError("Training plan not found")
+
+    today = date.today()
+
+    # Get all strength days, sorted by date
+    strength_days = sorted(
+        [d for d in plan.days if d.sport == "strength"],
+        key=lambda d: d.day_date,
+    )
+
+    # Find the most recent completed strength day with a linked session
+    from app.services.conformity import get_day_conformity
+
+    completed_days: list[tuple[TrainingPlanDay, dict]] = []
+    for day in reversed(strength_days):  # most recent first
+        if day.day_date < today and day.lifting_session_id:
+            try:
+                conformity = await get_day_conformity(
+                    db, user_id, plan_id, day.id
+                )
+                completed_days.append((day, conformity))
+            except (ValueError, LookupError):
+                continue
+
+    if not completed_days:
+        return {
+            "plan_id": plan.id,
+            "generated_at": datetime.now(UTC),
+            "suggestions": [],
+            "summary": "No completed strength days with linked sessions found.",
+        }
+
+    # Use the most recent completed day for RPE analysis
+    latest_day, latest_conformity = completed_days[0]
+    overall_pct = latest_conformity.get("conformity_pct") or 0
+
+    if overall_pct < SUGGEST_WEIGHT_THRESHOLD:
+        return {
+            "plan_id": plan.id,
+            "generated_at": datetime.now(UTC),
+            "suggestions": [],
+            "summary": (
+                f"Latest completed strength day ({latest_day.day_date}) "
+                f"scored {overall_pct:.0f}% conformity "
+                f"(below {SUGGEST_WEIGHT_THRESHOLD:.0f}% threshold). "
+                "No weight suggestions — consider adjusting the plan."
+            ),
+        }
+
+    # Load the lifting session with its sets
+    from app.models.lifting import LiftingSession
+
+    session = None
+    if latest_day.lifting_session_id:
+        result = await db.execute(
+            select(LiftingSession)
+            .where(LiftingSession.id == latest_day.lifting_session_id)
+            .options(selectinload(LiftingSession.sets))
+        )
+        session = result.scalar_one_or_none()
+
+    if not session or not session.sets:
+        return {
+            "plan_id": plan.id,
+            "generated_at": datetime.now(UTC),
+            "suggestions": [],
+            "summary": "Completed strength day has no linked session with sets.",
+        }
+
+    # Build actual RPE/weight lookup for big 3 exercises from the session
+    actual_by_big3: dict[str, dict] = {}
+
+    completed_exercises = latest_day.planned_exercises or []
+    for planned_ex in completed_exercises:
+        ex_name = planned_ex.get("exercise", "")
+        big3_name = _classify_big3_exercise(ex_name)
+        if big3_name is None:
+            continue
+
+        planned_rpe = planned_ex.get("rpe")
+        planned_weight = planned_ex.get("weight_kg") or 0
+
+        # Find matching sets in the session
+        matching_sets = [
+            s for s in session.sets
+            if _classify_big3_exercise(s.exercise_name) == big3_name
+        ]
+
+        if not matching_sets:
+            continue
+
+        # For the main working sets (non-warmup), compute actual RPE and weight
+        working_sets = [s for s in matching_sets if not s.is_warmup]
+        if not working_sets:
+            continue
+
+        # Use the heaviest set's RPE as the primary indicator
+        heaviest_set = max(working_sets, key=lambda s: s.weight_kg or 0)
+        actual_rpe = heaviest_set.rpe
+        actual_weight = heaviest_set.weight_kg or 0
+
+        if actual_rpe is None:
+            continue
+
+        actual_by_big3[big3_name] = {
+            "planned_rpe": planned_rpe,
+            "actual_rpe": actual_rpe,
+            "completed_weight_kg": actual_weight,
+            "planned_weight_kg": planned_weight,
+        }
+
+    if not actual_by_big3:
+        return {
+            "plan_id": plan.id,
+            "generated_at": datetime.now(UTC),
+            "suggestions": [],
+            "summary": "No big 3 exercises (squat/bench/deadlift) found in "
+            "the completed session.",
+        }
+
+    # Find upcoming strength days and suggest weight updates for big 3
+    upcoming_days = [
+        d for d in strength_days
+        if d.day_date >= today and d.planned_exercises
+    ]
+
+    suggestions: list[dict] = []
+    summary_parts = [
+        (
+            f"Latest session scored {overall_pct:.0f}% conformity. "
+            "Suggesting weight updates for upcoming big-3 exercises:"
+        )
+    ]
+
+    for up_day in upcoming_days[:3]:  # next 3 strength days
+        ex_suggestions: list[dict] = []
+
+        for planned_ex in (up_day.planned_exercises or []):
+            ex_name = planned_ex.get("exercise", "")
+            big3_name = _classify_big3_exercise(ex_name)
+            if big3_name is None:
+                continue
+
+            perf = actual_by_big3.get(big3_name)
+            if perf is None:
+                continue
+
+            actual_rpe = perf["actual_rpe"]
+            planned_rpe = perf["planned_rpe"] or 8.0
+            completed_weight = perf["completed_weight_kg"]
+
+            # The planned weight for the upcoming day
+            upcoming_weight = planned_ex.get("weight_kg") or completed_weight
+
+            # RPE-based weight suggestion
+            rpe_gap = actual_rpe - planned_rpe  # positive = struggled
+
+            if rpe_gap > 0.5:
+                # User struggled — suggest maintaining weight
+                suggested_weight = round(completed_weight, 1)
+            elif rpe_gap < -0.5:
+                # User had capacity — suggest +5kg
+                suggested_weight = round(completed_weight + _STEP_WELL_EASY, 1)
+            else:
+                # RPE matched well — suggest +2.5kg
+                suggested_weight = round(completed_weight + _STEP_WELL_MATCH, 1)
+
+            ex_suggestions.append({
+                "exercise_name": planned_ex.get("exercise", ""),
+                "old_weight_kg": upcoming_weight,
+                "suggested_weight_kg": suggested_weight,
+                "rpe": actual_rpe,
+                "sets": planned_ex.get("sets", 0),
+                "reps": planned_ex.get("reps", 0),
+            })
+
+        if ex_suggestions:
+            suggestions.append({
+                "day_id": str(up_day.id),
+                "day_date": up_day.day_date.isoformat(),
+                "sport": "strength",
+                "planned_focus": up_day.planned_focus,
+                "exercises": ex_suggestions,
+            })
+            summary_parts.append(
+                f"  {up_day.day_date}: {len(ex_suggestions)} exercises"
+            )
+
+    summary_parts.append(f"Based on session from {latest_day.day_date}.")
+
+    return {
+        "plan_id": plan.id,
+        "generated_at": datetime.now(UTC),
+        "suggestions": suggestions,
+        "summary": " ".join(summary_parts),
+    }
+
+
 # ── Internal helpers ─────────────────────────────────────────────────────
 
 
@@ -676,7 +1062,11 @@ async def _estimate_strength_volume(
 async def generate_plan(
     db: AsyncSession, user_id: uuid.UUID, data: GeneratePlanRequest
 ) -> TrainingPlan:
-    """Auto-generate a mixed-week training plan from a template type."""
+    """Auto-generate a training plan from a template type.
+
+    Handles all template types including "strength" for user-defined
+    progressive-overload strength plans.
+    """
     if data.template_type not in VALID_PLAN_TYPES - {"custom"}:
         raise ValueError(
             "Invalid template_type. Must be one of: "
@@ -688,9 +1078,20 @@ async def generate_plan(
         raise ValueError("base_tss must be between 50 and 1500")
 
     end_date = data.start_date + timedelta(weeks=data.weeks) - timedelta(days=1)
-    days = _generate_plan_days(
-        data.template_type, data.weeks, data.start_date, data.base_tss
-    )
+
+    # ── Strength plan: uses user-provided progression template ──────────────
+    if data.template_type == "strength":
+        focuses = data.strength_focuses if data.strength_focuses else None
+        days = _strength_plan_days(
+            weeks=data.weeks,
+            start_date=data.start_date,
+            focuses=focuses,
+            template=data.strength_template,
+        )
+    else:
+        days = _generate_plan_days(
+            data.template_type, data.weeks, data.start_date, data.base_tss
+        )
 
     # Backfill planned_volume_kg for strength days by looking at the athlete's
     # recent session history (templates ship with weight_kg=None).
@@ -700,12 +1101,31 @@ async def generate_plan(
                 db, user_id, day_data.planned_focus
             )
 
+    # Apply user-supplied starting stats if provided
+    if (
+        data.strength_start_rpe is not None
+        or data.strength_start_sets is not None
+        or data.strength_start_reps is not None
+        or data.strength_start_weight_kg is not None
+    ):
+        for day_data in days:
+            if day_data.sport == "strength" and day_data.planned_exercises:
+                for ex in day_data.planned_exercises:
+                    if data.strength_start_rpe is not None:
+                        ex["rpe"] = round(data.strength_start_rpe, 1)
+                    if data.strength_start_sets is not None:
+                        ex["sets"] = data.strength_start_sets
+                    if data.strength_start_reps is not None:
+                        ex["reps"] = data.strength_start_reps
+                    if data.strength_start_weight_kg is not None:
+                        ex["weight_kg"] = round(data.strength_start_weight_kg, 1)
+
     plan = TrainingPlan(
         user_id=user_id,
         name=data.name,
         description=(
             f"Auto-generated {data.template_type} plan "
-            f"({data.weeks} weeks, base TSS {data.base_tss})"
+            f"({data.weeks} weeks)"
         ),
         start_date=data.start_date,
         end_date=end_date,

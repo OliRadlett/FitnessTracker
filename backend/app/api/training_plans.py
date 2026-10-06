@@ -18,6 +18,7 @@ from app.schemas.training_plan import (
     GeneratePlanRequest,
     RefreshTargetsResponse,
     RescheduleDayRequest,
+    StrengthPlanSuggestionsResponse,
     SubstituteDayRequest,
     TrainingPlanCreate,
     TrainingPlanDayRead,
@@ -471,6 +472,26 @@ async def generate_plan(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _plan_to_read(plan)
+
+
+@router.get("/{plan_id}/strength-suggestions", response_model=StrengthPlanSuggestionsResponse)
+async def get_strength_suggestions(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest weight updates for upcoming strength days based on prior performance.
+
+    Analyzes conformity for completed strength days and recommends weight
+    adjustments for future days with similar exercises (big 3: squat/bench/deadlift).
+    """
+    try:
+        result = await plan_service.suggest_strength_updates(
+            db, current_user.id, plan_id
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return result
 
 
 # ── Copy endpoints ────────────────────────────────────────────────────────

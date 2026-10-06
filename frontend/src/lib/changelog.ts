@@ -7,6 +7,27 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '2026-09-30',
+    date: '2026-09-30',
+    title: 'Relive — Full-Screen 3D Ride Theater',
+    bullets: [
+      'Full-screen Theater: a new "Open 3D Replay" launcher on cycling activities opens a borderless, portaled viewer (`?replay=<id>` deep-link, Escape to close) — the inline canvas is gone',
+      'Real bike model: your actual 2026 Cube Agree C62 renders in the scene (2.33 MB meshopt + WebP GLB, procedural wheel motion-blur), replacing the placeholder cone',
+      'Cinematic cameras: auto (grade/speed/power-aware), chase, drone, cockpit, flyby, orbit, and a cinematic intro flyover with a soft landing to chase — plus cine auto-orbit that circles the rider with speed-reactive radius/FOV/banking and smooth manual-drag resume',
+      'Believable world: gradient sky dome, distance fog, ACES tone mapping, real shadows (PCFSoft), bloom, and a continuous solar model that lights the scene for the ride\'s actual start time — golden hour gets warm light, night rides go dark with a headlamp',
+      'Real terrain: keyless terrarium DEM tiles (AWS ~30 m) drape the route in genuine relief, with Open-Meteo fallback; optional Esri satellite imagery overlay with attribution; terrain/imagery toggles remembered per-user',
+      'Road that you ride on: an asphalt ribbon under the bike, vertex-coloured by speed/power/HR/grade (the "effort road"), with dashed centre line, km markers, and on-road highlight dots for climbs/descents/sprints/fastest-km',
+      'Weather: camera-relative rain streaks, drifting snow, and haze particles driven by ride weather; wet-road sheen on the asphalt when it\'s raining or snowing',
+      'Speed streaks: motion-trail particles trailing the bike that intensify with effort (cyan → orange)',
+      'Broadcast HUD: pro-cycling-style overlay (toggleable) with speed hero number, Coggan-zone power color, HR, cadence, grade, progress, distance, and ghost delta',
+      'Auto-tour: one-tap cinematic tour of the ride\'s highlights with a chapter bar for one-tap jumps',
+      'Ghost racing: race another ride on the same route as a translucent blue bike with a live +/- delta; the compare modal now renders both rides in one shared scene (was side-by-side)',
+      'Export: 2× PNG poster and 6-second webm clip capture (MediaRecorder)',
+      'Telemetry + scrubber: a course-profile elevation scrubber above the transport with click/drag seek, plus a lean TelemetryStrip with power zone bands',
+      'Photo mode, Lite mode (auto on mobile), keyboard shortcuts (space/←/→/1–5), and a local dev harness at /fittrack/dev/replay with offline fixtures',
+    ],
+  },
+  {
     version: '2026-09-20',
     date: '2026-09-20',
     title: 'Live Lift Reliability + Power-Ups',
