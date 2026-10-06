@@ -9,17 +9,14 @@ import {
   getPersonalRecords,
   getWarmupTemplates,
   getActiveLiftingSession,
-  getTrainingPlans,
-  getPlanWeek,
   updateLiftingSession,
 } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api/fetch';
 import type {
   WarmupTemplate,
-  TrainingPlanSummary,
-  TrainingWeekDay,
   ReadinessResponse,
 } from '@/lib/api/types';
+import { useTodaysStrengthDay } from '@/lib/training/useTodaysStrengthDay';
 import { LiveWorkout } from '@/components/lifting/LiveWorkout';
 import {
   buildLastSessionMap,
@@ -28,7 +25,6 @@ import {
 } from '@/lib/lifting/reference';
 import { useLiveSession, type PlanTarget } from '@/lib/lifting/useLiveSession';
 import { setsToCsv, downloadTextFile } from '@/lib/lifting/csv';
-import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 const FOCUS_OPTIONS = ['squat', 'bench', 'deadlift', 'overhead_press', 'accessories'];
@@ -95,28 +91,9 @@ export default function LiveLiftPage() {
 
   // Today's strength plan day (if any) — powers the "Load from today's plan"
   // suggestion chip. Suggest-only: nothing auto-applies until the user taps it.
-  const { data: planDayForToday } = useQuery({
-    queryKey: ['live-plan-today'],
-    queryFn: async (): Promise<{ planName: string; planDay: TrainingWeekDay } | null> => {
-      const plans = await getTrainingPlans(authFetch, 'active');
-      const today = toDateStr(new Date());
-      const plan: TrainingPlanSummary | undefined = plans.find(
-        (p) => p.start_date <= today && today <= p.end_date
-      );
-      if (!plan) return null;
-      const week = getCurrentWeek(plan.start_date, plan.end_date);
-      const weekData = await getPlanWeek(authFetch, plan.id, week);
-      const day = weekData.days.find(
-        (d) =>
-          d.day_date === today &&
-          d.sport === 'strength' &&
-          (d.planned_exercises?.length ?? 0) > 0 &&
-          !d.completed
-      );
-      return day ? { planName: plan.name, planDay: day } : null;
-    },
-    staleTime: 10 * 60_000,
-    enabled: !live.state && !!live.hydrated && !!token,
+  // Shared hook (same query key the lifting Sessions tab uses).
+  const { data: planDayForToday } = useTodaysStrengthDay({
+    enabled: !live.state && !!live.hydrated,
   });
   const [planPreset, setPlanPreset] = useState<{
     planName: string;

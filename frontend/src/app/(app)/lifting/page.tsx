@@ -33,6 +33,7 @@ import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionCardMini } from '@/components/lifting/SessionCardMini';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
+import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
@@ -203,6 +204,13 @@ export default function LiftingPage() {
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const { data: big3TotalChart, isLoading: big3TotalLoading } = useQuery<ChartData>({
+    queryKey: ['chart-big-3-total'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/big_3_total'),
     enabled: !!token,
     staleTime: 300_000,
   });
@@ -548,6 +556,9 @@ export default function LiftingPage() {
       {/* ── Sessions Tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'sessions' && (
         <div className="space-y-6">
+
+      {/* Today's planned strength day (active plan) */}
+      <TodayStrengthDayCard />
 
       {/* Live Lift entry point */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
@@ -1105,6 +1116,17 @@ export default function LiftingPage() {
 
       {/* Featured: unified cycling + lifting load */}
       <CombinedLoadChart />
+
+      {/* Big-3 Total progression */}
+      <Card>
+        <CardHeader><CardTitle>Big-3 Total</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={big3TotalLoading}
+          data={big3TotalChart}
+          emptyMessage="Log 1RM PRs on squat, bench, and deadlift to track your total"
+          height={280}
+        />
+      </Card>
 
       {/* Strength Balance */}
       <Card>

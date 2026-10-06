@@ -2581,6 +2581,109 @@ class ChartService:
             insights=insights,
         )
 
+    # ── Big-3 total progression ───────────────────────────────────────────────
+
+    async def big_3_total(self, user_id: uuid.UUID) -> ChartData:
+        """Cumulative best estimated 1RM per Big-3 lift plus the running total.
+
+        Walks 1RM PRs chronologically, carrying each lift's best forward, and
+        emits a point on every date a best improves. A lift with no PR yet
+        reads as a gap (None); the total sums the bests known so far.
+        """
+        result = await self.db.execute(
+            select(PersonalRecord)
+            .where(
+                PersonalRecord.user_id == user_id,
+                PersonalRecord.record_type == "1rm",
+                PersonalRecord.estimated_1rm.isnot(None),
+            )
+            .order_by(PersonalRecord.achieved_date)
+        )
+        records = list(result.scalars().all())
+
+        def bucket_for(name: str) -> str | None:
+            lowered = name.lower()
+            if "squat" in lowered:
+                return "Squat"
+            if "bench" in lowered:
+                return "Bench Press"
+            if "deadlift" in lowered:
+                return "Deadlift"
+            return None
+
+        best: dict[str, float | None] = {
+            "Squat": None,
+            "Bench Press": None,
+            "Deadlift": None,
+        }
+        labels: list[str] = []
+        squat_data: list[float | None] = []
+        bench_data: list[float | None] = []
+        dead_data: list[float | None] = []
+        total_data: list[float] = []
+
+        def snapshot() -> None:
+            squat_data.append(best["Squat"])
+            bench_data.append(best["Bench Press"])
+            dead_data.append(best["Deadlift"])
+            total_data.append(
+                round(sum(v for v in best.values() if v is not None), 1)
+            )
+
+        for rec in records:
+            if rec.estimated_1rm is None:
+                continue
+            bucket = bucket_for(rec.exercise_name)
+            if bucket is None:
+                continue
+            value = float(rec.estimated_1rm)
+            if best[bucket] is not None and value <= best[bucket]:
+                continue
+            best[bucket] = value
+            label = rec.achieved_date.isoformat()
+            if labels and labels[-1] == label:
+                # Same date as the last point: refresh the snapshot in place.
+                squat_data[-1] = best["Squat"]
+                bench_data[-1] = best["Bench Press"]
+                dead_data[-1] = best["Deadlift"]
+                total_data[-1] = round(
+                    sum(v for v in best.values() if v is not None), 1
+                )
+            else:
+                labels.append(label)
+                snapshot()
+
+        if not labels:
+            return ChartData(
+                chart_type="line",
+                title="Big-3 Total",
+                labels=[],
+                series=[],
+                x_label="Date",
+                y_label="Est. 1RM (kg)",
+                insights=[
+                    "Log 1RM PRs on squat, bench, and deadlift to track your total."
+                ],
+            )
+
+        return ChartData(
+            chart_type="line",
+            title="Big-3 Total",
+            labels=labels,
+            series=[
+                ChartSeries(name="Squat", data=squat_data, color="#22c55e"),
+                ChartSeries(name="Bench Press", data=bench_data, color="#3b82f6"),
+                ChartSeries(name="Deadlift", data=dead_data, color="#a855f7"),
+                ChartSeries(name="Total", data=total_data, color="#f59e0b"),
+            ],
+            x_label="Date",
+            y_label="Est. 1RM (kg)",
+            insights=[
+                f"Big-3 total {total_data[-1]:.0f}kg "
+                f"({(best['Squat'] or 0):.0f} + {(best['Bench Press'] or 0):.0f} + {(best['Deadlift'] or 0):.0f})."
+            ],
+        )
+
     # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
 
     async def periodization(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:

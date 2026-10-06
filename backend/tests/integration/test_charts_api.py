@@ -129,6 +129,59 @@ class TestNewCharts:
         resp = await client.get("/api/v1/charts/strength_balance")
         assert resp.status_code == 200
 
+    async def test_big_3_total_empty(self, client):
+        resp = await client.get("/api/v1/charts/big_3_total")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chart_type"] == "line"
+        assert data["labels"] == []
+        assert data["series"] == []
+
+    async def test_big_3_total_progression(
+        self, client, db_session, test_user
+    ):
+        """Cumulative bests per lift plus running total across PR dates."""
+        from app.models.lifting import PersonalRecord
+
+        async def seed(name: str, e1rm: float, days_ago: int) -> None:
+            db_session.add(
+                PersonalRecord(
+                    user_id=test_user.id,
+                    exercise_name=name,
+                    record_type="1rm",
+                    weight_kg=e1rm,
+                    reps=1,
+                    estimated_1rm=e1rm,
+                    achieved_date=date.today() - timedelta(days=days_ago),
+                )
+            )
+
+        await seed("Back Squat", 150.0, 30)
+        await seed("Bench Press", 100.0, 20)
+        await seed("Deadlift", 180.0, 10)
+        await seed("Back Squat", 160.0, 5)
+        await seed("Barbell Curl", 60.0, 5)  # not a Big-3 lift: ignored
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/charts/big_3_total")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [s["name"] for s in data["series"]] == [
+            "Squat",
+            "Bench Press",
+            "Deadlift",
+            "Total",
+        ]
+        assert len(data["labels"]) == 4
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        # Bench/Deadlift read as gaps until their first PR.
+        assert by_name["Bench Press"][0] is None
+        assert by_name["Deadlift"][0] is None
+        assert by_name["Deadlift"][1] is None
+        # Running totals: 150 → 250 → 430 → 440.
+        assert by_name["Total"] == [150.0, 250.0, 430.0, 440.0]
+        assert by_name["Squat"][-1] == 160.0
+
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200
