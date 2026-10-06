@@ -70,6 +70,14 @@ describe('dots', () => {
     expect(dots(500, 100, 'male')).toBeCloseTo(307.76, 1);
   });
 
+  it('matches the 90kg / 600kg reference (387.96)', () => {
+    expect(dots(600, 90, 'male')).toBeCloseTo(387.96, 1);
+  });
+
+  it('matches the 63kg / 350kg female reference (376.43)', () => {
+    expect(dots(350, 63, 'female')).toBeCloseTo(376.43, 1);
+  });
+
   it('rewards lighter lifters for the same total', () => {
     const at100 = dots(500, 100, 'male')!;
     const at83 = dots(500, 83, 'male')!;
