@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftingSession, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
+import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 
 export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSession[] }) {
   const { authFetch, token } = useAuthFetch();
@@ -43,15 +44,12 @@ export function ExerciseProgressSection({ sessions }: { sessions?: LiftingSessio
         <div className="flex items-center justify-between">
           <CardTitle>Exercise Progress</CardTitle>
           <div className="flex items-center gap-3">
-            <select
+            <ExerciseAutocomplete
               value={effectiveExercise}
-              onChange={(e) => setSelectedExercise(e.target.value)}
-              className="bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {exerciseList.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+              onChange={setSelectedExercise}
+              placeholder="Search exercises…"
+              className="w-48"
+            />
             <select
               value={weeks}
               onChange={(e) => setWeeks(parseInt(e.target.value))}
