@@ -182,6 +182,66 @@ class TestNewCharts:
         assert by_name["Total"] == [150.0, 250.0, 430.0, 440.0]
         assert by_name["Squat"][-1] == 160.0
 
+    async def _seed_rep_sets(self, db_session, test_user) -> None:
+        """Bench 2×3 + 2×5 + 1×10 (+1 warmup, excluded); Squat 1×3."""
+        from app.models.lifting import LiftingSession, LiftingSet
+
+        session = LiftingSession(
+            user_id=test_user.id,
+            session_date=date.today() - timedelta(days=5),
+            focus="test",
+        )
+        db_session.add(session)
+        await db_session.flush()
+        rows = [
+            ("Bench Press", 1, 100.0, 3, False),
+            ("Bench Press", 2, 100.0, 3, False),
+            ("Bench Press", 3, 80.0, 5, False),
+            ("Bench Press", 4, 80.0, 5, False),
+            ("Bench Press", 5, 60.0, 10, False),
+            ("Bench Press", 6, 40.0, 5, True),  # warmup: excluded
+            ("Back Squat", 1, 120.0, 3, False),
+        ]
+        for name, num, weight, reps, warmup in rows:
+            db_session.add(
+                LiftingSet(
+                    session_id=session.id,
+                    exercise_name=name,
+                    set_number=num,
+                    weight_kg=weight,
+                    reps=reps,
+                    is_warmup=warmup,
+                )
+            )
+        await db_session.flush()
+
+    async def test_rep_range_overview(self, client, db_session, test_user):
+        await self._seed_rep_sets(db_session, test_user)
+        resp = await client.get("/api/v1/charts/rep_range_distribution")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["labels"] == ["Bench Press", "Back Squat"]
+        by_name = {s["name"]: s["data"] for s in data["series"]}
+        assert by_name["Strength (1–3)"] == [2, 1]
+        assert by_name["Hypertrophy (4–6)"] == [2, 0]
+        assert by_name["Endurance (7+)"] == [1, 0]
+
+    async def test_rep_range_single_exercise(self, client, db_session, test_user):
+        await self._seed_rep_sets(db_session, test_user)
+        resp = await client.get(
+            "/api/v1/charts/rep_range_distribution",
+            params={"exercise_name": "Bench Press"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["labels"] == ["Strength (1–3)", "Hypertrophy (4–6)", "Endurance (7+)"]
+        assert data["series"][0]["data"] == [2, 2, 1]
+
+    async def test_rep_range_empty(self, client):
+        resp = await client.get("/api/v1/charts/rep_range_distribution")
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200

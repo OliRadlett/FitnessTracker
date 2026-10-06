@@ -46,6 +46,7 @@ import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
 import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
 import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
+import { RepRangeCard } from '@/components/lifting/RepRangeCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
@@ -1236,6 +1237,9 @@ export default function LiftingPage() {
           height={280}
         />
       </Card>
+
+      {/* Rep-range mix (overview + per-exercise) */}
+      <RepRangeCard />
 
       {/* Strength Balance */}
       <Card>

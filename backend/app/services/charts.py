@@ -2684,6 +2684,111 @@ class ChartService:
             ],
         )
 
+    # ── Rep-range distribution ────────────────────────────────────────────────
+
+    # Rep bands shared by the overview and single-exercise shapes.
+    BAND_NAMES = ["Strength (1–3)", "Hypertrophy (4–6)", "Endurance (7+)"]
+    TOP_EXERCISES = 8
+
+    @staticmethod
+    def _rep_band(reps: int) -> int:
+        """Band index for a rep count: 0 strength, 1 hypertrophy, 2 endurance."""
+        if reps <= 3:
+            return 0
+        if reps <= 6:
+            return 1
+        return 2
+
+    async def rep_range_distribution(
+        self, user_id: uuid.UUID, exercise_name: str | None = None, weeks: int = 26
+    ) -> ChartData:
+        """Working-set counts by rep band.
+
+        Without ``exercise_name``: the top exercises by working-set count, one
+        grouped triplet each. With it: the single-exercise triplet.
+        """
+        cutoff = date.today() - timedelta(weeks=weeks)
+
+        stmt = (
+            select(LiftingSet.exercise_name, LiftingSet.reps)
+            .join(LiftingSession, LiftingSet.session_id == LiftingSession.id)
+            .where(
+                LiftingSession.user_id == user_id,
+                LiftingSet.is_warmup.is_(False),
+                LiftingSession.session_date >= cutoff,
+            )
+        )
+        if exercise_name:
+            stmt = stmt.where(LiftingSet.exercise_name == exercise_name)
+        rows = (await self.db.execute(stmt)).all()
+
+        counts: dict[str, list[int]] = {}
+        for name, reps in rows:
+            counts.setdefault(name, [0, 0, 0])[self._rep_band(reps)] += 1
+
+        band_names = self.BAND_NAMES
+        band_colors = ["#3b82f6", "#22c55e", "#a855f7"]
+
+        if exercise_name:
+            triplet = counts.get(exercise_name, [0, 0, 0])
+            if sum(triplet) == 0:
+                return ChartData(
+                    chart_type="bar",
+                    title=f"Rep Range — {exercise_name}",
+                    labels=[],
+                    series=[],
+                    x_label="Rep band",
+                    y_label="Working sets",
+                    insights=[f"No working sets logged for {exercise_name} in range."],
+                )
+            return ChartData(
+                chart_type="bar",
+                title=f"Rep Range — {exercise_name}",
+                labels=band_names,
+                series=[ChartSeries(name="Sets", data=list(triplet))],
+                x_label="Rep band",
+                y_label="Working sets",
+            )
+
+        ranked = sorted(counts.items(), key=lambda kv: -sum(kv[1]))[: self.TOP_EXERCISES]
+        if not ranked:
+            return ChartData(
+                chart_type="bar",
+                title="Rep Range Mix",
+                labels=[],
+                series=[],
+                x_label="Exercise",
+                y_label="Working sets",
+                insights=["No working sets logged in range."],
+            )
+
+        labels = [name for name, _ in ranked]
+        series = [
+            ChartSeries(
+                name=band_names[i],
+                data=[triplet[i] for _, triplet in ranked],
+                color=band_colors[i],
+            )
+            for i in range(3)
+        ]
+        totals = [sum(t) for _, t in ranked]
+        grand = sum(totals)
+        band_totals = [sum(triplet[i] for _, triplet in ranked) for i in range(3)]
+        dominant = max(range(3), key=lambda i: band_totals[i])
+        insights = [
+            f"{band_totals[dominant] / grand * 100:.0f}% of recent sets are in "
+            f"the {band_names[dominant].lower()} band."
+        ]
+        return ChartData(
+            chart_type="bar",
+            title="Rep Range Mix",
+            labels=labels,
+            series=series,
+            x_label="Exercise",
+            y_label="Working sets",
+            insights=insights,
+        )
+
     # ── Periodization chart (planned vs actual TSS) ─────────────────────────────
 
     async def periodization(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
