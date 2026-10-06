@@ -355,11 +355,11 @@ No database migrations needed for Tier A. The `order_index` column (migration 09
 - ✅ Dark mode consistency
 - ✅ Component tests for new sub-components
 
-### Phase 6 — Review-side analytics batch (decided 2026-10-06, build next)
-- Dots progression over time (C-5 remainder: join Big-3 total + bodyweight history, client-side)
-- Rep range distribution chart (C-2: strength/hypertrophy/endurance split per exercise)
-- Volume×Intensity periodization chart (C-15)
-- RPE drift chart (C-16: actual vs planned RPE per exercise)
+### Phase 6 — Review-side analytics batch (✅ shipped 2026-10-06)
+- ✅ Dots progression over time (C-5 remainder: `DotsProgressionCard`, step-carried BW join, gap-on-missing — never backfilled)
+- ✅ Rep range distribution chart (C-2: one endpoint, top-8 overview + per-exercise triplet)
+- ✅ Volume×Intensity periodization chart (C-15: tonnage + avg %1RM dual-axis with accumulate/realize/stable insights)
+- ✅ RPE drift chart (C-16: per-session actuals vs plan's latest target as constant reference; required-exercise param)
 
 ### Phase 7 — Act-side batch (on the table, unstarted)
 - Warm-up set calculator (C-1)
