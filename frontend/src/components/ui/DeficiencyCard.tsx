@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import type { DeficiencyResponse, WeaknessItem, DeficiencySeverity } from '@/lib/api';
+import { Bike, Dumbbell, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function WeaknessRow({ item }: { item: WeaknessItem }) {
   );
 }
 
-function CategoryGroup({ title, icon, items }: { title: string; icon: string; items: WeaknessItem[] }) {
+function CategoryGroup({ title, icon, items }: { title: string; icon: React.ReactNode; items: WeaknessItem[] }) {
   if (items.length === 0) return null;
   return (
     <div>
@@ -155,7 +156,7 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle>🎯 Weakness Analysis</CardTitle></CardHeader>
+        <CardHeader><CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle></CardHeader>
         <SkeletonRow className="h-24" />
       </Card>
     );
@@ -168,7 +169,7 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
   if (!data || weaknesses.length === 0) {
     return (
       <Card>
-        <CardHeader><CardTitle>🎯 Weakness Analysis</CardTitle></CardHeader>
+        <CardHeader><CardTitle><span className="inline-flex items-center gap-1.5"><Target className="w-4 h-4" aria-hidden />Weakness Analysis</span></CardTitle></CardHeader>
         <div className="flex items-center gap-3 py-6 justify-center">
           <span className="h-8 w-8 rounded-full bg-positive/20 flex items-center justify-center shrink-0" aria-hidden="true">
             <svg className="h-5 w-5 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
@@ -226,8 +227,8 @@ export function DeficiencyCard({ data, isLoading }: DeficiencyCardProps) {
         </div>
       ) : (
         <div className="space-y-5">
-          <CategoryGroup title="Strength Training" icon="🏋️" items={visibleLifting} />
-          <CategoryGroup title="Cycling" icon="🚴" items={visibleCycling} />
+          <CategoryGroup title="Strength Training" icon={<Dumbbell className="w-3.5 h-3.5" aria-hidden />} items={visibleLifting} />
+          <CategoryGroup title="Cycling" icon={<Bike className="w-3.5 h-3.5" aria-hidden />} items={visibleCycling} />
 
           {minor.length > 0 && (
             <button

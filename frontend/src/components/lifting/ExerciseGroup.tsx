@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import type { LiftingSet } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { glossary } from '@/lib/metricGlossary';
+import { Pencil, Trash2 } from 'lucide-react';
 
 export function ExerciseGroup({
   exerciseName,
@@ -202,7 +203,7 @@ export function ExerciseGroup({
                               title="Edit set"
                               aria-label="Edit set"
                             >
-                              ✏️
+                              <Pencil className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(set.id)}
@@ -210,7 +211,7 @@ export function ExerciseGroup({
                               title="Delete set"
                               aria-label="Delete set"
                             >
-                              🗑️
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         )}

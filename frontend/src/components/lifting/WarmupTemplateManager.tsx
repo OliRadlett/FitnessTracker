@@ -6,6 +6,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { WarmupTemplate, CreateWarmupTemplatePayload } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface WarmupStepRow {
   weight_kg: number;
@@ -253,14 +254,14 @@ export function WarmupTemplateManager() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(template)} className="text-muted hover:text-accent text-xs transition-colors" title="Edit">✏️</button>
+                  <button onClick={() => startEdit(template)} className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted hover:text-accent transition-colors" title="Edit" aria-label="Edit template"><Pencil className="w-4 h-4" /></button>
                   {confirmDeleteId === template.id ? (
                     <div className="flex gap-1">
                       <button onClick={() => deleteMutation.mutate(template.id)} disabled={deleteMutation.isPending} className="text-xs text-white bg-warning/80 hover:bg-warning px-2 py-0.5 rounded disabled:opacity-50">Delete</button>
                       <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted hover:text-foreground px-2 py-0.5">Cancel</button>
                     </div>
                   ) : (
-                    <button onClick={() => setConfirmDeleteId(template.id)} className="text-muted hover:text-warning text-xs transition-colors" title="Delete">🗑️</button>
+                    <button onClick={() => setConfirmDeleteId(template.id)} className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted hover:text-warning transition-colors" title="Delete" aria-label="Delete template"><Trash2 className="w-4 h-4" /></button>
                   )}
                 </div>
               </div>
