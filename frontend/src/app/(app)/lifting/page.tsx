@@ -31,6 +31,7 @@ import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
+import { SessionCardMini } from '@/components/lifting/SessionCardMini';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
 import { useForecastChart } from '@/lib/projection';
@@ -300,6 +301,20 @@ export default function LiftingPage() {
     setVideoGalleryTitle(title);
     setVideoGalleryOpen(true);
   }
+
+  // PRs achieved per session (for card-level PR badges)
+  const prsBySession = useMemo(() => {
+    const map = new Map<string, PersonalRecord[]>();
+    for (const pr of personalRecords ?? []) {
+      if (pr.session_id) {
+        const key = pr.session_id.toString();
+        const arr = map.get(key) ?? [];
+        arr.push(pr);
+        map.set(key, arr);
+      }
+    }
+    return map;
+  }, [personalRecords]);
 
   const { data: deficiency, isLoading: deficiencyLoading } = useQuery<DeficiencyResponse>({
     queryKey: ['deficiency'],
@@ -678,51 +693,23 @@ export default function LiftingPage() {
               <SkeletonRow key={i} />
             ))
           ) : sessions && sessions.length > 0 ? (
-            sessions.map((session) => (
-              <Card
+            sessions.map((session) => {
+              const sv = videoBySession.get(session.id);
+              const prsInSession = prsBySession.get(session.id);
+              return (
+              <SessionCardMini
                 key={session.id}
-                onClick={() => { handleSelectSession(selectedSessionId === session.id ? null : session.id); setShowAddExercise(false); }}
-                className={selectedSessionId === session.id ? 'border-accent/50' : ''}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                 <div className="flex items-center gap-2">
-                       <p className="text-sm font-medium text-foreground">{session.focus || 'General Session'}</p>
-                       {session.linked_activity && (
-                         <span className="text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded font-medium">Strava</span>
-                       )}
-                       {(() => {
-                         const sv = videoBySession.get(session.id);
-                         if (!sv || sv.length === 0) return null;
-                         return (
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               openVideoGallery(sv, `${session.focus || 'Session'} videos`);
-                             }}
-                             title={`${sv.length} video${sv.length !== 1 ? 's' : ''}`}
-                           >
-                             <VideoChip count={sv.length} />
-                           </button>
-                         );
-                       })()}
-                     </div>
-                    <p className="text-xs text-muted">{new Date(session.session_date).toLocaleDateString(getActiveLocale())}</p>
-                    {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds) && (
-                      <p className="text-xs text-muted">
-                        🕐 {formatSessionTimeRange(session.started_at, session.ended_at, session.duration_seconds)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-purple-400">{session.sets?.length ?? 0} sets</p>
-                    {session.total_volume_kg !== undefined && (
-                      <p className="text-xs text-muted">{session.total_volume_kg.toLocaleString()} kg</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))
+                session={session}
+                isSelected={selectedSessionId === session.id}
+                onSelect={(id) => { handleSelectSession(id); setShowAddExercise(false); }}
+                videos={sv}
+                sessionPRs={prsInSession}
+                onAddSet={(s) => { handleSelectSession(s.id); setShowAddExercise(true); }}
+                onEdit={(s) => { handleSelectSession(s.id); setShowEditSession(true); }}
+                onDelete={(s) => { handleSelectSession(s.id); setConfirmDeleteSession(true); }}
+              />
+            );
+          })
           ) : (
             <EmptyState
               icon="🏋️"

@@ -193,6 +193,7 @@ export interface LiftingSession {
   duration_seconds?: number;
   total_volume_kg?: number;
   rpe_session?: number;
+  estimated_tss?: number | null;
   notes?: string;
   ai_tags?: JevTags | null;
   sets: LiftingSet[];
