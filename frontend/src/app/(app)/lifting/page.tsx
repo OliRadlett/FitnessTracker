@@ -228,6 +228,13 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
+  const { data: volIntChart, isLoading: volIntLoading } = useQuery<ChartData>({
+    queryKey: ['chart-volume-intensity'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/volume_intensity_periodization?weeks=26'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
   const { data: weeklyVolumeChart, isLoading: weeklyVolumeLoading } = useQuery<ChartData>({
     queryKey: ['chart-weekly-volume', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
@@ -1240,6 +1247,17 @@ export default function LiftingPage() {
 
       {/* Rep-range mix (overview + per-exercise) */}
       <RepRangeCard />
+
+      {/* Volume × Intensity periodization */}
+      <Card>
+        <CardHeader><CardTitle>Volume × Intensity</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={volIntLoading}
+          data={volIntChart}
+          emptyMessage="Log working sets to see volume and intensity trends"
+          height={280}
+        />
+      </Card>
 
       {/* Strength Balance */}
       <Card>

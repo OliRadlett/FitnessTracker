@@ -31,7 +31,7 @@ from app.services.cycling import (
     get_daily_tss,
     get_or_create_cycling_profile,
 )
-from app.services.lifting import brzycki_1rm
+from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -2786,6 +2786,126 @@ class ChartService:
             series=series,
             x_label="Exercise",
             y_label="Working sets",
+            insights=insights,
+        )
+
+    # ── Volume × intensity periodization ──────────────────────────────────────
+
+    async def volume_intensity_periodization(
+        self, user_id: uuid.UUID, weeks: int = 26
+    ) -> ChartData:
+        """Weekly tonnage (working sets) alongside average %1RM intensity.
+
+        Intensity for a set is its Brzycki e1RM over the stored 1RM basis for
+        that exercise (same ≤12-rep contention rule as PR detection); sets
+        without a resolvable basis still count toward volume. Read the two
+        series together: rising volume + flat/falling intensity is
+        accumulation, the reverse is intensification/realization.
+        """
+        cutoff = date.today() - timedelta(weeks=weeks)
+
+        pr_rows = (
+            await self.db.execute(
+                select(PersonalRecord.exercise_name, PersonalRecord.estimated_1rm)
+                .where(
+                    PersonalRecord.user_id == user_id,
+                    PersonalRecord.record_type == "1rm",
+                    PersonalRecord.estimated_1rm.isnot(None),
+                )
+            )
+        ).all()
+        basis: dict[str, float] = {}
+        for name, e1rm in pr_rows:
+            if e1rm is not None and float(e1rm) > basis.get(name, 0):
+                basis[name] = float(e1rm)
+
+        set_rows = (
+            await self.db.execute(
+                select(
+                    LiftingSession.session_date,
+                    LiftingSet.exercise_name,
+                    LiftingSet.weight_kg,
+                    LiftingSet.reps,
+                )
+                .join(LiftingSet, LiftingSet.session_id == LiftingSession.id)
+                .where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSet.is_warmup.is_(False),
+                    LiftingSession.session_date >= cutoff,
+                )
+                .order_by(LiftingSession.session_date)
+            )
+        ).all()
+
+        vol_by_week: dict[str, float] = {}
+        int_by_week: dict[str, list[float]] = {}
+        for day, name, weight, reps in set_rows:
+            monday = (day - timedelta(days=day.weekday())).isoformat()
+            vol_by_week[monday] = vol_by_week.get(monday, 0.0) + weight * reps
+            if 1 <= reps <= MAX_REPS_FOR_1RM_PR and name in basis:
+                int_by_week.setdefault(monday, []).append(
+                    brzycki_1rm(weight, reps) / basis[name] * 100
+                )
+
+        labels = sorted(set(vol_by_week) | set(int_by_week))
+        volumes = [round(vol_by_week.get(d, 0.0), 1) for d in labels]
+        intensities: list[float | None] = [
+            round(sum(int_by_week[d]) / len(int_by_week[d]), 1) if d in int_by_week else None
+            for d in labels
+        ]
+
+        if not labels:
+            return ChartData(
+                chart_type="line",
+                title="Volume × Intensity",
+                labels=[],
+                series=[],
+                x_label="Week",
+                y_label="Volume (kg)",
+                insights=["No working sets logged in range."],
+            )
+
+        insights: list[str] = []
+        if len(volumes) >= 8:
+            recent_vol = sum(volumes[-4:]) / 4
+            prior_vol = sum(volumes[-8:-4]) / 4
+            recent_int = [
+                v for v in intensities[-4:] if v is not None
+            ]
+            prior_int = [v for v in intensities[-8:-4] if v is not None]
+            if prior_vol > 0 and recent_int and prior_int:
+                vol_delta = (recent_vol - prior_vol) / prior_vol * 100
+                int_delta = (sum(recent_int) / len(recent_int)) - (
+                    sum(prior_int) / len(prior_int)
+                )
+                if vol_delta > 10 and int_delta < -2:
+                    insights.append(
+                        f"Accumulating: volume +{vol_delta:.0f}% with intensity "
+                        f"{int_delta:.1f} pts — building work capacity."
+                    )
+                elif vol_delta < -10 and int_delta > 2:
+                    insights.append(
+                        f"Realizing: volume {vol_delta:.0f}% with intensity "
+                        f"+{int_delta:.1f} pts — taper/peak shape."
+                    )
+                elif abs(vol_delta) <= 10 and abs(int_delta) <= 2:
+                    insights.append("Stable: volume and intensity holding level.")
+
+        return ChartData(
+            chart_type="line",
+            title="Volume × Intensity",
+            labels=labels,
+            series=[
+                ChartSeries(name="Volume (kg)", data=volumes, color="#a855f7"),
+                ChartSeries(
+                    name="Avg intensity (%1RM)",
+                    data=intensities,
+                    color="#22c55e",
+                    y_axis="right",
+                ),
+            ],
+            x_label="Week",
+            y_label="Volume (kg)",
             insights=insights,
         )
 

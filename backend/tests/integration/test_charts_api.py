@@ -242,6 +242,64 @@ class TestNewCharts:
         assert resp.status_code == 200
         assert resp.json()["labels"] == []
 
+    async def _seed_periodized_sets(self, db_session, test_user) -> None:
+        """Two weeks apart (always different Monday buckets): week A 1000kg @
+        90% avg intensity, week B 815kg @ ~93.7%."""
+        from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
+
+        for name, e1rm in (("Bench Press", 100.0), ("Back Squat", 150.0)):
+            db_session.add(
+                PersonalRecord(
+                    user_id=test_user.id,
+                    exercise_name=name,
+                    record_type="1rm",
+                    weight_kg=e1rm,
+                    reps=1,
+                    estimated_1rm=e1rm,
+                    achieved_date=date.today() - timedelta(days=60),
+                )
+            )
+        await db_session.flush()
+        weeks = [
+            (12, [("Bench Press", 80.0, 5), ("Back Squat", 120.0, 5)]),
+            (5, [("Bench Press", 85.0, 5), ("Back Squat", 130.0, 3)]),
+        ]
+        for days_ago, sets in weeks:
+            session = LiftingSession(
+                user_id=test_user.id,
+                session_date=date.today() - timedelta(days=days_ago),
+                focus="test",
+            )
+            db_session.add(session)
+            await db_session.flush()
+            for i, (name, weight, reps) in enumerate(sets, start=1):
+                db_session.add(
+                    LiftingSet(
+                        session_id=session.id,
+                        exercise_name=name,
+                        set_number=i,
+                        weight_kg=weight,
+                        reps=reps,
+                    )
+                )
+        await db_session.flush()
+
+    async def test_volume_intensity(self, client, db_session, test_user):
+        await self._seed_periodized_sets(db_session, test_user)
+        resp = await client.get("/api/v1/charts/volume_intensity_periodization")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["labels"]) == 2
+        by_name = {s["name"]: s for s in data["series"]}
+        assert by_name["Volume (kg)"]["data"] == [1000.0, 815.0]
+        assert by_name["Avg intensity (%1RM)"]["data"] == [90.0, 93.7]
+        assert by_name["Avg intensity (%1RM)"]["y_axis"] == "right"
+
+    async def test_volume_intensity_empty(self, client):
+        resp = await client.get("/api/v1/charts/volume_intensity_periodization")
+        assert resp.status_code == 200
+        assert resp.json()["labels"] == []
+
     async def test_training_load_balance(self, client, test_multiple_activities):
         resp = await client.get("/api/v1/charts/training_load_balance?weeks=16")
         assert resp.status_code == 200
