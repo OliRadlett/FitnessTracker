@@ -394,6 +394,8 @@ No database migrations needed for Tier A. The `order_index` column (migration 09
 
 9. **Video analysis on set rows (C10)** — the `LiftVideo` type has `lifting_set_id`. Is there existing data linking videos to specific sets, or is this greenfield?
 
+10. **Dots coefficients** — ✅ Resolved 2026-10-06: user supplied the official polynomial (Dots = Total × 500 / (a·BW⁴ + b·BW³ + c·BW² + d·BW + e); men a=-0.0000010930, b=0.0007391293, c=-0.1918759221, d=24.0900756, e=-307.75076; women stored alongside). Hand-verified reference (500kg @ 100kg male ≈ 307.76) pinned in `strength-standards.test.ts`. Male formula only (no sex field in schema — stated on the card). Dots *progression* over time stays Tier C.
+
 
 
 ---

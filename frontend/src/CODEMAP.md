@@ -129,6 +129,7 @@
 | `SessionCardMini` | Session list mini-dashboard — focus/program badges, live timing, Whoop strain, quality badge (RPE/volume heuristic), PR count, video chip, TSS; quick-action add/edit/delete (select + open the matching detail flow) |
 | `QuickAddSetBar` | Sticky one-line set logger at the session-detail bottom — exercise autocomplete (prefills last weight/reps per exercise), kg/reps/RPE/warm-up, POSTs `AddSetPayload` with per-exercise next `set_number` |
 | `TodayStrengthDayCard` | Active plan's uncompleted strength day for today (via `useTodaysStrengthDay`) — focus, programmed sets×reps×loads, links to Live Lift + Training. Renders nothing when none |
+| `DotsScoreCard` | Current Dots score from best Big-3 e1RMs + bodyweight (male formula only — no sex field in schema; stated on card). Empty states for missing PRs / bodyweight (links to Settings) |
 | `ExerciseProgressSection` | Exercise progress over time (autocomplete exercise selector) |
 | `LiftingAnalysisCard` | Post-session analysis card |
 | `SessionAiAnalysisCard` | Per-session AI lifting analysis (on-demand Gemini) |
@@ -264,6 +265,7 @@
 | `routeUtils.ts` | Pure route utility functions (renamed from `.tsx`) — distance/elevation formatting, difficulty calculation, + re-exports `DifficultyBadge` |
 | `training/week.ts` | Week-math helpers shared by WeeklyView + TodayTab: `toDateStr`, `diffDays`, `mondayOf`, `getWeek1Start`, `getTotalWeeks`, `getCurrentWeek` — mirrors backend week numbering |
 | `training/useTodaysStrengthDay.ts` | Shared `['live-plan-today']` query — active plan → today's uncompleted strength day with exercises. Used by Live Lift ("Load from today's plan" chip) and the lifting Sessions tab card |
+| `lifting/standards.ts` | Strength math: `STANDARDS` bodyweight-multiplier bands (client mirror of `backend/.../deficiency.py` — keep in sync), `levelForRatio` / `nextLevelTarget` / `ratioToBodyweight` / `standardKeyFor`, `dots()` (official polynomial, both sexes stored, male used). Unit tests: `src/__tests__/strength-standards.test.ts` incl. a hand-verified 307.76 reference that pins the constants |
 | `streams.ts` | Activity-stream accessors — single Strava-vs-FIT spelling matrix (`watts|power`, `velocity|velocity_smooth|enhanced_speed`, `heartrate|hr|heart_rate`): `streamInput`/`getStreamValues`/`presentStreamTypes`/`hasStream`. Used by the expanded activity view + compare modal (unit-tested `src/__tests__/streams.test.ts`) |
 | `pose/track.ts` | **§3.18 / F2** — Parses the persisted pose track (`parsePoseTrack`), binary-searches the frame at a playhead time (`frameIndexAt`), computes the object-contain content box (`letterbox`), the bar-proxy point (`barPoint`), and `POSE_CONNECTIONS`. Drives `PoseCanvas` (unit-tested `src/__tests__/pose-track.test.ts`) |
 
