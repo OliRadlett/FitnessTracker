@@ -63,7 +63,10 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
     """Parse highways from an OSM PBF within ``bbox`` → list of edge tuples.
 
     ``bbox`` = (min_lat, min_lng, max_lat, max_lng). Returns a list of
-    ``(key, u, v, [(lat, lng), ...], name, highway)``.
+    ``(key, u, v, [(lat, lng), ...], name, highway)`` where ``key`` is
+    ``{way_id}:{segment_idx}`` and ``u``/``v`` are the OSM node ids of the
+    segment endpoints (so the snap continuity filter sees shared nodes
+    across ways).
 
     **Two passes** (this is the important part): resolving way node refs with
     pyosmium's ``locations=True`` builds a node-location index over the *entire*
@@ -115,31 +118,40 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
     _NodeCollector().apply_file(pbf_path, locations=False)
 
     # ── Assemble edges (bbox-filtered) ──────────────────────────────────────
+    # u/v carry the real OSM node ids (not per-way sequence numbers) so the
+    # snap continuity filter (_shares_node in services/road_graph.py) fires
+    # across ways at shared intersections — where continuity matters most.
+    # ``key`` stays way-scoped (way_id:idx): edge_set/Jaccard/embedding keys
+    # are unchanged.
     out: list[tuple] = []
     for way_id, name, highway, refs in ways:
         prev = None
+        prev_ref = None
         idx = 0
         for ref in refs:
             pt = coords.get(ref)
             if pt is None:
                 prev = None
+                prev_ref = None
                 continue
             if not (min_lat <= pt[0] <= max_lat and min_lng <= pt[1] <= max_lng):
                 prev = None
+                prev_ref = None
                 continue
             if prev is not None:
                 idx += 1
                 out.append(
                     (
                         f"{way_id}:{idx}",
-                        f"{way_id}:{idx - 1}",
-                        f"{way_id}:{idx}",
+                        str(prev_ref),
+                        str(ref),
                         [prev, pt],
                         name,
                         highway,
                     )
                 )
             prev = pt
+            prev_ref = ref
     return out
 
 

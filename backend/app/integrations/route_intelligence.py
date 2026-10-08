@@ -140,7 +140,8 @@ def _classify_terrain(
 
     Returns
     -------
-    dict with keys: terrain_type, avg_gradient_pct, max_gradient_pct,
+    dict with keys: terrain_type, avg_gradient_pct, climb_rate_pct,
+    max_gradient_pct,
     total_climb_m, dominant_climb_category, climb_count, rolling_index.
     """
     normalized = _normalize_elevation_profile(elevation_profile, polyline)
@@ -206,7 +207,10 @@ def _classify_terrain(
     variance = sum((g - avg_grad) ** 2 for g in gradients) / len(gradients)
     rolling_index = math.sqrt(variance) / (mean_abs + 0.001)
 
-    # Detect sustained climbs (gradient > 3% for > 200m)
+    # Detect sustained climbs. Gates mirror the canonical segment detector
+    # (services/segments.py: MIN_CLIMB_GAIN_M=30, MIN_CLIMB_AVG_GRADIENT=3%,
+    # MIN_CLIMB_LENGTH_M=150) so terrain climb counts agree with served
+    # segments — a shallower gate here overcounted climbs there.
     climbs: list[dict] = []
     climb_start_idx = None
     climb_gain = 0.0
@@ -218,13 +222,17 @@ def _classify_terrain(
             elevations[i + 1] - elevations[i] if i + 1 < len(elevations) else 0
         )
 
-        if grad >= 2.5:  # sustained uphill threshold
+        if grad >= 3.0:  # sustained uphill threshold (canonical 3%)
             if climb_start_idx is None:
                 climb_start_idx = i
             climb_gain += max(0, d_elev)
             climb_dist += d_dist
         else:
-            if climb_start_idx is not None and climb_dist >= 150:
+            if (
+                climb_start_idx is not None
+                and climb_dist >= 150
+                and climb_gain >= 30
+            ):
                 avg_climb_grad = (climb_gain / climb_dist * 100) if climb_dist > 0 else 0
                 climbs.append(
                     {
@@ -239,7 +247,7 @@ def _classify_terrain(
             climb_dist = 0.0
 
     # Handle climb extending to end of route
-    if climb_start_idx is not None and climb_dist >= 150:
+    if climb_start_idx is not None and climb_dist >= 150 and climb_gain >= 30:
         avg_climb_grad = (climb_gain / climb_dist * 100) if climb_dist > 0 else 0
         climbs.append(
             {
@@ -250,8 +258,15 @@ def _classify_terrain(
             }
         )
 
-    # Classify terrain type
-    if len(climbs) == 0 and avg_grad < 1.5:
+    # Classify terrain type. Climb intensity uses climb_rate_pct (total climb
+    # per kilometre) rather than the signed mean gradient: on a loop the
+    # climbs cancel the descents and the mean reads ~0% no matter how hilly
+    # the ride was. avg_gradient_pct is still returned for display.
+    total_span = distances[-1] - distances[0] if len(distances) >= 2 else 0.0
+    climb_rate_pct = (
+        (total_climb / total_span * 100) if total_span > 0 else 0.0
+    )
+    if len(climbs) == 0 and climb_rate_pct < 1.0:
         terrain_type = "flat"
     elif rolling_index > 0.8 and len(climbs) <= 2:
         terrain_type = "rolling"
@@ -269,6 +284,7 @@ def _classify_terrain(
     return {
         "terrain_type": terrain_type,
         "avg_gradient_pct": round(avg_grad, 2),
+        "climb_rate_pct": round(climb_rate_pct, 2),
         "max_gradient_pct": round(max_grad, 2),
         "total_climb_m": round(total_climb, 1),
         "total_descent_m": round(total_descent, 1),
@@ -280,16 +296,22 @@ def _classify_terrain(
 
 
 def _climb_category(gain_m: float, avg_gradient_pct: float) -> str:
-    """Categorise a climb by elevation gain and gradient (simplified HC system)."""
-    if gain_m >= 1500:
+    """Categorise a climb by elevation gain and gradient (Strava-style bands).
+
+    Mirrors ``services.segments.climb_category`` exactly; duplicated here
+    (returning "uncategorised" instead of None) because Modal workers import
+    stdlib only and cannot import app.services (pitfall 16). Keep the two in
+    sync — see tests/test_route_intelligence.py::test_climb_category_matches_canonical.
+    """
+    if avg_gradient_pct >= 7.5 and gain_m >= 900:
         return "HC"
-    elif gain_m >= 1000:
+    elif avg_gradient_pct >= 5.0 and gain_m >= 450:
         return "1"
-    elif gain_m >= 500:
+    elif avg_gradient_pct >= 5.0 and gain_m >= 150:
         return "2"
-    elif gain_m >= 300:
+    elif avg_gradient_pct >= 4.0 and gain_m >= 100:
         return "3"
-    elif gain_m >= 100:
+    elif avg_gradient_pct >= 3.0 and gain_m >= 30:
         return "4"
     else:
         return "uncategorised"

@@ -3,9 +3,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.segment import Segment
 from app.models.user import User
 from app.schemas.segment import (
     ClimbDetail,
@@ -96,6 +98,37 @@ async def list_segments(
         )
         for seg in segments
     ]
+
+
+# NOTE: registered before `/{segment_id}` below. Both are single-segment
+# paths, so order decides which wins (pitfall 13): `/{segment_id}` would
+# otherwise swallow `/status` as a segment id and 404. `/climbs/{geo_cluster_id}`
+# is two segments and cannot collide, but status stays above both for readability.
+@router.get("/status")
+async def get_segments_intelligence_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight fitted marker for the settings intelligence card.
+
+    Returns 200 with ``analyzed_at=None`` when nothing has been analyzed
+    (instead of 404), so the UI can render "Not yet fitted" without treating
+    it as an error. ``analyzed_at`` is the newest
+    ``intelligence_analyzed_at`` across the user's segments.
+    """
+    result = await db.execute(
+        select(
+            func.max(Segment.intelligence_analyzed_at),
+            func.count(),
+            func.count(Segment.intelligence_analyzed_at),
+        ).where(Segment.user_id == current_user.id)
+    )
+    analyzed_at, segment_count, analyzed_count = result.one()
+    return {
+        "analyzed_at": analyzed_at.isoformat() if analyzed_at else None,
+        "segment_count": segment_count,
+        "analyzed_count": analyzed_count,
+    }
 
 
 @router.get("/climbs/{geo_cluster_id}", response_model=ClimbDetail)

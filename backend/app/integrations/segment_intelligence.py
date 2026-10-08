@@ -61,10 +61,13 @@ def _euclidean_distance(a: list[float], b: list[float]) -> float:
 
 def _dbscan(
     features: list[list[float]],
-    eps: float = 0.5,
+    eps: float = 0.4,
     min_samples: int = 2,
 ) -> list[int]:
     """DBSCAN clustering (no sklearn dependency).
+
+    Default ``eps`` matches ``analyze_segments`` so direct callers cluster
+    identically to the pipeline.
 
     Returns cluster labels: -1 = noise, 0+ = cluster id.
     """
@@ -339,9 +342,14 @@ def analyze_segments(
         climb_type = _classify_climb_type(seg)
 
         # Compute a "sustainedness" score
-        # How much of the segment is actually climbing vs flat/rest
-        if length_m > 0:
-            climbing_fraction = gain_m / (length_m * math.tan(math.radians(min(avg_grad, 15))))
+        # How much of the segment is actually climbing vs flat/rest.
+        # A uniform avg_grad% grade gains length_m * avg_grad/100 meters, so
+        # sustainedness is the achieved share of that ideal (1.0 = the whole
+        # segment climbs at its average gradient). NOTE: gradient-% is a
+        # rise/run ratio, not an angle — do NOT pass it through tan(radians())
+        # (that treated 5% as 5° and underestimated by ~43%).
+        if length_m > 0 and avg_grad > 0:
+            climbing_fraction = gain_m / (length_m * avg_grad / 100.0)
             climbing_fraction = min(1.0, max(0.0, climbing_fraction))
         else:
             climbing_fraction = 0.0

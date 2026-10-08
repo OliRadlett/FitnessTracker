@@ -1773,6 +1773,10 @@ def fit_personalized_power_models() -> dict:
         )
 
         if not _modal_configured():
+            logger.warning(
+                "fit_personalized_power_models skipped — "
+                "MODAL_TOKEN_ID/SECRET not configured"
+            )
             return {"skipped": True, "reason": "Modal not configured"}
 
         async with task_session() as db:
@@ -1968,11 +1972,17 @@ def analyze_weather_performance_weekly() -> dict:
 
     async def _run():
         from app.integrations.weather_analysis import (
+            MIN_RIDES_TOTAL,
             _modal_configured,
             analyze_weather_on_modal,
+            is_weather_sample_sufficient,
         )
 
         if not _modal_configured():
+            logger.warning(
+                "analyze_weather_performance_weekly skipped — "
+                "MODAL_TOKEN_ID/SECRET not configured"
+            )
             return {"skipped": True, "reason": "Modal not configured"}
 
         async with task_session() as db:
@@ -1983,6 +1993,9 @@ def analyze_weather_performance_weekly() -> dict:
             user_ids = [row[0] for row in result.all()]
 
             analyzed_count = 0
+            skipped_insufficient_count = 0
+            insufficient_result_count = 0
+            weather_backfilled_count = 0
             errors: list[str] = []
 
             for uid in user_ids:
@@ -1994,6 +2007,21 @@ def analyze_weather_performance_weekly() -> dict:
                     break
                 modal_ok = False
                 try:
+                    # Bounded backfill of untagged rides older than 30 days.
+                    # Sync-time tagging covers only the last 30 days, so
+                    # without this the historic backlog never qualifies for
+                    # analysis and small samples stay small forever.
+                    try:
+                        from app.services.weather import tag_untagged_history
+
+                        weather_backfilled_count += await tag_untagged_history(
+                            db, uid
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Weather history backfill failed for user {uid}: {e}"
+                        )
+
                     # Collect cycling activities with weather data
                     result = await db.execute(
                         select(Activity).where(
@@ -2006,7 +2034,23 @@ def analyze_weather_performance_weekly() -> dict:
                     )
                     activities = list(result.scalars().all())
 
-                    if len(activities) < 15:
+                    # Pre-gate on the SAME sample-size rule the Modal worker
+                    # applies before persisting (is_weather_sample_sufficient):
+                    # dispatching below it only pays for a result that will be
+                    # discarded. Every row here carries weather_temperature by
+                    # construction, so total == with_weather.
+                    if not is_weather_sample_sufficient(
+                        len(activities), len(activities)
+                    ):
+                        logger.info(
+                            "analyze_weather_performance_weekly: user %s has "
+                            "%d eligible rides (< %d required) — skipping "
+                            "Modal call",
+                            uid,
+                            len(activities),
+                            MIN_RIDES_TOTAL,
+                        )
+                        skipped_insufficient_count += 1
                         continue
 
                     # Prefetch linked-route headings (one query): rides need
@@ -2063,11 +2107,15 @@ def analyze_weather_performance_weekly() -> dict:
                             if act.route_id
                             else None,
                             "weather": {
+                                # NOTE: `is not None`, not truthiness — 0.0 °C
+                                # and calm (0 km/h wind) days are real
+                                # measurements; a falsy check drops them and
+                                # understates with_weather / the calm bucket.
                                 "temperature": float(act.weather_temperature)
-                                if act.weather_temperature
+                                if act.weather_temperature is not None
                                 else None,
                                 "wind_speed_kmh": float(act.weather_wind_speed_kmh)
-                                if act.weather_wind_speed_kmh
+                                if act.weather_wind_speed_kmh is not None
                                 else None,
                                 "wind_direction": float(
                                     act.weather_wind_direction_deg
@@ -2121,6 +2169,26 @@ def analyze_weather_performance_weekly() -> dict:
                         profile.weather_analyzed_at = datetime.now(UTC)
                         analyzed_count += 1
                         await db.commit()
+                    else:
+                        # The Modal call succeeded but nothing was persisted —
+                        # previously discarded with no trace, leaving
+                        # weather_analyzed_at NULL forever with no log line
+                        # explaining why. Now observable per user and in total.
+                        if profile is None:
+                            logger.warning(
+                                "analyze_weather_performance_weekly: user %s "
+                                "has no cycling profile at persist time — "
+                                "discarding Modal result",
+                                uid,
+                            )
+                        else:
+                            logger.warning(
+                                "analyze_weather_performance_weekly: user %s "
+                                "Modal result insufficient — discarding: %s",
+                                uid,
+                                results.get("data_quality", {}),
+                            )
+                        insufficient_result_count += 1
 
                 except Exception as e:
                     if not modal_ok:
@@ -2137,6 +2205,9 @@ def analyze_weather_performance_weekly() -> dict:
             return {
                 "users_checked": len(user_ids),
                 "users_analyzed": analyzed_count,
+                "users_skipped_insufficient": skipped_insufficient_count,
+                "users_insufficient_result": insufficient_result_count,
+                "weather_backfilled": weather_backfilled_count,
                 "errors": errors,
             }
 
@@ -2168,6 +2239,10 @@ def analyze_segments_intelligence_weekly() -> dict:
         )
 
         if not _modal_configured():
+            logger.warning(
+                "analyze_segments_intelligence_weekly skipped — "
+                "MODAL_TOKEN_ID/SECRET not configured"
+            )
             return {"skipped": True, "reason": "Modal not configured"}
 
         async with task_session() as db:
@@ -2580,6 +2655,10 @@ def analyze_cross_domain_weekly() -> dict:
         )
 
         if not _modal_configured():
+            logger.warning(
+                "analyze_cross_domain_weekly skipped — "
+                "MODAL_TOKEN_ID/SECRET not configured"
+            )
             return {"skipped": True, "reason": "Modal not configured"}
 
         async with task_session() as db:
