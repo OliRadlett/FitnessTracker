@@ -31,6 +31,46 @@ POWER_DURATION_BUCKETS = [
 ]
 
 
+# ── Cross-method confidence intervals (F9) ─────────────────────────────────
+
+
+def blend_ci_95(
+    values: list[float],
+    weights: list[float] | None = None,
+    center: float | None = None,
+) -> tuple[float, float] | None:
+    """Approximate 95% interval for a blended multi-method estimate.
+
+    The flagship estimates (FTP, VO2max) blend partially overlapping methods
+    (tier reads, Riegel extrapolations, FRIEND vs Uth) — not independent
+    samples — so this is a *cross-method spread* interval, not a sampling
+    CI. Half-width is ``1.96 × SD / √k`` over the blended values (weighted
+    mean when ``weights`` are given), widened to at least cover the
+    farthest blended value from ``center`` so the interval always contains
+    both the blend and every method that fed it. Returns ``None`` for fewer
+    than 2 values (spread unquantifiable from a single method).
+
+    ``center`` defaults to the (weighted) mean; pass the reported point
+    estimate when it differs (e.g. VO2max reports the best-confidence
+    method, not the mean) so containment still holds.
+    """
+    vals = [float(v) for v in values]
+    if len(vals) < 2:
+        return None
+    if weights is not None and len(weights) == len(vals) and sum(weights) > 0:
+        w = [float(x) for x in weights]
+        total = sum(w)
+        mean = sum(v * x for v, x in zip(vals, w)) / total
+    else:
+        mean = sum(vals) / len(vals)
+    point = float(center) if center is not None else mean
+    k = len(vals)
+    variance = sum((v - mean) ** 2 for v in vals) / (k - 1) if k > 1 else 0.0
+    half_width = 1.96 * math.sqrt(variance) / math.sqrt(k) if variance > 0 else 0.0
+    half_width = max(half_width, max(abs(v - point) for v in vals))
+    return (round(point - half_width, 1), round(point + half_width, 1))
+
+
 # ── FTP Estimation ──────────────────────────────────────────────────────────
 
 
@@ -43,17 +83,25 @@ class FtpEstimateResult:
     method: str  # human-readable method description
     source_duration: int  # duration in seconds that was the primary signal
     all_estimates: list[dict]  # all individual estimates for transparency
+    ci_low: float | None = None  # approx 95% interval over the blend (F9)
+    ci_high: float | None = None
 
 
 def estimate_ftp_from_power_curve(power_curve: dict[int, float]) -> float | None:
     """Estimate FTP from best power at various durations.
 
     Uses a tiered approach with established multipliers:
-    1. Best 20-min power × 0.95 (gold standard)
-    2. Best 8-min power × 0.90 × 0.95 (well-established fallback)
-    3. Best 5-min power × 0.85 (rough estimate — 5-min power is
-       typically ~115-120% of FTP)
-    4. Best 60-min power (directly equals FTP by definition)
+    1. Best 20-min power × 0.95 (gold standard, Allen/Coggan)
+    2. Best 8-min power × 0.90 (Allen/Coggan two×8-min protocol factor;
+       F4: was 0.90 × 0.95 = 0.855, double-discounting an already
+       anaerobic-adjusted factor)
+    3. Best 30-min power × 0.97 (log-duration interpolation between the
+       anchored 20-min 0.95 and 60-min 1.00 literature points — F4 replaces
+       the invented 10-min/30-min factors; the 10-min tier is removed and
+       10-min efforts contribute via Riegel extrapolation only)
+    4. Best 5-min power × 0.85 (rough estimate — 5-min power is
+       typically ~115-120% of FTP, so the 0.95 test factor does not apply)
+    5. Best 60-min power (directly equals FTP by definition)
 
     Also includes Riegel extrapolation from shorter efforts as an
     additional signal with lower confidence.
@@ -105,21 +153,22 @@ def estimate_ftp_from_power_curve_detailed(
     if 1200 in power_curve and power_curve[1200] > 0:
         estimates.append((power_curve[1200] * FTP_FACTOR, 1.0, 1200, "20-min × 0.95"))
 
-    # 30-min power × 0.95 (close to FTP)
+    # 30-min power × 0.97. F4: was × 0.95, discounting a near-threshold
+    # effort as heavily as a 20-min test. 0.97 is the log-duration
+    # interpolation between the anchored 20-min 0.95 and 60-min 1.00
+    # literature points (ln30 sits ~1/3 of the way from ln20 to ln60).
     if 1800 in power_curve and power_curve[1800] > 0:
-        estimates.append((power_curve[1800] * FTP_FACTOR, 0.95, 1800, "30-min × 0.95"))
+        estimates.append((power_curve[1800] * 0.97, 0.9, 1800, "30-min × 0.97"))
 
-    # 8-min power × 0.90 × 0.95 (well-established alternative)
+    # 8-min power × 0.90 (Allen/Coggan two×8-min protocol factor). F4: was
+    # × 0.90 × 0.95 = 0.855 — the extra 0.95 double-discounted a factor
+    # that already accounts for anaerobic contribution.
     if 480 in power_curve and power_curve[480] > 0:
-        estimates.append(
-            (power_curve[480] * 0.90 * FTP_FACTOR, 0.85, 480, "8-min × 0.855")
-        )
+        estimates.append((power_curve[480] * 0.90, 0.85, 480, "8-min × 0.90"))
 
-    # 10-min power × 0.92 (between 8min and 20min factors)
-    if 600 in power_curve and power_curve[600] > 0:
-        estimates.append(
-            (power_curve[600] * 0.92 * FTP_FACTOR, 0.7, 600, "10-min × 0.92 × 0.95")
-        )
+    # F4: the 10-min × 0.92 × 0.95 tier is removed — no test protocol
+    # publishes a 10-min factor, so it was invented. 10-min bests still
+    # contribute via the Riegel extrapolation below (low confidence).
 
     # 5-min power × 0.85 (rough estimate, lower confidence — 5-min best
     # power sits well above FTP, so the 0.95 FTP-test factor does not apply)
@@ -187,12 +236,22 @@ def estimate_ftp_from_power_curve_detailed(
         for ftp, conf, dur, method in estimates
     ]
 
+    # F9: numeric interval over the blended (gated) methods. None when a
+    # single method fed the blend — spread is unquantifiable then.
+    ci = blend_ci_95(
+        [ftp for ftp, _, _, _ in gated],
+        weights=[c for _, c, _, _ in gated],
+        center=weighted_ftp,
+    )
+
     return FtpEstimateResult(
         ftp=round(weighted_ftp, 1),
         confidence=overall_confidence,
         method=primary_method,
         source_duration=primary_duration,
         all_estimates=all_estimate_dicts,
+        ci_low=ci[0] if ci else None,
+        ci_high=ci[1] if ci else None,
     )
 
 
@@ -432,8 +491,10 @@ async def backfill_ftp_estimates(
         source_method = None
         if 1200 in best_power:
             source_method = f"20-min: {best_power[1200]} W × 0.95"
+        elif 1800 in best_power:
+            source_method = f"30-min: {best_power[1800]} W × 0.97"
         elif 480 in best_power:
-            source_method = f"8-min: {best_power[480]} W × 0.855"
+            source_method = f"8-min: {best_power[480]} W × 0.90"
         elif 300 in best_power:
             source_method = f"5-min: {best_power[300]} W × 0.85"
 
