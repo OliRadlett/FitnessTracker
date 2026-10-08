@@ -370,8 +370,13 @@ def extract_activity_polyline(
         return poly
 
     # 2. Fall back to provider sources — prefer strava, then any with geometry.
+    # Never lazy-load here: on an async session an unloaded ``sources``
+    # collection raises MissingGreenlet (manual Strava sync 500, 2026-10-08),
+    # so only a collection that is already present on the instance is used.
+    # Callers that need the source fallback must eager-load the relationship
+    # (selectinload) or pass ``sources`` explicitly.
     if sources is None:
-        sources = getattr(activity, "sources", None)
+        sources = activity.__dict__.get("sources", None)
     if not sources:
         return None
 

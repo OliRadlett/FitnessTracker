@@ -86,3 +86,34 @@ def test_ignores_empty_polyline_strings():
 def test_no_sources_attribute_does_not_raise():
     a = types.SimpleNamespace(raw_data=None)
     assert extract_activity_polyline(a) is None
+
+
+def test_unloaded_sources_are_never_touched():
+    """Regression for the manual Strava sync 500 (2026-10-08).
+
+    On an async session, reading an unloaded ``activity.sources`` fires a
+    lazy load and raises ``MissingGreenlet``. The extractor must only use a
+    collection that is already present on the instance — never trigger IO.
+    """
+
+    from sqlalchemy.exc import MissingGreenlet
+
+    class _Unloaded:
+        raw_data = None
+
+        @property
+        def sources(self):  # pragma: no cover - must never be reached
+            raise MissingGreenlet("greenlet_spawn has not been called")
+
+    assert extract_activity_polyline(_Unloaded()) is None
+
+
+def test_explicit_sources_bypass_the_loaded_check():
+    """Callers holding pre-fetched sources can pass them explicitly."""
+    a = types.SimpleNamespace(raw_data=None)
+    assert (
+        extract_activity_polyline(
+            a, sources=[_source("strava", {"map": {"summary_polyline": POLY}})]
+        )
+        == POLY
+    )
