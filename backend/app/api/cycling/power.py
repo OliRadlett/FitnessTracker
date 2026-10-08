@@ -897,7 +897,11 @@ async def get_power_model_results(
     if profile.personalized_vo2max is not None:
         vo2max_result = PowerModelPersonalizedVo2max(
             vo2max=profile.personalized_vo2max,
-            method="power_hr_regression",
+            method=profile.personalized_vo2max_method,
+            r_squared=profile.personalized_vo2max_r_squared,
+            data_points_used=profile.personalized_vo2max_data_points or 0,
+            maximal_power_watts=profile.personalized_vo2max_maximal_watts,
+            hr_threshold_used=profile.personalized_vo2max_hr_threshold,
         )
 
     constants_result = None

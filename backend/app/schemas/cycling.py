@@ -41,7 +41,22 @@ class CyclingProfileRead(BaseModel):
         None, description="R² fit quality of the CP model"
     )
     personalized_vo2max: float | None = Field(
-        None, description="VO2max from power-HR regression (ml/kg/min)"
+        None, description="VO2max from maximal power via FRIEND (ml/kg/min)"
+    )
+    personalized_vo2max_method: str | None = Field(
+        None, description="How the VO2max number was produced"
+    )
+    personalized_vo2max_r_squared: float | None = Field(
+        None, description="R² of the supporting power-HR regression"
+    )
+    personalized_vo2max_data_points: int | None = Field(
+        None, description="Steady-state rides used in the VO2max fit"
+    )
+    personalized_vo2max_hr_threshold: float | None = Field(
+        None, description="HR anchor read for the regression fallback (bpm)"
+    )
+    personalized_vo2max_maximal_watts: float | None = Field(
+        None, description="Maximal ~5-min watts FRIEND was applied to"
     )
     ctl_tau: int | None = Field(
         None, description="Personalized CTL time constant (days)"
@@ -363,7 +378,7 @@ class PowerModelCriticalPower(BaseModel):
 
 
 class PowerModelPersonalizedVo2max(BaseModel):
-    """Personalized VO2max from power-HR regression."""
+    """Personalized VO2max from maximal power (FRIEND), regression fallback."""
 
     vo2max: float | None = None
     method: str | None = None
@@ -371,6 +386,8 @@ class PowerModelPersonalizedVo2max(BaseModel):
     regression_slope: float | None = None
     regression_intercept: float | None = None
     data_points_used: int = 0
+    maximal_power_watts: float | None = None
+    hr_threshold_used: float | None = None
 
 
 class PowerModelAdaptiveConstants(BaseModel):
