@@ -155,3 +155,53 @@ def test_two_pass_pbf_parse_only_resolves_wanted_nodes(monkeypatch):
     assert edges[0][4] == "In Box"
 
 
+def test_pbf_edges_carry_osm_node_ids_for_continuity(monkeypatch):
+    """Edge u/v must be OSM node ids so _shares_node fires across ways.
+
+    Two ways sharing node 2 must produce edges whose endpoints match —
+    per-way sequence numbers (``way_id:idx``) never match across ways, so
+    the snap continuity filter silently never fired at intersections.
+    Edge ``key`` stays way-scoped so edge_set/Jaccard keys are unchanged.
+    """
+    import sys
+    import types
+
+    class _FakeSimpleHandler:
+        def apply_file(self, _path, locations=False, idx=None):
+            if type(self).__name__ == "_WayCollector":
+                for wid, refs in ((10, [1, 2]), (11, [2, 3])):
+                    w = types.SimpleNamespace(
+                        id=wid,
+                        tags={"highway": "residential", "name": f"Way {wid}"},
+                    )
+                    w.nodes = [types.SimpleNamespace(ref=r) for r in refs]
+                    self.way(w)
+            elif type(self).__name__ == "_NodeCollector":
+                for nid, (lat, lng) in {
+                    1: (55.0, -1.0),
+                    2: (55.0, -0.99),
+                    3: (55.0, -0.98),
+                }.items():
+                    loc = types.SimpleNamespace(lat=lat, lon=lng)
+                    self.node(types.SimpleNamespace(id=nid, location=loc))
+
+    fake_osmium = types.ModuleType("osmium")
+    fake_osmium.SimpleHandler = _FakeSimpleHandler
+    monkeypatch.setitem(sys.modules, "osmium", fake_osmium)
+
+    from app.integrations.route_road_graph import _build_edges_from_pbf
+    from app.services.road_graph import RoadEdge, _shares_node
+
+    edges = _build_edges_from_pbf("ignored.pbf", (54.0, -2.0, 56.0, 0.0))
+
+    assert [(e[0], e[1], e[2]) for e in edges] == [
+        ("10:1", "1", "2"),
+        ("11:1", "2", "3"),
+    ]
+    built = [
+        RoadEdge(key=k, u=u, v=v, polyline=pts, length_m=100.0)
+        for k, u, v, pts, _nm, _hw in edges
+    ]
+    assert _shares_node(built[0], built[1])
+
+

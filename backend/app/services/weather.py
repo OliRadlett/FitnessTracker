@@ -542,12 +542,30 @@ async def tag_activity(db: AsyncSession, user_id, activity_id) -> dict | None:
 async def tag_recent_activities(db: AsyncSession, user_id, limit: int = 50) -> int:
     """Tag cycling activities from the last 30 days missing weather data."""
     cutoff = datetime.now(UTC) - timedelta(days=30)
+    return await _tag_untagged(db, user_id, limit, Activity.start_date >= cutoff)
+
+
+async def tag_untagged_history(
+    db: AsyncSession, user_id, limit: int = 100, min_age_days: int = 30
+) -> int:
+    """Tag untagged cycling activities older than ``min_age_days``.
+
+    Bounded weekly backfill for the gap ``tag_recent_activities`` leaves:
+    only the last 30 days are tagged at sync time, so older rides never
+    qualify for the weekly weather analysis. Newest-first within the window
+    (recent rows are more likely to carry resolvable coordinates).
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=min_age_days)
+    return await _tag_untagged(db, user_id, limit, Activity.start_date < cutoff)
+
+
+async def _tag_untagged(db, user_id, limit: int, window_clause) -> int:
     result = await db.execute(
         select(Activity.id)
         .where(
             Activity.user_id == user_id,
             Activity.sport_type == "cycling",
-            Activity.start_date >= cutoff,
+            window_clause,
             Activity.weather_temperature.is_(None),
         )
         .order_by(Activity.start_date.desc())

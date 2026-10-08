@@ -92,3 +92,22 @@ def test_unclustered_segment_uses_neighbors():
     # not the generic no-history fallback (VAM 800 for its gradient).
     assert pred["similar_efforts_used"] == 2
     assert pred["predicted_vam"] == pytest.approx(610.0, abs=30.0)
+
+
+def test_sustainedness_is_gain_share_of_uniform_grade():
+    """Sustainedness must be gain / (length × grad/100), not tan(degrees).
+
+    A uniform 5% grade (2000 m, 100 m gain) climbs its whole length, so the
+    score is 1.0. The old tan(radians(5)) denominator (≈0.0875 vs 0.05)
+    scored it ≈0.57.
+    """
+    uniform = _seg("u1", 5.0, 2000, 100)
+    half = _seg("h1", 5.0, 2000, 50)
+    flat = _seg("f1", 0.0, 2000, 0)
+    result = analyze_segments(
+        [uniform, half, flat], [], {"ctl": 50, "atl": 30}
+    )
+    smoothed = result["smoothed_segments"]
+    assert smoothed["u1"]["sustainedness"] == pytest.approx(1.0)
+    assert smoothed["h1"]["sustainedness"] == pytest.approx(0.5)
+    assert smoothed["f1"]["sustainedness"] == pytest.approx(0.0)

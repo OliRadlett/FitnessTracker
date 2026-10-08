@@ -16,6 +16,28 @@ import math
 logger = logging.getLogger(__name__)
 
 
+# ── Sample-size gates ─────────────────────────────────────────────────────────
+#
+# Shared with the scheduler pre-gate in
+# ``app.tasks.scheduler.analyze_weather_performance_weekly``: the scheduler
+# must not dispatch a Modal call its own result gate will discard. Prod sat
+# exactly in the gap (17 eligible rides ≥ the scheduler's old 15-ride gate,
+# < this 20-ride gate), so every Sunday run paid for a Modal call whose
+# result was silently thrown away and ``weather_analyzed_at`` stayed NULL
+# forever. Keep the two gates identical via ``is_weather_sample_sufficient``
+# — never by re-typing the numbers at the call site.
+MIN_RIDES_TOTAL = 20
+MIN_RIDES_WITH_WEATHER = 15
+
+
+def is_weather_sample_sufficient(total_rides: int, rides_with_weather: int) -> bool:
+    """True when a ride sample is large enough to persist analysis results."""
+    return (
+        total_rides >= MIN_RIDES_TOTAL
+        and rides_with_weather >= MIN_RIDES_WITH_WEATHER
+    )
+
+
 def _modal_configured() -> bool:
     # Imported lazily so the Modal remote container can import this module
     # without app.config's dependencies (the worker decorates a module-global
@@ -215,6 +237,9 @@ def _wind_to_components(
 ) -> tuple[float, float]:
     """Convert wind speed/direction + route heading to headwind/crosswind.
 
+    ``wind_direction`` follows the meteorological (Open-Meteo) convention:
+    the compass direction the wind blows FROM, in degrees. Under that
+    convention a wind from dead ahead gives a positive headwind below.
     Returns (headwind, crosswind) in m/s. Positive headwind = into wind.
     """
     # Convert degrees to radians
@@ -571,7 +596,7 @@ def analyze_weather_performance(
             "with_weather": with_weather,
             "with_power": with_power,
             "with_decoupling": with_decp,
-            "sufficient": total >= 20 and with_weather >= 15,
+            "sufficient": is_weather_sample_sufficient(total, with_weather),
         },
     }
 

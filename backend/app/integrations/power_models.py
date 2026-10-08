@@ -464,7 +464,7 @@ def fit_personalized_vo2max(
     # Estimate VO2max using the FRIEND equation:
     # VO2 = 10.649 * W/kg + 3.5
     # (1.74 × 6.12 = 10.649; Nes et al. 2018, PMID 29692203 — >4× lower error
-    # than the traditional ACSM 10.8×W/kg+7.)
+    # than the traditional ACSM 11.016×W/kg+7.)
     # Read power off the regression line at the user's threshold HR
     # (their LTHR when known, else the 170 bpm population fallback), then
     # apply FRIEND.

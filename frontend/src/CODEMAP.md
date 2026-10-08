@@ -255,7 +255,7 @@
 | `HealthAlertSettings` | **§3.12 Health-alert tuning card** — per-signal enable toggle, snooze (3/7/14/30 days), and threshold inputs for the new performance-decline / sleep-consistency / resting-HR signals (persist via `GET/PUT /metrics/health-preferences`). Rendered on `/settings` page |
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
-| `IntelligenceStatusCard` | **Modal intelligence status** — per-feature fitted/not-fitted state from `CyclingProfile` (`power_model_fitted_at`, `weather_analyzed_at`) + static entries for cross-domain/segments. Rendered on `/settings` before Export Data |
+| `IntelligenceStatusCard` | **Modal intelligence status** — per-feature fitted/not-fitted state: power/weather from `CyclingProfile` (`power_model_fitted_at`, `weather_analyzed_at`), cross-domain from `GET /cross-domain/status` (newest insight `created_at`), segments from `GET /segments/status` (max `intelligence_analyzed_at` + x/y counts). Status endpoints return 200-with-null when never fitted. Rendered on `/settings` before Export Data |
 
 #### `onboarding/` — First-run wizard (§3.10)
 | Component | Purpose |
