@@ -48,6 +48,31 @@ class CyclingProfile(Base):
     p_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     power_model_r_squared: Mapped[float | None] = mapped_column(Float, nullable=True)
     personalized_vo2max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Personalized VO2max diagnostics (fitted by Modal weekly task).
+    #
+    # Only ``personalized_vo2max`` used to persist — the number with no
+    # provenance. A stamped value whose regression was noise (or whose input
+    # was threshold rather than maximal power) is indistinguishable from a
+    # good one, so the fit inputs persist alongside: method
+    # (``friend_maximal_power`` / ``power_hr_regression`` / gated markers),
+    # regression R², points used, HR anchor read, and the maximal watts the
+    # FRIEND equation was applied to. All nullable: rows fitted before this
+    # migration predate diagnostics.
+    personalized_vo2max_method: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    personalized_vo2max_r_squared: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    personalized_vo2max_data_points: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    personalized_vo2max_hr_threshold: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    personalized_vo2max_maximal_watts: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
     ctl_tau: Mapped[int | None] = mapped_column(Integer, nullable=True)
     atl_tau: Mapped[int | None] = mapped_column(Integer, nullable=True)
     power_model_fitted_at: Mapped[datetime | None] = mapped_column(
