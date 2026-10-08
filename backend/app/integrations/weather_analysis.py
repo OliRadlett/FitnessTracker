@@ -10,6 +10,7 @@ arguments, results via return values. Requires ``MODAL_TOKEN_ID`` and
 ``MODAL_TOKEN_SECRET`` env vars.
 """
 
+import asyncio
 import logging
 import math
 
@@ -660,3 +661,20 @@ def analyze_weather_on_modal(
 
     with app.run():
         return remote_analyze.remote(rides_json, headings_json)
+
+
+async def aanalyze_weather_on_modal(
+    rides: list[dict],
+    route_headings: dict | None = None,
+) -> dict:
+    """Async variant of :func:`analyze_weather_on_modal` for async callers.
+
+    The Modal dispatch above is synchronous — ``with app.run()`` plus
+    ``.remote(...)`` blocks the calling thread for the whole remote run
+    (~30 s in prod). Calling it directly from the scheduler's ``async _run``
+    (``analyze_weather_performance_weekly``) blocks the event loop and trips
+    Modal's ``AsyncUsageWarning``. Offloading to a worker thread keeps the
+    loop responsive; the worker thread has no running loop, which also
+    silences the warning. The sync entry point is kept for sync callers.
+    """
+    return await asyncio.to_thread(analyze_weather_on_modal, rides, route_headings)
