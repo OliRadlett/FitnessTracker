@@ -1921,6 +1921,38 @@ def fit_personalized_power_models() -> dict:
                         vo2_result = results.get("personalized_vo2max", {})
                         if vo2_result.get("vo2max"):
                             profile.personalized_vo2max = vo2_result["vo2max"]
+                            # Diagnostics persist alongside the number so a
+                            # stamped value stays auditable (method, R²,
+                            # points, HR anchor, maximal watts).
+                            profile.personalized_vo2max_method = vo2_result.get(
+                                "method"
+                            )
+                            profile.personalized_vo2max_r_squared = vo2_result.get(
+                                "r_squared"
+                            )
+                            profile.personalized_vo2max_data_points = (
+                                vo2_result.get("data_points_used")
+                            )
+                            profile.personalized_vo2max_hr_threshold = (
+                                vo2_result.get("hr_threshold_used")
+                            )
+                            profile.personalized_vo2max_maximal_watts = (
+                                vo2_result.get("maximal_power_watts")
+                            )
+                        elif vo2_result.get("method") not in (
+                            None,
+                            "insufficient_data",
+                        ):
+                            # Gated/degenerate: the fitter refused to stamp a
+                            # number. Previously silent — now observable.
+                            logger.warning(
+                                "fit_personalized_power_models: user %s "
+                                "VO2max gated (%s, r_squared=%s, n=%s)",
+                                uid,
+                                vo2_result.get("method"),
+                                vo2_result.get("r_squared"),
+                                vo2_result.get("data_points_used"),
+                            )
                         constants = results.get("adaptive_constants", {})
                         taus = adaptive_taus_to_persist(constants)
                         if taus is not None:
@@ -1974,7 +2006,7 @@ def analyze_weather_performance_weekly() -> dict:
         from app.integrations.weather_analysis import (
             MIN_RIDES_TOTAL,
             _modal_configured,
-            analyze_weather_on_modal,
+            aanalyze_weather_on_modal,
             is_weather_sample_sufficient,
         )
 
@@ -2136,8 +2168,10 @@ def analyze_weather_performance_weekly() -> dict:
                         }
                         rides.append(ride)
 
-                    # Call Modal
-                    results = analyze_weather_on_modal(rides)
+                    # Call Modal off the event loop: the dispatch is
+                    # synchronous (~30 s remote run) and would block _run
+                    # + trip Modal's AsyncUsageWarning (P3 prod finding).
+                    results = await aanalyze_weather_on_modal(rides)
                     modal_ok = True
                     _MODAL_BREAKER.record(
                         "analyze_weather_performance_weekly", True

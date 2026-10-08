@@ -1,9 +1,10 @@
 """Power models — Modal-powered personalized training model fitting.
 
 Provides critical power curve fitting (Morton 2004), personalized VO2max
-estimation from power-HR regression, and adaptive CTL/ATL time constant
-fitting from HRV recovery patterns. All functions are pure-compute with
-no DB access — data flows in via arguments, results via return values.
+estimation from maximal power via FRIEND (with a gated power-HR regression
+fallback), and adaptive CTL/ATL time constant fitting from HRV recovery
+patterns. All functions are pure-compute with no DB access — data flows in
+via arguments, results via return values.
 
 Requires ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` env vars.
 """
@@ -380,17 +381,94 @@ def fit_critical_power(
 
 # ── Personalized VO2max from Power-HR Regression ────────────────────────────
 
+# Sample-size / quality gates for the personalized VO2max fit.
+#
+# The FRIEND equation is calibrated on MAXIMAL power, so the number must come
+# from a maximal input (best ~5-min power, the same input the canonical
+# ``estimate_vo2max`` service uses). Reading threshold power off the
+# power-HR regression instead understated prod by ~25% (26.5 ml/kg/min at
+# CP 229W / 90.4kg — a "Poor" label on a trained rider).
+VO2_MAXIMAL_TARGET_S = 300
+# Moderate-fit floor for the legacy threshold-regression fallback: below it
+# the extrapolated threshold wattage is noise, so no number is stamped.
+VO2_R2_MIN = 0.5
+
+
+def _maximal_power_at(
+    durations: list, best_watts: list, target: int = VO2_MAXIMAL_TARGET_S
+) -> tuple[float | None, str | None]:
+    """Best maximal power at ``target`` seconds from a power-duration curve.
+
+    Returns ``(watts, source)`` where source is ``"exact:{t}s"`` for a direct
+    bucket hit or ``"interpolated:{lo}-{hi}s"`` for a log-linear interpolation
+    between bracketing buckets (power-duration is near-linear in log(t), so a
+    straight linear interpolation in duration would bias the read). Returns
+    ``(None, None)`` when the target cannot be read without extrapolating
+    beyond the observed data — extrapolating a power-duration curve past its
+    ends is exactly the failure the 3-param Morton fit exists to avoid.
+    """
+    pairs: list[tuple[float, float]] = []
+    for t, p in zip(durations or [], best_watts or []):
+        try:
+            t_f, p_f = float(t), float(p)
+        except (TypeError, ValueError):
+            continue
+        if t_f > 0 and p_f > 0:
+            pairs.append((t_f, p_f))
+    pairs.sort()
+    if not pairs:
+        return None, None
+    for t, p in pairs:
+        if t == float(target):
+            return p, f"exact:{int(target)}s"
+    below = [(t, p) for t, p in pairs if t < target]
+    above = [(t, p) for t, p in pairs if t > target]
+    if not below or not above:
+        return None, None
+    lo_t, lo_p = below[-1]
+    hi_t, hi_p = above[0]
+    frac = (math.log(target) - math.log(lo_t)) / (math.log(hi_t) - math.log(lo_t))
+    interp = lo_p + (hi_p - lo_p) * frac
+    return round(interp, 1), f"interpolated:{int(lo_t)}-{int(hi_t)}s"
+
+
+def _friend_vo2max_maximal(power_watts: float, weight_kg: float | None) -> float | None:
+    """FRIEND-ergometry VO2max from a MAXIMAL power (ml/kg/min).
+
+    VO2 = 10.649 × W/kg + 3.5 (Nes et al. 2018, PMID 29692203). Deliberately
+    duplicated from ``app.services.cycling.vo2max._friend_vo2max`` rather than
+    imported: this module is mounted into the bare Modal image, where any
+    ``app.services`` import would drag SQLAlchemy along (pitfalls 16/17).
+    Keep the two formulas identical; the service is canonical.
+    """
+    weight = weight_kg if weight_kg and weight_kg > 0 else 75.0
+    vo2 = 10.649 * power_watts / weight + 3.5
+    if vo2 < 20 or vo2 > 90:
+        return None
+    return round(vo2, 1)
+
 
 def fit_personalized_vo2max(
     steady_state_rides: list[dict],
     weight_kg: float | None = None,
     hr_anchor: float | None = None,
+    durations: list | None = None,
+    best_watts: list | None = None,
 ) -> dict:
-    """Fit personalized VO2max from steady-state power-HR pairs.
+    """Fit personalized VO2max, preferring a maximal power input.
 
-    Uses linear regression of HR on power (or W/kg) to find the
-    relationship, then estimates VO2max by extrapolating to the
-    user's threshold heart rate.
+    Primary path (``friend_maximal_power``): FRIEND applied to the best ~5-min
+    power read from the power-duration curve — the same maximal input the
+    canonical ``estimate_vo2max`` service uses. FRIEND is calibrated on
+    maximal power; feeding it regression-extrapolated *threshold* power
+    understated prod by ~25%, so the threshold read is no longer used for
+    the number.
+
+    Fallback path (``power_hr_regression``): when no maximal power is
+    readable (curve too short to bracket 300s), the legacy power-HR
+    regression at LTHR (else 170 bpm) still runs — but now gated on
+    ``VO2_R2_MIN``: a weak regression stamps nothing (``weak_regression_gated``)
+    instead of a noise number.
 
     Parameters
     ----------
@@ -404,11 +482,16 @@ def fit_personalized_vo2max(
         user's LTHR when supplied (valid 100–210 bpm); otherwise falls back
         to 170. A fixed 170 for everyone biases the estimate for riders
         whose threshold sits well above or below it.
+    durations / best_watts:
+        Power-duration curve ({durations, best_watts} as passed to the CP
+        fit). Supplies the maximal input; when absent or too short to read
+        300s, the gated regression fallback applies.
 
     Returns
     -------
-    dict with vo2max, hr_max_assumed, method, r_squared, regression_slope,
-    regression_intercept, data_points_used.
+    dict with vo2max, method, r_squared, regression_slope,
+    regression_intercept, hr_threshold_used, data_points_used,
+    maximal_power_watts, maximal_power_source.
     """
     # Filter to valid steady-state data
     valid = [
@@ -424,8 +507,10 @@ def fit_personalized_vo2max(
         return {
             "vo2max": None,
             "method": "insufficient_data",
-            "r_squared": 0.0,
+            "r_squared": None,
             "data_points_used": len(valid),
+            "maximal_power_watts": None,
+            "maximal_power_source": None,
         }
 
     # Use W/kg if weight available, otherwise raw watts
@@ -448,8 +533,10 @@ def fit_personalized_vo2max(
         return {
             "vo2max": None,
             "method": "degenerate_data",
-            "r_squared": 0.0,
+            "r_squared": None,
             "data_points_used": n,
+            "maximal_power_watts": None,
+            "maximal_power_source": None,
         }
 
     slope = (n * sum_xy - sum_x * sum_y) / denom
@@ -460,6 +547,51 @@ def fit_personalized_vo2max(
     ss_res = sum((yi - (slope * xi + intercept)) ** 2 for xi, yi in zip(x, y))
     ss_tot = sum((yi - mean_y) ** 2 for yi in y)
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+    r_squared = round(max(0.0, r_squared), 4)
+
+    # Anchor for the threshold read (legacy fallback only).
+    if hr_anchor is not None and 100 <= hr_anchor <= 210:
+        hr_threshold = float(hr_anchor)
+    else:
+        hr_threshold = 170.0  # typical threshold HR for estimation
+
+    # Primary path: FRIEND on a maximal input. The power-duration curve is
+    # measured bests, so the 300s read is the rider's maximal 5-min power —
+    # the input FRIEND is calibrated on. This does not touch the regression
+    # above, so its result is independent of regression quality; the
+    # regression diagnostics are still reported for transparency.
+    maximal_power_watts, maximal_power_source = _maximal_power_at(
+        durations, best_watts
+    )
+    if maximal_power_watts:
+        vo2max = _friend_vo2max_maximal(maximal_power_watts, weight_kg)
+        return {
+            "vo2max": vo2max,
+            "method": "friend_maximal_power",
+            "r_squared": r_squared,
+            "regression_slope": round(slope, 6),
+            "regression_intercept": round(intercept, 2),
+            "hr_threshold_used": hr_threshold,
+            "data_points_used": n,
+            "maximal_power_watts": maximal_power_watts,
+            "maximal_power_source": maximal_power_source,
+        }
+
+    # Fallback path: legacy threshold-power read, now gated. Without a
+    # maximal input the only estimate is the regression extrapolation, and a
+    # weak regression's threshold wattage is noise — stamp nothing.
+    if r_squared < VO2_R2_MIN or slope <= 0:
+        return {
+            "vo2max": None,
+            "method": "weak_regression_gated",
+            "r_squared": r_squared,
+            "regression_slope": round(slope, 6),
+            "regression_intercept": round(intercept, 2),
+            "hr_threshold_used": hr_threshold,
+            "data_points_used": n,
+            "maximal_power_watts": None,
+            "maximal_power_source": None,
+        }
 
     # Estimate VO2max using the FRIEND equation:
     # VO2 = 10.649 * W/kg + 3.5
@@ -468,19 +600,12 @@ def fit_personalized_vo2max(
     # Read power off the regression line at the user's threshold HR
     # (their LTHR when known, else the 170 bpm population fallback), then
     # apply FRIEND.
-    if hr_anchor is not None and 100 <= hr_anchor <= 210:
-        hr_threshold = float(hr_anchor)
+    power_at_threshold = (hr_threshold - intercept) / slope
+    if weight_kg and weight_kg > 0:
+        vo2max = 10.649 * power_at_threshold + 3.5
     else:
-        hr_threshold = 170.0  # typical threshold HR for estimation
-    if slope > 0:
-        power_at_threshold = (hr_threshold - intercept) / slope
-        if weight_kg and weight_kg > 0:
-            vo2max = 10.649 * power_at_threshold + 3.5
-        else:
-            # Without weight, assume 75kg
-            vo2max = 10.649 * power_at_threshold / 75.0 + 3.5
-    else:
-        vo2max = None
+        # Without weight, assume 75kg
+        vo2max = 10.649 * power_at_threshold / 75.0 + 3.5
 
     if vo2max and (vo2max < 20 or vo2max > 90):
         vo2max = None
@@ -488,11 +613,13 @@ def fit_personalized_vo2max(
     return {
         "vo2max": round(vo2max, 1) if vo2max else None,
         "method": "power_hr_regression",
-        "r_squared": round(max(0.0, r_squared), 4),
+        "r_squared": r_squared,
         "regression_slope": round(slope, 6),
         "regression_intercept": round(intercept, 2),
         "hr_threshold_used": hr_threshold,
         "data_points_used": n,
+        "maximal_power_watts": None,
+        "maximal_power_source": None,
     }
 
 
@@ -719,10 +846,13 @@ def _fit_power_models_modal(
             "method": "no_data",
         }
 
-    # Personalized VO2max
+    # Personalized VO2max. The power-duration curve doubles as the maximal
+    # input: best ~5-min power is read inside the fitter (exact bucket or
+    # log-linear interpolation, never extrapolation), so FRIEND gets the
+    # maximal power it is calibrated on.
     if ss_data and len(ss_data) >= 3:
         result["personalized_vo2max"] = fit_personalized_vo2max(
-            ss_data, weight, hr_anchor
+            ss_data, weight, hr_anchor, durations, powers
         )
     else:
         result["personalized_vo2max"] = {"vo2max": None, "method": "insufficient_data"}
