@@ -19,6 +19,8 @@ from datetime import date, timedelta
 import pytest
 
 from app.services.projections import (
+    PROJECTION_R2_MIN,
+    is_plausible_rate,
     linear_regression,
     project_to_target,
     success_badge,
@@ -231,6 +233,75 @@ class TestSuccessBadge:
             success_badge(0.5, date(2026, 9, 1), date(2026, 12, 15), n_points=3)
             == "Not enough data"
         )
+
+    # ── R² / plausibility gates (P0) ──────────────────────────────────
+
+    def test_low_r_squared_gates_on_track(self):
+        """A would-be On Track badge with r² below the floor reads
+        'Not enough data' — noise must not render as confidence."""
+        target = date(2026, 12, 15)
+        projected = date(2026, 11, 1)
+        assert (
+            success_badge(
+                0.2, projected, target, n_points=8, r_squared=PROJECTION_R2_MIN - 0.01
+            )
+            == "Not enough data"
+        )
+
+    def test_r_squared_at_floor_passes(self):
+        """r² exactly at the floor still badges normally (boundary inclusive)."""
+        target = date(2026, 12, 15)
+        projected = date(2026, 11, 1)
+        assert (
+            success_badge(
+                0.2, projected, target, n_points=8, r_squared=PROJECTION_R2_MIN
+            )
+            == "On Track"
+        )
+
+    def test_implausible_rate_gates_badge(self):
+        """plausible=False forces 'Not enough data' even for a perfect fit."""
+        target = date(2026, 12, 15)
+        projected = date(2026, 11, 1)
+        assert (
+            success_badge(
+                0.2, projected, target, n_points=8, r_squared=0.99, plausible=False
+            )
+            == "Not enough data"
+        )
+
+    def test_gates_default_off_for_backward_compat(self):
+        """Omitting r_squared/plausible preserves the legacy badge."""
+        target = date(2026, 12, 15)
+        assert success_badge(0.2, date(2026, 11, 1), target, n_points=8) == "On Track"
+
+
+# ── is_plausible_rate ──────────────────────────────────────────────────
+
+
+class TestIsPlausibleRate:
+    def test_normal_training_rates_pass(self):
+        assert is_plausible_rate("estimated_1rm", 1.0) is True
+        assert is_plausible_rate("body_weight", -0.75) is True
+        assert is_plausible_rate("ftp_watts", 1.0) is True
+        assert is_plausible_rate("vo2max", 0.1) is True
+
+    def test_absurd_gains_fail(self):
+        # +10 kg/week on a single lift is a logging error, not adaptation
+        assert is_plausible_rate("estimated_1rm", 10.0) is False
+        # 5 kg/week body-weight swing sustained is a unit mixup (lb as kg)
+        assert is_plausible_rate("body_weight", 5.0) is False
+        # +20 W/week FTP is a changed power source or bad test
+        assert is_plausible_rate("ftp_watts", 20.0) is False
+
+    def test_boundary_is_inclusive(self):
+        assert is_plausible_rate("body_weight", 2.0) is True
+        assert is_plausible_rate("body_weight", -2.0) is True
+        assert is_plausible_rate("body_weight", 2.01) is False
+
+    def test_unknown_metric_passes_open(self):
+        """A missing table entry must never silence a projection."""
+        assert is_plausible_rate("some_future_metric", 9999.0) is True
 
 
 # ── tsb_projection ───────────────────────────────────────────────────────────

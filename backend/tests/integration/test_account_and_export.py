@@ -176,6 +176,27 @@ async def test_json_export_excludes_other_users_rows(
 
 
 @pytest.mark.asyncio
+async def test_json_export_includes_goals_with_checkins(client, test_user) -> None:
+    """Goals export with their nested check-in history (P2 history hook)."""
+    g = await client.post(
+        "/api/v1/goals", json={"metric": "body_weight", "target_value": 74.0}
+    )
+    assert g.status_code == 201
+    goal_id = g.json()["id"]
+
+    c = await client.post(f"/api/v1/goals/{goal_id}/checkins", json={"value": 75.0})
+    assert c.status_code == 201
+
+    r = await client.get("/api/v1/export/json")
+    assert r.status_code == 200
+    goals = r.json()["collections"]["goals"]
+    exported = [x for x in goals if x["id"] == goal_id]
+    assert len(exported) == 1
+    assert len(exported[0]["check_ins"]) >= 1
+    assert exported[0]["check_ins"][0]["value"] == 75.0
+
+
+@pytest.mark.asyncio
 async def test_account_delete_confirmation_mismatch(client) -> None:
     """Deleting with the wrong confirmation email is rejected."""
     r = await client.request(

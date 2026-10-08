@@ -49,6 +49,7 @@ import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
 import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
 import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
+import { LiftingGoalsStrip, type GoalPrefill } from '@/components/lifting/LiftingGoalsStrip';
 import { RepRangeCard } from '@/components/lifting/RepRangeCard';
 import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
@@ -166,6 +167,11 @@ export default function LiftingPage() {
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
+  // Lifting → goals two-way: a PR card's "Set goal" opens the strip's create
+  // modal prefilled (estimated_1rm + exercise). Nulled on consume so the same
+  // exercise can re-fire via a fresh nonce.
+  const [goalPrefill, setGoalPrefill] = useState<GoalPrefill | null>(null);
+  const handleGoalPrefillConsumed = useCallback(() => setGoalPrefill(null), []);
 
   // Tab URL state — syncs with `?tab=<name>` for deep-linking
   const [activeTab, setActiveTab] = useState<LiftingTab>('sessions');
@@ -1081,6 +1087,8 @@ export default function LiftingPage() {
       {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'prs' && (
         <div className="space-y-6">
+          {/* Two-way goals surface: active lifting goals + PR → goal creation */}
+          <LiftingGoalsStrip prefill={goalPrefill} onPrefillConsumed={handleGoalPrefillConsumed} />
           <DotsScoreCard
             personalRecords={personalRecords}
             bodyweightKg={bodyweightKg}
@@ -1233,6 +1241,20 @@ export default function LiftingPage() {
                     View session →
                   </button>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGoalPrefill({
+                      metric: 'estimated_1rm',
+                      exercise: pr.exercise_name,
+                      nonce: Date.now(),
+                    });
+                  }}
+                  className="mt-1 min-h-[44px] px-3 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
+                  title={`Set a 1RM goal for ${pr.exercise_name}`}
+                >
+                  🎯 Set goal
+                </button>
               </div>
             );
           }

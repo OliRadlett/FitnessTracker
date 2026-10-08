@@ -32,7 +32,7 @@ export function goalFilterLabel(goal: Goal): string | null {
 }
 
 /** Whether this goal relates to cycling metrics (FTP, power, VO2max). */
-function isCyclingMetric(goal: Goal): boolean {
+export function isCyclingMetric(goal: Goal): boolean {
   const m = goal.metric.toLowerCase();
   if (m.includes('ftp') || m.includes('power') || m.includes('vo2max')) return true;
   const sport = goal.filter_json?.sport?.toLowerCase();
@@ -40,7 +40,7 @@ function isCyclingMetric(goal: Goal): boolean {
 }
 
 /** Whether this goal relates to lifting (1RM, volume, big3, bw_ratio). */
-function isLiftingMetric(goal: Goal): boolean {
+export function isLiftingMetric(goal: Goal): boolean {
   const m = goal.metric.toLowerCase();
   if (m.includes('1rm') || m.includes('volume') || m.includes('big3') || m.includes('bw_ratio')) return true;
   const sport = goal.filter_json?.sport?.toLowerCase();
@@ -78,6 +78,14 @@ export function goalProgressPct(goal: Goal): number {
 export interface AlignmentBadgeInfo {
   label: string;
   className: string;
+}
+
+/** Format a goal value for display — count metrics (weekly_sessions)
+ *  are integers, so "4.0 count" renders as "4 count". */
+export function formatGoalValue(value: number, unit: string | null | undefined): string {
+  const suffix = unit ? ` ${unit}` : '';
+  if (unit === 'count') return `${Math.round(value)}${suffix}`;
+  return `${value.toFixed(1)}${suffix}`;
 }
 
 /**
@@ -152,7 +160,6 @@ export function GoalCard({
   const icon = metricIcon(goal);
   const label = goal.metric_label || goal.metric;
   const filterLabel = goalFilterLabel(goal);
-  const unit = goal.metric_unit ? ` ${goal.metric_unit}` : '';
 
   const cardColor = isAchieved
     ? 'border-green-500/30 bg-green-500/5'
@@ -168,11 +175,23 @@ export function GoalCard({
 
   const hasCurrentValue = goal.current_value !== undefined && goal.current_value !== null;
 
+  // No nested interactives (a11y): the card is a <div>; the title block is the
+  // open control when onClick is provided, and the sport cross-links stay
+  // independent <Link>s beside it (dashboard GoalsSection passes no onClick).
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`text-left rounded-xl border p-4 ${cardColor} transition-colors hover:border-accent/40 w-full`}
+    <div
+      className={`text-left rounded-xl border p-4 ${cardColor} transition-colors ${onClick ? 'hover:border-accent/40 cursor-pointer' : ''} w-full`}
+      {...(onClick ? { role: 'button' as const, tabIndex: 0,
+        onClick,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            // Let cross-links handle their own keys — only the card body opens.
+            if ((e.target as HTMLElement).closest('a')) return;
+            e.preventDefault();
+            onClick();
+          }
+        },
+        'aria-label': `${label}${filterLabel ? ` — ${filterLabel}` : ''}, ${progress.toFixed(0)} percent` } : {})}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -206,8 +225,8 @@ export function GoalCard({
         <div className="flex justify-between text-xs mb-1">
           <span className="text-muted">
             {hasCurrentValue
-              ? `${goal.current_value!.toFixed(1)}${unit} / ${goal.target_value.toFixed(1)}${unit}`
-              : `Target: ${goal.target_value.toFixed(1)}${unit}`}
+              ? `${formatGoalValue(goal.current_value!, goal.metric_unit)} / ${formatGoalValue(goal.target_value, goal.metric_unit)}`
+              : `Target: ${formatGoalValue(goal.target_value, goal.metric_unit)}`}
           </span>
           <span className="text-muted font-medium">{progress.toFixed(0)}%</span>
         </div>
@@ -272,6 +291,6 @@ export function GoalCard({
           </svg>
         </Link>
       )}
-    </button>
+    </div>
   );
 }

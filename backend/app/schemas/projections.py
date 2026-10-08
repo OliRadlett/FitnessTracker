@@ -21,6 +21,16 @@ class TrendInfo(BaseModel):
     slope_per_week: float
     r_squared: float
     data_points: int
+    # Quality-gate flags (P0): False/"low_r_squared"|"implausible_rate" when
+    # the fitted slope failed the R² or rate-of-gain gates — the projection
+    # is then suppressed and the badge reads "Not enough data". Default True
+    # / None preserves the shape for ungated trends and older clients.
+    plausible: bool = True
+    gated_reason: str | None = None
+    # P2 deload-aware progress: check-ins excluded from the fit because they
+    # fell in deload weeks (0 when the metric-trend path, which does not
+    # filter, or when no deload weeks were detected).
+    deload_weeks_skipped: int = 0
 
 
 class ProjectionPoint(BaseModel):
@@ -64,6 +74,10 @@ class TsbProjectionPoint(BaseModel):
     ctl: float
     atl: float
     tsb: float
+    # F9: adherence-sensitivity bands (±20% planned-TSS scenarios by
+    # default). Optional so older payloads still validate.
+    tsb_low: float | None = None
+    tsb_high: float | None = None
 
 
 class TsbProjectionResponse(BaseModel):

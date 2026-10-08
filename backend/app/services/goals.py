@@ -74,11 +74,17 @@ def update_goal_status(
         goal.status = "expired"
 
 
-def alignment_pct(goal: Goal, current: float, today: date) -> float | None:
+def alignment_pct(
+    goal: Goal, current: float, today: date, deload_days: int = 0
+) -> float | None:
     """On-track score: (progress / elapsed) × 100, clamped to 0–200.
 
     - progress is sign-aware: works for both increase and decrease goals
     - None when there is no target_date, no starting_value, or elapsed <= 0
+    - *deload_days* are excluded from elapsed time (P2 deload-aware
+      progress): programmed recovery is not schedule the athlete was meant
+      to progress on, so counting those days burns alignment for resting
+      correctly.
     """
     if goal.target_date is None or goal.starting_value is None:
         return None
@@ -97,7 +103,7 @@ def alignment_pct(goal: Goal, current: float, today: date) -> float | None:
     )
     created = created_at.date()
     total_span = (goal.target_date - created).days
-    elapsed = (today - created).days
+    elapsed = (today - created).days - max(0, deload_days)
     if total_span <= 0 or elapsed <= 0:
         return None
 
@@ -110,19 +116,88 @@ def alignment_pct(goal: Goal, current: float, today: date) -> float | None:
     return round(max(0.0, min(200.0, raw)), 1)
 
 
+# ── Trajectory verdict + due notices (P2 divergence unification) ──────────
+
+
+def trajectory_verdict(
+    status: str | None,
+    badge: str | None,
+    alignment: float | None,
+) -> str:
+    """One canonical trajectory word for a goal (P2 divergence unification).
+
+    Status, projection badge, and alignment previously answered "how is this
+    goal doing" three different ways in three different places (API
+    enrichment, ``goalDisplayBadge`` precedence, adaptive off-pace badges).
+    This is the single precedence every consumer should read:
+
+    - terminal statuses report themselves (``achieved``/``abandoned``/``expired``)
+    - an ungated projection badge wins (``On Track``→``on_track``,
+      ``At Risk``→``behind``, ``Unlikely``→``off_track``) — the regression
+      answers "will I hit it", alignment only "am I ahead of schedule"
+    - otherwise the alignment cut points (``ahead`` ≥100, ``on_track`` ≥85,
+      ``behind`` >0, ``off_track`` at/below 0), matching the card labels
+    - ``unknown`` when there is nothing to read from
+
+    Adaptive off-pace stays badge-gated deliberately (``GOAL_OFF_PACE_BADGES``)
+    — promoting alignment-``behind`` into training ease-off is a coaching
+    decision for the science review (t4), not this change.
+    """
+    if status in ("achieved", "abandoned", "expired"):
+        return status
+    if badge and badge != "Not enough data":
+        if badge == "On Track":
+            return "on_track"
+        if badge == "At Risk":
+            return "behind"
+        return "off_track"
+    if alignment is None:
+        return "unknown"
+    if alignment >= 100:
+        return "ahead"
+    if alignment >= 85:
+        return "on_track"
+    if alignment > 0:
+        return "behind"
+    return "off_track"
+
+
+#: Target-date reminder windows: days-left → notice label. Fired from the
+#: weekly check-ins task via ``goal_due_notice``; notification type stays
+#: ``goal_milestone`` (no new opt-in type, no frontend change).
+GOAL_DUE_WINDOWS: dict[int, str] = {
+    7: "due in 7 days",
+    1: "due tomorrow",
+}
+
+
+def goal_due_notice(days_left: int) -> str | None:
+    """Notice label when *days_left* hits a reminder window, else None."""
+    return GOAL_DUE_WINDOWS.get(days_left)
+
+
 # ── State computation ────────────────────────────────────────────────────────
 
 
 async def compute_goal_state(
-    db: AsyncSession, user_id: uuid.UUID, goal: Goal, today: date | None = None
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    goal: Goal,
+    today: date | None = None,
+    deload_weeks: set[date] | None = None,
 ) -> dict | None:
     """Resolve the metric's current value and refresh cached goal state.
 
     Updates ``current_value``, lazily backfills ``starting_value`` (None after
     migration or unresolvable data at creation), and runs the uniform status
-    transition.  Returns enrichment info (direction/alignment) or None when
-    the metric could not be resolved.
+    transition.  Alignment excludes deload days (P2 deload-aware progress);
+    pass a precomputed *deload_weeks* set to share one detection across a
+    goal list, otherwise it is detected per goal (fail-open: errors mean
+    zero deload days).  Returns enrichment info (direction/alignment) or None
+    when the metric could not be resolved.
     """
+    from app.services.goal_deload import deload_days_in_range, deload_week_starts
+
     today = today or date.today()
     current = await resolve_metric(db, user_id, goal.metric, goal.filter_json)
 
@@ -135,9 +210,20 @@ async def compute_goal_state(
 
     update_goal_status(goal, today, current)
 
+    deload_days = 0
+    if goal.created_at is not None and goal.target_date is not None:
+        created = (
+            goal.created_at.astimezone()
+            if goal.created_at.tzinfo
+            else goal.created_at
+        ).date()
+        if deload_weeks is None:
+            deload_weeks = await deload_week_starts(db, user_id, created, today)
+        deload_days = deload_days_in_range(deload_weeks, created, today)
+
     direction = derive_direction(goal)
     alignment = (
-        alignment_pct(goal, goal.current_value, today)
+        alignment_pct(goal, goal.current_value, today, deload_days)
         if goal.current_value is not None
         else None
     )
@@ -145,6 +231,7 @@ async def compute_goal_state(
         "current": current,
         "direction": direction,
         "alignment_pct": alignment,
+        "deload_days": deload_days,
     }
 
 

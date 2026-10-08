@@ -2,9 +2,10 @@
 
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthFetch, listGoals, getGoalProjection } from '@/lib/api';
-import type { Goal, GoalProjectionResponse } from '@/lib/api';
+import { useAuthFetch, listGoals } from '@/lib/api';
+import type { Goal } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
+import { useGoalProjections } from '@/components/goals/useGoalProjections';
 
 const BADGE_STYLES: Record<string, string> = {
   'On Track': 'bg-green-500/20 text-positive',
@@ -28,28 +29,20 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
     staleTime: 60_000,
   });
 
-  // Filter to goals with target_date, take first 5
+  // Filter to goals with target_date — most urgent first.
   const eligibleGoals = useMemo(
-    () => (goals ?? []).filter((g) => g.target_date).slice(0, 5),
+    () =>
+      (goals ?? [])
+        .filter((g) => g.target_date)
+        .sort((a, b) => (a.target_date ?? '').localeCompare(b.target_date ?? ''))
+        .slice(0, 5),
     [goals],
   );
 
-  // Fetch projections for each eligible goal
-  const projectionQueries = useQuery({
-    queryKey: ['goal-projection', eligibleGoals.map((g) => g.id).join(',')],
-    queryFn: async () => {
-      const results = await Promise.all(
-        eligibleGoals.map((g) =>
-          getGoalProjection(authFetch, g.id).catch(() => null),
-        ),
-      );
-      return results.filter(Boolean) as GoalProjectionResponse[];
-    },
-    enabled: eligibleGoals.length > 0 && !!token,
-    staleTime: 5 * 60_000,
-  });
-
-  const projections = projectionQueries.data ?? [];
+  // Per-goal projection queries (useGoalProjections) — shares the
+  // ['goal-projection', id] cache with GoalDetailModal instead of a bespoke
+  // aggregated key that would fetch everything twice.
+  const projections = useGoalProjections(eligibleGoals);
 
   if (eligibleGoals.length === 0) return null;
 
@@ -60,7 +53,7 @@ export function ProjectionCard({ onSelectGoal }: { onSelectGoal: (goal: Goal) =>
       </h3>
       <div className="flex flex-wrap gap-3">
         {eligibleGoals.map((goal) => {
-          const proj = projections.find((p) => p.goal_id === goal.id);
+          const proj = projections.get(goal.id);
           const badge = proj?.badge ?? 'Not enough data';
           const badgeStyle = BADGE_STYLES[badge] ?? BADGE_STYLES['Not enough data'];
           const label = goal.metric_label || goal.metric;

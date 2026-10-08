@@ -67,20 +67,22 @@ describe('dots', () => {
     // Denominator: -109.30 + 739.1293 - 1918.759221 + 2409.00756 - 307.75076
     // = 812.326879 → 250000 / 812.326879 ≈ 307.76. If this fails, the
     // constants drifted — do not "fix" the test, re-confirm the polynomial.
-    expect(dots(500, 100, 'male')).toBeCloseTo(307.76, 1);
+    expect(dots(500, 100)).toBeCloseTo(307.76, 1);
   });
 
   it('matches the 90kg / 600kg reference (387.96)', () => {
-    expect(dots(600, 90, 'male')).toBeCloseTo(387.96, 1);
+    expect(dots(600, 90)).toBeCloseTo(387.96, 1);
   });
 
-  it('matches the 63kg / 350kg female reference (376.43)', () => {
-    expect(dots(350, 63, 'female')).toBeCloseTo(376.43, 1);
+  it('is male-only — no sex parameter exists', () => {
+    // Male-only scope: the schema has no sex field and the app ships no
+    // female UI. A sex argument here would be female-standards leakage.
+    expect(dots.length).toBe(2);
   });
 
   it('rewards lighter lifters for the same total', () => {
-    const at100 = dots(500, 100, 'male')!;
-    const at83 = dots(500, 83, 'male')!;
+    const at100 = dots(500, 100)!;
+    const at83 = dots(500, 83)!;
     expect(at83).toBeGreaterThan(at100);
   });
 

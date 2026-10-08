@@ -168,7 +168,7 @@ async def _resolve_weekly_sessions(
 
     count = 0.0
 
-    if sport in (None, "", "all", "strength", "powerlifting"):
+    if sport in (None, "", "all", "strength", "powerlifting", "gym"):
         result = await db.execute(
             select(LiftingSession.id).where(
                 LiftingSession.user_id == user_id,
@@ -177,7 +177,7 @@ async def _resolve_weekly_sessions(
         )
         count += len(list(result.scalars().all()))
 
-    if sport not in ("strength", "powerlifting"):
+    if sport not in ("strength", "powerlifting", "gym"):
         # Legacy behaviour: every non-Wahoo activity counts (Wahoo rides are
         # deduped because they also arrive via Strava).
         conditions = [
@@ -230,18 +230,29 @@ async def _resolve_vo2max(
 
 
 def _make_bw_ratio_resolver(canonical_exercise: str) -> Resolver:
-    """estimated_1rm ÷ body weight (CyclingProfile.weight_kg)."""
+    """estimated_1rm ÷ body weight.
+
+    Weight source matches the rest of the lifting surface: latest weigh-in
+    first (``services.lifting.latest_body_weight``), falling back to the
+    static profile weight. Previously this resolver read only the profile,
+    so the goal's current value could disagree with weigh-in-based trends.
+    """
 
     async def _resolve(
         db: AsyncSession, user_id: uuid.UUID, _filters: dict | None
     ) -> float | None:
         from app.models.cycling import CyclingProfile
         from app.models.lifting import PersonalRecord
+        from app.services.lifting import latest_body_weight
 
-        result = await db.execute(
-            select(CyclingProfile.weight_kg).where(CyclingProfile.user_id == user_id)
-        )
-        weight = result.scalar_one_or_none()
+        weight = await latest_body_weight(db, user_id)
+        if not weight or weight <= 0:
+            result = await db.execute(
+                select(CyclingProfile.weight_kg).where(
+                    CyclingProfile.user_id == user_id
+                )
+            )
+            weight = result.scalar_one_or_none()
         if not weight or weight <= 0:
             return None
 

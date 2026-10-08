@@ -380,23 +380,11 @@ def _generate_plan_days(
 # Default focus rotation for strength days
 _DEFAULT_STRENGTH_FOCUSES = ["squat", "bench", "deadlift"]
 
-# Weight progression step sizes by RPE range (kg)
-_RPE_WEIGHT_STEPS = {
-    (8.0, 9.0): 5.0,   # RPE 8-9: +5kg
-    (9.0, 10.0): 2.5,  # RPE 9-10: +2.5kg
-    (7.0, 8.0): 5.0,   # RPE 7-8: +5kg
-    (6.0, 7.0): 5.0,   # RPE 6-7: +5kg
-}
-
-
-def _get_weight_step(rpe: float | None) -> float:
-    """Weight increment for a given RPE — heavier increments at lower RPE."""
-    if rpe is None:
-        return 2.5
-    for (low, high), step in _RPE_WEIGHT_STEPS.items():
-        if low <= rpe < high:
-            return step
-    return 2.5
+# NOTE: a previous revision carried an RPE→weight-step table here
+# (flat +5 kg for RPE 6–9, no upper/lower-body split). It was never called —
+# live autoregulation uses the %-based adjustWeightForRpe rule (frontend
+# reference.ts, +2.5%/−5%), which is the sounder behaviour — so the dead
+# table was removed rather than left to mislead a future wiring.
 
 
 def _strength_plan_days(

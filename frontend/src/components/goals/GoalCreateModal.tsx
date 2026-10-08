@@ -18,8 +18,20 @@ const SPORT_OPTIONS = [
  * Create-goal modal driven by GET /goals/metrics — the metric registry
  * decides which filter inputs appear (exercise autocomplete for
  * estimated_1rm, sport select for activity-count/distance/TSS metrics).
+ *
+ * `initialMetric`/`initialExercise` prefill the form for the lifting → goals
+ * path (a PR card's "Set goal" opens the modal with estimated_1rm + that
+ * exercise already chosen). Both remain editable — prefill, not lock-in.
  */
-export function GoalCreateModal({ onClose }: { onClose: () => void }) {
+export function GoalCreateModal({
+  onClose,
+  initialMetric,
+  initialExercise,
+}: {
+  onClose: () => void;
+  initialMetric?: string;
+  initialExercise?: string;
+}) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -30,8 +42,8 @@ export function GoalCreateModal({ onClose }: { onClose: () => void }) {
     enabled: !!token,
   });
 
-  const [metricKey, setMetricKey] = useState('');
-  const [exercise, setExercise] = useState('');
+  const [metricKey, setMetricKey] = useState(initialMetric ?? '');
+  const [exercise, setExercise] = useState(initialExercise ?? '');
   const [sport, setSport] = useState('');
   const [targetValue, setTargetValue] = useState('');
   const [targetDate, setTargetDate] = useState('');
