@@ -3,7 +3,11 @@
 import pytest
 
 from app.services.nutrition import (
+    GUT_TRAINING_NOTE,
+    MAX_CARBS_PER_HOUR,
     _build_during_ride_schedule,
+    _carbs_per_hour,
+    carb_fuel_note,
     compute_fuel_targets,
     estimate_intensity_factor,
 )
@@ -22,7 +26,7 @@ class TestCarbTargets:
             (200, 0.85, 80),
             (290, 0.95, 90),
             (360, 0.70, 80),
-            (400, 1.00, 100),
+            (400, 1.00, 90),  # capped at 90 g/h (F1); see gut-training note
         ],
     )
     def test_carbs_per_hour_matrix(self, duration_min, if_val, expected):
@@ -33,6 +37,35 @@ class TestCarbTargets:
         assert t["pre_ride_carbs_g"] == 120  # 1.5 g/kg
         assert t["post_ride_carbs_g"] == 96  # 1.2 g/kg
         assert t["post_ride_protein_g"] == 24  # 0.3 g/kg
+
+
+class TestFuelCap:
+    def test_carbs_per_hour_never_exceeds_cap(self):
+        for duration_min in (30, 60, 120, 180, 300, 301, 400, 600, 1440):
+            for if_val in (0.4, 0.6, 0.75, 0.85, 0.9, 1.0, 1.3):
+                assert _carbs_per_hour(duration_min, if_val) <= MAX_CARBS_PER_HOUR
+                targets = compute_fuel_targets(duration_min, if_val, 75)
+                assert targets["during_carbs_per_hour_g"] <= MAX_CARBS_PER_HOUR
+
+    def test_cap_is_90(self):
+        assert MAX_CARBS_PER_HOUR == 90.0
+        # Long + hard ride previously returned 100 g/h; now capped.
+        assert _carbs_per_hour(400, 1.00) == 90.0
+
+    def test_capped_plan_carries_gut_training_note(self):
+        targets = compute_fuel_targets(400, 1.00, 75)
+        assert targets["during_carbs_per_hour_g"] == 90.0
+        note = targets["fuel_note"]
+        assert note == GUT_TRAINING_NOTE
+        assert "gut training" in note.lower()
+        assert "fructose:glucose" in note
+
+    def test_uncapped_plan_has_no_note(self):
+        targets = compute_fuel_targets(90, 0.75, 75)
+        assert targets["during_carbs_per_hour_g"] == 40
+        assert targets["fuel_note"] is None
+        assert carb_fuel_note(40.0) is None
+        assert carb_fuel_note(90.0) == GUT_TRAINING_NOTE
 
 
 class TestHydrationSodium:

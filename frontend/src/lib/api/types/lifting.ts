@@ -397,4 +397,5 @@ export interface SuggestLoadResponse {
   basis_1rm_kg: number | null;
   pct_1rm: number;
   basis_source: 'pr' | 'recent_sets' | 'none';
+  safety_warning: string | null;
 }

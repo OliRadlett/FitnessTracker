@@ -2050,6 +2050,9 @@ class ChartService:
 
         # Generate insights
         insights = []
+        # F6: classifications are general-population bands, not
+        # age/sex-adjusted — say so wherever the label is shown.
+        scope_note = "Bands are general-population references, not age/sex-adjusted."
         if len(vo2_values) >= 2:
             first = vo2_values[0]
             latest = vo2_values[-1]
@@ -2057,7 +2060,7 @@ class ChartService:
                 change = latest - first
                 classification = _classify_vo2max(latest)
                 insights.append(
-                    f"Current VO2max: {latest:.1f} ml/kg/min ({classification})."
+                    f"Current VO2max: {latest:.1f} ml/kg/min ({classification}). {scope_note}"
                 )
                 if abs(change) > 1:
                     direction = "improved" if change > 0 else "declined"
@@ -2071,7 +2074,7 @@ class ChartService:
         elif vo2_values:
             classification = _classify_vo2max(vo2_values[-1])
             insights.append(
-                f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification})."
+                f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification}). {scope_note}"
             )
 
         # Add classification reference areas
@@ -2320,8 +2323,14 @@ class ChartService:
     async def power_duration_percentile(
         self, user_id: uuid.UUID, days: int = 90
     ) -> ChartData:
-        """Your best efforts (W/kg) against approximate population norms."""
+        """Your best efforts (W/kg) against approximate population norms.
+
+        F6 scope: the reference bands are trained-male-rider norms (Coggan
+        power profile), not age/sex-adjusted — labelled on the series and
+        in the insights.
+        """
         from app.services.cycling.power_profile import (
+            POWER_PROFILE_SCOPE,
             POWER_PROFILE_WKG,
             PROFILE_DURATIONS,
             percentile_wkg_at,
@@ -2336,22 +2345,22 @@ class ChartService:
 
         series = [
             ChartSeries(
-                name="50th %ile",
+                name="50th %ile (trained male)",
                 data=[percentile_wkg_at(s, 50) for s in PROFILE_DURATIONS],
                 color=colors["50"],
             ),
             ChartSeries(
-                name="75th %ile",
+                name="75th %ile (trained male)",
                 data=[percentile_wkg_at(s, 75) for s in PROFILE_DURATIONS],
                 color=colors["75"],
             ),
             ChartSeries(
-                name="90th %ile",
+                name="90th %ile (trained male)",
                 data=[percentile_wkg_at(s, 90) for s in PROFILE_DURATIONS],
                 color=colors["90"],
             ),
         ]
-        insights: list[str] = []
+        insights: list[str] = [f"Reference bands: {POWER_PROFILE_SCOPE}."]
 
         if weight and best:
             you_data = [
@@ -3354,6 +3363,11 @@ class ChartService:
 
         The two disciplines stay separate series so the mix is visible; the
         combined series is what a unified CTL/ATL would integrate.
+
+        F3: the combined series is exploratory and insights-only — a simple
+        daily sum, not a validated unified-load model. It must never feed
+        the daily verdict; the verdict reads cross-domain presence only
+        (see ``services/today.py``).
         """
         from app.models.lifting import LiftingSession
         from app.services.cycling.tss import get_daily_tss
@@ -3396,13 +3410,20 @@ class ChartService:
             series=[
                 ChartSeries(name="Cycling TSS", data=cyc, color="#3b82f6"),
                 ChartSeries(name="Lifting TSS (est.)", data=lift, color="#a855f7"),
-                ChartSeries(name="Combined", data=combined, color="#22c55e"),
+                # F3: combined series labelled exploratory — insights-only,
+                # never feeds the daily verdict.
+                ChartSeries(name="Combined (exploratory)", data=combined, color="#22c55e"),
             ],
             x_label="Date",
             y_label="TSS",
             insights=[
-                "Lifting TSS is a duration×RPE estimate — same order as cycling TSS by design."
+                "Lifting TSS is a duration×RPE estimate — same order as cycling TSS by design.",
+                "Combined series is exploratory (simple daily sum) — insights-only, never feeds the daily verdict.",
             ]
             if any(lift)
+            else [
+                "Combined series is exploratory (simple daily sum) — insights-only, never feeds the daily verdict."
+            ]
+            if any(combined)
             else [],
         )

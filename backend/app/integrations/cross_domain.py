@@ -315,6 +315,10 @@ def analyze_cross_sport_fatigue(
     Returns
     -------
     dict with lifting_impact, cycling_impact, combined_load, insights.
+
+    F3: ``combined_load`` is exploratory and insights-only. It is a rough
+    TSS + volume/10 heuristic, never a validated unified-load model, and
+    it must never feed the daily verdict (see ``services/today.py``).
     """
     if len(lifting_data) < 7 or len(cycling_data) < 7:
         return {
@@ -400,6 +404,10 @@ def analyze_cross_sport_fatigue(
         }
 
     # ── Combined load → recovery ─────────────────────────────────────────────
+    # F3: exploratory, insights-only. total_load mixes cycling TSS with
+    # lifting volume/10 — a display heuristic, not a validated unified
+    # load. Keep it out of any verdict path; it only surfaces as a
+    # labelled insight below.
     combined_pairs = []
     for date_str in set(lift_by_date.keys()) | set(cycle_by_date.keys()):
         lift = lift_by_date.get(date_str, {})
@@ -424,13 +432,18 @@ def analyze_cross_sport_fatigue(
         recoveries = [p["recovery_score"] for p in combined_pairs]
         reg = _linear_regression(loads, recoveries)
         combined_load = {
+            # F3 lock: exploratory insights-only payload — never feed to verdict.
+            "exploratory": True,
+            "insights_only": True,
             "load_recovery_correlation": reg["r_squared"],
             "load_recovery_slope": reg["slope"],
             "n_points": len(combined_pairs),
             "insight": (
-                "Higher combined load correlates with lower recovery"
+                "Exploratory: higher combined load correlates with lower recovery "
+                "(insights-only, never feeds the daily verdict)"
                 if reg["slope"] < 0
-                else "Combined load has minimal impact on recovery"
+                else "Exploratory: combined load has minimal impact on recovery "
+                "(insights-only, never feeds the daily verdict)"
             ),
         }
 

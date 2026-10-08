@@ -172,6 +172,12 @@ async def _cross_domain_row(db: AsyncSession, user_id: uuid.UUID) -> EngineRow:
     used to disappear from ``/today`` entirely. Here the absence is the finding:
     "not run yet" is information, and it is reported with the same prominence as
     a real result so the user can tell a scheduled gap from a failure.
+
+    F3 lock: ``combined_load`` from the cross-domain analysis is exploratory
+    and insights-only (see ``integrations/cross_domain.py``) — this row
+    deliberately reads presence/metadata only and never feeds
+    ``combined_load`` into the stance. The verdict must stay independent of
+    the unvalidated unified-load heuristic.
     """
     result = await db.execute(
         select(CrossDomainInsight)
