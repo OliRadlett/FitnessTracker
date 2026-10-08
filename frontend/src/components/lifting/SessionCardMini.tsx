@@ -103,14 +103,17 @@ export function SessionCardMini({
     <Card
       onClick={() => onSelect(session.id)}
       className={`
-        cursor-pointer transition-all
+        cursor-pointer transition-colors motion-reduce:transition-none
         ${isSelected ? 'border-accent/50 shadow-md' : 'hover:border-surface-light/60'}
       `}
+      aria-label={`${session.focus || 'General session'} on ${session.session_date}`}
     >
-      <div className="flex items-center justify-between gap-3">
+      {/* Stacks on narrow screens so the stats/actions row never squeezes the identity line (S3). */}
+      <div className="flex flex-col gap-3 min-[480px]:flex-row min-[480px]:items-center min-[480px]:justify-between">
         {/* Left: session identity + metadata */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {isSelected && <span className="sr-only">(selected)</span>}
             <p className="text-sm font-medium text-foreground truncate">
               {session.focus || 'General Session'}
             </p>
@@ -118,17 +121,6 @@ export function SessionCardMini({
               <Dumbbell className="w-3 h-3 mr-0.5" />
               {session.program_name || 'No program'}
             </Badge>
-
-            {/* Live-session timing */}
-            {timeRange && (
-              <span
-                className="text-[10px] text-muted flex items-center gap-0.5"
-                title="Session time range"
-              >
-                <Clock className="w-3 h-3" />
-                {timeRange}
-              </span>
-            )}
 
             {/* Linked Strava activity */}
             {session.linked_activity && (
@@ -187,13 +179,24 @@ export function SessionCardMini({
             )}
           </div>
 
-          <p className="text-xs text-muted mt-1">
-            {formatDate(session.session_date)}
+          {/* Secondary line: date + time range, kept out of the identity row
+              so focus + program stay scannable. */}
+          <p className="text-xs text-muted mt-1 flex items-center gap-1.5 flex-wrap">
+            <span>{formatDate(session.session_date)}</span>
+            {timeRange && (
+              <span
+                className="inline-flex items-center gap-0.5"
+                title="Session time range"
+              >
+                <Clock className="w-3 h-3" aria-hidden="true" />· {timeRange}
+              </span>
+            )}
           </p>
         </div>
 
-        {/* Right: stats + quick actions */}
-        <div className="flex items-center gap-4 shrink-0">
+        {/* Right: stats + quick actions. Row layout on narrow screens so
+            buttons stay full touch targets without squeezing stats (S3). */}
+        <div className="flex items-center justify-between gap-4 min-[480px]:justify-end shrink-0">
           <div className="text-right">
             <p className="text-sm font-mono text-foreground">
               {session.sets?.length ?? 0} sets
@@ -211,19 +214,21 @@ export function SessionCardMini({
             </div>
           </div>
 
-          {/* Quick-action menu */}
-          <div className="flex flex-col gap-1">
+          {/* Quick-action menu: horizontal row on mobile, stacked on wider cards.
+              stopPropagation keeps card taps from hijacking detail context (S2);
+              layout-level decoupling stays with the integration task. */}
+          <div className="flex flex-row gap-1 min-[480px]:flex-col">
             {onAddSet && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddSet(session);
                 }}
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent rounded transition-colors motion-reduce:transition-none"
                 title="Quick-add a set"
-                aria-label="Add set"
+                aria-label={`Add set to ${session.focus || 'session'} on ${session.session_date}`}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
             {onEdit && (
@@ -232,11 +237,11 @@ export function SessionCardMini({
                   e.stopPropagation();
                   onEdit(session);
                 }}
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground rounded transition-colors motion-reduce:transition-none"
                 title="Edit session"
-                aria-label="Edit"
+                aria-label={`Edit ${session.focus || 'session'} on ${session.session_date}`}
               >
-                <Edit3 className="w-4 h-4" />
+                <Edit3 className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
             {onDelete && (
@@ -245,11 +250,11 @@ export function SessionCardMini({
                   e.stopPropagation();
                   onDelete(session);
                 }}
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning rounded transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning rounded transition-colors motion-reduce:transition-none"
                 title="Delete session"
-                aria-label="Delete"
+                aria-label={`Delete ${session.focus || 'session'} on ${session.session_date}`}
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
           </div>
