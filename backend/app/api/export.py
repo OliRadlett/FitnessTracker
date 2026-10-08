@@ -210,7 +210,13 @@ async def export_activity_gpx(
 ):
     """Export a single activity as a GPX file."""
     result = await db.execute(
-        select(Activity).where(
+        select(Activity)
+        .options(
+            # activity_to_gpx falls back to provider sources, which must be
+            # loaded: the extractor never lazy-loads (async MissingGreenlet).
+            selectinload(Activity.sources)
+        )
+        .where(
             Activity.id == activity_id,
             Activity.user_id == current_user.id,
         )

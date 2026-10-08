@@ -368,9 +368,33 @@ async def sync_wahoo_activities(
                 await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
         await db.flush()
 
-    # Auto-link GPS activities to routes
+    # Auto-link GPS activities to routes. The extractor never lazy-loads
+    # (MissingGreenlet in async — manual Strava sync 500, 2026-10-08), so
+    # populate ``sources`` up front in one query: merged rows carry a
+    # freshly created ActivitySource that find_duplicate_activity's earlier
+    # selectinload cannot see. Routes are pre-fetched once (avoids N+1).
+    from sqlalchemy.orm import selectinload
+
+    from app.models.route import Route
+    from app.services.route_quarantine import active_routes_clause
+
+    routes = None
+    if synced:
+        for activity in synced:
+            db.expire(activity, ["sources"])
+        await db.execute(
+            select(Activity)
+            .options(selectinload(Activity.sources))
+            .where(Activity.id.in_([a.id for a in synced]))
+        )
+        routes_result = await db.execute(
+            select(Route).where(
+                Route.user_id == user_id, active_routes_clause()
+            )
+        )
+        routes = list(routes_result.scalars().all())
     for activity in synced:
-        await link_activity_to_route(db, activity)
+        await link_activity_to_route(db, activity, routes=routes)
 
     logger.info(
         f"Wahoo activity sync complete for user {user_id}: {len(synced)} synced/merged"

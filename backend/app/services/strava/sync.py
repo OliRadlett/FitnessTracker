@@ -465,9 +465,31 @@ async def sync_activities(
     for activity in synced:
         await link_activity_to_lifting_sessions(db, activity)
 
-    # Auto-link GPS activities to routes
+    # Auto-link GPS activities to routes. The extractor never lazy-loads
+    # (MissingGreenlet in async — manual-sync 500, 2026-10-08), so populate
+    # ``sources`` up front in one query: merged rows carry a freshly created
+    # ActivitySource that find_duplicate_activity's earlier selectinload
+    # cannot see, and newly created rows have nothing loaded at all.
+    # Routes are pre-fetched once for the same reason (avoids N+1).
+    routes = None
+    if synced:
+        from app.models.route import Route
+
+        for activity in synced:
+            db.expire(activity, ["sources"])
+        await db.execute(
+            select(Activity)
+            .options(selectinload(Activity.sources))
+            .where(Activity.id.in_([a.id for a in synced]))
+        )
+        routes_result = await db.execute(
+            select(Route).where(
+                Route.user_id == user_id, active_routes_clause()
+            )
+        )
+        routes = list(routes_result.scalars().all())
     for activity in synced:
-        await link_activity_to_route(db, activity)
+        await link_activity_to_route(db, activity, routes=routes)
 
     return synced
 
@@ -739,7 +761,14 @@ async def backfill_all_activities_stream(
     # dates, names, distances, route links and raw_data polylines only.
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.lifting_session), defer(Activity.context))
+        .options(
+            selectinload(Activity.lifting_session),
+            # The route-linking loop below reads provider sources via
+            # extract_activity_polyline, which never lazy-loads (async
+            # MissingGreenlet) — the collection must be loaded here.
+            selectinload(Activity.sources),
+            defer(Activity.context),
+        )
         .where(
             Activity.user_id == user_id,
             Activity.source == "strava",
