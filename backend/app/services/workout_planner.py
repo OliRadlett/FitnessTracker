@@ -81,6 +81,7 @@ def compute_workout_zones(
     atl: float = 0.0,
     tsb: float = 0.0,
     legs_loaded: bool = False,
+    ctl_trend: float | None = None,
 ) -> WorkoutZonesResult:
     """Compute all workout zones from current FTP and LTHR.
 
@@ -91,6 +92,10 @@ def compute_workout_zones(
     sites that have not already loaded yesterday's lifting (the zones API
     and the training-plan week view) intentionally leave the default
     ``False`` to avoid extra per-request queries.
+
+    ``ctl_trend`` is the recent CTL change (positive = building, negative
+    = falling). When provided and negative, a very-fresh TSB reads as
+    possible detraining rather than peak form (F2).
     """
     zones = []
     for zone_id, name, if_low, if_high, lthr_pct_low, lthr_pct_high in WORKOUT_ZONES:
@@ -120,7 +125,9 @@ def compute_workout_zones(
             )
         )
 
-    readiness = get_readiness_recommendation(ctl, atl, tsb, legs_loaded=legs_loaded)
+    readiness = get_readiness_recommendation(
+        ctl, atl, tsb, legs_loaded=legs_loaded, ctl_trend=ctl_trend
+    )
 
     return WorkoutZonesResult(
         zones=zones,
@@ -135,6 +142,7 @@ def get_readiness_recommendation(
     atl: float,
     tsb: float,
     legs_loaded: bool = False,
+    ctl_trend: float | None = None,
 ) -> ReadinessInfo:
     """Determine recommended max workout zone based on training stress balance.
 
@@ -152,10 +160,22 @@ def get_readiness_recommendation(
     behavior unchanged. Callers that have not already loaded lifting data
     (the zones API, the training-plan week view) leave the default to
     avoid extra per-request queries.
+
+    F2: a very-fresh TSB with falling CTL is detraining freshness, not
+    peak form. The TSB > 25 copy therefore always carries the CTL-falling
+    caveat; when ``ctl_trend`` is provided and negative the caveat is
+    stated as a finding rather than a conditional.
     """
     if tsb > 25:
         max_zone = "z5"
-        note = "Very fresh — great time for a hard session!"
+        note = (
+            "Very fresh — great time for a hard session! "
+            "Caveat: if CTL is falling, this freshness may reflect "
+            "detraining rather than form — favour rebuilding fitness "
+            "over a breakthrough effort."
+        )
+        if ctl_trend is not None and ctl_trend < 0:
+            note += " CTL is currently falling, so treat this as detraining freshness."
         fatigued = False
     elif tsb > 5:
         max_zone = "z5"

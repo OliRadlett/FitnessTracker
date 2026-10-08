@@ -207,6 +207,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Insights
+         * @description Latest computed insight per type (nightly task keeps these fresh).
+         */
+        get: operations["list_insights_api_v1_analytics_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/recompute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recompute Insights
+         * @description On-demand recompute of all six insights for the current user.
+         */
+        post: operations["recompute_insights_api_v1_analytics_recompute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/explain/{insight_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explain Insight
+         * @description AI interpretation of one computed insight (stored as LlmAnalysis).
+         */
+        post: operations["explain_insight_api_v1_analytics_explain__insight_type__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/explanations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Explanations
+         * @description Latest stored AI explanation per insight type (empty when none).
+         */
+        get: operations["list_explanations_api_v1_analytics_explanations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/season-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Season Overview
+         * @description Latest stored season overview, or null.
+         */
+        get: operations["get_season_overview_api_v1_analytics_season_overview_get"];
+        put?: never;
+        /**
+         * Trigger Season Overview
+         * @description Big-picture cross-domain season brief (stored as LlmAnalysis).
+         */
+        post: operations["trigger_season_overview_api_v1_analytics_season_overview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/connections/": {
         parameters: {
             query?: never;
@@ -332,6 +436,37 @@ export interface paths {
          *     excluded from the distance total to match the frontend stats bar.
          */
         get: operations["get_activity_summary_api_v1_activities_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activities/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Activity Timeseries
+         * @description Dense activity aggregates, bucketed server-side.
+         *
+         *     The activities stats view used to bucket client-side over a row-capped
+         *     fetch and re-zero-fill the gaps, so a truncated window rendered as a
+         *     training dip that never happened — under a note claiming the view "does not
+         *     silently chart a partial window". Aggregating in SQL puts no row cap in the
+         *     path, so a truncated series is no longer representable, and every bucket in
+         *     range is returned so a zero means "no training" by construction.
+         *
+         *     ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+         *     handlers below or it 422s. Same trap as ``/orphans`` in routes.py — the
+         *     decorator-order test is the one that catches it.
+         */
+        get: operations["get_activity_timeseries_api_v1_activities_timeseries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -477,8 +612,44 @@ export interface paths {
          *
          *     Parses the FIT file, creates an Activity with session-level metrics
          *     and ActivityStream records for time-series data (HR, power, GPS, etc.).
+         *
+         *     A file that duplicates an existing import returns that activity rather than
+         *     creating a second row — see ``services/import_dedup.py``.
          */
         post: operations["import_fit_api_v1_activities_import_fit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activities/import-bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Bulk
+         * @description Import several FIT files, reporting each one's outcome independently.
+         *
+         *     ⚠️ Route order: this static path must stay above the ``/{activity_id}``
+         *     handlers or it is shadowed and 422s (pitfall 13).
+         *
+         *     **Per-file commit is the whole point.** ``get_db`` commits once at the end
+         *     of the request, so a naive loop is all-or-nothing: one malformed file at
+         *     position 900 of 1000 would erase the 899 that succeeded. Each file is
+         *     committed on its own, and a failure is rolled back before the next file
+         *     starts, so one bad file cannot poison the session for the ones after it.
+         *
+         *     That means the batch is intentionally *not* atomic — which is why the
+         *     response is a per-file result array rather than a single success flag. The
+         *     user can see exactly what landed and retry only what failed.
+         */
+        post: operations["import_bulk_api_v1_activities_import_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -707,6 +878,35 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lifting/sessions/{session_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reorder Session Sets
+         * @description Set the performance order of a session's sets.
+         *
+         *     ``set_ids`` must be the session's **complete** set list in the desired
+         *     order. A subset or a diff is ambiguous — which of the omitted sets move, and
+         *     where? — so it is rejected with 422 rather than interpreted. That also makes
+         *     the operation idempotent: re-sending the current order is a no-op, and a
+         *     stale client cannot silently drop sets.
+         *
+         *     Ordering only changes presentation, so volume and PRs are untouched: this is
+         *     not a training change.
+         */
+        patch: operations["reorder_session_sets_api_v1_lifting_sessions__session_id__reorder_patch"];
         trace?: never;
     };
     "/api/v1/lifting/backfill-links": {
@@ -1011,6 +1211,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lifting/videos/vbt/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vbt Profile
+         * @description Load-velocity profile + estimated 1RM for one exercise (VBT).
+         *
+         *     Uses every analysed video of the exercise that has both a load and a
+         *     measured velocity. The fitted line's MVT crossing estimates 1RM without a
+         *     true max attempt. Registered before the ``/{video_id}`` routes.
+         */
+        get: operations["get_vbt_profile_api_v1_lifting_videos_vbt_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lifting/videos/{video_id}": {
         parameters: {
             query?: never;
@@ -1081,6 +1305,9 @@ export interface paths {
         /**
          * Get Stream Url
          * @description Resolve a presigned GET for playback (R2 must be configured).
+         *
+         *     ``variant`` selects the object: the original upload, the trimmed clip, or
+         *     the skeleton/bar-path overlay. 404 when that variant hasn't been produced.
          */
         get: operations["get_stream_url_api_v1_lifting_videos__video_id__stream_url_get"];
         put?: never;
@@ -1147,6 +1374,29 @@ export interface paths {
          * @description List all available chart types.
          */
         get: operations["list_available_charts_api_v1_charts_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/charts/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Control Chart
+         * @description SPC control limits (±2σ) + latest-point status for a technique metric.
+         *
+         *     Registered before the ``/{chart_name}`` catch-all so it isn't shadowed
+         *     (§3.18 / F5).
+         */
+        get: operations["get_control_chart_api_v1_charts_control_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1336,6 +1586,10 @@ export interface paths {
          *
          *     Strava sends a GET request with a challenge to verify the endpoint.
          *     We must echo back the challenge if the verify token matches.
+         *
+         *     SEC-05: fails closed. An unconfigured ``strava_verify_token`` rejects every
+         *     challenge (including an empty presented token, which would otherwise match
+         *     an unset config), so an unconfigured deployment cannot be claimed.
          */
         get: operations["strava_webhook_challenge_api_v1_webhooks_strava_get"];
         put?: never;
@@ -1670,6 +1924,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/routes/orphans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Orphan Candidates
+         * @description Quarantined routes awaiting a decision, best match first.
+         *
+         *     Every quarantined route with no linked activity shows up here with its
+         *     best live match, so the user judges duplicates in one place instead of
+         *     hunting for them. Dismissed routes are excluded — a judgement already
+         *     made is not re-proposed on the next sweep.
+         *
+         *     Both similarity numbers are returned rather than one blended score:
+         *     they disagree exactly where it matters (see ``OrphanReviewRow``).
+         */
+        get: operations["list_orphan_candidates_api_v1_routes_orphans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/orphans/bulk-dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Dismiss Orphans
+         * @description Dismiss every quarantined route currently in one review bucket.
+         *
+         *     Scoped to a bucket rather than free-form ids so the set being acted on
+         *     is the set the user was shown. ``expected_count`` is verified first, so
+         *     a stale page is refused rather than dismissing whatever the queue holds
+         *     now — the action is durable and there is no bulk undo.
+         */
+        post: operations["bulk_dismiss_orphans_api_v1_routes_orphans_bulk_dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/orphans/{route_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Orphan
+         * @description Reject a quarantined route: stays quarantined, leaves the queue.
+         *
+         *     Distinct from *merge* and from *keep*. The route keeps its data and can
+         *     be restored later; the point is that it is no longer re-proposed.
+         */
+        post: operations["dismiss_orphan_api_v1_routes_orphans__route_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/orphans/dismissed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dismissed Routes
+         * @description Routes reviewed and rejected, so a rejection can be found and undone.
+         *
+         *     Dismissal is the decision most likely to be made in bulk, and a bulk
+         *     mistake is likely by construction. ``POST /orphans/{id}/keep`` already
+         *     reverses a dismissal, but before this listing existed there was no way
+         *     to *find* a dismissed route — the review queue deliberately filters them
+         *     out — so an incorrect rejection was only discoverable if you already knew
+         *     the route id.
+         *
+         *     Registered above ``PATCH /{route_id}``: ``dismissed`` is not a valid
+         *     UUID, so a dynamic route ahead of this one would claim it and 422.
+         */
+        get: operations["list_dismissed_routes_api_v1_routes_orphans_dismissed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/orphans/{route_id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep Orphan
+         * @description Keep a quarantined route: un-quarantine it so matching can use it.
+         *
+         *     Also clears any earlier dismissal, because keeping the route retracts
+         *     a previous judgement rather than adding a second one.
+         */
+        post: operations["keep_orphan_api_v1_routes_orphans__route_id__keep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routes/{route_id}": {
         parameters: {
             query?: never;
@@ -1729,9 +2112,102 @@ export interface paths {
         put?: never;
         /**
          * Merge Routes
-         * @description Manually merge two routes.
+         * @description Manually merge two routes (non-destructive; returns an undo log id).
          */
         post: operations["merge_routes_api_v1_routes_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/merges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Route Merges
+         * @description List recent route merges (undo available while ``undone_at`` is null).
+         *
+         *     Enriched with route names so the UI can show a readable merge history:
+         *     the primary name from the live route (or the duplicate's snapshot name if
+         *     the primary was later merged away), and the merged-away route's name from
+         *     the snapshot.
+         */
+        get: operations["list_route_merges_api_v1_routes_merges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/merges/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Classify Route Merge
+         * @description Reclassify a merge as ``identical`` or ``variant`` (or ``unclassified``).
+         *
+         *     Only ``identical`` merges train the embedding metric; ``variant`` merges
+         *     (same kind of ride, e.g. different lap counts) are excluded so they never
+         *     teach the matcher that distinct routes are duplicates.
+         */
+        patch: operations["classify_route_merge_api_v1_routes_merges__log_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/routes/merges/reset-classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Route Merge Classification
+         * @description Clear ``merge_kind`` on all of the user's merges so they can be re-judged.
+         *
+         *     Unclassified merges are excluded from metric training (never assumed
+         *     identical), so this safely stops existing merges influencing the model until
+         *     the user reclassifies them.
+         */
+        post: operations["reset_route_merge_classification_api_v1_routes_merges_reset_classification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/merges/{log_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Route Merge
+         * @description Undo a previous route merge (recreates the merged-away route).
+         */
+        post: operations["undo_route_merge_api_v1_routes_merges__log_id__undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1848,6 +2324,9 @@ export interface paths {
         /**
          * List Duplicates
          * @description Find potential duplicate routes for manual review.
+         *
+         *     Prefers the cached similarity graph (weekly Modal task); falls back to a
+         *     synchronous local scan when no graph has been computed yet.
          */
         get: operations["list_duplicates_api_v1_routes_duplicates_get"];
         put?: never;
@@ -1981,6 +2460,29 @@ export interface paths {
          *     (for highlighting ridden sections).
          */
         get: operations["get_merged_route_view_api_v1_routes__route_id__merged_view_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/{route_id}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Similar Routes
+         * @description Routes similar to this one, from the cached Modal similarity graph.
+         *
+         *     Returns ``[{route, score, tier, breakdown}]``; empty until the weekly
+         *     ``recompute_route_similarity`` task has run for the user.
+         */
+        get: operations["get_similar_routes_api_v1_routes__route_id__similar_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2410,9 +2912,9 @@ export interface paths {
          *
          *     Uses a weighted multi-method approach:
          *     - 20-min × 0.95 (gold standard, confidence 1.0)
-         *     - 30-min × 0.95, 8-min × 0.855, 10-min × 0.92 (well-established)
+         *     - 30-min × 0.97, 8-min × 0.90 (literature-anchored)
          *     - 5-min × 0.85 (rough estimate)
-         *     - Riegel extrapolation from shorter efforts (lower confidence)
+         *     - Riegel extrapolation from shorter efforts, incl. 10-min (lower confidence)
          */
         post: operations["estimate_ftp_api_v1_cycling_estimate_ftp_post"];
         delete?: never;
@@ -2531,6 +3033,72 @@ export interface paths {
          * @description All climb segments for the user (optionally for one route), PR-first.
          */
         get: operations["list_segments_api_v1_segments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/segments/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Segments Intelligence Status
+         * @description Lightweight fitted marker for the settings intelligence card.
+         *
+         *     Returns 200 with ``analyzed_at=None`` when nothing has been analyzed
+         *     (instead of 404), so the UI can render "Not yet fitted" without treating
+         *     it as an error. ``analyzed_at`` is the newest
+         *     ``intelligence_analyzed_at`` across the user's segments.
+         */
+        get: operations["get_segments_intelligence_status_api_v1_segments_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/segments/climbs/{geo_cluster_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Climb Detail
+         * @description One physical hill merged across every route it appears on.
+         *
+         *     Registered above ``/{segment_id}``, though **ordering is not what makes this
+         *     safe** and the spec's warning to the contrary was wrong.
+         *
+         *     Pitfall 13's rule (static single-segment routes must sit above a dynamic
+         *     one) is about *colliding path shapes*: ``/tags`` and ``/{param}`` are both
+         *     one segment, so whichever is registered first wins. This route is two
+         *     segments and the dynamic one is one::
+         *
+         *         /{segment_id}            ->  ^/(?P<segment_id>[^/]+)$
+         *         /climbs/{geo_cluster_id} ->  ^/climbs/(?P<geo_cluster_id>[^/]+)$
+         *
+         *     ``[^/]+`` cannot span a slash, so ``/{segment_id}`` is never a candidate
+         *     for ``/climbs/<uuid>``. The shape makes shadowing impossible whatever the
+         *     order.
+         *
+         *     It stays above for readability -- the specific route reading first is what a
+         *     reader expects -- and ``test_segment_geo_clusters.py`` asserts the *shape*
+         *     rather than the order, plus a test showing the single-segment variant
+         *     (``GET /climbs``, no parameter) really is shadowed. That is the case the rule
+         *     is actually for.
+         */
+        get: operations["get_climb_detail_api_v1_segments_climbs__geo_cluster_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3005,7 +3573,12 @@ export interface paths {
         };
         /**
          * List Notifications
-         * @description List notifications newest-first, optionally unread only.
+         * @description List notifications newest-first.
+         *
+         *     ``offset`` pages through history beyond ``limit``; ``type`` and ``read``
+         *     narrow server-side so filtering isn't limited to the newest page (which is
+         *     what a client-side filter over a 200-row cap effectively does). See
+         *     ``GET /summary`` for the counts that drive the filter chips.
          */
         get: operations["list_notifications_api_v1_notifications_get"];
         put?: never;
@@ -3175,6 +3748,28 @@ export interface paths {
          * @description List all available semantic metrics — drives dynamic goal forms.
          */
         get: operations["get_metrics_api_v1_goals_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/goals/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Templates
+         * @description Personalised male-only goal starters (plate milestones, BW-ratio
+         *     standards, Big-3 clubs). Each template carries a ``create_payload``
+         *     that POSTs straight to ``POST /goals``.
+         */
+        get: operations["get_templates_api_v1_goals_templates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3432,7 +4027,7 @@ export interface paths {
         };
         /**
          * Get Tsb Projection
-         * @description TSB projection for event-linked training plans only.
+         * @description TSB projection for a training plan (event linkage optional).
          */
         get: operations["get_tsb_projection_api_v1_projections_tsb__plan_id__get"];
         put?: never;
@@ -3545,6 +4140,33 @@ export interface paths {
          *     activity/lifting sessions are preserved.
          */
         patch: operations["update_plan_day_api_v1_training_plans__plan_id__days__day_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/days/{day_id}/push-to-wahoo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Plan Day To Wahoo
+         * @description Push a cycle day to Wahoo as a scheduled workout and/or route.
+         *
+         *     Fails 409 when the user has no Wahoo connection and 403 when the connection
+         *     lacks the required write scopes (the user must reconnect Wahoo).
+         */
+        post: operations["push_plan_day_to_wahoo_api_v1_training_plans__plan_id__days__day_id__push_to_wahoo_post"];
+        /**
+         * Remove Plan Day From Wahoo
+         * @description Remove a day's scheduled Wahoo workout/plan (route stays in the library).
+         */
+        delete: operations["remove_plan_day_from_wahoo_api_v1_training_plans__plan_id__days__day_id__push_to_wahoo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/training-plans/{plan_id}/refresh-targets": {
@@ -3760,6 +4382,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-plans/{plan_id}/strength-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Strength Suggestions
+         * @description Suggest weight updates for upcoming strength days based on prior performance.
+         *
+         *     Analyzes conformity for completed strength days and recommends weight
+         *     adjustments for future days with similar exercises (big 3: squat/bench/deadlift).
+         */
+        get: operations["get_strength_suggestions_api_v1_training_plans__plan_id__strength_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/training-plans/{plan_id}/days/{day_id}/copy-from-session/{session_id}": {
         parameters: {
             query?: never;
@@ -3905,6 +4550,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}/retrospective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event Retrospective
+         * @description Post-race retrospective (B-21): result, taper load, race-day activity,
+         *     pre-race TSB, and linked plan target — linked by date proximity.
+         */
+        get: operations["get_event_retrospective_api_v1_events__event_id__retrospective_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{event_id}/ai-analysis": {
         parameters: {
             query?: never;
@@ -4036,6 +4702,31 @@ export interface paths {
          * @description Trigger an on-demand LLM cycling analysis.
          */
         post: operations["trigger_analysis_api_v1_cycling_llm_analysis_on_demand_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cross-domain/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cross Domain Status
+         * @description Lightweight fitted marker for the settings intelligence card.
+         *
+         *     Returns 200 with ``analyzed_at=None`` when the weekly task has never
+         *     produced a row (instead of the 404 the list/detail endpoints use), so
+         *     the UI can render "Not yet fitted" without treating it as an error.
+         *     ``analyzed_at`` is the newest row's ``created_at`` across all types.
+         */
+        get: operations["get_cross_domain_status_api_v1_cross_domain_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4301,6 +4992,8 @@ export interface components {
             user_id: string;
             /** Connection Id */
             connection_id?: string | null;
+            /** Import Fingerprint */
+            import_fingerprint?: string | null;
             /** Route Id */
             route_id?: string | null;
             /** Route Name */
@@ -4469,6 +5162,8 @@ export interface components {
             user_id: string;
             /** Connection Id */
             connection_id?: string | null;
+            /** Import Fingerprint */
+            import_fingerprint?: string | null;
             /** Route Id */
             route_id?: string | null;
             /** Route Name */
@@ -4583,6 +5278,12 @@ export interface components {
             wind_speed_kmh?: number | null;
             /** Wind Direction */
             wind_direction?: string | null;
+            /** Wind Direction Deg */
+            wind_direction_deg?: number | null;
+            /** Humidity Pct */
+            humidity_pct?: number | null;
+            /** Pressure Hpa */
+            pressure_hpa?: number | null;
             /** Precipitation Mm */
             precipitation_mm?: number | null;
         };
@@ -4718,6 +5419,26 @@ export interface components {
              */
             suggestions: components["schemas"]["AdaptiveSuggestion"][];
         };
+        /** AthleteInsightRead */
+        AthleteInsightRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Insight Type */
+            insight_type: string;
+            /** Period */
+            period: string;
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sample Size */
+            sample_size: number;
+            /** Confidence */
+            confidence: string;
+        };
         /**
          * BadWeather
          * @description Bad-riding-weather flag from ``weather.is_bad_weather()``.
@@ -4749,6 +5470,14 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** Body_import_bulk_api_v1_activities_import_bulk_post */
+        Body_import_bulk_api_v1_activities_import_bulk_post: {
+            /**
+             * Files
+             * @description Up to 20 FIT files
+             */
+            files: string[];
+        };
         /** Body_import_fit_api_v1_activities_import_fit_post */
         Body_import_fit_api_v1_activities_import_fit_post: {
             /** File */
@@ -4763,6 +5492,98 @@ export interface components {
         Body_upload_gpx_api_v1_routes_upload_gpx_post: {
             /** File */
             file: string;
+        };
+        /**
+         * BulkDismissRequest
+         * @description Dismiss every pending review row in one bucket.
+         *
+         *     ``expected_count`` is the number the caller displayed. It is checked
+         *     against the queue as it stands when the write happens, and a mismatch
+         *     is refused — bulk dismissal is durable and the UI has no undo, so acting
+         *     on a stale page would dismiss a set the user never saw.
+         */
+        BulkDismissRequest: {
+            /** Bucket */
+            bucket: string;
+            /** Expected Count */
+            expected_count?: number | null;
+        };
+        /** BulkDismissResult */
+        BulkDismissResult: {
+            /** Bucket */
+            bucket: string;
+            /** Dismissed */
+            dismissed: number;
+        };
+        /**
+         * BulkImportFileResult
+         * @description Per-file outcome. A batch never fails as a unit.
+         */
+        BulkImportFileResult: {
+            /** Filename */
+            filename: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "duplicate" | "failed";
+            /** Activity Id */
+            activity_id?: string | null;
+            /**
+             * Attached Source
+             * @default false
+             */
+            attached_source: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** BulkImportResponse */
+        BulkImportResponse: {
+            /** Created */
+            created: number;
+            /** Duplicates */
+            duplicates: number;
+            /** Failed */
+            failed: number;
+            /** Results */
+            results: components["schemas"]["BulkImportFileResult"][];
+        };
+        /**
+         * ClimbDetail
+         * @description One physical hill, merged across every route it appears on.
+         *
+         *     ``name`` is canonical: the most-ridden member's name, which is the best
+         *     available proxy for "what the rider calls this hill". Renaming is an
+         *     explicit follow-on (§6 of the spec) -- a hill has no durable identity of its
+         *     own, so there is nothing stable to hang a user-chosen name on yet.
+         *
+         *     ``efforts`` is ranked by VAM, not elapsed seconds. Different routes detect
+         *     the same hill with slightly different windows (900 m vs 950 m depending on
+         *     elevation sampling), so elapsed seconds across members are not comparable and
+         *     ranking by them would report a "best" nobody rode. VAM -- metres gained per
+         *     hour -- is window-robust. Seconds fall back only when no member effort
+         *     carries a VAM at all.
+         */
+        ClimbDetail: {
+            /**
+             * Geo Cluster Id
+             * Format: uuid
+             */
+            geo_cluster_id: string;
+            /** Name */
+            name: string;
+            /** Route Count */
+            route_count: number;
+            /**
+             * Segments
+             * @default []
+             */
+            segments: components["schemas"]["SegmentRead"][];
+            /**
+             * Efforts
+             * @default []
+             */
+            efforts: components["schemas"]["SegmentEffortRead"][];
         };
         /** ConformityComponent */
         ConformityComponent: {
@@ -4970,7 +5791,7 @@ export interface components {
             home_lng?: number | null;
             /**
              * Critical Power
-             * @description Critical Power from Morton 2004 model (watts)
+             * @description Critical Power from Morton 3-param model (watts)
              */
             critical_power?: number | null;
             /**
@@ -4979,15 +5800,45 @@ export interface components {
              */
             w_prime?: number | null;
             /**
+             * P Max
+             * @description Pmax sprint ceiling from Morton 3-param model (watts)
+             */
+            p_max?: number | null;
+            /**
              * Power Model R Squared
              * @description R² fit quality of the CP model
              */
             power_model_r_squared?: number | null;
             /**
              * Personalized Vo2Max
-             * @description VO2max from power-HR regression (ml/kg/min)
+             * @description VO2max from maximal power via FRIEND (ml/kg/min)
              */
             personalized_vo2max?: number | null;
+            /**
+             * Personalized Vo2Max Method
+             * @description How the VO2max number was produced
+             */
+            personalized_vo2max_method?: string | null;
+            /**
+             * Personalized Vo2Max R Squared
+             * @description R² of the supporting power-HR regression
+             */
+            personalized_vo2max_r_squared?: number | null;
+            /**
+             * Personalized Vo2Max Data Points
+             * @description Steady-state rides used in the VO2max fit
+             */
+            personalized_vo2max_data_points?: number | null;
+            /**
+             * Personalized Vo2Max Hr Threshold
+             * @description HR anchor read for the regression fallback (bpm)
+             */
+            personalized_vo2max_hr_threshold?: number | null;
+            /**
+             * Personalized Vo2Max Maximal Watts
+             * @description Maximal ~5-min watts FRIEND was applied to
+             */
+            personalized_vo2max_maximal_watts?: number | null;
             /**
              * Ctl Tau
              * @description Personalized CTL time constant (days)
@@ -5291,6 +6142,40 @@ export interface components {
             /** Confirm Email */
             confirm_email: string;
         };
+        /** DismissedRouteResponse */
+        DismissedRouteResponse: {
+            /** Rows */
+            rows: components["schemas"]["DismissedRouteRow"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * DismissedRouteRow
+         * @description A route the user reviewed and rejected.
+         *
+         *     Listed so a rejection can be found and undone. 49 of these were created
+         *     in one bulk action, so a mistake in that action is likely by
+         *     construction — and with nothing listing them, an incorrect dismissal was
+         *     only discoverable if you already knew the route id.
+         */
+        DismissedRouteRow: {
+            /**
+             * Route Id
+             * Format: uuid
+             */
+            route_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Dismissed At
+             * Format: date-time
+             */
+            dismissed_at: string;
+            /** Distance Meters */
+            distance_meters: number;
+            /** Quarantined At */
+            quarantined_at?: string | null;
+        };
         /** DuplicatePair */
         DuplicatePair: {
             route_a: components["schemas"]["RouteRead"];
@@ -5302,6 +6187,19 @@ export interface components {
              * @default false
              */
             requires_confirmation: boolean;
+            /**
+             * Tier
+             * @default review
+             */
+            tier: string;
+            /** Breakdown */
+            breakdown?: {
+                [key: string]: unknown;
+            } | null;
+            /** Jev Decision */
+            jev_decision?: string | null;
+            /** Jev Confidence */
+            jev_confidence?: number | null;
         };
         /** EffortEstimateRequest */
         EffortEstimateRequest: {
@@ -5339,6 +6237,34 @@ export interface components {
             zone_name?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * EngineConsensus
+         * @description One engine's vote on the daily verdict (plan §1).
+         *
+         *     ``available: False`` with a ``reason`` is a first-class outcome, not an
+         *     error. Cross-domain analysis runs weekly; before its first run the honest
+         *     thing to show is "not run yet", because a verdict that silently omits an
+         *     engine reads as unanimous agreement from the ones that spoke.
+         */
+        EngineConsensus: {
+            /** Engine */
+            engine: string;
+            /** Stance */
+            stance?: string | null;
+            /** Confidence */
+            confidence?: string | null;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Analyzed At */
+            analyzed_at?: string | null;
         };
         /** EventCreate */
         EventCreate: {
@@ -5469,6 +6395,24 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * ExerciseSuggestion
+         * @description One exercise with a suggested new weight.
+         */
+        ExerciseSuggestion: {
+            /** Exercise Name */
+            exercise_name: string;
+            /** Old Weight Kg */
+            old_weight_kg: number | null;
+            /** Suggested Weight Kg */
+            suggested_weight_kg: number;
+            /** Rpe */
+            rpe: number | null;
+            /** Sets */
+            sets: number;
+            /** Reps */
+            reps: number;
+        };
         /** ExerciseVolume */
         ExerciseVolume: {
             /** Exercise Name */
@@ -5497,6 +6441,12 @@ export interface components {
             precipitation_sum?: number | null;
             /** Wind Speed Max */
             wind_speed_max?: number | null;
+            /** Wind Direction Deg */
+            wind_direction_deg?: number | null;
+            /** Humidity Mean */
+            humidity_mean?: number | null;
+            /** Pressure Mean */
+            pressure_mean?: number | null;
         };
         /**
          * ForecastResponse
@@ -5554,6 +6504,10 @@ export interface components {
             accepted: boolean;
             /** Previous Ftp */
             previous_ftp?: number | null;
+            /** Ftp Ci Low */
+            ftp_ci_low?: number | null;
+            /** Ftp Ci High */
+            ftp_ci_high?: number | null;
         };
         /** FtpHistoryCreate */
         FtpHistoryCreate: {
@@ -5667,6 +6621,18 @@ export interface components {
             base_tss: number;
             /** Event Id */
             event_id?: string | null;
+            /** Strength Template */
+            strength_template?: components["schemas"]["StrengthWeekTemplate"][] | null;
+            /** Strength Focuses */
+            strength_focuses?: string[] | null;
+            /** Strength Start Rpe */
+            strength_start_rpe?: number | null;
+            /** Strength Start Sets */
+            strength_start_sets?: number | null;
+            /** Strength Start Reps */
+            strength_start_reps?: number | null;
+            /** Strength Start Weight Kg */
+            strength_start_weight_kg?: number | null;
         };
         /** GoalCheckInCreate */
         GoalCheckInCreate: {
@@ -5774,6 +6740,8 @@ export interface components {
             metric_label?: string | null;
             /** Metric Unit */
             metric_unit?: string | null;
+            /** Trajectory Verdict */
+            trajectory_verdict?: string | null;
         };
         /**
          * GoalProjectionResponse
@@ -5806,6 +6774,60 @@ export interface components {
             history: components["schemas"]["ProjectionPoint"][];
             /** Projection Line */
             projection_line: components["schemas"]["ProjectionPoint"][];
+        };
+        /**
+         * GoalTemplate
+         * @description One personalised starter from GET /goals/templates.
+         */
+        GoalTemplate: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Metric */
+            metric: string;
+            /** Filter Json */
+            filter_json?: {
+                [key: string]: unknown;
+            } | null;
+            /** Current Value */
+            current_value?: number | null;
+            /** Suggested Target */
+            suggested_target: number;
+            /** Unit */
+            unit: string;
+            create_payload: components["schemas"]["GoalTemplateCreate"];
+        };
+        /**
+         * GoalTemplateCreate
+         * @description POSTable payload for one template — mirrors GoalCreate fields.
+         */
+        GoalTemplateCreate: {
+            /** Metric */
+            metric: string;
+            /** Filter Json */
+            filter_json?: {
+                [key: string]: unknown;
+            } | null;
+            /** Target Value */
+            target_value: number;
+        };
+        /**
+         * GoalTemplatesResponse
+         * @description Personalised male-only template list with the bodyweight basis.
+         */
+        GoalTemplatesResponse: {
+            /** Bodyweight Kg */
+            bodyweight_kg?: number | null;
+            /**
+             * Templates
+             * @default []
+             */
+            templates: components["schemas"]["GoalTemplate"][];
         };
         /** GoalUpdate */
         GoalUpdate: {
@@ -5944,10 +6966,18 @@ export interface components {
             lifting_session_id?: string | null;
             /** Personal Record Id */
             personal_record_id?: string | null;
+            /** Lifting Set Id */
+            lifting_set_id?: string | null;
             /** Notes */
             notes?: string | null;
             /** Expected Reps */
             expected_reps?: number | null;
+            /** Camera View */
+            camera_view?: string | null;
+            /** Camera Lens */
+            camera_lens?: string | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
         };
         /** LiftVideoRead */
         LiftVideoRead: {
@@ -5967,10 +6997,18 @@ export interface components {
             lifting_session_id?: string | null;
             /** Personal Record Id */
             personal_record_id?: string | null;
+            /** Lifting Set Id */
+            lifting_set_id?: string | null;
             /** Notes */
             notes?: string | null;
             /** Expected Reps */
             expected_reps?: number | null;
+            /** Camera View */
+            camera_view?: string | null;
+            /** Camera Lens */
+            camera_lens?: string | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
             /**
              * Id
              * Format: uuid
@@ -5993,6 +7031,10 @@ export interface components {
             updated_at: string;
             /** Trimmed R2 Key */
             trimmed_r2_key?: string | null;
+            /** Overlay R2 Key */
+            overlay_r2_key?: string | null;
+            /** Rep Thumbnails R2 Key */
+            rep_thumbnails_r2_key?: string | null;
             /** Analysis Status */
             analysis_status?: string | null;
             /** Analysis Text */
@@ -6003,8 +7045,6 @@ export interface components {
             exercise_variation?: string | null;
             /** Reps Count */
             reps_count?: number | null;
-            /** Weight Kg */
-            weight_kg?: number | null;
             /** Confidence */
             confidence?: number | null;
             /** Trim Start Sec */
@@ -6033,6 +7073,8 @@ export interface components {
             velocity_profile_json?: string | null;
             /** Vbt Zone */
             vbt_zone?: string | null;
+            /** Bar Path Json */
+            bar_path_json?: string | null;
             /** Rest Periods Json */
             rest_periods_json?: string | null;
             /** Avg Rest Seconds */
@@ -6057,6 +7099,14 @@ export interface components {
             rpe_confidence?: number | null;
             /** Rpe Evidence Json */
             rpe_evidence_json?: string | null;
+            /** Lifter Selected */
+            lifter_selected?: number | null;
+            /** Lifter Selection Json */
+            lifter_selection_json?: string | null;
+            /** Pose Track R2 Key */
+            pose_track_r2_key?: string | null;
+            /** Analysis Version */
+            analysis_version?: number | null;
         };
         /** LiftingAnalysisResponse */
         LiftingAnalysisResponse: {
@@ -6149,6 +7199,12 @@ export interface components {
             activity_id?: string | null;
             /** Total Volume Kg */
             total_volume_kg?: number | null;
+            /** Estimated Tss */
+            estimated_tss?: number | null;
+            /** Ai Tags */
+            ai_tags?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Sets
              * @default []
@@ -6264,6 +7320,8 @@ export interface components {
             session_id: string;
             /** Client Id */
             client_id?: string | null;
+            /** Order Index */
+            order_index?: number | null;
         };
         /** LiftingSetUpdate */
         LiftingSetUpdate: {
@@ -6413,6 +7471,20 @@ export interface components {
              * Format: uuid
              */
             duplicate_route_id: string;
+            /**
+             * Merge Kind
+             * @default identical
+             */
+            merge_kind: string;
+        };
+        /**
+         * MergeResult
+         * @description Result of a merge — includes the audit-log id for undo.
+         */
+        MergeResult: {
+            route: components["schemas"]["RouteRead"];
+            /** Merge Log Id */
+            merge_log_id?: string | null;
         };
         /**
          * MergedRouteView
@@ -6467,10 +7539,6 @@ export interface components {
             quality_score?: number | null;
             /** Terrain Classification */
             terrain_classification?: {
-                [key: string]: unknown;
-            } | null;
-            /** Predicted Effort */
-            predicted_effort?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -6551,6 +7619,16 @@ export interface components {
             trend: components["schemas"]["TrendInfo"] | null;
             /** Classification */
             classification: string | null;
+            /**
+             * History
+             * @default []
+             */
+            history: components["schemas"]["ProjectionPoint"][];
+            /**
+             * Projection Line
+             * @default []
+             */
+            projection_line: components["schemas"]["ProjectionPoint"][];
         };
         /**
          * MonthlySummaryItem
@@ -6662,7 +7740,7 @@ export interface components {
             } | null;
         };
         /**
-         * Notification Summary
+         * NotificationSummary
          * @description Whole-history counts backing the notification filter chips / badge.
          */
         NotificationSummary: {
@@ -6712,6 +7790,66 @@ export interface components {
              * @default 0
              */
             consecutive_failures: number;
+        };
+        /** OrphanReviewResponse */
+        OrphanReviewResponse: {
+            /** Rows */
+            rows: components["schemas"]["OrphanReviewRow"][];
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * OrphanReviewRow
+         * @description One quarantined route awaiting a decision, with its best match.
+         *
+         *     ``containment`` and ``jaccard`` are both reported and deliberately not
+         *     collapsed into a single score: they disagree exactly where it matters.
+         *     An orphan entirely inside a larger live route scores containment 1.000
+         *     but low Jaccard — it is a lap of a longer course, not a duplicate — and
+         *     a single blended number would hide that.
+         */
+        OrphanReviewRow: {
+            /**
+             * Orphan Id
+             * Format: uuid
+             */
+            orphan_id: string;
+            /** Orphan Name */
+            orphan_name: string;
+            /** Orphan Polyline */
+            orphan_polyline: string;
+            /** Orphan Distance M */
+            orphan_distance_m: number;
+            /**
+             * Has Geometry
+             * @default false
+             */
+            has_geometry: boolean;
+            /** Live Id */
+            live_id?: string | null;
+            /** Live Name */
+            live_name?: string | null;
+            /** Live Polyline */
+            live_polyline?: string | null;
+            /** Live Distance M */
+            live_distance_m?: number | null;
+            /**
+             * Containment
+             * @default 0
+             */
+            containment: number;
+            /**
+             * Jaccard
+             * @default 0
+             */
+            jaccard: number;
+            /**
+             * Bucket
+             * @default unscorable
+             */
+            bucket: string;
         };
         /**
          * PRHighlight
@@ -6834,7 +7972,7 @@ export interface components {
             ftp_watts?: number | null;
             /**
              * Cp
-             * @description Critical Power (Morton 2004)
+             * @description Critical Power (Morton 3-param)
              */
             cp?: number | null;
             /**
@@ -6842,6 +7980,11 @@ export interface components {
              * @description W' in joules
              */
             w_prime?: number | null;
+            /**
+             * P Max
+             * @description Pmax sprint ceiling in watts
+             */
+            p_max?: number | null;
             /**
              * Model R Squared
              * @description CP model fit quality
@@ -6956,6 +8099,23 @@ export interface components {
             pr_1rm: number;
             /** Proximity Pct */
             proximity_pct: number;
+        };
+        /**
+         * ProjectedLoadPoint
+         * @description One day of the forward look, from ``compute_tsb_projection``.
+         */
+        ProjectedLoadPoint: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Ctl */
+            ctl?: number | null;
+            /** Atl */
+            atl?: number | null;
+            /** Tsb */
+            tsb?: number | null;
         };
         /**
          * ProjectionPoint
@@ -7108,6 +8268,18 @@ export interface components {
              * @default []
              */
             strength_refreshed: components["schemas"]["RefreshStrengthDay"][];
+        };
+        /**
+         * ReorderSetsRequest
+         * @description Body for ``PATCH /lifting/sessions/{id}/reorder``.
+         *
+         *     ``set_ids`` must be the session's complete set list in the desired order —
+         *     not a subset and not a diff. Anything else is ambiguous (which sets move
+         *     where?) and is rejected rather than interpreted.
+         */
+        ReorderSetsRequest: {
+            /** Set Ids */
+            set_ids: string[];
         };
         /** RepDropoff */
         RepDropoff: {
@@ -7623,8 +8795,8 @@ export interface components {
             terrain_classification?: {
                 [key: string]: unknown;
             } | null;
-            /** Predicted Effort */
-            predicted_effort?: {
+            /** Road Match */
+            road_match?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -7918,6 +9090,13 @@ export interface components {
             effort_count: number;
             /** Cluster Id */
             cluster_id?: number | null;
+            /** Geo Cluster Id */
+            geo_cluster_id?: string | null;
+            /**
+             * Geo Cluster Size
+             * @default 1
+             */
+            geo_cluster_size: number;
             /** Climb Type */
             climb_type?: string | null;
             /** Sustainedness */
@@ -7961,6 +9140,84 @@ export interface components {
             reps: number;
             /** Estimated 1Rm */
             estimated_1rm?: number | null;
+        };
+        /** SportCount */
+        SportCount: {
+            /** Sport Type */
+            sport_type?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
+         * StrengthDaySuggestion
+         * @description Suggested updates for a future plan day based on prior-week performance.
+         */
+        StrengthDaySuggestion: {
+            /**
+             * Day Id
+             * Format: uuid
+             */
+            day_id: string;
+            /**
+             * Day Date
+             * Format: date
+             */
+            day_date: string;
+            /** Sport */
+            sport: string;
+            /** Planned Focus */
+            planned_focus?: string | null;
+            /**
+             * Exercises
+             * @default []
+             */
+            exercises: components["schemas"]["ExerciseSuggestion"][];
+        };
+        /**
+         * StrengthPlanSuggestionsResponse
+         * @description Full response wrapping the list of day-level suggestions.
+         */
+        StrengthPlanSuggestionsResponse: {
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Suggestions
+             * @default []
+             */
+            suggestions: components["schemas"]["StrengthDaySuggestion"][];
+            /** Summary */
+            summary?: string | null;
+        };
+        /**
+         * StrengthWeekTemplate
+         * @description One week's progressive-overload parameters in a strength template.
+         */
+        StrengthWeekTemplate: {
+            /** Week */
+            week: number;
+            /** Rpe */
+            rpe?: number | null;
+            /** Sets */
+            sets?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /** Weights */
+            weights?: {
+                [key: string]: number;
+            } | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * SubstituteDayRequest
@@ -8026,6 +9283,8 @@ export interface components {
              * @enum {string}
              */
             basis_source: "pr" | "recent_sets" | "none";
+            /** Safety Warning */
+            safety_warning?: string | null;
         };
         /**
          * SuggestedCycleResponse
@@ -8105,6 +9364,115 @@ export interface components {
             /** Tagged */
             tagged: boolean;
             weather?: components["schemas"]["ActivityWeatherResponse"] | null;
+        };
+        /**
+         * TimeseriesBucket
+         * @description One dense bucket. Zero values mean "no training", which is true by
+         *     construction — the server fills every bucket in range, so the client cannot
+         *     invent one.
+         */
+        TimeseriesBucket: {
+            /**
+             * Bucket Start
+             * Format: date
+             */
+            bucket_start: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Distance Meters
+             * @default 0
+             */
+            distance_meters: number;
+            /**
+             * Duration Seconds
+             * @default 0
+             */
+            duration_seconds: number;
+            /**
+             * Elevation Gain Meters
+             * @default 0
+             */
+            elevation_gain_meters: number;
+            /**
+             * Tss
+             * @default 0
+             */
+            tss: number;
+        };
+        /**
+         * TimeseriesResponse
+         * @description Server-bucketed activity aggregates.
+         *
+         *     ``complete`` is False only when the requested range exceeded the bucket
+         *     ceiling and was clamped server-side; ``clamped_to`` then carries the
+         *     effective end. With aggregation in SQL no row cap applies, so this stays
+         *     True in practice — it exists so a future clamp has an honest signal to
+         *     surface instead of the client guessing.
+         */
+        TimeseriesResponse: {
+            /**
+             * Bucket
+             * @enum {string}
+             */
+            bucket: "day" | "week" | "month";
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Complete
+             * @default true
+             */
+            complete: boolean;
+            /** Clamped To */
+            clamped_to?: string | null;
+            /** Buckets */
+            buckets: components["schemas"]["TimeseriesBucket"][];
+            totals: components["schemas"]["TimeseriesTotals"];
+            /** Sport Breakdown */
+            sport_breakdown: components["schemas"]["SportCount"][];
+        };
+        /**
+         * TimeseriesTotals
+         * @description Totals over the whole range, summed from the dense series so they can
+         *     never disagree with the chart above them.
+         */
+        TimeseriesTotals: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Distance Meters
+             * @default 0
+             */
+            distance_meters: number;
+            /**
+             * Duration Seconds
+             * @default 0
+             */
+            duration_seconds: number;
+            /**
+             * Elevation Gain Meters
+             * @default 0
+             */
+            elevation_gain_meters: number;
+            /**
+             * Tss
+             * @default 0
+             */
+            tss: number;
         };
         /**
          * TodayActivitySummary
@@ -8235,6 +9603,44 @@ export interface components {
              * @default 0
              */
             active_alerts: number;
+            rest_day_suggestion?: components["schemas"]["RestDaySuggestion"] | null;
+            verdict?: components["schemas"]["TodayVerdict"] | null;
+        };
+        /**
+         * TodayVerdict
+         * @description The unified daily verdict: all five engines, with provenance.
+         *
+         *     The headline follows the *strongest* rest signal rather than an average of
+         *     all engines. An average of "train" and "rest" produces "train, but rest", and
+         *     the athlete acts on the first word - so an averaged verdict is worse than
+         *     either engine's own answer.
+         */
+        TodayVerdict: {
+            /**
+             * Should Rest
+             * @default false
+             */
+            should_rest: boolean;
+            /**
+             * Headline
+             * @default
+             */
+            headline: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /**
+             * Consensus
+             * @default []
+             */
+            consensus: components["schemas"]["EngineConsensus"][];
+            /**
+             * Projected Load
+             * @default []
+             */
+            projected_load: components["schemas"]["ProjectedLoadPoint"][];
         };
         /**
          * TrainingLoadResponse
@@ -8405,6 +9811,24 @@ export interface components {
             plan_id: string;
             /** Activity Id */
             activity_id?: string | null;
+            /** Wahoo Plan Id */
+            wahoo_plan_id?: number | null;
+            /** Wahoo Workout Id */
+            wahoo_workout_id?: number | null;
+            /** Wahoo Route Id */
+            wahoo_route_id?: number | null;
+            /** Wahoo Pushed At */
+            wahoo_pushed_at?: string | null;
+            /**
+             * Wahoo Push Workout
+             * @default false
+             */
+            wahoo_push_workout: boolean;
+            /**
+             * Wahoo Push Route
+             * @default false
+             */
+            wahoo_push_route: boolean;
             /**
              * Created At
              * Format: date-time
@@ -8662,6 +10086,24 @@ export interface components {
             plan_id: string;
             /** Activity Id */
             activity_id?: string | null;
+            /** Wahoo Plan Id */
+            wahoo_plan_id?: number | null;
+            /** Wahoo Workout Id */
+            wahoo_workout_id?: number | null;
+            /** Wahoo Route Id */
+            wahoo_route_id?: number | null;
+            /** Wahoo Pushed At */
+            wahoo_pushed_at?: string | null;
+            /**
+             * Wahoo Push Workout
+             * @default false
+             */
+            wahoo_push_workout: boolean;
+            /**
+             * Wahoo Push Route
+             * @default false
+             */
+            wahoo_push_route: boolean;
             /**
              * Created At
              * Format: date-time
@@ -8728,6 +10170,18 @@ export interface components {
             r_squared: number;
             /** Data Points */
             data_points: number;
+            /**
+             * Plausible
+             * @default true
+             */
+            plausible: boolean;
+            /** Gated Reason */
+            gated_reason?: string | null;
+            /**
+             * Deload Weeks Skipped
+             * @default 0
+             */
+            deload_weeks_skipped: number;
         };
         /**
          * TsbProjectionPoint
@@ -8745,6 +10199,10 @@ export interface components {
             atl: number;
             /** Tsb */
             tsb: number;
+            /** Tsb Low */
+            tsb_low?: number | null;
+            /** Tsb High */
+            tsb_high?: number | null;
         };
         /**
          * TsbProjectionResponse
@@ -8860,6 +10318,8 @@ export interface components {
              * @default 24h
              */
             time_format: string;
+            /** Height Cm */
+            height_cm?: number | null;
         };
         /** UserPreferencesUpdate */
         UserPreferencesUpdate: {
@@ -8869,6 +10329,8 @@ export interface components {
             locale?: string | null;
             /** Time Format */
             time_format?: string | null;
+            /** Height Cm */
+            height_cm?: number | null;
         };
         /** UserRead */
         UserRead: {
@@ -8903,6 +10365,56 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * VbtProfilePoint
+         * @description One analysed set on the load-velocity plane.
+         */
+        VbtProfilePoint: {
+            /** Date */
+            date: string;
+            /** Load Kg */
+            load_kg: number;
+            /** Velocity */
+            velocity: number;
+            /** Reps */
+            reps?: number | null;
+            /** Vbt Zone */
+            vbt_zone?: string | null;
+        };
+        /**
+         * VbtProfileResponse
+         * @description Load-velocity profile + estimated 1RM for one exercise.
+         */
+        VbtProfileResponse: {
+            /** Exercise */
+            exercise: string;
+            /** N */
+            n: number;
+            /** Mvt */
+            mvt: number;
+            /** Slope */
+            slope?: number | null;
+            /** Intercept */
+            intercept?: number | null;
+            /** R2 */
+            r2?: number | null;
+            /** Est 1Rm Kg */
+            est_1rm_kg?: number | null;
+            /** Load Min Kg */
+            load_min_kg?: number | null;
+            /** Load Max Kg */
+            load_max_kg?: number | null;
+            /** Confidence */
+            confidence: string;
+            /** Recommended Load Kg */
+            recommended_load_kg?: number | null;
+            /** Pr 1Rm Kg */
+            pr_1rm_kg?: number | null;
+            /** Vbt Vs Pr Pct */
+            vbt_vs_pr_pct?: number | null;
+            /** Points */
+            points: components["schemas"]["VbtProfilePoint"][];
+        };
+        /**
          * VideoPatchRequest
          * @description Partial update for a strength video (owner only).
          */
@@ -8913,6 +10425,16 @@ export interface components {
             expected_reps?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Camera View */
+            camera_view?: string | null;
+            /** Camera Lens */
+            camera_lens?: string | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Reps Count */
+            reps_count?: number | null;
+            /** Lifter Track Id */
+            lifter_track_id?: number | null;
         };
         /**
          * VideoProcessStatus
@@ -8956,6 +10478,8 @@ export interface components {
             velocity_loss_pct?: number | null;
             /** Vbt Zone */
             vbt_zone?: string | null;
+            /** Bar Path Json */
+            bar_path_json?: string | null;
             /** Avg Rest Seconds */
             avg_rest_seconds?: number | null;
             /** Rest Cv */
@@ -8972,6 +10496,16 @@ export interface components {
             rpe_confidence?: number | null;
             /** Rpe Evidence Json */
             rpe_evidence_json?: string | null;
+            /** Calibrated Rpe */
+            calibrated_rpe?: number | null;
+            /** Lifter Selected */
+            lifter_selected?: number | null;
+            /** Lifter Selection Json */
+            lifter_selection_json?: string | null;
+            /** Pose Track R2 Key */
+            pose_track_r2_key?: string | null;
+            /** Analysis Version */
+            analysis_version?: number | null;
         };
         /**
          * VideoStreamUrl
@@ -9061,6 +10595,10 @@ export interface components {
             classification: string;
             /** All Estimates */
             all_estimates: components["schemas"]["Vo2maxDetail"][];
+            /** Vo2Max Ci Low */
+            vo2max_ci_low?: number | null;
+            /** Vo2Max Ci High */
+            vo2max_ci_high?: number | null;
         };
         /** VolumeTrendPoint */
         VolumeTrendPoint: {
@@ -9080,6 +10618,46 @@ export interface components {
             exercise_name?: string | null;
             /** Data */
             data: components["schemas"]["VolumeTrendPoint"][];
+        };
+        /**
+         * WahooPushRequest
+         * @description Which parts of a cycle day to push to Wahoo.
+         */
+        WahooPushRequest: {
+            /**
+             * Push Workout
+             * @default true
+             */
+            push_workout: boolean;
+            /**
+             * Push Route
+             * @default true
+             */
+            push_route: boolean;
+        };
+        /**
+         * WahooPushResponse
+         * @description Result of a push / remove operation against Wahoo.
+         */
+        WahooPushResponse: {
+            /** Pushed At */
+            pushed_at?: string | null;
+            /**
+             * Push Workout
+             * @default false
+             */
+            push_workout: boolean;
+            /**
+             * Push Route
+             * @default false
+             */
+            push_route: boolean;
+            /** Wahoo Plan Id */
+            wahoo_plan_id?: number | null;
+            /** Wahoo Workout Id */
+            wahoo_workout_id?: number | null;
+            /** Wahoo Route Id */
+            wahoo_route_id?: number | null;
         };
         /** WarmupStepRead */
         WarmupStepRead: {
@@ -9159,7 +10737,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "strength_standard" | "ratio" | "volume_balance" | "vo2max_ftp_mismatch" | "decoupling" | "zone_distribution";
+            type: "strength_standard" | "ratio" | "volume_balance" | "vo2max_ftp_mismatch" | "decoupling" | "zone_distribution" | "form_quality";
             /** Metric */
             metric: string;
             /** Value */
@@ -9903,6 +11481,137 @@ export interface operations {
             };
         };
     };
+    list_insights_api_v1_analytics_insights_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AthleteInsightRead"][];
+                };
+            };
+        };
+    };
+    recompute_insights_api_v1_analytics_recompute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AthleteInsightRead"][];
+                };
+            };
+        };
+    };
+    explain_insight_api_v1_analytics_explain__insight_type__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmAnalysisRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_explanations_api_v1_analytics_explanations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmAnalysisRead"][];
+                };
+            };
+        };
+    };
+    get_season_overview_api_v1_analytics_season_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmAnalysisRead"] | null;
+                };
+            };
+        };
+    };
+    trigger_season_overview_api_v1_analytics_season_overview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmAnalysisRead"];
+                };
+            };
+        };
+    };
     list_connections_api_v1_connections__get: {
         parameters: {
             query?: never;
@@ -10111,6 +11820,44 @@ export interface operations {
             };
         };
     };
+    get_activity_timeseries_api_v1_activities_timeseries_get: {
+        parameters: {
+            query: {
+                /** @description Bucket width. Weeks are Monday-based. */
+                bucket?: "day" | "week" | "month";
+                /** @description Range start (inclusive, YYYY-MM-DD) */
+                start: string;
+                /** @description Range end (inclusive, YYYY-MM-DD) */
+                end: string;
+                sport_type?: string | null;
+                source?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeseriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_activities_calendar_api_v1_activities_calendar_get: {
         parameters: {
             query: {
@@ -10286,6 +12033,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_bulk_api_v1_activities_import_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_bulk_api_v1_activities_import_bulk_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkImportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10720,6 +12500,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_session_sets_api_v1_lifting_sessions__session_id__reorder_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderSetsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiftingSessionRead"];
                 };
             };
             /** @description Validation Error */
@@ -11458,6 +13273,39 @@ export interface operations {
             };
         };
     };
+    get_vbt_profile_api_v1_lifting_videos_vbt_profile_get: {
+        parameters: {
+            query: {
+                exercise_name: string;
+                days?: number;
+                target_velocity?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VbtProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_video_api_v1_lifting_videos__video_id__get: {
         parameters: {
             query?: never;
@@ -11590,7 +13438,9 @@ export interface operations {
     };
     get_stream_url_api_v1_lifting_videos__video_id__stream_url_get: {
         parameters: {
-            query?: never;
+            query?: {
+                variant?: string;
+            };
             header?: never;
             path: {
                 video_id: string;
@@ -11700,6 +13550,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_control_chart_api_v1_charts_control_get: {
+        parameters: {
+            query?: {
+                metric?: string;
+                exercise_name?: string | null;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12626,6 +14509,145 @@ export interface operations {
             };
         };
     };
+    list_orphan_candidates_api_v1_routes_orphans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrphanReviewResponse"];
+                };
+            };
+        };
+    };
+    bulk_dismiss_orphans_api_v1_routes_orphans_bulk_dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkDismissResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_orphan_api_v1_routes_orphans__route_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dismissed_routes_api_v1_routes_orphans_dismissed_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DismissedRouteResponse"];
+                };
+            };
+        };
+    };
+    keep_orphan_api_v1_routes_orphans__route_id__keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_route_api_v1_routes__route_id__get: {
         parameters: {
             query?: never;
@@ -12768,6 +14790,127 @@ export interface operations {
                 "application/json": components["schemas"]["MergeRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_route_merges_api_v1_routes_merges_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    classify_route_merge_api_v1_routes_merges__log_id__patch: {
+        parameters: {
+            query: {
+                merge_kind: string;
+            };
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_route_merge_classification_api_v1_routes_merges_reset_classification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    undo_route_merge_api_v1_routes_merges__log_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -13121,6 +15264,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MergedRouteView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_similar_routes_api_v1_routes__route_id__similar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
@@ -13911,6 +16087,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SegmentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_segments_intelligence_status_api_v1_segments_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_climb_detail_api_v1_segments_climbs__geo_cluster_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geo_cluster_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClimbDetail"];
                 };
             };
             /** @description Validation Error */
@@ -14970,6 +17197,26 @@ export interface operations {
             };
         };
     };
+    get_templates_api_v1_goals_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalTemplatesResponse"];
+                };
+            };
+        };
+    };
     list_goals_api_v1_goals_get: {
         parameters: {
             query?: {
@@ -15779,6 +18026,74 @@ export interface operations {
             };
         };
     };
+    push_plan_day_to_wahoo_api_v1_training_plans__plan_id__days__day_id__push_to_wahoo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                day_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WahooPushRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WahooPushResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_plan_day_from_wahoo_api_v1_training_plans__plan_id__days__day_id__push_to_wahoo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                day_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WahooPushResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_plan_targets_api_v1_training_plans__plan_id__refresh_targets_post: {
         parameters: {
             query?: never;
@@ -16062,6 +18377,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrainingPlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_strength_suggestions_api_v1_training_plans__plan_id__strength_suggestions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrengthPlanSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16398,6 +18744,37 @@ export interface operations {
             };
         };
     };
+    get_event_retrospective_api_v1_events__event_id__retrospective_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_event_ai_analysis_api_v1_events__event_id__ai_analysis_get: {
         parameters: {
             query?: never;
@@ -16582,6 +18959,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmAnalysisRead"];
+                };
+            };
+        };
+    };
+    get_cross_domain_status_api_v1_cross_domain_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

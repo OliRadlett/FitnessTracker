@@ -358,6 +358,10 @@ class FtpEstimateResponse(BaseModel):
     days_analyzed: int
     accepted: bool = False
     previous_ftp: float | None = None
+    # F9: approximate 95% cross-method interval (None when a single method
+    # fed the blend).
+    ftp_ci_low: float | None = None
+    ftp_ci_high: float | None = None
 
 
 # ── Personalized Power Model ──────────────────────────────────────────────
@@ -397,6 +401,7 @@ class PowerModelAdaptiveConstants(BaseModel):
     atl_tau: int = 7
     improvement_pct: float | None = None
     correlation: float | None = None
+    r_squared: float | None = None
     method: str | None = None
     data_points_used: int = 0
 
@@ -429,6 +434,9 @@ class Vo2maxResponse(BaseModel):
     method: str
     classification: str  # Poor, Below Average, Average, Good, Excellent, Superior
     all_estimates: list[Vo2maxDetail]
+    # F9: approximate 95% cross-method interval (None with a single method).
+    vo2max_ci_low: float | None = None
+    vo2max_ci_high: float | None = None
 
 
 class Vo2maxHistoryPoint(BaseModel):

@@ -56,6 +56,8 @@ async def get_vo2max_estimate(
         method=result.method,
         classification=_classify_vo2max(result.vo2max),
         all_estimates=[Vo2maxDetail(**e) for e in result.all_estimates],
+        vo2max_ci_low=result.ci_low,
+        vo2max_ci_high=result.ci_high,
     )
 
 

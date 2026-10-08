@@ -1230,7 +1230,8 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
         patchExercise(idx, { weight_kg: res.target_kg, pct_1rm: res.pct_1rm });
         setSuggestMsg(
           `${ex.exercise}: ${res.target_kg}kg @ ${Math.round(res.pct_1rm * 100)}% ` +
-          `(e1RM ${res.basis_1rm_kg}kg via ${res.basis_source === 'pr' ? 'PR' : 'recent sets'})`,
+          `(e1RM ${res.basis_1rm_kg}kg via ${res.basis_source === 'pr' ? 'PR' : 'recent sets'})` +
+          (res.safety_warning ? ` ⚠️ ${res.safety_warning}` : ''),
         );
       }
     } catch (err) {
