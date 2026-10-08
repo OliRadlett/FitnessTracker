@@ -79,12 +79,12 @@ export function ExerciseGroup({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-surface-light/20">
-              <th className="text-left py-2 px-3 text-muted font-medium text-xs">Set</th>
-              <th className="text-right py-2 px-3 text-muted font-medium text-xs">Weight</th>
-              <th className="text-right py-2 px-3 text-muted font-medium text-xs">Reps</th>
-              <th className="text-right py-2 px-3 text-muted font-medium text-xs">RPE</th>
-              <th className="text-center py-2 px-3 text-muted font-medium text-xs">Flags</th>
-              <th className="text-center py-2 px-3 text-muted font-medium text-xs">Actions</th>
+              <th scope="col" className="text-left py-2 px-3 text-muted font-medium text-xs">Set</th>
+              <th scope="col" className="text-right py-2 px-3 text-muted font-medium text-xs">Weight</th>
+              <th scope="col" className="text-right py-2 px-3 text-muted font-medium text-xs">Reps</th>
+              <th scope="col" className="text-right py-2 px-3 text-muted font-medium text-xs">RPE</th>
+              <th scope="col" className="text-center py-2 px-3 text-muted font-medium text-xs">Flags</th>
+              <th scope="col" className="text-center py-2 px-3 text-muted font-medium text-xs">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -199,19 +199,19 @@ export function ExerciseGroup({
                           <div className="flex justify-center gap-1">
                             <button
                               onClick={() => startEdit(set)}
-                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent text-base transition-colors"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-accent text-base transition-colors motion-reduce:transition-none"
                               title="Edit set"
-                              aria-label="Edit set"
+                              aria-label={`Edit set ${set.set_number} of ${exerciseName}`}
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="w-4 h-4" aria-hidden="true" />
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(set.id)}
-                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning text-base transition-colors"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-warning text-base transition-colors motion-reduce:transition-none"
                               title="Delete set"
-                              aria-label="Delete set"
+                              aria-label={`Delete set ${set.set_number} of ${exerciseName}`}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" aria-hidden="true" />
                             </button>
                           </div>
                         )}

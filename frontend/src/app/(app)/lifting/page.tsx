@@ -31,7 +31,6 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { LinkActivityModal } from '@/components/lifting/LinkActivityModal';
 import { WarmupTemplateManager } from '@/components/lifting/WarmupTemplateManager';
 import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
@@ -40,7 +39,11 @@ import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
 import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
-import { SessionCardMini } from '@/components/lifting/SessionCardMini';
+import { SessionBrowser } from '@/components/lifting/SessionBrowser';
+import { useSessionBrowserFilters } from '@/components/lifting/useSessionBrowserFilters';
+import { SessionFocusChips } from '@/components/lifting/SessionFocusChips';
+import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
+import { BestByRepRangeStrip } from '@/components/lifting/BestByRepRangeStrip';
 import { SetsVisualizer } from '@/components/lifting/SetsVisualizer';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
@@ -196,6 +199,22 @@ export default function LiftingPage() {
     setSelectedSessionId(id);
     setParam('session', id);
   }, [setParam]);
+
+  // Session browser filter state — one URL-synced (s_*) instance shared by
+  // SessionFocusChips and SessionBrowser. `?session=` / `?tab=` / `?pr=` are untouched.
+  const browserFilterBag = useSessionBrowserFilters();
+
+  // Mobile drill-down: selecting a session below the fold scrolls the detail
+  // into view on <lg screens; desktop shows both panes side by side.
+  const detailRef = useRef<HTMLDivElement>(null);
+  const handleSelectSessionInBrowser = useCallback((id: string | null) => {
+    handleSelectSession(id);
+    setShowAddExercise(false);
+    if (id != null && typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      // Let selection render first, then bring the detail into view.
+      window.setTimeout(() => detailRef.current?.scrollIntoView({ block: 'start' }), 50);
+    }
+  }, [handleSelectSession]);
   const previousPRsRef = useRef<Map<string, number>>(new Map());
 
   const [newSession, setNewSession] = useState<CreateSessionPayload>({
@@ -206,7 +225,9 @@ export default function LiftingPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
-  const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
+  // Full-list query retained for AutoregulationCard, Whoop banner, e1RM
+  // options and chip facets; the visible list itself is paginated by SessionBrowser.
+  const { data: sessions } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
     enabled: !!token,
@@ -742,45 +763,36 @@ export default function LiftingPage() {
 
       {/* Sessions + Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Session List */}
+        {/* Session browser (paginated, filterable, month-grouped) */}
         <div className="lg:col-span-1 space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Sessions</h2>
-          <div aria-live="polite">
-          {sessionsLoading ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <SkeletonRow key={i} />
-            ))
-          ) : sessions && sessions.length > 0 ? (
-            sessions.map((session) => {
-              const sv = videoBySession.get(session.id);
-              const prsInSession = prsBySession.get(session.id);
-              return (
-              <SessionCardMini
-                key={session.id}
-                session={session}
-                isSelected={selectedSessionId === session.id}
-                onSelect={(id) => { handleSelectSession(id); setShowAddExercise(false); }}
-                videos={sv}
-                sessionPRs={prsInSession}
-                onAddSet={(s) => { handleSelectSession(s.id); setShowAddExercise(true); }}
-                onEdit={(s) => { handleSelectSession(s.id); setShowEditSession(true); }}
-                onDelete={(s) => { handleSelectSession(s.id); setConfirmDeleteSession(true); }}
-              />
-            );
-          })
-          ) : (
-            <EmptyState
-              icon="🏋️"
-              title="No lifting sessions recorded"
-              description="Create your first session above, or jump straight into the Live Lift tracker to start logging sets in real time."
-              action={{ label: 'Start Live Session', href: '/lifting/live' }}
-            />
-          )}
-          </div>
+          <SessionFocusChips
+            value={browserFilterBag.filters.focus.trim() === '' ? null : browserFilterBag.filters.focus}
+            onChange={(focus) => browserFilterBag.setPartial({ focus: focus ?? '' })}
+            sessions={sessions}
+          />
+          <SessionBrowser
+            selectedSessionId={selectedSessionId}
+            onSelectSession={handleSelectSessionInBrowser}
+            videosBySession={videoBySession}
+            prsBySession={prsBySession}
+            onAddSet={(s) => { handleSelectSession(s.id); setShowAddExercise(true); }}
+            onEdit={(s) => { handleSelectSession(s.id); setShowEditSession(true); }}
+            onDelete={(s) => { handleSelectSession(s.id); setConfirmDeleteSession(true); }}
+            filterBag={browserFilterBag}
+          />
         </div>
 
         {/* Session Detail */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 scroll-mt-4" ref={detailRef}>
+          {selectedSessionId && (
+            <button
+              onClick={() => handleSelectSession(null)}
+              className="lg:hidden mb-3 inline-flex items-center gap-1 min-h-[44px] px-3 text-sm text-muted hover:text-foreground rounded-lg transition-colors"
+              aria-label="Back to sessions list"
+            >
+              ← Sessions
+            </button>
+          )}
           {selectedSessionId && sessionDetail ? (
             <div className="space-y-6">
             <Card>
@@ -853,6 +865,11 @@ export default function LiftingPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <RepeatSessionButton
+                      session={sessionDetail}
+                      onDuplicated={(created) => handleSelectSession(created.id)}
+                      variant="icon"
+                    />
                     <button
                       onClick={() => setShowEditSession(!showEditSession)}
                       className="px-3 py-1.5 text-muted hover:text-accent text-sm transition-colors"
@@ -1026,6 +1043,7 @@ export default function LiftingPage() {
             totalChart={big3TotalChart}
             isLoading={big3TotalLoading}
           />
+          <BestByRepRangeStrip records={personalRecords} isLoading={prLoading} />
 
       {/* Personal Records */}
       <Card>

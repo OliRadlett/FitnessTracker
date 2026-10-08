@@ -12,6 +12,8 @@ interface ExerciseAutocompleteProps {
   required?: boolean;
   autoFocus?: boolean;
   className?: string;
+  /** Passed through to the underlying <input> for <label htmlFor>. */
+  id?: string;
 }
 
 /** Debounce hook */
@@ -43,6 +45,7 @@ export function ExerciseAutocomplete({
   required = false,
   autoFocus = false,
   className = '',
+  id,
 }: ExerciseAutocompleteProps) {
   const { authFetch, token } = useAuthFetch();
   const [inputValue, setInputValue] = useState(value);
@@ -147,6 +150,7 @@ export function ExerciseAutocomplete({
     <div ref={containerRef} className="relative">
       <input
         ref={inputRef}
+        id={id}
         type="text"
         value={inputValue}
         onChange={(e) => {
