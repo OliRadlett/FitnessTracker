@@ -2006,7 +2006,7 @@ def analyze_weather_performance_weekly() -> dict:
         from app.integrations.weather_analysis import (
             MIN_RIDES_TOTAL,
             _modal_configured,
-            aanalyze_weather_on_modal,
+            analyze_weather_on_modal,
             is_weather_sample_sufficient,
         )
 
@@ -2168,10 +2168,8 @@ def analyze_weather_performance_weekly() -> dict:
                         }
                         rides.append(ride)
 
-                    # Call Modal off the event loop: the dispatch is
-                    # synchronous (~30 s remote run) and would block _run
-                    # + trip Modal's AsyncUsageWarning (P3 prod finding).
-                    results = await aanalyze_weather_on_modal(rides)
+                    # Call Modal
+                    results = analyze_weather_on_modal(rides)
                     modal_ok = True
                     _MODAL_BREAKER.record(
                         "analyze_weather_performance_weekly", True
