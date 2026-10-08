@@ -1,7 +1,7 @@
 """Cross-domain insights API — sleep-performance, cross-sport, race retrospective."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -10,6 +10,33 @@ from app.models.user import User
 from app.services.auth import get_current_user
 
 router = APIRouter()
+
+
+# NOTE: registered before `/{insight_type}` below. Both are single-segment
+# paths, so order decides which wins (pitfall 13): `/{insight_type}` would
+# otherwise swallow `/status` as insight_type="status" and 404.
+@router.get("/status")
+async def get_cross_domain_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight fitted marker for the settings intelligence card.
+
+    Returns 200 with ``analyzed_at=None`` when the weekly task has never
+    produced a row (instead of the 404 the list/detail endpoints use), so
+    the UI can render "Not yet fitted" without treating it as an error.
+    ``analyzed_at`` is the newest row's ``created_at`` across all types.
+    """
+    result = await db.execute(
+        select(func.max(CrossDomainInsight.created_at), func.count()).where(
+            CrossDomainInsight.user_id == current_user.id
+        )
+    )
+    analyzed_at, count = result.one()
+    return {
+        "analyzed_at": analyzed_at.isoformat() if analyzed_at else None,
+        "insight_count": count,
+    }
 
 
 @router.get("")

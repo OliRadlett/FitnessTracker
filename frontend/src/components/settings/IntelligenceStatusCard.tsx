@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { CyclingProfile } from '@/lib/api';
+import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getActiveLocale } from '@/lib/utils';
 
@@ -10,7 +12,41 @@ interface IntelligenceStatusCardProps {
   isLoading: boolean;
 }
 
+interface CrossDomainStatus {
+  analyzed_at: string | null;
+  insight_count: number;
+}
+
+interface SegmentStatus {
+  analyzed_at: string | null;
+  segment_count: number;
+  analyzed_count: number;
+}
+
 export function IntelligenceStatusCard({ profile, isLoading }: IntelligenceStatusCardProps) {
+  const { authFetch, token } = useAuthFetch();
+
+  // Cross-domain + segment fitted markers live outside CyclingProfile
+  // (cross_domain_insights rows, segments.intelligence_analyzed_at), so the
+  // card fetches the lightweight status endpoints. Both return 200 with
+  // analyzed_at=null when never fitted -- never 404 -- so a missing run
+  // renders "Not yet fitted" rather than an error.
+  const { data: crossDomainStatus } = useQuery<CrossDomainStatus>({
+    queryKey: ['intelligence-status', 'cross-domain'],
+    queryFn: () => authFetch<CrossDomainStatus>('/api/v1/cross-domain/status'),
+    staleTime: 300_000,
+    retry: false,
+    enabled: !!token,
+  });
+
+  const { data: segmentStatus } = useQuery<SegmentStatus>({
+    queryKey: ['intelligence-status', 'segments'],
+    queryFn: () => authFetch<SegmentStatus>('/api/v1/segments/status'),
+    staleTime: 300_000,
+    retry: false,
+    enabled: !!token,
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -39,13 +75,19 @@ export function IntelligenceStatusCard({ profile, isLoading }: IntelligenceStatu
     },
     {
       name: 'Cross-Domain Insights',
-      fitted: null, // stored in cross_domain table, not profile
-      detail: 'Sleep-performance, lifting-cycling, race retrospective',
+      fitted: crossDomainStatus?.analyzed_at ?? null,
+      detail:
+        crossDomainStatus && crossDomainStatus.insight_count > 0
+          ? `${crossDomainStatus.insight_count} insight${crossDomainStatus.insight_count === 1 ? '' : 's'}`
+          : 'Sleep-performance, lifting-cycling, race retrospective',
     },
     {
       name: 'Segment Intelligence',
-      fitted: null, // stored on segments
-      detail: 'DBSCAN clustering, climb classification, effort prediction',
+      fitted: segmentStatus?.analyzed_at ?? null,
+      detail:
+        segmentStatus && segmentStatus.segment_count > 0
+          ? `${segmentStatus.analyzed_count}/${segmentStatus.segment_count} segments analyzed`
+          : 'DBSCAN clustering, climb classification, effort prediction',
     },
   ];
 

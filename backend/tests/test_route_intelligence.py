@@ -135,3 +135,56 @@ def test_komoot_profile_classifies_end_to_end():
     result = _classify_terrain(profile)
     assert result["terrain_type"] != "unknown"
     assert result["climb_count"] >= 1
+
+
+# ── Audit fixes: climb-rate typing + canonical climb bands ─────────────
+
+
+def test_undulating_route_without_sustained_climbs_is_not_flat():
+    """Signed-mean gradients cancel on rollers, so typing must use climb rate.
+
+    Alternating ±2% grades over 10 km never trigger the 3% climb gate, but
+    bank 100 m of climbing. The old ``mean(gradients) < 1.5`` flat gate
+    read ~0% and called this flat; climb_rate_pct (1.0%) must keep it out
+    of the flat bucket.
+    """
+    distances = [i * 500.0 for i in range(21)]
+    # Sawtooth between 100 and 110 m: each 500 m leg climbs or descends 10 m.
+    elevations = [100.0 if i % 2 == 0 else 110.0 for i in range(21)]
+    result = _classify_terrain({"distance": distances, "elevation": elevations})
+    assert result["climb_count"] == 0
+    assert result["total_climb_m"] == pytest.approx(100.0)
+    assert result["climb_rate_pct"] == pytest.approx(1.0)
+    assert result["terrain_type"] != "flat"
+
+
+def test_dead_flat_route_is_flat():
+    result = _classify_terrain(
+        {"distance": [0, 1000, 2000], "elevation": [50.0, 50.0, 50.0]}
+    )
+    assert result["terrain_type"] == "flat"
+    assert result["climb_rate_pct"] == pytest.approx(0.0)
+
+
+def test_shallow_long_run_below_canonical_gates_is_not_a_climb():
+    """A 200 m run at ~2% (4 m gain) meets neither the 3% nor the 30 m gain
+    gate, so it must not count — matching services/segments.py."""
+    result = _classify_terrain(
+        {"distance": [0, 100, 200, 300], "elevation": [100, 102, 104, 104]}
+    )
+    assert result["climb_count"] == 0
+
+
+def test_climb_category_matches_canonical():
+    """Modal _climb_category must mirror services.segments.climb_category."""
+    from app.integrations.route_intelligence import _climb_category
+    from app.services.segments import climb_category as canonical
+
+    cases = [
+        (1000, 8.0), (950, 8.0), (500, 6.0), (200, 6.0), (160, 8.0),
+        (120, 4.5), (120, 2.0), (50, 3.5), (50, 2.0), (20, 8.0),
+        (300, 4.0), (450, 5.0), (100, 4.0), (30, 3.0), (29, 3.0),
+    ]
+    for gain, grad in cases:
+        expected = canonical(gain, grad) or "uncategorised"
+        assert _climb_category(gain, grad) == expected, (gain, grad)
