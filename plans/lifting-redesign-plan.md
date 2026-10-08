@@ -367,6 +367,18 @@ No database migrations needed for Tier A. The `order_index` column (migration 09
 - Keyboard shortcuts (D-1)
 - Focus filter (D-6)
 
+### Phase 8 — Scalable session browser iteration (✅ shipped 2026-10-06)
+Second iteration of the Sessions tab: the unbounded `SessionCardMini` list is now
+`SessionBrowser` (`components/lifting/SessionBrowser.tsx` + `useSessionBrowserFilters.ts`),
+wired into `lifting/page.tsx` with `?tab=` / `?session=` / `?pr=` deep-links and the
+detail panel untouched.
+- **Pagination**: page size 20 via backend `limit`/`offset` + `X-Total-Count` (no backend change — verified sufficient).
+- **Filters**: search (focus/notes/program/exercise), focus, exercise, from/to dates; client-side over the fetched window (single-day ranges use backend `session_date`); state URL-synced as `s_*` params.
+- **Grouping**: month sections with counts, newest first.
+- **Enhancement batch**: `SessionFocusChips` (drive the same filter bag), `RepeatSessionButton` in the detail header (duplicate via `createLiftingSession` + set payloads, selects the copy), `BestByRepRangeStrip` on the PRs tab.
+- **Mobile drill-down**: selecting a session scrolls the detail into view on `<lg` + a ← Sessions back button clears the selection.
+- **Known follow-up (not fixed)**: card quick-actions still select-then-act, so tapping ✏️/🗑 on a non-selected card switches detail context (spec S2). Decoupling needs an action-target state separate from selection.
+
 ### Cut with rationale (2026-10-06 user decisions)
 - Compete bundle C-6/C-12/C-18 (meet prep timeline, attempt simulator, competition mode): no meets → dead UI. Attempt links already cover casual curiosity.
 - Sharing C-11/D-3 (PDF export, clipboard export): neither wanted.

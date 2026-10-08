@@ -99,18 +99,20 @@ export function QuickAddSetBar({ session }: { session: LiftingSession }) {
 
   return (
     <div className="sticky bottom-4 z-10 rounded-xl border border-surface-light bg-surface/95 p-3 shadow-lg backdrop-blur">
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2" aria-label="Quick-add a set">
         <div className="min-w-[140px] flex-1">
-          <label className="block text-[11px] text-muted mb-1">Exercise</label>
+          <label htmlFor="quick-add-exercise" className="block text-[11px] text-muted mb-1">Exercise</label>
           <ExerciseAutocomplete
+            id="quick-add-exercise"
             value={exerciseName}
             onChange={handleExerciseChange}
             placeholder="e.g. Bench Press"
           />
         </div>
         <div className="w-20">
-          <label className="block text-[11px] text-muted mb-1">kg</label>
+          <label htmlFor="quick-add-kg" className="block text-[11px] text-muted mb-1">kg</label>
           <input
+            id="quick-add-kg"
             type="number"
             inputMode="decimal"
             min="0"
@@ -122,8 +124,9 @@ export function QuickAddSetBar({ session }: { session: LiftingSession }) {
           />
         </div>
         <div className="w-16">
-          <label className="block text-[11px] text-muted mb-1">Reps</label>
+          <label htmlFor="quick-add-reps" className="block text-[11px] text-muted mb-1">Reps</label>
           <input
+            id="quick-add-reps"
             type="number"
             inputMode="numeric"
             min="1"
@@ -135,8 +138,9 @@ export function QuickAddSetBar({ session }: { session: LiftingSession }) {
           />
         </div>
         <div className="w-16">
-          <label className="block text-[11px] text-muted mb-1">RPE</label>
+          <label htmlFor="quick-add-rpe" className="block text-[11px] text-muted mb-1">RPE</label>
           <input
+            id="quick-add-rpe"
             type="number"
             inputMode="decimal"
             min="1"
@@ -171,6 +175,10 @@ export function QuickAddSetBar({ session }: { session: LiftingSession }) {
           {error}
         </p>
       )}
+      {/* Consistent live-region feedback: screen readers announce success. */}
+      <span className="sr-only" aria-live="polite">
+        {justAdded ? 'Set added' : mutation.isPending ? 'Adding set…' : ''}
+      </span>
     </div>
   );
 }
