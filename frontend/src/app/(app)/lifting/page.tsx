@@ -54,6 +54,7 @@ import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
+import { fromLocalInputValue, toLocalInputValue } from '@/lib/lifting/sessionTime';
 import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
@@ -523,6 +524,30 @@ export default function LiftingPage() {
     onError: (err: Error) => setActionError(err.message || 'Failed to update session'),
   });
 
+  // Blur-save for the session start/finish times. Empty clears the field
+  // (sends null); a finish at/before the start is rejected client-side.
+  const handleSessionTimeBlur = useCallback((field: 'started_at' | 'ended_at', value: string) => {
+    if (!sessionDetail || !selectedSessionId) return;
+    if (value !== '' && fromLocalInputValue(value) === null) {
+      setActionError('Enter a valid date and time');
+      return;
+    }
+    const iso = fromLocalInputValue(value);
+    const otherRaw = field === 'started_at' ? sessionDetail.ended_at : sessionDetail.started_at;
+    const thisRaw = iso ?? (field === 'started_at' ? sessionDetail.started_at : sessionDetail.ended_at);
+    if (thisRaw && otherRaw) {
+      const thisMs = new Date(thisRaw).getTime();
+      const otherMs = new Date(otherRaw).getTime();
+      const startMs = field === 'started_at' ? thisMs : otherMs;
+      const endMs = field === 'started_at' ? otherMs : thisMs;
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs <= startMs) {
+        setActionError('Finish time must be after start time');
+        return;
+      }
+    }
+    updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { [field]: iso } });
+  }, [sessionDetail, selectedSessionId, updateSessionMutation]);
+
   const deleteSessionMutation = useMutation({
     mutationFn: (sessionId: string) => deleteLiftingSession(authFetch, sessionId),
     onSuccess: () => {
@@ -939,6 +964,28 @@ export default function LiftingPage() {
                         defaultValue={sessionDetail.notes || ''}
                         onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { notes: e.target.value || undefined } })}
                         placeholder="Optional notes"
+                        className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-muted mb-1">Started</label>
+                      <input
+                        type="datetime-local"
+                        key={`started-${selectedSessionId}`}
+                        defaultValue={toLocalInputValue(sessionDetail.started_at)}
+                        onBlur={(e) => handleSessionTimeBlur('started_at', e.target.value)}
+                        title="Session start time — clearing the field removes it"
+                        className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-muted mb-1">Finished</label>
+                      <input
+                        type="datetime-local"
+                        key={`ended-${selectedSessionId}`}
+                        defaultValue={toLocalInputValue(sessionDetail.ended_at)}
+                        onBlur={(e) => handleSessionTimeBlur('ended_at', e.target.value)}
+                        title="Session finish time — clearing the field removes it"
                         className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                     </div>

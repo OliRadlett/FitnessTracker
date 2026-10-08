@@ -7,7 +7,7 @@ cross-sport fatigue, race retrospective) computed by Modal.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,17 @@ class CrossDomainInsight(Base):
     """Per-user cross-domain analysis results."""
 
     __tablename__ = "cross_domain_insights"
+
+    # RMI-08: one row per (user_id, insight_type). The weekly scheduler upserts
+    # here; without this constraint the blind-insert path accumulated one row
+    # per run. race_retrospective is also latest-only under this constraint,
+    # which matches every current reader (api/cross_domain.py and today.py both
+    # consume only the latest per type).
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "insight_type", name="uq_cross_domain_insight_user_type"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
