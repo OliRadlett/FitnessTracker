@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart,
@@ -17,6 +18,14 @@ import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reacti
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES, formatGoalValue } from '@/components/ui/GoalCard';
+import { toDateStr } from '@/lib/training/week';
+import { useGoalPlanSchedule } from './useGoalPlanSchedule';
+import {
+  buildPlanDayHref,
+  buildPlanHref,
+  describePlanMatch,
+  matchGoalPlanDays,
+} from './goalPlanLinks';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 
@@ -178,6 +187,15 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   // has enough data, so modal and card never contradict (0.3).
   const displayBadge = goalDisplayBadge(goal, projection ?? null);
 
+  // ── Plan-day cross-links (ui-redesign-v2 Phase 2) ───────────────────────
+  // Upcoming plan days programming this goal — links only, computed from the
+  // already-fetched active plan. Renders nothing without matches.
+  const { planId, planName, days: planDays } = useGoalPlanSchedule();
+  const scheduledDays = useMemo(
+    () => (planId ? matchGoalPlanDays(goal, planDays, toDateStr(new Date())) : []),
+    [goal, planDays, planId],
+  );
+
   const handleEditSave = (e: React.FormEvent) => {
     e.preventDefault();
     const patch: UpdateGoalPayload = {
@@ -322,6 +340,62 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
               Couldn&apos;t load the projection — your check-ins below are unaffected.
             </p>
           ) : null)}
+
+        {/* Scheduled plan days (Phase 2 cross-link): upcoming plan days
+            programming this goal, each deep-linking to its plan day. */}
+        {planId && scheduledDays.length > 0 && (
+          <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2">
+            <h4 className="text-sm font-medium text-muted uppercase tracking-wider">
+              Scheduled in {planName ?? 'training plan'} · {describePlanMatch(goal, scheduledDays)}
+            </h4>
+            <div className="space-y-1">
+              {scheduledDays.slice(0, 3).map((d) => {
+                const dateStr = d.day_date.slice(0, 10);
+                const focus = d.planned_focus ? d.planned_focus.replace(/_/g, ' ') : null;
+                const firstEx = d.planned_exercises?.[0]?.exercise ?? null;
+                const extraEx = (d.planned_exercises?.length ?? 0) > 1
+                  ? ` +${(d.planned_exercises?.length ?? 1) - 1} more`
+                  : '';
+                return (
+                  <Link
+                    key={d.id}
+                    href={buildPlanDayHref(planId, dateStr)}
+                    className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
+                  >
+                    <span className="text-foreground font-medium tabular-nums whitespace-nowrap">
+                      {new Date(`${dateStr}T00:00:00`).toLocaleDateString(getActiveLocale(), {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </span>
+                    <span className="text-muted truncate">
+                      {d.sport === 'cycle' ? '🚴 Ride' : focus ?? firstEx ?? 'Strength'}
+                      {d.sport === 'strength' && firstEx && focus ? ` · ${firstEx}${extraEx}` : ''}
+                      {d.sport === 'strength' && firstEx && !focus ? extraEx : ''}
+                    </span>
+                    <span className="ml-auto text-accent shrink-0" aria-hidden="true">→</span>
+                  </Link>
+                );
+              })}
+            </div>
+            {scheduledDays.length > 3 ? (
+              <Link
+                href={buildPlanHref(planId)}
+                className="inline-flex min-h-[44px] items-center text-xs text-accent hover:text-accent/80 transition-colors"
+              >
+                +{scheduledDays.length - 3} more in {planName ?? 'the plan'} →
+              </Link>
+            ) : (
+              <Link
+                href={buildPlanHref(planId)}
+                className="inline-flex min-h-[44px] items-center text-xs text-accent hover:text-accent/80 transition-colors"
+              >
+                Open training plan →
+              </Link>
+            )}
+          </div>
+        )}
 
         {/* Manual check-in form */}
         {!editing && goal.status === 'active' && (

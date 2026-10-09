@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { Sidebar, SidebarProvider, MobileMenuButton, MobileBottomNav } from '@/components/Sidebar';
+import { ModeRail } from '@/components/mode-shell';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -89,7 +90,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <NotificationBell />
             <CommandPalette />
             <OnboardingWizard />
-            <Sidebar />
+            {/* Phase 2 (§2.2): desktop uses the 4-mode rail + per-mode
+                secondary nav. The flat Sidebar stays mounted as the mobile
+                drawer (opened via hamburger / More), hidden on desktop. */}
+            <ModeRail />
+            <div className="md:hidden">
+              <Sidebar />
+            </div>
             <main role="main" className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
               {/* pb-tabbar-clear reserves the mobile fixed bottom tab bar +
                   home-indicator safe area (see tailwind.config.js spacing

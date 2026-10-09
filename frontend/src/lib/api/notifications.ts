@@ -11,6 +11,7 @@ import type {
   NotificationSummary,
   NotificationType,
 } from './types';
+import type { HealthAlert } from './types/health';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
 
@@ -200,5 +201,63 @@ export function reauthGroupBody(displayName: string, total: number): string {
   return (
     `${displayName} still isn\u2019t syncing \u2014 this has come up ${total} times. ` +
     `Reconnect once to clear it.`
+  );
+}
+
+// ─── Phase 2: notification → Health `?alert=` deep links ────────────────────
+// The merge-vs-link table (plans/ui-redesign-v2.md §1.2) keeps full alert text
+// in ONE home (Health) — notifications carry summaries that deep-link there.
+// The backend stores no alert id on the notification (payload holds only
+// `alert_type`), so the link key is the alert id when present (future-proof),
+// else `alert_type`, and the Health page resolves id → alert_type → title.
+// Links only: stored rows are never rewritten.
+
+/** Deep-link key for a health-alert notification, or null when unresolvable. */
+export function healthAlertKey(n: AppNotification): string | null {
+  const payload = n.payload as { alert_id?: unknown; alert_type?: unknown } | null;
+  const id = payload?.alert_id;
+  if (typeof id === 'string' && id.trim()) return id.trim();
+  const type = payload?.alert_type;
+  if (typeof type === 'string' && type.trim()) return type.trim().toLowerCase();
+  return null;
+}
+
+/**
+ * Where a notification opens: health-alert rows deep-link to
+ * `/health?alert=<key>`; every other type keeps its stored link untouched.
+ */
+export function healthAlertLink(n: AppNotification): string {
+  if (n.type !== 'health_alert') return n.link;
+  const key = healthAlertKey(n);
+  return key ? `/health?alert=${encodeURIComponent(key)}` : '/health';
+}
+
+/**
+ * Summary copy for a health-alert notification row — the full text lives on
+ * Health, so rows show a truncated preview (word-boundary, ≤160 chars).
+ * Non-health bodies pass through untouched.
+ */
+export function summarizeNotificationBody(n: AppNotification, maxLen = 160): string {
+  const body = displayNotificationBody(n);
+  if (n.type !== 'health_alert' || body.length <= maxLen) return body;
+  const cut = body.slice(0, maxLen);
+  const boundary = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('—'), cut.lastIndexOf(','));
+  return `${boundary > maxLen * 0.5 ? cut.slice(0, boundary) : cut}…`;
+}
+
+/**
+ * Resolve a `?alert=` key against the Health alert list: exact alert id
+ * first, then `alert_type`, then case-insensitive title. Null when the key is
+ * empty or nothing matches (stale link — the page renders normally).
+ */
+export function resolveHealthAlert(alerts: HealthAlert[], key: string | null): HealthAlert | null {
+  if (!key) return null;
+  const needle = key.trim().toLowerCase();
+  if (!needle) return null;
+  return (
+    alerts.find((a) => a.id === key) ??
+    alerts.find((a) => a.alert_type.toLowerCase() === needle) ??
+    alerts.find((a) => a.title.toLowerCase() === needle) ??
+    null
   );
 }

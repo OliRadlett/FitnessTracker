@@ -50,13 +50,44 @@ import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
 
 export default function CyclingPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider (dashboard pattern). */
+  return (
+    <TimeRangeProvider>
+      <CyclingPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+function CyclingPageInner() {
   usePageTitle('Cycling');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
-  const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
+
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     cycling chart together. Day spans are clamped to the backend `?days=` cap
+     (≤365) inside timeRangeDays; months are derived for the `?months=`
+     endpoints (cap 12). Display only — no computation changes
+     (docs/algorithms.md authoritative). ─────────────────────────────────── */
+  const { start: rangeStart, end: rangeEnd, setCustom: setRangeCustom } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+  const chartMonths = Math.min(12, Math.max(1, Math.round(chartDays / 30)));
+  // The day selectors inside TrainingLoadSection + PowerCurveSection write
+  // into the shared context (custom window ending today), so every chart on
+  // the page re-cuts together. Only the window source changes — every chart,
+  // table, and card stays (data maximalism).
+  const writeRangeDays = (d: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (d - 1));
+    setRangeCustom(start, end);
+  };
 
   // Section anchor refs (used as scroll-to anchors in the JSX below).
   // Core power queries (FTP / VO2max / decoupling) now fire eagerly on mount —
@@ -94,15 +125,15 @@ export default function CyclingPage() {
   });
 
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
-    queryKey: ['training-load', loadDays],
-    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${loadDays}`),
+    queryKey: ['training-load', chartDays],
+    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
-    queryKey: ['power-curve'],
-    queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
+    queryKey: ['power-curve', chartDays],
+    queryFn: () => authFetch<PowerCurveResponse>(`/api/v1/cycling/power-curve?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -122,29 +153,29 @@ export default function CyclingPage() {
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
-    queryKey: ['power-zones'],
-    queryFn: () => authFetch<PowerZonesResponse>('/api/v1/cycling/power-zones?days=30'),
+    queryKey: ['power-zones', chartDays],
+    queryFn: () => authFetch<PowerZonesResponse>(`/api/v1/cycling/power-zones?days=${chartDays}`),
     enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
-    queryKey: ['power-vs-hr'],
-    queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
+    queryKey: ['power-vs-hr', chartDays],
+    queryFn: () => authFetch<PowerVsHrResponse>(`/api/v1/cycling/power-vs-hr?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartTrainingLoad } = useQuery<ChartData>({
-    queryKey: ['chart-training-load', loadDays],
-    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${loadDays}`),
+    queryKey: ['chart-training-load', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
-    queryKey: ['chart-stream-power-curve', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
+    queryKey: ['chart-stream-power-curve', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/stream_power_curve?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -172,25 +203,24 @@ export default function CyclingPage() {
     };
   }, [chartPowerCurve, powerCurve]);
 
-  const [comparisonDays, setComparisonDays] = useState(30);
-  const comparisonBaselineDays = comparisonDays * 3;
+  const comparisonBaselineDays = Math.min(365, chartDays * 3);
   const { data: chartPowerComparison } = useQuery<ChartData>({
-    queryKey: ['chart-power-comparison', comparisonDays],
-    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
+    queryKey: ['chart-power-comparison', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${chartDays}&days_b=${comparisonBaselineDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartPowerZones } = useQuery<ChartData>({
-    queryKey: ['chart-power-zones', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
+    queryKey: ['chart-power-zones', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_zones?days=${chartDays}`),
     enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
   const { data: chartDailyTss } = useQuery<ChartData>({
-    queryKey: ['chart-daily-tss', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
+    queryKey: ['chart-daily-tss', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/daily_tss?days=${chartDays}`),
     staleTime: 120_000,
     enabled: !!token,
   });
@@ -217,57 +247,57 @@ export default function CyclingPage() {
   });
 
   const { data: hrZones } = useQuery<HrZonesResponse>({
-    queryKey: ['hr-zones'],
-    queryFn: () => authFetch<HrZonesResponse>('/api/v1/cycling/hr-zones?days=30'),
+    queryKey: ['hr-zones', chartDays],
+    queryFn: () => authFetch<HrZonesResponse>(`/api/v1/cycling/hr-zones?days=${chartDays}`),
     enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: chartHrZones } = useQuery<ChartData>({
-    queryKey: ['chart-hr-zones', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
+    queryKey: ['chart-hr-zones', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/hr_zone_distribution?days=${chartDays}`),
     enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: vo2max, isLoading: vo2maxLoading } = useQuery<Vo2maxResponse>({
-    queryKey: ['vo2max'],
-    queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
+    queryKey: ['vo2max', chartDays],
+    queryFn: () => authFetch<Vo2maxResponse>(`/api/v1/cycling/vo2max?days=${chartDays}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
-    queryKey: ['vo2max-history'],
-    queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
+    queryKey: ['vo2max-history', chartMonths],
+    queryFn: () => authFetch<Vo2maxHistoryResponse>(`/api/v1/cycling/vo2max-history?months=${chartMonths}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
-    queryKey: ['chart-vo2max-trend', 12],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
+    queryKey: ['chart-vo2max-trend', chartMonths],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/vo2max_trend?months=${chartMonths}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
-    queryKey: ['decoupling-history'],
-    queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
+    queryKey: ['decoupling-history', chartDays],
+    queryFn: () => authFetch<DecouplingHistoryResponse>(`/api/v1/cycling/decoupling?days=${chartDays}&min_duration=60`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
-    queryKey: ['chart-decoupling-trend', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
+    queryKey: ['chart-decoupling-trend', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/decoupling_trend?days=${chartDays}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartWeightTrend } = useQuery<ChartData>({
-    queryKey: ['chart-weight-trend', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
+    queryKey: ['chart-weight-trend', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/weight_trend?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -511,6 +541,12 @@ export default function CyclingPage() {
     <div className="space-y-8">
       <PageHeader title="Cycling" subtitle="Power analysis, training load, and cycling metrics" />
 
+      {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
+          every cycling chart together via TimeRangeProvider. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <TimeRangePicker />
+      </div>
+
       {/* ── Core query error banner ─────────────────────────────────────────── */}
       <ErrorState variant="inline"
         show={hasQueryError}
@@ -646,8 +682,8 @@ export default function CyclingPage() {
         trainingLoad={trainingLoad}
         chartTrainingLoad={chartTrainingLoad}
         isLoading={loadLoading}
-        loadDays={loadDays}
-        setLoadDays={setLoadDays}
+        loadDays={chartDays}
+        setLoadDays={writeRangeDays}
       />
 
       {/* Recalculate TSS Banner (state-aware: only when CTL/ATL source data is missing) */}
@@ -718,8 +754,8 @@ export default function CyclingPage() {
           chartPowerZones={chartPowerZones}
           zonesLoading={zonesLoading}
           chartPowerComparison={chartPowerComparison}
-          comparisonDays={comparisonDays}
-          setComparisonDays={setComparisonDays}
+          comparisonDays={chartDays}
+          setComparisonDays={writeRangeDays}
           hrZones={hrZones}
           chartHrZones={chartHrZones}
           hasLthr={!!profile?.lactate_threshold_hr}

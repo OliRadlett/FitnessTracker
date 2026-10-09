@@ -19,6 +19,7 @@ import { RoutesGridView } from '@/components/routes/RoutesGridView';
 import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
 import { MobileRouteDetailSheet } from '@/components/routes/MobileRouteDetailSheet';
 import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
+import { DuplicatesTab } from './_components/DuplicatesTab';
 import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
 import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -69,6 +70,24 @@ export default function RoutesPage() {
     }
     setShowTips(false);
   };
+
+  // Phase 2 (ui-redesign-v2 §1.2 + §5-Phase 2): Library / Duplicates tabs via
+  // ?tab= URL state (lifting's ?tab= pattern). The Duplicates tab hosts the
+  // full duplicate-review queue + orphan review (see _components/DuplicatesTab).
+  const [activeTab, setActiveTab] = useState<'library' | 'duplicates'>('library');
+
+  // Deep-link: read ?tab= on load (?route= handling below is untouched).
+  useEffect(() => {
+    const tab = getParam('tab');
+    if (tab === 'duplicates' || tab === 'library') {
+      setActiveTab(tab);
+    }
+  }, [getParam]);
+
+  const handleTabChange = useCallback((tab: 'library' | 'duplicates') => {
+    setActiveTab(tab);
+    setParam('tab', tab === 'duplicates' ? 'duplicates' : null);
+  }, [setParam]);
 
   // Deep-link: select the route referenced by ?route=<id> on load
   useEffect(() => {
@@ -319,7 +338,9 @@ export default function RoutesPage() {
               </button>
 
               <Link
-                href="/routes/duplicates"
+                href="/routes?tab=duplicates"
+                onClick={() => handleTabChange('duplicates')}
+                aria-current={activeTab === 'duplicates' ? 'page' : undefined}
                 className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
               >
                 <Copy className="w-4 h-4" />
@@ -365,6 +386,21 @@ export default function RoutesPage() {
           </div>
         </div>
 
+        {/* Phase 2: Library / Duplicates tabs (?tab= URL state, lifting pattern) */}
+        <div className="flex-shrink-0 px-4 pt-3">
+          <SegmentedControl
+            ariaLabel="Routes section"
+            value={activeTab}
+            onChange={handleTabChange}
+            options={[
+              { value: 'library', label: 'Library' },
+              { value: 'duplicates', label: 'Duplicates' },
+            ]}
+          />
+        </div>
+
+        {activeTab === 'library' && (
+        <>
         {/* Filter bar */}
         <div className="flex-shrink-0 px-4 py-3 border-b border-surface-light/30">
           <RouteFilterBar />
@@ -499,13 +535,23 @@ export default function RoutesPage() {
             />
           </div>
         </div>
+        </>
+        )}
+
+        {activeTab === 'duplicates' && (
+          <div className="flex-1 overflow-auto">
+            <DuplicatesTab />
+          </div>
+        )}
       </div>
 
-      {/* Route detail panel — mobile bottom sheet */}
+      {/* Route detail panel — mobile bottom sheet (library tab only) */}
+      {activeTab === 'library' && (
       <MobileRouteDetailSheet
         route={selectedRoute ?? null}
         onClose={() => handleSelectRoute(null)}
       />
+      )}
 
       {/* GPX Upload Modal */}
       {showImportModal && (
@@ -525,8 +571,8 @@ export default function RoutesPage() {
         </Modal>
       )}
 
-      {/* Compare Routes Modal — only once both routes have loaded */}
-      {compareMode && compareRouteAData && compareRouteBData && (
+      {/* Compare Routes Modal — only once both routes have loaded (library tab only) */}
+      {activeTab === 'library' && compareMode && compareRouteAData && compareRouteBData && (
         <CompareRoutesModal
           routeA={compareRouteAData}
           routeB={compareRouteBData}
@@ -534,8 +580,8 @@ export default function RoutesPage() {
         />
       )}
 
-      {/* One-route hint: guide the user to pick a second route */}
-      {compareMode && !(compareRouteAData && compareRouteBData) && (
+      {/* One-route hint: guide the user to pick a second route (library tab only) */}
+      {activeTab === 'library' && compareMode && !(compareRouteAData && compareRouteBData) && (
         <div
           className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-surface border border-accent/30 rounded-xl px-4 py-3 shadow-2xl"
           role="status"

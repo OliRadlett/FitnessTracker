@@ -16,6 +16,8 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { AiAnalysisCard } from '@/components/analysis/AiAnalysisCard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
@@ -192,10 +194,30 @@ function InsightBody({ insight }: { insight: AthleteInsight }) {
 }
 
 export default function AnalyticsPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider (dashboard pattern). */
+  return (
+    <TimeRangeProvider>
+      <AnalyticsPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+function AnalyticsPageInner() {
   usePageTitle('Analytics');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['analytics', 'insights'] as const;
+
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives the
+     analytics load chart together with the other REVIEW surfaces. Day spans
+     are clamped to the backend `?days=` cap (≤365) inside timeRangeDays.
+     Display only — no computation changes (docs/algorithms.md authoritative).
+     Insight rows, explanations, season overview, and the What-If lab carry no
+     chart window and keep their existing queries. ───────────────────────── */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
 
   const { data: insights, isLoading, dataUpdatedAt } = useQuery<AthleteInsight[]>({
     queryKey,
@@ -238,6 +260,12 @@ export default function AnalyticsPage() {
           Recompute failed — {(recompute.error as Error)?.message || 'try again shortly.'}
         </p>
       )}
+
+      {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
+          the analytics load chart together with the other REVIEW surfaces. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <TimeRangePicker />
+      </div>
 
       <SegmentedControl
         ariaLabel="Analytics sections"
@@ -300,8 +328,11 @@ export default function AnalyticsPage() {
       {/* B-18 season overview — big-picture AI brief over all domains */}
       {tab === 'season' && <SeasonOverview />}
 
-      {/* B-31 unified load — cycling TSS + lifting estimates on one axis */}
-      {tab === 'load' && <CombinedLoadChart />}
+      {/* B-31 unified load — cycling TSS + lifting estimates on one axis.
+          Window comes from the shared REVIEW time-range (range in query key
+          via the `days` prop — same cache entry as the lifting tab only at
+          the 90D default). */}
+      {tab === 'load' && <CombinedLoadChart days={chartDays} />}
 
       {/* B-17 What-If Lab — target timelines at current/half/double slope */}
       {tab === 'load' && <WhatIfLab />}

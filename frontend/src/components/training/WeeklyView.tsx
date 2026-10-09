@@ -13,27 +13,31 @@
  * which saves the FULL days array. These two views never share save state.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
+  Goal,
   TrainingPlan,
   TrainingWeekDay,
   UpdateTrainingPlanDayPayload,
   RefreshTargetsResponse,
   Event,
 } from '@/lib/api';
-import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, refreshTargets } from '@/lib/api';
+import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, refreshTargets, listGoals } from '@/lib/api';
 import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
 import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
 import {
   toDateStr,
   addDays,
+  diffDays,
   getWeek1Start,
   getTotalWeeks,
   getCurrentWeek,
 } from '@/lib/training/week';
+import { goalProgressPct } from '@/components/ui/GoalCard';
+import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
 import { ConformityBadge } from './ConformityBadge';
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
@@ -158,9 +162,22 @@ const TREND_ARROW: Record<string, { symbol: string; className: string }> = {
 interface WeeklyViewProps {
   plan: TrainingPlan;
   events?: Event[];
+  /**
+   * Phase 2 deep-link landing (`?day=YYYY-MM-DD` from goal cards): the week
+   * containing this date opens initially, the day auto-expands, and the card
+   * scrolls into view + highlights. Null when no deep link is present.
+   */
+  highlightDate?: string | null;
 }
 
-export function WeeklyView({ plan, events }: WeeklyViewProps) {
+/** 1-based week number containing `dateStr`, clamped to the plan's range. */
+function weekNumberForDate(startDate: string, endDate: string, dateStr: string): number {
+  const total = getTotalWeeks(startDate, endDate);
+  const raw = Math.floor(diffDays(getWeek1Start(startDate), dateStr) / 7) + 1;
+  return Math.min(total, Math.max(1, raw));
+}
+
+export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -169,7 +186,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     [plan.start_date, plan.end_date],
   );
   const [currentWeek, setCurrentWeek] = useState(() =>
-    getCurrentWeek(plan.start_date, plan.end_date),
+    highlightDate
+      ? weekNumberForDate(plan.start_date, plan.end_date, highlightDate)
+      : getCurrentWeek(plan.start_date, plan.end_date),
   );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
@@ -215,8 +234,18 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     enabled: !!token,
   });
 
-  const invalidateWeeks = () => {
-    queryClient.invalidateQueries({ queryKey: ['plan-week', plan.id] });
+  // Phase 2 — active goals for the plan → goal direction (day cards show a
+  // 🎯 count badge, the expanded panel lists supporting goals). Shares the
+  // ['goals', 'active'] cache entry with the goals page — no extra fetch.
+  const goalsQuery = useQuery({
+    queryKey: ['goals', 'active'],
+    queryFn: () => listGoals(authFetch, 'active'),
+    staleTime: 60_000,
+    enabled: !!token,
+  });
+  const activeGoals = useMemo(() => goalsQuery.data ?? [], [goalsQuery.data]);
+
+  const invalidateWeeks = () => {    queryClient.invalidateQueries({ queryKey: ['plan-week', plan.id] });
     // Completion toggles / edits change scoring inputs → refresh both.
     queryClient.invalidateQueries({ queryKey: ['plan-conformity', plan.id] });
     queryClient.invalidateQueries({ queryKey: ['day-conformity'] });
@@ -314,6 +343,26 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
     if (!expandedDayId) return null;
     return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === expandedDayId) ?? null;
   }, [expandedDayId, weekDates, daysByDate]);
+
+  // Phase 2 `?day=` landing: jump to the week holding the date, auto-expand
+  // the day, scroll its card into view. Runs once per deep-link date — week
+  // jumps wait for the new week's data before expanding.
+  const highlightDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlightDate || highlightDone.current === highlightDate) return;
+    const targetWeek = weekNumberForDate(plan.start_date, plan.end_date, highlightDate);
+    if (targetWeek !== currentWeek) {
+      setCurrentWeek(targetWeek);
+      return;
+    }
+    highlightDone.current = highlightDate;
+    const day = weekData?.days.find((d) => d.day_date.slice(0, 10) === highlightDate);
+    if (!day) return;
+    setExpandedDayId(day.id);
+    requestAnimationFrame(() => {
+      document.getElementById(`plan-day-${highlightDate}`)?.scrollIntoView({ block: 'center' });
+    });
+  }, [highlightDate, weekData, currentWeek, plan.start_date, plan.end_date]);
 
   // Conformity strip data: overall/trend are plan-wide; per-sport chips come
   // from the currently viewed week when available (else the latest scored one).
@@ -611,6 +660,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
             });
             const isToday = date === todayStr;
             const expanded = !!day && expandedDayId === day.id;
+            // Phase 2 cross-links: deep-link highlight + supporting-goal badge.
+            const highlighted = highlightDate === date;
+            const dayGoals = day ? goalsForPlanDay(activeGoals, day) : [];
 
             return (
               <DayCard
@@ -622,6 +674,9 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
                 day={day}
                 todayStr={todayStr}
                 expanded={expanded}
+                highlighted={highlighted}
+                goalCount={dayGoals.length}
+                goalNames={dayGoals.map((g) => goalShortLabel(g))}
                 onToggleExpand={() => day && setExpandedDayId(expanded ? null : day.id)}
                 onToggleCompleted={(completed) =>
                   day &&
@@ -664,6 +719,7 @@ export function WeeklyView({ plan, events }: WeeklyViewProps) {
           <ExpandedPanel
             day={expandedDay}
             planId={plan.id}
+            goals={activeGoals}
             busy={
               toggleCompleted.isPending ||
               assignRoute.isPending ||
@@ -733,6 +789,12 @@ interface DayCardProps {
   day?: TrainingWeekDay;
   todayStr: string;
   expanded: boolean;
+  /** Phase 2 `?day=` deep-link highlight for this card's date. */
+  highlighted?: boolean;
+  /** Phase 2: number of active goals this day supports (badge, non-interactive). */
+  goalCount?: number;
+  /** Phase 2: supporting goal names for the badge tooltip. */
+  goalNames?: string[];
   onToggleExpand: () => void;
   onToggleCompleted: (completed: boolean) => void;
   busy: boolean;
@@ -746,6 +808,9 @@ function DayCard({
   day,
   todayStr,
   expanded,
+  highlighted,
+  goalCount,
+  goalNames,
   onToggleExpand,
   onToggleCompleted,
   busy,
@@ -763,11 +828,12 @@ function DayCard({
 
   return (
     <div
-      className={`rounded-xl border p-3 space-y-2 cursor-pointer transition-colors ${
+      id={`plan-day-${date}`}
+      className={`rounded-xl border p-3 space-y-2 cursor-pointer transition-colors scroll-mt-4 ${
         expanded
           ? 'bg-surface-light/40 border-accent/40'
           : 'bg-surface-light/20 border-surface-light/50 hover:bg-surface-light/30'
-      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
+      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${highlighted ? 'ring-2 ring-accent' : ''} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
       onClick={onToggleExpand}
       role="button"
       tabIndex={0}
@@ -867,6 +933,18 @@ function DayCard({
             </p>
           )}
 
+          {/* Phase 2 plan → goal cross-link hint: how many active goals this
+              day supports. Non-interactive badge (the expanded panel below
+              carries the tappable goal rows); tooltip names the goals. */}
+          {(goalCount ?? 0) > 0 && (
+            <p
+              className="text-xs text-muted truncate"
+              title={`Supports goals: ${(goalNames ?? []).join(', ')} — expand for details`}
+            >
+              🎯 {goalCount} goal{goalCount === 1 ? '' : 's'}
+            </p>
+          )}
+
           {/* Route indicator (cycle days — collapsed card) */}
           {day.sport === 'cycle' && !expanded && (day.planned_route_id || day.actual_activity?.route_id) && (
             <p className="text-[10px] text-muted truncate" title={day.actual_activity?.route_name || undefined}>
@@ -953,6 +1031,7 @@ function DayCard({
 function ExpandedPanel({
   day,
   planId,
+  goals,
   busy,
   onUnassignRoute,
   onQuickEdit,
@@ -961,6 +1040,8 @@ function ExpandedPanel({
 }: {
   day: TrainingWeekDay;
   planId: string;
+  /** Active goals (Phase 2 plan → goal cross-links). */
+  goals: Goal[];
   busy: boolean;
   onUnassignRoute: () => void;
   onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
@@ -972,6 +1053,8 @@ function ExpandedPanel({
   const [notes, setNotes] = useState(day.notes ?? '');
   // B-17: autoregulated suggestions for planned strength exercises.
   const autoMap = useAutoregulationMap();
+  // Phase 2: active goals this day's training supports (display-only match).
+  const dayGoals = useMemo(() => goalsForPlanDay(goals, day), [goals, day]);
 
   const handleSave = () => {
     const payload: UpdateTrainingPlanDayPayload = {};
@@ -1114,6 +1197,31 @@ function ExpandedPanel({
               📤 Push to Wahoo
             </button>
           )}
+        </div>
+      )}
+
+      {/* Phase 2 plan → goal cross-links: active goals this day supports. */}
+      {dayGoals.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted uppercase tracking-wide">
+            Supports goals
+          </p>
+          {dayGoals.map((g) => {
+            const progress = goalProgressPct(g);
+            return (
+              <Link
+                key={g.id}
+                href="/goals"
+                title={`View ${goalShortLabel(g)} in goals`}
+                className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
+              >
+                <span aria-hidden="true">🎯</span>
+                <span className="text-xs text-foreground truncate">{goalShortLabel(g)}</span>
+                <span className="text-xs text-muted tabular-nums shrink-0">{progress.toFixed(0)}%</span>
+                <span className="ml-auto text-accent text-xs shrink-0" aria-hidden="true">→</span>
+              </Link>
+            );
+          })}
         </div>
       )}
 

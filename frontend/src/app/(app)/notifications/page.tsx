@@ -8,11 +8,13 @@ import {
   displayNotificationBody,
   getNotificationSummary,
   groupReauthByProvider,
+  healthAlertLink,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   reauthGroupBody,
   reauthProvider,
+  summarizeNotificationBody,
 } from '@/lib/api';
 import type { AppNotification, NotificationSummary, NotificationType, ReauthGroup } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
@@ -202,7 +204,10 @@ export default function NotificationsPage() {
 
   function handleOpen(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id);
-    if (n.link) router.push(n.link);
+    // Phase 2: health-alert rows deep-link to Health (`?alert=`) — the full
+    // text lives there; every other type keeps its stored link.
+    const target = n.type === 'health_alert' ? healthAlertLink(n) : n.link;
+    if (target) router.push(target);
   }
 
   function handleReconnect(group: ReauthGroup) {
@@ -211,6 +216,10 @@ export default function NotificationsPage() {
   }
 
   function renderItem(n: AppNotification) {
+    // Phase 2 merge-vs-link (§1.2): health-alert rows carry a summary — the
+    // full text lives once on Health behind the row's deep link.
+    const isHealthAlert = n.type === 'health_alert';
+    const body = isHealthAlert ? summarizeNotificationBody(n) : displayNotificationBody(n);
     return (
       <button
         key={n.id}
@@ -237,7 +246,10 @@ export default function NotificationsPage() {
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted mt-1">{displayNotificationBody(n)}</p>
+            <p className="text-sm text-muted mt-1">{body}</p>
+            {isHealthAlert && (
+              <p className="text-xs text-accent mt-1">View full text on Health →</p>
+            )}
             <p className="text-[11px] text-muted/70 mt-1.5">
               {n.created_at ? relativeTime(n.created_at) : ''}
             </p>

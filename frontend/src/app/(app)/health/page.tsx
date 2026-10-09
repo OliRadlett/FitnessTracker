@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { useAuthFetch, resolveHealthAlert } from '@/lib/api';
+import { useDeepLink } from '@/lib/useDeepLink';
 import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   ReadinessResponse,
@@ -37,6 +38,8 @@ import {
 } from '@/lib/athlete';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
 
 const SEVERITY_BADGE: Record<string, string> = {
   critical: 'bg-warning/15 text-warning border-warning/30',
@@ -51,11 +54,31 @@ const SEVERITY_LABEL: Record<string, string> = {
 };
 
 export default function HealthPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider (dashboard pattern). */
+  return (
+    <TimeRangeProvider>
+      <HealthPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+function HealthPageInner() {
   usePageTitle('Health');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [alertTab, setAlertTab] = useState<'all' | 'active' | 'dismissed'>('all');
+
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     health trend chart together. Day spans are clamped to the backend `?days=`
+     cap (≤365) inside timeRangeDays. Display only — no computation changes
+     (docs/algorithms.md authoritative). The 7-day sleep-intelligence cards and
+     the shared athlete slots (weight-history / connections) keep their fixed
+     windows so their caches stay shared. ───────────────────────────────── */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
 
   const chartOptions = { staleTime: 300_000 } as const;
 
@@ -74,50 +97,50 @@ export default function HealthPage() {
   });
 
   const { data: recoveryChart, isLoading: recoveryLoading } = useQuery<ChartData>({
-    queryKey: ['chart-recovery-trend', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/whoop_recovery_trend?days=90'),
+    queryKey: ['chart-recovery-trend', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/whoop_recovery_trend?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: hrvChart, isLoading: hrvLoading } = useQuery<ChartData>({
-    queryKey: ['chart-hrv-trend-detailed', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/hrv_trend_detailed?days=90'),
+    queryKey: ['chart-hrv-trend-detailed', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/hrv_trend_detailed?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: restingHrChart, isLoading: restingHrLoading } = useQuery<ChartData>({
-    queryKey: ['chart-resting-hr', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/resting_hr_trend?days=90'),
+    queryKey: ['chart-resting-hr', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/resting_hr_trend?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: respirationChart, isLoading: respirationLoading } = useQuery<ChartData>({
-    queryKey: ['chart-respiration', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/respiration_trend?days=90'),
+    queryKey: ['chart-respiration', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/respiration_trend?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: recoveryVsPerfChart, isLoading: recoveryVsPerfLoading } = useQuery<ChartData>({
-    queryKey: ['chart-recovery-vs-performance', 60],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/recovery_vs_performance?days=60'),
+    queryKey: ['chart-recovery-vs-performance', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/recovery_vs_performance?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: sleepQualityChart, isLoading: sleepQualityLoading } = useQuery<ChartData>({
-    queryKey: ['chart-sleep-quality', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/sleep_quality_trend?days=90'),
+    queryKey: ['chart-sleep-quality', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/sleep_quality_trend?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
 
   const { data: strainTrendChart, isLoading: strainTrendLoading } = useQuery<ChartData>({
-    queryKey: ['chart-whoop-strain', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/whoop_strain_trend?days=30'),
+    queryKey: ['chart-whoop-strain', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/whoop_strain_trend?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
@@ -157,8 +180,8 @@ export default function HealthPage() {
   // LoadStrip/WeightCard/SyncBadge shares one cache entry. Values are
   // display-only — CTL/ATL/TSB computation stays in docs/algorithms.md.
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
-    queryKey: ['training-load', 90],
-    queryFn: () => authFetch<TrainingLoadResponse>('/api/v1/cycling/training-load?days=90'),
+    queryKey: ['training-load', chartDays],
+    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${chartDays}`),
     ...chartOptions,
     enabled: !!token,
   });
@@ -223,6 +246,34 @@ export default function HealthPage() {
     onError: (err) => toast.error(`Dismiss alert failed: ${(err as Error)?.message || 'please try again.'}`),
   });
 
+  // Phase 2 notification → Health deep link (`?alert=`): resolve the key
+  // against id → alert_type → title, reveal the tab holding it, scroll it
+  // into view + highlight. Stale keys render the page normally.
+  const { getParam } = useDeepLink();
+  const alertKey = getParam('alert');
+  const targetAlert = useMemo(
+    () => resolveHealthAlert(alerts ?? [], alertKey),
+    [alerts, alertKey],
+  );
+
+  useEffect(() => {
+    if (!targetAlert) return;
+    const hidden =
+      (targetAlert.status === 'dismissed' && alertTab === 'active') ||
+      (targetAlert.status !== 'dismissed' && alertTab === 'dismissed');
+    if (hidden) setAlertTab('all');
+  }, [targetAlert, alertTab]);
+
+  useEffect(() => {
+    if (!targetAlert) return;
+    // Wait a tick so a tab switch above has rendered the card first.
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`health-alert-${targetAlert.id}`)
+        ?.scrollIntoView({ block: 'center' });
+    });
+  }, [targetAlert, alertTab]);
+
   const sleepingLoading = !sleepConsistency && !sleepDebt && !optimalBedtime;
   const hasQueryError = readinessError || alertsError;
 
@@ -245,6 +296,12 @@ export default function HealthPage() {
         show={hasQueryError}
         message="Some health data failed to load."
       />
+
+      {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
+          every health trend chart together via TimeRangeProvider. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <TimeRangePicker />
+      </div>
 
       {/* ── Training load (shared LoadStrip — identical props in every slot, §1) */}
       <LoadStrip
@@ -324,7 +381,7 @@ export default function HealthPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Recovery Trend (90 days)</CardTitle>
+            <CardTitle>Recovery Trend ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={recoveryLoading}
@@ -335,7 +392,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>HRV Trend (90 days)</CardTitle>
+            <CardTitle>HRV Trend ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={hrvLoading}
@@ -346,7 +403,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Resting Heart Rate (90 days)</CardTitle>
+            <CardTitle>Resting Heart Rate ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={restingHrLoading}
@@ -357,7 +414,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Respiratory Rate (90 days)</CardTitle>
+            <CardTitle>Respiratory Rate ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={respirationLoading}
@@ -368,7 +425,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Recovery vs Next-Day Performance (60 days)</CardTitle>
+            <CardTitle>Recovery vs Next-Day Performance ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={recoveryVsPerfLoading}
@@ -379,7 +436,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Sleep Quality (90 days)</CardTitle>
+            <CardTitle>Sleep Quality ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={sleepQualityLoading}
@@ -390,7 +447,7 @@ export default function HealthPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Whoop Strain (30 days)</CardTitle>
+            <CardTitle>Whoop Strain ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={strainTrendLoading}
@@ -542,14 +599,20 @@ export default function HealthPage() {
               {alerts.map((alert) => {
                 // Dismissed alerts render greyed (2.10) — a yellow "warning"
                 // card for something already handled reads as a live problem.
+                // Phase 2: the `?alert=` deep-link target gets an anchor id +
+                // accent ring so notification taps land visibly.
                 const dismissed = alert.status === 'dismissed';
+                const targeted = targetAlert?.id === alert.id;
                 return (
                 <div
                   key={alert.id}
-                  className={`rounded-lg border p-3 ${
-                    dismissed
-                      ? 'border-surface-light/50 bg-surface-light/10 opacity-60'
-                      : SEVERITY_BADGE[alert.severity] ?? 'border-surface-light bg-surface-light/20'
+                  id={`health-alert-${alert.id}`}
+                  className={`rounded-lg border p-3 scroll-mt-4 ${
+                    targeted
+                      ? 'border-accent ring-2 ring-accent'
+                      : dismissed
+                        ? 'border-surface-light/50 bg-surface-light/10 opacity-60'
+                        : SEVERITY_BADGE[alert.severity] ?? 'border-surface-light bg-surface-light/20'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">

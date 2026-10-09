@@ -28,6 +28,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
+import { timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { GoalsSection } from './GoalsSection';
 import { TodayAdaptiveAction } from './TodayAdaptiveAction';
 import { MetricCard } from '@/components/ui/MetricCard';
@@ -84,10 +85,15 @@ export function TodayTab({
 }: TodayTabProps) {
   const { authFetch, token } = useAuthFetch();
 
+  /* Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     dashboard chart together (clamped to the backend `?days=` cap). */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+
   // ── Training load chart (CTL / ATL / TSB trend) ─────────────────────────
   const { data: trainingLoadChart, isLoading: trainingLoadLoading } = useQuery<ChartData>({
-    queryKey: ['chart-training-load', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/training_load?days=90'),
+    queryKey: ['chart-training-load', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -354,7 +360,7 @@ export function TodayTab({
           CTL/ATL/TSB numbers live once in the page-level LoadStrip slot
           above the tabs (ui-redesign-v2 §1 — single home for load display),
           so the three MetricCards are gone; the Form Trend chart stays here
-          as tab depth (data maximalism — charts untouched). */}
+          as tab depth (data maximalism) on the shared range (see picker). */}
       <div>
         <ChartCard
           title="Form Trend"

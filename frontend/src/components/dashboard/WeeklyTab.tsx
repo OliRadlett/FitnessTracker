@@ -17,11 +17,15 @@ import type {
   LlmAnalysis,
   DeficiencyResponse,
   CrossDomainInsightsResponse,
+  WeeklyReport,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Chart, ChartBody } from '@/components/charts/Chart';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { timeRangeDays, timeRangeWeeks, useTimeRange } from '@/lib/time-range';
+import { WeekNavigator, mondayOfOffset, toDateStr } from './PeriodNav';
 import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { LlmAnalysisCard } from '@/components/cycling/LlmAnalysisCard';
@@ -46,9 +50,6 @@ interface WeeklyTabProps {
   respiratoryRate: RespiratoryRateResponse | undefined;
   whoopWeekly: WhoopWeeklySummary | undefined;
   hasWhoop: boolean;
-  weeklyTss: ChartData | undefined;
-  tssLoading: boolean;
-  strainVsRecovery: ChartData | undefined;
   activities: Activity[] | undefined;
   activitiesLoading: boolean;
   sessions: LiftingSession[] | undefined;
@@ -69,7 +70,6 @@ interface WeeklyTabProps {
   isAnalyzing: boolean;
   onAnalyze: () => void;
   onDownloadReport: (apiPath: string, filename: string) => void;
-  getCurrentMonday: () => string;
 }
 
 export function WeeklyTab({
@@ -80,9 +80,6 @@ export function WeeklyTab({
   respiratoryRate,
   whoopWeekly,
   hasWhoop,
-  weeklyTss,
-  tssLoading,
-  strainVsRecovery,
   activities,
   activitiesLoading,
   sessionsLoading,
@@ -101,20 +98,61 @@ export function WeeklyTab({
   isAnalyzing,
   onAnalyze,
   onDownloadReport,
-  getCurrentMonday,
 }: WeeklyTabProps) {
   const { authFetch, token } = useAuthFetch();
 
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     dashboard chart together. Day/week spans are clamped to the backend caps
+     (days ≤ 365, weeks ≤ 52) inside timeRangeDays / timeRangeWeeks. ─────── */
+  const { start: rangeStart, end: rangeEnd, preset: rangePreset } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+  const chartWeeks = timeRangeWeeks(rangeStart, rangeEnd);
+
+  /* ── Previous-period navigation (Walkthrough: history is unreachable
+     without it). weeksBack matches the backend `?weeks_back=` param
+     (0 = current week … 12); week bounds are Monday-aligned like the backend
+     `_week_bounds` (see PeriodNav). ─────────────────────────────────────── */
+  const [weeksBack, setWeeksBack] = React.useState(0);
+  const viewedMondayStr = toDateStr(mondayOfOffset(weeksBack));
+
+  const {
+    data: weeklyReport,
+    isLoading: weeklyReportLoading,
+    isError: weeklyReportError,
+  } = useQuery<WeeklyReport>({
+    queryKey: ['weekly-report', weeksBack],
+    queryFn: () => authFetch<WeeklyReport>(`/api/v1/dashboard/weekly-report?weeks_back=${weeksBack}`),
+    staleTime: 300_000,
+    refetchOnWindowFocus: true,
+    enabled: !!token,
+  });
+
+  const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
+    queryKey: ['chart-weekly-tss', chartWeeks],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/weekly_tss?weeks=${chartWeeks}`),
+    staleTime: 300_000,
+    refetchOnWindowFocus: true,
+    enabled: !!token,
+  });
+
+  const { data: strainVsRecovery } = useQuery<ChartData>({
+    queryKey: ['chart-strain-vs-recovery', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/strain_vs_recovery?days=${chartDays}`),
+    staleTime: 300_000,
+    refetchOnWindowFocus: true,
+    enabled: !!token,
+  });
+
   const { data: hrvChart, isLoading: hrvLoading } = useQuery<ChartData>({
-    queryKey: ['chart-hrv-trend-detailed', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/hrv_trend_detailed?days=90'),
+    queryKey: ['chart-hrv-trend-detailed', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/hrv_trend_detailed?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: heatmapChart, isLoading: heatmapLoading } = useQuery<ChartData>({
-    queryKey: ['chart-consistency-heatmap', 182],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/consistency_heatmap?days=182'),
+    queryKey: ['chart-consistency-heatmap', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/consistency_heatmap?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -173,6 +211,83 @@ export function WeeklyTab({
       {upcomingEvents && upcomingEvents.length > 0 && upcomingEvents[0].days_until <= 56 && (
         <EventAiAnalysisCard eventId={upcomingEvents[0].id} />
       )}
+
+      {/* ── Week history (Phase 2: prev/next week navigation) ───────────────
+          Backend-backed look-back via GET /dashboard/weekly-report?weeks_back=N
+          (Monday-aligned bounds). The grid below stays put (data maximalism);
+          this strip is the per-week detail the dashboard could never reach. */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Week History</h2>
+          <WeekNavigator weeksBack={weeksBack} onChange={setWeeksBack} />
+        </div>
+        {weeklyReportLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonMetric key={i} />)}
+          </div>
+        ) : weeklyReportError ? (
+          <ErrorState variant="inline" show message="This week's report failed to load." />
+        ) : weeklyReport ? (
+          (weeklyReport.lifting_sessions + weeklyReport.cardio_sessions) === 0 ? (
+            <Card>
+              <div className="text-center py-6">
+                <p className="text-3xl mb-2">📭</p>
+                <p className="text-muted text-sm tabular-nums">
+                  No training logged {weeksBack === 0 ? 'this week' : `week of ${weeklyReport.week_start}`} yet
+                </p>
+                <p className="text-muted text-xs mt-1">Pick another week above, or log a session to start it.</p>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <MetricCard
+                label="TSS"
+                value={weeklyReport.total_tss.toFixed(0)}
+                subtitle={`${weeklyReport.cardio_sessions} cardio sessions`}
+                color="text-blue-400"
+                icon="⚡"
+                tooltip="Training Stress Score for the viewed week (Monday–Sunday). 100 TSS = 1 hour at FTP."
+              />
+              <MetricCard
+                label="Volume"
+                value={`${weeklyReport.lifting_volume_kg.toLocaleString()} kg`}
+                subtitle={`${weeklyReport.lifting_sessions} lifting sessions`}
+                color="text-purple-400"
+                icon="🏋️"
+                tooltip="Lifting volume (sets × reps × weight) for the viewed week."
+              />
+              <MetricCard
+                label="Recovery"
+                value={weeklyReport.avg_recovery != null ? `${weeklyReport.avg_recovery.toFixed(0)}%` : '—'}
+                subtitle={weeklyReport.avg_hrv_ms != null ? `HRV ${weeklyReport.avg_hrv_ms.toFixed(0)} ms` : 'Weekly average'}
+                color={(weeklyReport.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-warning'}
+                icon="❤️"
+              />
+              <MetricCard
+                label="Sleep"
+                value={weeklyReport.avg_sleep_hours != null ? `${weeklyReport.avg_sleep_hours.toFixed(1)}h` : '—'}
+                subtitle="Nightly average"
+                color="text-positive"
+                icon="😴"
+              />
+              <MetricCard
+                label="PRs"
+                value={weeklyReport.new_prs}
+                subtitle="New records"
+                color={weeklyReport.new_prs > 0 ? 'text-yellow-400' : 'text-muted'}
+                icon="🏆"
+              />
+              <MetricCard
+                label="Week"
+                value={`${weeklyReport.lifting_sessions + weeklyReport.cardio_sessions} sessions`}
+                subtitle={`${weeklyReport.week_start} → ${weeklyReport.week_end}`}
+                color="text-muted"
+                icon="📅"
+              />
+            </div>
+          )
+        ) : null}
+      </div>
 
       {/* ── Status Row: Readiness + Respiratory + Key Vitals ─────────────────── */}
       {hasReadiness && (
@@ -313,10 +428,13 @@ export function WeeklyTab({
         isRefreshing={isRefreshingLlm}
       />
 
-      {/* ── Training Charts ──────────────────────────────────────────────────── */}
+      {/* ── Training Charts (shared range — see caption) ───────────────────── */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Training Load</h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Training Load</h2>
+            <span className="text-xs text-muted tabular-nums">Shared range · {rangePreset}</span>
+          </div>
           <Card>
             <ChartBody
               isLoading={tssLoading}
@@ -508,12 +626,12 @@ export function WeeklyTab({
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => onDownloadReport(
-              `/api/v1/export/weekly-report/${getCurrentMonday()}`,
-              `fittrack_weekly_${getCurrentMonday()}.pdf`,
+              `/api/v1/export/weekly-report/${viewedMondayStr}`,
+              `fittrack_weekly_${viewedMondayStr}.pdf`,
             )}
             className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
           >
-            📄 Weekly Report (PDF)
+            📄 Weekly Report (PDF{weeksBack > 0 ? ` · ${viewedMondayStr}` : ''})
           </button>
           <button
             onClick={() => {

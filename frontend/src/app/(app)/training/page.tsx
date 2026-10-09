@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   TrainingPlan,
   TrainingPlanSummary,
@@ -96,7 +97,22 @@ export default function TrainingPage() {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [view, setView] = useState<'builder' | 'week'>('builder');
+  // Phase 2 deep links (`?plan=` / `?day=` from goal cards): `?day=` lands in
+  // the week view; `?plan=` pre-selects the plan. Existing fabric untouched.
+  const { getParam } = useDeepLink();
+  const urlPlan = getParam('plan');
+  const urlDay = getParam('day');
+  // Validated YYYY-MM-DD only — anything else would poison the week math.
+  const highlightDate =
+    urlDay && /^\d{4}-\d{2}-\d{2}$/.test(urlDay.slice(0, 10)) ? urlDay.slice(0, 10) : null;
+  const [view, setView] = useState<'builder' | 'week'>(() =>
+    typeof window !== 'undefined' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      (new URLSearchParams(window.location.search).get('day') ?? '').slice(0, 10),
+    )
+      ? 'week'
+      : 'builder',
+  );
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [exportingEventId, setExportingEventId] = useState<string | null>(null);
@@ -117,9 +133,15 @@ export default function TrainingPage() {
     enabled: !!token,
   });
 
-  // Auto-select the most recent active plan on initial load
+  // Auto-select the most recent active plan on initial load — or the `?plan=`
+  // deep-link target when it names a plan in the list.
   useEffect(() => {
     if (plans && !selectedPlanId) {
+      const linked = urlPlan ? plans.find((p) => p.id === urlPlan) : undefined;
+      if (linked) {
+        setSelectedPlanId(linked.id);
+        return;
+      }
       const activePlans = plans.filter(p => p.status === 'active')
         .sort((a, b) => {
           const aTime = new Date(a.updated_at ?? a.start_date).getTime();
@@ -130,7 +152,7 @@ export default function TrainingPage() {
         setSelectedPlanId(activePlans[0].id);
       }
     }
-  }, [plans, selectedPlanId]);
+  }, [plans, selectedPlanId, urlPlan]);
 
    const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
@@ -563,7 +585,12 @@ export default function TrainingPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" />
             </div>
           ) : view === 'week' && selectedPlan ? (
-            <WeeklyView key={selectedPlanId} plan={selectedPlan} events={events} />
+            <WeeklyView
+              key={selectedPlanId}
+              plan={selectedPlan}
+              events={events}
+              highlightDate={highlightDate}
+            />
           ) : (
             <PlanBuilder
               key={selectedPlanId ?? 'empty'}

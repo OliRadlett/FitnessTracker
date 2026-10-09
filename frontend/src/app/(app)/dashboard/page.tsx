@@ -7,7 +7,6 @@ import { useSession } from 'next-auth/react';
 import type {
   DashboardSummary,
   MonthlySummaryItem,
-  ChartData,
   Activity,
   LiftingSession,
   ReadinessResponse,
@@ -35,9 +34,22 @@ import { sportLabel } from '@/lib/sportUtils';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider } from '@/lib/time-range';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 export default function DashboardPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider. */
+  return (
+    <TimeRangeProvider>
+      <DashboardPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+function DashboardPageInner() {
   usePageTitle('Dashboard');
   const { authFetch, token } = useAuthFetch();
   const { data: session } = useSession();
@@ -95,14 +107,6 @@ export default function DashboardPage() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
-    queryKey: ['chart-weekly-tss', 12],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_tss?weeks=12'),
-    enabled: activeTab === 'weekly' && !!token,
-    staleTime: 300_000,
-    refetchOnWindowFocus: true,
-  });
-
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
     queryKey: ['activities-recent'],
     queryFn: () => authFetch<Activity[]>('/api/v1/activities?limit=5'),
@@ -143,17 +147,12 @@ export default function DashboardPage() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: strainVsRecovery } = useQuery<ChartData>({
-    queryKey: ['chart-strain-vs-recovery', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/strain_vs_recovery?days=30'),
-    enabled: activeTab === 'weekly' && !!token,
-    staleTime: 300_000,
-    refetchOnWindowFocus: true,
-  });
-
+  /* Phase 2: months=12 (was 6) so the month navigator has genuine look-back
+     depth. Same endpoint, no computation change — the grids simply show more
+     history (data maximalism). */
   const { data: monthlySummary, isLoading: monthlyLoading } = useQuery<MonthlySummaryItem[]>({
-    queryKey: ['monthly-summary'],
-    queryFn: () => authFetch<MonthlySummaryItem[]>('/api/v1/dashboard/monthly-summary?months=6'),
+    queryKey: ['monthly-summary', 12],
+    queryFn: () => authFetch<MonthlySummaryItem[]>('/api/v1/dashboard/monthly-summary?months=12'),
     enabled: (activeTab === 'weekly' || activeTab === 'monthly') && !!token,
     staleTime: 300_000,
     refetchOnWindowFocus: true,
@@ -264,14 +263,6 @@ export default function DashboardPage() {
     }
   }
 
-  function getCurrentMonday(): string {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
-    return monday.toISOString().split('T')[0];
-  }
-
   return (
     <div className="space-y-8" aria-live="polite">
       {/* ── Error Banner ────────────────────────────────────────────────────── */}
@@ -341,21 +332,26 @@ export default function DashboardPage() {
         }
       />
 
-      {/* ── Tab Navigation ───────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">
-        {(['today', 'weekly', 'monthly'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize whitespace-nowrap ${
-              activeTab === tab
-                ? 'bg-accent text-white'
-                : 'text-muted hover:text-foreground hover:bg-surface-light/50'
-            }`}
-          >
-            {tab === 'today' ? '📅 Today' : tab === 'weekly' ? '📊 Weekly' : '📆 Monthly'}
-          </button>
-        ))}
+      {/* ── Tab Navigation + shared chart-range picker ─────────────────────────
+          Phase 2 (ui-redesign-v2 §2.1): one TimeRangePicker drives every
+          dashboard chart together via TimeRangeProvider. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface-light/50 w-fit max-w-full overflow-x-auto">
+          {(['today', 'weekly', 'monthly'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize whitespace-nowrap ${
+                activeTab === tab
+                  ? 'bg-accent text-white'
+                  : 'text-muted hover:text-foreground hover:bg-surface-light/50'
+              }`}
+            >
+              {tab === 'today' ? '📅 Today' : tab === 'weekly' ? '📊 Weekly' : '📆 Monthly'}
+            </button>
+          ))}
+        </div>
+        <TimeRangePicker />
       </div>
 
       {/* ── Tab Content ──────────────────────────────────────────────────────── */}
@@ -381,9 +377,6 @@ export default function DashboardPage() {
           respiratoryRate={respiratoryRate}
           whoopWeekly={whoopWeekly}
           hasWhoop={!!hasWhoop}
-          weeklyTss={weeklyTss}
-          tssLoading={tssLoading}
-          strainVsRecovery={strainVsRecovery}
           activities={activities}
           activitiesLoading={activitiesLoading}
           sessions={sessions}
@@ -410,7 +403,6 @@ export default function DashboardPage() {
           isAnalyzing={isAnalyzing}
           onAnalyze={handleAnalyze}
           onDownloadReport={handleDownloadReport}
-          getCurrentMonday={getCurrentMonday}
         />
       )}
 
@@ -423,6 +415,7 @@ export default function DashboardPage() {
           currentYear={currentYear}
           yearlySummary={yearlySummary}
           yearlyLoading={yearlyLoading}
+          onDownloadReport={handleDownloadReport}
         />
       )}
     </div>
