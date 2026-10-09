@@ -13,7 +13,7 @@ import { Zap } from 'lucide-react';
  * axis. Shared by /analytics and the lifting Analytics tab (same query key,
  * so both pages read one cache entry).
  */
-export function CombinedLoadChart({ days = 90 }: { days?: number }) {
+export function CombinedLoadChart({ days = 90, stale }: { days?: number; stale?: boolean | string }) {
   const { authFetch, token } = useAuthFetch();
   const { data, isLoading } = useQuery<ChartData>({
     queryKey: ['chart-combined-load', days],
@@ -40,6 +40,7 @@ export function CombinedLoadChart({ days = 90 }: { days?: number }) {
         emptyMessage="No combined load yet"
         emptyHint="Log rides or lifts — cycling TSS and lifting estimates appear here together."
         height={260}
+        stale={stale}
       />
     </Card>
   );

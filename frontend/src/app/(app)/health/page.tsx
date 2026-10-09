@@ -392,6 +392,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={recoveryLoading}
             data={recoveryChart}
+            stale={syncStale}
             emptyMessage="No recovery data — connect Whoop to populate."
             height={260}
           />
@@ -403,6 +404,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={hrvLoading}
             data={hrvChart}
+            stale={syncStale}
             emptyMessage="No HRV data — sync Whoop to populate."
             height={260}
           />
@@ -414,6 +416,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={restingHrLoading}
             data={restingHrChart}
+            stale={syncStale}
             emptyMessage="No resting HR data — sync Whoop to populate."
             height={260}
           />
@@ -425,6 +428,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={respirationLoading}
             data={respirationChart}
+            stale={syncStale}
             emptyMessage="No respiratory rate data — sync Whoop to populate."
             height={260}
           />
@@ -436,6 +440,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={recoveryVsPerfLoading}
             data={recoveryVsPerfChart}
+            stale={syncStale}
             emptyMessage="Not enough recovery + training data yet — sync Whoop and log sessions."
             height={260}
           />
@@ -447,6 +452,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={sleepQualityLoading}
             data={sleepQualityChart}
+            stale={syncStale}
             emptyMessage="No sleep data — sync Whoop to populate."
             height={260}
           />
@@ -458,6 +464,7 @@ function HealthPageInner() {
           <ChartBody
             isLoading={strainTrendLoading}
             data={strainTrendChart}
+            stale={syncStale}
             emptyMessage="No strain data — sync Whoop to populate."
             height={260}
           />

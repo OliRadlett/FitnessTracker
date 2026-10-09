@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import type { ChartData } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Spinner } from '@/components/ui/Spinner';
 import { BarChart3 } from 'lucide-react';
 import {
   CHART_AXIS,
@@ -172,8 +171,21 @@ export function ChartBody({ isLoading, isError, onRetry, data, emptyMessage = 'N
 }) {
   if (isLoading) {
     return (
-      <div className={`flex items-center justify-center ${className}`} style={{ height }}>
-        <Spinner size={32} label="Loading chart" />
+      <div
+        className={`${className}`}
+        style={{ height }}
+        role="status"
+        aria-label="Loading chart"
+      >
+        <div className="flex h-full gap-2 rounded-xl bg-surface-light/20 p-4 animate-pulse" aria-hidden="true">
+          <div className="w-8 shrink-0 rounded bg-surface-light/60" />
+          <div className="flex flex-1 items-end gap-1.5">
+            {[38, 62, 45, 74, 52, 84, 58, 40, 68, 48, 78, 56].map((h) => (
+              <div key={h} className="flex-1 rounded-t bg-surface-light/60" style={{ height: `${h}%` }} />
+            ))}
+          </div>
+        </div>
+        <div className="mx-4 mt-2 h-3 rounded bg-surface-light/60 animate-pulse" aria-hidden="true" />
       </div>
     );
   }

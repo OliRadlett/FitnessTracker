@@ -22,7 +22,8 @@ import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range
 import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
-import type { LlmAnalysis } from '@/lib/api';
+import type { LlmAnalysis, Connection } from '@/lib/api';
+import { deriveStaleProviders } from '@/lib/athlete';
 import { getActiveLocale } from '@/lib/utils';
 
 interface AthleteInsight {
@@ -220,6 +221,16 @@ function AnalyticsPageInner() {
   const { start: rangeStart, end: rangeEnd } = useTimeRange();
   const chartDays = timeRangeDays(rangeStart, rangeEnd);
 
+  // Degraded state for the load chart — same ['connections'] cache entry as
+  // the LoadStrip slots elsewhere (display only, no recompute).
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const chartStale = deriveStaleProviders(connections).length > 0;
+
   const { data: insights, isLoading, isError: insightsError, refetch: refetchInsights, dataUpdatedAt } = useQuery<AthleteInsight[]>({
     queryKey,
     queryFn: () => authFetch<AthleteInsight[]>('/api/v1/analytics/insights'),
@@ -345,7 +356,7 @@ function AnalyticsPageInner() {
           Window comes from the shared REVIEW time-range (range in query key
           via the `days` prop — same cache entry as the lifting tab only at
           the 90D default). */}
-      {tab === 'load' && <CombinedLoadChart days={chartDays} />}
+      {tab === 'load' && <CombinedLoadChart days={chartDays} stale={chartStale} />}
 
       {/* B-17 What-If Lab — target timelines at current/half/double slope */}
       {tab === 'load' && <WhatIfLab />}
