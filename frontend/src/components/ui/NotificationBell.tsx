@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import {
+  displayNotificationBody,
   getNotificationSummary,
   healthAlertLink,
   listNotifications,
@@ -173,7 +174,7 @@ export function NotificationBell() {
                         {n.severity}
                       </span>
                     </div>
-                    <p className="text-xs text-muted mt-0.5 line-clamp-2">{n.body}</p>
+                    <p className="text-xs text-muted mt-0.5 line-clamp-2">{displayNotificationBody(n)}</p>
                     <p className="text-[10px] text-muted/70 mt-1">
                       {n.created_at ? relativeTime(n.created_at) : ''}
                     </p>

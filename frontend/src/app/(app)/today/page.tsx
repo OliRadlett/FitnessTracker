@@ -179,9 +179,21 @@ export default function TodayBriefPage() {
           <CardTitle><span className="inline-flex items-center gap-2"><DomainIcon domain="training" /> Today&apos;s Plan</span></CardTitle>
         </CardHeader>
         {!activePlan ? (
-          <EmptyState icon="📅" title="No active plan" description="Create one under Training." />
+          <EmptyState
+            icon="📅"
+            title="No active plan"
+            description="Training plans turn your goals into scheduled workouts with target TSS. Create one under Training to see today's session here."
+            action={{ label: 'Create a training plan', href: '/training' }}
+          />
         ) : !todayPlanDay ? (
-          <p className="text-sm text-muted">Nothing planned — rest day.</p>
+          <div role="status" className="flex flex-col items-center gap-1 py-4 text-center">
+            <p className="text-3xl" aria-hidden="true">😴</p>
+            <p className="text-sm font-medium text-foreground">Rest day</p>
+            <p className="text-xs text-muted">Recovery is training too — rest lifts freshness for the next hard session.</p>
+            <Link href="/training" className="min-h-[44px] inline-flex items-center text-accent hover:text-accent-hover text-xs mt-1">
+              Open Training →
+            </Link>
+          </div>
         ) : (
           <div>
             <p className="text-sm text-foreground font-medium">
@@ -190,7 +202,7 @@ export default function TodayBriefPage() {
             {todayPlanDay.planned_tss != null && (
               <p className="text-xs text-muted mt-1">Target ~{todayPlanDay.planned_tss} TSS</p>
             )}
-            <Link href="/training" className="text-accent hover:text-accent-hover text-xs mt-2 inline-block">
+            <Link href="/training" className="min-h-[44px] inline-flex items-center text-accent hover:text-accent-hover text-xs mt-2">
               Open Training →
             </Link>
           </div>
@@ -211,7 +223,13 @@ export default function TodayBriefPage() {
             <p className="text-xs text-muted mt-1">{weatherNote(todayWx)}</p>
           </div>
         ) : (
-          <p className="text-xs text-muted">Set a home location in Settings to get the forecast.</p>
+          <div role="status" className="flex flex-col items-start gap-1">
+            <p className="text-sm font-medium text-foreground">No forecast yet</p>
+            <p className="text-xs text-muted">Set a home location in Settings to get the forecast.</p>
+            <Link href="/settings" className="min-h-[44px] inline-flex items-center text-accent hover:text-accent-hover text-xs">
+              Open Settings →
+            </Link>
+          </div>
         )}
       </Card>
 

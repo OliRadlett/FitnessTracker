@@ -8,6 +8,7 @@ import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import { Chart, ChartBody } from '@/components/charts/Chart';
+import { timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { useForecastChart } from '@/lib/projection';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
 import { PowerZonesDisplay } from '@/components/cycling/PowerZonesDisplay';
@@ -52,23 +53,30 @@ export function PowerCurveSection({
 }: PowerCurveSectionProps) {
   const { authFetch, token } = useAuthFetch();
 
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     cycling chart together. Day spans are clamped to the backend `?days=` cap
+     (≤365) inside timeRangeDays. Display only — no computation changes
+     (docs/algorithms.md authoritative). ─────────────────────────────────── */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+
   const { data: wkgChart, isLoading: wkgLoading } = useQuery<ChartData>({
-    queryKey: ['chart-wkg-power-curve', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/wkg_power_curve?days=90'),
+    queryKey: ['chart-wkg-power-curve', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/wkg_power_curve?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: percentileChart, isLoading: percentileLoading } = useQuery<ChartData>({
-    queryKey: ['chart-power-duration-percentile', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/power_duration_percentile?days=90'),
+    queryKey: ['chart-power-duration-percentile', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_duration_percentile?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartBodyComp } = useQuery<ChartData>({
-    queryKey: ['chart-body-comp', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/body_composition_trend?days=90'),
+    queryKey: ['chart-body-comp', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/body_composition_trend?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -256,7 +264,7 @@ export function PowerCurveSection({
         {/* Body Composition (Withings) */}
         <Card>
           <CardHeader>
-            <CardTitle>Body Composition (90 days)</CardTitle>
+            <CardTitle>Body Composition ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             data={chartBodyComp}
@@ -301,7 +309,7 @@ export function PowerCurveSection({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Power Curve — W/kg (90 days)</CardTitle>
+            <CardTitle>Power Curve — W/kg ({chartDays} days)</CardTitle>
           </CardHeader>
           <ChartBody
             isLoading={wkgLoading}
