@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SkeletonRouteCard } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Modal } from '@/components/ui/Modal';
 import { RoutesMapView } from '@/components/routes/RoutesMapView';
 import { RoutesListView } from '@/components/routes/RoutesListView';
@@ -144,7 +145,6 @@ export default function RoutesPage() {
     data: routesPages,
     isLoading,
     isError,
-    error: routesError,
     refetch,
     fetchNextPage,
     hasNextPage,
@@ -439,9 +439,12 @@ export default function RoutesPage() {
         {/* Error banner */}
         {syncMutation.isError && (
           <div className="flex-shrink-0 px-4 py-2.5 border-b border-surface-light/30">
-            <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
-              <span>{syncMutation.error instanceof Error ? syncMutation.error.message : 'Route sync failed'}</span>
-            </div>
+            <ErrorState
+              variant="inline"
+              show
+              message="Route sync failed — check your connection and try again."
+              onRetry={() => syncMutation.mutate()}
+            />
           </div>
         )}
 
@@ -504,11 +507,10 @@ export default function RoutesPage() {
               </>
             ) : isError ? (
               <div className="p-8">
-                <EmptyState
-                  icon="⚠️"
-                  title="Failed to load routes"
-                  description={routesError ? (routesError as Error)?.message : 'There was a problem fetching your routes. Try syncing again or check your connection.'}
-                  action={{ label: 'Retry', onClick: () => refetch() }}
+                <ErrorState
+                  title="Couldn't load routes"
+                  message="Check your connection and try again."
+                  onRetry={() => refetch()}
                 />
               </div>
             ) : (

@@ -12,6 +12,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { AiAnalysisCard } from '@/components/analysis/AiAnalysisCard';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -219,7 +220,7 @@ function AnalyticsPageInner() {
   const { start: rangeStart, end: rangeEnd } = useTimeRange();
   const chartDays = timeRangeDays(rangeStart, rangeEnd);
 
-  const { data: insights, isLoading, dataUpdatedAt } = useQuery<AthleteInsight[]>({
+  const { data: insights, isLoading, isError: insightsError, refetch: refetchInsights, dataUpdatedAt } = useQuery<AthleteInsight[]>({
     queryKey,
     queryFn: () => authFetch<AthleteInsight[]>('/api/v1/analytics/insights'),
     staleTime: 60_000,
@@ -256,9 +257,12 @@ function AnalyticsPageInner() {
       />
 
       {recompute.isError && (
-        <p className="text-xs text-warning">
-          Recompute failed — {(recompute.error as Error)?.message || 'try again shortly.'}
-        </p>
+        <ErrorState
+          variant="inline"
+          show
+          message="Recompute failed — try again shortly."
+          onRetry={() => recompute.mutate()}
+        />
       )}
 
       {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
@@ -279,15 +283,24 @@ function AnalyticsPageInner() {
       />
 
       {tab === 'insights' && (
+      <ErrorState
+        variant="inline"
+        show={insightsError}
+        message="Insights failed to load."
+        onRetry={() => refetchInsights()}
+      />
+      )}
+      {tab === 'insights' && (
       isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonMetric key={i} />)}
         </div>
-      ) : !insights || insights.length === 0 ? (
+      ) : insightsError ? null : !insights || insights.length === 0 ? (
         <EmptyState
           icon="📊"
           title="No insights yet"
           description="Train for a few weeks, then hit Recompute — patterns need samples."
+          action={{ label: '↻ Recompute now', onClick: () => recompute.mutate() }}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -480,9 +493,7 @@ function ExplainInsight({ insightType }: { insightType: string }) {
       </button>
       {explain.isError && (
         <p className="text-xs text-warning mt-1">
-          {(explain.error as Error)?.message.includes('GEMINI_API_KEY')
-            ? 'AI explanations need GEMINI_API_KEY configured.'
-            : `Explanation failed: ${(explain.error as Error)?.message}`}
+          Couldn&apos;t explain this insight — try again.
         </p>
       )}
       {open && (explain.data ?? existing) && (

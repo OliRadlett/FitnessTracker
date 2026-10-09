@@ -40,7 +40,7 @@ export interface AiAnalysisCardProps {
   queryError?: Error | null;
 }
 
-const GEMINI_KEY_MSG = 'AI analysis is not available — GEMINI_API_KEY is not configured.';
+const GEMINI_KEY_MSG = 'AI analysis is not available — the AI service is not configured.';
 
 export function AiAnalysisCard({
   title,
@@ -82,21 +82,26 @@ export function AiAnalysisCard({
 
       {/* Mutation error state */}
       {mutationError && (
-        <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 mb-4 mx-6">
+        <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 mb-4 mx-6 flex items-center justify-between gap-3">
           <p className="text-sm text-warning">
-            {mutationError instanceof Error
-              ? mutationError.message.includes('GEMINI_API_KEY')
-                ? GEMINI_KEY_MSG
-                : `Analysis failed: ${mutationError.message}`
-              : 'Analysis failed. Please try again.'}
+            {mutationError instanceof Error && mutationError.message.includes('GEMINI_API_KEY')
+              ? GEMINI_KEY_MSG
+              : 'Analysis failed — try again.'}
           </p>
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="shrink-0 font-medium underline hover:no-underline text-sm text-warning disabled:opacity-50"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {/* Query error state */}
       {queryError && (
         <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm mx-6 mb-4">
-          Failed to load: {queryError.message}
+          Couldn&apos;t load the analysis — try again.
         </div>
       )}
 

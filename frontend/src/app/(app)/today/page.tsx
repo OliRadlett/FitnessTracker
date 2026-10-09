@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DomainIcon } from '@/components/ui/DomainIcon';
 import { useAthleteState } from '@/lib/athlete';
 import { VerdictCard } from '@/components/athlete';
+import { ZoneFlow } from '@/components/zoneFlow/ZoneFlow';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -233,6 +234,19 @@ export default function TodayBriefPage() {
       )}
         </div>
       </div>
+      {/* 6 — "I have 1 hour, Z2" on-demand flow (ui-redesign-v2 §4.3).
+          Embedded ZoneFlow section: on-demand only (nothing fires until the
+          user taps Find — component behavior, kept). Today's cycle plan day
+          is passed as pushDay for one-tap Wahoo push + plan write-back
+          context; without a plan the rows degrade to their honest note.
+          Display wiring only — no computation changes. */}
+      <section aria-label="Find a route for available time">
+        <ZoneFlow
+          planId={activePlan?.id ?? null}
+          planDays={planWeek?.days}
+          pushDay={todayPlanDay ?? null}
+        />
+      </section>
     </div>
   );
 }

@@ -30,6 +30,8 @@ import {
   deriveWeekTss,
 } from '@/lib/athlete';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
 import { WeeklyView } from '@/components/training/WeeklyView';
@@ -127,7 +129,7 @@ export default function TrainingPage() {
 
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErrorMessage } = useQuery<TrainingPlanSummary[]>({
+  const { data: plans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans'],
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
     enabled: !!token,
@@ -317,7 +319,7 @@ export default function TrainingPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download event report', err);
-      setActionError(err instanceof Error ? err.message : 'Failed to download report');
+      setActionError('Couldn\'t prepare that report — try again.');
     } finally {
       setExportingEventId(null);
     }
@@ -379,9 +381,20 @@ export default function TrainingPage() {
             </CardHeader>
             <div className="space-y-2">
               {plansLoading && <SkeletonRow className="h-20" />}
-              {plansError && <p className="text-warning text-sm">Failed to load plans: {plansErrorMessage?.message}</p>}
+              {plansError && (
+                <ErrorState
+                  title="Couldn't load plans"
+                  message="Check your connection and try again."
+                  onRetry={() => refetchPlans()}
+                />
+              )}
               {plans && plans.length === 0 && (
-                <p className="text-muted text-sm text-center py-4">No plans yet. Generate one to get started!</p>
+                <EmptyState
+                  icon="📋"
+                  title="No training plans yet"
+                  description="Generate a plan from your history or build one from scratch in the plan builder."
+                  action={{ label: 'Go to plan builder', onClick: () => document.getElementById('plan-builder')?.scrollIntoView({ behavior: 'smooth' }) }}
+                />
               )}
               {plans?.map(p => (
                 <button
@@ -485,7 +498,7 @@ export default function TrainingPage() {
 
             <div className="space-y-2">
               {events && events.length === 0 && !showEventForm && (
-                <p className="text-muted text-sm text-center py-4">No upcoming events</p>
+                <p className="text-muted text-sm text-center py-4">No upcoming events — add one to get taper guidance and race prep.</p>
               )}
               {events?.map(evt => (
                 <div
@@ -559,7 +572,7 @@ export default function TrainingPage() {
         </div>
 
         {/* Right: Plan Builder / Weekly View — keyed by plan id so state resets when switching plans */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2" id="plan-builder">
           {selectedPlanId && (
             <div className="flex items-center gap-1 mb-4 p-1 rounded-lg bg-surface-light/30 w-fit">
               {(
@@ -581,8 +594,9 @@ export default function TrainingPage() {
             </div>
           )}
           {planLoading && selectedPlanId ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" />
+            <div className="space-y-3" aria-label="Loading plan">
+              <SkeletonRow className="h-20" />
+              <SkeletonRow className="h-40" />
             </div>
           ) : view === 'week' && selectedPlan ? (
             <WeeklyView

@@ -161,7 +161,8 @@ export function TodayTab({
       <EmptyState
         icon="📅"
         title="No data for today"
-        description="Start training to see your daily summary here."
+        description="Log a session or sync a provider — your daily summary appears here."
+        action={{ label: 'Start a live session', href: '/lifting/live' }}
       />
     );
   }

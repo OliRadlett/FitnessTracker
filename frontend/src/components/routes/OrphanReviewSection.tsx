@@ -15,6 +15,7 @@ import { useAuthFetch } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { SkeletonLine, SkeletonRow } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance } from '@/lib/utils';
 import { routeNamesDiffer } from '@/lib/routeUtils';
@@ -367,7 +368,7 @@ function DismissedRoutesSection({
             queue as an active route.
           </p>
           <div className="mt-2 max-h-72 overflow-y-auto">
-            {isLoading && <p className="py-2 text-sm text-muted">Loading…</p>}
+            {isLoading && <SkeletonLine className="h-8 w-full mt-2" />}
             {data?.rows.map((r) => (
               <div
                 key={r.route_id}
@@ -569,7 +570,7 @@ export function OrphanReviewSection() {
         )}
       </div>
 
-      {isLoading && <p className="py-4 text-sm text-muted">Loading…</p>}
+      {isLoading && <SkeletonRow />}
 
       {!isLoading && rows.length === 0 && (
         <p className="py-4 text-sm text-muted">

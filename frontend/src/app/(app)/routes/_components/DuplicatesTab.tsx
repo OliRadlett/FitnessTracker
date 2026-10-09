@@ -16,6 +16,8 @@ import {
 } from '@/lib/api/routes';
 import { Card } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDistance, getActiveLocale } from '@/lib/utils';
@@ -25,7 +27,6 @@ import {
   GitMerge,
   RefreshCw,
   AlertTriangle,
-  MapPin,
   ChevronDown,
   ChevronRight,
   History,
@@ -173,9 +174,11 @@ export function DuplicatesTab() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4" aria-label="Loading duplicate routes">
         <h2 className="text-2xl font-bold text-foreground">Duplicate Routes</h2>
-        <p className="text-muted">Scanning for potential duplicates...</p>
+        <SkeletonRow />
+        <SkeletonRow />
+        <SkeletonRow />
       </div>
     );
   }
@@ -251,15 +254,12 @@ export function DuplicatesTab() {
         )}
 
         {visiblePairs.length === 0 ? (
-          <Card>
-            <div className="p-12 text-center text-muted">
-              <MapPin className="w-12 h-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg mb-2">No duplicate routes found</p>
-              <p className="text-sm">
-                Your routes are clean — no potential duplicates detected.
-              </p>
-            </div>
-          </Card>
+          <EmptyState
+            icon="🗺️"
+            title="No duplicate routes found"
+            description="Routes are compared after each sync — new duplicates appear here for review."
+            action={{ label: 'Refresh', onClick: () => refetch() }}
+          />
         ) : (
           <div className="space-y-4">
             {highConfidence.length > 0 && (

@@ -20,6 +20,8 @@ import type { AppNotification, NotificationSummary, NotificationType, ReauthGrou
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { relativeTime } from '@/lib/analysisRenderer';
 
@@ -394,18 +396,28 @@ export default function NotificationsPage() {
 
         <div className="border-t border-surface-light/50">
           {isLoading && notifications.length === 0 && (
-            <p className="px-4 py-10 text-sm text-muted text-center">Loading…</p>
+            <div className="px-4 py-4 space-y-3" aria-label="Loading notifications">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </div>
           )}
           {!isLoading && notifications.length === 0 && (
-            <div className="px-4 py-10 text-center">
-              <p className="text-3xl mb-2" aria-hidden="true">📭</p>
-              <p className="text-sm text-muted">
-                {/* Distinguish "nothing ever" from "the filters hid everything";
-                    fall back to the loaded count if the summary request failed. */}
-                {(summary ? summary.total === 0 : notifications.length === 0)
-                  ? 'No notifications yet'
-                  : 'No notifications match the selected filters'}
-              </p>
+            <div className="p-8">
+              <EmptyState
+                icon="📭"
+                title={
+                  (summary ? summary.total === 0 : notifications.length === 0)
+                    ? 'No notifications yet'
+                    : 'No matching notifications'
+                }
+                description={
+                  (summary ? summary.total === 0 : notifications.length === 0)
+                    ? 'Training milestones, health alerts, and sync notices will appear here.'
+                    : 'Try clearing the read-status or type filters above.'
+                }
+                action={{ label: 'Notification settings', href: '/settings' }}
+              />
             </div>
           )}
           {rows.map((row) =>

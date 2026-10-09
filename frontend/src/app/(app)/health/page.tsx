@@ -146,21 +146,21 @@ function HealthPageInner() {
   });
 
   // ── Sleep intelligence (the previously unreferenced endpoints) ───────────
-  const { data: sleepConsistency } = useQuery<SleepConsistencyResponse>({
+  const { data: sleepConsistency, isLoading: consistencyLoading, isError: consistencyError, refetch: refetchConsistency } = useQuery<SleepConsistencyResponse>({
     queryKey: ['sleep-consistency', 7],
     queryFn: () => authFetch<SleepConsistencyResponse>('/api/v1/metrics/sleep-consistency?days=7'),
     staleTime: 300_000,
     enabled: !!token,
   });
 
-  const { data: sleepDebt } = useQuery<SleepDebtResponse>({
+  const { data: sleepDebt, isLoading: debtLoading, isError: debtError, refetch: refetchDebt } = useQuery<SleepDebtResponse>({
     queryKey: ['sleep-debt', 7],
     queryFn: () => authFetch<SleepDebtResponse>('/api/v1/metrics/sleep-debt?days=7'),
     staleTime: 300_000,
     enabled: !!token,
   });
 
-  const { data: optimalBedtime } = useQuery<OptimalBedtimeResponse>({
+  const { data: optimalBedtime, isLoading: bedtimeLoading, isError: bedtimeError, refetch: refetchBedtime } = useQuery<OptimalBedtimeResponse>({
     queryKey: ['optimal-bedtime'],
     queryFn: () => authFetch<OptimalBedtimeResponse>('/api/v1/metrics/optimal-bedtime'),
     staleTime: 300_000,
@@ -274,7 +274,13 @@ function HealthPageInner() {
     });
   }, [targetAlert, alertTab]);
 
-  const sleepingLoading = !sleepConsistency && !sleepDebt && !optimalBedtime;
+  const sleepingLoading = consistencyLoading || debtLoading || bedtimeLoading;
+  const sleepingError = consistencyError || debtError || bedtimeError;
+  const retrySleeping = () => {
+    if (consistencyError) refetchConsistency();
+    if (debtError) refetchDebt();
+    if (bedtimeError) refetchBedtime();
+  };
   const hasQueryError = readinessError || alertsError;
 
   return (
@@ -465,7 +471,17 @@ function HealthPageInner() {
             <CardTitle>Sleep Consistency</CardTitle>
           </CardHeader>
           {sleepingLoading ? (
-            <p className="px-4 py-6 text-sm text-muted text-center">Loading…</p>
+            <div className="px-4 py-4" aria-label="Loading sleep consistency">
+              <SkeletonMetric />
+            </div>
+          ) : sleepingError && !sleepConsistency ? (
+            <div className="px-4 pb-4">
+              <ErrorState
+                title="Couldn't load sleep insights"
+                message="Check your connection and try again."
+                onRetry={retrySleeping}
+              />
+            </div>
           ) : sleepConsistency ? (
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
@@ -488,7 +504,7 @@ function HealthPageInner() {
               </div>
             </div>
           ) : (
-            <p className="px-4 pb-4 text-sm text-muted text-center">No sleep data.</p>
+            <p className="px-4 pb-4 text-sm text-muted text-center">No sleep data — sync Whoop to populate.</p>
           )}
         </Card>
 
@@ -496,7 +512,19 @@ function HealthPageInner() {
           <CardHeader>
             <CardTitle>Sleep Debt</CardTitle>
           </CardHeader>
-          {sleepDebt ? (
+          {debtLoading ? (
+            <div className="px-4 py-4" aria-label="Loading sleep debt">
+              <SkeletonMetric />
+            </div>
+          ) : debtError && !sleepDebt ? (
+            <div className="px-4 pb-4">
+              <ErrorState
+                title="Couldn't load sleep debt"
+                message="Check your connection and try again."
+                onRetry={retrySleeping}
+              />
+            </div>
+          ) : sleepDebt ? (
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
                 <span className="text-muted">Debt (rolling 7d)</span>
@@ -520,7 +548,7 @@ function HealthPageInner() {
               </div>
             </div>
           ) : (
-            <p className="px-4 pb-4 text-sm text-muted text-center">No sleep data.</p>
+            <p className="px-4 pb-4 text-sm text-muted text-center">No sleep data — sync Whoop to populate.</p>
           )}
         </Card>
 
@@ -528,7 +556,19 @@ function HealthPageInner() {
           <CardHeader>
             <CardTitle>Optimal Bedtime</CardTitle>
           </CardHeader>
-          {optimalBedtime ? (
+          {bedtimeLoading ? (
+            <div className="px-4 py-4" aria-label="Loading optimal bedtime">
+              <SkeletonMetric />
+            </div>
+          ) : bedtimeError && !optimalBedtime ? (
+            <div className="px-4 pb-4">
+              <ErrorState
+                title="Couldn't load bedtime guidance"
+                message="Check your connection and try again."
+                onRetry={retrySleeping}
+              />
+            </div>
+          ) : optimalBedtime ? (
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
                 <span className="text-muted">Suggested</span>
@@ -564,7 +604,7 @@ function HealthPageInner() {
               )}
             </div>
           ) : (
-            <p className="px-4 pb-4 text-sm text-muted text-center">No bedtime data.</p>
+            <p className="px-4 pb-4 text-sm text-muted text-center">No bedtime data — sync Whoop to populate.</p>
           )}
         </Card>
       </div>
@@ -593,7 +633,10 @@ function HealthPageInner() {
             </div>
           </CardHeader>
           {alertsLoading ? (
-            <p className="px-4 py-6 text-sm text-muted text-center">Loading…</p>
+            <div className="px-4 py-4 space-y-2" aria-label="Loading health alerts">
+              <SkeletonMetric />
+              <SkeletonMetric />
+            </div>
           ) : alerts && alerts.length > 0 ? (
             <div className="max-h-96 overflow-y-auto space-y-2 px-4 pb-4">
               {alerts.map((alert) => {

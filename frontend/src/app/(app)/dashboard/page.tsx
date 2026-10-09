@@ -107,7 +107,7 @@ function DashboardPageInner() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
+  const { data: activities, isLoading: activitiesLoading, isError: activitiesError, refetch: refetchActivities } = useQuery<Activity[]>({
     queryKey: ['activities-recent'],
     queryFn: () => authFetch<Activity[]>('/api/v1/activities?limit=5'),
     enabled: activeTab === 'weekly' && !!token,
@@ -115,7 +115,7 @@ function DashboardPageInner() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: sessions, isLoading: sessionsLoading } = useQuery<LiftingSession[]>({
+  const { data: sessions, isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions-recent'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions?limit=5'),
     enabled: activeTab === 'weekly' && !!token,
@@ -379,8 +379,12 @@ function DashboardPageInner() {
           hasWhoop={!!hasWhoop}
           activities={activities}
           activitiesLoading={activitiesLoading}
+          activitiesError={activitiesError}
+          onRetryActivities={() => refetchActivities()}
           sessions={sessions}
           sessionsLoading={sessionsLoading}
+          sessionsError={sessionsError}
+          onRetrySessions={() => refetchSessions()}
           recentSessions={recentSessions}
           streaks={streaks}
           goals={goals}

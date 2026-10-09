@@ -35,6 +35,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
 import {
@@ -540,7 +541,7 @@ export default function ActivitiesPage() {
     return `/api/v1/activities${query ? `?${query}` : ''}`;
   }, [effectiveFilters]);
 
-  const { data: activities, isLoading } = useQuery<Activity[]>({
+  const { data: activities, isLoading, isError: activitiesError, refetch: refetchActivities } = useQuery<Activity[]>({
     queryKey: ['activities', effectiveFilters],
     queryFn: async () => {
       const result = await authFetchWithHeaders<Activity[]>(activitiesUrl);
@@ -1075,7 +1076,13 @@ export default function ActivitiesPage() {
 
       {/* Activity List / Timeline / Patterns */}
       <div aria-live="polite">
-      {viewMode === 'timeline' ? (
+      {activitiesError && !isLoading ? (
+        <ErrorState
+          title="Couldn't load activities"
+          message="Check your connection and try again."
+          onRetry={() => refetchActivities()}
+        />
+      ) : viewMode === 'timeline' ? (
         calendarLoading ? (
           <div className="space-y-3" aria-label="Loading timeline">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -1150,7 +1157,7 @@ export default function ActivitiesPage() {
         )
       ) : (
         <EmptyState
-          icon={"\u{1F3C3}"}
+          icon={"🏃"}
           title="No activities yet"
           description="Connect Strava to sync your first activity, or use the filters above to search existing data."
           action={{ label: 'Go to Settings', href: '/settings' }}

@@ -1,9 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import type { ChartData } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { BarChart3 } from 'lucide-react';
+import {
+  CHART_AXIS,
+  CHART_GRID,
+  CHART_SERIES_COLORS,
+  CHART_TICK_STYLE,
+  CHART_TOOLTIP_BG,
+  CHART_TOOLTIP_BORDER,
+  CHART_TOOLTIP_TEXT,
+  CHART_FONT_BODY,
+  CHART_ZONES,
+  legendWrapperStyle,
+  xAxisHeight,
+  xTickAngle,
+  xTickInterval,
+} from './chartTheme';
+import { ChartInsights } from './InsightCallout';
 import {
   ResponsiveContainer,
   LineChart, Line,
@@ -23,8 +41,9 @@ interface ChartProps {
   className?: string;
 }
 
-// Palette aligned with Tailwind theme tokens (accent/positive/warning/etc.)
-const DEFAULT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+// Series palette lives in chartTheme (CHART_SERIES_COLORS) so every chart
+// shares one set of dark-theme colors. Kept here as an alias for readability.
+const DEFAULT_COLORS = CHART_SERIES_COLORS;
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -105,10 +124,52 @@ interface ChartFrameProps {
 }
 
 /**
- * Renders a chart body with built-in loading, error, and empty states.
- * Use directly inside a Card when you need custom chrome around it.
+ * Primary action for a designed empty state (Honest Empty: what + how + CTA).
+ * `href` navigates client-side; `onClick` runs a local action instead.
  */
-export function ChartBody({ isLoading, isError, onRetry, data, emptyMessage = 'No data available', height = 400, className = '' }: ChartFrameProps & { isLoading?: boolean; isError?: boolean; onRetry?: () => void; emptyMessage?: React.ReactNode }) {
+export interface ChartEmptyAction {
+  label: string;
+  href?: string;
+  onClick?: () => void;
+}
+
+/**
+ * Stale-data badge (degraded state, pitfall 43): the chart still renders —
+ * degradation is shown, never silently averaged away and never blank.
+ */
+export function StaleBadge({ detail }: { detail?: string }) {
+  return (
+    <span
+      className="absolute top-0 right-0 z-10 inline-flex items-center gap-1.5 rounded-full border border-caution/40 bg-caution/10 px-2 py-0.5 text-xs text-caution"
+      title={detail ?? 'This data may be out of date'}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-caution" aria-hidden="true" />
+      Stale{detail ? ` · ${detail}` : ''}
+    </span>
+  );
+}
+
+/**
+ * Renders a chart body with built-in loading, error, empty, and degraded
+ * states. Every chart inherits the designed empty state (Honest Empty:
+ * what + how-to-get-data + CTA) and the stale-data badge from here, so no
+ * chart needs its own.
+ *
+ * Backward compatible: callers passing only `emptyMessage` (string or node)
+ * get it rendered inside the designed shell with no further changes.
+ */
+export function ChartBody({ isLoading, isError, onRetry, data, emptyMessage = 'No data available', emptyHint, emptyAction, stale, height = 400, className = '' }: ChartFrameProps & {
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
+  emptyMessage?: React.ReactNode;
+  /** One line naming the path to data ("Sync Whoop to populate"). */
+  emptyHint?: React.ReactNode;
+  /** Primary CTA for the empty state. */
+  emptyAction?: ChartEmptyAction;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
+}) {
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center ${className}`} style={{ height }}>
@@ -130,12 +191,43 @@ export function ChartBody({ isLoading, isError, onRetry, data, emptyMessage = 'N
   }
   if (!data || !hasData(data)) {
     return (
-      <div className={`flex items-center justify-center text-muted text-sm ${className}`} style={{ height }}>
-        {emptyMessage}
+      <div
+        className={`flex flex-col items-center justify-center gap-1.5 px-6 text-center ${className}`}
+        style={{ height }}
+        role="status"
+        aria-live="polite"
+      >
+        <BarChart3 className="w-6 h-6 text-muted" aria-hidden="true" />
+        <p className="text-sm font-medium text-foreground">{emptyMessage}</p>
+        {emptyHint ? <p className="text-xs text-muted max-w-sm">{emptyHint}</p> : null}
+        {emptyAction ? (
+          <div className="mt-2">
+            {emptyAction.href ? (
+              <Link
+                href={emptyAction.href}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors"
+              >
+                {emptyAction.label}
+              </Link>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={emptyAction.onClick}>
+                {emptyAction.label}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </div>
     );
   }
-  return <Chart data={data} height={height} className={className} />;
+  if (!stale) {
+    return <Chart data={data} height={height} className={className} />;
+  }
+  return (
+    <div className={`relative ${className}`}>
+      <StaleBadge detail={typeof stale === 'string' ? stale : undefined} />
+      <Chart data={data} height={height} />
+    </div>
+  );
 }
 
 function renderReferenceAreas(areas?: { y1: number; y2: number; color?: string; opacity?: number; label?: string; y_axis?: string }[], yAxisId?: string) {
@@ -146,9 +238,9 @@ function renderReferenceAreas(areas?: { y1: number; y2: number; color?: string; 
       yAxisId={area.y_axis === 'right' ? 'right' : (yAxisId ?? area.y_axis)}
       y1={area.y1}
       y2={area.y2}
-      fill={area.color || '#3b82f6'}
+      fill={area.color || CHART_SERIES_COLORS[0]}
       fillOpacity={area.opacity ?? 0.08}
-      label={area.label ? { value: area.label, position: 'insideTopLeft', fill: '#94a3b8', fontSize: 10 } : undefined}
+      label={area.label ? { value: area.label, position: 'insideTopLeft', fill: CHART_AXIS, fontSize: CHART_FONT_BODY } : undefined}
     />
   ));
 }
@@ -192,7 +284,7 @@ function HeatmapCalendar({ data }: { data: ChartData }) {
         role="img"
         aria-label={`Activity heatmap: ${activeDays} active days, ${Math.round(total)} total`}
       >
-        <div className="flex flex-col gap-[3px] mr-1 text-[9px] text-muted justify-around" aria-hidden="true">
+        <div className="flex flex-col gap-[3px] mr-1 text-xs text-muted justify-around" aria-hidden="true">
           <span>M</span><span></span><span>W</span><span></span><span>F</span>
         </div>
         <div className="grid grid-rows-7 grid-flow-col gap-[3px]" aria-hidden="true">
@@ -209,21 +301,7 @@ function HeatmapCalendar({ data }: { data: ChartData }) {
           ))}
         </div>
       </div>
-      <InsightsList insights={data.insights} />
-    </div>
-  );
-}
-
-function InsightsList({ insights }: { insights?: string[] }) {
-  if (!insights || insights.length === 0) return null;
-  return (
-    <div className="mt-3 space-y-1">
-      {insights.map((insight, i) => (
-        <p key={i} className="text-xs text-muted flex items-start gap-1.5">
-          <span className="text-accent mt-0.5">💡</span>
-          {insight}
-        </p>
-      ))}
+      <ChartInsights insights={data.insights} />
     </div>
   );
 }
@@ -240,31 +318,39 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
   const hasRightAxis = data.series.some((s) => (s as { y_axis?: string }).y_axis === 'right');
 
   const commonAxisProps = {
-    tick: { fill: '#94a3b8', fontSize: 12 },
-    axisLine: { stroke: '#334155' },
-    tickLine: { stroke: '#334155' },
+    tick: { ...CHART_TICK_STYLE },
+    axisLine: { stroke: CHART_GRID },
+    tickLine: { stroke: CHART_GRID },
   };
 
+  // Label culling: drop overlapping ticks (rotate on top when dense) — never
+  // overlap (fixes the Form Trend complaint).
+  const tickAngle = xTickAngle(pointCount);
   const xAxisProps = {
     dataKey: 'x',
     tickFormatter: isDateAxis ? (v: string) => formatDateTick(v, pointCount) : undefined,
-    label: data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined,
+    interval: xTickInterval(pointCount, isNarrow),
+    angle: tickAngle,
+    textAnchor: (tickAngle === 0 ? 'middle' : 'end') as 'middle' | 'end',
+    height: xAxisHeight(pointCount),
+    label: data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: CHART_AXIS } : undefined,
     ...commonAxisProps,
   };
 
   const yAxisLeftProps = {
     ...commonAxisProps,
     yAxisId: 'left',
-    label: data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined,
+    label: data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: CHART_AXIS } : undefined,
   };
 
   const renderTooltip = () => (
     <Tooltip
       contentStyle={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #334155',
+        backgroundColor: CHART_TOOLTIP_BG,
+        border: `1px solid ${CHART_TOOLTIP_BORDER}`,
         borderRadius: '8px',
-        color: '#e2e8f0',
+        color: CHART_TOOLTIP_TEXT,
+        fontSize: CHART_FONT_BODY,
       }}
       labelFormatter={isDateAxis ? (v) => formatDateFull(String(v ?? '')) : undefined}
       formatter={(value: unknown, name: unknown) => [
@@ -276,16 +362,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
   const renderLegend = () =>
     data.series.length > 1 ? (
-      <Legend
-        iconSize={10}
-        wrapperStyle={{
-          color: '#94a3b8',
-          fontSize: isNarrow ? '11px' : '12px',
-          lineHeight: '16px',
-          maxWidth: '100%',
-          overflow: 'hidden',
-        }}
-      />
+      <Legend iconSize={10} wrapperStyle={{ ...legendWrapperStyle(isNarrow) }} />
     ) : null;
 
   const renderBrush = () => {
@@ -295,8 +372,8 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         dataKey="x"
         height={isNarrow ? 32 : 30}
         travellerWidth={isNarrow ? 20 : 10}
-        stroke="#334155"
-        fill="#1e293b"
+        stroke={CHART_GRID}
+        fill={CHART_TOOLTIP_BG}
         ariaLabel="Zoom range"
         startIndex={0}
         endIndex={Math.max(pointCount - 1, 0)}
@@ -309,7 +386,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
   if (data.chart_type === 'heatmap') {
     return (
-      <div className={className} role="img" aria-label={data.title ? `${data.title} chart` : 'Chart'}>
+      <div className={`tnum ${className}`} role="img" aria-label={data.title ? `${data.title} chart` : 'Chart'}>
         {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
         <HeatmapCalendar data={data} />
       </div>
@@ -321,7 +398,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
       chartContent = (
         <ResponsiveContainer width="100%" height={effectiveHeight}>
           <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisLeftProps} />
             {hasRightAxis && (
@@ -332,11 +409,11 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               <RechartsReferenceLine
                 yAxisId="left"
                 x={data.reference_line.x}
-                stroke={data.reference_line.color ?? '#22d3ee'}
+                stroke={data.reference_line.color ?? CHART_ZONES.info}
                 strokeDasharray="4 2"
                 label={
                   data.reference_line.label
-                    ? { value: data.reference_line.label, position: 'insideTopRight', fill: '#22d3ee', fontSize: 10 }
+                    ? { value: data.reference_line.label, position: 'insideTopRight', fill: CHART_ZONES.info, fontSize: CHART_FONT_BODY }
                     : undefined
                 }
               />
@@ -366,7 +443,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
       chartContent = (
         <ResponsiveContainer width="100%" height={effectiveHeight}>
           <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisLeftProps} />
             {hasRightAxis && (
@@ -404,13 +481,14 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
       chartContent = (
         <ResponsiveContainer width="100%" height={effectiveHeight}>
           <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
             <XAxis dataKey="x" name={data.x_label || 'x'} type="number"
               tickFormatter={scatterIsDate ? formatScatterTick : undefined}
-              label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: '#94a3b8' } : undefined}
+              minTickGap={24}
+              label={data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: CHART_AXIS } : undefined}
               {...commonAxisProps} />
             <YAxis dataKey="y" name={data.y_label || 'y'} type="number"
-              label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: '#94a3b8' } : undefined}
+              label={data.y_label ? { value: data.y_label, angle: -90, position: 'insideLeft', fill: CHART_AXIS } : undefined}
               {...commonAxisProps} />
             {renderReferenceAreas(data.reference_areas)}
             {renderTooltip()}
@@ -433,7 +511,7 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
       chartContent = (
         <ResponsiveContainer width="100%" height={effectiveHeight}>
           <AreaChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisLeftProps} />
             {hasRightAxis && (
@@ -497,10 +575,10 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
   }
 
   return (
-    <div className={className} role="img" aria-label={data.title ? `${data.title} chart` : 'Chart'}>
+    <div className={`tnum ${className}`} role="img" aria-label={data.title ? `${data.title} chart` : 'Chart'}>
       {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
       {chartContent}
-      <InsightsList insights={data.insights} />
+      <ChartInsights insights={data.insights} />
     </div>
   );
 }

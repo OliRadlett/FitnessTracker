@@ -52,8 +52,12 @@ interface WeeklyTabProps {
   hasWhoop: boolean;
   activities: Activity[] | undefined;
   activitiesLoading: boolean;
+  activitiesError?: boolean;
+  onRetryActivities?: () => void;
   sessions: LiftingSession[] | undefined;
   sessionsLoading: boolean;
+  sessionsError?: boolean;
+  onRetrySessions?: () => void;
   recentSessions: LiftingSession[];
   streaks: TrainingStreaks | undefined;
   goals: Goal[] | undefined;
@@ -82,7 +86,11 @@ export function WeeklyTab({
   hasWhoop,
   activities,
   activitiesLoading,
+  activitiesError,
+  onRetryActivities,
   sessionsLoading,
+  sessionsError,
+  onRetrySessions,
   recentSessions,
   streaks,
   goals,
@@ -494,6 +502,12 @@ export function WeeklyTab({
             </CardHeader>
             {activitiesLoading ? (
               <ListSkeleton />
+            ) : activitiesError ? (
+              <ErrorState
+                title="Couldn't load activities"
+                message="Check your connection and try again."
+                onRetry={onRetryActivities}
+              />
             ) : activities && activities.length > 0 ? (
               <div className="space-y-2">
                 {activities.map((activity) => (
@@ -520,6 +534,12 @@ export function WeeklyTab({
             </CardHeader>
             {sessionsLoading ? (
               <ListSkeleton />
+            ) : sessionsError ? (
+              <ErrorState
+                title="Couldn't load lifting sessions"
+                message="Check your connection and try again."
+                onRetry={onRetrySessions}
+              />
             ) : recentSessions.length > 0 ? (
               <div className="space-y-2">
                 {recentSessions.map((session) => (

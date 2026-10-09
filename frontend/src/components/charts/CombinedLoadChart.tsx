@@ -37,7 +37,8 @@ export function CombinedLoadChart({ days = 90 }: { days?: number }) {
       <ChartBody
         isLoading={isLoading}
         data={data}
-        emptyMessage="Log rides or lifts to see combined load"
+        emptyMessage="No combined load yet"
+        emptyHint="Log rides or lifts — cycling TSS and lifting estimates appear here together."
         height={260}
       />
     </Card>

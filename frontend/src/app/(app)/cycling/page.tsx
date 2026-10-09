@@ -390,8 +390,8 @@ function CyclingPageInner() {
       setSaveMessage('Profile saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
-    onError: (error: Error) => {
-      setSaveMessage(`Error: ${error.message}`);
+    onError: () => {
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -401,9 +401,9 @@ function CyclingPageInner() {
     onSuccess: (data) => {
       setFtpEstimate(data);
     },
-    onError: (error: Error) => {
+    onError: () => {
       setFtpEstimate(null);
-      setSaveMessage(`Error: ${error.message}`);
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -423,8 +423,8 @@ function CyclingPageInner() {
       setSaveMessage('FTP estimated and saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
-    onError: (error: Error) => {
-      setSaveMessage(`Error: ${error.message}`);
+    onError: () => {
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -441,8 +441,8 @@ function CyclingPageInner() {
       queryClient.invalidateQueries({ queryKey: ['chart-training-load'] });
       queryClient.invalidateQueries({ queryKey: ['chart-daily-tss'] });
     },
-    onError: (error: Error) => {
-      setRecalcResult(`Error: ${error.message}`);
+    onError: () => {
+      setRecalcResult('Couldn\'t recalculate TSS — try again.');
     },
   });
 
@@ -472,8 +472,8 @@ function CyclingPageInner() {
       queryClient.invalidateQueries({ queryKey: ['activity-streams'] });
       queryClient.invalidateQueries({ queryKey: ['activities'] });
     },
-    onError: (error: Error) => {
-      setBackfillResult(`Error: ${error.message}`);
+    onError: () => {
+      setBackfillResult('Couldn\'t backfill streams — try again.');
     },
   });
 
@@ -491,8 +491,8 @@ function CyclingPageInner() {
       queryClient.invalidateQueries({ queryKey: ['cycling-profile'] });
       queryClient.invalidateQueries({ queryKey: ['cycling-metrics'] });
     },
-    onError: (error: Error) => {
-      setBackfillFtpResult(`Error: ${error.message}`);
+    onError: () => {
+      setBackfillFtpResult('Couldn\'t backfill FTP history — try again.');
     },
   });
 

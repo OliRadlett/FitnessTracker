@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ChartData, PowerCurveResponse, PowerZonesResponse, HrZonesResponse, PowerVsHrResponse } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 import { Chart, ChartBody } from '@/components/charts/Chart';
 import { useForecastChart } from '@/lib/projection';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
@@ -117,8 +118,8 @@ export function PowerCurveSection({
             <CardTitle>Power Curve (90 days)</CardTitle>
           </CardHeader>
           {curveLoading ? (
-            <div className="h-60 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
+            <div aria-label="Loading power curve">
+              <SkeletonLine className="h-60 w-full" />
             </div>
           ) : powerCurve?.data?.some(p => p.best_power_watts != null) ? (
             <>
@@ -164,8 +165,8 @@ export function PowerCurveSection({
             <CardTitle>Power Zones (30 days)</CardTitle>
           </CardHeader>
           {zonesLoading ? (
-            <div className="h-60 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent"></div>
+            <div aria-label="Loading power zones">
+              <SkeletonLine className="h-60 w-full" />
             </div>
           ) : powerZones?.zones?.length ? (
             <>

@@ -11,6 +11,9 @@ import { ProjectionCard } from '@/components/goals/ProjectionCard';
 import { useGoalProjections } from '@/components/goals/useGoalProjections';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
 
@@ -34,7 +37,7 @@ export default function GoalsPage() {
     data: goals,
     isLoading,
     isError,
-    error,
+    refetch,
   } = useQuery<Goal[]>({
     queryKey: ['goals', tab],
     queryFn: () => listGoals(authFetch, statusFilter),
@@ -102,15 +105,21 @@ export default function GoalsPage() {
 
       {/* ── Grid ────────────────────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Loading goals">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-36 animate-pulse bg-surface-light/40 rounded-xl" />
+            <div key={i} className="bg-surface rounded-xl border border-surface-light/50 p-4" aria-hidden="true">
+              <SkeletonLine className="h-4 w-2/3 mb-3" />
+              <SkeletonLine className="h-2 w-full mb-2" />
+              <SkeletonLine className="h-3 w-1/2" />
+            </div>
           ))}
         </div>
       ) : isError ? (
-        <div className="p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning text-sm">
-          ⚠️ {error instanceof Error ? error.message : 'Failed to load goals'}
-        </div>
+        <ErrorState
+          title="Couldn't load goals"
+          message="Check your connection and try again."
+          onRetry={() => refetch()}
+        />
       ) : sortedGoals.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedGoals.map((goal) => (
@@ -118,13 +127,12 @@ export default function GoalsPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-12 rounded-xl border border-surface-light/50 bg-surface-light/10">
-          <p className="text-3xl mb-2">🎯</p>
-          <p className="text-muted text-sm">No {tab === 'all' ? '' : tab + ' '}goals yet</p>
-          <p className="text-muted text-xs mt-1">
-            Set targets for FTP, 1RM, body weight, weekly sessions, and more
-          </p>
-        </div>
+        <EmptyState
+          icon="🎯"
+          title={tab === 'all' ? 'No goals yet' : `No ${tab} goals`}
+          description="Set targets for FTP, 1RM, body weight, weekly sessions, and more — they track themselves as you train."
+          action={{ label: '+ New Goal', onClick: () => setShowCreate(true) }}
+        />
       )}
 
       {/* ── Projection summary (Phase 7) ─────────────────────────────────── */}

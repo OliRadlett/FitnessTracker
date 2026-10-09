@@ -16,6 +16,7 @@ import { VideoEditModal } from '@/components/lifting/VideoEditModal';
 import { LiftVideoForm } from '@/components/lifting/LiftVideoForm';
 import { VideoProgressTab } from '@/components/lifting/VideoProgressTab';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { getActiveLocale } from '@/lib/utils';
@@ -231,9 +232,13 @@ export default function VideosPage() {
 
       {/* Video grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Loading videos">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-64 bg-surface rounded-xl border border-surface-light/50 animate-pulse" />
+            <div key={i} className="bg-surface rounded-xl border border-surface-light/50 p-4" aria-hidden="true">
+              <SkeletonLine className="h-40 w-full mb-3" />
+              <SkeletonLine className="h-4 w-2/3 mb-2" />
+              <SkeletonLine className="h-3 w-1/2" />
+            </div>
           ))}
         </div>
       ) : videos.length === 0 ? (
