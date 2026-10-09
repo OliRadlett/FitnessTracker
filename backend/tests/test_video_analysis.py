@@ -274,3 +274,11 @@ class TestEstimateRpeHeuristic:
         base = estimate_rpe_heuristic({"velocity": analysis["velocity"]}, "Back Squat", 3)
         bumped = estimate_rpe_heuristic(analysis, "Back Squat", 3)
         assert bumped["estimated_rpe"] > base["estimated_rpe"]
+
+    def test_rir_equals_ten_minus_rpe(self):
+        # F10: RIR is 10 − RPE, not halved — RPE 8.0 leaves 2 reps in reserve.
+        analysis = {"velocity": {"velocity_loss_pct": 35.0, "mean_concentric_velocity": 0.2}}
+        got = estimate_rpe_heuristic(analysis, "Back Squat", 3)
+        assert got["estimated_rpe"] == 8.0
+        assert got["rir_estimate"] == pytest.approx(10.0 - got["estimated_rpe"])
+        assert got["rir_estimate"] == pytest.approx(2.0)

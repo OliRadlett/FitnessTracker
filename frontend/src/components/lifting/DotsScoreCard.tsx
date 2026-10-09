@@ -37,7 +37,7 @@ export function DotsScoreCard({
 
   if (isLoading || personalRecords === undefined) return null;
 
-  const score = total != null ? dots(total, bodyweightKg, 'male') : null;
+  const score = total != null ? dots(total, bodyweightKg) : null;
 
   return (
     <Card>

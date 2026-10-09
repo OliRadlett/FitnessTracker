@@ -91,16 +91,25 @@ async def training_load_for_user(
     user_id: uuid.UUID,
     end_date: date,
     lookback_days: int = 90,
-) -> list[dict]:
+    include_meta: bool = False,
+) -> list[dict] | tuple[list[dict], dict]:
     """Compute the CTL/ATL/TSB series for a user, honouring fitted taus.
 
     Loads the user's ``CyclingProfile`` and uses the fitted ``ctl_tau`` /
     ``atl_tau`` (Modal weekly power-model fit) when **both** are positive
     numbers; otherwise falls back to the canonical 42/7 constants. Daily
     TSS is loaded from the DB, so callers need no extra queries.
+
+    With ``include_meta=True`` returns ``(series, meta)`` where ``meta`` is
+    ``{"ctl_tau": float, "atl_tau": float, "personalized": bool}`` — the
+    taint flag recording whether the series was computed with fitted
+    (F7-gated) taus or the canonical defaults. Consumers that change
+    behaviour on personalised load (badges, copy, freshness wording) must
+    key off ``meta["personalized"]``, never off ``ctl_tau != 42``.
     """
     ctl_days: float = CTL_DAYS
     atl_days: float = ATL_DAYS
+    personalized = False
     result = await db.execute(
         select(CyclingProfile).where(CyclingProfile.user_id == user_id)
     )
@@ -118,6 +127,7 @@ async def training_load_for_user(
         ):
             ctl_days = float(ctl_tau)
             atl_days = float(atl_tau)
+            personalized = True
 
     # Local import: tss.py must never import training_load (cycle).
     from app.services.cycling.tss import get_daily_tss
@@ -128,13 +138,20 @@ async def training_load_for_user(
         end_date - timedelta(days=lookback_days + CTL_WARMUP_DAYS),
         end_date,
     )
-    return compute_training_load(
+    series = compute_training_load(
         daily,
         end_date,
         lookback_days=lookback_days,
         ctl_days=ctl_days,
         atl_days=atl_days,
     )
+    if include_meta:
+        return series, {
+            "ctl_tau": ctl_days,
+            "atl_tau": atl_days,
+            "personalized": personalized,
+        }
+    return series
 
 
 # ── Typical Ranges ───────────────────────────────────────────────────────────

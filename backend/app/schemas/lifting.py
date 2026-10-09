@@ -187,6 +187,7 @@ class SuggestLoadResponse(BaseModel):
     basis_1rm_kg: float | None = None
     pct_1rm: float
     basis_source: Literal["pr", "recent_sets", "none"]
+    safety_warning: str | None = None
 
     model_config = {"from_attributes": True}
 

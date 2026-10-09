@@ -2989,14 +2989,16 @@ def auto_estimate_ftp_weekly() -> dict:
                     old_ftp = profile.ftp_watts
                     profile.ftp_watts = estimated_ftp
 
-                    # Determine source method for notes
+                    # Determine source method for notes (F4 factors)
                     source_method = None
                     if 1200 in best_power:
                         source_method = f"20-min: {best_power[1200]} W × 0.95"
+                    elif 1800 in best_power:
+                        source_method = f"30-min: {best_power[1800]} W × 0.97"
                     elif 480 in best_power:
-                        source_method = f"8-min: {best_power[480]} W × 0.855"
+                        source_method = f"8-min: {best_power[480]} W × 0.90"
                     elif 300 in best_power:
-                        source_method = f"5-min: {best_power[300]} W × 0.95"
+                        source_method = f"5-min: {best_power[300]} W × 0.85"
 
                     ftp_entry = FtpHistory(
                         user_id=profile.user_id,
@@ -4013,6 +4015,59 @@ async def _goal_milestone_notifications(db, user_id: uuid.UUID) -> int:
     return fired
 
 
+async def _goal_deadline_notifications(db, user_id: uuid.UUID) -> int:
+    """Remind when an active goal's target date is 7 days / 1 day out (P2).
+
+    Windows come from ``services.goals.goal_due_notice``; the notification
+    type stays ``goal_milestone`` (no new opt-in type, no frontend change)
+    and dedup keys make each window fire exactly once. Past-due goals are
+    left to the expiry path — this only looks forward.
+    """
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.models.goal import Goal
+    from app.services.goals import goal_due_notice
+    from app.services.notifications import notify
+
+    today = date.today()
+    goals = list(
+        (
+            await db.execute(
+                select(Goal).where(
+                    Goal.user_id == user_id,
+                    Goal.status == "active",
+                    Goal.target_date.isnot(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    fired = 0
+    for goal in goals:
+        assert goal.target_date is not None
+        days_left = (goal.target_date - today).days
+        label = goal_due_notice(days_left)
+        if label is None:
+            continue
+        created = await notify(
+            db,
+            user_id,
+            type="goal_milestone",
+            title=f"Goal {label}",
+            body=f"{goal.metric} — target {goal.target_value:g} on {goal.target_date}",
+            severity="info",
+            link="/goals",
+            dedup_key=f"goal:{goal.id}:due{days_left}",
+            metadata={"metric": goal.metric, "days_left": days_left},
+        )
+        if created is not None:
+            fired += 1
+    return fired
+
+
 @celery_app.task(name="app.tasks.scheduler.send_plan_reminders")
 def send_plan_reminders() -> dict:
     """Daily morning reminder for today's planned training session.
@@ -4392,6 +4447,7 @@ def record_goal_checkins() -> dict:
             checkins_recorded = 0
             goals_active = 0
             milestone_notifications = 0
+            deadline_notifications = 0
 
             for user in users:
                 try:
@@ -4404,6 +4460,9 @@ def record_goal_checkins() -> dict:
                     recorded = await record_all_check_ins(db, user.id)
                     checkins_recorded += recorded
                     milestone_notifications = await _goal_milestone_notifications(
+                        db, user.id
+                    )
+                    deadline_notifications += await _goal_deadline_notifications(
                         db, user.id
                     )
                     await db.commit()
@@ -4419,6 +4478,7 @@ def record_goal_checkins() -> dict:
                 "goals_active": goals_active,
                 "checkins_recorded": checkins_recorded,
                 "milestone_notifications": milestone_notifications,
+                "deadline_notifications": deadline_notifications,
             }
 
     return asyncio.run(_run())

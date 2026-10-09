@@ -23,6 +23,8 @@ class Vo2maxEstimate:
     confidence: float  # 0.0 - 1.0
     method: str  # human-readable method description
     all_estimates: list[dict]  # individual estimates for transparency
+    ci_low: float | None = None  # approx 95% cross-method interval (F9)
+    ci_high: float | None = None
 
 
 def _friend_vo2max(power_watts: float, weight_kg: float) -> float:
@@ -47,11 +49,22 @@ def _acsm_vo2max_legacy(power_watts: float, weight_kg: float) -> float:
     return (11.016 * power_watts) / weight_kg + 7.0
 
 
+# Scope of the VO2max fitness bands below (F6): general-population
+# reference bands, NOT age/sex-adjusted. Show this scope wherever a
+# classification is displayed so a 55-year-old is not judged against a
+# 25-year-old's "Average".
+VO2_CLASS_SCOPE = "general-population bands (not age/sex-adjusted)"
+
+
 def _classify_vo2max(vo2max: float) -> str:
     """Classify VO2max value into a fitness category.
 
     Based on general population norms (ml/kg/min):
     <35: Poor, 35-45: Below average, 45-55: Average, 55-65: Good, 65-75: Excellent, >75: Superior
+
+    F6 scope: these bands are NOT age/sex-adjusted. Consumers must label
+    them via ``VO2_CLASS_SCOPE`` (charts insights do; the API classification
+    string stays a bare label for backwards compatibility).
     """
     if vo2max < 35:
         return "Poor"
@@ -80,6 +93,9 @@ async def estimate_vo2max(
         than the traditional ACSM 11.016 × W/kg + 7.) Uses best 5-min
         power as proxy for VO2max power.
         Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
+        An 8-min best is a secondary signal only: FRIEND is calibrated on
+        maximal ~5-min power, so the 8-min read is first scaled to its
+        5-min equivalent via the Riegel relation (confidence 0.5).
 
     Method 2 (HR-based): Uses Uth formula:
         VO2max = 15.3 × (HRmax / HRrest)
@@ -133,15 +149,23 @@ async def estimate_vo2max(
                     )
                 )
 
-    # Also try best 8-min power as a secondary signal
+    # Also try best 8-min power as a secondary signal. F5: FRIEND is
+    # calibrated on maximal ~5-min power, so feeding it 8-min watts
+    # directly understates VO2max (8-min bests sit below the 5-min curve).
+    # Scale to the 5-min equivalent via the Riegel power-duration relation
+    # (P5 = P8 × (480/300)^0.06 ≈ ×1.029, same formula as
+    # ``power_curve._riegel_extrapolate``) and mark the compounded
+    # approximation at confidence 0.5 — below both the direct 5-min read
+    # (0.7) and Uth (0.6).
     if power_8min and power_8min > 0 and weight_kg and weight_kg > 0:
-        vo2_ml_kg_min = _friend_vo2max(power_8min, weight_kg)
+        power_5min_equiv = round(power_8min * (480 / 300) ** 0.06, 1)
+        vo2_ml_kg_min = _friend_vo2max(power_5min_equiv, weight_kg)
         if 20 <= vo2_ml_kg_min <= 90:
             estimates.append(
                 (
                     round(vo2_ml_kg_min, 1),
-                    0.6,
-                    f"FRIEND power-based (8-min: {power_8min}W, {power_8min / weight_kg:.1f} W/kg)",
+                    0.5,
+                    f"FRIEND power-based (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
                 )
             )
 
@@ -195,11 +219,23 @@ async def estimate_vo2max(
         for v, c, m in estimates
     ]
 
+    # F9: numeric interval over the cross-method spread, centred on the
+    # reported (best-confidence) estimate. None with a single method.
+    from app.services.cycling.power_curve import blend_ci_95
+
+    ci = blend_ci_95(
+        [v for v, _, _ in estimates],
+        weights=[c for _, c, _ in estimates],
+        center=best[0],
+    )
+
     return Vo2maxEstimate(
         vo2max=best[0],
         confidence=best[1],
         method=best[2],
         all_estimates=all_dicts,
+        ci_low=ci[0] if ci else None,
+        ci_high=ci[1] if ci else None,
     )
 
 

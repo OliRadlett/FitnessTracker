@@ -625,6 +625,21 @@ def fit_personalized_vo2max(
 
 # ── Adaptive CTL/ATL Time Constants ─────────────────────────────────────────
 
+# Persistence quality gates (F7).
+#
+# The grid search maximises in-sample TSB↔HRV correlation, so a "best" pair
+# always exists — even on noise. Persisting a noise fit would silently
+# retune every downstream CTL/ATL/TSB consumer, so a fit is only persisted
+# when it clears BOTH floors:
+#
+# - sample floor (``ADAPTIVE_TAU_MIN_N``): 45 overlapping TSS/HRV days.
+#   The fitter runs at 30; persistence demands more evidence.
+# - signal floor (``ADAPTIVE_TAU_MIN_R2``): R² (correlation²) of the fitted
+#   TSB↔HRV relationship ≥ 0.10 (|r| ≳ 0.32) — a weak linear signal, but
+#   enough to say the taus beat "no relationship".
+ADAPTIVE_TAU_MIN_N = 45
+ADAPTIVE_TAU_MIN_R2 = 0.10
+
 
 def adaptive_taus_to_persist(
     constants: dict,
@@ -634,17 +649,35 @@ def adaptive_taus_to_persist(
     Returns ``(ctl_tau, atl_tau)`` to store, or ``None`` to leave the stored
     values unchanged:
 
-    - successful fit → the fitted values;
-    - a real run that could not personalise (insufficient data/overlap) →
-      ``(None, None)``, so the canonical 42/7 defaults are not later reported
-      as a personalized ``hrv_recovery_fit``;
+    - successful fit clearing the F7 floors → the fitted values;
+    - a real run that could not personalise (insufficient data/overlap, or
+      a fit gated on sample size / signal strength) → ``(None, None)``, so
+      the canonical 42/7 defaults are not later reported as a personalized
+      ``hrv_recovery_fit``;
+    - a ``hrv_recovery_fit`` that carries fit diagnostics
+      (``data_points_used``/``correlation``) failing the F7 floors → also
+      ``(None, None)``. This covers results fitted before the gate existed:
+      stale Modal payloads must not bypass it. Results with NO diagnostics
+      (legacy shape) pass open and persist — there is nothing to judge them
+      by, and refusing them would discard previously accepted fits;
     - no/unknown result (transient failure, circuit breaker) → ``None`` (keep
       any previously fitted values).
     """
     method = (constants or {}).get("method")
     if method == "hrv_recovery_fit":
+        n = constants.get("data_points_used")
+        corr = constants.get("correlation")
+        if n is not None and n < ADAPTIVE_TAU_MIN_N:
+            return (None, None)
+        if corr is not None and corr * corr < ADAPTIVE_TAU_MIN_R2:
+            return (None, None)
         return (constants.get("ctl_tau"), constants.get("atl_tau"))
-    if method in ("insufficient_data", "insufficient_overlap"):
+    if method in (
+        "insufficient_data",
+        "insufficient_overlap",
+        "no_valid_fit",
+        "weak_fit_gated",
+    ):
         return (None, None)
     return None
 
@@ -674,7 +707,12 @@ def fit_adaptive_time_constants(
 
     Returns
     -------
-    dict with ctl_tau, atl_tau, improvement_pct, method.
+    dict with ctl_tau, atl_tau, improvement_pct, correlation, r_squared,
+    method, data_points_used. ``method`` is ``hrv_recovery_fit`` only when
+    the fit clears the F7 floors (≥ ``ADAPTIVE_TAU_MIN_N`` overlapping days
+    and R² ≥ ``ADAPTIVE_TAU_MIN_R2``); otherwise ``weak_fit_gated``
+    (canonical 42/7 — persist nothing) or one of the insufficient-data
+    methods.
     """
     if len(daily_tss) < 30 or len(hrv_data) < 30:
         return {
@@ -795,11 +833,32 @@ def fit_adaptive_time_constants(
     else:
         improvement = 0.0
 
+    best_correlation = -best_score
+    best_r_squared = best_correlation * best_correlation
+
+    # F7 persistence floors: the grid search always crowns a "best" pair,
+    # even on noise — so a fit on too few days, or one whose fitted TSB
+    # barely tracks HRV, is stamped ``weak_fit_gated`` (canonical defaults)
+    # instead of a personalised fit. ``adaptive_taus_to_persist`` maps this
+    # to (None, None): nothing is stored. The diagnostics stay on the payload
+    # so the refusal is auditable.
+    if len(common_dates) < ADAPTIVE_TAU_MIN_N or best_r_squared < ADAPTIVE_TAU_MIN_R2:
+        return {
+            "ctl_tau": 42,
+            "atl_tau": 7,
+            "improvement_pct": None,
+            "correlation": round(best_correlation, 4),
+            "r_squared": round(best_r_squared, 4),
+            "method": "weak_fit_gated",
+            "data_points_used": len(common_dates),
+        }
+
     return {
         "ctl_tau": best_ctl,
         "atl_tau": best_atl,
         "improvement_pct": round(improvement, 1) if improvement is not None else None,
         "correlation": round(-best_score, 4),
+        "r_squared": round(best_r_squared, 4),
         "method": "hrv_recovery_fit",
         "data_points_used": len(common_dates),
     }

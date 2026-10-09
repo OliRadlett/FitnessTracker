@@ -89,7 +89,7 @@ Quick reference maps in each package — use these for orientation before readin
 
 ## Key Algorithms & Thresholds
 
-See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, FFT, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
+See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
 
 ## Database (45 tables, UUID PKs)
 

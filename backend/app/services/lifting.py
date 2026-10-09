@@ -1186,6 +1186,8 @@ async def suggest_strength_load(
     ``sets``/``reps`` describe the planned scheme (validated positive; they
     don't move the %1RM solve — recorded for future RPE autoregulation).
     Raises ``ValueError`` on out-of-range inputs (routers map it to 422).
+    At ``pct_1rm >= 0.95`` the response carries a spotter/safety warning:
+    near-maximal loads should be lifted with a spotter and safety bars.
     """
     if not exercise_name or not exercise_name.strip():
         raise ValueError("exercise_name is required")
@@ -1194,6 +1196,12 @@ async def suggest_strength_load(
     if not 0.3 <= pct_1rm <= 1.0:
         raise ValueError("pct_1rm must be between 0.3 and 1.0")
 
+    safety_warning = (
+        "Near-maximal load (95%+ of 1RM) — use a spotter and safety bars."
+        if pct_1rm >= 0.95
+        else None
+    )
+
     basis_1rm, source = await resolve_exercise_e1rm(db, user_id, exercise_name)
     if basis_1rm is None:
         return {
@@ -1201,12 +1209,14 @@ async def suggest_strength_load(
             "basis_1rm_kg": None,
             "pct_1rm": pct_1rm,
             "basis_source": "none",
+            "safety_warning": safety_warning,
         }
     return {
         "target_kg": round(basis_1rm * pct_1rm, 1),
         "basis_1rm_kg": round(basis_1rm, 1),
         "pct_1rm": pct_1rm,
         "basis_source": source,
+        "safety_warning": safety_warning,
     }
 
 

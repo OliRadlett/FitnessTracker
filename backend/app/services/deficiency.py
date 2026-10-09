@@ -322,7 +322,11 @@ def evaluate_push_pull_ratio(push_volume: float, pull_volume: float) -> dict | N
 
 
 def classify_ftp_wkg(watts_per_kg: float) -> tuple[str, int]:
-    """Classify FTP by W/kg. Returns (label, rank)."""
+    """Classify FTP by W/kg. Returns (label, rank).
+
+    F6 scope: rough trained-male-rider bands, not age/sex-adjusted —
+    present the label as a reference band, not a personal verdict.
+    """
     if watts_per_kg < 2.5:
         return "poor", _FTP_CLASS_RANK["poor"]
     if watts_per_kg < 3.2:
@@ -333,7 +337,11 @@ def classify_ftp_wkg(watts_per_kg: float) -> tuple[str, int]:
 
 
 def classify_ftp_absolute(ftp_watts: float) -> tuple[str, int]:
-    """Fallback FTP classification without bodyweight. Returns (label, rank)."""
+    """Fallback FTP classification without bodyweight. Returns (label, rank).
+
+    F6 scope: coarser still than the W/kg bands (no bodyweight context),
+    trained-male-rider reference only — not age/sex-adjusted.
+    """
     if ftp_watts < 200:
         return "average", _FTP_CLASS_RANK["average"]
     if ftp_watts < 250:

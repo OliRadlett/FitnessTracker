@@ -135,6 +135,18 @@ describe('detectPr', () => {
   it('treats missing PR history as first-session PR', () => {
     expect(detectPr('Squat', 60, 5, [], [])).toContain('PR!');
   });
+
+  it('never fires above the backend PR contention rep cap (12)', () => {
+    // A 15-rep back-off set has an inflated Brzycki estimate that would beat
+    // the stored PR — the backend refuses to record it, so the toast stays
+    // silent too (toast/record parity).
+    expect(detectPr('Squat', 70, 15, prs, [])).toBeNull();
+    expect(detectPr('Squat', 100, 13, [], [])).toBeNull();
+  });
+
+  it('still fires at the rep cap boundary', () => {
+    expect(detectPr('Squat', 102.5, 12, prs, [])).toContain('PR!');
+  });
 });
 
 describe('recentExerciseNames', () => {
