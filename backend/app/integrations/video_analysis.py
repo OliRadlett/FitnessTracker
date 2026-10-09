@@ -1111,7 +1111,7 @@ def run_full_analysis(
 
     result["rpe"] = {
         "estimated_rpe": round(base_rpe, 1),
-        "rir_estimate": round(max(0, (10 - base_rpe)) / 2, 1),
+        "rir_estimate": round(max(0.0, 10.0 - base_rpe), 1),
         "confidence": round(confidence, 2),
         "evidence": [
             f"velocity_loss={vel_loss:.1f}%",
@@ -1449,7 +1449,7 @@ def estimate_rpe_heuristic(analysis_result: dict, exercise_name: str, rep_count:
 
     return {
         "estimated_rpe": round(base_rpe, 1),
-        "rir_estimate": round(max(0, (10 - base_rpe)) / 2, 1),
+        "rir_estimate": round(max(0.0, 10.0 - base_rpe), 1),
         "confidence": round(confidence, 2),
         "evidence": [
             f"velocity_loss={vel_loss:.1f}%",

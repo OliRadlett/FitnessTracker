@@ -9,7 +9,10 @@ Targets by duration × intensity:
     | 60-120    | 30      | 40        | 50    |  g carbs/hour
     | 120-180   | 50      | 60        | 70    |
     | 180-300   | 60      | 80        | 90    |
-    | >300      | 80      | 90        | 100   |
+    | >300      | 80      | 90        | 90*   |
+
+    * Capped at 90 g/h. Rates above 90 g/h require gut training and
+    multiple transportable carbohydrates (fructose:glucose ≈ 1:2).
 
 Hydration: 500-800 ml/hr. Sodium: 300-900 mg/hr.
 Pre-ride (2h before): ~1.5 g carbs/kg. Post-ride (<30 min): ~1.2 g carbs/kg + 0.3 g protein/kg.
@@ -31,6 +34,21 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHT_KG = 75.0
 
+#: Upper bound for the hourly carb target. Exogenous carbohydrate oxidation
+#: with a single carb source (glucose/maltodextrin) saturates around
+#: 60 g/h; ~90 g/h is attainable with multiple transportable
+#: carbohydrates, and anything above that requires dedicated gut training.
+MAX_CARBS_PER_HOUR = 90.0
+
+#: Caveat surfaced whenever a plan sits at the cap, so athletes chasing
+#: >90 g/h know it requires gut training plus the right carb blend.
+GUT_TRAINING_NOTE = (
+    "Capped at 90 g/h. Intakes above 90 g/h require gut training and "
+    "multiple transportable carbohydrates with a fructose:glucose ratio "
+    "of about 1:2 (e.g. ~30 g fructose + ~60 g glucose/maltodextrin per "
+    "hour); build up gradually to avoid GI distress."
+)
+
 
 # ── Pure computation helpers (unit-tested) ──────────────────────────────────
 
@@ -45,17 +63,34 @@ def _intensity_band(intensity_factor: float) -> str:
 
 
 def _carbs_per_hour(duration_min: int, intensity_factor: float) -> float:
-    """Carb target in g/hour by duration x intensity band."""
+    """Carb target in g/hour by duration x intensity band.
+
+    Capped at :data:`MAX_CARBS_PER_HOUR` — see :data:`GUT_TRAINING_NOTE`
+    for the gut-training caveat that applies at the cap.
+    """
     band = _intensity_band(intensity_factor)
     if duration_min < 60:
         return 0.0
     if duration_min <= 120:
-        return {"low": 30.0, "medium": 40.0, "high": 50.0}[band]
-    if duration_min <= 180:
-        return {"low": 50.0, "medium": 60.0, "high": 70.0}[band]
-    if duration_min <= 300:
-        return {"low": 60.0, "medium": 80.0, "high": 90.0}[band]
-    return {"low": 80.0, "medium": 90.0, "high": 100.0}[band]
+        raw = {"low": 30.0, "medium": 40.0, "high": 50.0}[band]
+    elif duration_min <= 180:
+        raw = {"low": 50.0, "medium": 60.0, "high": 70.0}[band]
+    elif duration_min <= 300:
+        raw = {"low": 60.0, "medium": 80.0, "high": 90.0}[band]
+    else:
+        raw = {"low": 80.0, "medium": 90.0, "high": 90.0}[band]
+    return min(raw, MAX_CARBS_PER_HOUR)
+
+
+def carb_fuel_note(carbs_per_hour: float) -> str | None:
+    """Gut-training caveat for capped (high) carb targets.
+
+    Returns :data:`GUT_TRAINING_NOTE` when the hourly target sits at the
+    :data:`MAX_CARBS_PER_HOUR` cap, otherwise ``None``.
+    """
+    if carbs_per_hour >= MAX_CARBS_PER_HOUR:
+        return GUT_TRAINING_NOTE
+    return None
 
 
 def _hydration_ml_per_hour(duration_min: int, intensity_factor: float) -> float:
@@ -150,6 +185,7 @@ def compute_fuel_targets(
         "during_sodium_mg_per_hour": sodium,
         "post_ride_carbs_g": float(post_carbs),
         "post_ride_protein_g": float(post_protein),
+        "fuel_note": carb_fuel_note(carbs_per_hour),
         "schedule": _build_during_ride_schedule(
             duration_min, carbs_per_hour, hydration, sodium
         ),

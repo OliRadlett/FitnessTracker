@@ -118,11 +118,12 @@ def test_improvement_none_when_baseline_zero():
 
 
 def test_improvement_none_when_baseline_negligible():
-    # Near-constant HRV: correlations are valid but ~zero, so % improvement
-    # over baseline is still undefined → None (not a huge number).
+    # Near-constant HRV: correlations are valid but ~zero, so the F7 signal
+    # floor gates the fit (weak_fit_gated, persist nothing) instead of
+    # stamping a personalised fit with a meaningless improvement.
     days = [f"2026-02-{i + 1:02d}" for i in range(40)]
     tss = [{"date": d, "tss": 50.0 + (i % 5) * 20.0} for i, d in enumerate(days)]
     hrv = [{"date": d, "hrv_ms": 55.0 + 0.001 * (i % 2)} for i, d in enumerate(days)]
     result = fit_adaptive_time_constants(tss, hrv)
-    assert result["method"] == "hrv_recovery_fit"
+    assert result["method"] == "weak_fit_gated"
     assert result["improvement_pct"] is None

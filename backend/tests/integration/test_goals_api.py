@@ -318,6 +318,133 @@ class TestUpdateGoal:
         )
         assert resp.status_code == 404
 
+    async def test_patch_achieved_to_active_rejected(
+        self, client, db_session, test_user, test_weight_log
+    ):
+        """Achieved is sticky — PATCH cannot flip it back to active."""
+        create = await client.post(
+            "/api/v1/goals",
+            json={"metric": "body_weight", "target_value": 74.0},
+        )
+        goal_id = create.json()["id"]
+
+        from app.models.weight import WeightLog
+
+        db_session.add(
+            WeightLog(
+                user_id=test_user.id,
+                date=date.today(),
+                weight_kilogram=73.8,
+                source="manual",
+            )
+        )
+        await db_session.flush()
+        achieved = (await client.get(f"/api/v1/goals/{goal_id}")).json()
+        assert achieved["status"] == "achieved"
+
+        resp = await client.patch(f"/api/v1/goals/{goal_id}", json={"status": "active"})
+        assert resp.status_code == 409
+        assert "reactivate" in resp.json()["detail"]
+        # Still achieved afterwards
+        assert (await client.get(f"/api/v1/goals/{goal_id}")).json()[
+            "status"
+        ] == "achieved"
+
+    async def test_patch_achieved_to_abandoned_rejected(
+        self, client, db_session, test_user, test_weight_log
+    ):
+        """Achieved is sticky in every direction via PATCH."""
+        create = await client.post(
+            "/api/v1/goals",
+            json={"metric": "body_weight", "target_value": 74.0},
+        )
+        goal_id = create.json()["id"]
+
+        from app.models.weight import WeightLog
+
+        db_session.add(
+            WeightLog(
+                user_id=test_user.id,
+                date=date.today(),
+                weight_kilogram=73.8,
+                source="manual",
+            )
+        )
+        await db_session.flush()
+        assert (await client.get(f"/api/v1/goals/{goal_id}")).json()[
+            "status"
+        ] == "achieved"
+
+        resp = await client.patch(
+            f"/api/v1/goals/{goal_id}", json={"status": "abandoned"}
+        )
+        assert resp.status_code == 409
+
+    async def test_patch_expired_to_active_rejected(self, client, test_cycling_profile):
+        """Expired goals revive only through POST /reactivate (which
+        suppresses instant re-expiry), not via PATCH."""
+        create = await client.post(
+            "/api/v1/goals",
+            json={
+                "metric": "ftp_watts",
+                "target_value": 3000.0,  # unreachable → never achieved
+                "target_date": _yesterday(),
+            },
+        )
+        goal_id = create.json()["id"]
+        assert (await client.get(f"/api/v1/goals/{goal_id}")).json()[
+            "status"
+        ] == "expired"
+
+        resp = await client.patch(f"/api/v1/goals/{goal_id}", json={"status": "active"})
+        assert resp.status_code == 409
+        assert "reactivate" in resp.json()["detail"]
+
+        # The sanctioned path still works
+        reactivate = await client.post(f"/api/v1/goals/{goal_id}/reactivate")
+        assert reactivate.status_code == 200
+        assert reactivate.json()["status"] == "active"
+
+    async def test_patch_expired_to_abandoned_allowed(
+        self, client, test_cycling_profile
+    ):
+        """Giving up on an expired goal via PATCH stays legal."""
+        create = await client.post(
+            "/api/v1/goals",
+            json={
+                "metric": "ftp_watts",
+                "target_value": 3000.0,
+                "target_date": _yesterday(),
+            },
+        )
+        goal_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/goals/{goal_id}", json={"status": "abandoned"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "abandoned"
+
+    async def test_patch_metric_change_rebaselines_starting_value(
+        self, client, test_cycling_profile, test_weight_log
+    ):
+        """Switching metric/origin resets starting_value to the new metric's
+        current value instead of skewing progress from the stale origin."""
+        create = await client.post(
+            "/api/v1/goals", json={"metric": "ftp_watts", "target_value": 300.0}
+        )
+        assert create.json()["starting_value"] == 250.0
+
+        goal_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/goals/{goal_id}", json={"metric": "body_weight"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["metric"] == "body_weight"
+        # Re-based on the weigh-in (75.5), not the stale FTP origin (250.0)
+        assert data["starting_value"] == 75.5
+        assert data["current_value"] == 75.5
+
 
 class TestDeleteGoal:
     """DELETE /api/v1/goals/{id}."""
@@ -335,6 +462,55 @@ class TestDeleteGoal:
 
         resp = await client.delete(f"/api/v1/goals/{uuid.uuid4()}")
         assert resp.status_code == 404
+
+
+# ── Metric resolution ─────────────────────────────────────────────────
+
+
+class TestGoalMetricResolution:
+    """Resolver-level regressions for the goal metric registry."""
+
+    async def test_weekly_sessions_gym_counts_lifting_sessions(
+        self, client, test_lifting_session
+    ):
+        """sport='gym' behaves like strength/powerlifting: lifting sessions
+        count (previously they were silently missed)."""
+        for sport in ("gym", "strength", "powerlifting"):
+            resp = await client.post(
+                "/api/v1/goals",
+                json={
+                    "metric": "weekly_sessions",
+                    "target_value": 5.0,
+                    "filter_json": {"sport": sport},
+                },
+            )
+            assert resp.status_code == 201
+            data = resp.json()
+            assert data["current_value"] >= 1.0, sport
+
+    async def test_bw_ratio_prefers_weigh_in_over_profile(
+        self, client, test_cycling_profile, test_weight_log, test_personal_record
+    ):
+        """BW-ratio uses the latest weigh-in (75.5 kg), not the static
+        profile weight (75.0 kg) — matching the trend/weight surfaces."""
+        resp = await client.post(
+            "/api/v1/goals",
+            json={"metric": "squat_bw_ratio", "target_value": 3.0},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["current_value"] == round(180.0 / 75.5, 3)
+
+    async def test_bw_ratio_falls_back_to_profile_weight(
+        self, client, test_cycling_profile, test_personal_record
+    ):
+        """Without any weigh-in the profile weight still resolves."""
+        resp = await client.post(
+            "/api/v1/goals",
+            json={"metric": "squat_bw_ratio", "target_value": 3.0},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["current_value"] == round(180.0 / 75.0, 3)
 
 
 # ── Check-ins ─────────────────────────────────────────────────────────────

@@ -201,6 +201,38 @@ class TestSuggestLoad:
             resp = await client.post("/api/v1/lifting/suggest-load", json=payload)
             assert resp.status_code == 422, payload
 
+    async def test_near_maximal_pct_carries_spotter_warning(
+        self, client, test_user, db_session
+    ):
+        """F10: pct_1rm >= 0.95 warns to use a spotter/safety bars."""
+        await _seed_pr(db_session, test_user, e1rm=180.0)
+        heavy = await client.post(
+            "/api/v1/lifting/suggest-load",
+            json={"exercise_name": "Back Squat", "sets": 1, "reps": 1, "pct_1rm": 0.95},
+        )
+        assert heavy.status_code == 200
+        warning = heavy.json()["safety_warning"]
+        assert warning is not None
+        assert "spotter" in warning.lower()
+
+        light = await client.post(
+            "/api/v1/lifting/suggest-load",
+            json={"exercise_name": "Back Squat", "sets": 5, "reps": 5, "pct_1rm": 0.8},
+        )
+        assert light.status_code == 200
+        assert light.json()["safety_warning"] is None
+
+    async def test_spotter_warning_without_history(self, client):
+        """The warning reflects the requested intensity even with no e1RM basis."""
+        resp = await client.post(
+            "/api/v1/lifting/suggest-load",
+            json={"exercise_name": "Deadlift", "sets": 1, "reps": 1, "pct_1rm": 1.0},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["basis_source"] == "none"
+        assert data["safety_warning"] is not None
+
 
 # ── FL3: refresh strength targets ──────────────────────────────────────────
 

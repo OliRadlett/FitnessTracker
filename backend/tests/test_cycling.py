@@ -181,9 +181,13 @@ class TestEstimateFTPFromPowerCurve:
         assert ftp == pytest.approx(250.0, abs=1.0)
 
     def test_8min_fallback(self):
-        """300W for 8 min → FTP ≈ 256.5W (300 × 0.90 × 0.95)."""
+        """300W for 8 min → FTP ≈ 270W (300 × 0.90, Allen/Coggan).
+
+        F4: was 256.5W via 0.90 × 0.95 = 0.855, double-discounting an
+        already anaerobic-adjusted factor.
+        """
         ftp = estimate_ftp_from_power_curve({480: 300.0})
-        assert ftp == pytest.approx(256.5, abs=1.0)
+        assert ftp == pytest.approx(270.0, abs=1.0)
 
     def test_empty_curve(self):
         assert estimate_ftp_from_power_curve({}) is None

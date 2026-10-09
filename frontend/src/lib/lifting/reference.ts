@@ -101,7 +101,13 @@ function bestPrE1rm(prs: PersonalRecord[], exerciseName: string): number | null 
  * Returns celebration text if this set beats every stored PR for the
  * exercise, otherwise null. Called optimistically at log time — the backend
  * records the actual PR rows during sync.
+ *
+ * Mirrors the backend contention rule (MAX_REPS_FOR_1RM_PR = 12 in
+ * services/lifting.py): high-rep sets never contend, so the toast must not
+ * celebrate what the backend will not record.
  */
+export const MAX_REPS_FOR_PR_TOAST = 12;
+
 export function detectPr(
   exerciseName: string,
   weightKg: number,
@@ -109,6 +115,7 @@ export function detectPr(
   prs: PersonalRecord[] | undefined,
   todaySets: { weight_kg: number; reps: number }[]
 ): string | null {
+  if (reps <= 0 || reps > MAX_REPS_FOR_PR_TOAST) return null;
   const est = brzycki1rm(weightKg, reps);
   if (est === null) return null;
 

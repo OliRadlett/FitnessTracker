@@ -49,6 +49,10 @@ class GoalEnriched(GoalRead):
     progress_pct: float | None = None
     metric_label: str | None = None
     metric_unit: str | None = None
+    # P2 divergence unification: single canonical trajectory word
+    # (achieved/abandoned/expired/ahead/on_track/behind/off_track/unknown).
+    # See services.goals.trajectory_verdict for the precedence.
+    trajectory_verdict: str | None = None
 
 
 class GoalCheckInCreate(BaseModel):
@@ -84,3 +88,33 @@ class ReactivateResponse(BaseModel):
     id: uuid.UUID
     status: str
     message: str
+
+
+class GoalTemplateCreate(BaseModel):
+    """POSTable payload for one template — mirrors GoalCreate fields."""
+
+    metric: str
+    filter_json: dict | None = None
+    target_value: float
+
+
+class GoalTemplate(BaseModel):
+    """One personalised starter from GET /goals/templates."""
+
+    key: str
+    kind: str  # plate_milestone | bw_ratio | big3_total
+    title: str
+    description: str
+    metric: str
+    filter_json: dict | None = None
+    current_value: float | None = None
+    suggested_target: float
+    unit: str
+    create_payload: GoalTemplateCreate
+
+
+class GoalTemplatesResponse(BaseModel):
+    """Personalised male-only template list with the bodyweight basis."""
+
+    bodyweight_kg: float | None = None
+    templates: list[GoalTemplate] = []

@@ -32,7 +32,7 @@ export function joinDotsProgression(
       else break;
     }
     if (bw == null) continue;
-    const score = dots(total, bw, 'male');
+    const score = dots(total, bw);
     if (score == null) continue;
     outLabels.push(labels[i]);
     outData.push(Math.round(score * 10) / 10);

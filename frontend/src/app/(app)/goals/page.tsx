@@ -51,8 +51,18 @@ export default function GoalsPage() {
 
   const sortedGoals = useMemo(() => {
     if (!goals) return [];
-    // Most-progressed first within the tab
-    return [...goals].sort((a, b) => (b.progress_pct ?? 0) - (a.progress_pct ?? 0));
+    // Most-progressed first within the tab; ties break by target-date urgency
+    // (dated before undated, earliest due first), then metric label — so the
+    // order is total and stable across refetches instead of a coin flip.
+    return [...goals].sort((a, b) => {
+      const byProgress = (b.progress_pct ?? 0) - (a.progress_pct ?? 0);
+      if (byProgress !== 0) return byProgress;
+      const ad = a.target_date ?? '';
+      const bd = b.target_date ?? '';
+      if ((ad === '') !== (bd === '')) return ad === '' ? 1 : -1;
+      if (ad !== bd) return ad.localeCompare(bd);
+      return (a.metric_label || a.metric).localeCompare(b.metric_label || b.metric);
+    });
   }, [goals]);
 
   // Projection badges share cache with the detail modal (0.3)

@@ -22,6 +22,7 @@ from app.schemas.goal import (
     GoalCreate,
     GoalEnriched,
     GoalRead,
+    GoalTemplatesResponse,
     GoalUpdate,
     MetricInfo,
     ReactivateResponse,
@@ -39,6 +40,7 @@ from app.services.goals import (
     list_check_ins,
     reactivate_goal,
     record_manual_check_in,
+    trajectory_verdict,
 )
 
 router = APIRouter()
@@ -78,6 +80,11 @@ def _enrich(goal: Goal, state: dict | None, today: date) -> GoalEnriched:
     enriched.progress_pct = progress_pct
     enriched.metric_label = definition.label if definition else None
     enriched.metric_unit = definition.unit if definition else None
+    # P2 divergence unification: one canonical trajectory word (no badge on
+    # this path, so the verdict falls back to status + alignment).
+    enriched.trajectory_verdict = trajectory_verdict(
+        goal.status, None, enriched.alignment_pct
+    )
     return enriched
 
 
@@ -100,6 +107,19 @@ async def get_metrics(
 ):
     """List all available semantic metrics — drives dynamic goal forms."""
     return [MetricInfo(**m) for m in list_metrics()]
+
+
+@router.get("/templates", response_model=GoalTemplatesResponse)
+async def get_templates(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Personalised male-only goal starters (plate milestones, BW-ratio
+    standards, Big-3 clubs). Each template carries a ``create_payload``
+    that POSTs straight to ``POST /goals``."""
+    from app.services.goal_templates import get_goal_templates
+
+    return await get_goal_templates(db, current_user.id)
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -200,14 +220,45 @@ async def update_goal(
             f"{', '.join(METRIC_REGISTRY)}",
         )
 
+    # Status machine guard: achieved is sticky and abandoned is terminal, so
+    # PATCH must not resurrect them (or revive an expired goal) directly —
+    # that path would bypass reactivate_goal's re-baseline and re-expiry
+    # suppression. Use POST /{goal_id}/reactivate instead. The only manual
+    # transition PATCH allows is giving up: active/expired → abandoned.
+    if "status" in updates and updates["status"] != goal.status:
+        new_status = updates["status"]
+        if new_status == "active" or goal.status in ("achieved", "abandoned"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot move goal from {goal.status!r} to {new_status!r} "
+                    "via PATCH — use POST /{goal_id}/reactivate"
+                    if new_status == "active" or goal.status == "abandoned"
+                    else f"Cannot move goal from {goal.status!r} to "
+                    f"{new_status!r} via PATCH (achieved is sticky)"
+                ),
+            )
+        if new_status != "abandoned":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot move goal from {goal.status!r} to {new_status!r} via PATCH",
+            )
+
+    metric_changed = {"metric", "filter_json"} & updates.keys()
+
     for field, value in updates.items():
         setattr(goal, field, value)
 
     # Revalidate filters after a metric/filter change
-    if {"metric", "filter_json"} & updates.keys():
+    if metric_changed:
         error = validate_metric_filters(goal.metric, goal.filter_json)
         if error:
             raise HTTPException(status_code=400, detail=error)
+        # A new metric/filter needs a new trajectory origin — otherwise
+        # progress/alignment would be measured from the old metric's
+        # starting_value. NULL re-arms the lazy backfill in
+        # compute_goal_state below.
+        goal.starting_value = None
 
     await compute_goal_state(db, current_user.id, goal, today)
     await db.flush()

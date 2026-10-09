@@ -31,6 +31,83 @@ from app.services.goals import derive_direction
 
 logger = logging.getLogger(__name__)
 
+# ── Projection quality gates ───────────────────────────────────────────────
+#
+# Two guards keep a noisy or garbage trend from rendering as a confident
+# "On Track" badge:
+#
+# 1. R² gate (``PROJECTION_R2_MIN``): a regression that explains almost none
+#    of the variance cannot project a target date. This mirrors the VO2max
+#    gate (``VO2_R2_MIN = 0.5`` in ``integrations/power_models.py``) but is
+#    looser — check-in series are sparser and noisier than power samples,
+#    and gating at 0.5 would silence most genuine weight-loss trends (water
+#    fluctuations alone can push a real trend under 0.4).
+# 2. Rate-of-gain plausibility guard (``MAX_PLAUSIBLE_WEEKLY_CHANGE``): a
+#    fitted slope faster than any plausible physiology (e.g. +10 kg/week on
+#    bench from two mislogged sets) must not produce an "On Track" badge.
+#    Bounds are deliberately WIDE garbage gates, not coaching targets:
+#    anything inside them passes unflagged. They are calibrated for adult
+#    male lifters (the app's strength-standard population — see
+#    ``services/deficiency.py`` STANDARDS); the science-validator owns the
+#    table (t4).
+
+#: Minimum R² for a trend to drive a badge/projection. Below this the
+#: projection is suppressed and the badge reads "Not enough data".
+PROJECTION_R2_MIN = 0.30
+
+#: Metric key → maximum plausible |slope| per week. Symmetric bounds: rapid
+#: loss (injury/detraining/water cut) is as suspect as rapid gain when it
+#: exceeds these — both mean the fitted line cannot be trusted.
+MAX_PLAUSIBLE_WEEKLY_CHANGE: dict[str, float] = {
+    # Lifting (kg/week): novice DUP can add ~2.5 kg/week to a main lift;
+    # 5 kg/week on a single lift (10 on the Big-3 sum) is beyond even a
+    # rebound block — beyond it lies mislogged units, not adaptation.
+    "estimated_1rm": 5.0,
+    "big3_total": 10.0,
+    # Bodyweight ratios move ~0.005–0.01/week at the extremes; 0.05/week
+    # implies a logging error on either the lift or the weigh-in.
+    "squat_bw_ratio": 0.05,
+    "bench_bw_ratio": 0.05,
+    "deadlift_bw_ratio": 0.05,
+    # Body weight (kg/week): ±1% of bodyweight/week is the aggressive end of
+    # dieting; 2 kg/week sustained bounds every plausible cut/bulk and
+    # flags scale-unit mixups (lb logged as kg).
+    "body_weight": 2.0,
+    # FTP (W/week): trained riders gain ~5–10 W per 8-week block (~1 W/week);
+    # 5 W/week sustained flags a bad test or a changed power source.
+    "ftp_watts": 5.0,
+    # VO2max (ml/kg/min/week): +0.5 per 8 weeks is a strong response;
+    # 1.0/week sustained is outside the literature.
+    "vo2max": 1.0,
+    # Weekly TSS: a +100/week ramp is already aggressive (10–15% rule on a
+    # 600–800 base); 200/week sustained flags duplicated activities.
+    "weekly_tss": 200.0,
+    # Session count: nobody sustainably adds 5 sessions/week to a baseline.
+    "weekly_sessions": 5.0,
+    # Monthly distance (km, month-to-date accumulator): a +400 km/week slope
+    # on the accumulator flags unit/duplication errors, not fitness.
+    "monthly_distance_km": 400.0,
+    # Resting HR (bpm/week): ±2/week is a large real shift; 5 flags illness,
+    # device change, or misread data — not a projectable trend.
+    "resting_hr": 5.0,
+    # HRV (ms/week): ±20/week bounds every real adaptation arc.
+    "hrv_ms": 20.0,
+}
+
+
+def is_plausible_rate(metric_key: str, slope_per_week: float) -> bool:
+    """True when a fitted weekly slope is physiologically projectable.
+
+    Unknown metrics pass open (no gate) — a missing table entry must never
+    silence a projection; add the metric to
+    ``MAX_PLAUSIBLE_WEEKLY_CHANGE`` instead.
+    """
+    cap = MAX_PLAUSIBLE_WEEKLY_CHANGE.get(metric_key)
+    if cap is None:
+        return True
+    return abs(slope_per_week) <= cap
+
+
 # ── Pure functions (unit-testable) ───────────────────────────────────────────
 
 
@@ -125,17 +202,34 @@ def success_badge(
     projected_date: date | None,
     target_date: date | None,
     n_points: int,
+    *,
+    r_squared: float | None = None,
+    plausible: bool = True,
 ) -> str:
     """Badge only — no percentage.
 
     * ``"Not enough data"`` if n_points < 4
+    * ``"Not enough data"`` if the trend is gated: ``r_squared`` below
+      ``PROJECTION_R2_MIN`` (noise, not signal) or ``plausible`` is False
+      (rate-of-gain guard tripped). A gated trend must never render as
+      "On Track" — the projection it would stamp is untrustworthy.
     * ``"On Track"`` if projected_date exists and projected_date <= target_date
     * ``"At Risk"`` if projected_date exists and projected_date <= target_date + 30 days
     * ``"Unlikely"`` if projected_date is None (slope wrong direction) or
       projected_date > target_date + 30 days
     * If no target_date: ``"On Track"`` if slope heading toward target, else ``"Unlikely"``
+
+    ``r_squared``/``plausible`` default to ungated so existing callers and
+    tests keep their behaviour; ``compute_goal_projection`` always passes
+    both.
     """
     if n_points < 4:
+        return "Not enough data"
+
+    if not plausible:
+        return "Not enough data"
+
+    if r_squared is not None and r_squared < PROJECTION_R2_MIN:
         return "Not enough data"
 
     if projected_date is None:
@@ -158,6 +252,7 @@ def tsb_projection(
     current_ctl: float,
     current_atl: float,
     planned_tss_per_day: list[tuple[date, float | None]],
+    adherence_band: float = 0.2,
 ) -> list[dict]:
     """Project CTL/ATL/TSB forward using planned TSS.
 
@@ -166,27 +261,53 @@ def tsb_projection(
         CTL_new = CTL_old + (TSS - CTL_old) / 42
         ATL_new = ATL_old + (TSS - ATL_old) / 7
 
-    Returns a list of ``{"date", "ctl", "atl", "tsb"}`` for each day.
-    Days with ``None`` planned_tss use 0 (rest assumption).
+    Returns a list of ``{"date", "ctl", "atl", "tsb", "tsb_low",
+    "tsb_high"}`` for each day. Days with ``None`` planned_tss use 0
+    (rest assumption).
+
+    ``tsb_low``/``tsb_high`` (F9) are adherence-sensitivity bands, not
+    sampling CIs: the per-day min/max TSB across three trajectories run
+    with planned TSS scaled by ``(1 - adherence_band)``, ``1.0``, and
+    ``(1 + adherence_band)`` (default ±20% — the plan is rarely executed
+    exactly). Bands collapse onto the point estimate on all-rest stretches
+    (scaling 0 is still 0) and widen with horizon on loaded stretches,
+    which is the honest shape: the further out, the more execution drift
+    compounds.
     """
     CTL_DAYS = 42
     ATL_DAYS = 7
+
+    def _run(scale: float) -> list[float]:
+        ctl, atl = current_ctl, current_atl
+        out: list[float] = []
+        for _, raw_tss in planned_tss_per_day:
+            tss = (raw_tss if raw_tss is not None else 0.0) * scale
+            ctl = ctl + (tss - ctl) / CTL_DAYS
+            atl = atl + (tss - atl) / ATL_DAYS
+            out.append(round(ctl - atl, 1))
+        return out
+
+    scales = (max(0.0, 1.0 - adherence_band), 1.0, 1.0 + adherence_band)
+    trajectories = [_run(s) for s in scales]
 
     ctl = current_ctl
     atl = current_atl
     result: list[dict] = []
 
-    for day_date, raw_tss in planned_tss_per_day:
+    for i, (day_date, raw_tss) in enumerate(planned_tss_per_day):
         tss = raw_tss if raw_tss is not None else 0.0
         ctl = ctl + (tss - ctl) / CTL_DAYS
         atl = atl + (tss - atl) / ATL_DAYS
         tsb = ctl - atl
+        day_tsbs = [trajectories[k][i] for k in range(3)]
         result.append(
             {
                 "date": day_date,
                 "ctl": round(ctl, 1),
                 "atl": round(atl, 1),
                 "tsb": round(tsb, 1),
+                "tsb_low": round(min(day_tsbs), 1),
+                "tsb_high": round(max(day_tsbs), 1),
             }
         )
 
@@ -285,9 +406,21 @@ async def compute_goal_projection(
     # 3. Resolve current value
     current_value = await resolve_metric(db, user_id, goal.metric, goal.filter_json)
 
-    # 4. Regression on check-in history
+    # 3b. Deload-aware regression (P2): check-ins logged in deload weeks
+    # reflect programmed recovery, not lost adaptation — exclude them from
+    # the fitted points (history keeps them; only the fit skips them).
+    from app.services.goal_deload import deload_week_starts, monday_of
+
+    today = date.today()
+    deload_weeks = await deload_week_starts(db, user_id, twelve_weeks_ago, today)
+    fitted_ins = [
+        ci for ci in check_ins if monday_of(ci.check_in_date) not in deload_weeks
+    ]
+    deload_weeks_skipped = len(check_ins) - len(fitted_ins)
+
+    # 4. Regression on check-in history (deload weeks excluded)
     points: list[tuple[date, float]] = [
-        (ci.check_in_date, ci.value) for ci in check_ins
+        (ci.check_in_date, ci.value) for ci in fitted_ins
     ]
 
     trend = None
@@ -299,47 +432,82 @@ async def compute_goal_projection(
 
     if len(points) >= 2:
         slope, intercept, r_squared, n = linear_regression(points)
+        slope_per_week = slope * 7
+
+        # Quality gates: a noisy fit (low R²) or a physiologically absurd
+        # slope (mislogged sets, unit mixups, duplicated activities) must
+        # not stamp a confident badge or projection date. Gated trends keep
+        # their slope/R² visible for inspection but project nothing.
+        plausible = is_plausible_rate(goal.metric, slope_per_week)
+        if not plausible:
+            gated_reason: str | None = "implausible_rate"
+        elif r_squared < PROJECTION_R2_MIN:
+            gated_reason = "low_r_squared"
+        else:
+            gated_reason = None
 
         trend = {
             "slope_per_day": round(slope, 6),
-            "slope_per_week": round(slope * 7, 4),
+            "slope_per_week": round(slope_per_week, 4),
             "r_squared": round(r_squared, 4),
             "data_points": n,
+            "plausible": plausible,
+            "gated_reason": gated_reason,
+            "deload_weeks_skipped": deload_weeks_skipped,
         }
 
-        # 5. Project to target
-        today = date.today()
-        current = current_value if current_value is not None else points[-1][1]
-        if direction:
-            projection = project_to_target(
-                slope, intercept, today, current, goal.target_value, direction
+        if gated_reason is not None:
+            logger.info(
+                "Goal projection gated (%s): goal=%s metric=%s r²=%.3f slope/wk=%.3f",
+                gated_reason,
+                goal_id,
+                goal.metric,
+                r_squared,
+                slope_per_week,
             )
+        else:
+            # 5. Project to target
+            today = date.today()
+            current = current_value if current_value is not None else points[-1][1]
+            if direction:
+                projection = project_to_target(
+                    slope, intercept, today, current, goal.target_value, direction
+                )
 
-        # 6. Badge
+        # 6. Badge (success_badge re-enforces the R²/plausibility gates, so
+        # a gated trend can never render as confident even if this wiring
+        # is reused elsewhere)
         badge = success_badge(
             slope_per_day=slope,
             projected_date=projection["projected_date"] if projection else None,
             target_date=goal.target_date,
             n_points=n,
+            r_squared=r_squared,
+            plausible=plausible,
         )
 
-        # 7. Projection line: from first check-in to projected_date (or +90d max)
-        end_date = (
-            projection["projected_date"] if projection else today + timedelta(days=90)
-        )
-        # Cap at target_date + 60 days to avoid runaway lines
-        if goal.target_date:
-            end_date = min(end_date, goal.target_date + timedelta(days=60))
+        if gated_reason is None:
+            # 7. Projection line from first check-in to projected_date
+            # (or +90d max). Gated trends draw no line — an untrustworthy
+            # fit must not render as a forecast overlay either.
+            end_date = (
+                projection["projected_date"]
+                if projection
+                else today + timedelta(days=90)
+            )
+            # Cap at target_date + 60 days to avoid runaway lines
+            if goal.target_date:
+                end_date = min(end_date, goal.target_date + timedelta(days=60))
 
-        line_start = points[0][0]
-        line_end = min(end_date, today + timedelta(days=365))
+            line_start = points[0][0]
+            line_end = min(end_date, today + timedelta(days=365))
 
-        projection_line = []
-        current_d = line_start
-        while current_d <= line_end:
-            val = intercept + slope * (current_d - points[0][0]).days
-            projection_line.append({"date": current_d, "value": round(val, 2)})
-            current_d += timedelta(days=1)
+            projection_line = []
+            current_d = line_start
+            while current_d <= line_end:
+                val = intercept + slope * (current_d - points[0][0]).days
+                projection_line.append({"date": current_d, "value": round(val, 2)})
+                current_d += timedelta(days=1)
 
     elif len(points) == 1:
         # Single data point — no regression possible, but we can still show
@@ -631,11 +799,21 @@ async def compute_metric_trend(
 
     if len(points) >= 2:
         slope, intercept, r_squared, n = linear_regression(points)
+        slope_per_week = slope * 7
+        plausible = is_plausible_rate(metric_key, slope_per_week)
+        if not plausible:
+            gated_reason = "implausible_rate"
+        elif r_squared < PROJECTION_R2_MIN:
+            gated_reason = "low_r_squared"
+        else:
+            gated_reason = None
         trend = {
             "slope_per_day": round(slope, 6),
-            "slope_per_week": round(slope * 7, 4),
+            "slope_per_week": round(slope_per_week, 4),
             "r_squared": round(r_squared, 4),
             "data_points": n,
+            "plausible": plausible,
+            "gated_reason": gated_reason,
         }
 
         # Classify trend direction
@@ -656,13 +834,16 @@ async def compute_metric_trend(
 
         # Project the fitted line 8 weeks out in weekly steps (B-14: feeds
         # the dashed forecast overlays on the FTP/VO2max/weight/1RM charts).
+        # Suppressed when the trend is gated — an untrustworthy fit must not
+        # render as a forecast overlay.
         # NOTE: linear_regression fits on day-offsets from the first point,
         # so the intercept is the value at points[0][0].
         origin = points[0][0]
-        for week in range(1, 9):
-            future = points[-1][0] + timedelta(weeks=week)
-            value = slope * (future - origin).days + intercept
-            projection_line.append({"date": future, "value": round(value, 2)})
+        if gated_reason is None:
+            for week in range(1, 9):
+                future = points[-1][0] + timedelta(weeks=week)
+                value = slope * (future - origin).days + intercept
+                projection_line.append({"date": future, "value": round(value, 2)})
 
     return {
         "metric": metric_key,

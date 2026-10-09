@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart,
@@ -16,8 +16,9 @@ import { useAuthFetch } from '@/lib/api';
 import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reactivateGoal, getGoalProjection } from '@/lib/api';
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
-import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES } from '@/components/ui/GoalCard';
-import { Modal } from '@/components/ui/Modal';
+import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES, formatGoalValue } from '@/components/ui/GoalCard';
+import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 const SPORT_OPTIONS = [
   { value: '', label: 'All sports' },
@@ -126,15 +127,6 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     },
   });
 
-  // Close on Escape
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
   // ── Chart data ────────────────────────────────────────────────────────────
   // Merge check-in history with projection line into a unified dataset.
   // Each point has: date, value (from check-ins), projected (from projection line).
@@ -202,21 +194,14 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 
   return (
     <Modal open onClose={onClose} size="lg" aria-label="Goal detail">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <span aria-hidden="true">🎯</span>
-            <span className="truncate">{goal.metric_label || goal.metric}</span>
-          </h3>
-          {(goal.filter_json?.exercise || goal.filter_json?.sport) && (
-            <p className="text-xs text-accent">{goal.filter_json.exercise || goal.filter_json.sport}</p>
-          )}
-        </div>
-        <button onClick={onClose} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground text-xl shrink-0" aria-label="Close">
-          ×
-        </button>
-      </div>
+      <ModalHeader
+        title={goal.metric_label || goal.metric}
+        icon="🎯"
+        onClose={onClose}
+      />
+      {(goal.filter_json?.exercise || goal.filter_json?.sport) && (
+        <p className="text-xs text-accent -mt-3 mb-3">{goal.filter_json.exercise || goal.filter_json.sport}</p>
+      )}
 
         {/* Summary strip */}
         <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
@@ -231,9 +216,9 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           <span className="text-muted">
             Current:{' '}
             {goal.current_value !== undefined && goal.current_value !== null
-              ? `${goal.current_value.toFixed(1)}${unit ? ` ${unit}` : ''}`
+              ? formatGoalValue(goal.current_value, goal.metric_unit)
               : 'no data yet'}
-            {' · '}Target: {goal.target_value.toFixed(1)}{unit ? ` ${unit}` : ''}
+            {' · '}Target: {formatGoalValue(goal.target_value, goal.metric_unit)}
             {' · '}{goal.direction === 'decrease' ? '↓ decrease' : '↑ increase'}
           </span>
           {goal.target_date && (
@@ -393,12 +378,11 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             {needsExercise && (
               <div>
                 <label className="block text-xs text-muted mb-1">Exercise</label>
-                <input
-                  type="text"
+                <ExerciseAutocomplete
                   value={editExercise}
-                  onChange={(e) => setEditExercise(e.target.value)}
+                  onChange={setEditExercise}
                   placeholder="e.g. Back Squat"
-                  className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                  required
                 />
               </div>
             )}
