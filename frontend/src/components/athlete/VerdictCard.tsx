@@ -18,6 +18,7 @@ import Link from 'next/link';
 import type { TodayVerdict } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
+import { AnimatedNumber } from '@/components/motion/AnimatedNumber';
 import { formatTSB } from '@/lib/utils';
 
 export interface VerdictPlanContext {
@@ -132,7 +133,11 @@ function ProjectedWeek({ verdict }: { verdict: TodayVerdict }) {
                     : 'text-foreground'
               }`}
             >
-              {p.tsb == null ? '—' : Math.round(p.tsb)}
+              <AnimatedNumber
+                value={p.tsb ?? 0}
+                format={(v) => (p.tsb == null ? '—' : String(Math.round(v)))}
+                ariaLabel={p.tsb == null ? 'no projection' : `projected TSB ${Math.round(p.tsb)}`}
+              />
             </span>
           </li>
         ))}
@@ -171,7 +176,8 @@ export function VerdictCard({
         }
       >
         <p
-          className={`text-lg font-bold ${
+          key={verdict.headline}
+          className={`ft-value-swap text-lg font-bold ${
             isWarning || isCaution ? 'text-amber-200' : 'text-green-300'
           }`}
         >
@@ -227,8 +233,19 @@ export function VerdictCard({
       <Card>
         <p className="text-lg font-bold text-foreground">
           Rest day{planContext.planName ? ` in ${planContext.planName}` : ''}
-          {tsb != null && Number.isFinite(tsb) ? ` — TSB ${formatTSB(tsb)}` : ''}.
-          Freshness is the work today.
+          {tsb != null && Number.isFinite(tsb) ? (
+            <>
+              {' — TSB '}
+              <AnimatedNumber
+                value={tsb}
+                format={(v) => formatTSB(v)}
+                className="tabular-nums"
+              />
+            </>
+          ) : (
+            ''
+          )}
+          . Freshness is the work today.
         </p>
         {actionSlot}
       </Card>
