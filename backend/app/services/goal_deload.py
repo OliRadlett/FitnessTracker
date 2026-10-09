@@ -53,9 +53,10 @@ def detect_deload_weeks(
 
     *weekly_load* is ``(week_start, load)`` in ascending order. A week is a
     deload when its load is under ``drop_ratio`` × the mean of the
-    ``baseline_weeks`` preceding weeks, provided at least two of those weeks
-    carried load and their mean clears ``min_baseline``. Zero-history users
-    therefore never deload — the guard degrades open.
+    ``baseline_weeks`` preceding weeks **and above zero** — a zero-load
+    week is time off, not a programmed deload — provided at least two of
+    those weeks carried load and their mean clears ``min_baseline``.
+    Zero-history users therefore never deload — the guard degrades open.
     """
     by_week = {week: load for week, load in weekly_load}
     weeks = sorted(by_week)
@@ -67,6 +68,12 @@ def detect_deload_weeks(
             continue
         baseline = sum(trained) / len(trained)
         if baseline < min_baseline:
+            continue
+        if by_week[week] <= 0:
+            # Time off, not a programmed deload: a zero-load week carries
+            # no training to recover from. Without this, every trailing
+            # rest week after a trained block reads as a deload and burns
+            # schedule the athlete never needed to spend.
             continue
         if by_week[week] < drop_ratio * baseline:
             deloads.append(week)
