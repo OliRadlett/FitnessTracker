@@ -453,6 +453,19 @@ export default function CyclingPage() {
   const currentLoad = trainingLoad?.data?.[trainingLoad.data.length - 1];
   const hasQueryError = profileError || metricsError;
 
+  // State-aware TSS banner (Phase 0 hygiene): the old `metrics.recent_tss === 0`
+  // check fired on any rest week (7d window), even with healthy CTL/ATL history.
+  // Display logic only — no CTL/ATL/TSB computation changes (docs/algorithms.md).
+  // Show the banner only when the training-load series itself is missing/empty:
+  // query settled, FTP set, and no day in the window carries TSS. Otherwise
+  // render nothing (the manual "Recalculate TSS" affordance is dropped).
+  const trainingLoadMissing =
+    !loadLoading &&
+    profile?.ftp_watts != null &&
+    (!trainingLoad?.data ||
+      trainingLoad.data.length === 0 ||
+      trainingLoad.data.every((d) => (d.tss ?? 0) === 0));
+
   return (
     <div className="space-y-8">
       <PageHeader title="Cycling" subtitle="Power analysis, training load, and cycling metrics" />
@@ -603,19 +616,16 @@ export default function CyclingPage() {
         setLoadDays={setLoadDays}
       />
 
-      {/* Recalculate TSS Banner */}
-      {profile?.ftp_watts && (
+      {/* Recalculate TSS Banner (state-aware: only when CTL/ATL source data is missing) */}
+      {trainingLoadMissing && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
-                {(metrics?.recent_tss ?? 0) === 0 ? 'No TSS data found' : 'Recalculate TSS'}
+                No TSS data found
               </p>
               <p className="text-xs text-muted mt-1">
-                {(metrics?.recent_tss ?? 0) === 0
-                  ? `You have FTP set (${profile.ftp_watts} W) but no TSS values. Click below to calculate TSS for all rides — needed for CTL/ATL/TSB.`
-                  : `Recalculate TSS for all rides using your current FTP (${profile.ftp_watts} W). Use this after changing FTP.`
-                }
+                {`You have FTP set (${profile?.ftp_watts} W) but no TSS values. Click below to calculate TSS for all rides — needed for CTL/ATL/TSB.`}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">

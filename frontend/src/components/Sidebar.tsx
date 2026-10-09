@@ -195,8 +195,7 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-surface-light/50"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-surface-light/50 pb-safe-bottom"
     >
       <div className="grid grid-cols-6 gap-0.5 px-1 pt-1">
         {bottomNavItems.map((item) => {

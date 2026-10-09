@@ -96,7 +96,7 @@
 ### `analysis/` — Shared analysis components
 | Component | Purpose |
 |-----------|---------|
-| `AiAnalysisCard` | Shared AI analysis card — base component for all per-domain AI analysis cards (cycling, lifting, health, events). Collapsed-by-default "Based on" grounding chips from `stats_json` (RM2) |
+| `AiAnalysisCard` | Shared AI analysis card — base component for all per-domain AI analysis cards (cycling, lifting, health, events). Structured InsightCard body (score header, priority list, collapsible method via `analysisRenderer`); grounded-fact chips from `stats_json` (RM2) shown only when ≥2 facts, else nothing |
 
 ### `charts/` — Data visualization
 | Component | Purpose |
@@ -267,7 +267,7 @@
 ### `lib/` — Shared utilities
 | File | Purpose |
 |------|---------|
-| `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`) and `relativeTime` helper used by all AI analysis cards |
+| `analysisRenderer.tsx` | Shared markdown renderer (`renderAnalysisText`, `renderInline`, `####` support) + structured insight parser (`parseInsightSections`/`renderStructuredAnalysis`: score header, priority list, collapsible method — the InsightCard template) and `relativeTime` helper used by all AI analysis cards |
 | `utils.ts` | `formatDuration`, `formatDistance`, `formatElevation`, `formatStat`, `formatDateDMY`, `formatTime`, `formatWeight` (distance/weight/time/date honor the active user preferences — metric/en-GB/24h defaults), `weatherEmoji` (conditions → emoji mapping shared by weather UI), `setActivePreferences`/`getActiveLocale`/`getActiveUnitSystem`/`getActiveTimeFormat` (singleton synced by `UnitsProvider`) |
 | `units.tsx` | **§3.6 preferences context** — `UnitsProvider` (mounts in `(app)/layout.tsx`, fetches `/user/preferences`, syncs the utils singleton, optimistic PATCH with rollback) + `useUnits()` hook (`{ preferences, isImperial, setPreference }`). WeightPanel + ProfileEditor read it so kg↔lb toggles apply live |
 | `webPush.ts` | **§3.8 Web Push helpers** — `getPushCapability` (`unsupported/denied/available/granted`), `subscribeToWebPush`/`unsubscribeFromWebPush`/`getPushCount` (browser PushManager ↔ `/push/subscriptions`, VAPID key from backend, urlBase64↔Uint8Array). Used by `settings/WebPushCard` |

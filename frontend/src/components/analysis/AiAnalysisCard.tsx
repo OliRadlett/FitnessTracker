@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import type { LlmAnalysis } from '@/lib/api';
 import { formatTSB } from '@/lib/utils';
-import { renderAnalysisText, relativeTime } from '@/lib/analysisRenderer';
+import { renderStructuredAnalysis, relativeTime } from '@/lib/analysisRenderer';
 
 export interface AiAnalysisCardProps {
   /** Card title shown in the header */
@@ -143,7 +143,7 @@ export function AiAnalysisCard({
           )}
 
           <div className="bg-surface-light/30 rounded-lg p-4 border border-surface-light/50">
-            {renderAnalysisText(analysis.analysis_text)}
+            {renderStructuredAnalysis(analysis.analysis_text)}
           </div>
 
           {/* RM2 — grounding chips: key facts the analysis was based on. */}
@@ -155,9 +155,10 @@ export function AiAnalysisCard({
 }
 
 /**
- * RM2 — collapsed-by-default "Based on" line from `stats_json` (previously
- * never rendered). Defensive lookups across known producer shapes; renders
- * nothing when no recognised facts are present.
+ * RM2 — grounded-fact chips from `stats_json` (previously never rendered).
+ * Defensive lookups across known producer shapes. Renders nothing unless at
+ * least two recognised facts are present — a lone "Based on 1 fact" caption
+ * undercuts a confident analysis, so a single fact shows no chrome at all.
  */
 function StatsGrounding({ stats }: { stats: Record<string, unknown> | null | undefined }) {
   if (!stats || typeof stats !== 'object') return null;
@@ -197,18 +198,18 @@ function StatsGrounding({ stats }: { stats: Record<string, unknown> | null | und
   if (recovery !== null) facts.push(`Recovery ${Math.round(recovery)}%`);
 
   const shown = facts.slice(0, 5);
-  if (shown.length === 0) return null;
+  if (shown.length < 2) return null;
 
   return (
-    <details className="mt-3 text-xs text-muted">
-      <summary className="cursor-pointer hover:text-foreground transition-colors">
-        Based on {shown.length} fact{shown.length === 1 ? '' : 's'}
-      </summary>
-      <ul className="mt-1.5 space-y-0.5 list-disc list-inside">
-        {shown.map((f, i) => (
-          <li key={i}>{f}</li>
-        ))}
-      </ul>
-    </details>
+    <ul aria-label="Facts this analysis was based on" className="mt-3 flex flex-wrap gap-1.5">
+      {shown.map((f, i) => (
+        <li
+          key={i}
+          className="rounded-full border border-surface-light/60 bg-surface-light/30 px-2.5 py-1 text-xs text-muted"
+        >
+          {f}
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -91,7 +91,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <OnboardingWizard />
             <Sidebar />
             <main role="main" className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-              <div className="p-4 pt-20 pb-24 md:p-8 md:pt-8 md:pb-8 w-full max-w-screen-2xl mx-auto min-w-0">
+              {/* pb-tabbar-clear reserves the mobile fixed bottom tab bar +
+                  home-indicator safe area (see tailwind.config.js spacing
+                  tokens) so page content never renders under the bar. */}
+              <div className="p-4 pt-20 pb-tabbar-clear md:p-8 md:pt-8 md:pb-8 w-full max-w-screen-2xl mx-auto min-w-0">
                 <SyncHealthBanner />
                 <OfflineBanner />
                 <ErrorBoundary>

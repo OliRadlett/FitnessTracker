@@ -62,12 +62,17 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     enabled: !!token,
   });
 
-  const { data: projection } = useQuery({
+  const { data: projection, isLoading: projectionLoading, isError: projectionError } = useQuery({
     queryKey: ['goal-projection', goal.id],
     queryFn: () => getGoalProjection(authFetch, goal.id),
     staleTime: 5 * 60_000,
     enabled: !!token && goal.status === 'active',
   });
+
+  // Honest-empty CTA target: the manual check-in input below.
+  const focusCheckInInput = () => {
+    document.getElementById('goal-checkin-value')?.focus();
+  };
 
   const metricDef = useMemo(
     () => metrics?.find((m) => m.key === goal.metric) ?? null,
@@ -300,10 +305,23 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           )}
         </div>
 
-        {/* Projection section (Phase 7) */}
-        {projection && (
-          <ProjectionSection projection={projection} />
-        )}
+        {/* Projection section (Phase 7) — skeleton while loading, honest empty
+            when there is no projectable history yet. Hidden for non-active
+            goals (query disabled) and on fetch error (check-ins below still work). */}
+        {goal.status === 'active' &&
+          (projectionLoading ? (
+            <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2" role="status" aria-label="Loading projection">
+              <div className="h-3 w-24 animate-pulse bg-surface-light/60 rounded" aria-hidden="true" />
+              <div className="h-6 w-48 animate-pulse bg-surface-light/40 rounded-full" aria-hidden="true" />
+              <span className="sr-only">Loading projection…</span>
+            </div>
+          ) : projection ? (
+            <ProjectionSection projection={projection} onLogCheckIn={focusCheckInInput} />
+          ) : projectionError ? (
+            <p className="text-xs text-muted mb-5">
+              Couldn&apos;t load the projection — your check-ins below are unaffected.
+            </p>
+          ) : null)}
 
         {/* Manual check-in form */}
         {!editing && goal.status === 'active' && (
@@ -317,6 +335,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Log Check-in</h4>
             <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start">
               <input
+                id="goal-checkin-value"
                 type="number"
                 step="any"
                 value={checkValue}
@@ -498,13 +517,41 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 
 const BADGE_STYLES = PROJECTION_BADGE_STYLES;
 
-function ProjectionSection({ projection }: { projection: GoalProjectionResponse }) {
+function ProjectionSection({
+  projection,
+  onLogCheckIn,
+}: {
+  projection: GoalProjectionResponse;
+  onLogCheckIn: () => void;
+}) {
   const { badge, projection: proj, target_date } = projection;
   const badgeStyle = BADGE_STYLES[badge] ?? BADGE_STYLES['Not enough data'];
 
+  // Honest empty (first instance of the §4 pattern): what + how + CTA.
+  // The CTA focuses the Log Check-in input below — the real path to data.
+  if (!proj) {
+    return (
+      <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2">
+        <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Projection</h4>
+        <p className="text-sm font-medium text-foreground">Not enough history yet</p>
+        <p className="text-xs text-muted">
+          Log check-ins below — after a few entries (plus the weekly auto snapshot)
+          this goal projects its finish date here.
+        </p>
+        <button
+          type="button"
+          onClick={onLogCheckIn}
+          className="mt-1 min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          Log a check-in
+        </button>
+      </div>
+    );
+  }
+
   // Determine if projected date overshoots target
   let missDays: number | null = null;
-  if (proj?.projected_date && target_date) {
+  if (target_date) {
     const projTime = new Date(proj.projected_date).getTime();
     const targetTime = new Date(target_date).getTime();
     if (projTime > targetTime) {
@@ -519,26 +566,22 @@ function ProjectionSection({ projection }: { projection: GoalProjectionResponse 
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
           {badge}
         </span>
-        {proj ? (
-          missDays !== null ? (
-            <span className="text-xs text-warning">
-              At current pace, target missed by {missDays} day{missDays === 1 ? '' : 's'}
-            </span>
-          ) : (
-            <span className="text-xs text-muted">
-              Projected to reach target:{' '}
-              <span className="text-foreground font-medium">
-                {new Date(proj.projected_date).toLocaleDateString(getActiveLocale())}
-              </span>{' '}
-              ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
-            </span>
-          )
+        {missDays !== null ? (
+          <span className="text-xs text-warning">
+            At current pace, target missed by {missDays} day{missDays === 1 ? '' : 's'}
+          </span>
         ) : (
-          <span className="text-xs text-muted italic">Not enough data to project</span>
+          <span className="text-xs text-muted">
+            Projected to reach target:{' '}
+            <span className="text-foreground font-medium">
+              {new Date(proj.projected_date).toLocaleDateString(getActiveLocale())}
+            </span>{' '}
+            ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
+          </span>
         )}
       </div>
       {projection.trend && (
-        <p className="text-[11px] text-muted">
+        <p className="text-xs text-muted">
           Trend: {(projection.trend.slope_per_week >= 0 ? '+' : '')}
           {projection.trend.slope_per_week.toFixed(2)}/week
           {' · '}R² = {projection.trend.r_squared.toFixed(2)}
