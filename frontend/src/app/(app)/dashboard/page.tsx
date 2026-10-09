@@ -29,6 +29,9 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { getGreeting, getActiveLocale } from '@/lib/utils';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
+import { useAthleteState } from '@/lib/athlete';
+import { LoadStrip, SyncBadge, VerdictCard } from '@/components/athlete';
+import { sportLabel } from '@/lib/sportUtils';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
@@ -45,6 +48,26 @@ export default function DashboardPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [activeTab, setActiveTab] = useState<'today' | 'weekly' | 'monthly'>('today');
+
+  /* ── Phase 1 shared athlete slots (plans/ui-redesign-v2.md §1.3) ──────────
+     The VerdictCard props below are IDENTICAL to the /today slot (verdict,
+     planContext, tsb, sleepDebtHours, isLoading — no per-page forks), so the
+     dashboard/TODAY contradiction dies by construction. LoadStrip is the
+     single home for CTL/ATL/TSB display; SyncBadge rides in its slot so
+     degradation is shown, never averaged away. Display only — no computation
+     changes (docs/algorithms.md authoritative). */
+  const athlete = useAthleteState();
+  const verdictTodaySlice = athlete.plan.today;
+  const verdictPlanContext = athlete.plan.activePlan
+    ? {
+        planName: athlete.plan.activePlan.name,
+        dayLabel:
+          verdictTodaySlice && verdictTodaySlice.sport !== 'rest'
+            ? verdictTodaySlice.workout_description || sportLabel(verdictTodaySlice.sport)
+            : null,
+      }
+    : null;
+  const verdictIsLoading = athlete.verdict.isLoading || athlete.plan.isLoading;
 
   /* ── Queries ───────────────────────────────────────────────────────────── */
 
@@ -290,6 +313,31 @@ export default function DashboardPage() {
               />
             )}
           </>
+        }
+      />
+
+      {/* ── Phase 1 shared slots: overview home keeps its banner position ──── */}
+      <VerdictCard
+        verdict={athlete.verdict.verdict}
+        planContext={verdictPlanContext}
+        tsb={athlete.load.tsb}
+        sleepDebtHours={athlete.body.sleepDebtHours}
+        isLoading={verdictIsLoading}
+      />
+      <LoadStrip
+        ctl={athlete.load.ctl}
+        atl={athlete.load.atl}
+        tsb={athlete.load.tsb}
+        weekTss={athlete.load.weekTss}
+        ftpWatts={athlete.load.ftpWatts}
+        trend={athlete.load.trend}
+        isLoading={athlete.load.isLoading}
+        syncBadge={
+          <SyncBadge
+            lastSyncedAt={athlete.sync.lastSyncedAt}
+            stale={athlete.sync.staleProviders.length > 0}
+            provider={athlete.sync.staleProviders[0]?.provider ?? null}
+          />
         }
       />
 

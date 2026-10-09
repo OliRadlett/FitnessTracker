@@ -31,7 +31,6 @@ import { MetricCard } from '@/components/ui/MetricCard';
 import { WhoopWeeklyCard } from '@/components/health/WhoopWeeklyCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { ActivityRow, SessionRow, ListSkeleton } from '@/components/dashboard/helpers';
-import { RestDayBanner } from './RestDayBanner';
 import { HealthAlertsSection } from '@/components/health/HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
@@ -129,10 +128,8 @@ export function WeeklyTab({
 
   return (
     <div className="space-y-8">
-      {/* ── Rest Day Suggestion / Training Readiness ─────────────────────────── */}
-      {summary?.rest_day_suggestion && (
-        <RestDayBanner suggestion={summary.rest_day_suggestion} />
-      )}
+      {/* Rest-day verdict lives once in the page-level VerdictCard slot above
+          the tabs (ui-redesign-v2 §1) — no second banner here. */}
 
       {/* ── Upcoming Events Banner ──────────────────────────────────────────── */}
       {upcomingEvents && upcomingEvents.length > 0 && (

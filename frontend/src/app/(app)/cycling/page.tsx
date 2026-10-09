@@ -7,6 +7,7 @@ import type {
   CyclingProfile,
   CyclingProfileUpdate,
   CyclingMetricsSummary,
+  Connection,
   CyclingPowerRecord,
   TrainingLoadResponse,
   PowerCurveResponse,
@@ -23,10 +24,19 @@ import type {
   Vo2maxResponse,
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
+  WeightHistoryResponse,
 } from '@/lib/api';
+import { getWeightHistory } from '@/lib/api';
 import { type PREvent } from '@/components/ui/PRCelebration';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
+import { LoadStrip, SyncBadge, WeightCard } from '@/components/athlete';
+import {
+  deriveLastSyncedAt,
+  deriveLoadTrend,
+  deriveStaleProviders,
+  deriveWeekTss,
+} from '@/lib/athlete';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
@@ -38,7 +48,6 @@ import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { formatTSB } from '@/lib/utils';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -263,6 +272,31 @@ export default function CyclingPage() {
     enabled: !!token,
   });
 
+  // ── Phase 1 shared header (plans/ui-redesign-v2.md §1) ──────────────────
+  // `LoadStrip` is the single home for CTL/ATL/TSB/FTP display; `SyncBadge`
+  // shows degradation (never averaged away). Props here are identical to the
+  // training-page slot (guardrail §1.3) — same component, same derivation
+  // from the server-computed training-load series. No computation changes.
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // Shared cache key with `WeightPanel` (days=90) — the read-only `WeightCard`
+  // below renders from the same entry, logging stays in `WeightPanel`.
+  const {
+    data: weightHistory,
+    isLoading: weightLoading,
+    isError: weightError,
+  } = useQuery<WeightHistoryResponse>({
+    queryKey: ['weight-history'],
+    queryFn: () => getWeightHistory(authFetch, 90),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
   // ── Cycling Power PRs ───────────────────────────────────────────────────
   const { data: cyclingPRs, isLoading: cyclingPRsLoading, refetch: refetchPRs } = useQuery<CyclingPowerRecord[]>({
     queryKey: ['cycling-prs'],
@@ -450,8 +484,15 @@ export default function CyclingPage() {
     );
   }
 
-  const currentLoad = trainingLoad?.data?.[trainingLoad.data.length - 1];
   const hasQueryError = profileError || metricsError;
+
+  // Phase 1 header derivation — presentational reads of the server-computed
+  // series only (docs/algorithms.md authoritative; same selectors as every
+  // other LoadStrip slot, guardrail §1.3).
+  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
+  const stripWeekTss = deriveWeekTss(trainingLoad?.data ?? null);
+  const staleProviders = deriveStaleProviders(connections);
+  const lastSyncedAt = deriveLastSyncedAt(connections);
 
   // State-aware TSS banner (Phase 0 hygiene): the old `metrics.recent_tss === 0`
   // check fired on any rest week (7d window), even with healthy CTL/ATL history.
@@ -508,18 +549,38 @@ export default function CyclingPage() {
         )}
       </Card>
 
-      {/* Metrics Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="FTP"
-          value={metrics?.ftp_watts || metrics?.estimated_ftp}
-          unit="W"
-          color="text-yellow-400"
-          subtext={metrics?.estimated_ftp && metrics?.ftp_watts !== metrics?.estimated_ftp
-            ? `Est: ${metrics.estimated_ftp} W`
-            : undefined}
-          tooltip="Functional Threshold Power — the maximum power you can sustain for ~1 hour. Used to calculate TSS, IF, and power zones."
+      {/* Shared load header (Phase 1) — the single home for CTL/ATL/TSB,
+          7d TSS, and FTP display. Labs below keep their full depth; the FTP
+          lab links back here. Tapping a chip jumps to its home chart. */}
+      <div id="load-strip" className="scroll-mt-4">
+        <LoadStrip
+          ctl={trainingLoad?.current_ctl ?? null}
+          atl={trainingLoad?.current_atl ?? null}
+          tsb={trainingLoad?.current_tsb ?? null}
+          weekTss={stripWeekTss}
+          ftpWatts={profile?.ftp_watts ?? null}
+          trend={loadTrend.direction}
+          isLoading={loadLoading || profileLoading}
+          syncBadge={
+            <SyncBadge
+              lastSyncedAt={lastSyncedAt}
+              stale={staleProviders.length > 0}
+              provider={staleProviders[0]?.provider ?? null}
+            />
+          }
         />
+        {/* CTL benchmark classification previously rode on the CTL card —
+            kept as a caption so the merge cuts no data. */}
+        {metrics?.ctl_benchmark && (
+          <p className="mt-1 text-xs tabular-nums text-muted">
+            Fitness level: {metrics.ctl_benchmark.label}
+            <span className="text-muted/70"> ({metrics.ctl_benchmark.range})</span>
+          </p>
+        )}
+      </div>
+
+      {/* W/kg lives outside the strip (benchmark + tooltip depth kept). */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
           label="W/kg"
           value={metrics?.power_to_weight}
@@ -528,33 +589,6 @@ export default function CyclingPage() {
           subtext="At FTP"
           benchmark={metrics?.ftp_wkg_benchmark}
           tooltip="Power-to-weight ratio at FTP. Higher is better for climbing. Elite: 5-6 W/kg, Good: 3.5-4.5 W/kg."
-        />
-        <MetricCard
-          label="CTL (Fitness)"
-          value={currentLoad?.ctl?.toFixed(0)}
-          color="text-positive"
-          subtext="42-day EWMA"
-          benchmark={metrics?.ctl_benchmark}
-          tooltip="Chronic Training Load — your long-term fitness, calculated as a 42-day exponentially weighted moving average of TSS. Higher = fitter. Typical range: 30-150."
-        />
-        <MetricCard
-          label="TSB (Form)"
-          value={formatTSB(currentLoad?.tsb)}
-          color={
-            (currentLoad?.tsb ?? 0) > 25
-              ? 'text-positive'
-              : (currentLoad?.tsb ?? 0) < -30
-                ? 'text-warning'
-                : 'text-blue-400'
-          }
-          subtext={
-            (currentLoad?.tsb ?? 0) > 25
-              ? 'Fresh — ready to race'
-              : (currentLoad?.tsb ?? 0) < -30
-                ? 'Fatigued — consider rest'
-                : 'Neutral'
-          }
-          tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
         />
       </div>
 
@@ -699,8 +733,14 @@ export default function CyclingPage() {
       <PowerModelSection powerModel={powerModel} isLoading={powerModelLoading} />
       <WeatherAnalysisSection weatherAnalysis={weatherAnalysis} isLoading={weatherLoading} />
 
-      {/* Weight Management */}
-      <div className="max-w-2xl">
+      {/* Weight Management — read-only shared card up top, logging stays
+          in the panel below (Phase 1: one WeightCard, identical props). */}
+      <div className="max-w-2xl space-y-4">
+        <WeightCard
+          history={weightHistory ?? null}
+          isLoading={weightLoading}
+          isError={weightError}
+        />
         <WeightPanel />
       </div>
 
@@ -712,8 +752,16 @@ export default function CyclingPage() {
         />
       </div>
 
-      {/* FTP Section */}
-      <div ref={ftpRef}>
+      {/* FTP Section — the lab keeps full depth (history, estimate, PRs);
+          current FTP itself lives in the load strip above. */}
+      <div ref={ftpRef} className="scroll-mt-4 space-y-2">
+        <p className="text-xs text-muted">
+          Current FTP is shown in the{' '}
+          <a href="#load-strip" className="text-accent hover:text-accent/80 underline underline-offset-2">
+            load strip above
+          </a>
+          {' '}— below is the full history, estimation, and records lab.
+        </p>
         <FtpSection
           profile={profile}
           ftpHistory={ftpHistory}

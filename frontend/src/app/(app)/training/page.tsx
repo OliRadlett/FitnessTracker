@@ -8,6 +8,9 @@ import type {
   TrainingPlan,
   TrainingPlanSummary,
   TrainingPlanDay,
+  Connection,
+  CyclingProfile,
+  TrainingLoadResponse,
   CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
@@ -18,6 +21,13 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadStrip, SyncBadge } from '@/components/athlete';
+import {
+  deriveLastSyncedAt,
+  deriveLoadTrend,
+  deriveStaleProviders,
+  deriveWeekTss,
+} from '@/lib/athlete';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
@@ -139,6 +149,39 @@ export default function TrainingPage() {
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
     enabled: !!token,
   });
+
+  // ── Phase 1 shared header (plans/ui-redesign-v2.md §1) ──────────────────
+  // Same `LoadStrip` with the SAME props as the cycling slot (guardrail §1.3):
+  // CTL/ATL/TSB + 7d TSS from the server-computed training-load series, FTP
+  // from the cycling profile, degradation via `SyncBadge`. Display-only —
+  // docs/algorithms.md stays authoritative. Query keys match the cycling page
+  // so the two slots share cache instead of refetching.
+  const LOAD_DAYS = 90;
+  const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
+    queryKey: ['training-load', LOAD_DAYS],
+    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${LOAD_DAYS}`),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: cyclingProfile, isLoading: profileLoading } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // Presentational derivations only (shared selectors — no recomputation,
+  // same shape as every other LoadStrip slot, guardrail §1.3).
+  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
+  const weekTss = deriveWeekTss(trainingLoad?.data ?? null);
+  const staleProviders = deriveStaleProviders(connections);
+  const lastSyncedAt = deriveLastSyncedAt(connections);
 
   // ── Mutations ───────────────────────────────────────────────────────
 
@@ -265,6 +308,27 @@ export default function TrainingPage() {
         title="📋 Training Plans"
         subtitle="Plan your training blocks, manage events, and track periodization."
       />
+
+      {/* Shared load header (Phase 1) — identical props to the cycling slot.
+          Planner, builder, and charts below keep their full depth. */}
+      <div id="load-strip" className="scroll-mt-4">
+        <LoadStrip
+          ctl={trainingLoad?.current_ctl ?? null}
+          atl={trainingLoad?.current_atl ?? null}
+          tsb={trainingLoad?.current_tsb ?? null}
+          weekTss={weekTss}
+          ftpWatts={cyclingProfile?.ftp_watts ?? null}
+          trend={loadTrend.direction}
+          isLoading={loadLoading || profileLoading}
+          syncBadge={
+            <SyncBadge
+              lastSyncedAt={lastSyncedAt}
+              stale={staleProviders.length > 0}
+              provider={staleProviders[0]?.provider ?? null}
+            />
+          }
+        />
+      </div>
 
       {/* Error banner */}
       {actionError && (

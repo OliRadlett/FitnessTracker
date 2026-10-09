@@ -19,9 +19,9 @@ import type {
 import { getForecast } from '@/lib/api/weather';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DomainIcon } from '@/components/ui/DomainIcon';
-import { RestDayBanner } from '@/components/dashboard/RestDayBanner';
+import { useAthleteState } from '@/lib/athlete';
+import { VerdictCard } from '@/components/athlete';
 import { NextSessionCard } from '@/components/training/NextSessionCard';
-import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -30,18 +30,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { sportLabel } from '@/lib/sportUtils';
 import {
-  computeVerdict,
   insightOneLiner,
   pickTopInsight,
   type BriefInsight,
-  type Verdict,
 } from '@/lib/brief';
-
-const VERDICT_STYLE: Record<Verdict, { ring: string; dot: string; label: string }> = {
-  green: { ring: 'border-green-500/40', dot: 'bg-green-500', label: 'Train' },
-  yellow: { ring: 'border-yellow-500/40', dot: 'bg-yellow-500', label: 'Careful' },
-  red: { ring: 'border-red-500/40', dot: 'bg-red-500', label: 'Easy' },
-};
 
 function weatherNote(day: { temp_max: number; precipitation_probability: number | null; wind_speed_max: number; conditions: string }): string {
   const notes: string[] = [];
@@ -110,22 +102,25 @@ export default function TodayBriefPage() {
     (d) => d.day_date === toDateStr(new Date()),
   );
 
-  const verdict = computeVerdict({
-    recoveryScore: readiness?.recovery_score ?? null,
-    tsb: todaySummary?.current_tsb ?? null,
-    sleepDebtHours: sleepDebt?.debt_hours ?? null,
-  });
-  const style = VERDICT_STYLE[verdict.verdict];
-  // Stand-in for the tier-1 banner when the server sent a verdict but no legacy
-  // suggestion. The banner still renders its TSB/recovery/streak tiles from this,
-  // so it must be a real object rather than a cast of undefined.
-  const legacySuggestion = {
-    should_rest: todaySummary?.verdict?.should_rest ?? false,
-    reasons: [] as string[],
-    current_tsb: todaySummary?.current_tsb,
-    latest_recovery: readiness?.recovery_score ?? undefined,
-    consecutive_training_days: 0,
-  };
+  /* ── Phase 1 shared verdict slot (plans/ui-redesign-v2.md §1.3) ──────────
+     The VerdictCard props below are IDENTICAL to the dashboard slot (verdict,
+     planContext, tsb, sleepDebtHours, isLoading — no per-page forks), so the
+     dashboard/TODAY contradiction dies by construction. Plan-relative
+     (adjust-or-affirm, never invented workouts); the card's own fallbacks
+     cover rest days and the no-plan case. Display only — no computation
+     changes (docs/algorithms.md authoritative). */
+  const athlete = useAthleteState();
+  const verdictTodaySlice = athlete.plan.today;
+  const verdictPlanContext = athlete.plan.activePlan
+    ? {
+        planName: athlete.plan.activePlan.name,
+        dayLabel:
+          verdictTodaySlice && verdictTodaySlice.sport !== 'rest'
+            ? verdictTodaySlice.workout_description || sportLabel(verdictTodaySlice.sport)
+            : null,
+      }
+    : null;
+  const verdictIsLoading = athlete.verdict.isLoading || athlete.plan.isLoading;
   const topInsight = pickTopInsight(insights ?? [], sleepDebt?.debt_hours ?? null);
   const todayWx = forecast?.days?.[0];
   const hasQueryError = todayError || readinessError;
@@ -150,44 +145,16 @@ export default function TodayBriefPage() {
         message="Some of today's data failed to load."
       />
 
-      {/* 1 — Verdict. Three tiers, and the order matters: the server verdict
-          knows about five engines (load, adaptive, deficiency, cross-domain,
-          projection); the rest-only banner knows about one; the local card
-          knows about three signals and is the last resort. Before this the page
-          rendered tiers two and three as peers and silently discarded one. */}
-      {todaySummary?.verdict ? (
-        <RestDayBanner
-          suggestion={todaySummary.rest_day_suggestion ?? legacySuggestion}
-          verdict={todaySummary.verdict}
-          sleepDebtHours={sleepDebt?.debt_hours ?? null}
-        />
-      ) : todaySummary?.rest_day_suggestion ? (
-        <RestDayBanner
-          suggestion={todaySummary.rest_day_suggestion}
-          sleepDebtHours={sleepDebt?.debt_hours ?? null}
-        />
-      ) : (
-      <Card className={`border ${style.ring}`}>
-        <div className="flex items-center gap-3">
-          <span className={`h-3 w-3 rounded-full ${style.dot}`} aria-hidden />
-          <p className="text-lg font-bold text-foreground">{verdict.headline}</p>
-          <Badge>{style.label}</Badge>
-        </div>
-        {verdict.signals.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {verdict.signals.map((s) => (
-              <div key={s.label} className="flex items-start justify-between gap-3 text-sm">
-                <div>
-                  <span className="text-foreground font-medium">{s.label}: </span>
-                  <span className="text-muted">{s.reasoning}</span>
-                </div>
-                <span className="text-foreground font-mono shrink-0">{s.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-      )}
+      {/* 1 — Verdict. The shared Phase 1 card (same props shape as the
+          dashboard slot): server verdict headline + reasons + full consensus
+          incl. silent engines, with plan-relative fallbacks. */}
+      <VerdictCard
+        verdict={athlete.verdict.verdict}
+        planContext={verdictPlanContext}
+        tsb={athlete.load.tsb}
+        sleepDebtHours={athlete.body.sleepDebtHours}
+        isLoading={verdictIsLoading}
+      />
 
       {/* 2-col on desktop (2.2): action left, context right */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">

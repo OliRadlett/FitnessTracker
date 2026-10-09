@@ -28,7 +28,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
-import { RestDayBanner } from './RestDayBanner';
 import { GoalsSection } from './GoalsSection';
 import { TodayAdaptiveAction } from './TodayAdaptiveAction';
 import { MetricCard } from '@/components/ui/MetricCard';
@@ -60,6 +59,9 @@ const DAY_TYPE_COLORS: Record<string, string> = {
 interface TodayTabProps {
   todaySummary: TodaySummary | undefined;
   isLoading: boolean;
+  // Retained for API compatibility — dashboard/page.tsx still passes it.
+  // The rest-day verdict it carried now lives in the page-level VerdictCard
+  // slot above the tabs (ui-redesign-v2 §1), so this tab no longer reads it.
   summary: DashboardSummary | undefined;
   readiness: ReadinessResponse | undefined;
   hasReadiness: boolean;
@@ -74,7 +76,6 @@ interface TodayTabProps {
 export function TodayTab({
   todaySummary,
   isLoading,
-  summary,
   readiness,
   hasReadiness,
   respiratoryRate,
@@ -165,28 +166,13 @@ export function TodayTab({
   return (
     <div className="space-y-8">
 
-      {/* ── Status Banners ──────────────────────────────────────────────────── */}
-      {(summary?.rest_day_suggestion || displayEvents.length > 0) && (
-        <div className="space-y-4">
-          {summary?.rest_day_suggestion && (
-            <RestDayBanner
-              suggestion={summary.rest_day_suggestion}
-              sleepDebtHours={sleepDebt?.debt_hours ?? null}
-              action={
-                activePlan ? (
-                  <TodayAdaptiveAction
-                    planId={activePlan.id}
-                    todayDayId={todayPlanDay?.id ?? null}
-                    todayDateStr={todayStr}
-                    planDays={planWeek?.days}
-                    variant="row"
-                  />
-                ) : undefined
-              }
-            />
-          )}
-          {displayEvents.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* ── Upcoming events ────────────────────────────────────────────────
+          The rest-day verdict used to render here via RestDayBanner; it now
+          lives once in the page-level VerdictCard slot above the tabs
+          (ui-redesign-v2 §1 — identical props in every slot), so the banner
+          is gone and only the event cards remain. */}
+      {displayEvents.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {displayEvents.map((evt) => (
                 <Link
                   key={evt.id}
@@ -218,13 +204,13 @@ export function TodayTab({
                   )}
                 </Link>
               ))}
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── Adaptive action when there is no rest-day banner (QW3) ────────────── */}
-      {!summary?.rest_day_suggestion && activePlan && (
+      {/* ── Adaptive action (QW3) — always standalone now that the
+          RestDayBanner row slot is gone; the verdict lives in the
+          page-level VerdictCard above the tabs. ─────────────────────── */}
+      {activePlan && (
         <TodayAdaptiveAction
           planId={activePlan.id}
           todayDayId={todayPlanDay?.id ?? null}
@@ -364,71 +350,29 @@ export function TodayTab({
         </div>
       </div>
 
-      {/* ── Training Load (CTL / ATL / TSB) ─────────────────────────────────── */}
+      {/* ── Training Load trend ─────────────────────────────────────────────
+          CTL/ATL/TSB numbers live once in the page-level LoadStrip slot
+          above the tabs (ui-redesign-v2 §1 — single home for load display),
+          so the three MetricCards are gone; the Form Trend chart stays here
+          as tab depth (data maximalism — charts untouched). */}
       <div>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-3">
-            <ChartCard
-              title="Form Trend"
-              insight={
-                todaySummary
-                  ? `TSB ${formatTSB(todaySummary.current_tsb)} — ${
-                      todaySummary.current_tsb < -30 ? 'overreaching, prioritize recovery'
-                      : todaySummary.current_tsb < -10 ? 'productive training zone'
-                      : todaySummary.current_tsb > 10 ? 'fresh — good window for hard efforts'
-                      : 'neutral — train as planned'
-                    }.`
-                  : undefined
-              }
-              isLoading={trainingLoadLoading}
-              data={trainingLoadChart}
-              emptyMessage="No training load data available"
-              height={260}
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4">
-            <Link href="/cycling" className="block group">
-              <MetricCard
-                label="CTL (Fitness)"
-                value={todaySummary.current_ctl.toFixed(1)}
-                subtitle="42-day chronic load"
-                color="text-blue-400"
-                icon="📈"
-                tooltip="Chronic Training Load — long-term fitness as a 42-day exponentially weighted average of TSS. Higher = fitter. Typical range: 30-150. Builds slowly over weeks."
-              />
-            </Link>
-            <Link href="/cycling" className="block group">
-              <MetricCard
-                label="ATL (Fatigue)"
-                value={todaySummary.current_atl.toFixed(1)}
-                subtitle="7-day acute load"
-                color="text-orange-400"
-                icon="🔥"
-                tooltip="Acute Training Load — short-term fatigue as a 7-day exponentially weighted average of TSS. Spikes after hard days, drops quickly with rest."
-              />
-            </Link>
-            <Link href="/cycling" className="block group">
-              <MetricCard
-                label="TSB (Form)"
-                value={formatTSB(todaySummary.current_tsb)}
-                subtitle={
-                  todaySummary.current_tsb < -30 ? 'Overreaching'
-                  : todaySummary.current_tsb < -10 ? 'Productive'
-                  : todaySummary.current_tsb > 10 ? 'Fresh / Tapered'
-                  : 'Neutral'
-                }
-                color={
-                  todaySummary.current_tsb < -30 ? 'text-warning'
-                  : todaySummary.current_tsb < -10 ? 'text-amber-400'
-                  : todaySummary.current_tsb > 10 ? 'text-positive'
-                  : 'text-blue-400'
-                }
-                icon="⚖️"
-                tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
-              />
-            </Link>
-          </div>
-        </div>
+        <ChartCard
+          title="Form Trend"
+          insight={
+            todaySummary
+              ? `TSB ${formatTSB(todaySummary.current_tsb)} — ${
+                  todaySummary.current_tsb < -30 ? 'overreaching, prioritize recovery'
+                  : todaySummary.current_tsb < -10 ? 'productive training zone'
+                  : todaySummary.current_tsb > 10 ? 'fresh — good window for hard efforts'
+                  : 'neutral — train as planned'
+                }.`
+              : undefined
+          }
+          isLoading={trainingLoadLoading}
+          data={trainingLoadChart}
+          emptyMessage="No training load data available"
+          height={260}
+        />
       </div>
 
       {/* ── Goals (QW6 — same compact top-3 as Weekly) ─────────────────────── */}

@@ -13,7 +13,12 @@ import type {
   ChartData,
   TodaySummary,
   HealthAlert,
+  Connection,
+  CyclingProfile,
+  TrainingLoadResponse,
+  WeightHistoryResponse,
 } from '@/lib/api';
+import { getWeightHistory } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -23,7 +28,13 @@ import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
-import { WeightPanel } from '@/components/cycling/WeightPanel';
+import { LoadStrip, SyncBadge, WeightCard } from '@/components/athlete';
+import {
+  deriveLastSyncedAt,
+  deriveLoadTrend,
+  deriveStaleProviders,
+  deriveWeekTss,
+} from '@/lib/athlete';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
 
@@ -141,6 +152,49 @@ export default function HealthPage() {
     enabled: !!token,
   });
 
+  // ── Phase 1 shared athlete-state slices (plans/ui-redesign-v2.md §1) ─────
+  // Query keys match `useAthleteState()` exactly, so every slot adopting
+  // LoadStrip/WeightCard/SyncBadge shares one cache entry. Values are
+  // display-only — CTL/ATL/TSB computation stays in docs/algorithms.md.
+  const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
+    queryKey: ['training-load', 90],
+    queryFn: () => authFetch<TrainingLoadResponse>('/api/v1/cycling/training-load?days=90'),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
+  const { data: cyclingProfile, isLoading: profileLoading } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
+  const {
+    data: weightHistory,
+    isLoading: weightLoading,
+    isError: weightError,
+  } = useQuery<WeightHistoryResponse>({
+    queryKey: ['weight-history'],
+    queryFn: () => getWeightHistory(authFetch, 90),
+    ...chartOptions,
+    enabled: !!token,
+  });
+
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // Presentational derivations only (shared selectors — no recomputation).
+  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
+  const weekTss = deriveWeekTss(trainingLoad?.data ?? null);
+  const staleProviders = deriveStaleProviders(connections);
+  const lastSyncedAt = deriveLastSyncedAt(connections);
+  const syncStale = staleProviders.length > 0;
+
   // ── Health alert history ─────────────────────────────────────────────────
   const {
     data: alerts,
@@ -177,12 +231,35 @@ export default function HealthPage() {
       <PageHeader
         title="🩺 Health"
         subtitle="Recovery, sleep, trends, and health alerts — powered by Whoop."
+        status={
+          connections ? (
+            <div className="mt-2">
+              <SyncBadge lastSyncedAt={lastSyncedAt} stale={syncStale} />
+            </div>
+          ) : null
+        }
       />
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
       <ErrorState variant="inline"
         show={hasQueryError}
         message="Some health data failed to load."
+      />
+
+      {/* ── Training load (shared LoadStrip — identical props in every slot, §1) */}
+      <LoadStrip
+        ctl={trainingLoad?.current_ctl ?? null}
+        atl={trainingLoad?.current_atl ?? null}
+        tsb={trainingLoad?.current_tsb ?? null}
+        weekTss={weekTss}
+        ftpWatts={cyclingProfile?.ftp_watts ?? null}
+        trend={loadTrend.direction}
+        isLoading={loadLoading || profileLoading}
+        syncBadge={
+          connections ? (
+            <SyncBadge lastSyncedAt={lastSyncedAt} stale={syncStale} />
+          ) : undefined
+        }
       />
 
       {/* ── Status Row ────────────────────────────────────────────────────── */}
@@ -228,9 +305,19 @@ export default function HealthPage() {
         )}
       </div>
 
-      {/* ── Body weight (moved from Dashboard — it lives with health, 2.1) ── */}
-      <div className="max-w-2xl">
-        <WeightPanel compact />
+      {/* ── Body weight (shared WeightCard — identical props in every slot, §1).
+          Read-only display; logging lives in the full WeightPanel on /cycling. */}
+      <div className="max-w-2xl space-y-2">
+        <WeightCard
+          history={weightHistory ?? null}
+          isLoading={weightLoading}
+          isError={weightError}
+        />
+        <p className="text-xs text-muted">
+          <a href="/cycling" className="text-accent hover:text-accent/80">
+            Log or manage weigh-ins on the Cycling page →
+          </a>
+        </p>
       </div>
 
       {/* ── Trend Charts ──────────────────────────────────────────────────── */}
@@ -326,21 +413,21 @@ export default function HealthPage() {
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
                 <span className="text-muted">Score</span>
-                <span className={`text-lg font-bold ${sleepConsistency.consistency_score >= 70 ? 'text-positive' : sleepConsistency.consistency_score >= 50 ? 'text-yellow-400' : 'text-warning'}`}>
+                <span className={`text-lg font-bold tabular-nums ${sleepConsistency.consistency_score >= 70 ? 'text-positive' : sleepConsistency.consistency_score >= 50 ? 'text-yellow-400' : 'text-warning'}`}>
                   {sleepConsistency.consistency_score.toFixed(0)}/100
                 </span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Average bedtime</span>
-                <span className="font-medium text-foreground">{sleepConsistency.avg_bedtime ?? '—'}</span>
+                <span className="font-medium tabular-nums text-foreground">{sleepConsistency.avg_bedtime ?? '—'}</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Bedtime variability</span>
-                <span className="font-medium text-foreground">±{sleepConsistency.std_minutes.toFixed(0)} min</span>
+                <span className="font-medium tabular-nums text-foreground">±{sleepConsistency.std_minutes.toFixed(0)} min</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Days analyzed</span>
-                <span className="font-medium text-foreground">{sleepConsistency.days_analyzed}</span>
+                <span className="font-medium tabular-nums text-foreground">{sleepConsistency.days_analyzed}</span>
               </div>
             </div>
           ) : (
@@ -356,21 +443,21 @@ export default function HealthPage() {
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
                 <span className="text-muted">Debt (rolling 7d)</span>
-                <span className={`text-lg font-bold ${sleepDebt.debt_hours > 0 ? 'text-warning' : 'text-positive'}`}>
+                <span className={`text-lg font-bold tabular-nums ${sleepDebt.debt_hours > 0 ? 'text-warning' : 'text-positive'}`}>
                   {sleepDebt.debt_hours > 0 ? '-' : ''}{sleepDebt.debt_hours.toFixed(1)}h
                 </span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Average sleep</span>
-                <span className="font-medium text-foreground">{sleepDebt.avg_sleep_hours.toFixed(1)}h</span>
+                <span className="font-medium tabular-nums text-foreground">{sleepDebt.avg_sleep_hours.toFixed(1)}h</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Target</span>
-                <span className="font-medium text-foreground">{sleepDebt.target_hours.toFixed(0)}h / night</span>
+                <span className="font-medium tabular-nums text-foreground">{sleepDebt.target_hours.toFixed(0)}h / night</span>
               </div>
               <div className="flex items-end justify-between">
                 <span className="text-muted">Nights below target</span>
-                <span className={`font-medium ${sleepDebt.days_below_target > 0 ? 'text-warning' : 'text-positive'}`}>
+                <span className={`font-medium tabular-nums ${sleepDebt.days_below_target > 0 ? 'text-warning' : 'text-positive'}`}>
                   {sleepDebt.days_below_target} / {sleepDebt.window_days}
                 </span>
               </div>
@@ -388,7 +475,7 @@ export default function HealthPage() {
             <div className="px-4 pb-4 space-y-2 text-sm">
               <div className="flex items-end justify-between">
                 <span className="text-muted">Suggested</span>
-                <span className="text-lg font-bold text-accent">{optimalBedtime.suggested_bedtime ?? '—'}</span>
+                <span className="text-lg font-bold tabular-nums text-accent">{optimalBedtime.suggested_bedtime ?? '—'}</span>
               </div>
               {optimalBedtime.confidence && (
                 <div className="flex items-end justify-between">
@@ -405,12 +492,12 @@ export default function HealthPage() {
               )}
               {optimalBedtime.best_recovery_bedtimes.length > 0 && (
                 <div className="pt-1">
-                  <p className="text-[11px] text-muted mb-1">Best-recovery bedtimes</p>
+                  <p className="text-xs text-muted mb-1">Best-recovery bedtimes</p>
                   <div className="space-y-0.5">
                     {optimalBedtime.best_recovery_bedtimes.slice(0, 3).map((b) => (
                       <div key={b.date} className="flex justify-between text-xs">
                         <span className="text-muted">{formatDateDMY(b.date)}</span>
-                        <span className="text-foreground">
+                        <span className="tabular-nums text-foreground">
                           {b.bedtime} · <span className="text-positive">{b.recovery_score.toFixed(0)}%</span>
                         </span>
                       </div>
@@ -480,7 +567,7 @@ export default function HealthPage() {
                       </button>
                     )}
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
+                  <div className="mt-1.5 flex items-center gap-2 text-xs text-muted">
                     <span className="uppercase font-medium">{SEVERITY_LABEL[alert.severity] ?? alert.severity}</span>
                     <span>·</span>
                     <span>{formatDateDMY(alert.detected_date)}</span>
