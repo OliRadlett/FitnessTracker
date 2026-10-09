@@ -40,9 +40,12 @@ frontend/tsconfig.tsbuildinfo
 
 # Playwright test artifacts
 frontend/test-results/
+frontend/test-results-prod-shots/
 frontend/e2e/screenshots/
 frontend/playwright-report/
 frontend/e2e/.auth/
+frontend/e2e/prod-shots/.auth/
+screenshots/prod/
 
 # Local dev overrides (dev.oliradlett.co.uk Strava workaround)
 docker-compose.override.yml
