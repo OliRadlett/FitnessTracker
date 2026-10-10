@@ -21,11 +21,11 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
   const shown = unique.slice(0, 2);
   const overflow = unique.length - shown.length;
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5 flex-wrap">
       {shown.map((s) => (
         <span
           key={s.id}
-          className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full text-foreground ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
+          className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full text-foreground ${PROVIDER_COLORS[s.provider] || 'bg-muted'}`}
           title={`${s.provider}: ${s.provider_name || s.provider_activity_id}`}
         >
           <ProviderIcon provider={s.provider} /> {s.provider}
@@ -33,7 +33,7 @@ function SourceBadges({ sources }: { sources?: ActivitySource[] }) {
       ))}
       {overflow > 0 && (
         <span
-          className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full text-muted bg-muted/20"
+          className="inline-flex items-center text-xs px-1.5 py-0.5 rounded-full text-muted bg-muted/20"
           title={unique.slice(2).map((s) => `${s.provider}: ${s.provider_name || s.provider_activity_id}`).join('\n')}
         >
           +{overflow}
@@ -97,24 +97,26 @@ export function ActivityCard({
                 {activity.sport_type}
               </Badge>
               <p className="font-medium text-foreground truncate">{activity.name}</p>
-              <SourceBadges sources={activity.sources} />
             </div>
-            <p className="text-xs text-muted mt-0.5">
-              {new Date(activity.start_date).toLocaleString(getActiveLocale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              {activity.route_name && (
-                <span className="ml-2 text-accent">{'\u{1F4CD}'} {activity.route_name}</span>
-              )}
-              {activity.route_id && (
+            {/* Compact meta cluster (P2 density): provider pills + the one
+                route link + weather sit in a single wrapped row instead of
+                scattered across the timestamp line and badge rows. Nothing
+                removed — every badge/link still renders, one tap away. */}
+            <div className="flex items-center gap-x-2 gap-y-1 flex-wrap mt-1">
+              <SourceBadges sources={activity.sources} />
+              {activity.route_id ? (
                 <Link
                   href={`/routes?route=${activity.route_id}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="ml-2 min-h-[44px] text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-0.5"
+                  className="min-h-[44px] text-xs text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-0.5"
                   title={`View route: ${activity.route_name || 'Route'}`}
                 >
-                  View route
+                  {'\u{1F4CD}'} {activity.route_name || 'View route'}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </Link>
-              )}
+              ) : activity.route_name ? (
+                <span className="text-xs text-accent">{'\u{1F4CD}'} {activity.route_name}</span>
+              ) : null}
               <WeatherBadge
                 temperature={activity.weather_temperature ?? null}
                 conditions={activity.weather_conditions ?? null}
@@ -122,6 +124,9 @@ export function ActivityCard({
                 wind_direction={activity.weather_wind_direction ?? null}
                 precipitation_mm={activity.weather_precipitation_mm ?? null}
               />
+            </div>
+            <p className="text-[11px] tabular-nums text-muted mt-0.5">
+              {new Date(activity.start_date).toLocaleString(getActiveLocale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
         </div>
@@ -190,7 +195,8 @@ export function ActivityCard({
       </div>
 
       {/* Linked Lifting Session — flat row with left border, not a nested
-          card (2.6). Title pairs session focus with the activity name. */}
+          card (2.6). Shows the session focus only: the activity name already
+          heads this card, so repeating it here duplicated the title. */}
       {activity.linked_lifting_session && (
         <Link
           href={`/lifting?session=${activity.linked_lifting_session.id}`}
@@ -199,7 +205,6 @@ export function ActivityCard({
         >
           <p className="text-sm text-foreground">
             {activity.linked_lifting_session.focus || 'Lifting Session'}
-            <span className="text-muted"> · {activity.name}</span>
           </p>
           <div className="flex gap-4 text-xs text-muted mt-0.5">
             <span>{new Date(activity.linked_lifting_session.session_date).toLocaleDateString(getActiveLocale())}</span>

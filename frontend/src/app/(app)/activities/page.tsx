@@ -21,7 +21,6 @@ import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
-import { WeatherBadge } from '@/components/activities/WeatherBadge';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(
@@ -303,18 +302,8 @@ function ActivityExpanded({
         </div>
       )}
 
-      {/* Weather at activity time */}
-      {(activity.weather_temperature != null || activity.weather_conditions) && (
-        <div className="mb-3 text-sm text-muted">
-          <WeatherBadge
-            temperature={activity.weather_temperature ?? null}
-            conditions={activity.weather_conditions ?? null}
-            wind_speed_kmh={activity.weather_wind_speed_kmh ?? null}
-            wind_direction={activity.weather_wind_direction ?? null}
-            precipitation_mm={activity.weather_precipitation_mm ?? null}
-          />
-        </div>
-      )}
+      {/* Route Map — weather already shows in the card's meta cluster above,
+          so it is not repeated here (P2 density: no duplicated badges). */}
 
       {/* Route Map */}
       {activity.encoded_polyline && (

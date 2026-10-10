@@ -38,6 +38,65 @@ import { OrphanReviewSection } from '@/components/routes/OrphanReviewSection';
 // Phase 2 (ui-redesign-v2 §1.2 + §5-Phase 2): duplicate-review queue + orphan
 // review live here as the Routes "Duplicates" tab (?tab=duplicates). Verbatim
 // move of the former /routes/duplicates page body — no computation/API changes.
+// Phase 0 hygiene (ui-redesign-v2 t4 P2/P3): one page-level guide for the whole
+// queue. The identical/variant + overlap/shape + map-colour explainers used to
+// repeat verbatim on every pair card (~15kpx of scroll); they live here once,
+// collapsed by default (one tap away, never deleted). Per-card keeps only its
+// own numbers and actions.
+function DuplicateReviewGuide() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="mb-4">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-[44px] w-full items-center gap-1 px-4 py-2 text-left text-xs text-muted transition-colors hover:text-foreground"
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 shrink-0" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        )}
+        {open ? 'Hide how review works' : 'How duplicate review works'}
+      </button>
+      {open && (
+        <div className="space-y-2 px-4 pb-4 text-xs text-muted">
+          <p>
+            <span className="text-foreground">The same route twice</span> merges
+            and <span className="text-foreground">trains the matcher</span> that
+            the two recordings are the same ride.{' '}
+            <span className="text-foreground">Same kind of ride</span> merges but
+            stays out of matcher training — use it for laps, partial recordings,
+            and loop variants. A wrong &ldquo;identical&rdquo; call is permanent
+            training signal; when in doubt, check the map first.
+          </p>
+          <p>
+            <span className="font-medium tabular-nums">overlap</span> = shared
+            road coverage, <span className="font-medium tabular-nums">shape</span>{' '}
+            = trace similarity. High overlap with low shape often means one route
+            is a <span className="text-foreground">lap of</span> the other
+            (flagged <span className="font-medium">≈N lap route</span>), not a
+            duplicate — merge those as &ldquo;same kind of ride&rdquo;. For
+            quarantined rows the same idea reads as{' '}
+            <span className="font-medium tabular-nums">containment</span> (shared
+            edges ÷ smaller route) vs{' '}
+            <span className="font-medium tabular-nums">jaccard</span> (shared ÷
+            either route).
+          </p>
+          <p>
+            Map preview: <span className="text-foreground">A is dashed blue, B is
+            solid amber</span> (quarantined rows: the orphan is dashed blue, the
+            candidate live route solid amber). Fully overlapping traces mean the
+            same roads; divergent sections are where they differ. Differently
+            named pairs deserve a map check — the same ride can arrive under two
+            names, but so can two different rides.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function DuplicatesTab() {
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
@@ -218,6 +277,8 @@ export function DuplicatesTab() {
         </div>
 
         <ErrorState variant="inline" show={hasQueryError} message="Duplicate routes failed to load." />
+
+        <DuplicateReviewGuide />
 
         <OrphanReviewSection />
 
@@ -403,7 +464,7 @@ function MergeHistorySection({
                     <span className="text-muted line-through">{m.merged_name}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                    <Badge variant="muted" className="text-xs">
+                    <Badge variant="muted" className="text-xs tabular-nums">
                       {Math.round(m.score * 100)}% match
                     </Badge>
                     {m.created_at && (
@@ -501,7 +562,7 @@ function DuplicatePairCard({
         <div className="flex items-center justify-between mb-3">
           <Badge
             variant={pair.score >= 0.9 ? 'warning' : 'muted'}
-            className="text-xs"
+            className="text-xs tabular-nums"
           >
             {Math.round(pair.score * 100)}% match
           </Badge>
@@ -523,7 +584,7 @@ function DuplicatePairCard({
             </Badge>
           )}
           {pair.breakdown && (
-            <div className="mt-3 text-xs text-muted flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mt-3 text-xs tabular-nums text-muted flex flex-wrap gap-x-3 gap-y-1">
               <span>overlap {Math.round((pair.breakdown.min_coverage ?? 0) * 100)}%</span>
               <span>shape {Math.round((pair.breakdown.frechet_similarity ?? 0) * 100)}%</span>
               {pair.breakdown.lap_ratio != null && (
@@ -585,10 +646,6 @@ function DuplicatePairCard({
                 labelB={pair.route_b.name}
                 className="h-[260px]"
               />
-              <p className="mt-1 text-xs text-muted">
-                A is dashed blue, B is solid amber. Fully overlapping traces mean the
-                same roads; divergent sections are where they differ.
-              </p>
             </div>
           )}
         </div>
@@ -623,21 +680,18 @@ function DuplicatePairCard({
             </label>
           </div>
 
-          {/* An `identical` merge is the only kind that trains the matcher, so
-              it is the one where a wrong call is permanent. Differently-named
-              pairs are where the doubt belongs: Strava auto-generates names,
-              so the same ride can arrive under two. */}
+          {/* Per-card keeps only its own signal: names differ + identical trains
+              the matcher. The full guidance lives once in the page-level guide
+              above — this line is the cue, not the essay. */}
           {mergeKind === 'identical' &&
             routeNamesDiffer(pair.route_a.name, pair.route_b.name) && (
               <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  These routes have different names, and this merge will{' '}
-                  <strong>train the matcher</strong> that they are the same
-                  ride. Check the map first. If one is a shorter or partial
-                  recording of the other, choose &ldquo;same kind of
-                  ride&rdquo; instead — that merge is excluded from training
-                  and can be reclassified later.
+                  Different names, and this merge will{' '}
+                  <strong>train the matcher</strong>. Check the map first — see
+                  &ldquo;How duplicate review works&rdquo; above for laps and
+                  partial recordings.
                 </span>
               </p>
             )}

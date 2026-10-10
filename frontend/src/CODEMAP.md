@@ -115,6 +115,14 @@
 | `InsightCallout` | **Phase 3 (ui-redesign-v2 §3.3)** one shared insight line (+ `ChartInsights` block for `ChartData.insights`) — replaces the ad-hoc callouts in `Chart`/`ChartCard` |
 | `CombinedLoadChart` | **B-31 unified load** — cycling TSS + lifting estimates on one axis (`['chart-combined-load', days]`). Shared by `/analytics` and the lifting Analytics tab (one cache entry); designed empty (what + how) via shared `ChartBody` |
 
+### `motion/` — Motion system (ui-redesign-v2 §3.2, all `prefers-reduced-motion`-gated)
+| Component | Purpose |
+|-----------|---------|
+| `tokens` | Durations/easings (150/250/1600/500ms, easeOut/easeInOut, reveal/swap distances) |
+| `usePrefersReducedMotion` | SSR-safe reactive matchMedia hook |
+| `AnimatedNumber` | rAF easeOutCubic numeric tween (`useAnimatedNumber` + component); jumps under reduced motion, magnitude-only |
+| `Reveal` | IntersectionObserver scroll reveal that degrades open (visible by default, fires once, no scroll listeners) |
+
 ### `cycling/` — Cycling-specific
 | Component | Purpose |
 |-----------|---------|

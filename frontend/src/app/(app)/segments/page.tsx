@@ -333,7 +333,7 @@ export default function SegmentsPage() {
             onChange={setGrouping}
             ariaLabel="Group climbs by hill or by route"
           />
-          <p className="text-[11px] text-muted mt-2">
+          <p className="text-xs text-muted mt-2 tabular-nums">
             {grouping === 'climb'
               ? sharedHillCount > 0
                 ? `One row per hill. ${sharedHillCount} of these appear on more than one route — open one to see every attempt merged.`
@@ -396,7 +396,7 @@ export default function SegmentsPage() {
                 <div key={group.key}>
                   <SegmentRow segment={{ ...lead, geo_cluster_size: group.routeCount }} />
                   {group.routeCount > 1 ? (
-                    <p className="text-[10px] text-muted px-3 pt-1 pb-2 -mt-1">
+                    <p className="text-xs text-muted px-3 pt-1 pb-2 -mt-1 tabular-nums">
                       Also detected on {group.routeCount - 1} other route
                       {group.routeCount - 1 === 1 ? '' : 's'} ·{' '}
                       {group.totalPasses} total pass

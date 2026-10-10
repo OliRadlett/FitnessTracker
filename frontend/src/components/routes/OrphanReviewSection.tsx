@@ -124,13 +124,13 @@ function OrphanRow({
             {row.has_geometry ? (
               <>
                 <span
-                  className="font-mono text-xs text-muted"
+                  className="font-mono text-xs tabular-nums text-muted"
                   title="Fraction of the smaller route's edges found in the larger. High on its own can mean a lap rather than a duplicate."
                 >
                   containment {row.containment.toFixed(3)}
                 </span>
                 <span
-                  className="font-mono text-xs text-muted"
+                  className="font-mono text-xs tabular-nums text-muted"
                   title="Edge overlap over the union. Low here with high containment means the routes are different sizes — a lap, not a duplicate."
                 >
                   jaccard {row.jaccard.toFixed(3)}
@@ -174,7 +174,7 @@ function OrphanRow({
                 <button
                   onClick={() => setShowMap((v) => !v)}
                   aria-expanded={showMap}
-                  className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+                  className="flex min-h-[44px] items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
                 >
                   {showMap ? (
                     <ChevronDown className="h-4 w-4" />
@@ -193,10 +193,9 @@ function OrphanRow({
                       labelB={row.live_name ?? ''}
                       className="h-[260px]"
                     />
-                    <p className="mt-1 text-xs text-muted">
-                      {row.orphan_name} is dashed blue; {row.live_name} is solid amber.
-                      Where amber is left uncovered, the blue route continues alone —
-                      that is what separates a lap from a duplicate.
+                    <p className="mt-1 text-xs tabular-nums text-muted">
+                      {row.orphan_name} dashed blue; {row.live_name} solid amber —
+                      uncovered amber is where the blue route continues alone.
                     </p>
                   </div>
                 )}
@@ -208,7 +207,7 @@ function OrphanRow({
               <button
                 onClick={() => setShowMap((v) => !v)}
                 aria-expanded={showMap}
-                className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+                className="flex min-h-[44px] items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
               >
                 {showMap ? (
                   <ChevronDown className="h-4 w-4" />
@@ -234,7 +233,8 @@ function OrphanRow({
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             onClick={() => setShowWhy((v) => !v)}
-            className="rounded border border-border px-2 py-1.5 text-xs text-muted hover:bg-surface-light"
+            aria-expanded={showWhy}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded border border-border px-2 py-1.5 text-xs text-muted hover:bg-surface-light"
             title="What do these numbers mean?"
           >
             ?
@@ -250,14 +250,14 @@ function OrphanRow({
                       onMerge(row, 'identical');
                     }}
                     disabled={busy}
-                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                    className="min-h-[44px] rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
                   >
                     Yes, merge
                   </button>
                   <button
                     onClick={() => setConfirmIdentical(false)}
                     disabled={busy}
-                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                    className="min-h-[44px] rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -272,7 +272,7 @@ function OrphanRow({
                     }
                   }}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded bg-accent px-2.5 py-1.5 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
                   title={
                     identicalNeedsConfirm
                       ? 'Same route recorded twice — this trains the matcher, and the names differ'
@@ -286,7 +286,7 @@ function OrphanRow({
               <button
                 onClick={() => onMerge(row, 'variant')}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-light disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-light disabled:opacity-50"
                 title="Same course, different form (e.g. a lap)"
               >
                 <Undo2 className="h-3.5 w-3.5" />
@@ -297,7 +297,7 @@ function OrphanRow({
           <button
             onClick={() => onKeep(row)}
             disabled={busy}
-            className="rounded border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-light disabled:opacity-50"
+            className="min-h-[44px] rounded border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-light disabled:opacity-50"
             title="This is a real route — use it in matching again"
           >
             Keep
@@ -305,7 +305,7 @@ function OrphanRow({
           <button
             onClick={() => onDismiss(row)}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1.5 text-xs text-muted hover:bg-surface-light disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded border border-border px-2.5 py-1.5 text-xs text-muted hover:bg-surface-light disabled:opacity-50"
             title="Not a duplicate. Stays quarantined, but won't be suggested again."
           >
             <X className="h-3.5 w-3.5" />
@@ -351,7 +351,7 @@ function DismissedRoutesSection({
       <button
         onClick={onToggle}
         aria-expanded={open}
-        className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
+        className="flex min-h-[44px] items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
       >
         {open ? (
           <ChevronDown className="h-4 w-4" />
@@ -384,7 +384,7 @@ function DismissedRoutesSection({
                 <button
                   onClick={() => onRestore(r.route_id)}
                   disabled={busy}
-                  className="shrink-0 rounded border border-border px-2 py-1 text-xs text-text hover:bg-surface-light disabled:opacity-50"
+                  className="shrink-0 min-h-[44px] rounded border border-border px-2 py-1 text-xs text-text hover:bg-surface-light disabled:opacity-50"
                 >
                   Restore
                 </button>
@@ -539,14 +539,14 @@ export function OrphanReviewSection() {
                   <button
                     onClick={() => bulkDismissMutation.mutate(b)}
                     disabled={busy}
-                    className="rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+                    className="min-h-[44px] rounded bg-warning px-1.5 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
                   >
                     Yes, dismiss {counts[b]}
                   </button>
                   <button
                     onClick={() => setPendingBulk(null)}
                     disabled={busy}
-                    className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
+                    className="min-h-[44px] rounded px-1.5 py-0.5 text-muted hover:bg-surface-light disabled:opacity-50"
                   >
                     Cancel
                   </button>
