@@ -12,14 +12,20 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { AiAnalysisCard } from '@/components/analysis/AiAnalysisCard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
+import { MOTION } from '@/components/motion/tokens';
+import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 import { relativeTime } from '@/lib/analysisRenderer';
 import { useMetricProjection } from '@/lib/projection';
 import { whatIfWeeks } from '@/lib/prescription';
-import type { LlmAnalysis } from '@/lib/api';
+import type { LlmAnalysis, Connection } from '@/lib/api';
+import { deriveStaleProviders } from '@/lib/athlete';
 import { getActiveLocale } from '@/lib/utils';
 
 interface AthleteInsight {
@@ -192,12 +198,141 @@ function InsightBody({ insight }: { insight: AthleteInsight }) {
 }
 
 export default function AnalyticsPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider (dashboard pattern). */
+  return (
+    <TimeRangeProvider>
+      <AnalyticsPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+/* Pull-to-sync (ui-redesign-v2 section 3.5 REVIEW signature). A touch
+   pull-down from the very top of the page (scrollY at 0, 64px+) refetches
+   the page queries through the SAME React Query keys (refetchQueries with
+   type active — no new endpoints, no computation changes) with a small
+   release-to-sync indicator. Static show/hide under
+   prefers-reduced-motion; dark tokens; 12px floor; the pill is
+   non-interactive status text. Desktop/keyboard fallback is the existing
+   page controls. */
+const PULL_SYNC_THRESHOLD_PX = 64;
+type PullSyncPhase = 'idle' | 'pull' | 'ready' | 'syncing';
+
+function usePullToSync(onSync: () => Promise<unknown>): PullSyncPhase {
+  const startYRef = React.useRef<number | null>(null);
+  const phaseRef = React.useRef<PullSyncPhase>('idle');
+  const [phase, setPhase] = React.useState<PullSyncPhase>('idle');
+  const onSyncRef = React.useRef(onSync);
+
+  React.useEffect(() => {
+    onSyncRef.current = onSync;
+  });
+
+  React.useEffect(() => {
+    const setBoth = (p: PullSyncPhase) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || window.scrollY > 0) {
+        startYRef.current = null;
+        return;
+      }
+      startYRef.current = e.touches[0].clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const startY = startYRef.current;
+      if (startY == null || e.touches.length !== 1 || window.scrollY > 0) return;
+      if (phaseRef.current === 'syncing') return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) {
+        setBoth('idle');
+        return;
+      }
+      setBoth(dy >= PULL_SYNC_THRESHOLD_PX ? 'ready' : 'pull');
+    };
+    const onTouchEnd = () => {
+      startYRef.current = null;
+      if (phaseRef.current !== 'ready') {
+        if (phaseRef.current !== 'syncing') setBoth('idle');
+        return;
+      }
+      setBoth('syncing');
+      void Promise.resolve()
+        .then(() => onSyncRef.current())
+        .catch(() => undefined)
+        .finally(() => setBoth('idle'));
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
+  return phase;
+}
+
+function PullSyncStatus({ phase, label }: { phase: PullSyncPhase; label: string }) {
+  const reduceMotion = usePrefersReducedMotion();
+  if (phase === 'idle') return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      className="flex justify-center"
+      style={
+        reduceMotion
+          ? undefined
+          : { transition: `opacity ${MOTION.durationFastMs}ms ${MOTION.easeOut}` }
+      }
+    >
+      <span className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-surface-light/50 bg-surface px-4 py-1 text-xs text-muted">
+        <span aria-hidden="true">{phase === 'syncing' ? '⟳' : phase === 'ready' ? '↑' : '↓'}</span>
+        {phase === 'syncing' ? 'Syncing…' : phase === 'ready' ? 'Release to sync' : 'Pull to sync'}
+      </span>
+    </div>
+  );
+}
+
+function AnalyticsPageInner() {
   usePageTitle('Analytics');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const queryKey = ['analytics', 'insights'] as const;
 
-  const { data: insights, isLoading, dataUpdatedAt } = useQuery<AthleteInsight[]>({
+  /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
+  const syncPage = React.useCallback(
+    () => queryClient.refetchQueries({ type: 'active' }),
+    [queryClient],
+  );
+  const pullPhase = usePullToSync(syncPage);
+
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives the
+     analytics load chart together with the other REVIEW surfaces. Day spans
+     are clamped to the backend `?days=` cap (≤365) inside timeRangeDays.
+     Display only — no computation changes (docs/algorithms.md authoritative).
+     Insight rows, explanations, season overview, and the What-If lab carry no
+     chart window and keep their existing queries. ───────────────────────── */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+
+  // Degraded state for the load chart — same ['connections'] cache entry as
+  // the LoadStrip slots elsewhere (display only, no recompute).
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const chartStale = deriveStaleProviders(connections).length > 0;
+
+  const { data: insights, isLoading, isError: insightsError, refetch: refetchInsights, dataUpdatedAt } = useQuery<AthleteInsight[]>({
     queryKey,
     queryFn: () => authFetch<AthleteInsight[]>('/api/v1/analytics/insights'),
     staleTime: 60_000,
@@ -214,6 +349,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
+      <PullSyncStatus phase={pullPhase} label="Analytics sync status" />
       <PageHeader
         title="Analytics"
         subtitle={
@@ -234,10 +370,19 @@ export default function AnalyticsPage() {
       />
 
       {recompute.isError && (
-        <p className="text-xs text-warning">
-          Recompute failed — {(recompute.error as Error)?.message || 'try again shortly.'}
-        </p>
+        <ErrorState
+          variant="inline"
+          show
+          message="Recompute failed — try again shortly."
+          onRetry={() => recompute.mutate()}
+        />
       )}
+
+      {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
+          the analytics load chart together with the other REVIEW surfaces. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <TimeRangePicker />
+      </div>
 
       <SegmentedControl
         ariaLabel="Analytics sections"
@@ -251,15 +396,24 @@ export default function AnalyticsPage() {
       />
 
       {tab === 'insights' && (
+      <ErrorState
+        variant="inline"
+        show={insightsError}
+        message="Insights failed to load."
+        onRetry={() => refetchInsights()}
+      />
+      )}
+      {tab === 'insights' && (
       isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonMetric key={i} />)}
         </div>
-      ) : !insights || insights.length === 0 ? (
+      ) : insightsError ? null : !insights || insights.length === 0 ? (
         <EmptyState
           icon="📊"
           title="No insights yet"
           description="Train for a few weeks, then hit Recompute — patterns need samples."
+          action={{ label: '↻ Recompute now', onClick: () => recompute.mutate() }}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -300,8 +454,11 @@ export default function AnalyticsPage() {
       {/* B-18 season overview — big-picture AI brief over all domains */}
       {tab === 'season' && <SeasonOverview />}
 
-      {/* B-31 unified load — cycling TSS + lifting estimates on one axis */}
-      {tab === 'load' && <CombinedLoadChart />}
+      {/* B-31 unified load — cycling TSS + lifting estimates on one axis.
+          Window comes from the shared REVIEW time-range (range in query key
+          via the `days` prop — same cache entry as the lifting tab only at
+          the 90D default). */}
+      {tab === 'load' && <CombinedLoadChart days={chartDays} stale={chartStale} />}
 
       {/* B-17 What-If Lab — target timelines at current/half/double slope */}
       {tab === 'load' && <WhatIfLab />}
@@ -449,9 +606,7 @@ function ExplainInsight({ insightType }: { insightType: string }) {
       </button>
       {explain.isError && (
         <p className="text-xs text-warning mt-1">
-          {(explain.error as Error)?.message.includes('GEMINI_API_KEY')
-            ? 'AI explanations need GEMINI_API_KEY configured.'
-            : `Explanation failed: ${(explain.error as Error)?.message}`}
+          Couldn&apos;t explain this insight — try again.
         </p>
       )}
       {open && (explain.data ?? existing) && (

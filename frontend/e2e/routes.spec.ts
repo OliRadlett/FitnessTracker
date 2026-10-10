@@ -39,7 +39,8 @@ test.describe('Routes Page', () => {
   });
 
   test('route cards show sport type', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/cycling/i).first()).toBeVisible();
+    // Scoped to main: the mobile drawer (md:hidden) holds same-named links.
+    await expect(page.locator('main').getByText(/cycling/i).first()).toBeVisible();
   });
 
   // ── Filter Bar ──────────────────────────────────────────────────────────

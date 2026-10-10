@@ -8,6 +8,7 @@ import type { Segment } from '@/lib/api/types';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import { Stat } from '@/components/ui/Stat';
@@ -248,9 +249,9 @@ export default function SegmentsPage() {
         <Card className="p-4">
           <Stat
             label="Steepest"
-            value={stats.steepest ? stats.steepest.avg_gradient_pct.toFixed(1) : '—'}
-            unit="%"
-            hint={stats.steepest ? fmtKm(stats.steepest.distance_m) : 'no climbs yet'}
+            value={stats.steepest ? stats.steepest.avg_gradient_pct.toFixed(1) : 'No climbs yet'}
+            unit={stats.steepest ? '%' : undefined}
+            hint={stats.steepest ? fmtKm(stats.steepest.distance_m) : 'detect climbs from a route first'}
           />
         </Card>
       </div>
@@ -332,7 +333,7 @@ export default function SegmentsPage() {
             onChange={setGrouping}
             ariaLabel="Group climbs by hill or by route"
           />
-          <p className="text-[11px] text-muted mt-2">
+          <p className="text-xs text-muted mt-2 tabular-nums">
             {grouping === 'climb'
               ? sharedHillCount > 0
                 ? `One row per hill. ${sharedHillCount} of these appear on more than one route — open one to see every attempt merged.`
@@ -354,14 +355,19 @@ export default function SegmentsPage() {
             ))}
           </div>
         ) : all.length === 0 ? (
-          <p className="text-sm text-muted">
-            No climb segments yet. They are detected from a route&apos;s elevation
-            profile (sustained climbs of at least ~150 m gaining ~30 m at 3% or
-            more) — open a route and run <span className="text-foreground">Recompute</span>{' '}
-            to detect them.
-          </p>
+          <EmptyState
+            icon="⛰️"
+            title="No climb segments yet"
+            description="Climbs are detected from a route's elevation profile — sustained climbs of at least ~150 m gaining ~30 m at 3% or more."
+            action={{ label: 'Open routes', href: '/routes' }}
+          />
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-muted">No climbs match the selected filters.</p>
+          <EmptyState
+            icon="🔍"
+            title="No matching climbs"
+            description="No climbs match the selected filters — loosen them to see more."
+            action={{ label: 'Clear filters', onClick: clearFilters }}
+          />
         ) : grouping === 'route' ? (
           <div className="space-y-6">
             {routeGroups.map((group) => (
@@ -390,7 +396,7 @@ export default function SegmentsPage() {
                 <div key={group.key}>
                   <SegmentRow segment={{ ...lead, geo_cluster_size: group.routeCount }} />
                   {group.routeCount > 1 ? (
-                    <p className="text-[10px] text-muted px-3 pt-1 pb-2 -mt-1">
+                    <p className="text-xs text-muted px-3 pt-1 pb-2 -mt-1 tabular-nums">
                       Also detected on {group.routeCount - 1} other route
                       {group.routeCount - 1 === 1 ? '' : 's'} ·{' '}
                       {group.totalPasses} total pass

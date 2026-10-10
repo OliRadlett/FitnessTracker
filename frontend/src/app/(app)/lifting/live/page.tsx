@@ -24,6 +24,7 @@ import {
   type ExerciseReference,
 } from '@/lib/lifting/reference';
 import { useLiveSession, type PlanTarget } from '@/lib/lifting/useLiveSession';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 import { setsToCsv, downloadTextFile } from '@/lib/lifting/csv';
 import { usePageTitle } from '@/lib/usePageTitle';
 
@@ -239,8 +240,12 @@ export default function LiveLiftPage() {
 
   if (!live.hydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-3" aria-label="Loading live session">
+          <SkeletonLine className="h-8 w-2/3" />
+          <SkeletonLine className="h-40 w-full" />
+          <SkeletonLine className="h-12 w-full" />
+        </div>
       </div>
     );
   }

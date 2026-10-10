@@ -23,7 +23,7 @@ export function TssSourceBadge({ source }: { source: string | null | undefined }
     case 'power':
       return (
         <span
-          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
+          className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
           title="Power-based TSS"
         >
           ⚡P
@@ -32,7 +32,7 @@ export function TssSourceBadge({ source }: { source: string | null | undefined }
     case 'hr':
       return (
         <span
-          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30"
+          className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30"
           title="HR-estimated TSS — less precise"
         >
           ~H
@@ -41,7 +41,7 @@ export function TssSourceBadge({ source }: { source: string | null | undefined }
     case 'provider':
       return (
         <span
-          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30"
+          className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30"
           title="TSS from provider (Strava/Wahoo/etc.)"
         >
           ⧉P
@@ -50,7 +50,7 @@ export function TssSourceBadge({ source }: { source: string | null | undefined }
     case 'manual':
       return (
         <span
-          className="inline-flex items-center text-[10px] px-1 py-0.5 rounded bg-surface-light/40 text-muted border border-surface-light/60"
+          className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-surface-light/40 text-muted border border-surface-light/60"
           title="Manually entered TSS"
         >
           ✎M

@@ -28,7 +28,7 @@ vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ error: vi.fn(), success: vi.fn() }),
 }));
 
-import DuplicatesPage from '@/app/(app)/routes/duplicates/page';
+import { DuplicatesTab as DuplicatesPage } from '@/app/(app)/routes/_components/DuplicatesTab';
 
 const pair = {
   route_a: {

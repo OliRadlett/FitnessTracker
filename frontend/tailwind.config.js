@@ -26,6 +26,16 @@ module.exports = {
         // Inter is loaded via next/font in src/app/layout.tsx (`--font-inter`).
         sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
+      // Phase 0 hygiene: structural safe-area tokens. `tabbar-clear` reserves
+      // the mobile fixed bottom tab bar height + home-indicator safe area so
+      // page content never renders under it; `safe-bottom` is the raw
+      // home-indicator inset for bars/pills that sit at the viewport edge.
+      // Applied at the app shell level ((app)/layout.tsx + MobileBottomNav),
+      // so every page is fixed at once — not per-page.
+      spacing: {
+        'safe-bottom': 'env(safe-area-inset-bottom, 0px)',
+        'tabbar-clear': 'calc(6rem + env(safe-area-inset-bottom, 0px))',
+      },
     },
   },
   plugins: [],

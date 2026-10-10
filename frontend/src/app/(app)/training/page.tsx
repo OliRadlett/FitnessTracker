@@ -4,10 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   TrainingPlan,
   TrainingPlanSummary,
   TrainingPlanDay,
+  Connection,
+  CyclingProfile,
+  TrainingLoadResponse,
   CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
@@ -18,7 +22,16 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadStrip, SyncBadge } from '@/components/athlete';
+import {
+  deriveLastSyncedAt,
+  deriveLoadTrend,
+  deriveStaleProviders,
+  deriveWeekTss,
+} from '@/lib/athlete';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
 import { PlanBuilder } from '@/components/training/PlanBuilder';
 import { WeeklyView } from '@/components/training/WeeklyView';
@@ -86,7 +99,22 @@ export default function TrainingPage() {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [view, setView] = useState<'builder' | 'week'>('builder');
+  // Phase 2 deep links (`?plan=` / `?day=` from goal cards): `?day=` lands in
+  // the week view; `?plan=` pre-selects the plan. Existing fabric untouched.
+  const { getParam } = useDeepLink();
+  const urlPlan = getParam('plan');
+  const urlDay = getParam('day');
+  // Validated YYYY-MM-DD only — anything else would poison the week math.
+  const highlightDate =
+    urlDay && /^\d{4}-\d{2}-\d{2}$/.test(urlDay.slice(0, 10)) ? urlDay.slice(0, 10) : null;
+  const [view, setView] = useState<'builder' | 'week'>(() =>
+    typeof window !== 'undefined' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      (new URLSearchParams(window.location.search).get('day') ?? '').slice(0, 10),
+    )
+      ? 'week'
+      : 'builder',
+  );
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [exportingEventId, setExportingEventId] = useState<string | null>(null);
@@ -101,15 +129,21 @@ export default function TrainingPage() {
 
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErrorMessage } = useQuery<TrainingPlanSummary[]>({
+  const { data: plans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans'],
     queryFn: () => authFetch<TrainingPlanSummary[]>('/api/v1/training-plans'),
     enabled: !!token,
   });
 
-  // Auto-select the most recent active plan on initial load
+  // Auto-select the most recent active plan on initial load — or the `?plan=`
+  // deep-link target when it names a plan in the list.
   useEffect(() => {
     if (plans && !selectedPlanId) {
+      const linked = urlPlan ? plans.find((p) => p.id === urlPlan) : undefined;
+      if (linked) {
+        setSelectedPlanId(linked.id);
+        return;
+      }
       const activePlans = plans.filter(p => p.status === 'active')
         .sort((a, b) => {
           const aTime = new Date(a.updated_at ?? a.start_date).getTime();
@@ -120,7 +154,7 @@ export default function TrainingPage() {
         setSelectedPlanId(activePlans[0].id);
       }
     }
-  }, [plans, selectedPlanId]);
+  }, [plans, selectedPlanId, urlPlan]);
 
    const { data: selectedPlan, isLoading: planLoading } = useQuery<TrainingPlan>({
     queryKey: ['training-plan', selectedPlanId],
@@ -139,6 +173,39 @@ export default function TrainingPage() {
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
     enabled: !!token,
   });
+
+  // ── Phase 1 shared header (plans/ui-redesign-v2.md §1) ──────────────────
+  // Same `LoadStrip` with the SAME props as the cycling slot (guardrail §1.3):
+  // CTL/ATL/TSB + 7d TSS from the server-computed training-load series, FTP
+  // from the cycling profile, degradation via `SyncBadge`. Display-only —
+  // docs/algorithms.md stays authoritative. Query keys match the cycling page
+  // so the two slots share cache instead of refetching.
+  const LOAD_DAYS = 90;
+  const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
+    queryKey: ['training-load', LOAD_DAYS],
+    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${LOAD_DAYS}`),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: cyclingProfile, isLoading: profileLoading } = useQuery<CyclingProfile>({
+    queryKey: ['cycling-profile'],
+    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // Presentational derivations only (shared selectors — no recomputation,
+  // same shape as every other LoadStrip slot, guardrail §1.3).
+  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
+  const weekTss = deriveWeekTss(trainingLoad?.data ?? null);
+  const staleProviders = deriveStaleProviders(connections);
+  const lastSyncedAt = deriveLastSyncedAt(connections);
 
   // ── Mutations ───────────────────────────────────────────────────────
 
@@ -252,7 +319,7 @@ export default function TrainingPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download event report', err);
-      setActionError(err instanceof Error ? err.message : 'Failed to download report');
+      setActionError('Couldn\'t prepare that report — try again.');
     } finally {
       setExportingEventId(null);
     }
@@ -265,6 +332,27 @@ export default function TrainingPage() {
         title="📋 Training Plans"
         subtitle="Plan your training blocks, manage events, and track periodization."
       />
+
+      {/* Shared load header (Phase 1) — identical props to the cycling slot.
+          Planner, builder, and charts below keep their full depth. */}
+      <div id="load-strip" className="scroll-mt-4">
+        <LoadStrip
+          ctl={trainingLoad?.current_ctl ?? null}
+          atl={trainingLoad?.current_atl ?? null}
+          tsb={trainingLoad?.current_tsb ?? null}
+          weekTss={weekTss}
+          ftpWatts={cyclingProfile?.ftp_watts ?? null}
+          trend={loadTrend.direction}
+          isLoading={loadLoading || profileLoading}
+          syncBadge={
+            <SyncBadge
+              lastSyncedAt={lastSyncedAt}
+              stale={staleProviders.length > 0}
+              provider={staleProviders[0]?.provider ?? null}
+            />
+          }
+        />
+      </div>
 
       {/* Error banner */}
       {actionError && (
@@ -293,9 +381,20 @@ export default function TrainingPage() {
             </CardHeader>
             <div className="space-y-2">
               {plansLoading && <SkeletonRow className="h-20" />}
-              {plansError && <p className="text-warning text-sm">Failed to load plans: {plansErrorMessage?.message}</p>}
+              {plansError && (
+                <ErrorState
+                  title="Couldn't load plans"
+                  message="Check your connection and try again."
+                  onRetry={() => refetchPlans()}
+                />
+              )}
               {plans && plans.length === 0 && (
-                <p className="text-muted text-sm text-center py-4">No plans yet. Generate one to get started!</p>
+                <EmptyState
+                  icon="📋"
+                  title="No training plans yet"
+                  description="Generate a plan from your history or build one from scratch in the plan builder."
+                  action={{ label: 'Go to plan builder', onClick: () => document.getElementById('plan-builder')?.scrollIntoView({ behavior: 'smooth' }) }}
+                />
               )}
               {plans?.map(p => (
                 <button
@@ -399,7 +498,7 @@ export default function TrainingPage() {
 
             <div className="space-y-2">
               {events && events.length === 0 && !showEventForm && (
-                <p className="text-muted text-sm text-center py-4">No upcoming events</p>
+                <p className="text-muted text-sm text-center py-4">No upcoming events — add one to get taper guidance and race prep.</p>
               )}
               {events?.map(evt => (
                 <div
@@ -473,7 +572,7 @@ export default function TrainingPage() {
         </div>
 
         {/* Right: Plan Builder / Weekly View — keyed by plan id so state resets when switching plans */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2" id="plan-builder">
           {selectedPlanId && (
             <div className="flex items-center gap-1 mb-4 p-1 rounded-lg bg-surface-light/30 w-fit">
               {(
@@ -495,11 +594,17 @@ export default function TrainingPage() {
             </div>
           )}
           {planLoading && selectedPlanId ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent" />
+            <div className="space-y-3" aria-label="Loading plan">
+              <SkeletonRow className="h-20" />
+              <SkeletonRow className="h-40" />
             </div>
           ) : view === 'week' && selectedPlan ? (
-            <WeeklyView key={selectedPlanId} plan={selectedPlan} events={events} />
+            <WeeklyView
+              key={selectedPlanId}
+              plan={selectedPlan}
+              events={events}
+              highlightDate={highlightDate}
+            />
           ) : (
             <PlanBuilder
               key={selectedPlanId ?? 'empty'}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart,
@@ -17,6 +18,14 @@ import { getGoalMetrics, getCheckIns, addCheckIn, updateGoal, deleteGoal, reacti
 import type { Goal, UpdateGoalPayload, GoalProjectionResponse } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { goalProgressPct, goalDisplayBadge, PROJECTION_BADGE_STYLES, formatGoalValue } from '@/components/ui/GoalCard';
+import { toDateStr } from '@/lib/training/week';
+import { useGoalPlanSchedule } from './useGoalPlanSchedule';
+import {
+  buildPlanDayHref,
+  buildPlanHref,
+  describePlanMatch,
+  matchGoalPlanDays,
+} from './goalPlanLinks';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 
@@ -62,12 +71,17 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     enabled: !!token,
   });
 
-  const { data: projection } = useQuery({
+  const { data: projection, isLoading: projectionLoading, isError: projectionError } = useQuery({
     queryKey: ['goal-projection', goal.id],
     queryFn: () => getGoalProjection(authFetch, goal.id),
     staleTime: 5 * 60_000,
     enabled: !!token && goal.status === 'active',
   });
+
+  // Honest-empty CTA target: the manual check-in input below.
+  const focusCheckInInput = () => {
+    document.getElementById('goal-checkin-value')?.focus();
+  };
 
   const metricDef = useMemo(
     () => metrics?.find((m) => m.key === goal.metric) ?? null,
@@ -172,6 +186,15 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
   // Same precedence as the card: projection badge wins when the regression
   // has enough data, so modal and card never contradict (0.3).
   const displayBadge = goalDisplayBadge(goal, projection ?? null);
+
+  // ── Plan-day cross-links (ui-redesign-v2 Phase 2) ───────────────────────
+  // Upcoming plan days programming this goal — links only, computed from the
+  // already-fetched active plan. Renders nothing without matches.
+  const { planId, planName, days: planDays } = useGoalPlanSchedule();
+  const scheduledDays = useMemo(
+    () => (planId ? matchGoalPlanDays(goal, planDays, toDateStr(new Date())) : []),
+    [goal, planDays, planId],
+  );
 
   const handleEditSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,9 +323,78 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
           )}
         </div>
 
-        {/* Projection section (Phase 7) */}
-        {projection && (
-          <ProjectionSection projection={projection} />
+        {/* Projection section (Phase 7) — skeleton while loading, honest empty
+            when there is no projectable history yet. Hidden for non-active
+            goals (query disabled) and on fetch error (check-ins below still work). */}
+        {goal.status === 'active' &&
+          (projectionLoading ? (
+            <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2" role="status" aria-label="Loading projection">
+              <div className="h-3 w-24 animate-pulse bg-surface-light/60 rounded" aria-hidden="true" />
+              <div className="h-6 w-48 animate-pulse bg-surface-light/40 rounded-full" aria-hidden="true" />
+              <span className="sr-only">Loading projection…</span>
+            </div>
+          ) : projection ? (
+            <ProjectionSection projection={projection} onLogCheckIn={focusCheckInInput} />
+          ) : projectionError ? (
+            <p className="text-xs text-muted mb-5">
+              Couldn&apos;t load the projection — your check-ins below are unaffected.
+            </p>
+          ) : null)}
+
+        {/* Scheduled plan days (Phase 2 cross-link): upcoming plan days
+            programming this goal, each deep-linking to its plan day. */}
+        {planId && scheduledDays.length > 0 && (
+          <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2">
+            <h4 className="text-sm font-medium text-muted uppercase tracking-wider">
+              Scheduled in {planName ?? 'training plan'} · {describePlanMatch(goal, scheduledDays)}
+            </h4>
+            <div className="space-y-1">
+              {scheduledDays.slice(0, 3).map((d) => {
+                const dateStr = d.day_date.slice(0, 10);
+                const focus = d.planned_focus ? d.planned_focus.replace(/_/g, ' ') : null;
+                const firstEx = d.planned_exercises?.[0]?.exercise ?? null;
+                const extraEx = (d.planned_exercises?.length ?? 0) > 1
+                  ? ` +${(d.planned_exercises?.length ?? 1) - 1} more`
+                  : '';
+                return (
+                  <Link
+                    key={d.id}
+                    href={buildPlanDayHref(planId, dateStr)}
+                    className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
+                  >
+                    <span className="text-foreground font-medium tabular-nums whitespace-nowrap">
+                      {new Date(`${dateStr}T00:00:00`).toLocaleDateString(getActiveLocale(), {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </span>
+                    <span className="text-muted truncate">
+                      {d.sport === 'cycle' ? '🚴 Ride' : focus ?? firstEx ?? 'Strength'}
+                      {d.sport === 'strength' && firstEx && focus ? ` · ${firstEx}${extraEx}` : ''}
+                      {d.sport === 'strength' && firstEx && !focus ? extraEx : ''}
+                    </span>
+                    <span className="ml-auto text-accent shrink-0" aria-hidden="true">→</span>
+                  </Link>
+                );
+              })}
+            </div>
+            {scheduledDays.length > 3 ? (
+              <Link
+                href={buildPlanHref(planId)}
+                className="inline-flex min-h-[44px] items-center text-xs text-accent hover:text-accent/80 transition-colors"
+              >
+                +{scheduledDays.length - 3} more in {planName ?? 'the plan'} →
+              </Link>
+            ) : (
+              <Link
+                href={buildPlanHref(planId)}
+                className="inline-flex min-h-[44px] items-center text-xs text-accent hover:text-accent/80 transition-colors"
+              >
+                Open training plan →
+              </Link>
+            )}
+          </div>
         )}
 
         {/* Manual check-in form */}
@@ -317,6 +409,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
             <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Log Check-in</h4>
             <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start">
               <input
+                id="goal-checkin-value"
                 type="number"
                 step="any"
                 value={checkValue}
@@ -498,13 +591,41 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
 
 const BADGE_STYLES = PROJECTION_BADGE_STYLES;
 
-function ProjectionSection({ projection }: { projection: GoalProjectionResponse }) {
+function ProjectionSection({
+  projection,
+  onLogCheckIn,
+}: {
+  projection: GoalProjectionResponse;
+  onLogCheckIn: () => void;
+}) {
   const { badge, projection: proj, target_date } = projection;
   const badgeStyle = BADGE_STYLES[badge] ?? BADGE_STYLES['Not enough data'];
 
+  // Honest empty (first instance of the §4 pattern): what + how + CTA.
+  // The CTA focuses the Log Check-in input below — the real path to data.
+  if (!proj) {
+    return (
+      <div className="mb-5 p-3 bg-surface-light/20 rounded-lg space-y-2">
+        <h4 className="text-sm font-medium text-muted uppercase tracking-wider">Projection</h4>
+        <p className="text-sm font-medium text-foreground">Not enough history yet</p>
+        <p className="text-xs text-muted">
+          Log check-ins below — after a few entries (plus the weekly auto snapshot)
+          this goal projects its finish date here.
+        </p>
+        <button
+          type="button"
+          onClick={onLogCheckIn}
+          className="mt-1 min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          Log a check-in
+        </button>
+      </div>
+    );
+  }
+
   // Determine if projected date overshoots target
   let missDays: number | null = null;
-  if (proj?.projected_date && target_date) {
+  if (target_date) {
     const projTime = new Date(proj.projected_date).getTime();
     const targetTime = new Date(target_date).getTime();
     if (projTime > targetTime) {
@@ -519,26 +640,22 @@ function ProjectionSection({ projection }: { projection: GoalProjectionResponse 
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
           {badge}
         </span>
-        {proj ? (
-          missDays !== null ? (
-            <span className="text-xs text-warning">
-              At current pace, target missed by {missDays} day{missDays === 1 ? '' : 's'}
-            </span>
-          ) : (
-            <span className="text-xs text-muted">
-              Projected to reach target:{' '}
-              <span className="text-foreground font-medium">
-                {new Date(proj.projected_date).toLocaleDateString(getActiveLocale())}
-              </span>{' '}
-              ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
-            </span>
-          )
+        {missDays !== null ? (
+          <span className="text-xs text-warning">
+            At current pace, target missed by {missDays} day{missDays === 1 ? '' : 's'}
+          </span>
         ) : (
-          <span className="text-xs text-muted italic">Not enough data to project</span>
+          <span className="text-xs text-muted">
+            Projected to reach target:{' '}
+            <span className="text-foreground font-medium">
+              {new Date(proj.projected_date).toLocaleDateString(getActiveLocale())}
+            </span>{' '}
+            ({proj.days_remaining} day{proj.days_remaining === 1 ? '' : 's'} remaining)
+          </span>
         )}
       </div>
       {projection.trend && (
-        <p className="text-[11px] text-muted">
+        <p className="text-xs text-muted">
           Trend: {(projection.trend.slope_per_week >= 0 ? '+' : '')}
           {projection.trend.slope_per_week.toFixed(2)}/week
           {' · '}R² = {projection.trend.r_squared.toFixed(2)}

@@ -3,7 +3,7 @@
 import React from 'react';
 import type { Vo2maxResponse, Vo2maxHistoryResponse, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { Chart, StaleBadge } from '@/components/charts/Chart';
 import { useForecastChart } from '@/lib/projection';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { getActiveLocale } from '@/lib/utils';
@@ -13,9 +13,11 @@ interface Vo2maxSectionProps {
   vo2maxHistory: Vo2maxHistoryResponse | undefined;
   chartVo2maxTrend: ChartData | undefined;
   loading?: boolean;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
-export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading }: Vo2maxSectionProps) {
+export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading, stale }: Vo2maxSectionProps) {
   // B-14: dashed VO2max forecast overlay.
   const { data: vo2Chart, caption: vo2Caption } = useForecastChart(
     chartVo2maxTrend,
@@ -84,7 +86,14 @@ export function Vo2maxSection({ vo2max, vo2maxHistory, chartVo2maxTrend, loading
         </CardHeader>
         {vo2Chart && vo2Chart.labels.length > 0 ? (
           <>
-            <Chart data={vo2Chart} height={280} />
+            {stale ? (
+              <div className="relative">
+                <StaleBadge detail={typeof stale === 'string' ? stale : undefined} />
+                <Chart data={vo2Chart} height={280} />
+              </div>
+            ) : (
+              <Chart data={vo2Chart} height={280} />
+            )}
             {vo2Caption && (
               <p className="text-[11px] text-muted mt-1 px-1">--- {vo2Caption}</p>
             )}

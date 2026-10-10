@@ -620,7 +620,7 @@ export function Route3D({
         </div>
       </div>
 
-      {flatDrape && <p className="mt-2 text-[11px] text-muted">{flatDrape}</p>}
+      {flatDrape && <p className="mt-2 text-xs text-muted">{flatDrape}</p>}
 
       {/* Vertical exaggeration + climb framing */}
       <div className="mt-2 flex items-center gap-2">
