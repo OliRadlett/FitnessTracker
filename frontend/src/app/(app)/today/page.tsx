@@ -28,6 +28,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { MOTION } from '@/components/motion/tokens';
+import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { sportLabel } from '@/lib/sportUtils';
 import {
@@ -35,6 +37,127 @@ import {
   pickTopInsight,
   type BriefInsight,
 } from '@/lib/brief';
+
+/* ── Swipeable verdict views (ui-redesign-v2 §3.5 mobile-first) ──────────────
+   Small touch-swipe wrapper around the existing VerdictCard slot: a
+   horizontal swipe (≥48px, horizontal-dominant) moves between the Today /
+   Week / Month verdict views. This page hosts the single Today view, so the
+   wrapper is gesture parity with the dashboard slot (swipes clamp in place)
+   — the dashboard instance wires the same wrapper to its existing tabs, and
+   those tabs stay as the fallback (swipe never replaces them).
+   Gated behind prefers-reduced-motion: reduced motion renders the static
+   fallback (no slide transform). Dark tokens, 12px floor, 44px dot targets.
+   Display only — VerdictCard props and queries untouched. ───────────────── */
+const VERDICT_SWIPE_MIN_PX = 48;
+const VERDICT_SWIPE_CLAMP_PX = 96;
+
+function SwipeViews({
+  index,
+  count,
+  onIndex,
+  viewsLabel,
+  children,
+}: {
+  index: number;
+  count: number;
+  onIndex: (next: number) => void;
+  viewsLabel: string;
+  children: React.ReactNode;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const startRef = React.useRef<{ x: number; y: number } | null>(null);
+  const [dragX, setDragX] = React.useState(0);
+
+  const go = (dir: 1 | -1) =>
+    onIndex(Math.min(count - 1, Math.max(0, index + dir)));
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) {
+      startRef.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    startRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    if (!start || e.touches.length !== 1 || reduceMotion) return;
+    const t = e.touches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) <= Math.abs(dy) * 1.5) {
+      setDragX(0);
+      return;
+    }
+    setDragX(Math.max(-VERDICT_SWIPE_CLAMP_PX, Math.min(VERDICT_SWIPE_CLAMP_PX, dx)));
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    startRef.current = null;
+    setDragX(0);
+    if (!start || count < 2) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) >= VERDICT_SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+      go(dx < 0 ? 1 : -1);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (count < 2) return;
+    if (e.key === 'ArrowRight') go(1);
+    else if (e.key === 'ArrowLeft') go(-1);
+  };
+
+  return (
+    <div
+      role="region"
+      aria-roledescription="carousel"
+      aria-label={viewsLabel}
+      tabIndex={count > 1 ? 0 : undefined}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onKeyDown={handleKeyDown}
+    >
+      <div
+        style={
+          reduceMotion || dragX === 0
+            ? undefined
+            : {
+                transform: `translateX(${dragX}px)`,
+                transition: `transform ${MOTION.durationFastMs}ms ${MOTION.easeOut}`,
+              }
+        }
+      >
+        {children}
+      </div>
+      {count > 1 && (
+        <div className="flex items-center justify-center gap-1 pt-1" aria-hidden={false}>
+          {Array.from({ length: count }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onIndex(i)}
+              aria-label={`Show verdict view ${i + 1} of ${count}`}
+              aria-current={i === index ? 'true' : undefined}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <span
+                aria-hidden="true"
+                className={`block h-2 w-2 rounded-full ${i === index ? 'bg-accent' : 'bg-surface-light'}`}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function weatherNote(day: { temp_max: number; precipitation_probability: number | null; wind_speed_max: number; conditions: string }): string {
   const notes: string[] = [];
@@ -149,6 +272,7 @@ export default function TodayBriefPage() {
       {/* 1 — Verdict. The shared Phase 1 card (same props shape as the
           dashboard slot): server verdict headline + reasons + full consensus
           incl. silent engines, with plan-relative fallbacks. */}
+      <SwipeViews index={0} count={1} onIndex={() => {}} viewsLabel="Today verdict">
       <VerdictCard
         verdict={athlete.verdict.verdict}
         planContext={verdictPlanContext}
@@ -156,6 +280,7 @@ export default function TodayBriefPage() {
         sleepDebtHours={athlete.body.sleepDebtHours}
         isLoading={verdictIsLoading}
       />
+      </SwipeViews>
 
       {/* 2-col on desktop (2.2): action left, context right */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">

@@ -37,6 +37,8 @@ import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
 import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
 import { TimeRangeProvider } from '@/lib/time-range';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { MOTION } from '@/components/motion/tokens';
+import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 
 export default function DashboardPage() {
   /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
@@ -46,6 +48,219 @@ export default function DashboardPage() {
     <TimeRangeProvider>
       <DashboardPageInner />
     </TimeRangeProvider>
+  );
+}
+
+const VERDICT_TAB_ORDER = ['today', 'weekly', 'monthly'] as const;
+
+/* Swipeable verdict views (ui-redesign-v2 section 3.5 mobile-first).
+   Small touch-swipe wrapper around the existing VerdictCard slot: a
+   horizontal swipe (48px+, horizontal-dominant) moves between the Today /
+   Week / Month verdict views by driving the existing tab state. Those tab
+   buttons stay as the fallback (untouched, keyboard-operable) — swipe never
+   replaces them. Gated behind prefers-reduced-motion (static fallback, no
+   slide transform). Dark tokens, 12px floor, 44px dot targets. Display only
+   — VerdictCard props and queries untouched. */
+const VERDICT_SWIPE_MIN_PX = 48;
+const VERDICT_SWIPE_CLAMP_PX = 96;
+
+function SwipeViews({
+  index,
+  count,
+  onIndex,
+  viewsLabel,
+  children,
+}: {
+  index: number;
+  count: number;
+  onIndex: (next: number) => void;
+  viewsLabel: string;
+  children: React.ReactNode;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const startRef = React.useRef<{ x: number; y: number } | null>(null);
+  const [dragX, setDragX] = React.useState(0);
+
+  const go = (dir: 1 | -1) =>
+    onIndex(Math.min(count - 1, Math.max(0, index + dir)));
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) {
+      startRef.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    startRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    if (!start || e.touches.length !== 1 || reduceMotion) return;
+    const t = e.touches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) <= Math.abs(dy) * 1.5) {
+      setDragX(0);
+      return;
+    }
+    setDragX(Math.max(-VERDICT_SWIPE_CLAMP_PX, Math.min(VERDICT_SWIPE_CLAMP_PX, dx)));
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    startRef.current = null;
+    setDragX(0);
+    if (!start || count < 2) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) >= VERDICT_SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+      go(dx < 0 ? 1 : -1);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (count < 2) return;
+    if (e.key === 'ArrowRight') go(1);
+    else if (e.key === 'ArrowLeft') go(-1);
+  };
+
+  return (
+    <div
+      role="region"
+      aria-roledescription="carousel"
+      aria-label={viewsLabel}
+      tabIndex={count > 1 ? 0 : undefined}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onKeyDown={handleKeyDown}
+    >
+      <div
+        style={
+          reduceMotion || dragX === 0
+            ? undefined
+            : {
+                transform: `translateX(${dragX}px)`,
+                transition: `transform ${MOTION.durationFastMs}ms ${MOTION.easeOut}`,
+              }
+        }
+      >
+        {children}
+      </div>
+      {count > 1 && (
+        <div className="flex items-center justify-center gap-1 pt-1">
+          {Array.from({ length: count }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onIndex(i)}
+              aria-label={`Show verdict view ${i + 1} of ${count}`}
+              aria-current={i === index ? 'true' : undefined}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <span
+                aria-hidden="true"
+                className={`block h-2 w-2 rounded-full ${i === index ? 'bg-accent' : 'bg-surface-light'}`}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Pull-to-sync (ui-redesign-v2 section 3.5 REVIEW signature). A touch
+   pull-down from the very top of the page (scrollY at 0, 64px+) refetches
+   the page queries through the SAME React Query keys (refetchQueries with
+   type active — no new endpoints, no computation changes) with a small
+   release-to-sync indicator. Static show/hide under
+   prefers-reduced-motion; dark tokens; 12px floor; the pill is
+   non-interactive status text. Desktop/keyboard fallback is the existing
+   refresh control. */
+const PULL_SYNC_THRESHOLD_PX = 64;
+type PullSyncPhase = 'idle' | 'pull' | 'ready' | 'syncing';
+
+function usePullToSync(onSync: () => Promise<unknown>): PullSyncPhase {
+  const startYRef = React.useRef<number | null>(null);
+  const phaseRef = React.useRef<PullSyncPhase>('idle');
+  const [phase, setPhase] = React.useState<PullSyncPhase>('idle');
+  const onSyncRef = React.useRef(onSync);
+
+  React.useEffect(() => {
+    onSyncRef.current = onSync;
+  });
+
+  React.useEffect(() => {
+    const setBoth = (p: PullSyncPhase) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || window.scrollY > 0) {
+        startYRef.current = null;
+        return;
+      }
+      startYRef.current = e.touches[0].clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const startY = startYRef.current;
+      if (startY == null || e.touches.length !== 1 || window.scrollY > 0) return;
+      if (phaseRef.current === 'syncing') return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) {
+        setBoth('idle');
+        return;
+      }
+      setBoth(dy >= PULL_SYNC_THRESHOLD_PX ? 'ready' : 'pull');
+    };
+    const onTouchEnd = () => {
+      startYRef.current = null;
+      if (phaseRef.current !== 'ready') {
+        if (phaseRef.current !== 'syncing') setBoth('idle');
+        return;
+      }
+      setBoth('syncing');
+      void Promise.resolve()
+        .then(() => onSyncRef.current())
+        .catch(() => undefined)
+        .finally(() => setBoth('idle'));
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
+  return phase;
+}
+
+function PullSyncStatus({ phase, label }: { phase: PullSyncPhase; label: string }) {
+  const reduceMotion = usePrefersReducedMotion();
+  if (phase === 'idle') return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      className="flex justify-center"
+      style={
+        reduceMotion
+          ? undefined
+          : { transition: `opacity ${MOTION.durationFastMs}ms ${MOTION.easeOut}` }
+      }
+    >
+      <span className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-surface-light/50 bg-surface px-4 py-1 text-xs text-muted">
+        <span aria-hidden="true">{phase === 'syncing' ? '⟳' : phase === 'ready' ? '↑' : '↓'}</span>
+        {phase === 'syncing' ? 'Syncing…' : phase === 'ready' ? 'Release to sync' : 'Pull to sync'}
+      </span>
+    </div>
   );
 }
 
@@ -80,6 +295,13 @@ function DashboardPageInner() {
       }
     : null;
   const verdictIsLoading = athlete.verdict.isLoading || athlete.plan.isLoading;
+
+  /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
+  const syncPage = React.useCallback(
+    () => queryClient.refetchQueries({ type: 'active' }),
+    [queryClient],
+  );
+  const pullPhase = usePullToSync(syncPage);
 
   /* ── Queries ───────────────────────────────────────────────────────────── */
 
@@ -265,6 +487,7 @@ function DashboardPageInner() {
 
   return (
     <div className="space-y-8" aria-live="polite">
+      <PullSyncStatus phase={pullPhase} label="Dashboard sync status" />
       {/* ── Error Banner ────────────────────────────────────────────────────── */}
       {downloadError && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-warning text-sm">
@@ -308,6 +531,12 @@ function DashboardPageInner() {
       />
 
       {/* ── Phase 1 shared slots: overview home keeps its banner position ──── */}
+      <SwipeViews
+        index={VERDICT_TAB_ORDER.indexOf(activeTab)}
+        count={VERDICT_TAB_ORDER.length}
+        onIndex={(i) => setActiveTab(VERDICT_TAB_ORDER[i])}
+        viewsLabel="Verdict views: Today, Week, Month"
+      >
       <VerdictCard
         verdict={athlete.verdict.verdict}
         planContext={verdictPlanContext}
@@ -315,6 +544,7 @@ function DashboardPageInner() {
         sleepDebtHours={athlete.body.sleepDebtHours}
         isLoading={verdictIsLoading}
       />
+      </SwipeViews>
       <LoadStrip
         ctl={athlete.load.ctl}
         atl={athlete.load.atl}
