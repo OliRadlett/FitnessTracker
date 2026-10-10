@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch, getVideoUploadUrl, createLiftVideo } from '@/lib/api';
-import type { LiftingSession, PersonalRecord } from '@/lib/api';
+import type { LiftingSession, PersonalRecord, LiftVideo } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { Spinner } from '@/components/ui/Spinner';
@@ -24,6 +24,13 @@ interface LiftVideoFormProps {
   prs: PersonalRecord[];
 }
 
+type LiftVideoCreatePayload = Omit<
+  LiftVideo,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+type CameraViewSelection = '' | NonNullable<LiftVideo['camera_view']>;
+type CameraLensSelection = '' | NonNullable<LiftVideo['camera_lens']>;
+
 export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormProps) {
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
@@ -32,8 +39,8 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const [exerciseName, setExerciseName] = useState('');
   const [expectedReps, setExpectedReps] = useState('');
   const [weightKg, setWeightKg] = useState('');
-  const [cameraView, setCameraView] = useState('');
-  const [cameraLens, setCameraLens] = useState('');
+  const [cameraView, setCameraView] = useState<CameraViewSelection>('');
+  const [cameraLens, setCameraLens] = useState<CameraLensSelection>('');
   const [notes, setNotes] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [setId, setSetId] = useState('');
@@ -77,8 +84,8 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      createLiftVideo(authFetch, data as any),
+    mutationFn: (data: LiftVideoCreatePayload) =>
+      createLiftVideo(authFetch, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lift-videos'] });
       setUploadComplete(true);
@@ -95,12 +102,12 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const base: Record<string, unknown> = {
+    const base: LiftVideoCreatePayload = {
       exercise_name: exerciseName || null,
       expected_reps: expectedReps === '' ? null : Math.max(0, parseInt(expectedReps, 10) || 0),
       weight_kg: weightKg === '' ? null : Math.max(0, parseFloat(weightKg) || 0),
-      camera_view: cameraView || null,
-      camera_lens: cameraLens || null,
+      camera_view: cameraView === '' ? null : cameraView,
+      camera_lens: cameraLens === '' ? null : cameraLens,
       notes: notes || null,
       lifting_session_id: sessionId || null,
       lifting_set_id: setId || null,
@@ -252,7 +259,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           </label>
           <select
             value={cameraView}
-            onChange={(e) => setCameraView(e.target.value)}
+            onChange={(e) => setCameraView(e.target.value as CameraViewSelection)}
             className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">Not sure</option>
@@ -273,7 +280,7 @@ export function LiftVideoForm({ open, onClose, sessions, prs }: LiftVideoFormPro
           </label>
           <select
             value={cameraLens}
-            onChange={(e) => setCameraLens(e.target.value)}
+            onChange={(e) => setCameraLens(e.target.value as CameraLensSelection)}
             className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">Not sure</option>

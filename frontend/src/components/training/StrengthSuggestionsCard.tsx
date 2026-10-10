@@ -24,7 +24,7 @@ export function StrengthSuggestionsCard({ planId }: StrengthSuggestionsCardProps
     refetch,
   } = useQuery<StrengthPlanSuggestionsResponse>({
     queryKey: ['strength-suggestions', planId],
-    queryFn: () => getStrengthSuggestions(authFetch as any, planId),
+    queryFn: () => getStrengthSuggestions(authFetch, planId),
     enabled: !!planId,
     staleTime: 5 * 60 * 1000,
   });
