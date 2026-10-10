@@ -250,7 +250,7 @@ describe('segments page', () => {
     await waitForSegments();
     setSelect('Filter by route', 'route-b');
     setSelect('Filter by category', '4');
-    expect(screen.getByText('No climbs match the selected filters.')).toBeTruthy();
+    expect(screen.getByText('No climbs match the selected filters — loosen them to see more.')).toBeTruthy();
   });
 
   it('drops a route heading once a filter empties it', async () => {
