@@ -3,14 +3,16 @@
 import React from 'react';
 import type { DecouplingHistoryResponse, ChartData } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart } from '@/components/charts/Chart';
+import { Chart, StaleBadge } from '@/components/charts/Chart';
 
 interface DecouplingSectionProps {
   decoupling: DecouplingHistoryResponse | undefined;
   chartDecouplingTrend: ChartData | undefined;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
-export function DecouplingSection({ decoupling, chartDecouplingTrend }: DecouplingSectionProps) {
+export function DecouplingSection({ decoupling, chartDecouplingTrend, stale }: DecouplingSectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -41,7 +43,14 @@ export function DecouplingSection({ decoupling, chartDecouplingTrend }: Decoupli
             </span>
           </div>
           {chartDecouplingTrend ? (
-            <Chart data={chartDecouplingTrend} height={280} />
+            stale ? (
+              <div className="relative">
+                <StaleBadge detail={typeof stale === 'string' ? stale : undefined} />
+                <Chart data={chartDecouplingTrend} height={280} />
+              </div>
+            ) : (
+              <Chart data={chartDecouplingTrend} height={280} />
+            )
           ) : (
             <div className="h-40 flex items-center justify-center text-muted text-sm">
               No decoupling chart data available

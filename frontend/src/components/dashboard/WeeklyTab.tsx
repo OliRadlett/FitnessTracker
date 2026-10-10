@@ -20,7 +20,7 @@ import type {
   WeeklyReport,
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Chart, ChartBody } from '@/components/charts/Chart';
+import { Chart, ChartBody, StaleBadge } from '@/components/charts/Chart';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
@@ -74,6 +74,8 @@ interface WeeklyTabProps {
   isAnalyzing: boolean;
   onAnalyze: () => void;
   onDownloadReport: (apiPath: string, filename: string) => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function WeeklyTab({
@@ -106,6 +108,7 @@ export function WeeklyTab({
   isAnalyzing,
   onAnalyze,
   onDownloadReport,
+  stale,
 }: WeeklyTabProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -449,6 +452,7 @@ export function WeeklyTab({
               data={weeklyTss}
               emptyMessage="No TSS data available"
               height={300}
+              stale={stale}
             />
           </Card>
         </div>
@@ -458,7 +462,14 @@ export function WeeklyTab({
             <CardHeader>
               <CardTitle>Strain vs Next-Day Recovery</CardTitle>
             </CardHeader>
-            <Chart data={strainVsRecovery} height={300} />
+            {stale ? (
+              <div className="relative">
+                <StaleBadge detail={typeof stale === 'string' ? stale : undefined} />
+                <Chart data={strainVsRecovery} height={300} />
+              </div>
+            ) : (
+              <Chart data={strainVsRecovery} height={300} />
+            )}
           </Card>
         )}
 
@@ -472,6 +483,7 @@ export function WeeklyTab({
               data={hrvChart}
               emptyMessage="No HRV data available. Sync Whoop to populate."
               height={260}
+              stale={stale}
             />
           </Card>
 
@@ -484,6 +496,7 @@ export function WeeklyTab({
               data={heatmapChart}
               emptyMessage="No training data available yet"
               height={260}
+              stale={stale}
             />
           </Card>
         </div>

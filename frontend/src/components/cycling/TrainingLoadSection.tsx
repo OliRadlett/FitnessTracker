@@ -14,6 +14,8 @@ interface TrainingLoadSectionProps {
   isLoading: boolean;
   loadDays: number;
   setLoadDays: (days: number) => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function TrainingLoadSection({
@@ -22,6 +24,7 @@ export function TrainingLoadSection({
   isLoading,
   loadDays,
   setLoadDays,
+  stale,
 }: TrainingLoadSectionProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -73,6 +76,7 @@ export function TrainingLoadSection({
         data={chartTrainingLoad}
         emptyMessage="No training load data available. Set your FTP and sync activities."
         height={320}
+        stale={stale}
       />
 
       {trainingLoad && (
@@ -83,6 +87,7 @@ export function TrainingLoadSection({
             data={rampRateChart}
             emptyMessage="No ramp rate data available yet"
             height={240}
+            stale={stale}
           />
 
           <h4 className="text-sm font-medium text-muted mt-6 mb-2">Load Balance — TSS vs Lifting vs Strain</h4>
@@ -91,6 +96,7 @@ export function TrainingLoadSection({
             data={loadBalanceChart}
             emptyMessage="No load balance data available yet"
             height={240}
+            stale={stale}
           />
         </>
       )}

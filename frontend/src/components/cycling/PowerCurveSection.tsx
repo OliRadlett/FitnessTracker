@@ -7,7 +7,7 @@ import type { ChartData, PowerCurveResponse, PowerZonesResponse, HrZonesResponse
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonLine } from '@/components/ui/Skeleton';
-import { Chart, ChartBody } from '@/components/charts/Chart';
+import { Chart, ChartBody, StaleBadge } from '@/components/charts/Chart';
 import { timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { useForecastChart } from '@/lib/projection';
 import { PowerCurveTable } from '@/components/cycling/PowerCurveTable';
@@ -31,6 +31,19 @@ interface PowerCurveSectionProps {
   chartDailyTss: ChartData | undefined;
   chartWeightTrend: ChartData | undefined;
   fittedCurveData?: ChartData | undefined;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
+}
+
+/** Degraded-state wrapper mirroring ChartBody's stale path for raw <Chart> usages. */
+function StaleWrap({ stale, children }: { stale?: boolean | string; children: React.ReactNode }) {
+  if (!stale) return <>{children}</>;
+  return (
+    <div className="relative">
+      <StaleBadge detail={typeof stale === 'string' ? stale : undefined} />
+      {children}
+    </div>
+  );
 }
 
 export function PowerCurveSection({
@@ -50,6 +63,7 @@ export function PowerCurveSection({
   chartDailyTss,
   chartWeightTrend,
   fittedCurveData,
+  stale,
 }: PowerCurveSectionProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -154,7 +168,7 @@ export function PowerCurveSection({
                   )}
                 </div>
               )}
-              {curveChart && <Chart data={curveChart} height={280} />}
+              {curveChart && <StaleWrap stale={stale}><Chart data={curveChart} height={280} /></StaleWrap>}
               <div className="mt-4">
                 <PowerCurveTable data={powerCurve.data} ftpWatts={powerCurve.ftp_watts} wkgByLabel={wkgByLabel} />
               </div>
@@ -184,7 +198,7 @@ export function PowerCurveSection({
                 </p>
               </div>
               <PowerZonesDisplay zones={powerZones.zones} />
-              {chartPowerZones && <div className="mt-4"><Chart data={chartPowerZones} height={220} /></div>}
+              {chartPowerZones && <div className="mt-4"><StaleWrap stale={stale}><Chart data={chartPowerZones} height={220} /></StaleWrap></div>}
             </>
           ) : (
             <div className="h-60 flex items-center justify-center text-muted">
@@ -220,6 +234,7 @@ export function PowerCurveSection({
           data={chartPowerComparison}
           emptyMessage="No power data available for comparison. Fetch streams from Strava first."
           height={300}
+          stale={stale}
         />
       </Card>
 
@@ -233,7 +248,7 @@ export function PowerCurveSection({
           {hrZones?.zones?.length ? (
             <>
               <HRZonesDisplay zones={hrZones.zones} lthr={hrZones.lthr} />
-              {chartHrZones && <div className="mt-4"><Chart data={chartHrZones} height={220} /></div>}
+              {chartHrZones && <div className="mt-4"><StaleWrap stale={stale}><Chart data={chartHrZones} height={220} /></StaleWrap></div>}
             </>
           ) : (
             <div className="h-60 flex flex-col items-center justify-center gap-3">
@@ -258,7 +273,7 @@ export function PowerCurveSection({
           <CardHeader>
             <CardTitle>Body Weight Trend (90 days)</CardTitle>
           </CardHeader>
-          <WeightTrendForecast base={chartWeightTrend} />
+          <WeightTrendForecast base={chartWeightTrend} stale={stale} />
         </Card>
 
         {/* Body Composition (Withings) */}
@@ -276,6 +291,7 @@ export function PowerCurveSection({
               </>
             }
             height={280}
+            stale={stale}
           />
         </Card>
       </div>
@@ -290,6 +306,7 @@ export function PowerCurveSection({
             data={chartDailyTss}
             emptyMessage="No TSS data available"
             height={280}
+            stale={stale}
           />
         </Card>
 
@@ -301,6 +318,7 @@ export function PowerCurveSection({
             data={powerVsHrChart}
             emptyMessage="No power/HR data available"
             height={280}
+            stale={stale}
           />
         </Card>
       </div>
@@ -316,6 +334,7 @@ export function PowerCurveSection({
             data={wkgChart}
             emptyMessage="Fetch streams and log body weight to see your W/kg curve"
             height={280}
+            stale={stale}
           />
         </Card>
 
@@ -328,6 +347,7 @@ export function PowerCurveSection({
             data={percentileChart}
             emptyMessage="Fetch streams and log body weight to compare against population norms"
             height={280}
+            stale={stale}
           />
         </Card>
       </div>
@@ -336,7 +356,7 @@ export function PowerCurveSection({
 }
 
 /** Weight trend + B-14 dashed body-weight forecast overlay. */
-function WeightTrendForecast({ base }: { base: ChartData | undefined }) {
+function WeightTrendForecast({ base, stale }: { base: ChartData | undefined; stale?: boolean | string }) {
   const { data, caption } = useForecastChart(base, 'body_weight', 'Weight forecast');
   // B-20: 7-day EMA + day/week deltas from the chart series, client-side.
   const stats = React.useMemo(() => {
@@ -371,6 +391,7 @@ function WeightTrendForecast({ base }: { base: ChartData | undefined }) {
           </>
         }
         height={280}
+        stale={stale}
       />
       {caption && <p className="text-[11px] text-muted mt-1">--- {caption}</p>}
     </>

@@ -70,6 +70,8 @@ interface TodayTabProps {
   upcomingEvents: Event[] | undefined;
   /** QW6 — compact top-3 goals, same component as the Weekly tab. */
   goals?: Goal[];
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ export function TodayTab({
   respiratoryRate,
   upcomingEvents,
   goals,
+  stale,
 }: TodayTabProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -379,6 +382,7 @@ export function TodayTab({
           data={trainingLoadChart}
           emptyMessage="No training load data available"
           height={260}
+          stale={stale}
         />
       </div>
 

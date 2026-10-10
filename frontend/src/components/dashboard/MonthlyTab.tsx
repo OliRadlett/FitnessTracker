@@ -20,6 +20,8 @@ interface MonthlyTabProps {
   yearlySummary: YearlySummary | undefined;
   yearlyLoading: boolean;
   onDownloadReport: (apiPath: string, filename: string) => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function MonthlyTab({
@@ -31,6 +33,7 @@ export function MonthlyTab({
   yearlySummary,
   yearlyLoading,
   onDownloadReport,
+  stale,
 }: MonthlyTabProps) {
   const { authFetch, token } = useAuthFetch();
 
@@ -111,6 +114,7 @@ export function MonthlyTab({
             data={sleepChart}
             emptyMessage="No sleep data available. Sync Whoop to populate."
             height={280}
+            stale={stale}
           />
         </Card>
 
@@ -123,6 +127,7 @@ export function MonthlyTab({
             data={restDayChart}
             emptyMessage="No rest day data available yet"
             height={280}
+            stale={stale}
           />
         </Card>
       </div>

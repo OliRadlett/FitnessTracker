@@ -26,6 +26,8 @@ interface FtpSectionProps {
   onCheckPRs: () => void;
   isCheckingPRs: boolean;
   onInvalidatePRs: () => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function FtpSection({
@@ -43,6 +45,7 @@ export function FtpSection({
   onCheckPRs,
   isCheckingPRs,
   onInvalidatePRs,
+  stale,
 }: FtpSectionProps) {
   // B-14: dashed FTP forecast overlay (regression from FtpHistory points).
   const { data: ftpChart, caption: ftpCaption } = useForecastChart(
@@ -88,6 +91,7 @@ export function FtpSection({
           data={ftpChart}
           emptyMessage='No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.'
           height={250}
+          stale={stale}
         />
         {ftpCaption && (
           <p className="text-[11px] text-muted mt-1">--- {ftpCaption}</p>

@@ -737,6 +737,7 @@ function CyclingPageInner() {
           vo2maxHistory={vo2maxHistory}
           chartVo2maxTrend={chartVo2maxTrend}
           loading={vo2maxLoading}
+          stale={staleProviders.length > 0}
         />
       </div>
 
@@ -786,6 +787,7 @@ function CyclingPageInner() {
         isLoading={loadLoading}
         loadDays={chartDays}
         setLoadDays={writeRangeDays}
+        stale={staleProviders.length > 0}
       />
 
       {/* Recalculate TSS Banner (state-aware: only when CTL/ATL source data is missing) */}
@@ -864,6 +866,7 @@ function CyclingPageInner() {
           powerVsHr={powerVsHr}
           chartDailyTss={chartDailyTss}
           chartWeightTrend={chartWeightTrend}
+          stale={staleProviders.length > 0}
         />
       </div>
 
@@ -887,6 +890,7 @@ function CyclingPageInner() {
         <DecouplingSection
           decoupling={decoupling}
           chartDecouplingTrend={chartDecouplingTrend}
+          stale={staleProviders.length > 0}
         />
       </div>
 
@@ -916,6 +920,7 @@ function CyclingPageInner() {
           onCheckPRs={() => checkPRsMutation.mutate()}
           isCheckingPRs={checkPRsMutation.isPending}
           onInvalidatePRs={() => { void refetchPRs(); }}
+          stale={staleProviders.length > 0}
         />
       </div>
     </div>

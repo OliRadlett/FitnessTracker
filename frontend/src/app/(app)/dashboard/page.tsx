@@ -595,6 +595,7 @@ function DashboardPageInner() {
           respiratoryRate={respiratoryRate}
           upcomingEvents={upcomingEvents}
           goals={goals}
+          stale={athlete.sync.staleProviders.length > 0}
         />
       )}
 
@@ -637,6 +638,7 @@ function DashboardPageInner() {
           isAnalyzing={isAnalyzing}
           onAnalyze={handleAnalyze}
           onDownloadReport={handleDownloadReport}
+          stale={athlete.sync.staleProviders.length > 0}
         />
       )}
 
@@ -650,6 +652,7 @@ function DashboardPageInner() {
           yearlySummary={yearlySummary}
           yearlyLoading={yearlyLoading}
           onDownloadReport={handleDownloadReport}
+          stale={athlete.sync.staleProviders.length > 0}
         />
       )}
     </div>
