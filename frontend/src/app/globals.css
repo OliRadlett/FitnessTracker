@@ -147,6 +147,116 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+  /* Motion primitives (§3.2) stay off unconditionally under reduced motion. */
+  .ft-shimmer,
+  .ft-value-swap,
+  .ft-sheet-enter,
+  .ft-dialog-enter,
+  .ft-backdrop-enter {
+    animation: none !important;
+  }
+}
+
+/* ── ui-redesign-v2 §3.2 motion primitives ──────────────────────────────
+ * Keyframes + opt-in classes for the primitives in components/motion/.
+ * Rules: value transitions animate magnitude/position only, never flash
+ * (no brightness pulses on text); status NEVER depends on animation — no
+ * motion on data-critical color changes. PR toasts are untouched.
+ * `Modal.tsx` itself is untouched; the sheet/dialog classes below mirror
+ * its mobile bottom-sheet / desktop dialog pattern for future adoption. */
+
+@keyframes ft-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes ft-value-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ft-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Skeleton shimmer — opt-in gradient sweep (existing Skeleton components
+ * keep their animate-pulse; use this class for new loading surfaces). */
+.ft-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgb(var(--surface-light) / 0.35) 40%,
+    rgb(var(--surface-light) / 0.12) 50%,
+    rgb(var(--surface-light) / 0.35) 60%
+  );
+  background-size: 200% 100%;
+  animation: ft-shimmer 1.6s linear infinite;
+}
+
+/* Verdict value-change transition: subtle fade + 4px rise when the headline
+ * (or any keyed value) changes. Re-trigger by changing the React `key`. */
+.ft-value-swap {
+  animation: ft-value-swap 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Sheet/dialog enter transitions mirroring the Modal bottom-sheet pattern:
+ * mobile (<sm) sheets rise; desktop dialogs fade; backdrop fades. */
+.ft-sheet-enter {
+  animation: ft-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ft-dialog-enter {
+  animation: ft-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ft-backdrop-enter {
+  animation: ft-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Scroll-into-view reveal (see Reveal.tsx). Degrades open: without
+ * [data-armed] the element is fully visible — the hidden pre-state only
+ * exists once JS arms it for a below-fold element. */
+.ft-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+.ft-reveal[data-armed='true'] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 250ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ft-reveal[data-armed='true'][data-visible='true'] {
+  opacity: 1;
+  transform: none;
 }
 
 ::-webkit-scrollbar {

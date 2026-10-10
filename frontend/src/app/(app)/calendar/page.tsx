@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -13,6 +13,8 @@ import type {
 } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 import {
   format,
   startOfMonth,
@@ -265,26 +267,19 @@ export default function CalendarPage() {
         {/* Calendar grid */}
         {isLoading ? (
           <div className="px-4 pb-4">
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1" aria-label="Loading calendar">
               {Array.from({ length: 35 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-[120px] bg-surface-light/40 rounded-lg animate-pulse"
-                />
+                <SkeletonLine key={i} className="h-[120px] rounded-lg" />
               ))}
             </div>
           </div>
         ) : isError ? (
           <div className="px-4 pb-4">
-            <p className="text-sm text-warning" role="alert">
-              Couldn't load calendar data —{' '}
-              <button
-                onClick={() => refetch()}
-                className="underline text-accent hover:text-accent/80"
-              >
-                retry
-              </button>
-            </p>
+            <ErrorState
+              title="Couldn't load calendar data"
+              message="Check your connection and try again."
+              onRetry={() => refetch()}
+            />
           </div>
         ) : (
           <div className="px-4 pb-4">
@@ -387,7 +382,7 @@ export default function CalendarPage() {
         {/* Legend */}
         <div className="px-6 pb-5 pt-2 border-t border-surface-light/50" aria-live="polite">
           {!isLoading && activities && activities.length === 0 && (
-            <p className="text-xs text-muted/60 mb-2">No data for this period</p>
+            <p className="text-xs text-muted/60 mb-2">Nothing logged this month — sync a provider to fill the calendar.</p>
           )}
           <div className="flex flex-wrap gap-4">
             {[

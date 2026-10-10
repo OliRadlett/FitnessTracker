@@ -5,15 +5,23 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import {
+  displayNotificationBody,
   getNotificationSummary,
+  groupReauthByProvider,
+  healthAlertLink,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  reauthGroupBody,
+  reauthProvider,
+  summarizeNotificationBody,
 } from '@/lib/api';
-import type { AppNotification, NotificationSummary, NotificationType } from '@/lib/api';
+import type { AppNotification, NotificationSummary, NotificationType, ReauthGroup } from '@/lib/api';
 import { SEVERITY_BADGE, TYPE_ICONS, TYPE_LABELS } from '@/lib/notificationMeta';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { relativeTime } from '@/lib/analysisRenderer';
 
@@ -84,10 +92,35 @@ export default function NotificationsPage() {
 
   // Group consecutive identical notifications (2.4) — e.g. five "Video
   // processed" rows collapse into one expandable group.
-  type Row = { kind: 'single'; n: AppNotification } | { kind: 'group'; key: string; items: AppNotification[] };
+  // `connection_reauth` rows are excluded here: they are deduped globally by
+  // provider (Phase 0) into one escalating card each, no matter how far apart
+  // the repeats sit in the list.
+  type Row =
+    | { kind: 'single'; n: AppNotification }
+    | { kind: 'group'; key: string; items: AppNotification[] }
+    | { kind: 'reauth'; group: ReauthGroup; total: number };
   const rows = useMemo<Row[]>(() => {
+    // One escalating card per provider, placed where its newest alert sits.
+    const reauthGroups = new Map(
+      groupReauthByProvider(shown).map((g) => [g.provider, g]),
+    );
+    // Escalation counts come from the whole loaded history, not just the
+    // visible slice, so "6 times" stays honest under "Show more" paging.
+    const totals = new Map(
+      groupReauthByProvider(notifications).map((g) => [g.provider, g.items.length]),
+    );
+    const emittedReauth = new Set<string>();
     const out: Row[] = [];
     for (const n of shown) {
+      if (n.type === 'connection_reauth') {
+        const key = reauthProvider(n);
+        if (emittedReauth.has(key)) continue;
+        emittedReauth.add(key);
+        const group = reauthGroups.get(key);
+        if (!group) continue;
+        out.push({ kind: 'reauth', group, total: totals.get(key) ?? group.items.length });
+        continue;
+      }
       const last = out[out.length - 1];
       if (
         last?.kind === 'group' &&
@@ -106,7 +139,7 @@ export default function NotificationsPage() {
       }
     }
     return out;
-  }, [shown]);
+  }, [shown, notifications]);
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -142,6 +175,21 @@ export default function NotificationsPage() {
     },
   });
 
+  // Dismissing one escalating re-auth card clears every repeat behind it — a
+  // fresh outage mints a fresh notification (per-episode dedup_key), so the
+  // old repeats never need to resurface.
+  const markGroupRead = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => markNotificationRead(authFetch, id))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listKey });
+      queryClient.invalidateQueries({ queryKey: summaryKey });
+    },
+    onError: (err: Error) => {
+      console.error('[NotificationsPage] Mark group read failed:', err);
+    },
+  });
+
   // Chip labels come from the summary (all history), not the loaded slice, so
   // the menu doesn't lose types that fall outside the current page.
   const typeOptions = useMemo(() => {
@@ -158,10 +206,22 @@ export default function NotificationsPage() {
 
   function handleOpen(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id);
-    if (n.link) router.push(n.link);
+    // Phase 2: health-alert rows deep-link to Health (`?alert=`) — the full
+    // text lives there; every other type keeps its stored link.
+    const target = n.type === 'health_alert' ? healthAlertLink(n) : n.link;
+    if (target) router.push(target);
+  }
+
+  function handleReconnect(group: ReauthGroup) {
+    markGroupRead.mutate(group.items.map((i) => i.id));
+    router.push(group.items[0]?.link || '/settings');
   }
 
   function renderItem(n: AppNotification) {
+    // Phase 2 merge-vs-link (§1.2): health-alert rows carry a summary — the
+    // full text lives once on Health behind the row's deep link.
+    const isHealthAlert = n.type === 'health_alert';
+    const body = isHealthAlert ? summarizeNotificationBody(n) : displayNotificationBody(n);
     return (
       <button
         key={n.id}
@@ -188,7 +248,10 @@ export default function NotificationsPage() {
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted mt-1">{n.body}</p>
+            <p className="text-sm text-muted mt-1">{body}</p>
+            {isHealthAlert && (
+              <p className="text-xs text-accent mt-1">View full text on Health →</p>
+            )}
             <p className="text-[11px] text-muted/70 mt-1.5">
               {n.created_at ? relativeTime(n.created_at) : ''}
             </p>
@@ -198,6 +261,82 @@ export default function NotificationsPage() {
           )}
         </div>
       </button>
+    );
+  }
+
+  // One escalating card per provider for repeated re-auth alerts: plain-language
+  // copy with the repeat count, a single Reconnect CTA, and the individual
+  // alerts behind an expandable details section.
+  function renderReauthGroup(group: ReauthGroup, total: number) {
+    const key = `reauth:${group.provider}`;
+    const expanded = expandedGroups.has(key);
+    const anyUnread = group.items.some((i) => !i.read);
+    const latest = group.items[0]?.created_at ? relativeTime(group.items[0].created_at!) : '';
+    const severity: AppNotification['severity'] = group.items.some((i) => i.severity === 'error')
+      ? 'error'
+      : (group.items[0]?.severity ?? 'warning');
+    return (
+      <div key={key} className="border-b border-surface-light/30">
+        <div className={`px-4 py-3.5 ${anyUnread ? '' : 'opacity-60'}`}>
+          <div className="flex items-start gap-3">
+            <span className="text-xl mt-0.5" aria-hidden="true">{TYPE_ICONS.connection_reauth}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className={`text-sm text-foreground ${anyUnread ? 'font-semibold' : 'font-normal'}`}>
+                  {group.displayName} needs reconnecting
+                </p>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${SEVERITY_BADGE[severity] ?? SEVERITY_BADGE.info}`}
+                >
+                  {severity}
+                </span>
+                {TYPE_LABELS.connection_reauth && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-light/50 text-muted uppercase">
+                    {TYPE_LABELS.connection_reauth}
+                  </span>
+                )}
+                {total > 1 && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/15 text-warning tabular-nums">
+                    {total} alerts
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-muted mt-1">{reauthGroupBody(group.displayName, total)}</p>
+              <p className="text-[11px] text-muted/70 mt-1.5">
+                {latest}
+                {total > group.items.length && (
+                  <span className="tabular-nums"> · showing {group.items.length} of {total}</span>
+                )}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                <button
+                  onClick={() => handleReconnect(group)}
+                  className="min-h-[44px] px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors"
+                >
+                  Reconnect
+                </button>
+                {group.items.length > 1 && (
+                  <button
+                    onClick={() => toggleGroup(key)}
+                    aria-expanded={expanded}
+                    className="min-h-[44px] px-3 py-2 text-xs font-medium text-muted hover:text-foreground transition-colors"
+                  >
+                    {expanded ? 'Hide details ▾' : `Show all ${group.items.length} ▸`}
+                  </button>
+                )}
+              </div>
+            </div>
+            {anyUnread && (
+              <span className="mt-2 w-2 h-2 rounded-full bg-accent shrink-0" aria-hidden="true" />
+            )}
+          </div>
+        </div>
+        {expanded && (
+          <div className="border-t border-surface-light/20">
+            {group.items.map((n) => renderItem(n))}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -257,23 +396,35 @@ export default function NotificationsPage() {
 
         <div className="border-t border-surface-light/50">
           {isLoading && notifications.length === 0 && (
-            <p className="px-4 py-10 text-sm text-muted text-center">Loading…</p>
+            <div className="px-4 py-4 space-y-3" aria-label="Loading notifications">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </div>
           )}
           {!isLoading && notifications.length === 0 && (
-            <div className="px-4 py-10 text-center">
-              <p className="text-3xl mb-2" aria-hidden="true">📭</p>
-              <p className="text-sm text-muted">
-                {/* Distinguish "nothing ever" from "the filters hid everything";
-                    fall back to the loaded count if the summary request failed. */}
-                {(summary ? summary.total === 0 : notifications.length === 0)
-                  ? 'No notifications yet'
-                  : 'No notifications match the selected filters'}
-              </p>
+            <div className="p-8">
+              <EmptyState
+                icon="📭"
+                title={
+                  (summary ? summary.total === 0 : notifications.length === 0)
+                    ? 'No notifications yet'
+                    : 'No matching notifications'
+                }
+                description={
+                  (summary ? summary.total === 0 : notifications.length === 0)
+                    ? 'Training milestones, health alerts, and sync notices will appear here.'
+                    : 'Try clearing the read-status or type filters above.'
+                }
+                action={{ label: 'Notification settings', href: '/settings' }}
+              />
             </div>
           )}
           {rows.map((row) =>
             row.kind === 'single' ? (
               renderItem(row.n)
+            ) : row.kind === 'reauth' ? (
+              renderReauthGroup(row.group, row.total)
             ) : (
               <div key={row.key} className="border-b border-surface-light/30">
                 <button

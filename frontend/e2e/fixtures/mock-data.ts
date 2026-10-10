@@ -46,6 +46,21 @@ export const mockTodaySummary = {
   current_atl: 72,
   current_tsb: -7,
   active_alerts: 0,
+  // Wave-4 unified verdict (plan §1) — mirrors the prod TodayVerdict shape so
+  // the shared VerdictCard renders the server headline, not a fallback.
+  verdict: {
+    should_rest: false,
+    headline: 'Green light — train as planned',
+    reasons: ['Recovery 72% — well recovered', 'Sleep debt only 1.5h'],
+    consensus: [
+      { engine: 'recovery', stance: 'build', confidence: 'high', available: true, reason: null, note: 'Recovery 72%', analyzed_at: null },
+      { engine: 'training_load', stance: 'build', confidence: 'medium', available: true, reason: null, note: 'TSB -7, tolerated', analyzed_at: null },
+      { engine: 'sleep', stance: 'maintain', confidence: 'medium', available: true, reason: null, note: '7.5h sleep', analyzed_at: null },
+      { engine: 'plan', stance: 'build', confidence: 'high', available: true, reason: null, note: 'Plan session scheduled', analyzed_at: null },
+      { engine: 'cross_domain', stance: null, confidence: null, available: false, reason: 'No weekly run yet', note: null, analyzed_at: null },
+    ],
+    projected_load: [],
+  },
 };
 
 export const mockDashboardSummary = {

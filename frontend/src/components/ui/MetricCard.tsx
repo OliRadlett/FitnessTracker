@@ -15,6 +15,17 @@ interface MetricCardProps {
   tooltip?: string;
   trend?: MetricTrend | 'up' | 'down' | 'stable' | null;
   benchmark?: MetricBenchmark | null;
+  /**
+   * Honest-empty override (ui-redesign-v2 §4 moment 4): shown — muted, 12px+
+   * floor — when `value` is null/undefined/''/'—'. Defaults to "No data yet".
+   * Backward compatible: no caller edits needed.
+   */
+  emptyText?: React.ReactNode;
+}
+
+/** Presentational only: 0 is real data; missing or a bare '—' placeholder is not. */
+function hasValue(value: string | number | undefined | null): value is string | number {
+  return value !== undefined && value !== null && value !== '' && value !== '—';
 }
 
 function TrendIndicator({ trend }: { trend?: MetricTrend | 'up' | 'down' | 'stable' | null }) {
@@ -93,8 +104,10 @@ export function MetricCard({
   tooltip,
   trend,
   benchmark,
+  emptyText,
 }: MetricCardProps) {
   const displayText = subtitle || subtext;
+  const showValue = hasValue(value);
 
   return (
     <Card className="group relative">
@@ -106,9 +119,13 @@ export function MetricCard({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <p className={`text-2xl font-bold tabular-nums ${color}`}>
-          {value !== undefined && value !== null ? value : '—'}
-          {unit && <span className="text-sm font-normal text-muted ml-1">{unit}</span>}
+        <p className={`text-2xl font-bold tabular-nums ${showValue ? color : ''}`}>
+          {showValue ? (
+            value
+          ) : (
+            <span className="text-sm font-medium text-muted">{emptyText ?? 'No data yet'}</span>
+          )}
+          {showValue && unit && <span className="text-sm font-normal text-muted ml-1">{unit}</span>}
         </p>
         <TrendIndicator trend={trend} />
         <BenchmarkBadge benchmark={benchmark} />

@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import {
+  displayNotificationBody,
   getNotificationSummary,
+  healthAlertLink,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -92,7 +94,10 @@ export function NotificationBell() {
   function handleOpen(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id);
     setOpen(false);
-    if (n.link) router.push(n.link);
+    // Phase 2: health alerts deep-link to Health (`?alert=`); other types
+    // keep their stored link — same rule as the /notifications page.
+    const target = n.type === 'health_alert' ? healthAlertLink(n) : n.link;
+    if (target) router.push(target);
   }
 
   return (
@@ -169,7 +174,7 @@ export function NotificationBell() {
                         {n.severity}
                       </span>
                     </div>
-                    <p className="text-xs text-muted mt-0.5 line-clamp-2">{n.body}</p>
+                    <p className="text-xs text-muted mt-0.5 line-clamp-2">{displayNotificationBody(n)}</p>
                     <p className="text-[10px] text-muted/70 mt-1">
                       {n.created_at ? relativeTime(n.created_at) : ''}
                     </p>

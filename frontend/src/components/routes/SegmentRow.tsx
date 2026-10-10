@@ -68,41 +68,89 @@ export function confidenceBand(confidence: number | null): {
   };
 }
 
-/** Cat / climb-type / difficulty chips. */
-export function SegmentBadges({ seg }: { seg: Segment }) {
+/**
+ * Humanize a raw `climb_type` for display.
+ *
+ * Known keys get their short label; anything else (e.g. `sustained_steep`)
+ * is title-cased with underscores as spaces instead of leaking the raw
+ * snake_case into the row. Display-only — the stored value is untouched.
+ */
+export function humanizeClimbType(raw: string): string {
+  const known = CLIMB_TYPE_LABELS[raw];
+  if (known) return known;
+  return raw
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+export interface SegmentBadgeItem {
+  key: string;
+  label: string;
+  className: string;
+  title?: string;
+}
+
+/**
+ * The chips a row shows, de-duplicated.
+ *
+ * A climb typed `hc` in category `HC` would otherwise render two chips that
+ * say the same thing ("Cat HC" + "HC") — the type chip is dropped when its
+ * label matches the category. Pure (no hooks) so the rule is unit-testable.
+ */
+export function segmentBadgeItems(seg: Segment): SegmentBadgeItem[] {
+  const items: SegmentBadgeItem[] = [];
   const cat = seg.climb_category ? seg.climb_category.toUpperCase() : null;
   const catStyle = cat ? CATEGORY_STYLES[cat] ?? null : null;
+  if (cat && catStyle) {
+    items.push({
+      key: 'cat',
+      label: `Cat ${cat}`,
+      className: `border rounded px-1.5 py-0.5 text-xs font-bold ${catStyle}`,
+    });
+  }
+  if (seg.climb_type) {
+    const label = humanizeClimbType(seg.climb_type);
+    // Merge identical chips: "HC" type on a "HC" climb adds no information.
+    if (!cat || label.toLowerCase() !== cat.toLowerCase()) {
+      items.push({
+        key: 'type',
+        label,
+        className:
+          'border rounded px-1.5 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-400 border-blue-500/30',
+      });
+    }
+  }
+  if (seg.difficulty_score != null) {
+    items.push({
+      key: 'diff',
+      label: `${seg.difficulty_score.toFixed(1)} diff`,
+      className:
+        'border rounded px-1.5 py-0.5 text-xs font-bold bg-purple-500/20 text-purple-400 border-purple-500/30',
+    });
+  }
+  if (seg.sustainedness != null) {
+    items.push({
+      key: 'sust',
+      label: `sust ${Math.round(seg.sustainedness * 100)}%`,
+      className:
+        'border rounded px-1.5 py-0.5 text-xs font-bold bg-surface border-surface-light/60 text-muted',
+      title: 'Sustainedness — how evenly the gradient holds up through the climb',
+    });
+  }
+  return items;
+}
+
+/** Cat / climb-type / difficulty chips. */
+export function SegmentBadges({ seg }: { seg: Segment }) {
   return (
     <>
-      {cat && catStyle ? (
-        <span className={`border rounded px-1.5 py-0.5 text-[10px] font-bold ${catStyle}`}>
-          Cat {cat}
+      {segmentBadgeItems(seg).map((b) => (
+        <span key={b.key} className={b.className} title={b.title}>
+          {b.label}
         </span>
-      ) : null}
-      {seg.climb_type ? (
-        <span className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/20 text-blue-400 border-blue-500/30">
-          {CLIMB_TYPE_LABELS[seg.climb_type] ?? seg.climb_type}
-        </span>
-      ) : null}
-      {seg.difficulty_score != null ? (
-        <span className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-400 border-purple-500/30">
-          {seg.difficulty_score.toFixed(1)} diff
-        </span>
-      ) : null}
-      {/*
-        These three were computed by the weekly Modal task every Sunday and
-        stored, but never rendered anywhere — they matched only in the TS type
-        and a test fixture. They are the most useful thing the weekly job
-        produces, so they are surfaced here with the rest of the badges.
-      */}
-      {seg.sustainedness != null ? (
-        <span
-          className="border rounded px-1.5 py-0.5 text-[10px] font-bold bg-surface border-surface-light/60 text-muted"
-          title="Sustainedness — how evenly the gradient holds up through the climb"
-        >
-          sust {Math.round(seg.sustainedness * 100)}%
-        </span>
-      ) : null}
+      ))}
     </>
   );
 }
@@ -120,7 +168,7 @@ export function SegmentPrediction({ seg }: { seg: Segment }) {
   const band = confidenceBand(seg.prediction_confidence);
 
   return (
-    <p className="text-[10px] text-muted mt-0.5">
+    <p className="text-xs text-muted mt-0.5 tabular-nums">
       {hasTime ? (
         <span title="Predicted time for this climb">
           pred {fmtSegTime(seg.predicted_time_seconds)}
@@ -170,7 +218,7 @@ export function ClimbDetailPanel({ geoClusterId }: { geoClusterId: string }) {
 
   return (
     <div>
-      <p className="text-[10px] text-muted mb-1.5">
+      <p className="text-xs text-muted mb-1.5">
         Merged across {data.route_count} route
         {data.route_count === 1 ? '' : 's'} · ranked by VAM, since routes detect
         the same hill with slightly different windows and elapsed seconds are
@@ -186,7 +234,7 @@ export function ClimbDetailPanel({ geoClusterId }: { geoClusterId: string }) {
             {e.activity_name ?? '—'}
           </span>
           {e.is_pr ? (
-            <span className="text-[10px] font-bold text-yellow-400">PR</span>
+            <span className="text-xs font-bold text-yellow-400">PR</span>
           ) : null}
           {/* Seconds are shown but explicitly labelled: they belong to this
               route's detection window, not a shared one. */}
@@ -232,32 +280,59 @@ export function SegmentRow({ segment }: { segment: Segment }) {
   const isSharedHill =
     segment.geo_cluster_id != null && segment.geo_cluster_size > 1;
 
+  // Fill the right half: an unridden climb has no PR, but the stored
+  // prediction is already on the row — show it (tilde-marked, never as a
+  // measurement) instead of leaving the half empty with a bare dash.
+  const hasPr = segment.pr_seconds != null;
+  const showPredictedBest =
+    !hasPr && segment.predicted_time_seconds != null;
+
   return (
     <div className="rounded-lg bg-surface-light/40 border border-surface-light/60">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left min-h-[44px]"
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-foreground truncate">{segment.name}</span>
-            <SegmentBadges seg={segment} />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+            {/* Over-long hill names (route name + km-range) truncate; the
+                full title stays one hover away. */}
+            <span
+              className="min-w-0 flex-1 basis-32 truncate text-xs font-semibold text-foreground"
+              title={segment.name}
+            >
+              {segment.name}
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              <SegmentBadges seg={segment} />
+            </span>
           </div>
-          <p className="text-[11px] text-muted mt-0.5">
+          <p className="text-xs text-muted mt-0.5 tabular-nums">
             {fmtKm(segment.distance_m)} · {segment.avg_gradient_pct.toFixed(1)}% avg ·{' '}
             {segment.elevation_gain_m.toFixed(0)} m gain
           </p>
           <SegmentPrediction seg={segment} />
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 tabular-nums">
           <p
             className={`text-sm font-semibold ${segment.has_pr ? 'text-positive' : 'text-muted'}`}
+            title={
+              hasPr
+                ? undefined
+                : showPredictedBest
+                  ? 'Predicted time — no ridden effort yet, not a measurement'
+                  : undefined
+            }
           >
-            {fmtSegTime(segment.pr_seconds)}
+            {hasPr
+              ? fmtSegTime(segment.pr_seconds)
+              : showPredictedBest && segment.predicted_time_seconds != null
+                ? `~${fmtSegTime(segment.predicted_time_seconds)}`
+                : fmtSegTime(segment.pr_seconds)}
           </p>
-          <p className="text-[10px] text-muted">
+          <p className="text-xs text-muted">
             {segment.times_ridden} ride{segment.times_ridden === 1 ? '' : 's'}{' '}
             {segment.best_avg_power_watts
               ? `· ${Math.round(segment.best_avg_power_watts)} W`
@@ -282,7 +357,7 @@ export function SegmentRow({ segment }: { segment: Segment }) {
                     {e.activity_name ?? '—'}
                   </span>
                   {e.is_pr ? (
-                    <span className="text-[10px] font-bold text-yellow-400">PR</span>
+                    <span className="text-xs font-bold text-yellow-400">PR</span>
                   ) : null}
                   <span className="text-muted tabular-nums">{fmtSegTime(e.elapsed_seconds)}</span>
                   {e.avg_power_watts != null ? (

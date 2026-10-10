@@ -31,6 +31,8 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { LinkActivityModal } from '@/components/lifting/LinkActivityModal';
 import { WarmupTemplateManager } from '@/components/lifting/WarmupTemplateManager';
 import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
@@ -293,7 +295,7 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
-  const { data: sessionDetail } = useQuery<LiftingSession>({
+  const { data: sessionDetail, isLoading: sessionDetailLoading, isError: sessionDetailError, refetch: refetchSessionDetail } = useQuery<LiftingSession>({
     queryKey: ['lifting-session', selectedSessionId],
     queryFn: () => authFetch<LiftingSession>(`/api/v1/lifting/sessions/${selectedSessionId}`),
     enabled: !!selectedSessionId && !!token,
@@ -735,8 +737,14 @@ export default function LiftingPage() {
         </div>
       )}
       {backfillMutation.isError && (
-        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning" role="alert">
-          Error: {backfillMutation.error instanceof Error ? backfillMutation.error.message : 'Auto-link failed'}
+        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning flex items-center justify-between gap-3" role="alert">
+          <span>Couldn&apos;t link Strava activities — try again.</span>
+          <button
+            onClick={() => backfillMutation.mutate()}
+            className="shrink-0 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -1073,8 +1081,24 @@ export default function LiftingPage() {
               <QuickAddSetBar session={sessionDetail} />
             </div>
             </div>
+          ) : selectedSessionId && (sessionDetailLoading || !sessionDetailError) ? (
+            <div className="space-y-3" aria-label="Loading session detail">
+              <SkeletonRow />
+              <SkeletonRow className="h-40" />
+            </div>
+          ) : selectedSessionId ? (
+            <ErrorState
+              title="Couldn't load session"
+              message="Check your connection and try again."
+              onRetry={() => refetchSessionDetail()}
+            />
           ) : (
-            <Card><p className="text-muted text-center py-12">Select a session to view details</p></Card>
+            <EmptyState
+              icon="🏋️"
+              title="No session selected"
+              description="Pick a session from the list to see its sets, analysis, and actions."
+              action={{ label: '+ New session', onClick: () => setShowNewSession(true) }}
+            />
           )}
         </div>
       </div>

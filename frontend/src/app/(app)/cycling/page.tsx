@@ -7,6 +7,7 @@ import type {
   CyclingProfile,
   CyclingProfileUpdate,
   CyclingMetricsSummary,
+  Connection,
   CyclingPowerRecord,
   TrainingLoadResponse,
   PowerCurveResponse,
@@ -23,10 +24,19 @@ import type {
   Vo2maxResponse,
   Vo2maxHistoryResponse,
   DecouplingHistoryResponse,
+  WeightHistoryResponse,
 } from '@/lib/api';
+import { getWeightHistory } from '@/lib/api';
 import { type PREvent } from '@/components/ui/PRCelebration';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
+import { LoadStrip, SyncBadge, WeightCard } from '@/components/athlete';
+import {
+  deriveLastSyncedAt,
+  deriveLoadTrend,
+  deriveStaleProviders,
+  deriveWeekTss,
+} from '@/lib/athlete';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
@@ -38,16 +48,147 @@ import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
 import { WeightPanel } from '@/components/cycling/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { formatTSB } from '@/lib/utils';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
+import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
+import { MOTION } from '@/components/motion/tokens';
+import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 
 export default function CyclingPage() {
+  /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
+     consumer — including the picker itself — so the page body lives in an
+     inner component under the provider (dashboard pattern). */
+  return (
+    <TimeRangeProvider>
+      <CyclingPageInner />
+    </TimeRangeProvider>
+  );
+}
+
+/* Pull-to-sync (ui-redesign-v2 section 3.5 REVIEW signature). A touch
+   pull-down from the very top of the page (scrollY at 0, 64px+) refetches
+   the page queries through the SAME React Query keys (refetchQueries with
+   type active — no new endpoints, no computation changes) with a small
+   release-to-sync indicator. Static show/hide under
+   prefers-reduced-motion; dark tokens; 12px floor; the pill is
+   non-interactive status text. Desktop/keyboard fallback is the existing
+   page controls. */
+const PULL_SYNC_THRESHOLD_PX = 64;
+type PullSyncPhase = 'idle' | 'pull' | 'ready' | 'syncing';
+
+function usePullToSync(onSync: () => Promise<unknown>): PullSyncPhase {
+  const startYRef = React.useRef<number | null>(null);
+  const phaseRef = React.useRef<PullSyncPhase>('idle');
+  const [phase, setPhase] = React.useState<PullSyncPhase>('idle');
+  const onSyncRef = React.useRef(onSync);
+
+  React.useEffect(() => {
+    onSyncRef.current = onSync;
+  });
+
+  React.useEffect(() => {
+    const setBoth = (p: PullSyncPhase) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || window.scrollY > 0) {
+        startYRef.current = null;
+        return;
+      }
+      startYRef.current = e.touches[0].clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const startY = startYRef.current;
+      if (startY == null || e.touches.length !== 1 || window.scrollY > 0) return;
+      if (phaseRef.current === 'syncing') return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) {
+        setBoth('idle');
+        return;
+      }
+      setBoth(dy >= PULL_SYNC_THRESHOLD_PX ? 'ready' : 'pull');
+    };
+    const onTouchEnd = () => {
+      startYRef.current = null;
+      if (phaseRef.current !== 'ready') {
+        if (phaseRef.current !== 'syncing') setBoth('idle');
+        return;
+      }
+      setBoth('syncing');
+      void Promise.resolve()
+        .then(() => onSyncRef.current())
+        .catch(() => undefined)
+        .finally(() => setBoth('idle'));
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
+  return phase;
+}
+
+function PullSyncStatus({ phase, label }: { phase: PullSyncPhase; label: string }) {
+  const reduceMotion = usePrefersReducedMotion();
+  if (phase === 'idle') return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      className="flex justify-center"
+      style={
+        reduceMotion
+          ? undefined
+          : { transition: `opacity ${MOTION.durationFastMs}ms ${MOTION.easeOut}` }
+      }
+    >
+      <span className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-surface-light/50 bg-surface px-4 py-1 text-xs text-muted">
+        <span aria-hidden="true">{phase === 'syncing' ? '⟳' : phase === 'ready' ? '↑' : '↓'}</span>
+        {phase === 'syncing' ? 'Syncing…' : phase === 'ready' ? 'Release to sync' : 'Pull to sync'}
+      </span>
+    </div>
+  );
+}
+
+function CyclingPageInner() {
   usePageTitle('Cycling');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
-  const [loadDays, setLoadDays] = useState(90);
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
+
+  /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
+  const syncPage = React.useCallback(
+    () => queryClient.refetchQueries({ type: 'active' }),
+    [queryClient],
+  );
+  const pullPhase = usePullToSync(syncPage);
+
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     cycling chart together. Day spans are clamped to the backend `?days=` cap
+     (≤365) inside timeRangeDays; months are derived for the `?months=`
+     endpoints (cap 12). Display only — no computation changes
+     (docs/algorithms.md authoritative). ─────────────────────────────────── */
+  const { start: rangeStart, end: rangeEnd, setCustom: setRangeCustom } = useTimeRange();
+  const chartDays = timeRangeDays(rangeStart, rangeEnd);
+  const chartMonths = Math.min(12, Math.max(1, Math.round(chartDays / 30)));
+  // The day selectors inside TrainingLoadSection + PowerCurveSection write
+  // into the shared context (custom window ending today), so every chart on
+  // the page re-cuts together. Only the window source changes — every chart,
+  // table, and card stays (data maximalism).
+  const writeRangeDays = (d: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (d - 1));
+    setRangeCustom(start, end);
+  };
 
   // Section anchor refs (used as scroll-to anchors in the JSX below).
   // Core power queries (FTP / VO2max / decoupling) now fire eagerly on mount —
@@ -85,15 +226,15 @@ export default function CyclingPage() {
   });
 
   const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
-    queryKey: ['training-load', loadDays],
-    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${loadDays}`),
+    queryKey: ['training-load', chartDays],
+    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: powerCurve, isLoading: curveLoading } = useQuery<PowerCurveResponse>({
-    queryKey: ['power-curve'],
-    queryFn: () => authFetch<PowerCurveResponse>('/api/v1/cycling/power-curve?days=90'),
+    queryKey: ['power-curve', chartDays],
+    queryFn: () => authFetch<PowerCurveResponse>(`/api/v1/cycling/power-curve?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -113,29 +254,29 @@ export default function CyclingPage() {
   });
 
   const { data: powerZones, isLoading: zonesLoading } = useQuery<PowerZonesResponse>({
-    queryKey: ['power-zones'],
-    queryFn: () => authFetch<PowerZonesResponse>('/api/v1/cycling/power-zones?days=30'),
+    queryKey: ['power-zones', chartDays],
+    queryFn: () => authFetch<PowerZonesResponse>(`/api/v1/cycling/power-zones?days=${chartDays}`),
     enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
   const { data: powerVsHr } = useQuery<PowerVsHrResponse>({
-    queryKey: ['power-vs-hr'],
-    queryFn: () => authFetch<PowerVsHrResponse>('/api/v1/cycling/power-vs-hr?days=90'),
+    queryKey: ['power-vs-hr', chartDays],
+    queryFn: () => authFetch<PowerVsHrResponse>(`/api/v1/cycling/power-vs-hr?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartTrainingLoad } = useQuery<ChartData>({
-    queryKey: ['chart-training-load', loadDays],
-    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${loadDays}`),
+    queryKey: ['chart-training-load', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartPowerCurve } = useQuery<ChartData>({
-    queryKey: ['chart-stream-power-curve', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/stream_power_curve?days=90'),
+    queryKey: ['chart-stream-power-curve', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/stream_power_curve?days=${chartDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -163,25 +304,24 @@ export default function CyclingPage() {
     };
   }, [chartPowerCurve, powerCurve]);
 
-  const [comparisonDays, setComparisonDays] = useState(30);
-  const comparisonBaselineDays = comparisonDays * 3;
+  const comparisonBaselineDays = Math.min(365, chartDays * 3);
   const { data: chartPowerComparison } = useQuery<ChartData>({
-    queryKey: ['chart-power-comparison', comparisonDays],
-    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${comparisonDays}&days_b=${comparisonBaselineDays}`),
+    queryKey: ['chart-power-comparison', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_curve_comparison?days=${chartDays}&days_b=${comparisonBaselineDays}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: chartPowerZones } = useQuery<ChartData>({
-    queryKey: ['chart-power-zones', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/power_zones?days=30'),
+    queryKey: ['chart-power-zones', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/power_zones?days=${chartDays}`),
     enabled: !!token && !!profile?.ftp_watts,
     staleTime: 300_000,
   });
 
   const { data: chartDailyTss } = useQuery<ChartData>({
-    queryKey: ['chart-daily-tss', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/daily_tss?days=30'),
+    queryKey: ['chart-daily-tss', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/daily_tss?days=${chartDays}`),
     staleTime: 120_000,
     enabled: !!token,
   });
@@ -208,57 +348,82 @@ export default function CyclingPage() {
   });
 
   const { data: hrZones } = useQuery<HrZonesResponse>({
-    queryKey: ['hr-zones'],
-    queryFn: () => authFetch<HrZonesResponse>('/api/v1/cycling/hr-zones?days=30'),
+    queryKey: ['hr-zones', chartDays],
+    queryFn: () => authFetch<HrZonesResponse>(`/api/v1/cycling/hr-zones?days=${chartDays}`),
     enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: chartHrZones } = useQuery<ChartData>({
-    queryKey: ['chart-hr-zones', 30],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/hr_zone_distribution?days=30'),
+    queryKey: ['chart-hr-zones', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/hr_zone_distribution?days=${chartDays}`),
     enabled: !!token && !!profile?.lactate_threshold_hr,
     staleTime: 300_000,
   });
 
   const { data: vo2max, isLoading: vo2maxLoading } = useQuery<Vo2maxResponse>({
-    queryKey: ['vo2max'],
-    queryFn: () => authFetch<Vo2maxResponse>('/api/v1/cycling/vo2max?days=90'),
+    queryKey: ['vo2max', chartDays],
+    queryFn: () => authFetch<Vo2maxResponse>(`/api/v1/cycling/vo2max?days=${chartDays}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: vo2maxHistory } = useQuery<Vo2maxHistoryResponse>({
-    queryKey: ['vo2max-history'],
-    queryFn: () => authFetch<Vo2maxHistoryResponse>('/api/v1/cycling/vo2max-history?months=12'),
+    queryKey: ['vo2max-history', chartMonths],
+    queryFn: () => authFetch<Vo2maxHistoryResponse>(`/api/v1/cycling/vo2max-history?months=${chartMonths}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartVo2maxTrend } = useQuery<ChartData>({
-    queryKey: ['chart-vo2max-trend', 12],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/vo2max_trend?months=12'),
+    queryKey: ['chart-vo2max-trend', chartMonths],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/vo2max_trend?months=${chartMonths}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: decoupling } = useQuery<DecouplingHistoryResponse>({
-    queryKey: ['decoupling-history'],
-    queryFn: () => authFetch<DecouplingHistoryResponse>('/api/v1/cycling/decoupling?days=90&min_duration=60'),
+    queryKey: ['decoupling-history', chartDays],
+    queryFn: () => authFetch<DecouplingHistoryResponse>(`/api/v1/cycling/decoupling?days=${chartDays}&min_duration=60`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartDecouplingTrend } = useQuery<ChartData>({
-    queryKey: ['chart-decoupling-trend', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/decoupling_trend?days=90'),
+    queryKey: ['chart-decoupling-trend', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/decoupling_trend?days=${chartDays}`),
     enabled: !!token,
     staleTime: 600_000,
   });
 
   const { data: chartWeightTrend } = useQuery<ChartData>({
-    queryKey: ['chart-weight-trend', 90],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/weight_trend?days=90'),
+    queryKey: ['chart-weight-trend', chartDays],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/weight_trend?days=${chartDays}`),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // ── Phase 1 shared header (plans/ui-redesign-v2.md §1) ──────────────────
+  // `LoadStrip` is the single home for CTL/ATL/TSB/FTP display; `SyncBadge`
+  // shows degradation (never averaged away). Props here are identical to the
+  // training-page slot (guardrail §1.3) — same component, same derivation
+  // from the server-computed training-load series. No computation changes.
+  const { data: connections } = useQuery<Connection[]>({
+    queryKey: ['connections'],
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+
+  // Shared cache key with `WeightPanel` (days=90) — the read-only `WeightCard`
+  // below renders from the same entry, logging stays in `WeightPanel`.
+  const {
+    data: weightHistory,
+    isLoading: weightLoading,
+    isError: weightError,
+  } = useQuery<WeightHistoryResponse>({
+    queryKey: ['weight-history'],
+    queryFn: () => getWeightHistory(authFetch, 90),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -326,8 +491,8 @@ export default function CyclingPage() {
       setSaveMessage('Profile saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
-    onError: (error: Error) => {
-      setSaveMessage(`Error: ${error.message}`);
+    onError: () => {
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -337,9 +502,9 @@ export default function CyclingPage() {
     onSuccess: (data) => {
       setFtpEstimate(data);
     },
-    onError: (error: Error) => {
+    onError: () => {
       setFtpEstimate(null);
-      setSaveMessage(`Error: ${error.message}`);
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -359,8 +524,8 @@ export default function CyclingPage() {
       setSaveMessage('FTP estimated and saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
-    onError: (error: Error) => {
-      setSaveMessage(`Error: ${error.message}`);
+    onError: () => {
+      setSaveMessage('Couldn\'t save — check your connection and try again.');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 5000));
     },
   });
@@ -377,8 +542,8 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['chart-training-load'] });
       queryClient.invalidateQueries({ queryKey: ['chart-daily-tss'] });
     },
-    onError: (error: Error) => {
-      setRecalcResult(`Error: ${error.message}`);
+    onError: () => {
+      setRecalcResult('Couldn\'t recalculate TSS — try again.');
     },
   });
 
@@ -408,8 +573,8 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['activity-streams'] });
       queryClient.invalidateQueries({ queryKey: ['activities'] });
     },
-    onError: (error: Error) => {
-      setBackfillResult(`Error: ${error.message}`);
+    onError: () => {
+      setBackfillResult('Couldn\'t backfill streams — try again.');
     },
   });
 
@@ -427,8 +592,8 @@ export default function CyclingPage() {
       queryClient.invalidateQueries({ queryKey: ['cycling-profile'] });
       queryClient.invalidateQueries({ queryKey: ['cycling-metrics'] });
     },
-    onError: (error: Error) => {
-      setBackfillFtpResult(`Error: ${error.message}`);
+    onError: () => {
+      setBackfillFtpResult('Couldn\'t backfill FTP history — try again.');
     },
   });
 
@@ -450,12 +615,39 @@ export default function CyclingPage() {
     );
   }
 
-  const currentLoad = trainingLoad?.data?.[trainingLoad.data.length - 1];
   const hasQueryError = profileError || metricsError;
+
+  // Phase 1 header derivation — presentational reads of the server-computed
+  // series only (docs/algorithms.md authoritative; same selectors as every
+  // other LoadStrip slot, guardrail §1.3).
+  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
+  const stripWeekTss = deriveWeekTss(trainingLoad?.data ?? null);
+  const staleProviders = deriveStaleProviders(connections);
+  const lastSyncedAt = deriveLastSyncedAt(connections);
+
+  // State-aware TSS banner (Phase 0 hygiene): the old `metrics.recent_tss === 0`
+  // check fired on any rest week (7d window), even with healthy CTL/ATL history.
+  // Display logic only — no CTL/ATL/TSB computation changes (docs/algorithms.md).
+  // Show the banner only when the training-load series itself is missing/empty:
+  // query settled, FTP set, and no day in the window carries TSS. Otherwise
+  // render nothing (the manual "Recalculate TSS" affordance is dropped).
+  const trainingLoadMissing =
+    !loadLoading &&
+    profile?.ftp_watts != null &&
+    (!trainingLoad?.data ||
+      trainingLoad.data.length === 0 ||
+      trainingLoad.data.every((d) => (d.tss ?? 0) === 0));
 
   return (
     <div className="space-y-8">
+      <PullSyncStatus phase={pullPhase} label="Cycling sync status" />
       <PageHeader title="Cycling" subtitle="Power analysis, training load, and cycling metrics" />
+
+      {/* Shared REVIEW chart range (ui-redesign-v2 §2.1) — one picker drives
+          every cycling chart together via TimeRangeProvider. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <TimeRangePicker />
+      </div>
 
       {/* ── Core query error banner ─────────────────────────────────────────── */}
       <ErrorState variant="inline"
@@ -495,18 +687,38 @@ export default function CyclingPage() {
         )}
       </Card>
 
-      {/* Metrics Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="FTP"
-          value={metrics?.ftp_watts || metrics?.estimated_ftp}
-          unit="W"
-          color="text-yellow-400"
-          subtext={metrics?.estimated_ftp && metrics?.ftp_watts !== metrics?.estimated_ftp
-            ? `Est: ${metrics.estimated_ftp} W`
-            : undefined}
-          tooltip="Functional Threshold Power — the maximum power you can sustain for ~1 hour. Used to calculate TSS, IF, and power zones."
+      {/* Shared load header (Phase 1) — the single home for CTL/ATL/TSB,
+          7d TSS, and FTP display. Labs below keep their full depth; the FTP
+          lab links back here. Tapping a chip jumps to its home chart. */}
+      <div id="load-strip" className="scroll-mt-4">
+        <LoadStrip
+          ctl={trainingLoad?.current_ctl ?? null}
+          atl={trainingLoad?.current_atl ?? null}
+          tsb={trainingLoad?.current_tsb ?? null}
+          weekTss={stripWeekTss}
+          ftpWatts={profile?.ftp_watts ?? null}
+          trend={loadTrend.direction}
+          isLoading={loadLoading || profileLoading}
+          syncBadge={
+            <SyncBadge
+              lastSyncedAt={lastSyncedAt}
+              stale={staleProviders.length > 0}
+              provider={staleProviders[0]?.provider ?? null}
+            />
+          }
         />
+        {/* CTL benchmark classification previously rode on the CTL card —
+            kept as a caption so the merge cuts no data. */}
+        {metrics?.ctl_benchmark && (
+          <p className="mt-1 text-xs tabular-nums text-muted">
+            Fitness level: {metrics.ctl_benchmark.label}
+            <span className="text-muted/70"> ({metrics.ctl_benchmark.range})</span>
+          </p>
+        )}
+      </div>
+
+      {/* W/kg lives outside the strip (benchmark + tooltip depth kept). */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
           label="W/kg"
           value={metrics?.power_to_weight}
@@ -515,33 +727,6 @@ export default function CyclingPage() {
           subtext="At FTP"
           benchmark={metrics?.ftp_wkg_benchmark}
           tooltip="Power-to-weight ratio at FTP. Higher is better for climbing. Elite: 5-6 W/kg, Good: 3.5-4.5 W/kg."
-        />
-        <MetricCard
-          label="CTL (Fitness)"
-          value={currentLoad?.ctl?.toFixed(0)}
-          color="text-positive"
-          subtext="42-day EWMA"
-          benchmark={metrics?.ctl_benchmark}
-          tooltip="Chronic Training Load — your long-term fitness, calculated as a 42-day exponentially weighted moving average of TSS. Higher = fitter. Typical range: 30-150."
-        />
-        <MetricCard
-          label="TSB (Form)"
-          value={formatTSB(currentLoad?.tsb)}
-          color={
-            (currentLoad?.tsb ?? 0) > 25
-              ? 'text-positive'
-              : (currentLoad?.tsb ?? 0) < -30
-                ? 'text-warning'
-                : 'text-blue-400'
-          }
-          subtext={
-            (currentLoad?.tsb ?? 0) > 25
-              ? 'Fresh — ready to race'
-              : (currentLoad?.tsb ?? 0) < -30
-                ? 'Fatigued — consider rest'
-                : 'Neutral'
-          }
-          tooltip="Training Stress Balance (Form) = CTL − ATL. Positive = fresh/rested (good for racing). Negative = fatigued (good for building fitness). Sweet spot: -10 to +10."
         />
       </div>
 
@@ -552,6 +737,7 @@ export default function CyclingPage() {
           vo2maxHistory={vo2maxHistory}
           chartVo2maxTrend={chartVo2maxTrend}
           loading={vo2maxLoading}
+          stale={staleProviders.length > 0}
         />
       </div>
 
@@ -599,23 +785,21 @@ export default function CyclingPage() {
         trainingLoad={trainingLoad}
         chartTrainingLoad={chartTrainingLoad}
         isLoading={loadLoading}
-        loadDays={loadDays}
-        setLoadDays={setLoadDays}
+        loadDays={chartDays}
+        setLoadDays={writeRangeDays}
+        stale={staleProviders.length > 0}
       />
 
-      {/* Recalculate TSS Banner */}
-      {profile?.ftp_watts && (
+      {/* Recalculate TSS Banner (state-aware: only when CTL/ATL source data is missing) */}
+      {trainingLoadMissing && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
-                {(metrics?.recent_tss ?? 0) === 0 ? 'No TSS data found' : 'Recalculate TSS'}
+                No TSS data found
               </p>
               <p className="text-xs text-muted mt-1">
-                {(metrics?.recent_tss ?? 0) === 0
-                  ? `You have FTP set (${profile.ftp_watts} W) but no TSS values. Click below to calculate TSS for all rides — needed for CTL/ATL/TSB.`
-                  : `Recalculate TSS for all rides using your current FTP (${profile.ftp_watts} W). Use this after changing FTP.`
-                }
+                {`You have FTP set (${profile?.ftp_watts} W) but no TSS values. Click below to calculate TSS for all rides — needed for CTL/ATL/TSB.`}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
@@ -674,14 +858,15 @@ export default function CyclingPage() {
           chartPowerZones={chartPowerZones}
           zonesLoading={zonesLoading}
           chartPowerComparison={chartPowerComparison}
-          comparisonDays={comparisonDays}
-          setComparisonDays={setComparisonDays}
+          comparisonDays={chartDays}
+          setComparisonDays={writeRangeDays}
           hrZones={hrZones}
           chartHrZones={chartHrZones}
           hasLthr={!!profile?.lactate_threshold_hr}
           powerVsHr={powerVsHr}
           chartDailyTss={chartDailyTss}
           chartWeightTrend={chartWeightTrend}
+          stale={staleProviders.length > 0}
         />
       </div>
 
@@ -689,8 +874,14 @@ export default function CyclingPage() {
       <PowerModelSection powerModel={powerModel} isLoading={powerModelLoading} />
       <WeatherAnalysisSection weatherAnalysis={weatherAnalysis} isLoading={weatherLoading} />
 
-      {/* Weight Management */}
-      <div className="max-w-2xl">
+      {/* Weight Management — read-only shared card up top, logging stays
+          in the panel below (Phase 1: one WeightCard, identical props). */}
+      <div className="max-w-2xl space-y-4">
+        <WeightCard
+          history={weightHistory ?? null}
+          isLoading={weightLoading}
+          isError={weightError}
+        />
         <WeightPanel />
       </div>
 
@@ -699,11 +890,20 @@ export default function CyclingPage() {
         <DecouplingSection
           decoupling={decoupling}
           chartDecouplingTrend={chartDecouplingTrend}
+          stale={staleProviders.length > 0}
         />
       </div>
 
-      {/* FTP Section */}
-      <div ref={ftpRef}>
+      {/* FTP Section — the lab keeps full depth (history, estimate, PRs);
+          current FTP itself lives in the load strip above. */}
+      <div ref={ftpRef} className="scroll-mt-4 space-y-2">
+        <p className="text-xs text-muted">
+          Current FTP is shown in the{' '}
+          <a href="#load-strip" className="text-accent hover:text-accent/80 underline underline-offset-2">
+            load strip above
+          </a>
+          {' '}— below is the full history, estimation, and records lab.
+        </p>
         <FtpSection
           profile={profile}
           ftpHistory={ftpHistory}
@@ -720,6 +920,7 @@ export default function CyclingPage() {
           onCheckPRs={() => checkPRsMutation.mutate()}
           isCheckingPRs={checkPRsMutation.isPending}
           onInvalidatePRs={() => { void refetchPRs(); }}
+          stale={staleProviders.length > 0}
         />
       </div>
     </div>

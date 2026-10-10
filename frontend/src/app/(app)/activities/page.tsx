@@ -21,7 +21,6 @@ import { useDeepLink } from '@/lib/useDeepLink';
 import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
-import { WeatherBadge } from '@/components/activities/WeatherBadge';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(
@@ -35,6 +34,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Chart } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { formatDuration, formatDistance, getActiveLocale } from '@/lib/utils';
 import { buildReplay, type ReplayBuildResult } from '@/lib/replay';
 import {
@@ -48,6 +48,8 @@ import {
   streamLabel,
 } from '@/lib/streams';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { MOTION } from '@/components/motion/tokens';
+import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 import { STRENGTH_TYPES } from '@/lib/sportUtils';
 import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
 import { ActivityCard } from '@/components/activities/ActivityCard';
@@ -300,18 +302,8 @@ function ActivityExpanded({
         </div>
       )}
 
-      {/* Weather at activity time */}
-      {(activity.weather_temperature != null || activity.weather_conditions) && (
-        <div className="mb-3 text-sm text-muted">
-          <WeatherBadge
-            temperature={activity.weather_temperature ?? null}
-            conditions={activity.weather_conditions ?? null}
-            wind_speed_kmh={activity.weather_wind_speed_kmh ?? null}
-            wind_direction={activity.weather_wind_direction ?? null}
-            precipitation_mm={activity.weather_precipitation_mm ?? null}
-          />
-        </div>
-      )}
+      {/* Route Map — weather already shows in the card's meta cluster above,
+          so it is not repeated here (P2 density: no duplicated badges). */}
 
       {/* Route Map */}
       {activity.encoded_polyline && (
@@ -420,11 +412,110 @@ function ActivityExpanded({
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
+/* Pull-to-sync (ui-redesign-v2 section 3.5 REVIEW signature). A touch
+   pull-down from the very top of the page (scrollY at 0, 64px+) refetches
+   the page queries through the SAME React Query keys (refetchQueries with
+   type active — no new endpoints, no computation changes) with a small
+   release-to-sync indicator. Static show/hide under
+   prefers-reduced-motion; dark tokens; 12px floor; the pill is
+   non-interactive status text. Desktop/keyboard fallback is the existing
+   page controls. */
+const PULL_SYNC_THRESHOLD_PX = 64;
+type PullSyncPhase = 'idle' | 'pull' | 'ready' | 'syncing';
+
+function usePullToSync(onSync: () => Promise<unknown>): PullSyncPhase {
+  const startYRef = React.useRef<number | null>(null);
+  const phaseRef = React.useRef<PullSyncPhase>('idle');
+  const [phase, setPhase] = React.useState<PullSyncPhase>('idle');
+  const onSyncRef = React.useRef(onSync);
+
+  React.useEffect(() => {
+    onSyncRef.current = onSync;
+  });
+
+  React.useEffect(() => {
+    const setBoth = (p: PullSyncPhase) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || window.scrollY > 0) {
+        startYRef.current = null;
+        return;
+      }
+      startYRef.current = e.touches[0].clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const startY = startYRef.current;
+      if (startY == null || e.touches.length !== 1 || window.scrollY > 0) return;
+      if (phaseRef.current === 'syncing') return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) {
+        setBoth('idle');
+        return;
+      }
+      setBoth(dy >= PULL_SYNC_THRESHOLD_PX ? 'ready' : 'pull');
+    };
+    const onTouchEnd = () => {
+      startYRef.current = null;
+      if (phaseRef.current !== 'ready') {
+        if (phaseRef.current !== 'syncing') setBoth('idle');
+        return;
+      }
+      setBoth('syncing');
+      void Promise.resolve()
+        .then(() => onSyncRef.current())
+        .catch(() => undefined)
+        .finally(() => setBoth('idle'));
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
+  return phase;
+}
+
+function PullSyncStatus({ phase, label }: { phase: PullSyncPhase; label: string }) {
+  const reduceMotion = usePrefersReducedMotion();
+  if (phase === 'idle') return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      className="flex justify-center"
+      style={
+        reduceMotion
+          ? undefined
+          : { transition: `opacity ${MOTION.durationFastMs}ms ${MOTION.easeOut}` }
+      }
+    >
+      <span className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-surface-light/50 bg-surface px-4 py-1 text-xs text-muted">
+        <span aria-hidden="true">{phase === 'syncing' ? '⟳' : phase === 'ready' ? '↑' : '↓'}</span>
+        {phase === 'syncing' ? 'Syncing…' : phase === 'ready' ? 'Release to sync' : 'Pull to sync'}
+      </span>
+    </div>
+  );
+}
+
 export default function ActivitiesPage() {
   usePageTitle('Activities');
   const { authFetch, authFetchWithHeaders, authUpload, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
+
+  /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
+  const syncPage = React.useCallback(
+    () => queryClient.refetchQueries({ type: 'active' }),
+    [queryClient],
+  );
+  const pullPhase = usePullToSync(syncPage);
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns' | 'stats'>('list');
@@ -540,7 +631,7 @@ export default function ActivitiesPage() {
     return `/api/v1/activities${query ? `?${query}` : ''}`;
   }, [effectiveFilters]);
 
-  const { data: activities, isLoading } = useQuery<Activity[]>({
+  const { data: activities, isLoading, isError: activitiesError, refetch: refetchActivities } = useQuery<Activity[]>({
     queryKey: ['activities', effectiveFilters],
     queryFn: async () => {
       const result = await authFetchWithHeaders<Activity[]>(activitiesUrl);
@@ -866,6 +957,7 @@ export default function ActivitiesPage() {
 
   return (
     <div className="space-y-6 min-w-0">
+      <PullSyncStatus phase={pullPhase} label="Activities sync status" />
       <PageHeader
         title="Activities"
         subtitle="Browse and analyze your fitness activities"
@@ -1075,7 +1167,13 @@ export default function ActivitiesPage() {
 
       {/* Activity List / Timeline / Patterns */}
       <div aria-live="polite">
-      {viewMode === 'timeline' ? (
+      {activitiesError && !isLoading ? (
+        <ErrorState
+          title="Couldn't load activities"
+          message="Check your connection and try again."
+          onRetry={() => refetchActivities()}
+        />
+      ) : viewMode === 'timeline' ? (
         calendarLoading ? (
           <div className="space-y-3" aria-label="Loading timeline">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -1150,7 +1248,7 @@ export default function ActivitiesPage() {
         )
       ) : (
         <EmptyState
-          icon={"\u{1F3C3}"}
+          icon={"🏃"}
           title="No activities yet"
           description="Connect Strava to sync your first activity, or use the filters above to search existing data."
           action={{ label: 'Go to Settings', href: '/settings' }}

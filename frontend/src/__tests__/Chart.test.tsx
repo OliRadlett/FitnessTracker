@@ -148,11 +148,13 @@ describe('Chart rendering', () => {
 });
 
 describe('ChartBody states', () => {
-  it('shows loading spinner while isLoading', () => {
+  it('shows loading skeleton while isLoading', () => {
     const { container } = render(
       <ChartBody isLoading data={undefined} emptyMessage="No data" height={200} />,
     );
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('[role="status"]')).toBeInTheDocument();
+    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
   });
 
   it('shows empty message when no data', () => {

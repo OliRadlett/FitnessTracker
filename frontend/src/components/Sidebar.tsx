@@ -2,8 +2,9 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   Bell,
@@ -15,7 +16,6 @@ import {
   ClipboardList,
   Dumbbell,
   HeartPulse,
-  House,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -31,7 +31,10 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { useAuthFetch } from '@/lib/api';
+import { useAuthFetch, getNotificationSummary } from '@/lib/api';
+import type { NotificationSummary } from '@/lib/api';
+import { useAthleteState } from '@/lib/athlete';
+import { matchModeForPath, resolveTrainTarget } from '@/components/mode-shell';
 import { logoutBackend } from '@/lib/api/account';
 
 interface NavItem {
@@ -176,54 +179,108 @@ export function MobileMenuButton() {
 }
 
 // ── Mobile Bottom Navigation ───────────────────────────────────────────────
-// Thumb-friendly primary destinations for phones (OnePlus 11 ~412px).
-// The full 14-item list stays in the hamburger drawer; this bar covers the
-// 4 most-used pages + a More button that opens the drawer.
-
-const bottomNavItems: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: '/dashboard', label: 'Home', icon: House },
-  { href: '/activities', label: 'Activity', icon: Activity },
-  { href: '/training', label: 'Training', icon: ClipboardList },
-  { href: '/lifting/live', label: 'Live Lift', icon: Zap },
-  { href: '/routes', label: 'Routes', icon: Route },
-];
+// Phase 2 (§2.2): Today / Review / ● Train / Plan / More. The central Train
+// action opens TODAY'S PLANNED session via the useAthleteState() plan slice
+// (strength → Live Lift, other sport → plan day, rest/done/no-plan → /today
+// whose verdict already covers those cases) — never an invented workout.
+// The full route list stays in the hamburger drawer; More opens it. TODAY
+// carries the notifications unread badge (config in mode-shell/modeConfig).
 
 export function MobileBottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { open } = useSidebar();
+  const athlete = useAthleteState();
+  const { authFetch, token } = useAuthFetch();
+
+  // Same ['notifications', 'summary'] cache entry as NotificationBell —
+  // shared, no extra fetch.
+  const { data: summary } = useQuery<NotificationSummary>({
+    queryKey: ['notifications', 'summary'],
+    queryFn: () => getNotificationSummary(authFetch),
+    refetchInterval: 30_000,
+    enabled: !!token,
+  });
+  const unread = summary?.unread ?? 0;
+
+  const mode = matchModeForPath(pathname);
+  const isToday = pathname === '/today';
+  const isReview = mode === 'review';
+  const isPlan = mode === 'plan';
+  const isSystem = mode === 'system';
+  const trainHref = resolveTrainTarget(athlete.plan.today);
+
+  const tabClass = (active: boolean) =>
+    `relative flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-xs font-medium transition-colors ${
+      active
+        ? 'text-accent bg-accent/15'
+        : 'text-muted hover:text-foreground active:bg-surface-light/50'
+    }`;
 
   return (
     <nav
       aria-label="Primary"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-surface-light/50"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-surface-light/50 pb-safe-bottom"
     >
-      <div className="grid grid-cols-6 gap-0.5 px-1 pt-1">
-        {bottomNavItems.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(item.href + '/');
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={isActive ? 'page' : undefined}
-              className={`flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium transition-colors ${
-                isActive
-                  ? 'text-accent bg-accent/15'
-                  : 'text-muted hover:text-foreground active:bg-surface-light/50'
-              }`}
+      <div className="grid grid-cols-5 gap-0.5 px-1 pt-1">
+        <Link
+          href="/today"
+          aria-current={isToday ? 'page' : undefined}
+          aria-label={unread > 0 ? `Today (${unread} unread notifications)` : 'Today'}
+          className={tabClass(isToday)}
+        >
+          <AppIcon icon={Sunrise} size={20} />
+          <span className="leading-tight truncate max-w-full px-0.5">
+            Today
+          </span>
+          {unread > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute top-1 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
             >
-              <AppIcon icon={item.icon} size={20} />
-              <span className="leading-tight truncate max-w-full px-0.5">
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </Link>
+        <Link
+          href="/dashboard"
+          aria-current={isReview ? 'page' : undefined}
+          className={tabClass(isReview)}
+        >
+          <AppIcon icon={LayoutDashboard} size={20} />
+          <span className="leading-tight truncate max-w-full px-0.5">
+            Review
+          </span>
+        </Link>
+        <button
+          onClick={() => router.push(trainHref)}
+          aria-label="Train — open today's planned session"
+          title="Open today's planned session"
+          className="flex flex-col items-center justify-center gap-1 min-h-[60px] rounded-lg text-xs font-semibold text-foreground transition-colors active:bg-surface-light/50"
+        >
+          <span
+            aria-hidden="true"
+            className="flex items-center justify-center min-h-[44px] min-w-[44px] h-11 w-11 rounded-full bg-accent"
+          >
+            <AppIcon icon={Zap} size={22} />
+          </span>
+          <span className="leading-tight">Train</span>
+        </button>
+        <Link
+          href="/training"
+          aria-current={isPlan ? 'page' : undefined}
+          className={tabClass(isPlan)}
+        >
+          <AppIcon icon={ClipboardList} size={20} />
+          <span className="leading-tight truncate max-w-full px-0.5">
+            Plan
+          </span>
+        </Link>
         <button
           onClick={open}
           aria-label="Open full navigation menu"
-          className="flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] font-medium text-muted hover:text-foreground active:bg-surface-light/50 transition-colors"
+          aria-current={isSystem ? 'page' : undefined}
+          className={tabClass(isSystem)}
         >
           <span className="text-xl leading-none" aria-hidden="true">☰</span>
           <span className="leading-tight">More</span>

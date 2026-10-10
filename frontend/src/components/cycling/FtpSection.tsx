@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import type { ChartData, FtpHistoryEntry, LifetimePBsResponse, CyclingProfile, CyclingPowerRecord, FtpEstimate } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SkeletonLine } from '@/components/ui/Skeleton';
 import { ChartBody } from '@/components/charts/Chart';
 import { useForecastChart } from '@/lib/projection';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
@@ -25,6 +26,8 @@ interface FtpSectionProps {
   onCheckPRs: () => void;
   isCheckingPRs: boolean;
   onInvalidatePRs: () => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function FtpSection({
@@ -42,6 +45,7 @@ export function FtpSection({
   onCheckPRs,
   isCheckingPRs,
   onInvalidatePRs,
+  stale,
 }: FtpSectionProps) {
   // B-14: dashed FTP forecast overlay (regression from FtpHistory points).
   const { data: ftpChart, caption: ftpCaption } = useForecastChart(
@@ -87,6 +91,7 @@ export function FtpSection({
           data={ftpChart}
           emptyMessage='No FTP history yet. Use "Auto-Estimate & Save FTP" or manually set your FTP to start tracking.'
           height={250}
+          stale={stale}
         />
         {ftpCaption && (
           <p className="text-[11px] text-muted mt-1">--- {ftpCaption}</p>
@@ -199,8 +204,8 @@ export function FtpSection({
           </div>
         </CardHeader>
         {cyclingPRsLoading ? (
-          <div className="h-48 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-accent"></div>
+          <div aria-label="Loading power PRs">
+            <SkeletonLine className="h-48 w-full" />
           </div>
         ) : cyclingPRs && cyclingPRs.length > 0 ? (
           <div className="overflow-x-auto">

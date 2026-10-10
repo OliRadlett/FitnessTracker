@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import type { Goal, GoalProjectionResponse } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
+import { GoalPlanDaysLink } from '@/components/goals/GoalPlanDaysLink';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -265,6 +266,11 @@ export function GoalCard({
           )}
         </p>
       )}
+
+      {/* Plan-day cross-link (ui-redesign-v2 Phase 2): upcoming plan days
+          programming this goal, e.g. "3 push days scheduled →". Renders
+          nothing without an active plan or matching days. */}
+      <GoalPlanDaysLink goal={goal} />
 
       {/* Cross-link to the feature page for sport-specific goals */}
       {isCyclingMetric(goal) && (

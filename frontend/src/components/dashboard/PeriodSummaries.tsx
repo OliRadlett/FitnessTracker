@@ -100,10 +100,13 @@ function MonthCard({ month, prevMonth }: { month: MonthlySummaryItem; prevMonth:
 export function MonthlySummarySection({
   monthlySummary,
   showEmptyState = false,
+  focusedMonth = null,
 }: {
   monthlySummary: MonthlySummaryItem[] | undefined;
   /** MonthlyTab renders an EmptyState when empty; WeeklyTab renders nothing. */
   showEmptyState?: boolean;
+  /** Phase 2 month navigator: the focused month's card gets a highlight ring. */
+  focusedMonth?: string | null;
 }) {
   if (!monthlySummary || monthlySummary.length === 0) {
     if (!showEmptyState) return null;
@@ -120,11 +123,12 @@ export function MonthlySummarySection({
       <SectionLabel>Monthly Summary</SectionLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {monthlySummary.map((month, i) => (
-          <MonthCard
-            key={month.month}
-            month={month}
-            prevMonth={i < monthlySummary.length - 1 ? monthlySummary[i + 1] : null}
-          />
+          <div key={month.month} className={month.month === focusedMonth ? 'rounded-xl ring-2 ring-accent/60' : undefined}>
+            <MonthCard
+              month={month}
+              prevMonth={i < monthlySummary.length - 1 ? monthlySummary[i + 1] : null}
+            />
+          </div>
         ))}
       </div>
     </div>

@@ -126,30 +126,37 @@ export function PwaRegister() {
 
   if (!updateAvailable && !installPrompt) return null;
 
+  // Phase 0 hygiene: both notices render as dismissible floating pills in a
+  // single bottom-anchored stack — above the mobile tab bar + home-indicator
+  // safe area, never over page headers (the old update banner was a top-0
+  // full-width bar covering headers app-wide).
   return (
-    <>
+    <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2 w-max max-w-[calc(100vw-2rem)]">
       {updateAvailable && (
-        <div className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-between gap-3 bg-accent text-background px-4 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-sm font-medium shadow-lg">
-          <span>A new version of FitTrack is available.</span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-3 py-1 min-h-[44px] rounded bg-background/90 text-accent text-xs font-semibold"
-            >
-              Reload
-            </button>
-            <button
-              onClick={() => setUpdateAvailable(false)}
-              aria-label="Dismiss"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded hover:bg-background/20"
-            >
-              <span aria-hidden>✕</span>
-            </button>
-          </div>
+        <div
+          role="status"
+          className="flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-surface-light border border-accent/30 pl-4 pr-1.5 py-1.5 shadow-xl"
+        >
+          <span className="text-sm font-medium text-foreground whitespace-nowrap">
+            New FitTrack version available
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 min-h-[44px] rounded-full bg-accent text-white text-xs font-semibold hover:bg-accent-hover transition-colors whitespace-nowrap"
+          >
+            Reload
+          </button>
+          <button
+            onClick={() => setUpdateAvailable(false)}
+            aria-label="Dismiss update notice"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-background/20 text-muted"
+          >
+            <span aria-hidden>✕</span>
+          </button>
         </div>
       )}
       {installPrompt && !installDismissed && (
-        <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl bg-surface-light border border-accent/30 px-4 py-3 shadow-xl">
+        <div className="flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl bg-surface-light border border-accent/30 px-4 py-3 shadow-xl">
           <span className="text-xl" aria-hidden>🏋️</span>
           <div>
             <p className="text-sm font-medium text-foreground">Install FitTrack</p>
@@ -170,6 +177,6 @@ export function PwaRegister() {
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }

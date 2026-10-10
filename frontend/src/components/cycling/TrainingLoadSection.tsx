@@ -6,6 +6,7 @@ import type { ChartData, TrainingLoadResponse } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ChartBody } from '@/components/charts/Chart';
+import { timeRangeWeeks, useTimeRange } from '@/lib/time-range';
 
 interface TrainingLoadSectionProps {
   trainingLoad: TrainingLoadResponse | undefined;
@@ -13,6 +14,8 @@ interface TrainingLoadSectionProps {
   isLoading: boolean;
   loadDays: number;
   setLoadDays: (days: number) => void;
+  /** Degraded state: `true` for a plain badge, string for badge detail. */
+  stale?: boolean | string;
 }
 
 export function TrainingLoadSection({
@@ -21,19 +24,27 @@ export function TrainingLoadSection({
   isLoading,
   loadDays,
   setLoadDays,
+  stale,
 }: TrainingLoadSectionProps) {
   const { authFetch, token } = useAuthFetch();
 
+  /* ── Shared REVIEW time-range (ui-redesign-v2 §2.1): one picker drives every
+     cycling chart together. Week spans are clamped to the backend `?weeks=`
+     cap (≤52) inside timeRangeWeeks. Display only — no computation changes
+     (docs/algorithms.md authoritative). ─────────────────────────────────── */
+  const { start: rangeStart, end: rangeEnd } = useTimeRange();
+  const chartWeeks = timeRangeWeeks(rangeStart, rangeEnd);
+
   const { data: rampRateChart, isLoading: rampLoading } = useQuery<ChartData>({
-    queryKey: ['chart-ramp-rate', 16],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/ramp_rate?weeks=16'),
+    queryKey: ['chart-ramp-rate', chartWeeks],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/ramp_rate?weeks=${chartWeeks}`),
     staleTime: 300_000,
     enabled: !!token,
   });
 
   const { data: loadBalanceChart, isLoading: loadBalanceLoading } = useQuery<ChartData>({
-    queryKey: ['chart-training-load-balance', 16],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/training_load_balance?weeks=16'),
+    queryKey: ['chart-training-load-balance', chartWeeks],
+    queryFn: () => authFetch<ChartData>(`/api/v1/charts/training_load_balance?weeks=${chartWeeks}`),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -65,6 +76,7 @@ export function TrainingLoadSection({
         data={chartTrainingLoad}
         emptyMessage="No training load data available. Set your FTP and sync activities."
         height={320}
+        stale={stale}
       />
 
       {trainingLoad && (
@@ -75,6 +87,7 @@ export function TrainingLoadSection({
             data={rampRateChart}
             emptyMessage="No ramp rate data available yet"
             height={240}
+            stale={stale}
           />
 
           <h4 className="text-sm font-medium text-muted mt-6 mb-2">Load Balance — TSS vs Lifting vs Strain</h4>
@@ -83,6 +96,7 @@ export function TrainingLoadSection({
             data={loadBalanceChart}
             emptyMessage="No load balance data available yet"
             height={240}
+            stale={stale}
           />
         </>
       )}
