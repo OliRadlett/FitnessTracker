@@ -10,11 +10,13 @@ import * as mockData from './fixtures/mock-data';
 test.describe('Lifting session creation', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting');
-    await expect(page.getByRole('button', { name: /\+ New Session/i })).toBeVisible();
+    // Header button (exact case) — the detail-column empty state has its own
+    // '+ New session' CTA; both legitimately coexist.
+    await expect(page.getByRole('button', { name: '+ New Session', exact: true })).toBeVisible();
   });
 
   test('new session form opens and submits', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /\+ New Session/i }).click();
+    await page.getByRole('button', { name: '+ New Session', exact: true }).click();
     await expect(page.getByText(/New Lifting Session/i)).toBeVisible();
 
     // Register the POST mock AFTER the fixture (last registration wins).
