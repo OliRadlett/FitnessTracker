@@ -16,6 +16,21 @@ export interface FetchResult<T> {
   headers: Headers;
 }
 
+/**
+ * Extended API error that carries HTTP-level classification so components
+ * can render honest-empty states instead of generic error pages.
+ *
+ * - isAuthStale: 401 — the backend JWT is missing, expired, or revoked.
+ *   Surface the auth-stale banner; data views should show empty states.
+ * - isAuthz: 403 — the token is valid but the user lacks permission for
+ *   this resource. Do NOT trigger the auth-stale banner.
+ */
+export interface ApiError extends Error {
+  status?: number;
+  isAuthStale?: boolean;
+  isAuthz?: boolean;
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const { data } = await apiFetchWithHeaders<T>(path, options, token);
   return data;
@@ -40,12 +55,18 @@ export async function apiFetchWithHeaders<T>(path: string, options: RequestInit 
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
-    const err = new Error(error.detail || `API error: ${response.status}`) as Error & {
-      status?: number;
-    };
+    const err = new Error(error.detail || `API error: ${response.status}`) as ApiError;
     // Expose the HTTP status so callers can distinguish "already gone" (404)
     // from a genuine failure without string-matching the message.
     err.status = response.status;
+    // Classify stale-backendToken 401s vs authz (403) so data views can
+    // render honest-empty states while the auth-stale banner handles the
+    // retry messaging. See AuthStaleBanner + isStaleTokenError helper below.
+    if (response.status === 401) {
+      err.isAuthStale = true;
+    } else if (response.status === 403) {
+      err.isAuthz = true;
+    }
     throw err;
   }
 
@@ -76,7 +97,14 @@ export async function apiUpload<T>(path: string, formData: FormData, token?: str
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `Upload error: ${response.status}`);
+    const err = new Error(error.detail || `Upload error: ${response.status}`) as ApiError;
+    err.status = response.status;
+    if (response.status === 401) {
+      err.isAuthStale = true;
+    } else if (response.status === 403) {
+      err.isAuthz = true;
+    }
+    throw err;
   }
 
   const text = await response.text();
@@ -113,4 +141,22 @@ export function useAuthFetch() {
   );
 
   return { authFetch, authFetchWithHeaders, authUpload, token };
+}
+
+/**
+ * True when an apiFetch/apiUpload error is a stale-backend-token 401 (not a
+ * 403 authz failure). Components use this to render honest-empty states
+ * (e.g. "No data yet") while the AuthStaleBanner surfaces the retry
+ * messaging — the banner is the single source of truth for "why" the data
+ * is unavailable, so individual views need not duplicate the auth-stale
+ * explanation.
+ *
+ * Usage in a React Query error handler:
+ *   if (isStaleTokenError(error)) return undefined; // show empty state
+ */
+export function isStaleTokenError(err: unknown): boolean {
+  if (err instanceof Error && 'isAuthStale' in err) {
+    return (err as ApiError).isAuthStale === true;
+  }
+  return false;
 }

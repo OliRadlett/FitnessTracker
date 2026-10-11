@@ -1,7 +1,7 @@
 """Add notes column to personal_records.
 
 Revision ID: 004
-Revises: 003
+Revises: 002
 Create Date: 2026-08-16
 """
 

@@ -29,6 +29,10 @@ declare module 'next-auth' {
     /** True when the backend JWT is missing or already expired. Every API call
      *  will 401 until it is refreshed or the user re-signs in. */
     backendTokenExpired?: boolean;
+    /** True when the last sync-user attempt failed. Every API call will 401
+     *  until the user clicks Retry (which bypasses the sync backoff) or
+     *  re-signs in. */
+    backendSyncFailed?: boolean;
     user: {
       id: string;
     } & DefaultSession['user'];
@@ -42,6 +46,9 @@ declare module 'next-auth/jwt' {
     authProvider?: string;
     authProviderId?: string;
     backendSyncAttemptedAt?: number;
+    /** Set true when sync-user fails; cleared on success. Drives the
+     *  auth-stale banner and the manual-Retry bypass. */
+    backendSyncFailed?: boolean;
   }
 }
 
@@ -60,7 +67,14 @@ function backendTokenExpiry(token?: string): number | null {
 
 // Refresh the backend token when it is missing, undecodable, or expiring soon.
 const REFRESH_MARGIN_S = 3 * 24 * 60 * 60; // refresh when <3 days remain
-const SYNC_RETRY_BACKOFF_S = 60 * 60; // at most one sync attempt per hour
+export const SYNC_RETRY_BACKOFF_S = 60 * 60; // at most one sync attempt per hour
+
+// When a sync-user failure leaves the backend token stale, every API call 401s
+// until the user retries. The 1-hour backoff above is meant for healthy tokens
+// nearing expiry or a recovering backend — a user-initiated Retry should not
+// wait that long. The banner calls useSession().update(), which re-invokes the
+// jwt callback with trigger='update'; that path forces a sync regardless of
+// the backoff, giving the user an immediate retry.
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -85,7 +99,7 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, account }: { token: JWT; account?: { provider: string; providerAccountId: string } | null }) {
+    async jwt({ token, account, trigger }: { token: JWT; account?: { provider: string; providerAccountId: string } | null; trigger?: 'signIn' | 'signUp' | 'update'; }) {
       // On initial sign-in, sync user with backend and get a JWT.
       // The `account` param is only present on the first call after sign-in.
       const nowS = Math.floor(Date.now() / 1000);
@@ -118,8 +132,17 @@ export const authOptions: NextAuthOptions = {
         : SYNC_RETRY_BACKOFF_S;
       const canSync = Boolean(token.email && provider && providerUserId);
 
+      // A user-initiated Retry calls useSession().update(), which re-invokes
+      // this callback with trigger='update'. That path must bypass the
+      // SYNC_RETRY_BACKOFF_S backoff — the whole point of the manual Retry
+      // button is to attempt a fresh sync right now. Guard on
+      // backendSyncFailed so a plain update() (e.g. on tab focus) doesn't
+      // accidentally re-sync when there's nothing to retry.
+      const forceSync = trigger === 'update' && Boolean(token.backendSyncFailed);
+
       const shouldSync =
         (account && canSync) ||
+        (forceSync && canSync) ||
         (needsRefresh && canSync && nowS - lastAttempt > backoffS);
 
       if (shouldSync) {
@@ -146,8 +169,15 @@ export const authOptions: NextAuthOptions = {
           if (res.ok) {
             const data = await res.json();
             token.backendToken = data.access_token;
+            token.backendSyncFailed = false;
+          } else {
+            // Non-ok response — treat as a sync failure so the auth-stale
+            // banner can surface a manual Retry.
+            token.backendSyncFailed = true;
+            console.error(`sync-user returned ${res.status}: ${res.statusText}`);
           }
         } catch (err) {
+          token.backendSyncFailed = true;
           console.error('Failed to sync user with backend:', err);
         }
       }
@@ -160,6 +190,7 @@ export const authOptions: NextAuthOptions = {
         const exp = backendTokenExpiry(token.backendToken);
         session.backendTokenExpired =
           !token.backendToken || exp === null || exp * 1000 <= Date.now();
+        session.backendSyncFailed = token.backendSyncFailed;
       }
       return session;
     },

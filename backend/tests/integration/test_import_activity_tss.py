@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 import types
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -247,3 +247,65 @@ class TestBackfillManualActivityTss:
         await db_session.flush()
 
         assert await backfill_manual_activity_tss(db_session, test_user.id) == 1
+
+
+# ── import_gpx path computes TSS ─────────────────────────────────────────────
+
+
+class TestImportGpxComputesTss:
+    """``import_gpx`` must call ``auto_compute_tss_for_activity``, mirroring
+    ``_import_fit``.  GPX carries GPS + elevation, not power or HR, so the call
+    is a no-op for most rides — but the seam must exist so the HR fallback can
+    engage when data is available, and so a future GPX with power extensions
+    computes TSS on the write path rather than waiting for the weekly backfill.
+    """
+
+    @staticmethod
+    def _gpx() -> bytes:
+        return (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<gpx version="1.1" creator="FitTrack" '
+            b'xmlns="http://www.topografix.com/GPX/1/1">'
+            b"<trk><name>GPX Ride</name><type>cycling</type><trkseg>"
+            b'<trkpt lat="51.5" lon="-0.12"><ele>100.0</ele>'
+            b"<time>2026-10-10T10:00:00Z</time></trkpt>"
+            b'<trkpt lat="51.501" lon="-0.121"><ele>101.0</ele>'
+            b"<time>2026-10-10T10:01:00Z</time></trkpt>"
+            b"</trkseg></trk></gpx>"
+        )
+
+    async def test_import_gpx_invokes_auto_compute_tss(
+        self, client, test_cycling_profile
+    ):
+        """The regression: import_gpx never called auto_compute_tss_for_activity."""
+        with patch(
+            "app.services.cycling.auto_compute_tss_for_activity",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as spy:
+            resp = await client.post(
+                "/api/v1/activities/import-gpx",
+                files={
+                    "file": ("ride.gpx", self._gpx(), "application/gpx+xml"),
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        spy.assert_awaited_once()
+
+    async def test_import_gpx_activity_has_manual_source_null_tss(
+        self, client, test_cycling_profile
+    ):
+        """GPX has no power/HR data — TSS is None at import, but the activity
+        is created with source='manual' so the weekly backfill can fill it later.
+        """
+        resp = await client.post(
+            "/api/v1/activities/import-gpx",
+            files={
+                "file": ("ride.gpx", self._gpx(), "application/gpx+xml"),
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["source"] == "manual"
+        assert body["tss"] is None
+        assert body["tss_source"] is None
