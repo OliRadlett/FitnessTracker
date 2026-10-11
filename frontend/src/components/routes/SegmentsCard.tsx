@@ -20,9 +20,8 @@ export function SegmentsCard({ routeId }: { routeId: string }) {
 
   const recompute = useMutation({
     mutationFn: () => recomputeRouteSegments(authFetch, routeId),
-    onSuccess: (res) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['route-segments', routeId] });
-      console.log(`[Segments] recomputed ${res.recomputed} segment(s)`);
     },
     onError: (err: Error) => {
       console.error('[Segments] recompute failed:', err);

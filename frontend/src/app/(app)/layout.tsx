@@ -10,6 +10,7 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { PageLoadingBar } from '@/components/ui/PageLoadingBar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { SyncHealthBanner } from '@/components/sync/SyncHealthBanner';
+import { AuthStaleBanner } from '@/components/AuthStaleBanner';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { OfflineSnapshot } from '@/components/ui/OfflineSnapshot';
@@ -102,6 +103,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   home-indicator safe area (see tailwind.config.js spacing
                   tokens) so page content never renders under the bar. */}
               <div className="p-4 pt-20 pb-tabbar-clear md:p-8 md:pt-8 md:pb-8 w-full max-w-screen-2xl mx-auto min-w-0">
+                <AuthStaleBanner />
                 <SyncHealthBanner />
                 <OfflineBanner />
                 <ErrorBoundary>
