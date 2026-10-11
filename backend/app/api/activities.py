@@ -851,6 +851,24 @@ async def import_gpx(
     db.add(activity)
     await db.flush()
 
+    # Auto-compute TSS so the imported activity counts for training load.
+    # Every import path must end with a TSS — load consumers (which skip
+    # null-tss rows, services/analytics.py) would otherwise drop the activity
+    # from weekly TSS, CTL/ATL, and the recommendation engines. Mirrors
+    # _import_fit. Called unconditionally so the HR fallback inside can engage
+    # when no FTP is set; the function itself early-returns when tss is already
+    # set, so this is idempotent. GPX carries no power by default, so this is a
+    # no-op when no FTP/HR data is available — the weekly backfill then fills it
+    # once FTP is configured (test_import_activity_tss.py::test_import_while_ftp_unset_defers_to_backfill).
+    from app.services.cycling import (
+        auto_compute_tss_for_activity,
+        get_or_create_cycling_profile,
+    )
+
+    profile = await get_or_create_cycling_profile(db, current_user.id)
+    await auto_compute_tss_for_activity(db, activity, profile.ftp_watts)
+    await db.flush()
+
     # Re-query with eager loading so _enrich_activity_read can access relationships
     result = await db.execute(
         select(Activity)
