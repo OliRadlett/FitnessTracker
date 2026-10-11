@@ -151,11 +151,13 @@ celery_app.conf.beat_schedule = {
     "generate-health-alerts": {
         "task": "app.tasks.scheduler.generate_health_alerts",
         "schedule": crontab(hour=6, minute=0),
+        "options": {"expires": 3600},
     },
     # Clean up old webhook events weekly
     "cleanup-old-data": {
         "task": "app.tasks.scheduler.cleanup_old_data",
         "schedule": crontab(hour=3, minute=0, day_of_week=0),
+        "options": {"expires": 1800},
     },
     # Sync routes from all providers every 2 hours
     "sync-routes": {
@@ -167,11 +169,13 @@ celery_app.conf.beat_schedule = {
     "compute-route-quality": {
         "task": "app.tasks.scheduler.compute_route_quality_scores",
         "schedule": crontab(hour=3, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Classify route terrain weekly (Saturday 2:30 AM UTC, before quality scoring)
     "classify-route-terrain": {
         "task": "app.tasks.scheduler.classify_route_terrain",
         "schedule": crontab(hour=2, minute=30, day_of_week=6),
+        "options": {"expires": 7200},
     },
     # Phase 2 — map-match routes to the OSM road graph + embed, weekly
     # (Sunday 2:50 AM UTC, before the similarity graph task consumes them).
@@ -199,17 +203,20 @@ celery_app.conf.beat_schedule = {
     "recompute-ride-segments": {
         "task": "app.tasks.scheduler.recompute_ride_segments",
         "schedule": crontab(hour=3, minute=15, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Backfill cached ride context weekly (§1.3 — Sunday 3:30 AM UTC, post streams/segments)
     "backfill-activity-context": {
         "task": "app.tasks.scheduler.backfill_activity_context",
         "schedule": crontab(hour=3, minute=30, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Tag lifting-session notes with Jev (Phase 1). The inline post-write
     # trigger covers most rows; this backfills anything missed. No-op without Jev.
     "backfill-free-text-tags": {
         "task": "app.tasks.scheduler.backfill_free_text_tags",
         "schedule": crontab(hour=3, minute=45, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Fit personalized power models weekly (Sunday 5:30 AM UTC, post streams/FTP)
     "fit-personalized-power-models": {
@@ -239,6 +246,7 @@ celery_app.conf.beat_schedule = {
     "auto-estimate-ftp-weekly": {
         "task": "app.tasks.scheduler.auto_estimate_ftp_weekly",
         "schedule": crontab(hour=4, minute=0, day_of_week=0),
+        "options": {"expires": 3600},
     },
     # Check cycling power PRs weekly (Sunday 4:30 AM UTC — after stream backfill)
     "check-cycling-prs-weekly": {
@@ -250,6 +258,7 @@ celery_app.conf.beat_schedule = {
     "check-stale-ftp": {
         "task": "app.tasks.scheduler.check_stale_ftp",
         "schedule": crontab(hour=4, minute=15, day_of_week=0),
+        "options": {"expires": 3600},
     },
     # Backfill TSS for imported activities stranded without one (Sunday 4:45 AM
     # UTC — deliberately after auto-estimate-ftp and check-stale-ftp, so rides
@@ -276,11 +285,13 @@ celery_app.conf.beat_schedule = {
     "backup-database": {
         "task": "app.tasks.scheduler.backup_database",
         "schedule": crontab(hour=2, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Weekly LLM cycling analysis (Sunday 5 AM UTC)
     "weekly-llm-analysis": {
         "task": "app.tasks.scheduler.weekly_llm_analysis",
         "schedule": crontab(hour=5, minute=0, day_of_week=0),
+        "options": {"expires": 7200},
     },
     # Nightly athlete-insight compute (Feature 3/B-15, daily 3 AM UTC)
     "compute-athlete-insights-nightly": {
@@ -298,11 +309,13 @@ celery_app.conf.beat_schedule = {
     "refresh-weather-forecasts": {
         "task": "app.tasks.scheduler.refresh_weather_forecasts",
         "schedule": crontab(hour=5, minute=0),
+        "options": {"expires": 3600},
     },
     # Weekly goal check-ins (Monday 6 AM UTC)
     "record-goal-checkins": {
         "task": "app.tasks.scheduler.record_goal_checkins",
         "schedule": crontab(hour=6, minute=0, day_of_week=1),
+        "options": {"expires": 3600},
     },
     # Weekly plan review (Monday 6:15 AM UTC, after the goal check-ins).
     # Monday 6:30/6:45 are taken by the daily event-day + countdown tasks,
@@ -310,6 +323,7 @@ celery_app.conf.beat_schedule = {
     "weekly-plan-review": {
         "task": "app.tasks.scheduler.weekly_plan_review",
         "schedule": crontab(hour=6, minute=15, day_of_week=1),
+        "options": {"expires": 3600},
     },
     # Weekly digest (B-22, Monday 8 AM UTC): weekly summary + streak
     # milestones + deload detection.
@@ -322,16 +336,19 @@ celery_app.conf.beat_schedule = {
     "send-plan-reminders": {
         "task": "app.tasks.scheduler.send_plan_reminders",
         "schedule": crontab(hour=7, minute=0),
+        "options": {"expires": 3600},
     },
     # Daily event/race-day notification (6:30 AM UTC)
     "send-event-day-notifications": {
         "task": "app.tasks.scheduler.send_event_day_notifications",
         "schedule": crontab(hour=6, minute=30),
+        "options": {"expires": 3600},
     },
     # Daily event countdown + taper-start notification (6:45 AM UTC)
     "send-event-countdown-notifications": {
         "task": "app.tasks.scheduler.send_event_countdown_notifications",
         "schedule": crontab(hour=6, minute=45),
+        "options": {"expires": 3600},
     },
     # Weekly streams backfill (Saturday 3 AM UTC) — fills gaps for cycling activities missing streams
     "backfill-streams": {
