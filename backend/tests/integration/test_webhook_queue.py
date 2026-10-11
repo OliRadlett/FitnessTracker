@@ -189,3 +189,108 @@ class TestProcessPendingEvents:
         async with test_session_factory() as s:
             await s.execute(delete(StravaWebhookEvent))
             await s.commit()
+
+
+class TestDrainBounds:
+    """R5: Celery owns the webhook drain — bounded batch + auth-abort.
+
+    Pins the invariants the Beat-scheduled drain relies on, so a single run
+    stays bounded and a revoked token aborts instead of churning:
+      * one run processes at most 50 events (the configured batch), leaving the
+        rest pending for the next schedule — never draining the whole backlog in
+        one task (which would outrun the 5-minute schedule and risk a
+        double-drain);
+      * a ``PermanentAuthError`` aborts the run immediately (remaining events
+        stay pending; the connection is handed to the reauth scheduler).
+    """
+
+    async def test_drain_processes_at_most_50_per_run(
+        self, test_engine, test_session_factory
+    ):
+        # R5: "Celery owns drain (50/run …)". A burst of 60 queued events must
+        # settle to exactly 50 processed and 10 still pending after one run.
+        from app.services.strava.webhook_queue import process_pending_strava_events
+
+        session = await _new_session(test_engine)
+        session.add_all(
+            [
+                StravaWebhookEvent(
+                    aspect_type="create",
+                    object_type="activity",
+                    object_id=str(i),
+                    owner_id="100",
+                    raw_data={},
+                )
+                for i in range(60)
+            ]
+        )
+        await session.commit()
+
+        with patch(
+            "app.services.strava.webhooks.handle_strava_event", new=AsyncMock()
+        ):
+            result = await process_pending_strava_events(session)
+        await session.close()
+
+        assert result["processed"] == 50
+        assert result["failed"] == 0
+
+        fresh = await _new_session(test_engine)
+        pending = (
+            await fresh.execute(
+                select(StravaWebhookEvent).where(StravaWebhookEvent.status == "pending")
+            )
+        ).scalars().all()
+        await fresh.close()
+        assert len(pending) == 10
+
+        async with test_session_factory() as s:
+            await s.execute(delete(StravaWebhookEvent))
+            await s.commit()
+
+    async def test_auth_failure_aborts_remaining_events(
+        self, test_engine, test_session_factory
+    ):
+        # R5: "… auth-abort". A revoked-token error on the first event must
+        # stop the run; the rest stay pending (not retried in this run).
+        from app.integrations.errors import PermanentAuthError
+        from app.services.strava.webhook_queue import process_pending_strava_events
+
+        session = await _new_session(test_engine)
+        session.add_all(
+            [
+                StravaWebhookEvent(
+                    aspect_type="create",
+                    object_type="activity",
+                    object_id=str(i),
+                    owner_id="100",
+                    raw_data={},
+                )
+                for i in range(1, 4)
+            ]
+        )
+        await session.commit()
+
+        with patch(
+            "app.services.strava.webhooks.handle_strava_event",
+            new=AsyncMock(side_effect=PermanentAuthError("token revoked")),
+        ):
+            result = await process_pending_strava_events(session)
+        await session.close()
+
+        assert result == {"processed": 0, "failed": 1}
+
+        fresh = await _new_session(test_engine)
+        rows = (
+            await fresh.execute(
+                select(StravaWebhookEvent).order_by(StravaWebhookEvent.object_id)
+            )
+        ).scalars().all()
+        await fresh.close()
+        statuses = [r.status for r in rows]
+        assert statuses.count("failed") == 1
+        assert statuses.count("pending") == 2
+
+        async with test_session_factory() as s:
+            await s.execute(delete(StravaWebhookEvent))
+            await s.commit()
