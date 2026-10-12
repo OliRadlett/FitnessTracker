@@ -11,7 +11,7 @@ interface CardProps {
 export function Card({ children, className = '', onClick }: CardProps) {
   return (
     <div
-      className={`bg-surface rounded-xl border border-surface-light/50 p-6 shadow-lg ${onClick ? 'cursor-pointer hover:border-accent/50 transition-colors' : ''} ${className}`}
+      className={`bg-surface rounded-xl border border-surface/20 p-6 ${onClick ? 'cursor-pointer hover:border-accent/50 transition-colors' : ''} ${className}`}
       onClick={onClick}
       {...(onClick ? { role: 'button', tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } } : {})}
     >

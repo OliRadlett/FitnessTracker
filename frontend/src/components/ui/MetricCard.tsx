@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Card } from '@/components/ui/Card';
+import { Sparkline } from '@/components/ui/Sparkline';
 import type { MetricTrend, MetricBenchmark } from '@/lib/api';
 
 interface MetricCardProps {
@@ -16,9 +17,13 @@ interface MetricCardProps {
   trend?: MetricTrend | 'up' | 'down' | 'stable' | null;
   benchmark?: MetricBenchmark | null;
   /**
-   * Honest-empty override (ui-redesign-v2 §4 moment 4): shown — muted, 12px+
-   * floor — when `value` is null/undefined/''/'—'. Defaults to "No data yet".
-   * Backward compatible: no caller edits needed.
+   * Optional trend data for the inline sparkline (Card + Sparkline pattern).
+   * When provided, renders a compact trend line below the value.
+   */
+  sparklineData?: (number | null | undefined)[];
+  /**
+   * Honest-empty override: shown — muted, 12px+ floor — when value is
+   * null/undefined/''/'—'. Defaults to "No data yet".
    */
   emptyText?: React.ReactNode;
 }
@@ -104,6 +109,7 @@ export function MetricCard({
   tooltip,
   trend,
   benchmark,
+  sparklineData,
   emptyText,
 }: MetricCardProps) {
   const displayText = subtitle || subtext;
@@ -131,8 +137,13 @@ export function MetricCard({
         <BenchmarkBadge benchmark={benchmark} />
       </div>
       {displayText && <p className="text-xs text-muted mt-1">{displayText}</p>}
+      {sparklineData && (
+        <div className="mt-2 -mx-1 h-5">
+          <Sparkline data={sparklineData} height={20} color="rgb(var(--accent))" area />
+        </div>
+      )}
       {tooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface text-xs text-muted rounded-lg shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface-light/50">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-surface text-xs text-muted rounded-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none whitespace-normal w-56 z-50 border border-surface/20">
           {tooltip}
         </div>
       )}
