@@ -76,10 +76,11 @@ export interface DashboardData {
   loadTrendPoints: DailyLoadPoint[] | null;
   loadIsLoading: boolean;
 
-  // Body
+   // Body
   weightKg: number | null;
   weightSource: string | null;
   weightDate: string | null;
+  weightHistory: WeightHistoryResponse | undefined;
   sleepDebtHours: number | null;
   sleepConsistency: SleepConsistencyResponse | undefined;
   optimalBedtime: OptimalBedtimeResponse | undefined;
@@ -383,6 +384,7 @@ export function useDashboardData(selectedYear?: number): DashboardData {
       weightKg: latestWeight?.weight_kg ?? null,
       weightSource: latestWeight?.source ?? null,
       weightDate: latestWeight?.date ?? null,
+      weightHistory: weightQuery.data,
       sleepDebtHours: sleepDebtQuery.data?.debt_hours ?? null,
       sleepConsistency: sleepConsistencyQuery.data,
       optimalBedtime: optimalBedtimeQuery.data,
