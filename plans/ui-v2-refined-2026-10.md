@@ -139,10 +139,10 @@ Sparkline, MetricCard (updated with sparklineData), JournalCard, LoadSummary, Ve
 - [x] Fix cross-page links (LoadStrip → LoadSummary on Cycling page)
 
 ### Phase 3 — Per-Page Polish — IN PROGRESS
-- [ ] Cycling (single load source) — LoadStrip replaced with LoadSummary ✓
-- [ ] Lifting (card+sparkline)
-- [ ] Health (single weight source)
-- [ ] Training (plan cards)
+- [x] Cycling — LoadStrip → LoadSummary, sparklines on 7d metrics cards
+- [x] Lifting — PR progression sparklines on PR cards
+- [x] Health — LoadStrip → LoadSummary, WeightCard sparkline
+- [x] Training — LoadStrip → LoadSummary
 - [ ] 3D Replay surfacing
 - [ ] States matrix audit
 
