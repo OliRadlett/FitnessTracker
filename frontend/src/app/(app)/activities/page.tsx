@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useAuthFetch } from '@/lib/api';
 import type {
   Activity,
@@ -508,9 +509,17 @@ export default function ActivitiesPage() {
   usePageTitle('Activities');
   const { authFetch, authFetchWithHeaders, authUpload, token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { getParam, setParam } = useDeepLink();
 
-  /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
+  /* V2: redirect bare /activities (listing) to /journal. Activity detail via
+     ?activity=<id> and replay via ?replay=<id> still work. */
+  React.useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    if (!search.get('activity') && !search.get('replay')) {
+      router.replace('/journal');
+    }
+  }, [router]);
   const syncPage = React.useCallback(
     () => queryClient.refetchQueries({ type: 'active' }),
     [queryClient],

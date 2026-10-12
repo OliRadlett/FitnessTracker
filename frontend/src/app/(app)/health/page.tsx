@@ -14,12 +14,7 @@ import type {
   ChartData,
   TodaySummary,
   HealthAlert,
-  Connection,
-  CyclingProfile,
-  TrainingLoadResponse,
-  WeightHistoryResponse,
 } from '@/lib/api';
-import { getWeightHistory } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -29,13 +24,9 @@ import { ReadinessIndicator } from '@/components/ui/ReadinessIndicator';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
-import { LoadStrip, SyncBadge, WeightCard } from '@/components/athlete';
-import {
-  deriveLastSyncedAt,
-  deriveLoadTrend,
-  deriveStaleProviders,
-  deriveWeekTss,
-} from '@/lib/athlete';
+import { SyncBadge, WeightCard } from '@/components/athlete';
+import { LoadSummary } from '@/components/dashboard/LoadSummary';
+import { useDashboardData } from '@/lib/dashboard/useDashboardData';
 import { HealthAiAnalysisCard } from '@/components/health/HealthAiAnalysisCard';
 import { formatDateDMY } from '@/lib/utils';
 import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
@@ -163,6 +154,7 @@ function HealthPageInner() {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const dashboardData = useDashboardData();
   const [alertTab, setAlertTab] = useState<'all' | 'active' | 'dismissed'>('all');
 
   /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
@@ -277,47 +269,10 @@ function HealthPageInner() {
   });
 
   // ── Phase 1 shared athlete-state slices (plans/ui-redesign-v2.md §1) ─────
-  // Query keys match `useAthleteState()` exactly, so every slot adopting
-  // LoadStrip/WeightCard/SyncBadge shares one cache entry. Values are
-  // display-only — CTL/ATL/TSB computation stays in docs/algorithms.md.
-  const { data: trainingLoad, isLoading: loadLoading } = useQuery<TrainingLoadResponse>({
-    queryKey: ['training-load', chartDays],
-    queryFn: () => authFetch<TrainingLoadResponse>(`/api/v1/cycling/training-load?days=${chartDays}`),
-    ...chartOptions,
-    enabled: !!token,
-  });
-
-  const { data: cyclingProfile, isLoading: profileLoading } = useQuery<CyclingProfile>({
-    queryKey: ['cycling-profile'],
-    queryFn: () => authFetch<CyclingProfile>('/api/v1/cycling/profile'),
-    ...chartOptions,
-    enabled: !!token,
-  });
-
-  const {
-    data: weightHistory,
-    isLoading: weightLoading,
-    isError: weightError,
-  } = useQuery<WeightHistoryResponse>({
-    queryKey: ['weight-history'],
-    queryFn: () => getWeightHistory(authFetch, 90),
-    ...chartOptions,
-    enabled: !!token,
-  });
-
-  const { data: connections } = useQuery<Connection[]>({
-    queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
-    staleTime: 300_000,
-    enabled: !!token,
-  });
-
-  // Presentational derivations only (shared selectors — no recomputation).
-  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
-  const weekTss = deriveWeekTss(trainingLoad?.data ?? null);
-  const staleProviders = deriveStaleProviders(connections);
-  const lastSyncedAt = deriveLastSyncedAt(connections);
-  const syncStale = staleProviders.length > 0;
+  // V2: training load, cycling profile, and connections come from
+  // useDashboardData() in HealthPageInner. Remaining queries below are
+  // page-specific (charts, weight management, sleep intelligence).
+  const syncStale = dashboardData.staleProviders.length > 0;
 
   // ── Health alert history ─────────────────────────────────────────────────
   const {
@@ -391,11 +346,13 @@ function HealthPageInner() {
         title="🩺 Health"
         subtitle="Recovery, sleep, trends, and health alerts — powered by Whoop."
         status={
-          connections ? (
-            <div className="mt-2">
-              <SyncBadge lastSyncedAt={lastSyncedAt} stale={syncStale} />
-            </div>
-          ) : null
+          <div className="mt-2">
+            <SyncBadge
+              lastSyncedAt={dashboardData.lastSyncedAt}
+              stale={syncStale}
+              provider={dashboardData.staleProviders[0]?.provider ?? null}
+            />
+          </div>
         }
       />
 
@@ -411,19 +368,15 @@ function HealthPageInner() {
         <TimeRangePicker />
       </div>
 
-      {/* ── Training load (shared LoadStrip — identical props in every slot, §1) */}
-      <LoadStrip
-        ctl={trainingLoad?.current_ctl ?? null}
-        atl={trainingLoad?.current_atl ?? null}
-        tsb={trainingLoad?.current_tsb ?? null}
-        weekTss={weekTss}
-        ftpWatts={cyclingProfile?.ftp_watts ?? null}
-        trend={loadTrend.direction}
-        isLoading={loadLoading || profileLoading}
+      {/* ── Training load (V2 LoadSummary with useDashboardData) */}
+      <LoadSummary
+        data={dashboardData}
         syncBadge={
-          connections ? (
-            <SyncBadge lastSyncedAt={lastSyncedAt} stale={syncStale} />
-          ) : undefined
+          <SyncBadge
+            lastSyncedAt={dashboardData.lastSyncedAt}
+            stale={dashboardData.staleProviders.length > 0}
+            provider={dashboardData.staleProviders[0]?.provider ?? null}
+          />
         }
       />
 
@@ -474,9 +427,8 @@ function HealthPageInner() {
           Read-only display; logging lives in the full WeightPanel on /cycling. */}
       <div className="max-w-2xl space-y-2">
         <WeightCard
-          history={weightHistory ?? null}
-          isLoading={weightLoading}
-          isError={weightError}
+          history={dashboardData.weightHistory ?? null}
+          isLoading={dashboardData.bodyIsLoading}
         />
         <p className="text-xs text-muted">
           <a href="/cycling" className="text-accent hover:text-accent/80">

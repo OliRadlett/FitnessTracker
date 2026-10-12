@@ -14,6 +14,7 @@ import React from 'react';
 import type { WeightHistoryResponse } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
+import { Sparkline } from '@/components/ui/Sparkline';
 import { formatDateDMY, formatWeight } from '@/lib/utils';
 
 export interface WeightCardProps {
@@ -79,6 +80,16 @@ export function WeightCard({ history, isLoading, isError, recentCount = 5 }: Wei
           Body fat {latest.body_fat_percent.toFixed(1)}%
           {latest.muscle_mass_kg != null ? ` · Muscle ${formatWeight(latest.muscle_mass_kg)}` : ''}
         </p>
+      )}
+      {entries.length > 1 && (
+        <div className="mt-3 h-5">
+          <Sparkline
+            data={entries.map((e) => e.weight_kg)}
+            height={20}
+            color="rgb(var(--muted))"
+            area={false}
+          />
+        </div>
       )}
       {recent.length > 1 && (
         <ul className="mt-3 space-y-1 border-t border-surface-light/50 pt-2" aria-label="Recent weigh-ins">
