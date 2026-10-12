@@ -3,22 +3,24 @@
 /**
  * Activity Journal — V2 replacement for /activities.
  *
- * Chronological diary: activities grouped by day with inline sparkline
- * per card. Top bar for date range + sport filter. Desktop 2-column,
- * mobile single-column.
+ * Chronological diary: activities grouped by day with inline sparklines.
+ * Top bar with date range + sport filter, paginated "Load more" at the bottom.
+ * Desktop 2-column, mobile single-column.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { apiFetchWithHeaders } from '@/lib/api/fetch';
+import type { FetchResult } from '@/lib/api/fetch';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Sparkline } from '@/components/ui/Sparkline';
+import { Button } from '@/components/ui/Button';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { toDateStr } from '@/lib/training/week';
 import type { Activity } from '@/lib/api';
@@ -42,14 +44,16 @@ const SPORT_FILTERS = [
 
 interface JournalCardProps {
   activity: Activity;
-  sparklineData?: (number | null | undefined)[];
   maxTss: number;
 }
 
-function JournalCard({ activity, sparklineData, maxTss }: JournalCardProps) {
+function JournalCard({ activity, maxTss }: JournalCardProps) {
   const tss = activity.tss ?? 0;
   const tssPct = maxTss > 0 ? Math.min(100, (tss / maxTss) * 100) : 0;
-  const isStrength = activity.sport_type.includes('strength') || activity.sport_type.includes('workout') || activity.sport_type.includes('weight');
+  const isStrength =
+    activity.sport_type.includes('strength') ||
+    activity.sport_type.includes('workout') ||
+    activity.sport_type.includes('weight');
   const primaryValue = isStrength
     ? activity.duration_seconds
       ? formatDuration(activity.duration_seconds)
@@ -90,9 +94,7 @@ function JournalCard({ activity, sparklineData, maxTss }: JournalCardProps) {
                   day: 'numeric',
                 })}
               </p>
-              {primaryValue && (
-                <p className="text-xs text-muted">{primaryValue}</p>
-              )}
+              {primaryValue && <p className="text-xs text-muted">{primaryValue}</p>}
             </div>
 
             {tss > 0 && (
@@ -107,12 +109,6 @@ function JournalCard({ activity, sparklineData, maxTss }: JournalCardProps) {
               </div>
             )}
           </div>
-
-          {sparklineData && sparklineData.length > 1 && (
-            <div className="mt-1 h-4 -mx-1">
-              <Sparkline data={sparklineData} height={16} color="rgb(var(--muted))" />
-            </div>
-          )}
         </div>
       </Card>
     </Link>
@@ -157,18 +153,17 @@ function groupByDay(activities: Activity[]): DayGroup[] {
 
 export default function JournalPage() {
   usePageTitle('Activity Journal');
-  const { authFetch, token } = useAuthFetch();
+  const { token } = useAuthFetch();
 
   const [period, setPeriod] = useState<{ label: string; days: number }>(DATE_PERIODS[2]);
   const [sportFilter, setSportFilter] = useState('');
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const daysAgo = period.days > 0 ? period.days : 3650;
 
-  const {
-    data: activities,
-    isLoading,
-    isError,
-  } = useQuery<Activity[]>({
+  const { data: firstPage, isLoading, isError } = useQuery<Activity[]>({
     queryKey: ['journal-activities', daysAgo, sportFilter],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -178,24 +173,64 @@ export default function JournalPage() {
         sort_order: 'desc',
       });
       if (sportFilter) params.set('sport_type', sportFilter);
-      const result = await authFetch<Activity[]>(`/api/v1/activities?${params.toString()}`);
-      return result;
+      const result: FetchResult<Activity[]> = await apiFetchWithHeaders<Activity[]>(`/api/v1/activities?${params.toString()}`, {}, token);
+      const count = result.headers.get('X-Total-Count');
+      if (count) setTotalCount(parseInt(count, 10));
+      return result.data;
     },
     enabled: !!token,
   });
 
+  /* Sync first page into allActivities whenever the query key changes */
+  useEffect(() => {
+    if (firstPage) {
+      setAllActivities(firstPage);
+    }
+  }, [firstPage]);
+
+  /* Reset pagination when period or sport changes */
+  useEffect(() => {
+    setAllActivities([]);
+  }, [daysAgo, sportFilter]);
+
   const maxTss = useMemo(
-    () => Math.max(...(activities?.map((a) => a.tss ?? 0) ?? [0]), 1),
-    [activities],
+    () => Math.max(...(allActivities.map((a) => a.tss ?? 0)), 1),
+    [allActivities],
   );
 
-  const dayGroups = useMemo(() => {
-    return activities ? groupByDay(activities) : [];
-  }, [activities]);
+  const dayGroups = useMemo(() => groupByDay(allActivities), [allActivities]);
 
-  const handlePeriodChange = (p: { label: string; days: number }) => {
+  const canLoadMore = totalCount != null && allActivities.length < totalCount;
+  const hasMore = allActivities.length > 0 && (!totalCount || allActivities.length < (totalCount ?? Infinity));
+
+  const handleLoadMore = useCallback(async () => {
+    if (!token || !canLoadMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({
+        start_date_after: toDateStr(new Date(new Date().setDate(new Date().getDate() - daysAgo))),
+        limit: String(PAGE_SIZE),
+        offset: String(allActivities.length),
+        sort_by: 'start_date',
+        sort_order: 'desc',
+      });
+      if (sportFilter) params.set('sport_type', sportFilter);
+      const result: FetchResult<Activity[]> = await apiFetchWithHeaders<Activity[]>(
+        `/api/v1/activities?${params.toString()}`,
+        {},
+        token,
+      );
+      const count = result.headers.get('X-Total-Count');
+      if (count) setTotalCount(parseInt(count, 10));
+      setAllActivities((prev) => [...prev, ...result.data]);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [token, daysAgo, sportFilter, allActivities.length, canLoadMore]);
+
+  const handlePeriodChange = useCallback((p: { label: string; days: number }) => {
     setPeriod(p);
-  };
+  }, []);
 
   if (isLoading) {
     return (
@@ -219,7 +254,7 @@ export default function JournalPage() {
     <div className="space-y-6">
       <PageHeader
         title="Activity Journal"
-        subtitle={`${activities?.length ?? 0} activities in ${period.label}`}
+        subtitle={`${allActivities.length} activities${totalCount != null ? ` / ${totalCount} total` : ''}`}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface/20 overflow-x-auto">
@@ -253,11 +288,7 @@ export default function JournalPage() {
         }
       />
 
-      <ErrorState
-        variant="inline"
-        show={isError}
-        message="Failed to load activities."
-      />
+      <ErrorState variant="inline" show={isError} message="Failed to load activities." />
 
       {!isError && dayGroups.length === 0 ? (
         <EmptyState
@@ -266,33 +297,33 @@ export default function JournalPage() {
           icon="📔"
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {dayGroups.map((group) => (
-            <div key={group.date}>
-              <h3 className="text-sm font-medium text-muted mb-2">
-                {group.label}
-              </h3>
-              <div className="space-y-2">
-                {group.activities.map((activity) => {
-                  const hasStream = activity.has_streams;
-                  const primaryMetric = activity.tss ?? activity.distance_meters ?? activity.duration_seconds ?? 0;
-                  const sparklineData = hasStream && activity.tss
-                    ? [primaryMetric]
-                    : undefined;
-
-                  return (
-                    <JournalCard
-                      key={activity.id}
-                      activity={activity}
-                      sparklineData={sparklineData}
-                      maxTss={maxTss}
-                    />
-                  );
-                })}
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {dayGroups.map((group) => (
+              <div key={group.date}>
+                <h3 className="text-sm font-medium text-muted mb-2">{group.label}</h3>
+                <div className="space-y-2">
+                  {group.activities.map((activity) => (
+                    <JournalCard key={activity.id} activity={activity} maxTss={maxTss} />
+                  ))}
+                </div>
               </div>
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button
+                onClick={handleLoadMore}
+                disabled={loadingMore || !canLoadMore}
+                variant="secondary"
+                size="sm"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </Button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
