@@ -35,8 +35,10 @@ import type {
   LlmAnalysis,
   LiftingSession,
   MonthlySummaryItem,
+  OptimalBedtimeResponse,
   ReadinessResponse,
   RespiratoryRateResponse,
+  SleepConsistencyResponse,
   SleepDebtResponse,
   TodaySummary,
   TodayVerdict,
@@ -79,6 +81,8 @@ export interface DashboardData {
   weightSource: string | null;
   weightDate: string | null;
   sleepDebtHours: number | null;
+  sleepConsistency: SleepConsistencyResponse | undefined;
+  optimalBedtime: OptimalBedtimeResponse | undefined;
   hrvMs: number | null;
   restingHr: number | null;
   recoveryScore: number | null;
@@ -175,6 +179,18 @@ export function useDashboardData(selectedYear?: number): DashboardData {
   const sleepDebtQuery = useQuery<SleepDebtResponse>({
     queryKey: ['metrics', 'sleep-debt'],
     queryFn: () => authFetch<SleepDebtResponse>('/api/v1/metrics/sleep-debt?days=7'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const sleepConsistencyQuery = useQuery<SleepConsistencyResponse>({
+    queryKey: ['metrics', 'sleep-consistency'],
+    queryFn: () => authFetch<SleepConsistencyResponse>('/api/v1/metrics/sleep-consistency?days=7'),
+    staleTime: 300_000,
+    enabled: !!token,
+  });
+  const optimalBedtimeQuery = useQuery<OptimalBedtimeResponse>({
+    queryKey: ['metrics', 'optimal-bedtime'],
+    queryFn: () => authFetch<OptimalBedtimeResponse>('/api/v1/metrics/optimal-bedtime'),
     staleTime: 300_000,
     enabled: !!token,
   });
@@ -368,6 +384,8 @@ export function useDashboardData(selectedYear?: number): DashboardData {
       weightSource: latestWeight?.source ?? null,
       weightDate: latestWeight?.date ?? null,
       sleepDebtHours: sleepDebtQuery.data?.debt_hours ?? null,
+      sleepConsistency: sleepConsistencyQuery.data,
+      optimalBedtime: optimalBedtimeQuery.data,
       hrvMs: readinessQuery.data?.hrv_ms ?? todayQuery.data?.latest_hrv_ms ?? null,
       restingHr: readinessQuery.data?.resting_hr ?? null,
       recoveryScore: readinessQuery.data?.recovery_score ?? todayQuery.data?.latest_recovery ?? null,
@@ -422,6 +440,8 @@ export function useDashboardData(selectedYear?: number): DashboardData {
         profileQuery.isLoading ||
         readinessQuery.isLoading ||
         sleepDebtQuery.isLoading ||
+        sleepConsistencyQuery.isLoading ||
+        optimalBedtimeQuery.isLoading ||
         weightQuery.isLoading ||
         plansQuery.isLoading ||
         goalsQuery.isLoading ||
@@ -442,6 +462,8 @@ export function useDashboardData(selectedYear?: number): DashboardData {
     loadPoints, trend.delta, trend.direction,
     readinessQuery.data, readinessQuery.isLoading, readinessQuery.isError,
     sleepDebtQuery.data, sleepDebtQuery.isLoading,
+    sleepConsistencyQuery.data,
+    optimalBedtimeQuery.data,
     weightQuery.data, weightQuery.isLoading,
     latestWeight,
     plansQuery.data, plansQuery.isLoading, plansQuery.isError,
