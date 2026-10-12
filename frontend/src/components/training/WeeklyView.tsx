@@ -42,6 +42,7 @@ import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLink
 import { WeekMasterBar } from './WeekMasterBar';
 import { ConformitySummaryCard } from './ConformitySummaryCard';
 import { PlanGoalsStrip } from './PlanGoalsStrip';
+import { MissedDayPopover } from './MissedDayPopover';
 import { SPORT_ICON } from './dayCellShared';
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
@@ -76,6 +77,50 @@ function tsbColor(tsb: number): string {
   if (tsb >= -20) return 'text-orange-400';
   return 'text-warning';
 }
+
+/** Short day label, e.g. "Mon 6 Oct". */
+function fmtDayLabel(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+/** Extract the PATCH-able planning fields from a day (used for day→day moves). */
+function planningFields(day: TrainingWeekDay): UpdateTrainingPlanDayPayload {
+  return {
+    sport: day.sport,
+    planned_type: day.planned_type,
+    planned_tss: day.planned_tss,
+    planned_duration_min: day.planned_duration_min,
+    workout_description: day.workout_description,
+    planned_focus: day.planned_focus ?? null,
+    planned_exercises: day.planned_exercises ?? null,
+    planned_rpe: day.planned_rpe ?? null,
+    planned_power_watts: day.planned_power_watts,
+    planned_zone: day.planned_zone ?? null,
+    planned_route_id: day.planned_route_id ?? null,
+    warmup_template_id: day.warmup_template_id ?? null,
+    notes: day.notes ?? null,
+  };
+}
+
+/** A rest day's planning fields — clears any planned workout. */
+const REST_FIELDS: UpdateTrainingPlanDayPayload = {
+  sport: 'rest',
+  planned_type: 'rest',
+  planned_tss: null,
+  planned_duration_min: null,
+  workout_description: null,
+  planned_focus: null,
+  planned_exercises: null,
+  planned_rpe: null,
+  planned_power_watts: null,
+  planned_zone: null,
+  planned_route_id: null,
+  warmup_template_id: null,
+};
 
 // ─── Component ────────────────────────────────────────────────────────────
 
@@ -113,6 +158,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
+  const [missedDayId, setMissedDayId] = useState<string | null>(null);
 
   const realCurrentWeek = getCurrentWeek(plan.start_date, plan.end_date);
   const todayStr = toDateStr(new Date());
@@ -242,6 +288,27 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     },
   });
 
+  // V3 missed-day quick actions. A true date-move is not PATCH-able, so
+  // "move to next day" swaps the two days' planned content.
+  const handleMissedReschedule = () => {
+    if (!missedDay) return;
+    if (missedNextDay) {
+      const srcFields = planningFields(missedDay);
+      const nextFields = planningFields(missedNextDay);
+      quickEdit.mutate({ dayId: missedNextDay.id, payload: srcFields });
+      quickEdit.mutate({ dayId: missedDay.id, payload: nextFields });
+    } else {
+      quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    }
+    setMissedDayId(null);
+  };
+
+  const handleMissedMarkRest = () => {
+    if (!missedDay) return;
+    quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    setMissedDayId(null);
+  };
+
   // ── Derived data ────────────────────────────────────────────────────────
   const weekData = weekQuery.data;
   const weekStart = weekData?.week_start ?? addDays(getWeek1Start(plan.start_date), (currentWeek - 1) * 7);
@@ -263,6 +330,20 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     if (!expandedDayId) return null;
     return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === expandedDayId) ?? null;
   }, [expandedDayId, weekDates, daysByDate]);
+
+  // Missed-day quick actions (V3): the missed day + the following day it can
+  // move to (within the visible week only — the PATCH cannot change day_date,
+  // so a "move" swaps the two days' planned content instead).
+  const missedDay = useMemo(() => {
+    if (!missedDayId) return null;
+    return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === missedDayId) ?? null;
+  }, [missedDayId, weekDates, daysByDate]);
+  const missedNextDay = useMemo(() => {
+    if (!missedDay) return null;
+    const idx = weekDates.indexOf(missedDay.day_date.slice(0, 10));
+    if (idx < 0 || idx >= weekDates.length - 1) return null;
+    return daysByDate.get(weekDates[idx + 1]) ?? null;
+  }, [missedDay, weekDates, daysByDate]);
 
   // Phase 2 `?day=` landing: jump to the week holding the date, auto-expand
   // the day, scroll its card into view. Runs once per deep-link date — week
@@ -521,6 +602,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           activeGoals={activeGoals}
           onToggleExpand={setExpandedDayId}
           onToggleCompleted={(dayId, completed) => toggleCompleted.mutate({ dayId, completed })}
+          onOpenMissed={setMissedDayId}
           busy={
             toggleCompleted.isPending ||
             assignRoute.isPending ||
@@ -590,6 +672,17 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           setShowRoutePicker(false);
         }}
         currentRouteId={expandedDay?.planned_route_id}
+      />
+
+      {/* Missed-day quick actions (V3) — opened from a missed day cell */}
+      <MissedDayPopover
+        open={!!missedDay}
+        onClose={() => setMissedDayId(null)}
+        dayLabel={missedDay ? fmtDayLabel(missedDay.day_date.slice(0, 10)) : ''}
+        nextDayLabel={missedNextDay ? fmtDayLabel(missedNextDay.day_date.slice(0, 10)) : null}
+        onReschedule={handleMissedReschedule}
+        onMarkRest={handleMissedMarkRest}
+        busy={quickEdit.isPending}
       />
 
       {/* Events context (read-only hint when this week contains an event) */}

@@ -10,7 +10,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { MapPin, Check, Target, AlertTriangle } from 'lucide-react';
+import { MapPin, Check, Target, AlertTriangle, CalendarClock } from 'lucide-react';
 import type { TrainingWeekDay } from '@/lib/api';
 import { formatDuration, weatherEmoji } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
@@ -40,6 +40,8 @@ export interface DayCellProps {
   goalNames?: string[];
   onToggleExpand: () => void;
   onToggleCompleted: (completed: boolean) => void;
+  /** Opens the missed-day quick actions (only shown when status is 'missed'). */
+  onOpenMissed?: () => void;
   busy: boolean;
 }
 
@@ -56,6 +58,7 @@ export function DayCell({
   goalNames,
   onToggleExpand,
   onToggleCompleted,
+  onOpenMissed,
   busy,
 }: DayCellProps) {
   const status = day ? getStatus(day, todayStr) : 'neutral';
@@ -99,6 +102,19 @@ export function DayCell({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {status === 'missed' && onOpenMissed && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMissed();
+              }}
+              className="text-[10px] px-1 rounded text-amber-400 hover:text-amber-300"
+              aria-label="Missed day options"
+              title="Missed — quick actions"
+            >
+              <CalendarClock className="w-3 h-3" />
+            </button>
+          )}
           {day?.sport === 'cycle' && (
             <button
               onClick={(e) => {

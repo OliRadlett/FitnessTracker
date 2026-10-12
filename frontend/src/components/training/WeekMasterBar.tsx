@@ -29,6 +29,8 @@ export interface WeekMasterBarProps {
   activeGoals: Goal[];
   onToggleExpand: (dayId: string | null) => void;
   onToggleCompleted: (dayId: string, completed: boolean) => void;
+  /** Opens the missed-day quick actions for the given day id. */
+  onOpenMissed: (dayId: string) => void;
   busy: boolean;
 }
 
@@ -41,6 +43,7 @@ export function WeekMasterBar({
   activeGoals,
   onToggleExpand,
   onToggleCompleted,
+  onOpenMissed,
   busy,
 }: WeekMasterBarProps) {
   return (
@@ -83,6 +86,7 @@ export function WeekMasterBar({
               onToggleCompleted={(completed) =>
                 day && onToggleCompleted(day.id, completed)
               }
+              onOpenMissed={day ? () => onOpenMissed(day.id) : undefined}
               busy={busy}
             />
           </div>
