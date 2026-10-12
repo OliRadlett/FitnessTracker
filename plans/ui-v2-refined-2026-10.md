@@ -130,16 +130,16 @@ Sparkline, MetricCard (updated with sparklineData), JournalCard, LoadSummary, Ve
 - [x] Static VerdictCard — removed SwipeViews wrapper
 - [x] YearDashboard tab — new yearly-view component
 
-### Phase 2 — Navigation + Journal (2 weeks)
-- [ ] Rewrite Sidebar (6 items + More)
-- [ ] Rewrite MobileBottomNav (independent mobile)
-- [ ] Command palette (routes)
-- [ ] Activity Journal page
-- [ ] Redirect /activities → /journal
-- [ ] Fix cross-page links
+### Phase 2 — Navigation + Journal — COMPLETE
+- [x] Rewrite Sidebar (6 items + More)
+- [x] Rewrite MobileBottomNav (independent mobile)
+- [x] Command palette (routes) — ⌘K search + route links
+- [x] Activity Journal page (/journal with pagination)
+- [x] Redirect /activities → /journal
+- [x] Fix cross-page links (LoadStrip → LoadSummary on Cycling page)
 
-### Phase 3 — Per-Page Polish (1-2 weeks)
-- [ ] Cycling (single load source)
+### Phase 3 — Per-Page Polish — IN PROGRESS
+- [ ] Cycling (single load source) — LoadStrip replaced with LoadSummary ✓
 - [ ] Lifting (card+sparkline)
 - [ ] Health (single weight source)
 - [ ] Training (plan cards)
