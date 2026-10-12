@@ -57,6 +57,7 @@ import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
 import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
+import { Sparkline } from '@/components/ui/Sparkline';
 import { fromLocalInputValue, toLocalInputValue } from '@/lib/lifting/sessionTime';
 import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -1169,14 +1170,22 @@ export default function LiftingPage() {
           compoundPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
           accessoryPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
 
-          const LEVEL_COLORS: Record<StandardLevel, string> = {
+           // Group PRs by exercise name for progression sparkline
+           const prsByExercise = new Map<string, PersonalRecord[]>();
+           for (const pr of personalRecords) {
+             const arr = prsByExercise.get(pr.exercise_name) ?? [];
+             arr.push(pr);
+             prsByExercise.set(pr.exercise_name, arr);
+           }
+
+           const LEVEL_COLORS: Record<StandardLevel, string> = {
             beginner: 'text-muted',
             intermediate: 'text-blue-400',
             advanced: 'text-purple-400',
             elite: 'text-positive',
           };
 
-          function PRCard({ pr }: { pr: PersonalRecord }) {
+          function PRCard({ pr, progression }: { pr: PersonalRecord; progression: (number | null)[] }) {
             const standardKey = standardKeyFor(pr.exercise_name);
             const bwRatio =
               standardKey != null
@@ -1211,19 +1220,28 @@ export default function LiftingPage() {
                   );
                 })()}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
-                  <div>
-                    <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
-                    <p className="text-xs text-muted">Weight</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-positive">{pr.reps}</p>
-                    <p className="text-xs text-muted">Reps</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-purple-400">{pr.estimated_1rm?.toFixed(1)} kg</p>
-                    <p className="text-xs text-muted">Est. 1RM</p>
-                  </div>
-                </div>
+                   <div>
+                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
+                     <p className="text-xs text-muted">Weight</p>
+                   </div>
+                   <div>
+                     <p className="text-lg font-bold text-positive">{pr.reps}</p>
+                     <p className="text-xs text-muted">Reps</p>
+                   </div>
+                   <div>
+                     <p className="text-lg font-bold text-purple-400">{pr.estimated_1rm?.toFixed(1)} kg</p>
+                     <p className="text-xs text-muted">Est. 1RM</p>
+                   </div>
+                 </div>
+                 {progression.length > 1 && (
+                   <div className="mt-2 h-4">
+                     <Sparkline
+                       data={progression}
+                       height={16}
+                       color={pr.estimated_1rm != null ? "rgb(168 85 247)" : "rgb(96 165 250)"}
+                     />
+                   </div>
+                 )}
                 <p className="text-xs text-muted mt-2 text-center">
                   {new Date(pr.achieved_date).toLocaleDateString(getActiveLocale())}
                 </p>
@@ -1300,7 +1318,13 @@ export default function LiftingPage() {
                     )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {big3PRs.map((pr) => <PRCard key={pr.id} pr={pr} />)}
+                    {big3PRs.map((pr) => (
+                      <PRCard
+                        key={pr.id}
+                        pr={pr}
+                        progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1309,7 +1333,13 @@ export default function LiftingPage() {
                 <div>
                   <h3 className="text-xs font-semibold text-positive uppercase tracking-wider mb-3">Compounds</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {compoundPRs.map((pr) => <PRCard key={pr.id} pr={pr} />)}
+                    {compoundPRs.map((pr) => (
+                      <PRCard
+                        key={pr.id}
+                        pr={pr}
+                        progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1324,7 +1354,13 @@ export default function LiftingPage() {
                   </button>
                   {showAccessories && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {accessoryPRs.map((pr) => <PRCard key={pr.id} pr={pr} />)}
+                      {accessoryPRs.map((pr) => (
+                        <PRCard
+                          key={pr.id}
+                          pr={pr}
+                          progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
