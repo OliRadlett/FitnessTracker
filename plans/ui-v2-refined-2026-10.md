@@ -128,7 +128,7 @@ Sparkline, MetricCard (updated with sparklineData), JournalCard, LoadSummary, Ve
 - [x] Rewrite DashboardPage — killed useAthleteState + 12 individual queries
 - [x] LoadSummary — card+sparkline grid (replaces LoadStrip)
 - [x] Static VerdictCard — removed SwipeViews wrapper
-- [ ] YearDashboard tab (Phase 2)
+- [x] YearDashboard tab — new yearly-view component
 
 ### Phase 2 — Navigation + Journal (2 weeks)
 - [ ] Rewrite Sidebar (6 items + More)

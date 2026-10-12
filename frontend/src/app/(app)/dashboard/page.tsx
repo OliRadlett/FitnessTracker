@@ -29,6 +29,7 @@ import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
 import { TodayTab } from '@/components/dashboard/TodayTab';
 import { WeeklyTab } from '@/components/dashboard/WeeklyTab';
 import { MonthlyTab } from '@/components/dashboard/MonthlyTab';
+import { YearDashboard } from '@/components/dashboard/YearDashboard';
 import { VerdictCard } from '@/components/athlete/VerdictCard';
 import { SyncBadge } from '@/components/athlete/SyncBadge';
 import { LoadSummary } from '@/components/dashboard/LoadSummary';
@@ -38,7 +39,7 @@ import { useDashboardData } from '@/lib/dashboard/useDashboardData';
 import { TimeRangeProvider, useTimeRange } from '@/lib/time-range';
 import type { HealthAnalysisResult } from '@/lib/api';
 
-const ACTIVE_TABS = ['today', 'weekly', 'monthly'] as const;
+const ACTIVE_TABS = ['today', 'weekly', 'monthly', 'yearly'] as const;
 
 // ── Pull-to-sync (retained from Phase 1, now standalone) ─────────────────────
 
@@ -132,7 +133,7 @@ function DashboardPageInner() {
 
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState<'today' | 'weekly' | 'monthly'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'weekly' | 'monthly' | 'yearly'>('today');
   const [analysisResults, setAnalysisResults] = useState<HealthAnalysisResult[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [weeksBack, setWeeksBack] = useState(0);
@@ -322,7 +323,7 @@ function DashboardPageInner() {
                 : 'text-muted hover:text-foreground hover:bg-surface-light/50'
             }`}
           >
-            {tab === 'today' ? '📅 Today' : tab === 'weekly' ? '📊 Weekly' : '📆 Monthly'}
+            {tab === 'today' ? 'Today' : tab === 'weekly' ? 'Week' : tab === 'monthly' ? 'Month' : 'Year'}
           </button>
         ))}
       </div>
@@ -395,6 +396,15 @@ function DashboardPageInner() {
           yearlySummary={data.yearlySummary ?? undefined}
           yearlyLoading={data.yearlyLoading}
           onDownloadReport={handleDownloadReport}
+          stale={stale}
+        />
+      )}
+
+      {activeTab === 'yearly' && (
+        <YearDashboard
+          yearlySummary={data.yearlySummary ?? null}
+          yearlyLoading={data.yearlyLoading}
+          selectedYear={selectedYear}
           stale={stale}
         />
       )}
