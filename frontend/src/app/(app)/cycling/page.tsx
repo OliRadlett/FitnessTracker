@@ -30,12 +30,11 @@ import { getWeightHistory } from '@/lib/api';
 import { type PREvent } from '@/components/ui/PRCelebration';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
-import { LoadStrip, SyncBadge, WeightCard } from '@/components/athlete';
+import { SyncBadge, WeightCard } from '@/components/athlete';
+import { LoadSummary } from '@/components/dashboard/LoadSummary';
+import { useDashboardData } from '@/lib/dashboard/useDashboardData';
 import {
-  deriveLastSyncedAt,
-  deriveLoadTrend,
   deriveStaleProviders,
-  deriveWeekTss,
 } from '@/lib/athlete';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
@@ -163,6 +162,7 @@ function CyclingPageInner() {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const saveTimeoutRef = useRef<NodeJS.Timeout[]>([]);
+  const dashboardData = useDashboardData();
 
   /* Pull-to-sync refetch (section 3.5): same React Query keys, no new fetches. */
   const syncPage = React.useCallback(
@@ -620,10 +620,7 @@ function CyclingPageInner() {
   // Phase 1 header derivation — presentational reads of the server-computed
   // series only (docs/algorithms.md authoritative; same selectors as every
   // other LoadStrip slot, guardrail §1.3).
-  const loadTrend = deriveLoadTrend(trainingLoad?.data ?? null);
-  const stripWeekTss = deriveWeekTss(trainingLoad?.data ?? null);
   const staleProviders = deriveStaleProviders(connections);
-  const lastSyncedAt = deriveLastSyncedAt(connections);
 
   // State-aware TSS banner (Phase 0 hygiene): the old `metrics.recent_tss === 0`
   // check fired on any rest week (7d window), even with healthy CTL/ATL history.
@@ -687,35 +684,25 @@ function CyclingPageInner() {
         )}
       </Card>
 
-      {/* Shared load header (Phase 1) — the single home for CTL/ATL/TSB,
-          7d TSS, and FTP display. Labs below keep their full depth; the FTP
-          lab links back here. Tapping a chip jumps to its home chart. */}
-      <div id="load-strip" className="scroll-mt-4">
-        <LoadStrip
-          ctl={trainingLoad?.current_ctl ?? null}
-          atl={trainingLoad?.current_atl ?? null}
-          tsb={trainingLoad?.current_tsb ?? null}
-          weekTss={stripWeekTss}
-          ftpWatts={profile?.ftp_watts ?? null}
-          trend={loadTrend.direction}
-          isLoading={loadLoading || profileLoading}
-          syncBadge={
-            <SyncBadge
-              lastSyncedAt={lastSyncedAt}
-              stale={staleProviders.length > 0}
-              provider={staleProviders[0]?.provider ?? null}
-            />
-          }
-        />
-        {/* CTL benchmark classification previously rode on the CTL card —
-            kept as a caption so the merge cuts no data. */}
-        {metrics?.ctl_benchmark && (
-          <p className="mt-1 text-xs tabular-nums text-muted">
-            Fitness level: {metrics.ctl_benchmark.label}
-            <span className="text-muted/70"> ({metrics.ctl_benchmark.range})</span>
-          </p>
-        )}
-      </div>
+       {/* Shared load header — V2 LoadSummary (card+sparkline, single source). */}
+       <div id="load-summary" className="scroll-mt-4">
+         <LoadSummary
+           data={dashboardData}
+           syncBadge={
+             <SyncBadge
+               lastSyncedAt={dashboardData.lastSyncedAt}
+               stale={dashboardData.staleProviders.length > 0}
+               provider={dashboardData.staleProviders[0]?.provider ?? null}
+             />
+           }
+         />
+         {metrics?.ctl_benchmark && (
+           <p className="mt-1 text-xs tabular-nums text-muted">
+             Fitness level: {metrics.ctl_benchmark.label}
+             <span className="text-muted/70"> ({metrics.ctl_benchmark.range})</span>
+           </p>
+         )}
+       </div>
 
       {/* W/kg lives outside the strip (benchmark + tooltip depth kept). */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -899,8 +886,8 @@ function CyclingPageInner() {
       <div ref={ftpRef} className="scroll-mt-4 space-y-2">
         <p className="text-xs text-muted">
           Current FTP is shown in the{' '}
-          <a href="#load-strip" className="text-accent hover:text-accent/80 underline underline-offset-2">
-            load strip above
+          <a href="#load-summary" className="text-accent hover:text-accent/80 underline underline-offset-2">
+             load summary above
           </a>
           {' '}— below is the full history, estimation, and records lab.
         </p>
