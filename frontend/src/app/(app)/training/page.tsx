@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { Flag, Bike, Dumbbell, MapPin, BarChart3, TrendingUp, TrendingDown, Mountain, Heart, Settings, Calendar, X, ClipboardList } from 'lucide-react';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useDeepLink } from '@/lib/useDeepLink';
 import type {
@@ -40,21 +41,21 @@ const STATUS_COLORS: Record<string, string> = {
   archived: 'bg-surface-light/20 text-muted border-muted/30',
 };
 
-const EVENT_TYPE_EMOJI: Record<string, string> = {
-  race: '🏁',
-  ride: '🚴',
-  lift: '🏋️',
-  other: '📌',
+const EVENT_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  race: Flag,
+  ride: Bike,
+  lift: Dumbbell,
+  other: MapPin,
 };
 
-const BLOCK_TYPE_EMOJI: Record<string, string> = {
-  base: '🏗️',
-  build: '📈',
-  peak: '🏔️',
-  taper: '📉',
-  recovery: '💚',
-  custom: '⚙️',
-  strength: '🏋️',
+const BLOCK_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  base: BarChart3,
+  build: TrendingUp,
+  peak: Mountain,
+  taper: TrendingDown,
+  recovery: Heart,
+  custom: Settings,
+  strength: Dumbbell,
 };
 
 /**
@@ -294,8 +295,8 @@ export default function TrainingPage() {
   return (
     <div className="space-y-8">
       {/* Page Header */}
-      <PageHeader
-        title="📋 Training Plans"
+         <PageHeader
+        title="Training Plans"
         subtitle="Plan your training blocks, manage events, and track periodization."
       />
 
@@ -322,7 +323,7 @@ export default function TrainingPage() {
             className="shrink-0 text-warning hover:text-warning/80"
             aria-label="Dismiss error"
           >
-            ✕
+            <X className="w-3 h-3" />
           </button>
         </div>
       )}
@@ -349,7 +350,7 @@ export default function TrainingPage() {
               )}
               {plans && plans.length === 0 && (
                 <EmptyState
-                  icon="📋"
+                  icon={<ClipboardList className="w-8 h-8 text-muted" />}
                   title="No training plans yet"
                   description="Generate a plan from your history or build one from scratch in the plan builder."
                   action={{ label: 'Go to plan builder', onClick: () => document.getElementById('plan-builder')?.scrollIntoView({ behavior: 'smooth' }) }}
@@ -372,7 +373,7 @@ export default function TrainingPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted">
-                    <span>{BLOCK_TYPE_EMOJI[p.plan_type] || '⚙️'} {p.plan_type}</span>
+                    {(() => { const Icon = BLOCK_TYPE_ICON[p.plan_type]; return Icon ? <Icon className="w-3 h-3" /> : <Settings className="w-3 h-3" />; })()} <span>{p.plan_type}</span>
                     <span>{p.start_date} → {p.end_date}</span>
                   </div>
                   <div className="mt-1.5">
@@ -393,7 +394,7 @@ export default function TrainingPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>🎯 Events</CardTitle>
+                <CardTitle>Events</CardTitle>
                 <button
                   onClick={() => setShowEventForm(!showEventForm)}
                   className="text-xs text-accent hover:text-accent/80"
@@ -424,10 +425,10 @@ export default function TrainingPage() {
                     onChange={e => setEventForm(f => ({ ...f, event_type: e.target.value }))}
                     className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
                   >
-                    <option value="race">🏁 Race</option>
-                    <option value="ride">🚴 Ride</option>
-                    <option value="lift">🏋️ Lift</option>
-                    <option value="other">📌 Other</option>
+                    <option value="race">Race</option>
+                    <option value="ride">Ride</option>
+                    <option value="lift">Lift</option>
+                    <option value="other">Other</option>
                   </select>
                   <input
                     type="number"
@@ -465,8 +466,9 @@ export default function TrainingPage() {
                   className="p-3 bg-surface-light/30 rounded-lg border border-surface-light/50"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-foreground font-medium text-sm">
-                      {EVENT_TYPE_EMOJI[evt.event_type] || '📌'} {evt.name}
+                    <span className="text-foreground font-medium text-sm flex items-center gap-2">
+                      {(() => { const Icon = EVENT_TYPE_ICON[evt.event_type]; return Icon ? <Icon className="w-4 h-4" /> : <MapPin className="w-4 h-4" />; })()}
+                      {evt.name}
                     </span>
                     {confirmingDeleteId === evt.id ? (
                       <div className="flex items-center gap-2">
@@ -492,16 +494,16 @@ export default function TrainingPage() {
                         onClick={() => setConfirmingDeleteId(evt.id)}
                         className="text-xs text-muted hover:text-warning"
                       >
-                        ✕
+                      <X className="w-3 h-3" />
                       </button>
                     )}
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    📅 {evt.event_date} · {evt.days_until === 0 ? 'Today!' : `${evt.days_until} days away`}
+                  <Calendar className="w-3 h-3 mr-1" /> {evt.event_date} · {evt.days_until === 0 ? 'Today!' : `${evt.days_until} days away`}
                   </p>
                   {evt.is_in_taper && (
                     <p className="text-xs text-amber-400 mt-1">
-                      📉 Taper phase active
+                    <TrendingDown className="w-3 h-3 text-amber-400 mr-1" />Taper phase active
                     </p>
                   )}
                   {evt.days_until_taper !== undefined && evt.days_until_taper > 0 && (
@@ -521,7 +523,7 @@ export default function TrainingPage() {
                       disabled={exportingEventId === evt.id}
                       className="text-xs text-accent hover:text-accent/80 disabled:opacity-50"
                     >
-                      {exportingEventId === evt.id ? 'Preparing…' : '📄 Export Prep PDF'}
+                      {exportingEventId === evt.id ? 'Preparing…' : 'Export Prep PDF'}
                     </button>
                   </div>
                 </div>
@@ -593,7 +595,7 @@ export default function TrainingPage() {
       {periodizationChart && (
         <Card>
           <CardHeader>
-            <CardTitle>📊 Periodization — Planned vs Actual</CardTitle>
+            <CardTitle>Periodization — Planned vs Actual</CardTitle>
           </CardHeader>
           <Chart data={periodizationChart} />
         </Card>

@@ -19,7 +19,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { getActiveLocale } from '@/lib/utils';
+  import { getActiveLocale } from '@/lib/utils';
+  import { Video } from 'lucide-react';
+  import { ArrowLeftRight, Pencil, RotateCw, Trash2 } from 'lucide-react';
+
+
 
 export default function VideosPage() {
   usePageTitle('Videos');
@@ -119,7 +123,7 @@ export default function VideosPage() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="📹 Videos"
+        title={<><Video className="w-5 h-5 mr-1" /> Videos</>}
         actions={
           <>
             <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30">
@@ -139,9 +143,9 @@ export default function VideosPage() {
               onClick={() => setShowCompare(true)}
               disabled={compareIds.length !== 2}
               className="px-3 py-2 bg-surface-light/40 text-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
-              title="Select two videos (⇄) to compare"
+              title="Select two videos to compare"
             >
-              ⇄ Compare{compareIds.length ? ` (${compareIds.length})` : ''}
+              <ArrowLeftRight className="w-4 h-4 inline mr-1" /> Compare{compareIds.length ? ` (${compareIds.length})` : ''}
             </button>
             <button
               onClick={() => setShowAddForm(true)}
@@ -243,7 +247,7 @@ export default function VideosPage() {
         </div>
       ) : videos.length === 0 ? (
         <EmptyState
-          icon="📹"
+          icon={<Video className="w-8 h-8 text-muted" />}
           title={hasFilters ? 'No videos match filters' : 'No videos yet'}
           description={
             hasFilters
@@ -388,7 +392,7 @@ export default function VideosPage() {
                       }`}
                       title="Add to compare"
                     >
-                      ⇄
+                      <ArrowLeftRight className="w-4 h-4" />
                     </button>
                   )}
                   <button
@@ -396,7 +400,7 @@ export default function VideosPage() {
                     className="text-xs text-muted hover:text-foreground px-1.5 py-0.5"
                     title="Edit details"
                   >
-                    ✎
+                    <Pencil className="w-4 h-4" />
                   </button>
                   {video.r2_key && (
                     <button
@@ -419,10 +423,10 @@ export default function VideosPage() {
                       {processMutation.isPending
                         ? 'Queuing…'
                         : video.analysis_status === 'completed'
-                          ? '↻ Reprocess'
+                          ? <><RotateCw className="w-3 h-3 inline mr-1" />Reprocess</>
                           : video.analysis_status === 'processing'
-                            ? '🔄 Retry'
-                            : '⚡ Process'}
+                            ? 'Retry'
+                            : 'Process'}
                     </button>
                   )}
                   {confirmDeleteId === video.id ? (
@@ -450,7 +454,7 @@ export default function VideosPage() {
                       className="text-xs text-muted hover:text-warning transition-colors"
                       title="Delete video"
                     >
-                      🗑️
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>

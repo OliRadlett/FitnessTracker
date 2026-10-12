@@ -66,7 +66,6 @@ const integrations = [
     name: 'Strava',
     description: 'Sync cycling, running, and swimming activities with routes, power, HR, and GPS data',
     icon: `${BASE_PATH}/icons/strava.svg`,
-    emoji: '🚴',
     color: 'bg-orange-500',
     available: true,
   },
@@ -75,7 +74,6 @@ const integrations = [
     name: 'Komoot',
     description: 'Sync planned routes and completed tours with GPS data and elevation profiles (configured via KOMOOT_EMAIL/KOMOOT_PASSWORD in .env)',
     icon: `${BASE_PATH}/icons/komoot.svg`,
-    emoji: '🗺️',
     color: 'bg-green-600',
     available: true,
     basicAuth: true,
@@ -85,7 +83,6 @@ const integrations = [
     name: 'Wahoo',
     description: 'Sync routes and workouts from Wahoo trainers and ELEMNT head units',
     icon: `${BASE_PATH}/icons/wahoo.svg`,
-    emoji: '📊',
     color: 'bg-blue-500',
     available: true,
   },
@@ -94,7 +91,6 @@ const integrations = [
     name: 'Whoop',
     description: 'Recovery scores, sleep tracking, HRV, daily strain, and heart rate data',
     icon: `${BASE_PATH}/icons/whoop.svg`,
-    emoji: '💤',
     color: 'bg-purple-500',
     available: true,
   },
@@ -103,7 +99,6 @@ const integrations = [
     name: 'Withings',
     description: 'Body weight and body composition (body fat, muscle mass, hydration) from Withings scales',
     icon: `${BASE_PATH}/icons/withings.svg`,
-    emoji: '⚖️',
     color: 'bg-teal-500',
     available: true,
   },
@@ -428,8 +423,8 @@ export default function SettingsPage() {
             <PreferencePills
               value={theme}
               options={[
-                { value: 'dark', label: '🌙 Dark' },
-                { value: 'light', label: '☀️ Light' },
+                { value: 'dark', label: 'Dark' },
+                { value: 'light', label: 'Light' },
               ]}
               onChange={(v) => setTheme(v as 'dark' | 'light')}
             />
@@ -616,19 +611,19 @@ export default function SettingsPage() {
               onClick={() => handleExport('/api/v1/export/lifting/csv', 'fittrack_lifting.csv')}
               className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
-              📊 Lifting CSV
+              Lifting CSV
             </button>
             <button
               onClick={() => handleExport('/api/v1/export/activities/csv', 'fittrack_activities.csv')}
               className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
-              🏃 Activities CSV
+              Activities CSV
             </button>
             <button
               onClick={() => handleExport('/api/v1/export/prs/csv', 'fittrack_prs.csv')}
               className="px-4 py-2 text-sm font-medium bg-surface-light hover:bg-surface text-foreground rounded-lg transition-colors border border-surface-light"
             >
-              🏆 Personal Records CSV
+              Personal Records CSV
             </button>
           </div>
         </div>
@@ -721,7 +716,7 @@ export default function SettingsPage() {
               disabled={backfilling || !getConnection('strava')}
               className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              {backfilling ? '⏳ Backfilling...' : '📥 Backfill All Strava Activities'}
+              {backfilling ? 'Backfilling...' : 'Backfill All Strava Activities'}
             </button>
             <button
               onClick={async () => {
@@ -799,7 +794,7 @@ export default function SettingsPage() {
               disabled={whoopBackfilling || !getConnection('whoop')}
               className="px-4 py-2 text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              {whoopBackfilling ? '⏳ Backfilling...' : '💤 Backfill Whoop History'}
+              {whoopBackfilling ? 'Backfilling...' : 'Backfill Whoop History'}
             </button>
           </div>
           {stravaBackfillProgress && (

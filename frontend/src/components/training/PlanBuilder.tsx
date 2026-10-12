@@ -40,6 +40,7 @@ import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { getActiveLocale } from '@/lib/utils';
 import { getTotalWeeks } from '@/lib/training/week';
 import { RoutePickerModal } from './RoutePickerModal';
+import { Dumbbell, Bike, Bed, Flag, Calendar, Zap, MapPin, Check, X, ClipboardList, Pencil, Trash2, Save } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -53,10 +54,10 @@ const DAY_TYPE_COLORS: Record<string, string> = {
   race: 'bg-red-900/30 border-red-700/40 text-red-300',
 };
 
-const SPORT_EMOJI: Record<string, string> = {
-  cycle: '🚴',
-  strength: '🏋️',
-  rest: '😴',
+const SPORT_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  cycle: Bike,
+  strength: Dumbbell,
+  rest: Bed,
 };
 
 const FOCUS_OPTIONS = [
@@ -258,7 +259,7 @@ function EmptyState({
   if (mode === 'scratch') {
     return (
       <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">📝 Start From Scratch</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4"><Pencil className="w-4 h-4 inline mr-1.5 -mt-0.5" /> Start From Scratch</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="md:col-span-3">
             <label className={labelCls}>Plan Name</label>
@@ -317,7 +318,7 @@ function EmptyState({
     const linkedEvent = events.find((e) => e.id === templateForm.event_id);
     return (
       <div className="bg-surface rounded-xl border border-surface-light/50 p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-1">⚡ Use Template</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-1 flex items-center gap-2"><Zap className="w-5 h-5" /> Use Template</h3>
         <p className="text-sm text-muted mb-4">
           Mixed weeks: Sun rest · Tue strength (squat-focus) · Thu bench/deadlift rotation ·
           Mon/Wed/Fri/Sat rides.
@@ -408,7 +409,7 @@ function EmptyState({
               <option value="">No event</option>
               {events.map((evt) => (
                 <option key={evt.id} value={evt.id}>
-                  🏁 {evt.name} ({evt.event_date})
+                  <Flag className="w-3 h-3 inline mr-1" />{evt.name} ({evt.event_date})
                 </option>
               ))}
             </select>
@@ -424,7 +425,7 @@ function EmptyState({
         {/* Strength template options (shown when template_type === 'strength') */}
         {templateForm.template_type === 'strength' && (
           <div className="mt-4 pt-4 border-t border-surface-light/50 space-y-4">
-            <h4 className="text-sm font-semibold text-foreground">💪 Strength Progression</h4>
+            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-2"><Dumbbell className="w-4 h-4" /> Strength Progression</h4>
             <p className="text-xs text-muted">
               Define your weekly RPE/sets/reps progression. Only specify weeks
               where the stimulus changes — unset weeks inherit from the nearest
@@ -624,7 +625,7 @@ function EmptyState({
 
   return (
     <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
-      <p className="text-4xl mb-4">📋</p>
+      <ClipboardList className="w-12 h-12 mx-auto text-muted mb-4" />
       <h3 className="text-lg font-semibold text-foreground mb-2">No Plan Selected</h3>
       <p className="text-muted mb-6">Select a plan on the left, or create a new one.</p>
       <div className="flex flex-col sm:flex-row justify-center gap-3">
@@ -632,13 +633,13 @@ function EmptyState({
           onClick={() => setMode('scratch')}
           className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
         >
-          📝 Start From Scratch
+          <Pencil className="w-4 h-4 inline mr-1.5" /> Start From Scratch
         </button>
         <button
           onClick={() => setMode('template')}
           className="px-6 py-3 bg-surface-light text-foreground rounded-lg font-medium hover:bg-surface-light/70 transition-colors"
         >
-          ⚡ Use Template
+          <Zap className="w-4 h-4 mr-2" /> Use Template
         </button>
       </div>
     </div>
@@ -834,17 +835,17 @@ function PlanEditor({
                 {plan.status}
               </span>
               <span className="text-xs text-muted">
-                📅 {plan.start_date} → {plan.end_date}
+                <Calendar className="w-3 h-3 mr-1" /> {plan.start_date} → {plan.end_date}
               </span>
               {linkedEvent ? (
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-purple-500/20 border-purple-500/30 text-purple-300">
-                  🏁 {linkedEvent.name}
+                  <Flag className="w-3 h-3 mr-1" />{linkedEvent.name}
                   <button
                     onClick={() => onUpdatePlan(plan.id, { event_id: null })}
                     title="Unlink event"
                     className="hover:text-foreground"
                   >
-                    ✕
+                    <X className="w-3 h-3" />
                   </button>
                 </span>
               ) : null}
@@ -867,7 +868,7 @@ function PlanEditor({
               }}
               className="px-3 py-1.5 bg-red-600/20 text-warning border border-red-600/30 rounded-lg text-sm font-medium hover:bg-red-600/30 transition-colors"
             >
-              🗑️ Delete
+              <Trash2 className="w-4 h-4 inline mr-1" /> Delete
             </button>
           </div>
         </div>
@@ -916,7 +917,9 @@ function PlanEditor({
                 {ws.totalTss} <span className="text-xs font-normal text-muted">TSS</span>
               </p>
               <p className="text-xs text-muted mt-1">
-                🚴 {ws.rides} · 🏋️ {ws.strength} · 😴 {ws.rest}
+                <Bike className="w-3 h-3 inline" /> {ws.rides} ·
+                <Dumbbell className="w-3 h-3 inline" /> {ws.strength} ·
+                <Bed className="w-3 h-3 inline" /> {ws.rest}
               </p>
             </button>
           ))}
@@ -987,13 +990,13 @@ function PlanEditor({
                             : 'border-current/40 opacity-50'
                         }`}
                       >
-                        ✓
+                        <Check className="w-3 h-3" />
                       </span>
                     </button>
                   </div>
 
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-base">{SPORT_EMOJI[sport]}</span>
+                    {(() => { const Icon = SPORT_ICON[sport]; return Icon ? <Icon className="w-3 h-3" /> : null; })()}
                     {day?.planned_focus && sport === 'strength' && (
                       <span className="text-[10px] uppercase tracking-wide opacity-75">
                         {(day.planned_focus as string).replace('_', ' ')}
@@ -1067,7 +1070,7 @@ function PlanEditor({
                 disabled={isSaving}
                 className="px-5 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/80 transition-colors disabled:opacity-50"
               >
-                {isSaving ? 'Saving...' : '💾 Save'}
+                {isSaving ? 'Saving...' : <><Save className="w-4 h-4 inline mr-1" />Save</>}
               </button>
             </div>
           </div>
@@ -1226,14 +1229,14 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
       });
       if (res.target_kg == null) {
         setSuggestMsg(`No PR or recent history for “${ex.exercise}” — enter weight manually.`);
-      } else {
-        patchExercise(idx, { weight_kg: res.target_kg, pct_1rm: res.pct_1rm });
-        setSuggestMsg(
-          `${ex.exercise}: ${res.target_kg}kg @ ${Math.round(res.pct_1rm * 100)}% ` +
-          `(e1RM ${res.basis_1rm_kg}kg via ${res.basis_source === 'pr' ? 'PR' : 'recent sets'})` +
-          (res.safety_warning ? ` ⚠️ ${res.safety_warning}` : ''),
-        );
-      }
+        } else {
+          patchExercise(idx, { weight_kg: res.target_kg, pct_1rm: res.pct_1rm });
+          setSuggestMsg(
+            `${ex.exercise}: ${res.target_kg}kg @ ${Math.round(res.pct_1rm * 100)}% ` +
+            `(e1RM ${res.basis_1rm_kg}kg via ${res.basis_source === 'pr' ? 'PR' : 'recent sets'})` +
+            (res.safety_warning ? ` — ${res.safety_warning}` : ''),
+          );
+        }
     } catch (err) {
       setSuggestMsg(err instanceof Error ? err.message : 'Suggestion failed.');
     } finally {
@@ -1259,7 +1262,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                 title="Copy exercises from a past session"
                 className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-foreground transition-colors"
               >
-                📋 Copy Session
+                <ClipboardList className="w-3 h-3 mr-1" /> Copy Session
               </button>
               <button
                 onClick={() => {
@@ -1270,7 +1273,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                 title="Duplicate this day to another date"
                 className="text-[10px] px-2 py-1 rounded bg-surface-light/60 text-muted hover:text-foreground transition-colors"
               >
-                📅 Duplicate
+                <Calendar className="w-3 h-3 mr-1" /> Duplicate
               </button>
             </>
           )}
@@ -1280,7 +1283,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             </span>
           )}
           <button onClick={onClose} className="text-muted hover:text-foreground text-sm px-1">
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1310,7 +1313,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             onClick={() => setShowSessionPicker(false)}
             className="text-muted hover:text-foreground text-xs px-1"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -1334,7 +1337,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             onClick={() => setShowDuplicatePicker(false)}
             className="text-muted hover:text-foreground text-xs px-1"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -1376,7 +1379,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted hover:text-foreground text-xs"
             aria-label="Cancel swap"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -1403,9 +1406,9 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             }}
             className={inputCls}
           >
-            <option value="rest">😴 Rest</option>
-            <option value="cycle">🚴 Cycle</option>
-            <option value="strength">🏋️ Strength</option>
+            <option value="rest">Rest</option>
+            <option value="cycle">Cycle</option>
+            <option value="strength">Strength</option>
           </select>
         </div>
         <div>
@@ -1504,7 +1507,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
             {day.planned_route_id ? (
               <div className="flex items-center gap-2">
                 <span className="inline-block text-xs px-2 py-1 rounded-full bg-positive/15 text-positive border border-positive/30">
-                  Route assigned ✓
+                  Route assigned
                 </span>
                 <button
                   onClick={() => setShowRoutePicker(true)}
@@ -1524,7 +1527,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                 onClick={() => setShowRoutePicker(true)}
                 className="w-full px-3 py-2 text-left text-sm bg-background border border-surface-light rounded-lg text-muted hover:text-foreground hover:border-accent/50 transition-colors"
               >
-                🗺️ Pick a route...
+                <MapPin className="w-3 h-3 mr-1" /> Pick a route...
               </button>
             )}
           </div>
@@ -1698,7 +1701,7 @@ function DayEditor({ dateStr, day, planId, isDraft, onPatch, onClose, onRefreshP
                   title="Remove exercise"
                   className="col-span-6 sm:col-span-2 text-xs text-muted hover:text-warning py-1"
                 >
-                  ✕ Remove
+                  <X className="w-3 h-3 mr-1" /> Remove
                 </button>
               </div>
             ))}

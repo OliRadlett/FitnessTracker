@@ -23,7 +23,8 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { usePageTitle } from '@/lib/usePageTitle';
-import { relativeTime } from '@/lib/analysisRenderer';
+  import { relativeTime } from '@/lib/analysisRenderer';
+  import { MailOpen } from 'lucide-react';
 
 type ReadFilter = 'all' | 'unread' | 'read';
 type TypeFilter = 'all' | NotificationType;
@@ -405,7 +406,7 @@ export default function NotificationsPage() {
           {!isLoading && notifications.length === 0 && (
             <div className="p-8">
               <EmptyState
-                icon="📭"
+                icon={<MailOpen className="w-8 h-8 text-muted" />}
                 title={
                   (summary ? summary.total === 0 : notifications.length === 0)
                     ? 'No notifications yet'

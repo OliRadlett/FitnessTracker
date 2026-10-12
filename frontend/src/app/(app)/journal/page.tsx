@@ -22,8 +22,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
-import { toDateStr } from '@/lib/training/week';
-import type { Activity } from '@/lib/api';
+  import { toDateStr } from '@/lib/training/week';
+  import { BookOpen } from 'lucide-react';
+  import type { Activity } from '@/lib/api';
 
 const PAGE_SIZE = 50;
 
@@ -294,7 +295,7 @@ export default function JournalPage() {
         <EmptyState
           title="No activities yet"
           description="Your activity journal will appear here once you start tracking."
-          icon="📔"
+          icon={<BookOpen className="w-8 h-8 text-muted" />}
         />
       ) : (
         <>

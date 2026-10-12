@@ -33,6 +33,7 @@ import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
 import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { MOTION } from '@/components/motion/tokens';
 import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
+import { Wind, Dumbbell, Moon, CircleCheck } from 'lucide-react';
 
 const SEVERITY_BADGE: Record<string, string> = {
   critical: 'bg-warning/15 text-warning border-warning/30',
@@ -399,7 +400,7 @@ function HealthPageInner() {
                 value="—"
                 subtitle="No data"
                 color="text-muted"
-                icon="🌬️"
+                 icon={<Wind className="w-4 h-4" />}
               />
             )}
             <MetricCard
@@ -407,7 +408,7 @@ function HealthPageInner() {
               value={todaySummary?.latest_strain != null ? todaySummary.latest_strain.toFixed(1) : '—'}
               subtitle="Whoop strain (0-21)"
               color={(todaySummary?.latest_strain ?? 0) >= 14 ? 'text-warning' : (todaySummary?.latest_strain ?? 0) >= 10 ? 'text-yellow-400' : 'text-positive'}
-              icon="💪"
+               icon={<Dumbbell className="w-4 h-4" />}
               tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out."
             />
             <MetricCard
@@ -415,7 +416,7 @@ function HealthPageInner() {
               value={todaySummary?.latest_sleep_hours != null ? `${todaySummary.latest_sleep_hours.toFixed(1)}h` : '—'}
               subtitle={sleepDebt ? (sleepDebt.debt_hours > 0 ? `-${sleepDebt.debt_hours.toFixed(1)}h debt (7d)` : 'Caught up') : 'Last night'}
               color={(todaySummary?.latest_sleep_hours ?? 0) >= 7 ? 'text-positive' : (todaySummary?.latest_sleep_hours ?? 0) >= 6 ? 'text-yellow-400' : 'text-warning'}
-              icon="😴"
+               icon={<Moon className="w-4 h-4" />}
             />
           </>
         ) : (
@@ -747,7 +748,7 @@ function HealthPageInner() {
             </div>
           ) : (
             <div className="text-center py-6">
-              <p className="text-3xl mb-2">✅</p>
+              <CircleCheck className="w-8 h-8 text-positive mx-auto mb-2" />
               <p className="text-sm text-muted">No {alertTab} health alerts.</p>
             </div>
           )}

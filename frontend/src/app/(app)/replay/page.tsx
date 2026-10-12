@@ -66,7 +66,7 @@ export default function ReplayPage() {
         <EmptyState
           title="No rides yet"
           description="Activities with GPS data and power/cadence streams appear here."
-          icon="🎬"
+          icon={<Play className="w-8 h-8 text-muted" />}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

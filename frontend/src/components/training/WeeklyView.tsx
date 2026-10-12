@@ -16,6 +16,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, MapPin, Target, Check, Flag, X, Upload } from 'lucide-react';
 import type {
   Goal,
   TrainingPlan,
@@ -27,7 +28,7 @@ import type {
 import { useAuthFetch, getPlanWeek, updatePlanDay, getPlanConformity, linkPlanActivities, refreshTargets, listGoals } from '@/lib/api';
 import { apiFetch } from '@/lib/api/fetch';
 import type { TsbProjectionResponse } from '@/lib/api';
-import { formatDuration, weatherEmoji, getActiveLocale } from '@/lib/utils';
+import { getActiveLocale } from '@/lib/utils';
 import {
   toDateStr,
   addDays,
@@ -38,7 +39,11 @@ import {
 } from '@/lib/training/week';
 import { goalProgressPct } from '@/components/ui/GoalCard';
 import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
-import { ConformityBadge } from './ConformityBadge';
+import { WeekMasterBar } from './WeekMasterBar';
+import { ConformitySummaryCard } from './ConformitySummaryCard';
+import { PlanGoalsStrip } from './PlanGoalsStrip';
+import { MissedDayPopover } from './MissedDayPopover';
+import { SPORT_ICON } from './dayCellShared';
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { DayConformityPanel } from './DayConformityPanel';
 import { RoutePickerModal } from './RoutePickerModal';
@@ -47,34 +52,6 @@ import { WahooPushModal } from './WahooPushModal';
 import { StrengthSuggestionsCard } from './StrengthSuggestionsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
-
-const SPORT_EMOJI: Record<string, string> = {
-  cycle: '🚴',
-  strength: '🏋️',
-  rest: '😴',
-};
-
-const DAY_TYPE_BADGES: Record<string, string> = {
-  rest: 'bg-surface-light/20 text-muted border-muted/30',
-  easy: 'bg-green-500/15 text-green-300 border-green-500/30',
-  moderate: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-  hard: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
-  race: 'bg-red-500/15 text-red-300 border-red-500/30',
-};
-
-const FOCUS_LABELS: Record<string, string> = {
-  squat: 'Squat',
-  bench: 'Bench',
-  deadlift: 'Deadlift',
-  overhead_press: 'Overhead Press',
-  accessories: 'Accessories',
-  full_body: 'Full Body',
-  push: 'Push',
-  pull: 'Pull',
-  legs: 'Legs',
-  upper: 'Upper',
-  lower: 'Lower',
-};
 
 /** Zone ceiling → dot colour for the readiness strip. */
 const ZONE_DOT_COLORS: Record<string, string> = {
@@ -94,12 +71,6 @@ const ZONE_DOT_COLORS: Record<string, string> = {
 
 // ─── Small formatters ─────────────────────────────────────────────────────
 
-/** Route match / confidence scores are 0–1 ratios; tolerate 0–100 too. */
-function fmtKg(v: number | null | undefined): string {
-  if (v == null) return '—';
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`;
-}
-
 function tsbColor(tsb: number): string {
   if (tsb > 5) return 'text-positive';
   if (tsb >= -10) return 'text-warning';
@@ -107,54 +78,48 @@ function tsbColor(tsb: number): string {
   return 'text-warning';
 }
 
-/** Status from backend day_status field, falling back to local heuristic. */
-type DayStatus = 'done' | 'planned' | 'missed' | 'neutral' | 'partial';
-
-function getStatus(day: TrainingWeekDay, todayStr: string): DayStatus {
-  // Prefer backend-computed day_status when available
-  if (day.day_status) {
-    switch (day.day_status) {
-      case 'completed': return 'done';
-      case 'partial': return 'partial';
-      case 'missed': return 'missed';
-      case 'rest': return day.day_date >= todayStr ? 'planned' : 'neutral';
-      case 'pending': return 'planned';
-    }
-  }
-  // Fallback to local heuristic
-  if (day.actual_activity || day.actual_lifting_session || day.completed) return 'done';
-  if (day.sport === 'rest') return day.day_date >= todayStr ? 'planned' : 'neutral';
-  if (day.day_date >= todayStr) return 'planned';
-  return 'missed';
+/** Short day label, e.g. "Mon 6 Oct". */
+function fmtDayLabel(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
 }
 
-const STATUS_LABEL: Record<DayStatus, string> = {
-  done: 'Done',
-  planned: 'Planned',
-  missed: 'Missed',
-  neutral: '—',
-  partial: 'Partial',
-};
-
-/**
- * Phase 5C — map the card heuristic onto conformity badge statuses.
- * Rest days render nothing; future days are "pending"; past unlogged days
- * "missed"; logged/completed days "done" (score appears once the backend
- * has scored them via the expanded panel).
- */
-function getBadgeStatus(day: TrainingWeekDay | undefined, status: DayStatus): string {
-  if (!day || day.sport === 'rest') return 'rest';
-  if (status === 'done') return 'done';
-  if (status === 'partial') return 'partial';
-  if (status === 'missed') return 'missed';
-  return 'pending';
+/** Extract the PATCH-able planning fields from a day (used for day→day moves). */
+function planningFields(day: TrainingWeekDay): UpdateTrainingPlanDayPayload {
+  return {
+    sport: day.sport,
+    planned_type: day.planned_type,
+    planned_tss: day.planned_tss,
+    planned_duration_min: day.planned_duration_min,
+    workout_description: day.workout_description,
+    planned_focus: day.planned_focus ?? null,
+    planned_exercises: day.planned_exercises ?? null,
+    planned_rpe: day.planned_rpe ?? null,
+    planned_power_watts: day.planned_power_watts,
+    planned_zone: day.planned_zone ?? null,
+    planned_route_id: day.planned_route_id ?? null,
+    warmup_template_id: day.warmup_template_id ?? null,
+    notes: day.notes ?? null,
+  };
 }
 
-/** Trend arrow for the weekly conformity strip. */
-const TREND_ARROW: Record<string, { symbol: string; className: string }> = {
-  improving: { symbol: '↑', className: 'text-positive' },
-  declining: { symbol: '↓', className: 'text-warning' },
-  stable: { symbol: '→', className: 'text-muted' },
+/** A rest day's planning fields — clears any planned workout. */
+const REST_FIELDS: UpdateTrainingPlanDayPayload = {
+  sport: 'rest',
+  planned_type: 'rest',
+  planned_tss: null,
+  planned_duration_min: null,
+  workout_description: null,
+  planned_focus: null,
+  planned_exercises: null,
+  planned_rpe: null,
+  planned_power_watts: null,
+  planned_zone: null,
+  planned_route_id: null,
+  warmup_template_id: null,
 };
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -193,6 +158,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
+  const [missedDayId, setMissedDayId] = useState<string | null>(null);
 
   const realCurrentWeek = getCurrentWeek(plan.start_date, plan.end_date);
   const todayStr = toDateStr(new Date());
@@ -234,8 +200,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     enabled: !!token,
   });
 
-  // Phase 2 — active goals for the plan → goal direction (day cards show a
-  // 🎯 count badge, the expanded panel lists supporting goals). Shares the
+   // Phase 2 — active goals for the plan → goal direction (day cards show a
+  // target count badge, the expanded panel lists supporting goals). Shares the
   // ['goals', 'active'] cache entry with the goals page — no extra fetch.
   const goalsQuery = useQuery({
     queryKey: ['goals', 'active'],
@@ -322,6 +288,27 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     },
   });
 
+  // V3 missed-day quick actions. A true date-move is not PATCH-able, so
+  // "move to next day" swaps the two days' planned content.
+  const handleMissedReschedule = () => {
+    if (!missedDay) return;
+    if (missedNextDay) {
+      const srcFields = planningFields(missedDay);
+      const nextFields = planningFields(missedNextDay);
+      quickEdit.mutate({ dayId: missedNextDay.id, payload: srcFields });
+      quickEdit.mutate({ dayId: missedDay.id, payload: nextFields });
+    } else {
+      quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    }
+    setMissedDayId(null);
+  };
+
+  const handleMissedMarkRest = () => {
+    if (!missedDay) return;
+    quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    setMissedDayId(null);
+  };
+
   // ── Derived data ────────────────────────────────────────────────────────
   const weekData = weekQuery.data;
   const weekStart = weekData?.week_start ?? addDays(getWeek1Start(plan.start_date), (currentWeek - 1) * 7);
@@ -343,6 +330,20 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     if (!expandedDayId) return null;
     return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === expandedDayId) ?? null;
   }, [expandedDayId, weekDates, daysByDate]);
+
+  // Missed-day quick actions (V3): the missed day + the following day it can
+  // move to (within the visible week only — the PATCH cannot change day_date,
+  // so a "move" swaps the two days' planned content instead).
+  const missedDay = useMemo(() => {
+    if (!missedDayId) return null;
+    return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === missedDayId) ?? null;
+  }, [missedDayId, weekDates, daysByDate]);
+  const missedNextDay = useMemo(() => {
+    if (!missedDay) return null;
+    const idx = weekDates.indexOf(missedDay.day_date.slice(0, 10));
+    if (idx < 0 || idx >= weekDates.length - 1) return null;
+    return daysByDate.get(weekDates[idx + 1]) ?? null;
+  }, [missedDay, weekDates, daysByDate]);
 
   // Phase 2 `?day=` landing: jump to the week holding the date, auto-expand
   // the day, scroll its card into view. Runs once per deep-link date — week
@@ -464,7 +465,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       {refreshResult && !refreshError && (
         <div className="space-y-1">
           <p className="text-xs text-muted">
-            ✓ Refreshed {refreshResult.refreshed.length} cycle day
+          <Check className="w-3 h-3 text-positive inline mr-1" />
+          Refreshed {refreshResult.refreshed.length} cycle day
             {refreshResult.refreshed.length === 1 ? '' : 's'}
             {refreshResult.strength_refreshed.length > 0 &&
               ` + ${refreshResult.strength_refreshed.length} strength exercise${refreshResult.strength_refreshed.length === 1 ? '' : 's'}`}
@@ -477,7 +479,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
               className="text-xs text-warning"
               title="Zones stay FTP-anchored; fitted critical power is shown for reference only"
             >
-              ⚠️ Fitted critical power ({Math.round(refreshResult.cp_ftp_mismatch.critical_power)}W)
+               <AlertTriangle className="w-3 h-3 text-warning inline mr-1" />
+               Fitted critical power ({Math.round(refreshResult.cp_ftp_mismatch.critical_power)}W)
               differs from FTP ({Math.round(refreshResult.cp_ftp_mismatch.ftp)}W) by{' '}
               {refreshResult.cp_ftp_mismatch.pct_diff.toFixed(0)}% — check your FTP is current.
             </p>
@@ -509,74 +512,16 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         </div>
       )}
 
-      {/* Conformity summary strip (Phase 5C) */}
-      {conformity && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-surface-light/30 border border-surface-light/50">
-            <span className="text-xs font-medium text-muted uppercase tracking-wide">
-              Conformity
-            </span>
-            {conformity.overall_pct != null ? (
-              <span className="flex items-baseline gap-1">
-                <span
-                  className={`text-xl font-bold leading-none ${
-                    conformity.overall_pct >= 80
-                      ? 'text-positive'
-                      : conformity.overall_pct >= 60
-                        ? 'text-warning'
-                        : 'text-warning'
-                  }`}
-                >
-                  {Math.round(conformity.overall_pct)}%
-                </span>
-                <span className="text-[10px] text-muted">overall</span>
-              </span>
-            ) : (
-              <span className="text-xs text-muted italic">No scored days yet</span>
-            )}
-            {conformity.trend && TREND_ARROW[conformity.trend] && (
-              <span
-                title={`${conformity.trend} vs previous weeks`}
-                className={`text-base font-semibold ${TREND_ARROW[conformity.trend].className}`}
-              >
-                {TREND_ARROW[conformity.trend].symbol}
-              </span>
-            )}
-            {sportChips.map(([sport, pct]) => (
-              <span
-                key={sport}
-                className="inline-flex items-center gap-1 text-xs text-foreground bg-surface-light/60 rounded-full px-2 py-0.5"
-                title={`${sport} adherence`}
-              >
-                <span>{SPORT_EMOJI[sport] ?? '📌'}</span>
-                <span className="font-medium">{Math.round(pct)}%</span>
-              </span>
-            ))}
-            <button
-              onClick={() => linkActivities.mutate()}
-              disabled={linkActivities.isPending}
-              title="Auto-link synced activities/lifting sessions to plan days"
-              className="ml-auto px-2 py-0.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-foreground hover:bg-surface-light transition-colors disabled:opacity-40"
-            >
-              {linkActivities.isPending ? 'Linking…' : '🔗 Link activities'}
-            </button>
-          </div>
+      {/* Conformity summary strip (Phase 5C) — extracted to ConformitySummaryCard */}
+      <ConformitySummaryCard
+        conformity={conformity}
+        sportChips={sportChips}
+        onLinkActivities={() => linkActivities.mutate()}
+        linking={linkActivities.isPending}
+      />
 
-          {/* Detected patterns — subtle warning-tinted callout */}
-          {conformity.patterns.length > 0 && (
-            <div className="rounded-lg bg-warning/5 border border-warning/20 px-3 py-2">
-              <ul className="space-y-0.5">
-                {conformity.patterns.map((p, i) => (
-                  <li key={i} className="text-[11px] text-warning/90 flex gap-1.5">
-                    <span className="shrink-0">•</span>
-                    <span>{p}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Active goals this plan supports — V3 goals strip */}
+      <PlanGoalsStrip goals={activeGoals} />
 
       {/* Adaptive suggestions card (§3.11) */}
       <AdaptiveSuggestionsCard planId={plan.id} />
@@ -646,55 +591,25 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         </div>
       )}
 
-      {/* 7 day cards */}
+      {/* 7 day cards — responsive master bar (scroll on mobile, grid on xl) */}
       {!weekQuery.isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {weekDates.map((date) => {
-            const day = daysByDate.get(date);
-            const dowLabel = new Date(date + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
-              weekday: 'short',
-            });
-            const dayLabel = new Date(date + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
-              day: 'numeric',
-              month: 'short',
-            });
-            const isToday = date === todayStr;
-            const expanded = !!day && expandedDayId === day.id;
-            // Phase 2 cross-links: deep-link highlight + supporting-goal badge.
-            const highlighted = highlightDate === date;
-            const dayGoals = day ? goalsForPlanDay(activeGoals, day) : [];
-
-            return (
-              <DayCard
-                key={date}
-                date={date}
-                dowLabel={dowLabel}
-                dayLabel={dayLabel}
-                isToday={isToday}
-                day={day}
-                todayStr={todayStr}
-                expanded={expanded}
-                highlighted={highlighted}
-                goalCount={dayGoals.length}
-                goalNames={dayGoals.map((g) => goalShortLabel(g))}
-                onToggleExpand={() => day && setExpandedDayId(expanded ? null : day.id)}
-                onToggleCompleted={(completed) =>
-                  day &&
-                  toggleCompleted.mutate({
-                    dayId: day.id,
-                    completed,
-                  })
-                }
-                busy={
-                  toggleCompleted.isPending ||
-                  assignRoute.isPending ||
-                  unassignRoute.isPending ||
-                  quickEdit.isPending
-                }
-              />
-            );
-          })}
-        </div>
+        <WeekMasterBar
+          weekDates={weekDates}
+          daysByDate={daysByDate}
+          todayStr={todayStr}
+          expandedDayId={expandedDayId}
+          highlightDate={highlightDate}
+          activeGoals={activeGoals}
+          onToggleExpand={setExpandedDayId}
+          onToggleCompleted={(dayId, completed) => toggleCompleted.mutate({ dayId, completed })}
+          onOpenMissed={setMissedDayId}
+          busy={
+            toggleCompleted.isPending ||
+            assignRoute.isPending ||
+            unassignRoute.isPending ||
+            quickEdit.isPending
+          }
+        />
       )}
 
       {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}
@@ -702,18 +617,14 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
-              {expandedDay.sport === 'cycle'
-                ? '🚴'
-                : expandedDay.sport === 'strength'
-                  ? '🏋️'
-                  : '😴'}{' '}
-              {expandedDay.day_date.slice(0, 10)} details
+            {(() => { const Icon = SPORT_ICON[expandedDay.sport]; return Icon ? <Icon className="w-4 h-4 inline" /> : null; })()}
+            {expandedDay.day_date.slice(0, 10)} details
             </h4>
             <button
               onClick={() => setExpandedDayId(null)}
               className="text-xs text-muted hover:text-foreground px-2 py-0.5 rounded hover:bg-surface-light/50 transition-colors"
             >
-              ✕ Close
+              <X className="w-3 h-3 mr-1" /> Close
             </button>
           </div>
           <ExpandedPanel
@@ -763,264 +674,28 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         currentRouteId={expandedDay?.planned_route_id}
       />
 
+      {/* Missed-day quick actions (V3) — opened from a missed day cell */}
+      <MissedDayPopover
+        open={!!missedDay}
+        onClose={() => setMissedDayId(null)}
+        dayLabel={missedDay ? fmtDayLabel(missedDay.day_date.slice(0, 10)) : ''}
+        nextDayLabel={missedNextDay ? fmtDayLabel(missedNextDay.day_date.slice(0, 10)) : null}
+        onReschedule={handleMissedReschedule}
+        onMarkRest={handleMissedMarkRest}
+        busy={quickEdit.isPending}
+      />
+
       {/* Events context (read-only hint when this week contains an event) */}
       {events?.some(
         (e) => e.event_date >= weekStart && e.event_date <= addDays(weekStart, 6),
       ) && (
         <p className="text-xs text-muted">
-          🏁 Event this week:{' '}
+          <Flag className="w-3 h-3 inline mr-1" />Event this week:{' '}
           {events
             .filter((e) => e.event_date >= weekStart && e.event_date <= addDays(weekStart, 6))
             .map((e) => e.name)
             .join(', ')}
         </p>
-      )}
-    </div>
-  );
-}
-
-// ─── Day card ─────────────────────────────────────────────────────────────
-
-interface DayCardProps {
-  date: string;
-  dowLabel: string;
-  dayLabel: string;
-  isToday: boolean;
-  day?: TrainingWeekDay;
-  todayStr: string;
-  expanded: boolean;
-  /** Phase 2 `?day=` deep-link highlight for this card's date. */
-  highlighted?: boolean;
-  /** Phase 2: number of active goals this day supports (badge, non-interactive). */
-  goalCount?: number;
-  /** Phase 2: supporting goal names for the badge tooltip. */
-  goalNames?: string[];
-  onToggleExpand: () => void;
-  onToggleCompleted: (completed: boolean) => void;
-  busy: boolean;
-}
-
-function DayCard({
-  date,
-  dowLabel,
-  dayLabel,
-  isToday,
-  day,
-  todayStr,
-  expanded,
-  highlighted,
-  goalCount,
-  goalNames,
-  onToggleExpand,
-  onToggleCompleted,
-  busy,
-}: DayCardProps) {
-  const status = day ? getStatus(day, todayStr) : 'neutral';
-  const badgeStatus = getBadgeStatus(day, status);
-
-  const statusColor = status === 'missed'
-    ? 'border-l-warning/60'
-    : status === 'partial'
-      ? 'border-l-yellow-400/60'
-      : status === 'done'
-        ? 'border-l-positive/60'
-        : '';
-
-  return (
-    <div
-      id={`plan-day-${date}`}
-      className={`rounded-xl border p-3 space-y-2 cursor-pointer transition-colors scroll-mt-4 ${
-        expanded
-          ? 'bg-surface-light/40 border-accent/40'
-          : 'bg-surface-light/20 border-surface-light/50 hover:bg-surface-light/30'
-      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${highlighted ? 'ring-2 ring-accent' : ''} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
-      onClick={onToggleExpand}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onToggleExpand();
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-1">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">
-            {dowLabel}{' '}
-            <span className="text-xs font-normal text-muted">{dayLabel}</span>
-            {isToday && <span className="text-[10px] text-accent ml-1">•</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {day?.sport === 'cycle' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleExpand();
-              }}
-              className="text-[10px] px-1 rounded text-muted hover:text-accent"
-              title={day?.planned_route_id ? 'Change route' : 'Assign route'}
-            >
-              🗺️
-            </button>
-          )}
-          <ConformityBadge
-            status={badgeStatus}
-            title={STATUS_LABEL[status]}
-          />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (day) onToggleCompleted(!day.completed);
-            }}
-            disabled={!day || busy}
-            aria-label={day?.completed ? 'Mark not completed' : 'Mark completed'}
-            className={`text-xs px-1 rounded disabled:opacity-30 ${
-              day?.completed ? 'text-positive' : 'text-muted hover:text-foreground'
-            }`}
-          >
-            ✓
-          </button>
-        </div>
-      </div>
-
-      {!day ? (
-        <p className="text-xs text-muted italic">No plan entry</p>
-      ) : (
-        <>
-          {/* Type row */}
-          <div className="flex items-center gap-1.5">
-            <span>{SPORT_EMOJI[day.sport] ?? '📌'}</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                DAY_TYPE_BADGES[day.planned_type] ?? 'bg-surface-light/20 text-muted border-muted/30'
-              }`}
-            >
-              {day.planned_type}
-            </span>
-          </div>
-
-          {/* Planned line */}
-          {day.sport === 'cycle' && (
-            <p className="text-xs text-muted">
-              {day.planned_duration_min ? `${day.planned_duration_min} min` : '—'}
-              {day.planned_tss != null && ` · ${Math.round(day.planned_tss)} TSS`}
-              {day.planned_power_watts != null && ` · ${Math.round(day.planned_power_watts)}W`}
-              {day.planned_zone && ` · ${day.planned_zone.toUpperCase()}`}
-              {day.targets_stale && (
-                <span
-                  className="ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border bg-warning/15 text-warning border-warning/30"
-                  title="Stored targets drifted from your current FTP — use Refresh targets above"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
-                  stale
-                </span>
-              )}
-            </p>
-          )}
-          {day.sport === 'strength' && (
-            <p className="text-xs text-muted">
-              {day.planned_focus
-                ? FOCUS_LABELS[day.planned_focus] ?? day.planned_focus
-                : 'Strength'}
-              {day.planned_exercises?.length ? ` · ${day.planned_exercises.length} exercises` : ''}
-              {day.planned_volume_kg != null && ` · ${fmtKg(day.planned_volume_kg)} target`}
-            </p>
-          )}
-          {day.sport === 'rest' && <p className="text-xs text-muted">Rest day</p>}
-          {day.workout_description && !expanded && (
-            <p className="text-xs text-foreground/70 truncate" title={day.workout_description}>
-              {day.workout_description}
-            </p>
-          )}
-
-          {/* Phase 2 plan → goal cross-link hint: how many active goals this
-              day supports. Non-interactive badge (the expanded panel below
-              carries the tappable goal rows); tooltip names the goals. */}
-          {(goalCount ?? 0) > 0 && (
-            <p
-              className="text-xs text-muted truncate"
-              title={`Supports goals: ${(goalNames ?? []).join(', ')} — expand for details`}
-            >
-              🎯 {goalCount} goal{goalCount === 1 ? '' : 's'}
-            </p>
-          )}
-
-          {/* Route indicator (cycle days — collapsed card) */}
-          {day.sport === 'cycle' && !expanded && (day.planned_route_id || day.actual_activity?.route_id) && (
-            <p className="text-[10px] text-muted truncate" title={day.actual_activity?.route_name || undefined}>
-              🗺️ {day.actual_activity?.route_name || 'Route assigned'}
-            </p>
-          )}
-
-          {/* Weather (cycle days) */}
-          {day.sport === 'cycle' && day.weather && (
-            <div className="space-y-1">
-              <p className="text-[11px] text-muted">
-                {weatherEmoji(day.weather.conditions)}{' '}
-                {day.weather.temp_max != null && day.weather.temp_min != null
-                  ? `${Math.round(day.weather.temp_max)}°/${Math.round(day.weather.temp_min)}°`
-                  : '—'}
-                {day.weather.precipitation_probability != null &&
-                  ` · 💧${Math.round(day.weather.precipitation_probability)}%`}
-              </p>
-              {day.bad_weather && (
-                <span
-                  className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full border ${
-                    day.bad_weather.level === 'danger'
-                      ? 'bg-warning/20 text-warning border-warning/40'
-                      : 'bg-orange-500/15 text-orange-300 border-orange-500/40'
-                  }`}
-                  title={day.bad_weather.level}
-                >
-                  ⚠️ {day.bad_weather.reason}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Actual block */}
-          {(day.actual_activity || day.actual_lifting_session) && (
-            <div className="rounded-lg bg-positive/10 border border-positive/20 px-2 py-1.5">
-              {day.actual_activity ? (
-                <>
-                  <p className="text-[11px] text-positive font-medium truncate">
-                    {day.actual_activity.name}
-                  </p>
-                  <p className="text-[10px] text-muted">
-                    {formatDuration(day.actual_activity.duration_seconds)}
-                    {day.actual_activity.distance_meters != null &&
-                      ` · ${(day.actual_activity.distance_meters / 1000).toFixed(1)}km`}
-                    {day.actual_activity.tss != null &&
-                      ` · ${Math.round(day.actual_activity.tss)} TSS`}
-                  </p>
-                  <Link
-                    href={`/activities?activity=${day.actual_activity.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[10px] text-accent/70 hover:text-accent transition-colors"
-                  >
-                    View activity →
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="text-[11px] text-positive font-medium">
-                    {day.actual_lifting_session!.focus
-                      ? FOCUS_LABELS[day.actual_lifting_session!.focus!] ??
-                        day.actual_lifting_session!.focus!
-                      : 'Lifting'}
-                  </p>
-                  <p className="text-[10px] text-muted">
-                    {fmtKg(day.actual_lifting_session!.total_volume_kg)} volume
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-          {!day.actual_activity && !day.actual_lifting_session && date < todayStr && (
-            <p className="text-[11px] text-muted/70 italic">Not logged</p>
-          )}
-
-        </>
       )}
     </div>
   );
@@ -1136,13 +811,13 @@ function ExpandedPanel({
           {day.actual_activity?.route_id ? (
             <div className="flex items-center gap-2">
               <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.actual_activity.route_name || 'Linked route ✓'}
+                {day.actual_activity.route_name || 'Linked route'}
               </span>
             </div>
           ) : day.planned_route_id ? (
             <div className="flex items-center gap-2">
               <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned ✓'}
+                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned'}
               </span>
               <button
                 onClick={onOpenRoutePicker}
@@ -1163,7 +838,7 @@ function ExpandedPanel({
               onClick={onOpenRoutePicker}
               className="text-[10px] text-accent hover:text-accent/80"
             >
-              🗺️ Pick a route...
+              <MapPin className="w-3 h-3 mr-1" /> Pick a route...
             </button>
           )}
         </div>
@@ -1194,7 +869,7 @@ function ExpandedPanel({
               onClick={onOpenWahooPush}
               className="text-[10px] text-accent hover:text-accent/80"
             >
-              📤 Push to Wahoo
+              <Upload className="w-3 h-3 inline mr-1" /> Push to Wahoo
             </button>
           )}
         </div>
@@ -1215,7 +890,7 @@ function ExpandedPanel({
                 title={`View ${goalShortLabel(g)} in goals`}
                 className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
               >
-                <span aria-hidden="true">🎯</span>
+                <Target className="w-3 h-3 text-accent" aria-hidden="true" />
                 <span className="text-xs text-foreground truncate">{goalShortLabel(g)}</span>
                 <span className="text-xs text-muted tabular-nums shrink-0">{progress.toFixed(0)}%</span>
                 <span className="ml-auto text-accent text-xs shrink-0" aria-hidden="true">→</span>

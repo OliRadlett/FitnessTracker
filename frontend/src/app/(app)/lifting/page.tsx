@@ -66,7 +66,7 @@ import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCar
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
 import type { LucideIcon } from 'lucide-react';
-import { Dumbbell, ChartColumn, TrendingUp, Timer, Zap, Link2, Clock, TriangleAlert } from 'lucide-react';
+import { Dumbbell, ChartColumn, TrendingUp, Timer, Zap, Link2, Clock, TriangleAlert, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1095,7 +1095,7 @@ export default function LiftingPage() {
             />
           ) : (
             <EmptyState
-              icon="🏋️"
+              icon={<Dumbbell className="w-8 h-8 text-muted" />}
               title="No session selected"
               description="Pick a session from the list to see its sets, analysis, and actions."
               action={{ label: '+ New session', onClick: () => setShowNewSession(true) }}
@@ -1295,7 +1295,7 @@ export default function LiftingPage() {
                   className="mt-1 min-h-[44px] px-3 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
                   title={`Set a 1RM goal for ${pr.exercise_name}`}
                 >
-                  🎯 Set goal
+                   <Target className="w-3 h-3 mr-1" /> Set goal
                 </button>
               </div>
             );

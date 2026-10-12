@@ -28,6 +28,7 @@ import {
 } from './goalPlanLinks';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { Target } from 'lucide-react';
 
 const SPORT_OPTIONS = [
   { value: '', label: 'All sports' },
@@ -219,7 +220,7 @@ export function GoalDetailModal({ goal, onClose }: { goal: Goal; onClose: () => 
     <Modal open onClose={onClose} size="lg" aria-label="Goal detail">
       <ModalHeader
         title={goal.metric_label || goal.metric}
-        icon="🎯"
+        icon={<Target className="w-5 h-5" />}
         onClose={onClose}
       />
       {(goal.filter_json?.exercise || goal.filter_json?.sport) && (

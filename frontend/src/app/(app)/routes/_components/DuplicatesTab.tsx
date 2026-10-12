@@ -31,6 +31,7 @@ import {
   ChevronRight,
   History,
   Undo2,
+  MapPin,
 } from 'lucide-react';
 import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
 import { OrphanReviewSection } from '@/components/routes/OrphanReviewSection';
@@ -316,7 +317,7 @@ export function DuplicatesTab() {
 
         {visiblePairs.length === 0 ? (
           <EmptyState
-            icon="🗺️"
+            icon={<MapPin className="w-8 h-8 text-muted" />}
             title="No duplicate routes found"
             description="Routes are compared after each sync — new duplicates appear here for review."
             action={{ label: 'Refresh', onClick: () => refetch() }}

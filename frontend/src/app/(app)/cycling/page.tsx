@@ -53,6 +53,7 @@ import { TimeRangePicker } from '@/components/dashboard/TimeRangePicker';
 import { TimeRangeProvider, timeRangeDays, useTimeRange } from '@/lib/time-range';
 import { MOTION } from '@/components/motion/tokens';
 import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
+import { Zap, Satellite } from 'lucide-react';
 
 export default function CyclingPage() {
   /* The shared REVIEW time-range (ui-redesign-v2 §2.1) must wrap every
@@ -802,7 +803,7 @@ function CyclingPageInner() {
                 disabled={recalculateTssMutation.isPending}
                 className="min-h-[44px] px-4 py-2 text-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
               >
-                {recalculateTssMutation.isPending ? 'Calculating...' : '⚡ (Re)calculate TSS'}
+                {recalculateTssMutation.isPending ? 'Calculating...' : <><Zap className="w-4 h-4 mr-1" />(Re)calculate TSS</>}
               </button>
             </div>
           </div>
@@ -832,7 +833,7 @@ function CyclingPageInner() {
               disabled={backfillStreamsMutation.isPending}
               className="min-h-[44px] px-4 py-2 text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-50 font-medium whitespace-nowrap"
             >
-              {backfillStreamsMutation.isPending ? 'Fetching...' : '📡 Fetch Streams from Strava'}
+              {backfillStreamsMutation.isPending ? 'Fetching...' : <><Satellite className="w-4 h-4 mr-1" />Fetch Streams from Strava</>}
             </button>
           </div>
         </div>

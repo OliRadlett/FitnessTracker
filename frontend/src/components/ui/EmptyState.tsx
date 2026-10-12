@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 
 interface EmptyStateProps {
-  icon: string;
+  icon?: React.ReactNode;
   title: string;
   description: string;
   action?: {
@@ -20,7 +20,7 @@ interface EmptyStateProps {
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
     <div className="bg-surface rounded-xl border border-surface/20 p-12 text-center" role="status" aria-live="polite">
-      <p className="text-4xl mb-3" aria-hidden="true">{icon}</p>
+      <div className="mb-3 flex justify-center" aria-hidden="true">{icon}</div>
       <p className="text-foreground font-medium mb-1">{title}</p>
       <p className="text-muted text-sm max-w-md mx-auto">{description}</p>
       {action && (

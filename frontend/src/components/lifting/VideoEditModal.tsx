@@ -10,6 +10,7 @@ import type { LiftVideo } from '@/lib/api';
 import { useAuthFetch } from '@/lib/api';
 import { updateLiftVideo } from '@/lib/api/lifting';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { Pencil } from 'lucide-react';
 
 const FIELD =
   'w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent';
@@ -54,7 +55,7 @@ export function VideoEditModal({
 
   return (
     <Modal open={open} onClose={onClose} size="sm" aria-label="Edit video">
-      <ModalHeader title="Edit video" onClose={onClose} icon="✎" />
+      <ModalHeader title="Edit video" onClose={onClose} icon={<Pencil className="w-5 h-5" />} />
 
       <div className="space-y-3">
         <div>

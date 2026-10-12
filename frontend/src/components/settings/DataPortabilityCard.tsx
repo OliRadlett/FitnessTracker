@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { AlertTriangle } from 'lucide-react';
 import { useAuthFetch } from '@/lib/api';
 import {
   deleteAccount,
@@ -106,7 +107,7 @@ export function DataPortabilityCard() {
       </Card>
 
       <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} size="sm" aria-label="Delete account confirmation">
-        <ModalHeader title="Delete account?" onClose={() => setConfirmOpen(false)} icon="⚠️" />
+        <ModalHeader title="Delete account?" onClose={() => setConfirmOpen(false)} icon={<AlertTriangle className="w-5 h-5 text-warning" />} />
         <p className="text-sm text-muted">
           This permanently deletes your account and all of your data. To
           confirm, type your account email below.

@@ -32,6 +32,7 @@ import { MOTION } from '@/components/motion/tokens';
 import { usePrefersReducedMotion } from '@/components/motion/usePrefersReducedMotion';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { sportLabel } from '@/lib/sportUtils';
+import { Bed, Calendar } from 'lucide-react';
 import {
   insightOneLiner,
   pickTopInsight,
@@ -305,15 +306,15 @@ export default function TodayBriefPage() {
         </CardHeader>
         {!activePlan ? (
           <EmptyState
-            icon="📅"
+            icon={<Calendar className="w-6 h-6 text-muted" />}
             title="No active plan"
             description="Training plans turn your goals into scheduled workouts with target TSS. Create one under Training to see today's session here."
             action={{ label: 'Create a training plan', href: '/training' }}
           />
         ) : !todayPlanDay ? (
-          <div role="status" className="flex flex-col items-center gap-1 py-4 text-center">
-            <p className="text-3xl" aria-hidden="true">😴</p>
-            <p className="text-sm font-medium text-foreground">Rest day</p>
+           <div role="status" className="flex flex-col items-center gap-1 py-4 text-center">
+             <Bed className="w-8 h-8 text-muted mb-2" aria-hidden="true" />
+             <p className="text-sm font-medium text-foreground">Rest day</p>
             <p className="text-xs text-muted">Recovery is training too — rest lifts freshness for the next hard session.</p>
             <Link href="/training" className="min-h-[44px] inline-flex items-center text-accent hover:text-accent-hover text-xs mt-1">
               Open Training →

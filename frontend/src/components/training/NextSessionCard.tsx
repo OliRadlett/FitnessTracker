@@ -41,7 +41,7 @@ export function NextSessionCard({ inputs }: { inputs: SessionInputs }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🧭 Suggested Session</CardTitle>
+        <CardTitle>Suggested Session</CardTitle>
       </CardHeader>
       <p className="text-sm text-foreground font-medium">{suggestion.title}</p>
       <p className="text-sm text-muted mt-1">{suggestion.detail}</p>

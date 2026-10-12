@@ -11,7 +11,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Modal, ModalHeader } from '@/components/ui/Modal';
+  import { Modal, ModalHeader } from '@/components/ui/Modal';
+  import { UserRound } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Field } from '@/components/ui/Field';
 import { useAuthFetch, Connection } from '@/lib/api';
@@ -219,7 +220,7 @@ export function OnboardingWizard() {
         size="lg"
         aria-label="Onboarding"
       >
-        <ModalHeader title={stepTitle[step]} onClose={step === 'done' ? finish : skip} icon="👋" />
+        <ModalHeader title={stepTitle[step]} onClose={step === 'done' ? finish : skip}         icon={<UserRound className="w-5 h-5" />} />
 
         {/* Step indicator */}
         <div className="flex items-center gap-1 mb-5">

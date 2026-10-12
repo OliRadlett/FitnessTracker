@@ -27,6 +27,7 @@ import { whatIfWeeks } from '@/lib/prescription';
 import type { LlmAnalysis, Connection } from '@/lib/api';
 import { deriveStaleProviders } from '@/lib/athlete';
 import { getActiveLocale } from '@/lib/utils';
+import { PiggyBank, Bed, Weight, TrendingUp, BarChart3, Beaker, MapPin, Activity } from 'lucide-react';
 
 interface AthleteInsight {
   id: string;
@@ -38,35 +39,35 @@ interface AthleteInsight {
   confidence: 'collecting' | 'low' | 'medium' | 'high';
 }
 
-const META: Record<string, { title: string; icon: string; blurb: string }> = {
+const META: Record<string, { title: string; icon: React.ElementType; blurb: string }> = {
   recovery_cost: {
     title: 'Recovery Cost per Session',
-    icon: '💸',
+    icon: PiggyBank,
     blurb: 'HRV / recovery change in the 48h after each session vs your 14-day baseline.',
   },
   sleep_performance: {
     title: 'Sleep → Performance',
-    icon: '😴',
+    icon: Bed,
     blurb: 'Power output (NP/FTP) and RPE by prior-night sleep band.',
   },
   load_readiness: {
     title: 'Load Split vs Readiness',
-    icon: '⚖️',
-    blurb: 'Weekly strength-vs-endurance share against that week’s recovery.',
+    icon: Weight,
+    blurb: 'Weekly strength-vs-endurance share against that week\'s recovery.',
   },
   power_norms: {
     title: 'Context Power Norms',
-    icon: '🌡️',
+    icon: Beaker,
     blurb: 'Your NP/FTP by temperature band, from weather-tagged rides.',
   },
   pr_clustering: {
     title: 'PR Conditions',
-    icon: '🏅',
+    icon: BarChart3,
     blurb: 'Share of PRs set after above-baseline recovery markers.',
   },
   tsb_peak: {
     title: 'Personal TSB Peak Band',
-    icon: '📈',
+    icon: TrendingUp,
     blurb: 'Where your best relative power shows up on the freshness scale.',
   },
 };
@@ -157,7 +158,7 @@ function InsightBody({ insight }: { insight: AthleteInsight }) {
         <KVTable
           columns={['Temp', 'n', 'NP/FTP']}
           rows={(d.bands ?? []).map((b: { band: string; n: number; avg_np_ftp: number }) => ({
-            Temp: `${b.band}${d.best_band === b.band ? ' ⭐' : ''}`,
+            Temp: `${b.band}${d.best_band === b.band ? ' (best)' : ''}`,
             n: b.n,
             'NP/FTP': b.avg_np_ftp.toFixed(3),
           }))}
@@ -186,7 +187,7 @@ function InsightBody({ insight }: { insight: AthleteInsight }) {
         <KVTable
           columns={['TSB band', 'n', 'NP/FTP']}
           rows={(d.bands ?? []).map((b: { band: string; n: number; avg_np_ftp: number }) => ({
-            'TSB band': `${b.band}${d.peak_band === b.band ? ' ⭐' : ''}`,
+            'TSB band': `${b.band}${d.peak_band === b.band ? ' (peak)' : ''}`,
             n: b.n,
             'NP/FTP': b.avg_np_ftp.toFixed(3),
           }))}
@@ -410,7 +411,7 @@ function AnalyticsPageInner() {
         </div>
       ) : insightsError ? null : !insights || insights.length === 0 ? (
         <EmptyState
-          icon="📊"
+          icon={<BarChart3 className="w-8 h-8 text-muted" />}
           title="No insights yet"
           description="Train for a few weeks, then hit Recompute — patterns need samples."
           action={{ label: '↻ Recompute now', onClick: () => recompute.mutate() }}
@@ -418,16 +419,16 @@ function AnalyticsPageInner() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {insights.map((insight) => {
-            const meta = META[insight.insight_type] ?? {
+             const meta = META[insight.insight_type] ?? {
               title: insight.insight_type,
-              icon: '📊',
+              icon: Activity,
               blurb: '',
             };
             return (
               <Card key={insight.id}>
                 <CardHeader>
                   <div className="flex items-center justify-between w-full gap-2">
-                    <CardTitle>{meta.icon} {meta.title}</CardTitle>
+                    <CardTitle><meta.icon className="w-4 h-4 mr-2" />{meta.title}</CardTitle>
                     <Badge variant={CONFIDENCE_VARIANT[insight.confidence]}>
                       {insight.confidence === 'collecting'
                         ? `collecting data (${insight.sample_size})`
@@ -504,7 +505,7 @@ function WhatIfLab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🔮 What-If Lab</CardTitle>
+        <CardTitle><Beaker className="w-4 h-4 mr-2" /> What-If Lab</CardTitle>
       </CardHeader>
       <p className="text-xs text-muted mb-3">
         Pick a metric + target — timelines extrapolate your current trend slope. Deterministic, not a promise.
@@ -639,13 +640,13 @@ function SeasonOverview() {
 
   return (
     <AiAnalysisCard
-      title="🗺️ Season Overview"
+      title="Season Overview"
       analysis={data ?? null}
       isLoading={isLoading}
       isRefreshing={generate.isPending}
       onRefresh={() => generate.mutate()}
       buttonLabel="Generate season overview"
-      emptyEmoji="🗺️"
+      emptyEmoji={<MapPin className="w-6 h-6 text-muted" />}
       emptyTitle="No season overview yet"
       emptyDescription="A cross-domain brief across cycling, strength, recovery, and planning."
       analyzingText="Reading the whole season…"

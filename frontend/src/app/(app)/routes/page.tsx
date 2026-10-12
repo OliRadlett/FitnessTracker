@@ -516,7 +516,7 @@ export default function RoutesPage() {
             ) : (
               <div className="p-8">
                 <EmptyState
-                  icon="🗺️"
+                  icon={<MapPin className="w-8 h-8 text-muted" />}
                   title="No routes found"
                   description={
                     activeFilterCount > 0

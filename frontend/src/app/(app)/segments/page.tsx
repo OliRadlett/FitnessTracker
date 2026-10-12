@@ -15,6 +15,7 @@ import { Stat } from '@/components/ui/Stat';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SegmentRow, fmtKm } from '@/components/routes/SegmentRow';
+import { Mountain, Search } from 'lucide-react';
 
 /** Climbing category, steepest first — matches the Strava lettering. */
 const CATEGORIES = ['HC', '1', '2', '3', '4'] as const;
@@ -356,14 +357,14 @@ export default function SegmentsPage() {
           </div>
         ) : all.length === 0 ? (
           <EmptyState
-            icon="⛰️"
+            icon={<Mountain className="w-8 h-8 text-muted" />}
             title="No climb segments yet"
             description="Climbs are detected from a route's elevation profile — sustained climbs of at least ~150 m gaining ~30 m at 3% or more."
             action={{ label: 'Open routes', href: '/routes' }}
           />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon="🔍"
+            icon={<Search className="w-8 h-8 text-muted" />}
             title="No matching climbs"
             description="No climbs match the selected filters — loosen them to see more."
             action={{ label: 'Clear filters', onClick: clearFilters }}

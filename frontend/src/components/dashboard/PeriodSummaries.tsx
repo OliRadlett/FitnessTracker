@@ -6,7 +6,9 @@
 
 import React from 'react';
 import type { MonthlySummaryItem, YearlySummary } from '@/lib/api';
-import { getActiveLocale } from '@/lib/utils';
+  import { getActiveLocale } from '@/lib/utils';
+  import { CalendarDays, Bike, Ruler, Zap, Dumbbell, Clock, Heart } from 'lucide-react';
+
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -112,7 +114,7 @@ export function MonthlySummarySection({
     if (!showEmptyState) return null;
     return (
       <EmptyState
-        icon="📆"
+        icon={<CalendarDays className="w-8 h-8 text-muted" />}
         title="No monthly data yet"
         description="Complete some training sessions to see monthly summaries."
       />
@@ -211,12 +213,12 @@ export function YearOverYearBadges({
 export function YearTotalsGrid({ yearlySummary }: { yearlySummary: YearlySummary }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-      <MetricCard label="Activities" value={yearlySummary.total_activities} subtitle="Cardio sessions" color="text-blue-400" icon="🚴" />
-      <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-positive" icon="📏" />
-      <MetricCard label="TSS" value={yearlySummary.total_tss.toFixed(0)} subtitle="Training Stress" color="text-accent" icon="⚡" />
-      <MetricCard label="Lifting" value={`${yearlySummary.total_lifting_sessions}`} subtitle={`${(yearlySummary.total_lifting_volume_kg / 1000).toFixed(0)}k kg vol`} color="text-purple-400" icon="🏋️" />
-      <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-muted" icon="⏱️" />
-      <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-yellow-400'} icon="❤️" />
+      <MetricCard label="Activities" value={yearlySummary.total_activities} subtitle="Cardio sessions" color="text-blue-400" icon={<Bike className="w-5 h-5" />} />
+      <MetricCard label="Distance" value={`${(yearlySummary.total_distance_m / 1000).toFixed(0)} km`} subtitle="Total distance" color="text-positive" icon={<Ruler className="w-5 h-5" />} />
+      <MetricCard label="TSS" value={yearlySummary.total_tss.toFixed(0)} subtitle="Training Stress" color="text-accent" icon={<Zap className="w-5 h-5" />} />
+      <MetricCard label="Lifting" value={`${yearlySummary.total_lifting_sessions}`} subtitle={`${(yearlySummary.total_lifting_volume_kg / 1000).toFixed(0)}k kg vol`} color="text-purple-400" icon={<Dumbbell className="w-5 h-5" />} />
+      <MetricCard label="Time" value={`${(yearlySummary.total_time_s / 3600).toFixed(0)}h`} subtitle="Cardio hours" color="text-muted" icon={<Clock className="w-5 h-5" />} />
+      <MetricCard label="Recovery" value={yearlySummary.avg_recovery ? `${yearlySummary.avg_recovery.toFixed(0)}%` : '—'} subtitle={yearlySummary.avg_hrv_ms ? `HRV: ${yearlySummary.avg_hrv_ms.toFixed(0)}ms` : 'Avg recovery'} color={(yearlySummary.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-yellow-400'} icon={<Heart className="w-5 h-5" />} />
     </div>
   );
 }

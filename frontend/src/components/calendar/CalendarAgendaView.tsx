@@ -7,7 +7,6 @@ import {
   getSportColor,
   getSportTextColor,
   getSportBorderColor,
-  getSportEmoji,
 } from '@/lib/sportUtils';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 
@@ -82,14 +81,15 @@ export function CalendarAgendaView({
                 {dayActivities.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {dayActivities.map((a) => (
-                      <span
-                        key={a.id}
-                        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] border ${getSportBorderColor(a.sport_type)} ${getSportColor(a.sport_type)}/10`}
-                      >
-                        <span className={getSportTextColor(a.sport_type)}>
-                          {getSportEmoji(a.sport_type)} {formatStat(a)}
-                        </span>
-                      </span>
+                        <span
+                         key={a.id}
+                         className={`inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] border ${getSportBorderColor(a.sport_type)} ${getSportColor(a.sport_type)}/10`}
+                       >
+                         <span className={`w-1.5 h-1.5 rounded-full ${getSportColor(a.sport_type)}`} aria-hidden="true" />
+                         <span className={getSportTextColor(a.sport_type)}>
+                           {formatStat(a)}
+                         </span>
+                       </span>
                     ))}
                   </div>
                 ) : (
