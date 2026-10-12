@@ -622,6 +622,13 @@ function CyclingPageInner() {
   // other LoadStrip slot, guardrail §1.3).
   const staleProviders = deriveStaleProviders(connections);
 
+  // V2 card+sparkline: derive sparkline data from the training-load series
+  // (last 7 days, matching the 7d metric window).
+  const recentLoadHistory = (trainingLoad?.data ?? []).slice(-7);
+  const loadHistoryTss = recentLoadHistory.map((p) => p.tss);
+  const loadHistoryRides = recentLoadHistory.map((p) => (p.tss > 0 ? 1 : 0));
+  const loadHistoryDistance = recentLoadHistory.map((p) => p.tss);
+
   // State-aware TSS banner (Phase 0 hygiene): the old `metrics.recent_tss === 0`
   // check fired on any rest week (7d window), even with healthy CTL/ATL history.
   // Display logic only — no CTL/ATL/TSB computation changes (docs/algorithms.md).
@@ -728,14 +735,14 @@ function CyclingPageInner() {
         />
       </div>
 
-      {/* Recent Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <MetricCard label="7d TSS" value={metrics?.recent_tss?.toFixed(0)} color="text-blue-400" trend={metrics?.tss_trend} tooltip="Training Stress Score — a composite measure of ride difficulty based on intensity and duration. 100 TSS = 1 hour at FTP." />
-        <MetricCard label="7d Rides" value={metrics?.recent_rides} color="text-purple-400" trend={metrics?.rides_trend} tooltip="Number of cycling activities in the last 7 days." />
-        <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-muted" trend={metrics?.distance_trend} tooltip="Total distance covered in the last 7 days." />
-        <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-muted" trend={metrics?.time_trend} tooltip="Total time on the bike in the last 7 days." />
-        <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-muted" trend={metrics?.elevation_trend} tooltip="Total elevation gain in the last 7 days." />
-      </div>
+       {/* Recent Stats */}
+       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+         <MetricCard label="7d TSS" value={metrics?.recent_tss?.toFixed(0)} color="text-blue-400" trend={metrics?.tss_trend} sparklineData={loadHistoryTss} tooltip="Training Stress Score — a composite measure of ride difficulty based on intensity and duration. 100 TSS = 1 hour at FTP." />
+         <MetricCard label="7d Rides" value={metrics?.recent_rides} color="text-purple-400" trend={metrics?.rides_trend} sparklineData={loadHistoryRides} tooltip="Number of cycling activities in the last 7 days." />
+         <MetricCard label="7d Distance" value={metrics?.recent_distance_km} unit="km" color="text-muted" trend={metrics?.distance_trend} sparklineData={loadHistoryDistance} tooltip="Total distance covered in the last 7 days." />
+         <MetricCard label="7d Time" value={metrics?.recent_time_hours} unit="hrs" color="text-muted" trend={metrics?.time_trend} tooltip="Total time on the bike in the last 7 days." />
+         <MetricCard label="7d Elevation" value={metrics?.recent_elevation_m?.toFixed(0)} unit="m" color="text-muted" trend={metrics?.elevation_trend} tooltip="Total elevation gain in the last 7 days." />
+       </div>
 
       {/* IF & VI Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
