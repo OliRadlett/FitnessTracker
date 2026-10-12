@@ -1,6 +1,7 @@
-"""Training plan business logic — template generation, non-destructive day upsert,
-event linkage with auto-taper, plan CRUD, weekly view enrichment (Phase 5B),
-and targeted single-day updates.
+"""Training plan business logic — template generation, full-array day upsert
+(deletes dates missing from the payload), event linkage with auto-taper, plan
+CRUD, weekly view enrichment (Phase 5B), and targeted single-day edits
+(add / update / delete / swap).
 
 Services follow the ``(db: AsyncSession, user_id, ...)`` convention and raise
 ``ValueError`` for user-facing validation errors (routers translate to HTTP).
@@ -783,7 +784,7 @@ async def _reload_plan(db: AsyncSession, plan_id: uuid.UUID) -> TrainingPlan:
     return result.scalar_one()
 
 
-# ── Day persistence (non-destructive upsert) ─────────────────────────────
+# ── Day persistence (full-array upsert — destructive by omission) ─────────
 
 
 async def save_plan_days(
@@ -792,12 +793,16 @@ async def save_plan_days(
     plan_id: uuid.UUID,
     days: list[TrainingPlanDayCreate],
 ) -> TrainingPlan:
-    """Upsert plan days matched by ``day_date`` — never wipes data wholesale.
+    """Upsert plan days matched by ``day_date``.
 
     - Existing dates: update provided fields only (completed / activity_id /
       lifting_session_id are preserved unless explicitly included in payload).
     - New dates: insert.
-    - Missing dates: delete.
+    - Missing dates: **delete** (so the caller must send the complete set).
+
+    Because omission deletes, this path is destructive — prefer the targeted
+    day endpoints (``add_plan_day`` / ``update_plan_day`` / ``delete_plan_day``
+    / ``swap_plan_days``) for editing.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -975,7 +980,7 @@ async def update_plan(
     plan_id: uuid.UUID,
     data: TrainingPlanUpdate,
 ) -> TrainingPlan:
-    """Update a plan. Days, if provided, are saved non-destructively."""
+    """Update a plan. Days, if provided, replace the day set (destructive)."""
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
         raise ValueError("Training plan not found")
@@ -1999,6 +2004,99 @@ async def substitute_plan_day(
 
     await db.flush()
     return day
+
+
+# ── Editor primitives (add / delete / swap) ──────────────────────────────
+
+
+async def add_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    data: TrainingPlanDayCreate,
+) -> TrainingPlanDay:
+    """Add a single day to a plan (409 when the date is already used).
+
+    The targeted counterpart to ``save_plan_days``: it never deletes anything,
+    so the editor can add one session without rewriting the plan's day set.
+    Completed/linked-actual columns are server-managed and never set here.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    _validate_days([data])
+
+    if data.day_date < plan.start_date or data.day_date > plan.end_date:
+        raise ValueError("Day date is outside the plan range")
+
+    if any(d.day_date == data.day_date for d in plan.days):
+        raise PlanDayConflictError(
+            f"A day already exists on {data.day_date.isoformat()}"
+        )
+
+    day = TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))
+    db.add(day)
+    await db.flush()
+    return day
+
+
+async def delete_plan_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+) -> None:
+    """Delete a single plan day.
+
+    Completed days are refused (HTTP 400): deleting one would orphan the
+    history its linked actual represents.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    day = next((d for d in plan.days if d.id == day_id), None)
+    if day is None:
+        raise ValueError("Training plan day not found")
+    if day.completed:
+        raise ValueError("Cannot delete a completed day")
+
+    await db.delete(day)
+    await db.flush()
+
+
+async def swap_plan_days(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    target_day_id: uuid.UUID,
+) -> tuple[TrainingPlanDay, TrainingPlanDay]:
+    """Exchange ``day_date`` between two uncompleted days of one plan.
+
+    A true swap (not two moves): the rows keep their content and linked
+    actuals and only trade dates, so it needs no free slot and cannot hit the
+    ``reschedule`` 409. ``TrainingPlanDay`` has no UNIQUE ``(plan_id,
+    day_date)`` constraint, so this is a plain two-attribute update flushed
+    together — no temp-date dance.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    day = next((d for d in plan.days if d.id == day_id), None)
+    target = next((d for d in plan.days if d.id == target_day_id), None)
+    if day is None or target is None:
+        raise ValueError("Training plan day not found")
+    if day.id == target.id:
+        raise ValueError("Cannot swap a day with itself")
+    if day.completed or target.completed:
+        raise ValueError("Cannot swap a completed day")
+
+    day.day_date, target.day_date = target.day_date, day.day_date
+    await db.flush()
+    return day, target
 
 
 async def get_unplanned_actuals(
